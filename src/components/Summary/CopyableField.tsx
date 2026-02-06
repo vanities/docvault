@@ -46,13 +46,13 @@ export function CopyableField({ label, value, format = 'currency', sublabel }: C
   };
 
   return (
-    <div className="flex items-center justify-between py-3 px-4 bg-gray-50 rounded-lg group hover:bg-gray-100 transition-colors">
+    <div className="flex items-center justify-between py-3 px-4 bg-surface-200/30 rounded-lg group hover:bg-surface-200/50 transition-colors">
       <div>
-        <p className="text-sm font-medium text-gray-700">{label}</p>
-        {sublabel && <p className="text-xs text-gray-400">{sublabel}</p>}
+        <p className="text-[13px] font-medium text-surface-800">{label}</p>
+        {sublabel && <p className="text-[11px] text-surface-600">{sublabel}</p>}
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-lg font-semibold text-gray-900 font-mono">
+        <span className="text-lg font-semibold text-surface-950 font-mono">
           {formatValue(value, format)}
         </span>
         <button
@@ -61,8 +61,8 @@ export function CopyableField({ label, value, format = 'currency', sublabel }: C
             p-1.5 rounded transition-all
             ${
               copied
-                ? 'bg-green-100 text-green-600'
-                : 'opacity-0 group-hover:opacity-100 bg-white border border-gray-200 text-gray-500 hover:text-gray-700'
+                ? 'bg-emerald-500/15 text-emerald-400'
+                : 'opacity-0 group-hover:opacity-100 bg-surface-300/30 border border-border text-surface-600 hover:text-surface-800'
             }
           `}
           title="Copy to clipboard"

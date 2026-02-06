@@ -1,10 +1,13 @@
-import { Dashboard } from './components/Dashboard';
+import { Layout } from './components/Layout';
 import { ToastProvider } from './components/ui/Toast';
+import { AppProvider } from './contexts/AppContext';
 
 function App() {
   return (
     <ToastProvider>
-      <Dashboard />
+      <AppProvider>
+        <Layout />
+      </AppProvider>
     </ToastProvider>
   );
 }

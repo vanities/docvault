@@ -25,23 +25,29 @@ interface StatCardProps {
 }
 
 function StatCard({ icon: Icon, label, value, subtext, color }: StatCardProps) {
-  const colorClasses = {
-    green: 'bg-green-50 text-green-600',
-    red: 'bg-red-50 text-red-600',
-    blue: 'bg-blue-50 text-blue-600',
-    gray: 'bg-gray-50 text-gray-600',
+  const colorConfig = {
+    green: { icon: 'text-emerald-400', bg: 'bg-emerald-500/10', glow: 'glow-emerald' },
+    red: { icon: 'text-red-400', bg: 'bg-red-500/10', glow: 'glow-red' },
+    blue: { icon: 'text-blue-400', bg: 'bg-blue-500/10', glow: 'glow-blue' },
+    gray: { icon: 'text-surface-700', bg: 'bg-surface-400/10', glow: '' },
   };
 
+  const c = colorConfig[color];
+
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5">
+    <div className={`glass-card rounded-xl p-5 hover:${c.glow} transition-all duration-200`}>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm text-gray-500 font-medium">{label}</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
-          {subtext && <p className="text-xs text-gray-400 mt-1">{subtext}</p>}
+          <p className="text-[11px] text-surface-700 font-medium uppercase tracking-wider">
+            {label}
+          </p>
+          <p className="text-2xl font-bold text-surface-950 mt-1.5 font-mono tracking-tight">
+            {value}
+          </p>
+          {subtext && <p className="text-[11px] text-surface-600 mt-1">{subtext}</p>}
         </div>
-        <div className={`p-2 rounded-lg ${colorClasses[color]}`}>
-          <Icon className="w-5 h-5" />
+        <div className={`p-2.5 rounded-xl ${c.bg}`}>
+          <Icon className={`w-5 h-5 ${c.icon}`} />
         </div>
       </div>
     </div>
@@ -53,7 +59,7 @@ export function QuickStats({ incomeSummary, expenseSummary, documentCount }: Qui
   const estimatedTax = netIncome * 0.25; // Rough estimate
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 stagger">
       <StatCard
         icon={TrendingUp}
         label="Total Income"

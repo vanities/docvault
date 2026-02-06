@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { TaxDocument, DocumentType, Entity, ExpenseCategory } from '../types';
+import { isBusinessDocumentType, getBusinessSubfolder } from '../config';
 
 const API_BASE = 'http://localhost:3005/api';
 
@@ -9,6 +10,7 @@ export interface EntityConfig {
   name: string;
   color: string;
   path: string;
+  icon?: string;
 }
 
 // File info from the server
@@ -22,9 +24,22 @@ export interface FileInfo {
 }
 
 // Detect document type from filename
-function detectDocumentType(filename: string): DocumentType {
+function detectDocumentType(filename: string, filePath?: string): DocumentType {
   const lower = filename.toLowerCase();
+  const pathLower = filePath?.toLowerCase() || '';
 
+  // Business document detection (check path for business-docs folder)
+  if (pathLower.includes('business-docs/')) {
+    if (
+      /formation|articles.*incorporation|operating.*agreement|certificate.*formation/i.test(lower)
+    )
+      return 'formation';
+    if (/ein|employer.*identification/i.test(lower)) return 'ein-letter';
+    if (/license|permit|registration/i.test(lower)) return 'license';
+    if (/contract|agreement|nda|w-?9/i.test(lower)) return 'business-agreement';
+  }
+
+  // Tax document detection
   if (/w-?2/i.test(lower)) return 'w2';
   if (/1099-?nec/i.test(lower)) return '1099-nec';
   if (/1099-?misc/i.test(lower)) return '1099-misc';
@@ -38,6 +53,12 @@ function detectDocumentType(filename: string): DocumentType {
   if (/koinly|coinbase|kraken|crypto|8949/i.test(lower)) return 'crypto';
   if (/\.tax\d{4}$|return|final/i.test(lower)) return 'return';
   if (/contract|agreement|w-?9|nda/i.test(lower)) return 'contract';
+
+  // Business document detection by filename (for uploads)
+  if (/formation|articles.*incorporation|operating.*agreement|certificate.*formation/i.test(lower))
+    return 'formation';
+  if (/ein|employer.*identification/i.test(lower)) return 'ein-letter';
+  if (/license|permit|registration/i.test(lower)) return 'license';
 
   return 'other';
 }
@@ -160,7 +181,7 @@ export function useFileSystemServer() {
         const documents: TaxDocument[] = data.files
           .filter((f: FileInfo) => !f.name.startsWith('.'))
           .map((file: FileInfo & { parsedData?: Record<string, unknown> }) => {
-            const docType = detectDocumentType(file.name);
+            const docType = detectDocumentType(file.name, file.path);
             const expenseCategory = detectExpenseCategory(file.path);
 
             const doc: TaxDocument = {
@@ -237,6 +258,89 @@ export function useFileSystemServer() {
     [isConnected, entities, scanSingleEntity]
   );
 
+  // Scan business documents for an entity (not tied to tax year)
+  const scanBusinessDocs = useCallback(
+    async (entity: Entity): Promise<TaxDocument[]> => {
+      if (!isConnected) {
+        return [];
+      }
+
+      try {
+        if (entity === 'all') {
+          // Scan all entities in parallel
+          const entitiesToScan = entities.map((e) => e.id as Entity);
+          const results = await Promise.all(
+            entitiesToScan.map(async (e) => {
+              const response = await fetch(`${API_BASE}/business-docs/${e}`);
+              const data = await response.json();
+              if (!data.files) return [];
+
+              return data.files
+                .filter((f: FileInfo) => !f.name.startsWith('.'))
+                .map((file: FileInfo & { parsedData?: Record<string, unknown> }) => {
+                  const docType = detectDocumentType(file.name, file.path);
+
+                  const doc: TaxDocument = {
+                    id: `${e}/${file.path}-${file.lastModified}`,
+                    fileName: file.name,
+                    fileType: file.type,
+                    fileSize: file.size,
+                    filePath: file.path,
+                    type: docType,
+                    entity: e,
+                    taxYear: 0, // 0 indicates business doc (no year)
+                    tags: [],
+                    createdAt: new Date(file.lastModified).toISOString(),
+                    updatedAt: new Date(file.lastModified).toISOString(),
+                    parsedData: file.parsedData as TaxDocument['parsedData'],
+                  };
+
+                  return doc;
+                });
+            })
+          );
+          return results.flat();
+        }
+
+        const response = await fetch(`${API_BASE}/business-docs/${entity}`);
+        const data = await response.json();
+
+        if (!data.files) {
+          return [];
+        }
+
+        const documents: TaxDocument[] = data.files
+          .filter((f: FileInfo) => !f.name.startsWith('.'))
+          .map((file: FileInfo & { parsedData?: Record<string, unknown> }) => {
+            const docType = detectDocumentType(file.name, file.path);
+
+            const doc: TaxDocument = {
+              id: `${entity}/${file.path}-${file.lastModified}`,
+              fileName: file.name,
+              fileType: file.type,
+              fileSize: file.size,
+              filePath: file.path,
+              type: docType,
+              entity,
+              taxYear: 0, // 0 indicates business doc (no year)
+              tags: [],
+              createdAt: new Date(file.lastModified).toISOString(),
+              updatedAt: new Date(file.lastModified).toISOString(),
+              parsedData: file.parsedData as TaxDocument['parsedData'],
+            };
+
+            return doc;
+          });
+
+        return documents;
+      } catch (err) {
+        console.error(`Business docs scan error for ${entity}:`, err);
+        return [];
+      }
+    },
+    [isConnected, entities]
+  );
+
   // Import a file to the correct folder
   const importFile = useCallback(
     async (
@@ -244,50 +348,63 @@ export function useFileSystemServer() {
       docType: DocumentType,
       entity: Entity,
       taxYear: number,
-      expenseCategory?: ExpenseCategory
+      expenseCategory?: ExpenseCategory,
+      customFilename?: string
     ): Promise<boolean> => {
       if (!isConnected) return false;
 
       try {
         // Determine destination path based on document type
-        let destPath = `${taxYear}`;
+        let destPath: string;
 
-        if (docType === 'w2') {
-          destPath += '/income/w2';
-        } else if (docType.startsWith('1099')) {
-          destPath += '/income/1099';
-        } else if (docType === 'receipt' && expenseCategory) {
-          const folderMap: Record<ExpenseCategory, string> = {
-            childcare: 'expenses/childcare',
-            medical: 'expenses/medical',
-            meals: 'expenses/business',
-            software: 'expenses/business',
-            equipment: 'expenses/business',
-            'office-supplies': 'expenses/business',
-            'professional-services': 'expenses/business',
-            travel: 'expenses/business',
-            utilities: 'expenses/business',
-            insurance: 'expenses/business',
-            education: 'expenses/business',
-            other: 'expenses/business',
-          };
-          destPath += '/' + folderMap[expenseCategory];
-        } else if (docType === 'crypto') {
-          destPath += '/crypto';
-        } else if (docType === 'return') {
-          if (file.name.includes('.tax')) {
-            destPath += '/turbotax';
-          } else {
-            destPath += '/returns';
-          }
+        // Check if this is a business document (not tied to tax year)
+        if (isBusinessDocumentType(docType)) {
+          const subfolder = getBusinessSubfolder(docType);
+          destPath = `business-docs/${subfolder}`;
         } else {
-          destPath += '/income/other';
+          // Regular tax year document
+          destPath = `${taxYear}`;
+
+          if (docType === 'w2') {
+            destPath += '/income/w2';
+          } else if (docType.startsWith('1099')) {
+            destPath += '/income/1099';
+          } else if (docType === 'receipt' && expenseCategory) {
+            const folderMap: Record<ExpenseCategory, string> = {
+              childcare: 'expenses/childcare',
+              medical: 'expenses/medical',
+              meals: 'expenses/business',
+              software: 'expenses/business',
+              equipment: 'expenses/business',
+              'office-supplies': 'expenses/business',
+              'professional-services': 'expenses/business',
+              travel: 'expenses/business',
+              utilities: 'expenses/business',
+              insurance: 'expenses/business',
+              education: 'expenses/business',
+              other: 'expenses/business',
+            };
+            destPath += '/' + folderMap[expenseCategory];
+          } else if (docType === 'crypto') {
+            destPath += '/crypto';
+          } else if (docType === 'return') {
+            if (file.name.includes('.tax')) {
+              destPath += '/turbotax';
+            } else {
+              destPath += '/returns';
+            }
+          } else {
+            destPath += '/income/other';
+          }
         }
+
+        // Use custom filename if provided, otherwise use original filename
+        const filename = customFilename || file.name;
 
         // Upload file with entity
         const arrayBuffer = await file.arrayBuffer();
         const response = await fetch(
-          `${API_BASE}/upload?entity=${encodeURIComponent(entity)}&path=${encodeURIComponent(destPath)}&filename=${encodeURIComponent(file.name)}`,
+          `${API_BASE}/upload?entity=${encodeURIComponent(entity)}&path=${encodeURIComponent(destPath)}&filename=${encodeURIComponent(filename)}`,
           {
             method: 'POST',
             body: arrayBuffer,
@@ -466,6 +583,34 @@ export function useFileSystemServer() {
     [isConnected]
   );
 
+  // Update an entity
+  const updateEntity = useCallback(
+    async (
+      id: string,
+      updates: { name?: string; color?: string; icon?: string }
+    ): Promise<EntityConfig | null> => {
+      if (!isConnected) return null;
+
+      try {
+        const response = await fetch(`${API_BASE}/entities/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updates),
+        });
+        const data = await response.json();
+        if (data.ok && data.entity) {
+          setEntities((prev) => prev.map((e) => (e.id === id ? data.entity : e)));
+          return data.entity;
+        }
+        return null;
+      } catch (err) {
+        console.error('Update entity error:', err);
+        return null;
+      }
+    },
+    [isConnected]
+  );
+
   // Move a file to a different entity/year
   const moveFile = useCallback(
     async (
@@ -512,6 +657,7 @@ export function useFileSystemServer() {
     checkConnection,
     getYearsForEntity,
     scanTaxYear,
+    scanBusinessDocs,
     importFile,
     openFile,
     deleteFile,
@@ -520,6 +666,7 @@ export function useFileSystemServer() {
     parseAllFiles,
     addEntity,
     removeEntity,
+    updateEntity,
     moveFile,
   };
 }

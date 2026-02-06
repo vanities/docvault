@@ -9,26 +9,26 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: () => void }) 
   }, [toast.duration, onRemove]);
 
   const icons = {
-    success: <CheckCircle className="w-5 h-5 text-green-500" />,
-    error: <AlertCircle className="w-5 h-5 text-red-500" />,
-    info: <Info className="w-5 h-5 text-blue-500" />,
+    success: <CheckCircle className="w-5 h-5 text-emerald-400" />,
+    error: <AlertCircle className="w-5 h-5 text-danger-400" />,
+    info: <Info className="w-5 h-5 text-info-400" />,
   };
 
   const bgColors = {
-    success: 'bg-green-50 border-green-200',
-    error: 'bg-red-50 border-red-200',
-    info: 'bg-blue-50 border-blue-200',
+    success: 'bg-emerald-500/10 border-emerald-500/20',
+    error: 'bg-danger-500/10 border-danger-500/20',
+    info: 'bg-info-500/10 border-info-500/20',
   };
 
   return (
     <div
-      className={`flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg ${bgColors[toast.type]} animate-slide-in`}
+      className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl glass-strong ${bgColors[toast.type]} animate-slide-in`}
     >
       {icons[toast.type]}
-      <p className="text-sm text-gray-800 flex-1">{toast.message}</p>
+      <p className="text-[13px] text-surface-900 flex-1">{toast.message}</p>
       <button
         onClick={onRemove}
-        className="p-1 text-gray-400 hover:text-gray-600 rounded transition-colors"
+        className="p-1 text-surface-600 hover:text-surface-800 rounded transition-colors"
       >
         <X className="w-4 h-4" />
       </button>

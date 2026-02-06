@@ -23,7 +23,12 @@ interface DocumentViewerProps {
   onClose: () => void;
   onDelete?: (id: string) => void;
   onReparse?: () => Promise<void>;
-  onMove?: (fromPath: string, toEntity: Entity, toYear: number) => Promise<boolean>;
+  onMove?: (
+    fromEntity: Entity,
+    fromPath: string,
+    toEntity: Entity,
+    toYear: number
+  ) => Promise<boolean>;
   entities?: EntityConfig[];
   availableYears?: number[];
 }
@@ -75,6 +80,7 @@ export function DocumentViewer({
   const [moveToEntity, setMoveToEntity] = useState<Entity>(document.entity);
   const [moveToYear, setMoveToYear] = useState<number>(document.taxYear);
   const [isMoving, setIsMoving] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const fileUrl = getFileUrl(document.entity, document.filePath);
   const isImage = document.fileType.includes('image');
@@ -130,7 +136,7 @@ export function DocumentViewer({
 
     setIsMoving(true);
     try {
-      const success = await onMove(document.filePath, moveToEntity, moveToYear);
+      const success = await onMove(document.entity, document.filePath, moveToEntity, moveToYear);
       if (success) {
         setShowMoveModal(false);
         onClose();
@@ -143,48 +149,50 @@ export function DocumentViewer({
   return (
     <div className="fixed inset-0 z-50 flex">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
       {/* Panel */}
-      <div className="relative ml-auto w-full max-w-2xl bg-white shadow-xl flex flex-col h-full">
+      <div className="relative ml-auto w-full max-w-2xl bg-surface-100 shadow-2xl flex flex-col h-full animate-slide-in border-l border-border">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+        <div className="flex items-center justify-between p-4 border-b border-border">
           <div className="flex items-center gap-3 min-w-0">
-            <FileIcon fileType={document.fileType} className="w-6 h-6 text-gray-500 shrink-0" />
+            <FileIcon fileType={document.fileType} className="w-5 h-5 text-surface-700 shrink-0" />
             <div className="min-w-0">
-              <h2 className="font-semibold text-gray-900 truncate">{document.fileName}</h2>
-              <p className="text-sm text-gray-500">{docTypeInfo?.label || document.type}</p>
+              <h2 className="font-semibold text-surface-950 truncate text-[14px]">
+                {document.fileName}
+              </h2>
+              <p className="text-[12px] text-surface-700">{docTypeInfo?.label || document.type}</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+            className="p-2 text-surface-600 hover:text-surface-900 hover:bg-surface-300/30 rounded-lg transition-all"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Preview */}
-        <div className="flex-1 overflow-hidden bg-gray-100">
+        <div className="flex-1 overflow-hidden bg-surface-200/30">
           {canPreview ? (
             <div className="w-full h-full flex items-center justify-center p-4">
               {isImage ? (
                 <img
                   src={fileUrl}
                   alt={document.fileName}
-                  className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
+                  className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
                 />
               ) : isPdf ? (
-                <iframe src={fileUrl} className="w-full h-full rounded-lg shadow-lg bg-white" />
+                <iframe src={fileUrl} className="w-full h-full rounded-lg bg-white" />
               ) : null}
             </div>
           ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center text-gray-400">
+            <div className="w-full h-full flex flex-col items-center justify-center text-surface-600">
               <File className="w-16 h-16 mb-4" />
               <p>Preview not available</p>
               <button
                 onClick={handleOpenExternal}
-                className="mt-4 flex items-center gap-2 text-blue-600 hover:text-blue-700"
+                className="mt-4 flex items-center gap-2 text-accent-400 hover:text-accent-500"
               >
                 <ExternalLink className="w-4 h-4" />
                 Open in new tab
@@ -194,44 +202,58 @@ export function DocumentViewer({
         </div>
 
         {/* Details */}
-        <div className="border-t border-gray-200 p-4 space-y-4 max-h-80 overflow-y-auto">
+        <div className="border-t border-border p-4 space-y-4 max-h-80 overflow-y-auto">
           {/* File Info */}
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div className="flex items-center gap-2 text-gray-600">
-              <HardDrive className="w-4 h-4" />
+          <div className="grid grid-cols-2 gap-3 text-[13px]">
+            <div className="flex items-center gap-2 text-surface-700">
+              <HardDrive className="w-4 h-4 text-surface-600" />
               <span>{formatFileSize(document.fileSize)}</span>
             </div>
-            <div className="flex items-center gap-2 text-gray-600">
-              <Calendar className="w-4 h-4" />
+            <div className="flex items-center gap-2 text-surface-700">
+              <Calendar className="w-4 h-4 text-surface-600" />
               <span>{formatDate(document.createdAt)}</span>
             </div>
-            <div className="flex items-center gap-2 text-gray-600 col-span-2">
-              <FolderOpen className="w-4 h-4" />
-              <span className="truncate">{document.filePath}</span>
+            <div className="flex items-center gap-2 text-surface-700 col-span-2">
+              <FolderOpen className="w-4 h-4 text-surface-600" />
+              <button
+                onClick={() => {
+                  const entityConfig = entities?.find((e) => e.id === document.entity);
+                  const fullPath = entityConfig
+                    ? `${entityConfig.path}/${document.filePath}`
+                    : document.filePath;
+                  navigator.clipboard.writeText(fullPath);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+                className="truncate hover:text-accent-400 cursor-pointer text-left font-mono text-[12px]"
+                title="Click to copy full path"
+              >
+                {copied ? 'Copied!' : document.filePath}
+              </button>
             </div>
           </div>
 
           {/* Tags */}
-          <div className="flex flex-wrap gap-2">
-            <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
+          <div className="flex flex-wrap gap-1.5">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-info-500/10 text-info-400 rounded-md text-[12px]">
               <Tag className="w-3 h-3" />
               {docTypeInfo?.label || document.type}
             </span>
             {expenseInfo && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded text-sm">
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-500/10 text-emerald-400 rounded-md text-[12px]">
                 {expenseInfo.label}
               </span>
             )}
-            <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-surface-400/15 text-surface-800 rounded-md text-[12px]">
               {document.taxYear}
             </span>
           </div>
 
           {/* Parsed Data */}
           {document.parsedData && (
-            <div className="bg-gray-50 rounded-lg p-3">
-              <h3 className="font-medium text-gray-900 mb-2">Parsed Data</h3>
-              <dl className="grid grid-cols-2 gap-2 text-sm">
+            <div className="bg-surface-200/40 rounded-xl p-4">
+              <h3 className="font-medium text-surface-950 mb-3 text-[13px]">Parsed Data</h3>
+              <dl className="grid grid-cols-2 gap-2 text-[13px]">
                 {Object.entries(document.parsedData)
                   .filter(
                     ([key]) => key !== 'parsed' && key !== 'parsedAt' && key !== 'documentType'
@@ -311,8 +333,8 @@ export function DocumentViewer({
 
                     return (
                       <div key={key}>
-                        <dt className="text-gray-500 capitalize">{label}</dt>
-                        <dd className="text-gray-900 font-medium">{displayValue}</dd>
+                        <dt className="text-surface-600 capitalize text-[11px]">{label}</dt>
+                        <dd className="text-surface-950 font-medium">{displayValue}</dd>
                       </div>
                     );
                   })}
@@ -321,17 +343,17 @@ export function DocumentViewer({
           )}
 
           {!document.parsedData && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
+            <div className="bg-warn-500/10 border border-warn-500/20 rounded-xl p-3 text-[13px] text-warn-400">
               This document hasn't been parsed yet. Click "Parse Document" to extract data.
             </div>
           )}
         </div>
 
         {/* Actions */}
-        <div className="border-t border-gray-200 p-4 flex gap-2">
+        <div className="border-t border-border p-4 flex gap-2">
           <button
             onClick={handleDownload}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-surface-300/30 text-surface-800 rounded-xl hover:bg-surface-300/50 transition-all text-[13px] font-medium"
           >
             <Download className="w-4 h-4" />
             Download
@@ -339,7 +361,7 @@ export function DocumentViewer({
           <button
             onClick={handleReparse}
             disabled={isParsing}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 transition-all disabled:opacity-40 text-[13px] font-medium"
           >
             <RefreshCw className={`w-4 h-4 ${isParsing ? 'animate-spin' : ''}`} />
             {isParsing ? 'Parsing...' : 'Parse Document'}
@@ -347,7 +369,7 @@ export function DocumentViewer({
           {onMove && entities && availableYears && (
             <button
               onClick={() => setShowMoveModal(true)}
-              className="flex items-center justify-center gap-2 px-4 py-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+              className="flex items-center justify-center gap-2 px-4 py-2 text-warn-400 hover:bg-warn-500/10 rounded-xl transition-all"
               title="Move to different entity/year"
             >
               <MoveRight className="w-4 h-4" />
@@ -357,7 +379,7 @@ export function DocumentViewer({
             <button
               onClick={handleDelete}
               disabled={isDeleting}
-              className="flex items-center justify-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+              className="flex items-center justify-center gap-2 px-4 py-2 text-danger-400 hover:bg-danger-500/10 rounded-xl transition-all disabled:opacity-40"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -368,17 +390,22 @@ export function DocumentViewer({
       {/* Move Modal */}
       {showMoveModal && entities && availableYears && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setShowMoveModal(false)} />
-          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Move Document</h3>
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowMoveModal(false)}
+          />
+          <div className="relative glass-strong rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 animate-scale-in">
+            <h3 className="text-lg font-semibold text-surface-950 mb-4">Move Document</h3>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Entity</label>
+                <label className="block text-[13px] font-medium text-surface-800 mb-2">
+                  Entity
+                </label>
                 <select
                   value={moveToEntity}
                   onChange={(e) => setMoveToEntity(e.target.value as Entity)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2.5 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900"
                 >
                   {entities.map((entity) => (
                     <option key={entity.id} value={entity.id}>
@@ -389,11 +416,13 @@ export function DocumentViewer({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Tax Year</label>
+                <label className="block text-[13px] font-medium text-surface-800 mb-2">
+                  Tax Year
+                </label>
                 <select
                   value={moveToYear}
                   onChange={(e) => setMoveToYear(parseInt(e.target.value, 10))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2.5 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900"
                 >
                   {availableYears.map((year) => (
                     <option key={year} value={year}>
@@ -407,7 +436,7 @@ export function DocumentViewer({
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => setShowMoveModal(false)}
-                className="flex-1 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                className="flex-1 px-4 py-2.5 text-surface-800 hover:bg-surface-300/30 rounded-xl transition-all text-[13px]"
               >
                 Cancel
               </button>
@@ -416,7 +445,7 @@ export function DocumentViewer({
                 disabled={
                   isMoving || (moveToEntity === document.entity && moveToYear === document.taxYear)
                 }
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50"
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-warn-500 text-surface-0 rounded-xl hover:bg-warn-400 transition-all disabled:opacity-40 text-[13px] font-medium"
               >
                 <MoveRight className="w-4 h-4" />
                 {isMoving ? 'Moving...' : 'Move'}

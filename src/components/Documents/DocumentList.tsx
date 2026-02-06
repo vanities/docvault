@@ -11,7 +11,12 @@ interface DocumentListProps {
   onUpdate: (id: string, updates: Partial<TaxDocument>) => void;
   onDelete: (id: string) => void;
   onParse?: (doc: TaxDocument) => Promise<TaxDocument | null>;
-  onMove?: (fromPath: string, toEntity: Entity, toYear: number) => Promise<boolean>;
+  onMove?: (
+    fromEntity: Entity,
+    fromPath: string,
+    toEntity: Entity,
+    toYear: number
+  ) => Promise<boolean>;
   entities?: EntityConfig[];
   availableYears?: number[];
 }
@@ -88,10 +93,10 @@ export function DocumentList({
 
   if (documents.length === 0) {
     return (
-      <div className="text-center py-12">
-        <FileX className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-        <h3 className="text-lg font-medium text-gray-900 mb-1">No documents yet</h3>
-        <p className="text-sm text-gray-500">
+      <div className="text-center py-16">
+        <FileX className="w-12 h-12 text-surface-500 mx-auto mb-4" />
+        <h3 className="text-lg font-medium text-surface-900 mb-1">No documents yet</h3>
+        <p className="text-sm text-surface-700">
           Upload your first document using the drop zone above.
         </p>
       </div>
@@ -101,26 +106,26 @@ export function DocumentList({
   return (
     <div>
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         {/* Search */}
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-600" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search documents..."
-            className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full pl-9 pr-4 py-2 bg-surface-200/40 border border-border rounded-lg text-[13px] text-surface-900 placeholder-surface-600"
           />
         </div>
 
         {/* Type filter */}
         <div className="relative">
-          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-surface-600" />
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value as DocumentType | 'all')}
-            className="pl-9 pr-8 py-2 border border-gray-200 rounded-lg text-sm appearance-none bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="pl-9 pr-8 py-2 bg-surface-200/40 border border-border rounded-lg text-[13px] text-surface-900 appearance-none"
           >
             <option value="all">All Types</option>
             {DOCUMENT_TYPES.map((dt) => (
@@ -139,7 +144,7 @@ export function DocumentList({
             setSortField(field);
             setSortOrder(order);
           }}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="px-3 py-2 bg-surface-200/40 border border-border rounded-lg text-[13px] text-surface-900 appearance-none"
         >
           <option value="createdAt-desc">Newest First</option>
           <option value="createdAt-asc">Oldest First</option>
@@ -149,38 +154,38 @@ export function DocumentList({
         </select>
 
         {/* View toggle */}
-        <div className="flex border border-gray-200 rounded-lg overflow-hidden">
+        <div className="flex border border-border rounded-lg overflow-hidden">
           <button
             onClick={() => setViewMode('grid')}
-            className={`p-2 ${viewMode === 'grid' ? 'bg-gray-100' : 'bg-white hover:bg-gray-50'}`}
+            className={`p-2 transition-all duration-100 ${viewMode === 'grid' ? 'bg-surface-300/50 text-surface-900' : 'text-surface-600 hover:bg-surface-200/40'}`}
           >
-            <Grid className="w-4 h-4 text-gray-600" />
+            <Grid className="w-4 h-4" />
           </button>
           <button
             onClick={() => setViewMode('list')}
-            className={`p-2 ${viewMode === 'list' ? 'bg-gray-100' : 'bg-white hover:bg-gray-50'}`}
+            className={`p-2 transition-all duration-100 ${viewMode === 'list' ? 'bg-surface-300/50 text-surface-900' : 'text-surface-600 hover:bg-surface-200/40'}`}
           >
-            <ListIcon className="w-4 h-4 text-gray-600" />
+            <ListIcon className="w-4 h-4" />
           </button>
         </div>
       </div>
 
       {/* Results count */}
-      <p className="text-sm text-gray-500 mb-4">
+      <p className="text-[11px] text-surface-600 mb-4">
         Showing {filteredAndSortedDocuments.length} of {documents.length} documents
       </p>
 
       {/* Document grid/list */}
       {filteredAndSortedDocuments.length === 0 ? (
         <div className="text-center py-8">
-          <p className="text-gray-500">No documents match your search.</p>
+          <p className="text-surface-700">No documents match your search.</p>
         </div>
       ) : (
         <div
           className={
             viewMode === 'grid'
-              ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'
-              : 'space-y-3'
+              ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3'
+              : 'space-y-2'
           }
         >
           {filteredAndSortedDocuments.map((doc) => (

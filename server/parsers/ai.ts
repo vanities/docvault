@@ -150,10 +150,10 @@ For 1099-INT forms, extract everything including:
 - stateIncome: Box 17 - State income
 - taxYear: The tax year
 
-For receipts, extract:
+For receipts/expenses, extract:
 - vendor: Store/business name
 - vendorAddress: Full address if shown
-- amount: Total amount paid
+- amount: Total amount paid (for single receipts)
 - subtotal: Subtotal before tax
 - tax: Tax amount
 - date: Date of purchase (YYYY-MM-DD format)
@@ -162,7 +162,21 @@ For receipts, extract:
 - items: Array of {description, quantity, price} for line items
 - category: One of: meals, software, equipment, childcare, medical, travel, office, other
 
-IMPORTANT: Extract ALL data visible on the document. Include every field that has a value. Respond ONLY with a valid JSON object. All monetary values should be numbers (not strings). If a field is empty or not found, omit it.`;
+For payment histories or transaction lists (like Venmo, PayPal, bank statements showing multiple payments):
+- vendor: The recipient/payee name (who was paid)
+- transactions: Array of {amount, date, description} for each payment
+- totalAmount: Sum of ALL transaction amounts (REQUIRED - always calculate and include this!)
+- transactionCount: Number of transactions
+- startDate: Earliest transaction date (YYYY-MM-DD)
+- endDate: Latest transaction date (YYYY-MM-DD)
+- category: One of: meals, software, equipment, childcare, medical, travel, office, other
+
+IMPORTANT:
+- Extract ALL data visible on the document. Include every field that has a value.
+- For documents with multiple payments/transactions, ALWAYS calculate the totalAmount by summing all amounts.
+- Respond ONLY with a valid JSON object.
+- All monetary values should be numbers (not strings).
+- If a field is empty or not found, omit it.`;
 
 // Map MIME type to Anthropic's expected media type
 function getMediaType(

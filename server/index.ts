@@ -350,6 +350,30 @@ async function handleRequest(req: Request): Promise<Response> {
     return jsonResponse({ ok: true, entity: config.entities[config.entities.length - 1] });
   }
 
+  // PUT /api/entities/:id - Update entity
+  const entityUpdateMatch = pathname.match(/^\/api\/entities\/([^/]+)$/);
+  if (entityUpdateMatch && req.method === 'PUT') {
+    const entityId = entityUpdateMatch[1];
+    const body = await req.json();
+    const { name, color, icon } = body;
+
+    const config = await loadConfig();
+    const entityIndex = config.entities.findIndex((e) => e.id === entityId);
+
+    if (entityIndex === -1) {
+      return jsonResponse({ error: 'Entity not found' }, 404);
+    }
+
+    // Update fields if provided
+    if (name) config.entities[entityIndex].name = name;
+    if (color) config.entities[entityIndex].color = color;
+    if (icon !== undefined) (config.entities[entityIndex] as Record<string, unknown>).icon = icon;
+
+    await saveConfig(config);
+
+    return jsonResponse({ ok: true, entity: config.entities[entityIndex] });
+  }
+
   // DELETE /api/entities/:id
   const entityDeleteMatch = pathname.match(/^\/api\/entities\/([^/]+)$/);
   if (entityDeleteMatch && req.method === 'DELETE') {
@@ -387,7 +411,8 @@ async function handleRequest(req: Request): Promise<Response> {
       const years = entries
         .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
         .map((e) => e.name)
-        .filter((name) => /^\d{4}/.test(name))
+        // Match tax years: 19xx or 20xx (not things like "1099s")
+        .filter((name) => /^(19|20)\d{2}($|\D)/.test(name))
         .sort()
         .reverse();
       return jsonResponse({ years });
@@ -408,7 +433,8 @@ async function handleRequest(req: Request): Promise<Response> {
       const years = entries
         .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
         .map((e) => e.name)
-        .filter((name) => /^\d{4}/.test(name))
+        // Match tax years: 19xx or 20xx (not things like "1099s")
+        .filter((name) => /^(19|20)\d{2}($|\D)/.test(name))
         .sort()
         .reverse();
       return jsonResponse({ years });
@@ -723,6 +749,36 @@ async function handleRequest(req: Request): Promise<Response> {
     }
   }
 
+  // GET /api/business-docs/:entity - Get business documents (not tied to tax year)
+  const businessDocsMatch = pathname.match(/^\/api\/business-docs\/([^/]+)$/);
+  if (businessDocsMatch && req.method === 'GET') {
+    const entityId = businessDocsMatch[1];
+
+    const entityPath = await getEntityPath(entityId);
+    if (!entityPath) {
+      return jsonResponse({ error: 'Entity not found' }, 404);
+    }
+
+    const businessDocsPath = path.join(entityPath, 'business-docs');
+
+    try {
+      await fs.access(businessDocsPath);
+      const files = await scanDirectory(businessDocsPath, 'business-docs');
+
+      // Attach parsed data to files
+      const parsedDataMap = await loadParsedData();
+      const filesWithParsedData = files.map((f) => ({
+        ...f,
+        parsedData: parsedDataMap[`${entityId}/${f.path}`] || null,
+      }));
+
+      return jsonResponse({ files: filesWithParsedData });
+    } catch {
+      // Directory doesn't exist yet - return empty
+      return jsonResponse({ files: [] });
+    }
+  }
+
   // POST /api/move-between - Move file between different entities
   if (pathname === '/api/move-between' && req.method === 'POST') {
     const body = await req.json();
@@ -788,6 +844,7 @@ async function handleRequest(req: Request): Promise<Response> {
 const server = Bun.serve({
   port: PORT,
   fetch: handleRequest,
+  idleTimeout: 120, // 2 minutes for AI parsing
 });
 
 console.log(`TaxVault API server running on http://localhost:${server.port}`);

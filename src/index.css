@@ -1,21 +1,137 @@
 @import 'tailwindcss';
 
+/* ============================================
+   TaxVault — "Midnight Ledger" Design System
+   ============================================ */
+
+@theme {
+  /* Surface colors — deep charcoal to slate */
+  --color-surface-0: #0c0e12;
+  --color-surface-50: #111318;
+  --color-surface-100: #16181e;
+  --color-surface-200: #1c1f26;
+  --color-surface-300: #24272f;
+  --color-surface-400: #2e323c;
+  --color-surface-500: #3a3f4b;
+  --color-surface-600: #4a5060;
+  --color-surface-700: #626a7c;
+  --color-surface-800: #8891a5;
+  --color-surface-900: #b4bccf;
+  --color-surface-950: #d8dde9;
+
+  /* Accent — luminous emerald */
+  --color-accent-400: #34d399;
+  --color-accent-500: #10b981;
+  --color-accent-600: #059669;
+
+  /* Danger */
+  --color-danger-400: #f87171;
+  --color-danger-500: #ef4444;
+
+  /* Warning */
+  --color-warn-400: #fbbf24;
+  --color-warn-500: #f59e0b;
+
+  /* Info / primary blue */
+  --color-info-400: #60a5fa;
+  --color-info-500: #3b82f6;
+
+  /* Glass borders */
+  --color-border: #ffffff0d;
+  --color-border-subtle: #ffffff08;
+  --color-border-strong: #ffffff1a;
+}
+
 :root {
   font-family:
+    'DM Sans',
     system-ui,
     -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
     sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
+  background: var(--color-surface-0);
+  color: var(--color-surface-950);
 }
 
-/* Toast animation */
+/* Display / serif headings */
+.font-display {
+  font-family: 'Instrument Serif', Georgia, serif;
+}
+
+/* Monospace for financial numbers */
+.font-mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* ============================================
+   Glass Morphism Utilities
+   ============================================ */
+
+.glass {
+  background: rgba(22, 24, 30, 0.7);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glass-strong {
+  background: rgba(22, 24, 30, 0.85);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-card {
+  background: rgba(28, 31, 38, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* ============================================
+   Glow Effects
+   ============================================ */
+
+.glow-emerald {
+  box-shadow:
+    0 0 0 1px rgba(16, 185, 129, 0.15),
+    0 0 20px -4px rgba(16, 185, 129, 0.15);
+}
+
+.glow-blue {
+  box-shadow:
+    0 0 0 1px rgba(59, 130, 246, 0.15),
+    0 0 20px -4px rgba(59, 130, 246, 0.15);
+}
+
+.glow-amber {
+  box-shadow:
+    0 0 0 1px rgba(245, 158, 11, 0.15),
+    0 0 20px -4px rgba(245, 158, 11, 0.15);
+}
+
+.glow-red {
+  box-shadow:
+    0 0 0 1px rgba(239, 68, 68, 0.15),
+    0 0 20px -4px rgba(239, 68, 68, 0.15);
+}
+
+.glow-purple {
+  box-shadow:
+    0 0 0 1px rgba(139, 92, 246, 0.15),
+    0 0 20px -4px rgba(139, 92, 246, 0.15);
+}
+
+/* ============================================
+   Animations
+   ============================================ */
+
 @keyframes slide-in {
   from {
     transform: translateX(100%);
@@ -27,6 +143,135 @@ body {
   }
 }
 
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .animate-slide-in {
-  animation: slide-in 0.2s ease-out;
+  animation: slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Staggered fade-in for lists */
+.stagger > * {
+  animation: fade-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+.stagger > *:nth-child(1) {
+  animation-delay: 0ms;
+}
+.stagger > *:nth-child(2) {
+  animation-delay: 40ms;
+}
+.stagger > *:nth-child(3) {
+  animation-delay: 80ms;
+}
+.stagger > *:nth-child(4) {
+  animation-delay: 120ms;
+}
+.stagger > *:nth-child(5) {
+  animation-delay: 160ms;
+}
+.stagger > *:nth-child(6) {
+  animation-delay: 200ms;
+}
+
+/* ============================================
+   Scrollbar
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* ============================================
+   Selection
+   ============================================ */
+
+::selection {
+  background: rgba(16, 185, 129, 0.3);
+  color: #fff;
+}
+
+/* ============================================
+   Form focus overrides
+   ============================================ */
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-surface-200),
+    0 0 0 4px rgba(16, 185, 129, 0.25);
+}
+
+/* ============================================
+   Noise texture overlay (applied via pseudo)
+   ============================================ */
+
+.noise::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  opacity: 0.015;
+  pointer-events: none;
+  z-index: 9999;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
 }

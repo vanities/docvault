@@ -31,18 +31,28 @@ taxvault/
 │   └── config.json   # Entity configuration
 ├── src/
 │   ├── components/
-│   │   ├── Dashboard/     # Main dashboard, entity switcher, year selector
+│   │   ├── Layout/        # Sidebar, Header, main layout wrapper
+│   │   ├── TaxYear/       # Tax year view with Documents/Income/Expenses tabs
+│   │   ├── BusinessDocs/  # Business documents view (formation, EIN, contracts)
+│   │   ├── Settings/      # Settings view with API key and entity management
 │   │   ├── Documents/     # Document list, card, viewer, upload zone
 │   │   └── Summary/       # Income and expense summaries
+│   ├── contexts/
+│   │   └── AppContext.tsx # Central state management
 │   ├── hooks/
 │   │   ├── useDocuments.ts        # Document state management
 │   │   └── useFileSystemServer.ts # API client hook
+│   ├── utils/
+│   │   └── filenaming.ts  # Auto-naming utilities (see NAMING_STANDARD.md)
 │   ├── types/             # TypeScript interfaces
 │   └── config.ts          # Document types, expense categories
+├── scripts/
+│   └── rename_files.sh    # Bulk rename script for existing files
 ├── data/                  # Symlinks to actual storage locations
 │   ├── personal -> Dropbox/important/taxes
 │   ├── am2-llc -> Dropbox/important/AM2 LLC
 │   └── manna-llc -> Dropbox/important/Manna of the Valley LLC
+├── NAMING_STANDARD.md     # File naming conventions
 └── package.json
 ```
 
@@ -83,9 +93,12 @@ Configured in `server/config.json`:
 ## Key Files
 
 - `server/index.ts` - All backend logic, uses Bun.serve()
+- `src/contexts/AppContext.tsx` - Central state management (entity, view, year, documents)
+- `src/components/Layout/Layout.tsx` - Main layout with sidebar navigation
 - `src/hooks/useFileSystemServer.ts` - Frontend API client
-- `src/components/Documents/DocumentViewer.tsx` - Document preview panel
-- `src/components/Dashboard/index.tsx` - Main app layout
+- `src/components/Documents/UploadZone.tsx` - Upload with auto-naming
+- `src/utils/filenaming.ts` - Generates standardized filenames
+- `NAMING_STANDARD.md` - File naming conventions documentation
 
 ## Development Notes
 
@@ -94,18 +107,20 @@ Configured in `server/config.json`:
 - Files stored in Dropbox via symlinks in `data/` directory
 - Parsed data stored in `data/.taxvault-parsed.json`
 - Works in Firefox (no File System Access API dependency)
-- **Do NOT run `bun run dev` or `bun start`** - the user manages the dev server manually
+- **Do NOT run `bun run dev`, `bun start`, or `bun run build`** - the user manages the dev server manually
 
 ## TODO
 
 - [x] Implement document parsing with Claude Vision API
 - [x] Entity management UI (add/remove businesses)
 - [x] Parse All button for batch processing
-- [ ] Business document storage (formation docs, contracts, EIN letters)
 - [x] QuickStats updates from parsed data
 - [x] Move files between entities/years
 - [x] Disable buttons during processing
 - [x] "All" tab to view documents across all entities
+- [x] Business document storage (formation docs, contracts, EIN letters, licenses)
+- [x] Sidebar navigation (entity selection, views, settings)
+- [x] File naming standard with auto-naming on upload
 
 ## Document Parsing
 
@@ -120,3 +135,18 @@ To use parsing:
 1. Click the Settings icon (gear) in the header
 2. Add your Anthropic API key from [console.anthropic.com](https://console.anthropic.com/)
 3. Click "Parse All" or parse individual documents (~$0.003/page)
+
+## File Naming
+
+All documents follow the naming standard in `NAMING_STANDARD.md`:
+
+- **Pattern:** `{Source}_{Type}_{Date}.{ext}` (date always LAST)
+- **Examples:**
+  - `Google_W2_2024.pdf`
+  - `Art_City_1099-nec_2025.pdf`
+  - `Teraflop_Invoice_2025-01.pdf`
+  - `OpenAI_software_API_2024.pdf`
+
+Upload zone has auto-naming - enter the company name and it generates the correct filename.
+
+To rename existing files: `bash scripts/rename_files.sh --dry-run`

@@ -33,17 +33,17 @@ export function TaxYearSelector({
       <button
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
-        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        className="flex items-center gap-2 px-3 py-1.5 bg-surface-200/50 border border-border rounded-lg hover:bg-surface-300/50 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        <Calendar className="w-4 h-4 text-gray-500" />
-        <span className="font-medium">Tax Year {selectedYear}</span>
+        <Calendar className="w-3.5 h-3.5 text-surface-600" />
+        <span className="font-medium text-[13px] text-surface-900">{selectedYear}</span>
         <ChevronDown
-          className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          className={`w-3.5 h-3.5 text-surface-600 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`}
         />
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-[160px]">
+        <div className="absolute top-full right-0 mt-1.5 glass-strong rounded-xl shadow-2xl z-40 min-w-[140px] py-1 animate-scale-in">
           {availableYears.map((year) => (
             <button
               key={year}
@@ -52,8 +52,8 @@ export function TaxYearSelector({
                 setIsOpen(false);
               }}
               className={`
-                w-full px-4 py-2 text-left hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg
-                ${year === selectedYear ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}
+                w-full px-3.5 py-2 text-left text-[13px] transition-all duration-100
+                ${year === selectedYear ? 'bg-accent-500/10 text-accent-400 font-medium' : 'text-surface-800 hover:bg-surface-300/30 hover:text-surface-950'}
               `}
             >
               {year}

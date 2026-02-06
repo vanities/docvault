@@ -47,11 +47,15 @@ export function Dashboard() {
     checkConnection,
     getYearsForEntity,
     scanTaxYear,
+    scanBusinessDocs,
     importFile,
+    openFile,
+    deleteFile,
     parseFile,
     parseAllFiles,
     addEntity,
     removeEntity,
+    updateEntity,
     moveFile,
   } = useFileSystemServer();
   const [entityYears, setEntityYears] = useState<number[]>([]);
@@ -370,6 +374,13 @@ export function Dashboard() {
             onEntityChange={setSelectedEntity}
             onAddEntity={addEntity}
             onRemoveEntity={removeEntity}
+            onUpdateEntity={updateEntity}
+            onScanBusinessDocs={scanBusinessDocs}
+            onUploadBusinessDoc={async (file, docType, entity) => {
+              return await importFile(file, docType, entity, 0);
+            }}
+            onOpenFile={openFile}
+            onDeleteFile={deleteFile}
             disabled={isProcessing}
           />
         </div>

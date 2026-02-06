@@ -20,7 +20,12 @@ export type DocumentType =
   | 'crypto'
   | 'return'
   | 'contract'
-  | 'other';
+  | 'other'
+  // Business documents (not tied to a tax year)
+  | 'formation'
+  | 'ein-letter'
+  | 'license'
+  | 'business-agreement';
 
 // Expense categories for Schedule C
 export type ExpenseCategory =

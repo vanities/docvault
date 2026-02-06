@@ -82,7 +82,7 @@ export const INCOME_SOURCES: IncomeSource[] = [
 export const DOCUMENT_TYPES: {
   id: DocumentType;
   label: string;
-  category: 'income' | 'expense' | 'crypto' | 'other';
+  category: 'income' | 'expense' | 'crypto' | 'other' | 'business';
 }[] = [
   { id: 'w2', label: 'W-2', category: 'income' },
   { id: '1099-nec', label: '1099-NEC', category: 'income' },
@@ -97,7 +97,45 @@ export const DOCUMENT_TYPES: {
   { id: 'return', label: 'Tax Return', category: 'other' },
   { id: 'contract', label: 'Contract', category: 'other' },
   { id: 'other', label: 'Other', category: 'other' },
+  // Business documents (not tied to a tax year)
+  { id: 'formation', label: 'Formation Docs', category: 'business' },
+  { id: 'ein-letter', label: 'EIN Letter', category: 'business' },
+  { id: 'license', label: 'License/Permit', category: 'business' },
+  { id: 'business-agreement', label: 'Agreement/Contract', category: 'business' },
 ];
+
+// =============================================================================
+// BUSINESS DOCUMENT FOLDER STRUCTURE
+// =============================================================================
+// Maps document types to subfolders within business-docs/
+
+export const BUSINESS_FOLDER_STRUCTURE: Record<string, string[]> = {
+  formation: ['formation'],
+  contracts: ['business-agreement', 'contract'],
+  ein: ['ein-letter'],
+  licenses: ['license'],
+};
+
+// Helper to check if a document type is a business document
+export function isBusinessDocumentType(docType: DocumentType): boolean {
+  const businessTypes: DocumentType[] = [
+    'formation',
+    'ein-letter',
+    'license',
+    'business-agreement',
+  ];
+  return businessTypes.includes(docType);
+}
+
+// Get the subfolder for a business document type
+export function getBusinessSubfolder(docType: DocumentType): string {
+  for (const [folder, types] of Object.entries(BUSINESS_FOLDER_STRUCTURE)) {
+    if (types.includes(docType)) {
+      return folder;
+    }
+  }
+  return 'other';
+}
 
 // =============================================================================
 // EXPENSE CATEGORIES (Schedule C)
