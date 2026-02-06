@@ -102,9 +102,17 @@ interface AppProviderProps {
 export function AppProvider({ children }: AppProviderProps) {
   const currentYear = new Date().getFullYear();
 
-  // View state
-  const [activeView, setActiveView] = useState<NavView>('tax-year');
+  // View state with localStorage persistence
+  const [activeView, setActiveViewState] = useState<NavView>(() => {
+    const saved = localStorage.getItem('taxvault-view');
+    return (saved as NavView) || 'tax-year';
+  });
   const [activeTab, setActiveTab] = useState<TabType>('documents');
+
+  const setActiveView = useCallback((view: NavView) => {
+    setActiveViewState(view);
+    localStorage.setItem('taxvault-view', view);
+  }, []);
 
   // Entity state with localStorage persistence
   const [selectedEntity, setSelectedEntityState] = useState<Entity>(() => {

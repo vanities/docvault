@@ -244,9 +244,11 @@ export function DocumentViewer({
                 {expenseInfo.label}
               </span>
             )}
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-surface-400/15 text-surface-800 rounded-md text-[12px]">
-              {document.taxYear}
-            </span>
+            {document.taxYear > 0 && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-surface-400/15 text-surface-800 rounded-md text-[12px]">
+                {document.taxYear}
+              </span>
+            )}
           </div>
 
           {/* Parsed Data */}

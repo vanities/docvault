@@ -1,7 +1,6 @@
 import { RefreshCw, Sparkles } from 'lucide-react';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
-import { TaxYearSelector } from '../Dashboard/TaxYearSelector';
 
 export function Header() {
   const {
@@ -9,8 +8,6 @@ export function Header() {
     activeView,
     selectedEntity,
     selectedYear,
-    setSelectedYear,
-    availableYears,
     scannedDocuments,
     setScannedDocuments,
     isProcessing,
@@ -85,13 +82,6 @@ export function Header() {
           >
             <RefreshCw className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
           </button>
-
-          <TaxYearSelector
-            selectedYear={selectedYear}
-            availableYears={availableYears}
-            onYearChange={setSelectedYear}
-            disabled={isProcessing}
-          />
         </div>
       )}
     </header>

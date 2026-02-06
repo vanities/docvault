@@ -26,6 +26,7 @@ import {
 import { useAppContext, type NavView } from '../../contexts/AppContext';
 import type { Entity } from '../../types';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 // Icon mapping
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -113,8 +114,17 @@ interface SidebarProps {
 }
 
 export function Sidebar({ onAddEntity }: SidebarProps) {
-  const { selectedEntity, setSelectedEntity, entities, activeView, setActiveView, isProcessing } =
-    useAppContext();
+  const {
+    selectedEntity,
+    setSelectedEntity,
+    entities,
+    activeView,
+    setActiveView,
+    isProcessing,
+    selectedYear,
+    setSelectedYear,
+    availableYears,
+  } = useAppContext();
 
   // "All" entity config for display
   const allEntity: EntityConfig = { id: 'all', name: 'All', color: 'gray', path: '' };
@@ -131,11 +141,6 @@ export function Sidebar({ onAddEntity }: SidebarProps) {
   const handleViewClick = (view: NavView) => {
     setActiveView(view);
   };
-
-  const viewItems: { id: NavView; label: string; icon: LucideIcon }[] = [
-    { id: 'tax-year', label: 'Tax Year', icon: Calendar },
-    { id: 'business-docs', label: 'Business Docs', icon: FolderOpen },
-  ];
 
   return (
     <aside className="w-60 bg-surface-50 border-r border-border flex flex-col h-full">
@@ -206,30 +211,78 @@ export function Sidebar({ onAddEntity }: SidebarProps) {
             Views
           </h3>
           <div className="space-y-0.5">
-            {viewItems.map((item) => {
-              const isSelected = activeView === item.id;
-              return (
+            {/* Tax Year view button with year stepper */}
+            <div
+              className={`
+                w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-all duration-150
+                ${
+                  activeView === 'tax-year'
+                    ? 'bg-accent-500/10 text-accent-400 glow-emerald'
+                    : 'text-surface-800 hover:text-surface-950 hover:bg-surface-200/50'
+                }
+              `}
+            >
+              <button
+                onClick={() => handleViewClick('tax-year')}
+                disabled={isProcessing}
+                className="flex items-center gap-2.5 flex-1 min-w-0 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Calendar
+                  className={`w-4 h-4 flex-shrink-0 ${activeView === 'tax-year' ? 'text-accent-400' : 'text-surface-600'}`}
+                />
+                <span className="font-medium text-[13px]">Tax Year</span>
+              </button>
+              <div className="flex items-center gap-0.5 ml-auto">
                 <button
-                  key={item.id}
-                  onClick={() => handleViewClick(item.id)}
-                  disabled={isProcessing}
-                  className={`
-                    w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-all duration-150 text-left
-                    disabled:opacity-40 disabled:cursor-not-allowed
-                    ${
-                      isSelected
-                        ? 'bg-accent-500/10 text-accent-400 glow-emerald'
-                        : 'text-surface-800 hover:text-surface-950 hover:bg-surface-200/50'
-                    }
-                  `}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const idx = availableYears.indexOf(selectedYear);
+                    if (idx < availableYears.length - 1) setSelectedYear(availableYears[idx + 1]);
+                  }}
+                  disabled={
+                    isProcessing ||
+                    availableYears.indexOf(selectedYear) >= availableYears.length - 1
+                  }
+                  className="p-0.5 rounded hover:bg-surface-300/40 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                 >
-                  <item.icon
-                    className={`w-4 h-4 flex-shrink-0 ${isSelected ? 'text-accent-400' : 'text-surface-600'}`}
-                  />
-                  <span className="font-medium text-[13px]">{item.label}</span>
+                  <ChevronLeft className="w-3 h-3" />
                 </button>
-              );
-            })}
+                <span className="text-[12px] font-semibold tabular-nums min-w-[32px] text-center">
+                  {selectedYear}
+                </span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const idx = availableYears.indexOf(selectedYear);
+                    if (idx > 0) setSelectedYear(availableYears[idx - 1]);
+                  }}
+                  disabled={isProcessing || availableYears.indexOf(selectedYear) <= 0}
+                  className="p-0.5 rounded hover:bg-surface-300/40 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+
+            {/* Business Docs view button */}
+            <button
+              onClick={() => handleViewClick('business-docs')}
+              disabled={isProcessing}
+              className={`
+                w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-all duration-150 text-left
+                disabled:opacity-40 disabled:cursor-not-allowed
+                ${
+                  activeView === 'business-docs'
+                    ? 'bg-accent-500/10 text-accent-400 glow-emerald'
+                    : 'text-surface-800 hover:text-surface-950 hover:bg-surface-200/50'
+                }
+              `}
+            >
+              <FolderOpen
+                className={`w-4 h-4 flex-shrink-0 ${activeView === 'business-docs' ? 'text-accent-400' : 'text-surface-600'}`}
+              />
+              <span className="font-medium text-[13px]">Business Docs</span>
+            </button>
           </div>
         </div>
       </div>

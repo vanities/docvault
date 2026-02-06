@@ -1,16 +1,25 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Upload, FileText, X, FolderOpen, RefreshCw } from 'lucide-react';
+import { Upload, FolderOpen, RefreshCw } from 'lucide-react';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import { DOCUMENT_TYPES } from '../../config';
+import { DocumentList } from '../Documents/DocumentList';
 import type { TaxDocument, DocumentType } from '../../types';
 
-// Business document types for filtering
+// Business document types for the upload modal
 const BUSINESS_DOC_TYPES = DOCUMENT_TYPES.filter((dt) => dt.category === 'business');
 
 export function BusinessDocsView() {
-  const { selectedEntity, scanBusinessDocs, importFile, openFile, deleteFile, isProcessing } =
-    useAppContext();
+  const {
+    selectedEntity,
+    scanBusinessDocs,
+    importFile,
+    deleteFile,
+    parseFile,
+    isProcessing,
+    entities,
+    setIsParsing,
+  } = useAppContext();
 
   const { addToast } = useToast();
 
@@ -28,11 +37,9 @@ export function BusinessDocsView() {
     setIsLoading(false);
   }, [selectedEntity, scanBusinessDocs]);
 
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     loadBusinessDocs();
   }, [loadBusinessDocs]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -55,7 +62,6 @@ export function BusinessDocsView() {
 
     if (success) {
       addToast('Document uploaded successfully', 'success');
-      // Refresh the docs list
       await loadBusinessDocs();
     } else {
       addToast('Failed to upload document', 'error');
@@ -64,39 +70,42 @@ export function BusinessDocsView() {
     setPendingUpload(null);
   };
 
-  const handleOpenDoc = (doc: TaxDocument) => {
-    if (doc.filePath) {
-      openFile(doc.entity, doc.filePath);
-    }
+  const handleUpdateDoc = (id: string, updates: Partial<TaxDocument>) => {
+    setBusinessDocs((prev) => prev.map((doc) => (doc.id === id ? { ...doc, ...updates } : doc)));
   };
 
-  const handleDeleteDoc = async (doc: TaxDocument) => {
-    if (!doc.filePath) return;
+  const handleDeleteDoc = async (id: string) => {
+    const doc = businessDocs.find((d) => d.id === id);
+    if (!doc?.filePath) return;
     if (!confirm(`Delete "${doc.fileName}"?`)) return;
 
     const success = await deleteFile(doc.entity, doc.filePath);
     if (success) {
-      setBusinessDocs((prev) => prev.filter((d) => d.id !== doc.id));
+      setBusinessDocs((prev) => prev.filter((d) => d.id !== id));
       addToast('Document deleted', 'success');
     } else {
       addToast('Failed to delete document', 'error');
     }
   };
 
-  // Group documents by type
-  const groupedDocs = BUSINESS_DOC_TYPES.reduce(
-    (acc, docType) => {
-      const docs = businessDocs.filter((d) => d.type === docType.id);
-      if (docs.length > 0) {
-        acc.push({ type: docType, docs });
-      }
-      return acc;
-    },
-    [] as { type: (typeof BUSINESS_DOC_TYPES)[0]; docs: TaxDocument[] }[]
-  );
+  const handleParseDoc = async (doc: TaxDocument): Promise<TaxDocument | null> => {
+    if (!doc.filePath) return null;
 
-  // Ungrouped docs (other types)
-  const otherDocs = businessDocs.filter((d) => !BUSINESS_DOC_TYPES.some((dt) => dt.id === d.type));
+    setIsParsing(true);
+    try {
+      const parsedData = await parseFile(doc.entity, doc.filePath);
+      if (parsedData) {
+        const updated = { ...doc, parsedData: parsedData as TaxDocument['parsedData'] };
+        setBusinessDocs((prev) => prev.map((d) => (d.id === doc.id ? updated : d)));
+        addToast('Document parsed successfully', 'success');
+        return updated;
+      }
+      addToast('Failed to parse document', 'error');
+      return null;
+    } finally {
+      setIsParsing(false);
+    }
+  };
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
@@ -159,45 +168,13 @@ export function BusinessDocsView() {
           )}
         </div>
       ) : (
-        <div className="space-y-8">
-          {groupedDocs.map(({ type, docs }) => (
-            <div key={type.id}>
-              <h3 className="text-[11px] font-semibold text-surface-600 uppercase tracking-wider mb-3">
-                {type.label} ({docs.length})
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {docs.map((doc) => (
-                  <DocumentCard
-                    key={doc.id}
-                    doc={doc}
-                    onOpen={() => handleOpenDoc(doc)}
-                    onDelete={() => handleDeleteDoc(doc)}
-                    showEntity={selectedEntity === 'all'}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-
-          {otherDocs.length > 0 && (
-            <div>
-              <h3 className="text-[11px] font-semibold text-surface-600 uppercase tracking-wider mb-3">
-                Other ({otherDocs.length})
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {otherDocs.map((doc) => (
-                  <DocumentCard
-                    key={doc.id}
-                    doc={doc}
-                    onOpen={() => handleOpenDoc(doc)}
-                    onDelete={() => handleDeleteDoc(doc)}
-                    showEntity={selectedEntity === 'all'}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        <DocumentList
+          documents={businessDocs}
+          onUpdate={handleUpdateDoc}
+          onDelete={handleDeleteDoc}
+          onParse={handleParseDoc}
+          entities={entities}
+        />
       )}
 
       {/* Upload Confirmation Modal */}
@@ -255,45 +232,6 @@ export function BusinessDocsView() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-interface DocumentCardProps {
-  doc: TaxDocument;
-  onOpen: () => void;
-  onDelete: () => void;
-  showEntity?: boolean;
-}
-
-function DocumentCard({ doc, onOpen, onDelete, showEntity }: DocumentCardProps) {
-  const docTypeInfo = DOCUMENT_TYPES.find((dt) => dt.id === doc.type);
-
-  return (
-    <div className="glass-card rounded-xl p-4 hover:border-border-strong transition-all duration-200 group">
-      <div className="flex items-start gap-3">
-        <div className="p-2 bg-surface-300/40 rounded-lg flex-shrink-0">
-          <FileText className="w-5 h-5 text-surface-700" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <button
-            onClick={onOpen}
-            className="text-[13px] font-medium text-surface-950 hover:text-accent-400 truncate block w-full text-left"
-            title={doc.fileName}
-          >
-            {doc.fileName}
-          </button>
-          <p className="text-[11px] text-surface-600 mt-1">{docTypeInfo?.label || doc.type}</p>
-          {showEntity && <p className="text-[11px] text-surface-500 mt-1">Entity: {doc.entity}</p>}
-        </div>
-        <button
-          onClick={onDelete}
-          className="p-1 text-surface-600 hover:text-danger-400 opacity-0 group-hover:opacity-100 transition-opacity"
-          title="Delete"
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
     </div>
   );
 }
