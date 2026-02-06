@@ -79,8 +79,18 @@ export function useFileSystem() {
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Check if File System Access API is available
+  const isFileSystemSupported = useCallback(() => {
+    return 'showDirectoryPicker' in window;
+  }, []);
+
   // Request access to a directory
   const requestDirectoryAccess = useCallback(async (): Promise<boolean> => {
+    if (!isFileSystemSupported()) {
+      setError('File System Access API not supported. Please use Chrome, Edge, or Brave browser.');
+      return false;
+    }
+
     try {
       // @ts-expect-error - showDirectoryPicker is not in all TS libs yet
       const handle = await window.showDirectoryPicker({
@@ -92,13 +102,25 @@ export function useFileSystem() {
       setError(null);
       return true;
     } catch (err) {
-      if ((err as Error).name !== 'AbortError') {
-        setError('Failed to access directory');
-        console.error('Directory access error:', err);
+      const error = err as Error;
+      if (error.name === 'AbortError') {
+        // User cancelled - not an error
+        return false;
+      } else if (error.name === 'SecurityError') {
+        setError(
+          'Security error: Make sure you are running on localhost or HTTPS, and try a different browser.'
+        );
+      } else if (error.name === 'NotAllowedError') {
+        setError(
+          'Permission denied. Please allow folder access when prompted, or check browser settings.'
+        );
+      } else {
+        setError(`Failed to access directory: ${error.message}`);
       }
+      console.error('Directory access error:', err);
       return false;
     }
-  }, []);
+  }, [isFileSystemSupported]);
 
   // Recursively scan a directory for files
   const scanDirectory = useCallback(

@@ -22,3 +22,17 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Server settings (may contain API keys)
+server/settings.json
+
+# Environment files
+.env
+.env.local
+
+# Data symlinks and parsed data (local paths)
+data/
+data-backup
+
+# Lock files (use bun.lock)
+pnpm-lock.yaml

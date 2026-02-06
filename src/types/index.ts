@@ -4,7 +4,7 @@
 // For configuration values (entities, categories, etc.), see src/config.ts
 
 // Entity types for multi-LLC support
-export type Entity = 'personal' | 'am2-llc' | 'manna-llc';
+export type Entity = 'all' | 'personal' | 'am2-llc' | 'manna-llc';
 
 // Document types
 export type DocumentType =

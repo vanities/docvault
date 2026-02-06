@@ -13,6 +13,7 @@ interface UploadZoneProps {
     taxYear: number,
     parsedData?: TaxDocument['parsedData']
   ) => void;
+  disabled?: boolean;
 }
 
 interface PendingFile {
@@ -48,7 +49,7 @@ function FileIcon({ fileType, className }: { fileType: string; className?: strin
   return <File className={className} />;
 }
 
-export function UploadZone({ entity, taxYear, onUpload }: UploadZoneProps) {
+export function UploadZone({ entity, taxYear, onUpload, disabled = false }: UploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [selectedTypes, setSelectedTypes] = useState<Map<string, DocumentType>>(new Map());
@@ -176,17 +177,22 @@ export function UploadZone({ entity, taxYear, onUpload }: UploadZoneProps) {
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
       {/* Drop Zone */}
       <div
-        onDragEnter={handleDragIn}
-        onDragLeave={handleDragOut}
-        onDragOver={handleDrag}
-        onDrop={handleDrop}
+        onDragEnter={disabled ? undefined : handleDragIn}
+        onDragLeave={disabled ? undefined : handleDragOut}
+        onDragOver={disabled ? undefined : handleDrag}
+        onDrop={disabled ? undefined : handleDrop}
         className={`
-          p-8 border-2 border-dashed rounded-lg m-4 transition-colors cursor-pointer
-          ${isDragging ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}
+          p-8 border-2 border-dashed rounded-lg m-4 transition-colors
+          ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+          ${isDragging && !disabled ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}
         `}
       >
-        <label className="flex flex-col items-center cursor-pointer">
-          <Upload className={`w-10 h-10 mb-3 ${isDragging ? 'text-blue-500' : 'text-gray-400'}`} />
+        <label
+          className={`flex flex-col items-center ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+        >
+          <Upload
+            className={`w-10 h-10 mb-3 ${isDragging && !disabled ? 'text-blue-500' : 'text-gray-400'}`}
+          />
           <p className="text-sm text-gray-600 mb-1">
             <span className="font-medium text-blue-600">Click to upload</span> or drag and drop
           </p>
@@ -197,6 +203,7 @@ export function UploadZone({ entity, taxYear, onUpload }: UploadZoneProps) {
             onChange={handleFileInput}
             className="hidden"
             accept=".pdf,.png,.jpg,.jpeg,.csv,.xlsx,.tax,.txf"
+            disabled={disabled}
           />
         </label>
       </div>

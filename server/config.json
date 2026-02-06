@@ -1,0 +1,22 @@
+{
+  "entities": [
+    {
+      "id": "personal",
+      "name": "Personal",
+      "color": "blue",
+      "path": "personal"
+    },
+    {
+      "id": "am2-llc",
+      "name": "AM2 LLC",
+      "color": "green",
+      "path": "am2-llc"
+    },
+    {
+      "id": "manna-llc",
+      "name": "Manna of the Valley LLC",
+      "color": "amber",
+      "path": "manna-llc"
+    }
+  ]
+}

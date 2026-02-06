@@ -7,6 +7,7 @@ interface DocumentCardProps {
   document: TaxDocument;
   onUpdate: (id: string, updates: Partial<TaxDocument>) => void;
   onDelete: (id: string) => void;
+  onClick?: () => void;
 }
 
 function FileIcon({ fileType, className }: { fileType: string; className?: string }) {
@@ -47,7 +48,7 @@ function getDocumentTypeColor(type: DocumentType): string {
   }
 }
 
-export function DocumentCard({ document: doc, onUpdate, onDelete }: DocumentCardProps) {
+export function DocumentCard({ document: doc, onUpdate, onDelete, onClick }: DocumentCardProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedType, setEditedType] = useState(doc.type);
@@ -80,7 +81,14 @@ export function DocumentCard({ document: doc, onUpdate, onDelete }: DocumentCard
       : null;
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-sm transition-shadow">
+    <div
+      className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-sm transition-shadow cursor-pointer"
+      onClick={(e) => {
+        // Don't trigger onClick if clicking on interactive elements
+        if ((e.target as HTMLElement).closest('button, input, select, textarea')) return;
+        onClick?.();
+      }}
+    >
       <div className="flex items-start gap-3">
         {/* Icon */}
         <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">

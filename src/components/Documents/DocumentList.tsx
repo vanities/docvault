@@ -1,25 +1,40 @@
 import { useState, useMemo } from 'react';
 import { Search, Filter, Grid, List as ListIcon, FileX } from 'lucide-react';
 import { DocumentCard } from './DocumentCard';
-import type { TaxDocument, DocumentType } from '../../types';
+import { DocumentViewer } from './DocumentViewer';
+import type { TaxDocument, DocumentType, Entity } from '../../types';
+import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import { DOCUMENT_TYPES } from '../../config';
 
 interface DocumentListProps {
   documents: TaxDocument[];
   onUpdate: (id: string, updates: Partial<TaxDocument>) => void;
   onDelete: (id: string) => void;
+  onParse?: (doc: TaxDocument) => Promise<TaxDocument | null>;
+  onMove?: (fromPath: string, toEntity: Entity, toYear: number) => Promise<boolean>;
+  entities?: EntityConfig[];
+  availableYears?: number[];
 }
 
 type ViewMode = 'grid' | 'list';
 type SortField = 'createdAt' | 'fileName' | 'type';
 type SortOrder = 'asc' | 'desc';
 
-export function DocumentList({ documents, onUpdate, onDelete }: DocumentListProps) {
+export function DocumentList({
+  documents,
+  onUpdate,
+  onDelete,
+  onParse,
+  onMove,
+  entities,
+  availableYears,
+}: DocumentListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<DocumentType | 'all'>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [sortField, setSortField] = useState<SortField>('createdAt');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [selectedDocument, setSelectedDocument] = useState<TaxDocument | null>(null);
 
   const filteredAndSortedDocuments = useMemo(() => {
     let result = [...documents];
@@ -169,9 +184,40 @@ export function DocumentList({ documents, onUpdate, onDelete }: DocumentListProp
           }
         >
           {filteredAndSortedDocuments.map((doc) => (
-            <DocumentCard key={doc.id} document={doc} onUpdate={onUpdate} onDelete={onDelete} />
+            <DocumentCard
+              key={doc.id}
+              document={doc}
+              onUpdate={onUpdate}
+              onDelete={onDelete}
+              onClick={() => setSelectedDocument(doc)}
+            />
           ))}
         </div>
+      )}
+
+      {/* Document Viewer */}
+      {selectedDocument && (
+        <DocumentViewer
+          document={selectedDocument}
+          onClose={() => setSelectedDocument(null)}
+          onDelete={(id) => {
+            onDelete(id);
+            setSelectedDocument(null);
+          }}
+          onReparse={
+            onParse
+              ? async () => {
+                  const updated = await onParse(selectedDocument);
+                  if (updated) {
+                    setSelectedDocument(updated);
+                  }
+                }
+              : undefined
+          }
+          onMove={onMove}
+          entities={entities}
+          availableYears={availableYears}
+        />
       )}
     </div>
   );

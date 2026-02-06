@@ -5,12 +5,14 @@ interface TaxYearSelectorProps {
   selectedYear: number;
   availableYears: number[];
   onYearChange: (year: number) => void;
+  disabled?: boolean;
 }
 
 export function TaxYearSelector({
   selectedYear,
   availableYears,
   onYearChange,
+  disabled = false,
 }: TaxYearSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -29,8 +31,9 @@ export function TaxYearSelector({
   return (
     <div className="relative" ref={dropdownRef}>
       <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        disabled={disabled}
+        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <Calendar className="w-4 h-4 text-gray-500" />
         <span className="font-medium">Tax Year {selectedYear}</span>
