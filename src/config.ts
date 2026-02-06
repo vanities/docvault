@@ -7,6 +7,32 @@
 import type { Entity, DocumentType, ExpenseCategory } from './types';
 
 // =============================================================================
+// FILE SYSTEM PATHS
+// =============================================================================
+// Base directories for tax documents. The app will scan these for files.
+
+export const TAX_BASE_PATH = '/Users/vanities/Library/CloudStorage/Dropbox/important/taxes';
+
+export const ENTITY_PATHS: Record<Entity, string> = {
+  personal: TAX_BASE_PATH,
+  'am2-llc': '/Users/vanities/Library/CloudStorage/Dropbox/important/AM2 LLC',
+  'manna-llc': '/Users/vanities/Library/CloudStorage/Dropbox/important/Manna of the Valley LLC',
+};
+
+// Folder structure within each tax year
+export const TAX_YEAR_STRUCTURE = {
+  'income/w2': ['w2'],
+  'income/1099': ['1099-nec', '1099-misc', '1099-r', '1099-div', '1099-int', '1099-b'],
+  'income/other': ['invoice', 'other'],
+  'expenses/business': ['receipt'],
+  'expenses/childcare': ['receipt'],
+  'expenses/medical': ['receipt'],
+  crypto: ['crypto'],
+  returns: ['return'],
+  turbotax: ['return'],
+} as const;
+
+// =============================================================================
 // ENTITIES (Tax Filing Entities)
 // =============================================================================
 // Add or remove entities as needed. Each entity represents a separate
@@ -85,22 +111,60 @@ export const EXPENSE_CATEGORIES: {
   label: string;
   deductionRate: number;
   scheduleC?: string;
+  folder?: string; // Maps to folder in expenses/
 }[] = [
-  { id: 'meals', label: 'Meals & Entertainment', deductionRate: 0.5, scheduleC: 'Line 24b' },
-  { id: 'software', label: 'Software & Subscriptions', deductionRate: 1, scheduleC: 'Line 27a' },
-  { id: 'equipment', label: 'Equipment & Hardware', deductionRate: 1, scheduleC: 'Line 13' },
-  { id: 'office-supplies', label: 'Office Supplies', deductionRate: 1, scheduleC: 'Line 18' },
+  {
+    id: 'meals',
+    label: 'Meals & Entertainment',
+    deductionRate: 0.5,
+    scheduleC: 'Line 24b',
+    folder: 'business',
+  },
+  {
+    id: 'software',
+    label: 'Software & Subscriptions',
+    deductionRate: 1,
+    scheduleC: 'Line 27a',
+    folder: 'business',
+  },
+  {
+    id: 'equipment',
+    label: 'Equipment & Hardware',
+    deductionRate: 1,
+    scheduleC: 'Line 13',
+    folder: 'business',
+  },
+  {
+    id: 'office-supplies',
+    label: 'Office Supplies',
+    deductionRate: 1,
+    scheduleC: 'Line 18',
+    folder: 'business',
+  },
   {
     id: 'professional-services',
     label: 'Professional Services',
     deductionRate: 1,
     scheduleC: 'Line 17',
+    folder: 'business',
   },
-  { id: 'travel', label: 'Travel', deductionRate: 1, scheduleC: 'Line 24a' },
-  { id: 'utilities', label: 'Utilities', deductionRate: 1, scheduleC: 'Line 25' },
-  { id: 'insurance', label: 'Insurance', deductionRate: 1, scheduleC: 'Line 15' },
-  { id: 'childcare', label: 'Childcare', deductionRate: 1 },
-  { id: 'medical', label: 'Medical', deductionRate: 1 },
-  { id: 'education', label: 'Education', deductionRate: 1 },
-  { id: 'other', label: 'Other', deductionRate: 1, scheduleC: 'Line 27a' },
+  { id: 'travel', label: 'Travel', deductionRate: 1, scheduleC: 'Line 24a', folder: 'business' },
+  {
+    id: 'utilities',
+    label: 'Utilities',
+    deductionRate: 1,
+    scheduleC: 'Line 25',
+    folder: 'business',
+  },
+  {
+    id: 'insurance',
+    label: 'Insurance',
+    deductionRate: 1,
+    scheduleC: 'Line 15',
+    folder: 'business',
+  },
+  { id: 'childcare', label: 'Childcare', deductionRate: 1, folder: 'childcare' },
+  { id: 'medical', label: 'Medical', deductionRate: 1, folder: 'medical' },
+  { id: 'education', label: 'Education', deductionRate: 1, folder: 'business' },
+  { id: 'other', label: 'Other', deductionRate: 1, scheduleC: 'Line 27a', folder: 'business' },
 ];
