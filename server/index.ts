@@ -1,7 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { parsePdf } from './parsers/pdf.js';
 import { parseWithAI } from './parsers/ai.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -595,13 +594,11 @@ async function handleRequest(req: Request): Promise<Response> {
     }
   }
 
-  // POST /api/parse/:entity/:filePath - Parse a single file
-  // Query params: ?useAI=true to use Claude Vision API
+  // POST /api/parse/:entity/:filePath - Parse a single file using Claude Vision AI
   if (pathname.startsWith('/api/parse/') && req.method === 'POST') {
     const pathParts = pathname.slice('/api/parse/'.length).split('/');
     const entityId = pathParts[0];
     const filePath = decodeURIComponent(pathParts.slice(1).join('/'));
-    const useAI = url.searchParams.get('useAI') === 'true';
 
     const entityPath = await getEntityPath(entityId);
     if (!entityPath) {
@@ -618,33 +615,20 @@ async function handleRequest(req: Request): Promise<Response> {
       await fs.access(fullPath);
 
       const filename = path.basename(fullPath);
-      const ext = filename.split('.').pop()?.toLowerCase();
 
       let parsedData: ParsedData = {
         parsed: true,
         parsedAt: new Date().toISOString(),
       };
 
-      // Use AI parsing if requested
-      if (useAI) {
-        console.log(`[Parse] Using AI parser for ${filename}`);
-        const aiData = await parseWithAI(fullPath, filename);
-        if (aiData) {
-          parsedData = {
-            ...parsedData,
-            ...aiData,
-          };
-        }
-      } else if (ext === 'pdf') {
-        // Use traditional PDF parsing
-        console.log(`[Parse] Using regex parser for ${filename}`);
-        const pdfData = await parsePdf(fullPath, filename);
-        if (pdfData) {
-          parsedData = {
-            ...parsedData,
-            ...pdfData,
-          };
-        }
+      // Always use AI parsing
+      console.log(`[Parse] Using Claude Vision AI for ${filename}`);
+      const aiData = await parseWithAI(fullPath, filename);
+      if (aiData) {
+        parsedData = {
+          ...parsedData,
+          ...aiData,
+        };
       }
 
       // Save parsed data
@@ -656,13 +640,11 @@ async function handleRequest(req: Request): Promise<Response> {
     }
   }
 
-  // POST /api/parse-all/:entity/:year - Parse all files in a year
-  // Query params: ?useAI=true to use Claude Vision API
+  // POST /api/parse-all/:entity/:year - Parse all files in a year using Claude Vision AI
   if (pathname.startsWith('/api/parse-all/') && req.method === 'POST') {
     const pathParts = pathname.slice('/api/parse-all/'.length).split('/');
     const entityId = pathParts[0];
     const year = pathParts[1];
-    const useAI = url.searchParams.get('useAI') === 'true';
 
     const entityPath = await getEntityPath(entityId);
     if (!entityPath) {
@@ -681,32 +663,20 @@ async function handleRequest(req: Request): Promise<Response> {
       for (const file of files) {
         try {
           const fullPath = path.join(entityPath, file.path);
-          const ext = file.name.split('.').pop()?.toLowerCase();
 
           let parsedData: ParsedData = {
             parsed: true,
             parsedAt: new Date().toISOString(),
           };
 
-          // Use AI parsing if requested
-          if (useAI) {
-            console.log(`[Parse All] Using AI parser for ${file.name}`);
-            const aiData = await parseWithAI(fullPath, file.name);
-            if (aiData) {
-              parsedData = {
-                ...parsedData,
-                ...aiData,
-              };
-            }
-          } else if (ext === 'pdf') {
-            // Use traditional PDF parsing
-            const pdfData = await parsePdf(fullPath, file.name);
-            if (pdfData) {
-              parsedData = {
-                ...parsedData,
-                ...pdfData,
-              };
-            }
+          // Always use AI parsing
+          console.log(`[Parse All] Using Claude Vision AI for ${file.name}`);
+          const aiData = await parseWithAI(fullPath, file.name);
+          if (aiData) {
+            parsedData = {
+              ...parsedData,
+              ...aiData,
+            };
           }
 
           await setParsedDataForFile(`${entityId}/${file.path}`, parsedData);

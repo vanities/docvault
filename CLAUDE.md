@@ -98,26 +98,25 @@ Configured in `server/config.json`:
 
 ## TODO
 
-- [x] Implement actual PDF parsing for W-2/1099 extraction
-- [ ] Add OCR for receipt images (Tesseract.js)
-- [x] AI-assisted parsing for complex documents (Claude Vision API)
+- [x] Implement document parsing with Claude Vision API
 - [x] Entity management UI (add/remove businesses)
 - [x] Parse All button for batch processing
 - [ ] Business document storage (formation docs, contracts, EIN letters)
 - [x] QuickStats updates from parsed data
 - [x] Move files between entities/years
 - [x] Disable buttons during processing
+- [x] "All" tab to view documents across all entities
 
-## AI Parsing
+## Document Parsing
 
-The app supports two parsing modes (toggle in header):
+All document parsing uses Claude Vision API for accurate extraction of:
 
-- **AI Mode (Claude)** - Uses Claude Vision API for accurate extraction (~$0.003/page)
-- **Fast Mode (Regex)** - Uses local regex-based parsing (free, less accurate)
+- W-2 forms (all box values, employer/employee info)
+- 1099 forms (NEC, MISC, DIV, INT, B)
+- Receipts (vendor, amount, date, items, category)
 
-To use AI parsing:
+To use parsing:
 
 1. Click the Settings icon (gear) in the header
 2. Add your Anthropic API key from [console.anthropic.com](https://console.anthropic.com/)
-3. Toggle to "AI" mode in the header
-4. Click "Parse All" or parse individual documents
+3. Click "Parse All" or parse individual documents (~$0.003/page)

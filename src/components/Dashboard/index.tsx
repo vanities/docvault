@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Vault, RefreshCw, AlertCircle, Server, Sparkles, Cpu, Zap, Settings } from 'lucide-react';
+import { Vault, RefreshCw, AlertCircle, Server, Sparkles, Settings } from 'lucide-react';
 import { useToast } from '../../hooks/useToast';
 import { EntitySwitcher } from './EntitySwitcher';
 import { TaxYearSelector } from './TaxYearSelector';
@@ -56,7 +56,6 @@ export function Dashboard() {
   } = useFileSystemServer();
   const [entityYears, setEntityYears] = useState<number[]>([]);
   const [isParsing, setIsParsing] = useState(false);
-  const [useAI, setUseAI] = useState(true); // Default to AI parsing
   const [showSettings, setShowSettings] = useState(false);
 
   // Global processing state - disables UI during operations
@@ -91,15 +90,15 @@ export function Dashboard() {
     setScannedDocuments(docs);
   };
 
-  // Parse all files
+  // Parse all files with Claude Vision AI
   const handleParseAll = async () => {
     setIsParsing(true);
-    const result = await parseAllFiles(selectedEntity, selectedYear, useAI);
+    const result = await parseAllFiles(selectedEntity, selectedYear);
     setIsParsing(false);
 
     if (result) {
       if (result.failed === 0) {
-        addToast(`Successfully parsed ${result.parsed} files${useAI ? ' with AI' : ''}`, 'success');
+        addToast(`Successfully parsed ${result.parsed} files`, 'success');
       } else {
         addToast(
           `Parsed ${result.parsed} of ${result.total} files. ${result.failed} failed.`,
@@ -113,21 +112,17 @@ export function Dashboard() {
     }
   };
 
-  // Parse a single document
-  const handleParseDocument = async (
-    doc: TaxDocument,
-    forceAI = false
-  ): Promise<TaxDocument | null> => {
+  // Parse a single document with Claude Vision AI
+  const handleParseDocument = async (doc: TaxDocument): Promise<TaxDocument | null> => {
     if (!doc.filePath) {
       addToast('No file path for document', 'error');
       return null;
     }
 
-    const shouldUseAI = forceAI || useAI;
-    const parsedData = await parseFile(selectedEntity, doc.filePath, shouldUseAI);
+    const parsedData = await parseFile(selectedEntity, doc.filePath);
 
     if (parsedData) {
-      addToast(`Document parsed successfully${shouldUseAI ? ' with AI' : ''}`, 'success');
+      addToast('Document parsed successfully', 'success');
       // Update the document in our local state
       const updatedDoc = { ...doc, parsedData: parsedData as TaxDocument['parsedData'] };
       setScannedDocuments((prev) => prev.map((d) => (d.id === doc.id ? updatedDoc : d)));
@@ -325,24 +320,6 @@ export function Dashboard() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              {/* AI Toggle */}
-              <button
-                onClick={() => setUseAI(!useAI)}
-                disabled={isProcessing}
-                className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 ${
-                  useAI
-                    ? 'text-green-700 bg-green-50 hover:bg-green-100'
-                    : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
-                }`}
-                title={
-                  useAI
-                    ? 'Using Claude AI for parsing (more accurate)'
-                    : 'Using regex parsing (faster, less accurate)'
-                }
-              >
-                {useAI ? <Cpu className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
-                {useAI ? 'AI' : 'Fast'}
-              </button>
               <button
                 onClick={handleParseAll}
                 disabled={isProcessing || scannedDocuments.length === 0 || selectedEntity === 'all'}
@@ -350,7 +327,7 @@ export function Dashboard() {
                 title={
                   selectedEntity === 'all'
                     ? 'Select a specific entity to parse all'
-                    : `Parse all documents${useAI ? ' with Claude AI' : ''}`
+                    : 'Parse all documents with Claude AI'
                 }
               >
                 <Sparkles className={`w-4 h-4 ${isParsing ? 'animate-pulse' : ''}`} />
@@ -457,7 +434,7 @@ export function Dashboard() {
             documents={filteredDocuments}
             onUpdate={updateDocument}
             onDelete={deleteDocument}
-            onParse={(doc) => handleParseDocument(doc, useAI)}
+            onParse={handleParseDocument}
             onMove={handleMoveDocument}
             entities={entities}
             availableYears={availableYears}

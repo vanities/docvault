@@ -375,18 +375,13 @@ export function useFileSystemServer() {
     [isConnected]
   );
 
-  // Parse a single file
-  // Set useAI=true to use Claude Vision API for more accurate parsing
+  // Parse a single file using Claude Vision AI
   const parseFile = useCallback(
-    async (
-      entity: Entity,
-      filePath: string,
-      useAI = false
-    ): Promise<Record<string, unknown> | null> => {
+    async (entity: Entity, filePath: string): Promise<Record<string, unknown> | null> => {
       if (!isConnected) return null;
 
       try {
-        const url = `${API_BASE}/parse/${entity}/${encodeURIComponent(filePath)}${useAI ? '?useAI=true' : ''}`;
+        const url = `${API_BASE}/parse/${entity}/${encodeURIComponent(filePath)}`;
         const response = await fetch(url, {
           method: 'POST',
         });
@@ -400,18 +395,16 @@ export function useFileSystemServer() {
     [isConnected]
   );
 
-  // Parse all files in a year
-  // Set useAI=true to use Claude Vision API for more accurate parsing
+  // Parse all files in a year using Claude Vision AI
   const parseAllFiles = useCallback(
     async (
       entity: Entity,
-      year: number,
-      useAI = false
+      year: number
     ): Promise<{ parsed: number; failed: number; total: number } | null> => {
       if (!isConnected) return null;
 
       try {
-        const url = `${API_BASE}/parse-all/${entity}/${year}${useAI ? '?useAI=true' : ''}`;
+        const url = `${API_BASE}/parse-all/${entity}/${year}`;
         const response = await fetch(url, {
           method: 'POST',
         });
