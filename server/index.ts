@@ -667,10 +667,17 @@ async function handleRequest(req: Request): Promise<Response> {
   }
 
   // POST /api/parse-all/:entity/:year - Parse all files in a year using Claude Vision AI
+  // Query params:
+  //   ?filter=expenses,invoices  - Only parse files matching these path/filename patterns
+  //   ?unparsed=true             - Only parse files that haven't been parsed yet
   if (pathname.startsWith('/api/parse-all/') && req.method === 'POST') {
     const pathParts = pathname.slice('/api/parse-all/'.length).split('/');
     const entityId = pathParts[0];
     const year = pathParts[1];
+
+    const filterParam = url.searchParams.get('filter');
+    const unparsedOnly = url.searchParams.get('unparsed') === 'true';
+    const filters = filterParam ? filterParam.split(',').map((f) => f.trim().toLowerCase()) : [];
 
     const entityPath = await getEntityPath(entityId);
     if (!entityPath) {
@@ -681,10 +688,33 @@ async function handleRequest(req: Request): Promise<Response> {
 
     try {
       await fs.access(yearPath);
-      const files = await scanDirectory(yearPath, year);
+      let files = await scanDirectory(yearPath, year);
+
+      // Load existing parsed data for filtering
+      const existingParsedData = await loadParsedData();
+
+      // Filter files if requested
+      if (filters.length > 0) {
+        files = files.filter((file) => {
+          const fileLower = file.path.toLowerCase();
+          const nameLower = file.name.toLowerCase();
+          return filters.some((f) => {
+            if (f === 'expenses') return fileLower.includes('/expenses/');
+            if (f === 'invoices') return /invoice/i.test(nameLower);
+            if (f === 'income') return fileLower.includes('/income/');
+            return fileLower.includes(`/${f}/`) || nameLower.includes(f);
+          });
+        });
+      }
+
+      // Filter to unparsed only if requested
+      if (unparsedOnly) {
+        files = files.filter((file) => !existingParsedData[`${entityId}/${file.path}`]);
+      }
 
       let parsed = 0;
       let failed = 0;
+      const skipped = 0;
 
       for (const file of files) {
         try {
@@ -713,7 +743,7 @@ async function handleRequest(req: Request): Promise<Response> {
         }
       }
 
-      return jsonResponse({ ok: true, parsed, failed, total: files.length });
+      return jsonResponse({ ok: true, parsed, failed, skipped, total: files.length });
     } catch (err) {
       return jsonResponse({ error: 'Failed to parse files', details: String(err) }, 500);
     }

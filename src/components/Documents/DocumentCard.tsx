@@ -91,6 +91,29 @@ export function DocumentCard({ document: doc, onUpdate, onDelete, onClick }: Doc
       ? EXPENSE_CATEGORIES.find((c) => c.id === (doc.parsedData as { category?: string })?.category)
       : null;
 
+  // Extract dollar amount from parsed data
+  const dollarAmount = (() => {
+    if (!doc.parsedData) return null;
+    const data = doc.parsedData as Record<string, unknown>;
+    // Expenses: amount or totalAmount
+    if (typeof data.totalAmount === 'number') return data.totalAmount;
+    if (typeof data.amount === 'number') return data.amount;
+    // W-2: wages
+    if (typeof data.wages === 'number') return data.wages;
+    // 1099-NEC: nonemployeeCompensation
+    if (typeof data.nonemployeeCompensation === 'number') return data.nonemployeeCompensation;
+    // 1099-DIV: ordinaryDividends
+    if (typeof data.ordinaryDividends === 'number') return data.ordinaryDividends;
+    // 1099-INT: interestIncome
+    if (typeof data.interestIncome === 'number') return data.interestIncome;
+    // 1099-MISC: rents or otherIncome
+    if (typeof data.rents === 'number') return data.rents;
+    if (typeof data.otherIncome === 'number') return data.otherIncome;
+    // 1099-B: proceeds
+    if (typeof data.proceeds === 'number') return data.proceeds;
+    return null;
+  })();
+
   return (
     <div
       className="glass-card rounded-xl p-4 hover:border-border-strong transition-all duration-200 cursor-pointer group"
@@ -121,6 +144,15 @@ export function DocumentCard({ document: doc, onUpdate, onDelete, onClick }: Doc
               <p className="text-[13px] font-medium text-surface-950 truncate">{doc.fileName}</p>
               <p className="text-[11px] text-surface-600 mt-0.5">
                 {formatFileSize(doc.fileSize)} · {formatDate(doc.createdAt)}
+                {dollarAmount !== null && (
+                  <span className="ml-1.5 font-semibold text-surface-900">
+                    · $
+                    {dollarAmount.toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </span>
+                )}
               </p>
             </div>
 

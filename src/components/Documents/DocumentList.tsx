@@ -198,9 +198,15 @@ const STRUCTURAL_FOLDERS = new Set([
 // Extract a client/vendor name from a document's filename and path.
 // Docs in structural folders (EIN, Formation, etc.) keep those category names.
 // Everything else gets grouped by the vendor/client name.
-function getGroupFromClient(filePath: string): string {
+function getGroupFromClient(filePath: string, docType?: DocumentType): string {
+  // Invoice type or filename → always "Invoices"
+  if (docType === 'invoice') return 'Invoices';
+
   const parts = filePath.split('/');
   const fileName = parts[parts.length - 1];
+
+  if (/invoice/i.test(fileName)) return 'Invoices';
+
   const folders = parts.slice(0, -1);
 
   // Strip year prefix and business-docs prefix to get meaningful folders
@@ -425,7 +431,7 @@ export function DocumentList({
       } else if (groupMode === 'type') {
         label = getGroupFromType(doc.type);
       } else {
-        label = getGroupFromClient(doc.filePath);
+        label = getGroupFromClient(doc.filePath, doc.type);
       }
 
       if (!groups.has(label)) {

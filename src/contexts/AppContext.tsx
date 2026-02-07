@@ -68,7 +68,8 @@ interface AppContextValue {
   parseFile: (entity: Entity, filePath: string) => Promise<Record<string, unknown> | null>;
   parseAllFiles: (
     entity: Entity,
-    year: number
+    year: number,
+    options?: { filter?: string[]; unparsedOnly?: boolean }
   ) => Promise<{ parsed: number; failed: number; total: number } | null>;
   addEntity: (id: string, name: string, color: string) => Promise<EntityConfig | null>;
   removeEntity: (id: string) => Promise<boolean>;

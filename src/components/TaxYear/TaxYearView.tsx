@@ -31,12 +31,27 @@ export function TaxYearView() {
     isProcessing,
     scanTaxYear,
     importFile,
+    deleteFile,
     parseFile,
     moveFile,
   } = useAppContext();
 
   const { addToast } = useToast();
-  const { updateDocument, deleteDocument } = useDocuments();
+  const { updateDocument } = useDocuments();
+
+  // Delete a document via server API
+  const handleDeleteDoc = async (id: string) => {
+    const doc = scannedDocuments.find((d) => d.id === id);
+    if (!doc?.filePath) return;
+
+    const success = await deleteFile(doc.entity, doc.filePath);
+    if (success) {
+      setScannedDocuments((prev) => prev.filter((d) => d.id !== id));
+      addToast('Document deleted', 'success');
+    } else {
+      addToast('Failed to delete document', 'error');
+    }
+  };
 
   // Parse a single document with Claude Vision AI
   const handleParseDocument = async (doc: TaxDocument): Promise<TaxDocument | null> => {
@@ -263,7 +278,7 @@ export function TaxYearView() {
         <DocumentList
           documents={filteredDocuments}
           onUpdate={updateDocument}
-          onDelete={deleteDocument}
+          onDelete={handleDeleteDoc}
           onParse={handleParseDocument}
           onMove={handleMoveDocument}
           entities={entities}

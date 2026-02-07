@@ -60,6 +60,13 @@ function detectDocumentType(filename: string, filePath?: string): DocumentType {
   if (/ein|employer.*identification/i.test(lower)) return 'ein-letter';
   if (/license|permit|registration/i.test(lower)) return 'license';
 
+  // Detect expenses from filename keywords or expenses folder path
+  if (
+    /software|equipment|meals|childcare|medical|travel|office|utility|subscription/i.test(lower) ||
+    pathLower.includes('/expenses/')
+  )
+    return 'receipt';
+
   return 'other';
 }
 
@@ -516,12 +523,17 @@ export function useFileSystemServer() {
   const parseAllFiles = useCallback(
     async (
       entity: Entity,
-      year: number
+      year: number,
+      options?: { filter?: string[]; unparsedOnly?: boolean }
     ): Promise<{ parsed: number; failed: number; total: number } | null> => {
       if (!isConnected) return null;
 
       try {
-        const url = `${API_BASE}/parse-all/${entity}/${year}`;
+        const params = new URLSearchParams();
+        if (options?.filter?.length) params.set('filter', options.filter.join(','));
+        if (options?.unparsedOnly) params.set('unparsed', 'true');
+        const qs = params.toString();
+        const url = `${API_BASE}/parse-all/${entity}/${year}${qs ? `?${qs}` : ''}`;
         const response = await fetch(url, {
           method: 'POST',
         });
