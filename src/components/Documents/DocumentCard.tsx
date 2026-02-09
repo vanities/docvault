@@ -111,6 +111,19 @@ export function DocumentCard({ document: doc, onUpdate, onDelete, onClick }: Doc
     if (typeof data.otherIncome === 'number') return data.otherIncome;
     // 1099-B: proceeds
     if (typeof data.proceeds === 'number') return data.proceeds;
+    // Contracts/financing: nested cashPrice or totalSalePrice
+    const financing = data.financing as Record<string, unknown> | undefined;
+    if (financing) {
+      if (typeof financing.totalSalePrice === 'number') return financing.totalSalePrice;
+      if (typeof financing.cashPrice === 'number') return financing.cashPrice;
+      if (typeof financing.amountFinanced === 'number') return financing.amountFinanced;
+    }
+    // Generic: price, total, cost at top level
+    if (typeof data.price === 'number') return data.price;
+    if (typeof data.total === 'number') return data.total;
+    if (typeof data.cost === 'number') return data.cost;
+    if (typeof data.cashPrice === 'number') return data.cashPrice;
+    if (typeof data.sellingPrice === 'number') return data.sellingPrice;
     return null;
   })();
 

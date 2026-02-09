@@ -1,6 +1,6 @@
-# TaxVault File Naming Standard
+# DocVault File Naming Standard
 
-This document defines the standard naming convention for tax documents in TaxVault.
+This document defines the standard naming convention for tax documents in DocVault.
 
 ## Core Principles
 
@@ -242,7 +242,7 @@ When renaming existing files:
 
 1. **Preserve original info** - Don't lose payer names, dates, or amounts
 2. **Standardize gradually** - Rename as you encounter files, not all at once
-3. **Check parsed data** - Ensure TaxVault's parsed data still maps correctly
+3. **Check parsed data** - Ensure DocVault's parsed data still maps correctly
 
 ### Common Transformations
 

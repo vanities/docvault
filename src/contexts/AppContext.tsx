@@ -6,16 +6,29 @@ import {
   useEffect,
   useMemo,
   useCallback,
+  useRef,
   type ReactNode,
 } from 'react';
 import { useFileSystemServer, type EntityConfig } from '../hooks/useFileSystemServer';
 import type { Entity, TaxDocument, DocumentType, ExpenseCategory } from '../types';
 
 // Navigation views
-export type NavView = 'tax-year' | 'business-docs' | 'settings';
+export type NavView = 'tax-year' | 'business-docs' | 'all-files' | 'settings';
 
 // Tab types for tax year view
 export type TabType = 'documents' | 'income' | 'expenses';
+
+// Search result from server
+export interface SearchResult {
+  entity: string;
+  entityName: string;
+  name: string;
+  path: string;
+  size: number;
+  lastModified: number;
+  type: string;
+  parsedData: Record<string, unknown> | null;
+}
 
 interface AppContextValue {
   // Connection state
@@ -52,16 +65,26 @@ interface AppContextValue {
   setIsParsing: (isParsing: boolean) => void;
   isProcessing: boolean;
 
+  // Search state
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
+  searchResults: SearchResult[];
+  isSearching: boolean;
+  searchActive: boolean;
+  clearSearch: () => void;
+
   // File system hook functions
   scanTaxYear: (entity: Entity, year: number) => Promise<TaxDocument[]>;
   scanBusinessDocs: (entity: Entity) => Promise<TaxDocument[]>;
+  scanAllFiles: (entity: Entity) => Promise<TaxDocument[]>;
   importFile: (
     file: File,
     docType: DocumentType,
     entity: Entity,
     taxYear: number,
     expenseCategory?: ExpenseCategory,
-    customFilename?: string
+    customFilename?: string,
+    parsedData?: Record<string, unknown>
   ) => Promise<boolean>;
   openFile: (entity: Entity, filePath: string) => Promise<void>;
   deleteFile: (entity: Entity, filePath: string) => Promise<boolean>;
@@ -105,25 +128,25 @@ export function AppProvider({ children }: AppProviderProps) {
 
   // View state with localStorage persistence
   const [activeView, setActiveViewState] = useState<NavView>(() => {
-    const saved = localStorage.getItem('taxvault-view');
+    const saved = localStorage.getItem('docvault-view');
     return (saved as NavView) || 'tax-year';
   });
   const [activeTab, setActiveTab] = useState<TabType>('documents');
 
   const setActiveView = useCallback((view: NavView) => {
     setActiveViewState(view);
-    localStorage.setItem('taxvault-view', view);
+    localStorage.setItem('docvault-view', view);
   }, []);
 
   // Entity state with localStorage persistence
   const [selectedEntity, setSelectedEntityState] = useState<Entity>(() => {
-    const saved = localStorage.getItem('taxvault-entity');
+    const saved = localStorage.getItem('docvault-entity');
     return (saved as Entity) || 'personal';
   });
 
   // Year state with localStorage persistence
   const [selectedYear, setSelectedYearState] = useState(() => {
-    const saved = localStorage.getItem('taxvault-year');
+    const saved = localStorage.getItem('docvault-year');
     return saved ? parseInt(saved, 10) : currentYear;
   });
 
@@ -131,6 +154,40 @@ export function AppProvider({ children }: AppProviderProps) {
   const [scannedDocuments, setScannedDocuments] = useState<TaxDocument[]>([]);
   const [entityYears, setEntityYears] = useState<number[]>([]);
   const [isParsing, setIsParsing] = useState(false);
+
+  // Search state
+  const [searchQuery, setSearchQueryState] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const searchActive = searchQuery.length >= 2;
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const setSearchQuery = useCallback((query: string) => {
+    setSearchQueryState(query);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    if (query.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
+    debounceRef.current = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const res = await fetch(`http://localhost:3005/api/search?q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        setSearchResults(data.files || []);
+      } catch {
+        setSearchResults([]);
+      }
+      setIsSearching(false);
+    }, 250);
+  }, []);
+
+  const clearSearch = useCallback(() => {
+    setSearchQueryState('');
+    setSearchResults([]);
+  }, []);
 
   // File system hook
   const {
@@ -143,6 +200,7 @@ export function AppProvider({ children }: AppProviderProps) {
     getYearsForEntity,
     scanTaxYear,
     scanBusinessDocs,
+    scanAllFiles,
     importFile,
     openFile,
     deleteFile,
@@ -160,13 +218,13 @@ export function AppProvider({ children }: AppProviderProps) {
   // Persist entity selection
   const setSelectedEntity = useCallback((entity: Entity) => {
     setSelectedEntityState(entity);
-    localStorage.setItem('taxvault-entity', entity);
+    localStorage.setItem('docvault-entity', entity);
   }, []);
 
   // Persist year selection
   const setSelectedYear = useCallback((year: number) => {
     setSelectedYearState(year);
-    localStorage.setItem('taxvault-year', String(year));
+    localStorage.setItem('docvault-year', String(year));
   }, []);
 
   // Fetch available years when entity changes
@@ -183,9 +241,13 @@ export function AppProvider({ children }: AppProviderProps) {
     }
   }, [isConnected, selectedEntity, selectedYear, scanTaxYear, activeView]);
 
-  // Available years (from server or default)
+  // Available years (from server or default, always include current year)
   const availableYears = useMemo(() => {
-    if (entityYears.length > 0) return entityYears;
+    if (entityYears.length > 0) {
+      const years = new Set(entityYears);
+      years.add(currentYear);
+      return Array.from(years).sort((a, b) => b - a);
+    }
     return Array.from({ length: 6 }, (_, i) => currentYear - i);
   }, [entityYears, currentYear]);
 
@@ -224,9 +286,18 @@ export function AppProvider({ children }: AppProviderProps) {
     setIsParsing,
     isProcessing,
 
+    // Search
+    searchQuery,
+    setSearchQuery,
+    searchResults,
+    isSearching,
+    searchActive,
+    clearSearch,
+
     // File operations
     scanTaxYear,
     scanBusinessDocs,
+    scanAllFiles,
     importFile,
     openFile,
     deleteFile,

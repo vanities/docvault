@@ -94,7 +94,7 @@ export function useFileSystem() {
     try {
       // @ts-expect-error - showDirectoryPicker is not in all TS libs yet
       const handle = await window.showDirectoryPicker({
-        id: 'taxvault-root',
+        id: 'docvault-root',
         mode: 'readwrite',
         startIn: 'documents',
       });

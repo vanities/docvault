@@ -7,7 +7,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 3005;
 
 // Data directory - contains entity subdirectories
-const DATA_DIR = process.env.TAXVAULT_DATA_DIR || path.join(__dirname, '..', 'data');
+const DATA_DIR =
+  process.env.DOCVAULT_DATA_DIR ||
+  process.env.TAXVAULT_DATA_DIR ||
+  path.join(__dirname, '..', 'data');
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const SETTINGS_PATH = path.join(__dirname, 'settings.json');
 
@@ -206,9 +209,30 @@ async function getEntityPath(entityId: string): Promise<string | null> {
 // Parsed Data Storage
 // ============================================================================
 
-const PARSED_DATA_FILE = path.join(DATA_DIR, '.taxvault-parsed.json');
+const PARSED_DATA_FILE = path.join(DATA_DIR, '.docvault-parsed.json');
+const LEGACY_PARSED_DATA_FILE = path.join(DATA_DIR, '.taxvault-parsed.json');
+
+// Migrate legacy parsed data file on first load
+let parsedDataMigrated = false;
+async function migrateParsedData(): Promise<void> {
+  if (parsedDataMigrated) return;
+  parsedDataMigrated = true;
+  try {
+    await fs.access(PARSED_DATA_FILE);
+    // New file exists, no migration needed
+  } catch {
+    try {
+      await fs.access(LEGACY_PARSED_DATA_FILE);
+      await fs.rename(LEGACY_PARSED_DATA_FILE, PARSED_DATA_FILE);
+      console.log('[Migration] Renamed .taxvault-parsed.json -> .docvault-parsed.json');
+    } catch {
+      // Neither file exists, that's fine
+    }
+  }
+}
 
 async function loadParsedData(): Promise<Record<string, ParsedData>> {
+  await migrateParsedData();
   try {
     const content = await fs.readFile(PARSED_DATA_FILE, 'utf-8');
     return JSON.parse(content);
@@ -227,10 +251,16 @@ async function _getParsedDataForFile(filePath: string): Promise<ParsedData | nul
 }
 void _getParsedDataForFile;
 
+// Queue to serialize writes to parsed data file
+let parsedDataWriteQueue: Promise<void> = Promise.resolve();
+
 async function setParsedDataForFile(filePath: string, data: ParsedData): Promise<void> {
-  const allData = await loadParsedData();
-  allData[filePath] = data;
-  await saveParsedData(allData);
+  parsedDataWriteQueue = parsedDataWriteQueue.then(async () => {
+    const allData = await loadParsedData();
+    allData[filePath] = data;
+    await saveParsedData(allData);
+  });
+  await parsedDataWriteQueue;
 }
 
 // ============================================================================
@@ -586,6 +616,7 @@ async function handleRequest(req: Request): Promise<Response> {
       await ensureDir(fullDir);
       const body = await req.arrayBuffer();
       await fs.writeFile(fullPath, Buffer.from(body));
+
       return jsonResponse({ ok: true, path: path.join(destPath, filename) });
     } catch (err) {
       return jsonResponse({ error: 'Failed to save file', details: String(err) }, 500);
@@ -809,6 +840,33 @@ async function handleRequest(req: Request): Promise<Response> {
     }
   }
 
+  // GET /api/files-all/:entity - Get all files recursively (for non-tax entities)
+  const filesAllMatch = pathname.match(/^\/api\/files-all\/([^/]+)$/);
+  if (filesAllMatch && req.method === 'GET') {
+    const entityId = filesAllMatch[1];
+
+    const entityPath = await getEntityPath(entityId);
+    if (!entityPath) {
+      return jsonResponse({ error: 'Entity not found' }, 404);
+    }
+
+    try {
+      await fs.access(entityPath);
+      const files = await scanDirectory(entityPath, '');
+
+      // Attach parsed data to files
+      const parsedDataMap = await loadParsedData();
+      const filesWithParsedData = files.map((f) => ({
+        ...f,
+        parsedData: parsedDataMap[`${entityId}/${f.path}`] || null,
+      }));
+
+      return jsonResponse({ files: filesWithParsedData });
+    } catch {
+      return jsonResponse({ files: [] });
+    }
+  }
+
   // POST /api/move-between - Move file between different entities
   if (pathname === '/api/move-between' && req.method === 'POST') {
     const body = await req.json();
@@ -863,6 +921,256 @@ async function handleRequest(req: Request): Promise<Response> {
     }
   }
 
+  // GET /api/search?q=query - Search all files across all entities and years
+  if (pathname === '/api/search' && req.method === 'GET') {
+    const query = url.searchParams.get('q')?.toLowerCase();
+    if (!query || query.length < 2) {
+      return jsonResponse({ files: [] });
+    }
+
+    try {
+      const config = await loadConfig();
+      const parsedDataMap = await loadParsedData();
+      const allResults: {
+        entity: string;
+        entityName: string;
+        name: string;
+        path: string;
+        size: number;
+        lastModified: number;
+        type: string;
+        parsedData: ParsedData | null;
+      }[] = [];
+
+      for (const entity of config.entities) {
+        const entityPath = await getEntityPath(entity.id);
+        if (!entityPath) continue;
+
+        // Scan everything under the entity
+        const files = await scanDirectory(entityPath, '');
+
+        for (const file of files) {
+          const nameLower = file.name.toLowerCase();
+          const pathLower = file.path.toLowerCase();
+          const parsedKey = `${entity.id}/${file.path}`;
+          const parsed = parsedDataMap[parsedKey] || null;
+
+          // Search filename and path
+          let match = nameLower.includes(query) || pathLower.includes(query);
+
+          // Search parsed data fields (vendor, employer, payer, etc.)
+          if (!match && parsed) {
+            const searchableFields = [
+              'vendor',
+              'employerName',
+              'payerName',
+              'recipientName',
+              'billTo',
+              'customerName',
+              'category',
+              'description',
+            ];
+            for (const field of searchableFields) {
+              const val = parsed[field];
+              if (typeof val === 'string' && val.toLowerCase().includes(query)) {
+                match = true;
+                break;
+              }
+            }
+            // Search items descriptions
+            if (!match && Array.isArray(parsed.items)) {
+              for (const item of parsed.items as { description?: string }[]) {
+                if (item.description && item.description.toLowerCase().includes(query)) {
+                  match = true;
+                  break;
+                }
+              }
+            }
+          }
+
+          if (match) {
+            allResults.push({
+              entity: entity.id,
+              entityName: entity.name,
+              name: file.name,
+              path: file.path,
+              size: file.size,
+              lastModified: file.lastModified,
+              type: file.type,
+              parsedData: parsed,
+            });
+          }
+        }
+      }
+
+      return jsonResponse({ files: allResults });
+    } catch (err) {
+      return jsonResponse({ error: 'Search failed', details: String(err) }, 500);
+    }
+  }
+
+  // POST /api/save-parsed - Save parsed data for a file
+  if (pathname === '/api/save-parsed' && req.method === 'POST') {
+    try {
+      const body = await req.json();
+      const { entity: entityId, filePath, parsedData: parsedDataObj } = body;
+
+      if (!entityId || !filePath || !parsedDataObj) {
+        return jsonResponse({ error: 'Missing entity, filePath, or parsedData' }, 400);
+      }
+
+      const fileKey = `${entityId}/${filePath}`;
+      await setParsedDataForFile(fileKey, {
+        parsed: true,
+        parsedAt: new Date().toISOString(),
+        ...parsedDataObj,
+      });
+
+      console.log(`[Save Parsed] Saved parsed data for ${fileKey}`);
+      return jsonResponse({ ok: true });
+    } catch (err) {
+      return jsonResponse({ error: 'Failed to save parsed data', details: String(err) }, 500);
+    }
+  }
+
+  // POST /api/suggest-filename - Use Claude AI to analyze a file and suggest naming metadata
+  if (pathname === '/api/suggest-filename' && req.method === 'POST') {
+    try {
+      const body = await req.arrayBuffer();
+      const filename = url.searchParams.get('filename') || 'document';
+      const taxYear = url.searchParams.get('year') || String(new Date().getFullYear());
+
+      // Determine file type
+      const ext = filename.split('.').pop()?.toLowerCase();
+      let mimeType = 'application/pdf';
+      if (ext === 'png') mimeType = 'image/png';
+      else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+      else if (ext === 'gif') mimeType = 'image/gif';
+      else if (ext === 'webp') mimeType = 'image/webp';
+
+      const base64Data = Buffer.from(body).toString('base64');
+
+      // Get API key
+      const apiKey = await getAnthropicKey();
+      if (!apiKey) {
+        return jsonResponse({ error: 'Anthropic API key not configured' }, 400);
+      }
+
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const anthropic = new Anthropic({ apiKey });
+
+      const isPdf = mimeType === 'application/pdf';
+
+      const fileContent = isPdf
+        ? {
+            type: 'document' as const,
+            source: {
+              type: 'base64' as const,
+              media_type: 'application/pdf' as const,
+              data: base64Data,
+            },
+          }
+        : {
+            type: 'image' as const,
+            source: {
+              type: 'base64' as const,
+              media_type: mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+              data: base64Data,
+            },
+          };
+
+      const response = await anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4096,
+        system: `You analyze tax documents, suggest standardized filenames, and extract all parsed data.
+
+Naming convention: {Source}_{Type}_{Date}.{ext}
+- Source: Company/vendor/employer name in Title_Case (e.g., "Google", "Art_City", "OpenAI")
+- Type: Document type keyword
+- Date: Always LAST. Year only for annual docs (W-2, 1099), YYYY-MM for invoices, YYYY-MM-DD for receipts
+
+Document type patterns:
+- W-2: {Employer}_W2_{Year}.pdf
+- 1099-NEC: {Payer}_1099-nec_{Year}.pdf
+- 1099-DIV: {Payer}_1099-div_{Year}.pdf
+- 1099-INT: {Payer}_1099-int_{Year}.pdf
+- 1099-MISC: {Payer}_1099-misc_{Year}.pdf
+- Invoice: {Client}_Invoice_{Year}-{MM}.pdf
+- Receipt/Expense: {Vendor}_{category}_{Description}_{Date}.ext
+  Categories: meals, software, equipment, travel, office, childcare, medical
+- Crypto: {Source}_Crypto_{Year}.ext
+- Return: Return_filed_{Year}.pdf
+- Contract/W-9: {Company}_W9_{Year}.pdf
+- Formation: Articles_of_Organization.pdf
+- EIN: EIN_Letter.pdf
+- License: Business_License_{Year}.pdf
+
+Respond ONLY with valid JSON. No markdown.`,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              fileContent,
+              {
+                type: 'text',
+                text: `Analyze this document (current tax year context: ${taxYear}). Return JSON with TWO sections:
+
+1. "naming" - for filename generation:
+{
+  "source": "Company or vendor name (plain text, spaces ok)",
+  "documentType": "w2|1099-nec|1099-misc|1099-div|1099-int|1099-b|1099-r|receipt|invoice|crypto|return|contract|formation|ein-letter|license|business-agreement|other",
+  "expenseCategory": "meals|software|equipment|travel|office|childcare|medical|other" (only if receipt/expense),
+  "description": "short description if receipt" (optional),
+  "year": YYYY (the year from the document - tax year for W-2/1099, or date year for receipts/invoices),
+  "month": 1-12 (if visible on document),
+  "day": 1-31 (if visible on document)
+}
+
+2. "parsedData" - full extracted data from the document:
+- For receipts/expenses: { vendor, vendorAddress, amount, totalAmount, subtotal, tax, date (YYYY-MM-DD), paymentMethod, lastFourCard, items: [{description, quantity, price}], category }
+- For W-2: { employerName, ein, wages, federalWithheld, stateWithheld, socialSecurityWages, socialSecurityTax, medicareWages, medicareTax, etc }
+- For 1099-NEC: { payerName, nonemployeeCompensation, federalWithheld, etc }
+- For 1099-DIV: { payerName, ordinaryDividends, qualifiedDividends, federalWithheld, etc }
+- For 1099-INT: { payerName, interestIncome, federalWithheld, etc }
+- For invoices: { vendor, amount, date, invoiceNumber, items, etc }
+- Include ALL visible fields. All monetary values as numbers.
+
+Return: { "naming": {...}, "parsedData": {...} }`,
+              },
+            ],
+          },
+        ],
+      });
+
+      const textContent = response.content.find((c) => c.type === 'text');
+      if (!textContent || textContent.type !== 'text') {
+        return jsonResponse({ error: 'No response from AI' }, 500);
+      }
+
+      let jsonStr = textContent.text;
+      const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[1];
+      }
+
+      const parsed = JSON.parse(jsonStr);
+
+      // Support both formats: nested { naming, parsedData } or flat (legacy)
+      const suggestion = parsed.naming || parsed;
+      const parsedData = parsed.parsedData || null;
+
+      console.log(`[AI Filename] Suggested for ${filename}:`, suggestion);
+      if (parsedData) {
+        console.log(`[AI Filename] Parsed data keys:`, Object.keys(parsedData));
+      }
+
+      return jsonResponse({ ok: true, suggestion, parsedData });
+    } catch (err) {
+      console.error('[AI Filename] Error:', err);
+      return jsonResponse({ error: 'Failed to analyze file', details: String(err) }, 500);
+    }
+  }
+
   // 404 for unmatched routes
   return jsonResponse({ error: 'Not found' }, 404);
 }
@@ -877,5 +1185,5 @@ const server = Bun.serve({
   idleTimeout: 120, // 2 minutes for AI parsing
 });
 
-console.log(`TaxVault API server running on http://localhost:${server.port}`);
+console.log(`DocVault API server running on http://localhost:${server.port}`);
 console.log(`Data directory: ${DATA_DIR}`);

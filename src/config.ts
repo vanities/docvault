@@ -1,23 +1,10 @@
 // =============================================================================
-// TaxVault Configuration
+// DocVault Configuration
 // =============================================================================
 // Edit this file to customize entities, expense categories, and document types.
 // Changes here will reflect throughout the app.
 
 import type { Entity, DocumentType, ExpenseCategory } from './types';
-
-// =============================================================================
-// FILE SYSTEM PATHS
-// =============================================================================
-// Base directories for tax documents. The app will scan these for files.
-
-export const TAX_BASE_PATH = '/Users/vanities/Library/CloudStorage/Dropbox/important/taxes';
-
-export const ENTITY_PATHS: Record<Entity, string> = {
-  personal: TAX_BASE_PATH,
-  'am2-llc': '/Users/vanities/Library/CloudStorage/Dropbox/important/AM2 LLC',
-  'manna-llc': '/Users/vanities/Library/CloudStorage/Dropbox/important/Manna of the Valley LLC',
-};
 
 // Folder structure within each tax year
 export const TAX_YEAR_STRUCTURE = {
@@ -31,22 +18,6 @@ export const TAX_YEAR_STRUCTURE = {
   returns: ['return'],
   turbotax: ['return'],
 } as const;
-
-// =============================================================================
-// ENTITIES (Tax Filing Entities)
-// =============================================================================
-// Add or remove entities as needed. Each entity represents a separate
-// tax filing unit (personal, LLC, etc.)
-
-export const ENTITIES: {
-  id: Entity;
-  name: string;
-  color: 'blue' | 'green' | 'amber' | 'purple' | 'pink' | 'red';
-}[] = [
-  { id: 'personal', name: 'Personal', color: 'blue' },
-  { id: 'am2-llc', name: 'AM2 LLC', color: 'green' },
-  { id: 'manna-llc', name: 'Manna of the Valley LLC', color: 'amber' },
-];
 
 // =============================================================================
 // INCOME SOURCES (W-2 Employers, 1099 Payers)

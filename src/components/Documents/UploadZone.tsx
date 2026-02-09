@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Upload, FileText, Image, File, X, Wand2 } from 'lucide-react';
+import { Upload, FileText, Image, File, X, Wand2, Sparkles, Loader2 } from 'lucide-react';
 import type { Entity, DocumentType, TaxDocument, ExpenseCategory } from '../../types';
 import { DOCUMENT_TYPES, EXPENSE_CATEGORIES } from '../../config';
 import {
@@ -31,6 +31,7 @@ interface PendingFile {
 interface FileMetadata {
   source: string;
   description: string;
+  year: number;
   month: number;
   day: number;
   customFilename: string;
@@ -94,6 +95,80 @@ export function UploadZone({ entity, taxYear, onUpload, disabled = false }: Uplo
   const [selectedTypes, setSelectedTypes] = useState<Map<string, DocumentType>>(new Map());
   const [selectedCategory, setSelectedCategory] = useState<Map<string, string>>(new Map());
   const [fileMetadata, setFileMetadata] = useState<Map<string, FileMetadata>>(new Map());
+  const [aiLoading, setAiLoading] = useState<Set<string>>(new Set());
+  const [aiParsedData, setAiParsedData] = useState<Map<string, Record<string, unknown>>>(new Map());
+
+  // Ask Claude AI to suggest filename metadata for a file
+  const suggestFilename = useCallback(
+    async (file: File) => {
+      setAiLoading((prev) => new Set(prev).add(file.name));
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const response = await fetch(
+          `http://localhost:3005/api/suggest-filename?filename=${encodeURIComponent(file.name)}&year=${taxYear}`,
+          {
+            method: 'POST',
+            body: arrayBuffer,
+            headers: { 'Content-Type': file.type || 'application/octet-stream' },
+          }
+        );
+        const data = await response.json();
+
+        if (data.ok && data.suggestion) {
+          const s = data.suggestion;
+
+          // Update document type
+          if (s.documentType) {
+            setSelectedTypes((prev) =>
+              new Map(prev).set(file.name, s.documentType as DocumentType)
+            );
+          }
+
+          // Update expense category
+          if (s.expenseCategory && s.expenseCategory !== 'other') {
+            setSelectedCategory((prev) => new Map(prev).set(file.name, s.expenseCategory));
+          }
+
+          // Update metadata fields
+          setFileMetadata((prev) => {
+            const next = new Map(prev);
+            const existing = next.get(file.name) || {
+              source: '',
+              description: '',
+              year: 0,
+              month: 0,
+              day: 0,
+              customFilename: '',
+            };
+            next.set(file.name, {
+              ...existing,
+              source: s.source || existing.source,
+              description: s.description || existing.description,
+              year: s.year || existing.year,
+              month: s.month || existing.month,
+              day: s.day || existing.day,
+            });
+            return next;
+          });
+
+          // Store parsed data if returned
+          if (data.parsedData) {
+            setAiParsedData((prev) => new Map(prev).set(file.name, data.parsedData));
+          }
+        }
+      } catch (err) {
+        console.error('AI filename suggestion error:', err);
+      } finally {
+        setAiLoading((prev) => {
+          const next = new Set(prev);
+          next.delete(file.name);
+          return next;
+        });
+      }
+    },
+    [taxYear]
+  );
 
   // Generate standard filename when metadata changes
   const updateGeneratedFilename = useCallback(
@@ -106,10 +181,11 @@ export function UploadZone({ entity, taxYear, onUpload, disabled = false }: Uplo
       if (!pendingFile || !metadata?.source) return;
 
       const extension = getExtension(pendingFile.file.name);
+      const effectiveYear = metadata.year || taxYear;
       const generatedName = generateStandardFilename({
         source: metadata.source,
         docType,
-        year: taxYear,
+        year: effectiveYear,
         month: metadata.month || undefined,
         day: metadata.day || undefined,
         expenseCategory: category,
@@ -162,6 +238,7 @@ export function UploadZone({ entity, taxYear, onUpload, disabled = false }: Uplo
       const newPending: PendingFile[] = [];
       const newTypes = new Map(selectedTypes);
       const newMetadata = new Map(fileMetadata);
+      const filesToSuggest: File[] = [];
 
       Array.from(files).forEach((file) => {
         const detectedType = detectDocumentType(file.name);
@@ -174,6 +251,7 @@ export function UploadZone({ entity, taxYear, onUpload, disabled = false }: Uplo
         newMetadata.set(file.name, {
           source: extractedSource,
           description: '',
+          year: 0,
           month: new Date().getMonth() + 1, // Current month as default
           day: 0,
           customFilename: '',
@@ -187,13 +265,17 @@ export function UploadZone({ entity, taxYear, onUpload, disabled = false }: Uplo
         }
 
         newPending.push(pending);
+        filesToSuggest.push(file);
       });
 
       setPendingFiles((prev) => [...prev, ...newPending]);
       setSelectedTypes(newTypes);
       setFileMetadata(newMetadata);
+
+      // Auto-trigger AI filename suggestion for each file
+      filesToSuggest.forEach((file) => suggestFilename(file));
     },
-    [selectedTypes, fileMetadata]
+    [selectedTypes, fileMetadata, suggestFilename]
   );
 
   const handleDrop = useCallback(
@@ -272,10 +354,12 @@ export function UploadZone({ entity, taxYear, onUpload, disabled = false }: Uplo
       const category = selectedCategory.get(file.name);
       const metadata = fileMetadata.get(file.name);
 
-      let parsedData: TaxDocument['parsedData'] = undefined;
+      // Use AI parsed data if available, otherwise build minimal stub
+      let parsedData: TaxDocument['parsedData'] = aiParsedData.get(
+        file.name
+      ) as TaxDocument['parsedData'];
 
-      // For receipts, include the category in parsed data
-      if (type === 'receipt' && category) {
+      if (!parsedData && type === 'receipt' && category) {
         parsedData = {
           vendor: metadata?.source || '',
           amount: 0,
@@ -284,10 +368,18 @@ export function UploadZone({ entity, taxYear, onUpload, disabled = false }: Uplo
         };
       }
 
+      // Ensure category is set on parsed data for receipts
+      if (parsedData && type === 'receipt' && category) {
+        (parsedData as Record<string, unknown>).category = category;
+      }
+
       // Use the custom filename if source was provided
       const customFilename = metadata?.customFilename || undefined;
 
-      onUpload(file, type, entity, taxYear, parsedData, customFilename);
+      // Use AI-detected year if available, otherwise fall back to selected year
+      const effectiveYear = metadata?.year || taxYear;
+
+      onUpload(file, type, entity, effectiveYear, parsedData, customFilename);
     });
 
     // Clean up previews
@@ -299,6 +391,7 @@ export function UploadZone({ entity, taxYear, onUpload, disabled = false }: Uplo
     setSelectedTypes(new Map());
     setSelectedCategory(new Map());
     setFileMetadata(new Map());
+    setAiParsedData(new Map());
   };
 
   // Check if document type needs month input
@@ -421,8 +514,25 @@ export function UploadZone({ entity, taxYear, onUpload, disabled = false }: Uplo
                         {/* Auto-naming fields */}
                         <div className="mt-3 p-2 bg-surface-200/30 rounded-lg border border-border">
                           <div className="flex items-center gap-1 mb-2 text-[12px] text-surface-600">
-                            <Wand2 className="w-3 h-3" />
-                            <span>Auto-naming</span>
+                            {aiLoading.has(file.name) ? (
+                              <>
+                                <Loader2 className="w-3 h-3 animate-spin text-purple-400" />
+                                <span className="text-purple-400">AI analyzing...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Wand2 className="w-3 h-3" />
+                                <span>Auto-naming</span>
+                                <button
+                                  onClick={() => suggestFilename(file)}
+                                  className="ml-auto flex items-center gap-1 px-1.5 py-0.5 text-[11px] text-purple-400 hover:bg-purple-500/10 rounded transition-colors"
+                                  title="Re-analyze with AI"
+                                >
+                                  <Sparkles className="w-3 h-3" />
+                                  AI
+                                </button>
+                              </>
+                            )}
                           </div>
 
                           <div className="grid grid-cols-2 gap-2">
@@ -515,8 +625,78 @@ export function UploadZone({ entity, taxYear, onUpload, disabled = false }: Uplo
                               <span className="font-mono text-accent-400">
                                 {metadata.customFilename}
                               </span>
+                              {metadata.year > 0 && metadata.year !== taxYear && (
+                                <span className="ml-2 text-amber-400">
+                                  → {metadata.year} folder
+                                </span>
+                              )}
                             </div>
                           )}
+
+                          {/* AI parsed data summary */}
+                          {(() => {
+                            const pd = aiParsedData.get(file.name);
+                            if (!pd) return null;
+
+                            const amount =
+                              (pd.totalAmount as number) ||
+                              (pd.amount as number) ||
+                              (pd.wages as number) ||
+                              (pd.nonemployeeCompensation as number) ||
+                              (pd.ordinaryDividends as number) ||
+                              (pd.interestIncome as number) ||
+                              null;
+                            const vendor =
+                              (pd.vendor as string) ||
+                              (pd.employerName as string) ||
+                              (pd.payerName as string);
+                            const date = pd.date as string;
+                            const items = pd.items as
+                              | { description: string; price: number }[]
+                              | undefined;
+
+                            if (!amount && !vendor) return null;
+
+                            return (
+                              <div className="mt-2 p-1.5 bg-emerald-500/5 border border-emerald-500/15 rounded text-[11px] space-y-0.5">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {amount != null && (
+                                    <span className="font-semibold text-emerald-400">
+                                      $
+                                      {amount.toLocaleString('en-US', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                      })}
+                                    </span>
+                                  )}
+                                  {vendor && <span className="text-surface-700">{vendor}</span>}
+                                  {date && <span className="text-surface-600">{date}</span>}
+                                </div>
+                                {items && items.length > 0 && (
+                                  <div className="text-surface-600">
+                                    {items.slice(0, 3).map((item, i) => (
+                                      <span key={i}>
+                                        {i > 0 && ' · '}
+                                        {item.description}
+                                        {item.price != null && (
+                                          <span className="text-surface-700">
+                                            {' '}
+                                            ${item.price.toFixed(2)}
+                                          </span>
+                                        )}
+                                      </span>
+                                    ))}
+                                    {items.length > 3 && (
+                                      <span className="text-surface-500">
+                                        {' '}
+                                        +{items.length - 3} more
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
 

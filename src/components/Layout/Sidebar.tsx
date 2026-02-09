@@ -21,33 +21,11 @@ import {
   Star,
   Zap,
   Globe,
-  type LucideIcon,
+  Files,
 } from 'lucide-react';
 import { useAppContext, type NavView } from '../../contexts/AppContext';
-import type { Entity } from '../../types';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-
-// Icon mapping
-const ICON_MAP: Record<string, LucideIcon> = {
-  user: User,
-  building: Building2,
-  briefcase: Briefcase,
-  home: Home,
-  store: Store,
-  factory: Factory,
-  landmark: Landmark,
-  shopping: ShoppingBag,
-  truck: Truck,
-  tractor: Tractor,
-  wrench: Wrench,
-  coffee: Coffee,
-  leaf: Leaf,
-  heart: Heart,
-  star: Star,
-  zap: Zap,
-  globe: Globe,
-};
 
 // Default icons for known entities
 const DEFAULT_ENTITY_ICONS: Record<string, string> = {
@@ -98,15 +76,83 @@ const COLOR_MAP: Record<string, { accent: string; glow: string; bg: string; text
   },
 };
 
-function getEntityIcon(entity: EntityConfig): LucideIcon {
-  if (entity.icon && ICON_MAP[entity.icon]) {
-    return ICON_MAP[entity.icon];
+function renderEntityIcon(entity: EntityConfig, className: string) {
+  const iconKey =
+    entity.id === 'all' ? 'grid' : entity.icon || DEFAULT_ENTITY_ICONS[entity.id] || 'building';
+  switch (iconKey) {
+    case 'grid':
+      return <LayoutGrid className={className} />;
+    case 'user':
+      return <User className={className} />;
+    case 'building':
+      return <Building2 className={className} />;
+    case 'briefcase':
+      return <Briefcase className={className} />;
+    case 'home':
+      return <Home className={className} />;
+    case 'store':
+      return <Store className={className} />;
+    case 'factory':
+      return <Factory className={className} />;
+    case 'landmark':
+      return <Landmark className={className} />;
+    case 'shopping':
+      return <ShoppingBag className={className} />;
+    case 'truck':
+      return <Truck className={className} />;
+    case 'tractor':
+      return <Tractor className={className} />;
+    case 'wrench':
+      return <Wrench className={className} />;
+    case 'coffee':
+      return <Coffee className={className} />;
+    case 'leaf':
+      return <Leaf className={className} />;
+    case 'heart':
+      return <Heart className={className} />;
+    case 'star':
+      return <Star className={className} />;
+    case 'zap':
+      return <Zap className={className} />;
+    case 'globe':
+      return <Globe className={className} />;
+    default:
+      return <Building2 className={className} />;
   }
-  const defaultIcon = DEFAULT_ENTITY_ICONS[entity.id];
-  if (defaultIcon && ICON_MAP[defaultIcon]) {
-    return ICON_MAP[defaultIcon];
-  }
-  return Building2;
+}
+
+function EntityButton({
+  entity,
+  isSelected,
+  isProcessing,
+  onClick,
+}: {
+  entity: EntityConfig;
+  isSelected: boolean;
+  isProcessing: boolean;
+  onClick: () => void;
+}) {
+  const colors = COLOR_MAP[entity.color] || COLOR_MAP.gray;
+  const iconClassName = `w-4 h-4 flex-shrink-0 ${isSelected ? colors.text : 'text-surface-600'}`;
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={isProcessing}
+      className={`
+        w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-all duration-150 text-left
+        disabled:opacity-40 disabled:cursor-not-allowed
+        ${
+          isSelected
+            ? `${colors.accent} ${colors.text} ${colors.glow}`
+            : `text-surface-800 hover:text-surface-950 hover:bg-surface-200/50`
+        }
+      `}
+    >
+      {renderEntityIcon(entity, iconClassName)}
+      <span className="font-medium text-[13px] truncate">{entity.name}</span>
+    </button>
+  );
 }
 
 interface SidebarProps {
@@ -126,14 +172,30 @@ export function Sidebar({ onAddEntity }: SidebarProps) {
     availableYears,
   } = useAppContext();
 
+  // Group entities by type
+  const taxEntities = entities.filter((e) => e.type === 'tax' || !e.type);
+  const docEntities = entities.filter((e) => e.type === 'docs');
+
   // "All" entity config for display
   const allEntity: EntityConfig = { id: 'all', name: 'All', color: 'gray', path: '' };
-  const displayEntities = [allEntity, ...entities];
 
-  const handleEntityClick = (entityId: string) => {
-    setSelectedEntity(entityId as Entity);
-    // When selecting an entity, switch to tax-year view if in settings
+  const handleEntityClick = (entity: EntityConfig) => {
+    setSelectedEntity(entity.id);
+    // Smart view defaulting based on entity type
     if (activeView === 'settings') {
+      // Always switch away from settings
+      if (entity.type === 'docs') {
+        setActiveView('all-files');
+      } else {
+        setActiveView('tax-year');
+      }
+    } else if (entity.type === 'docs' && activeView !== 'all-files') {
+      setActiveView('all-files');
+    } else if (
+      (entity.type === 'tax' || !entity.type) &&
+      entity.id !== 'all' &&
+      activeView === 'all-files'
+    ) {
       setActiveView('tax-year');
     }
   };
@@ -148,62 +210,81 @@ export function Sidebar({ onAddEntity }: SidebarProps) {
       <div className="px-5 pt-5 pb-4">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-accent-500/15 flex items-center justify-center">
-            <span className="font-display text-accent-400 text-lg italic">V</span>
+            <span className="font-display text-accent-400 text-lg italic">D</span>
           </div>
           <span className="font-display text-xl text-surface-950 italic tracking-tight">
-            TaxVault
+            DocVault
           </span>
         </div>
       </div>
 
       {/* Entity Section */}
       <div className="flex-1 overflow-y-auto px-3 pb-3">
-        <div className="mb-5">
-          <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
-            Entities
-          </h3>
+        {/* All */}
+        <div className="mb-3">
           <div className="space-y-0.5">
-            {displayEntities.map((entity) => {
-              const Icon = entity.id === 'all' ? LayoutGrid : getEntityIcon(entity);
-              const colors = COLOR_MAP[entity.color] || COLOR_MAP.gray;
-              const isSelected = selectedEntity === entity.id;
-
-              return (
-                <button
-                  key={entity.id}
-                  onClick={() => handleEntityClick(entity.id)}
-                  disabled={isProcessing}
-                  className={`
-                    w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-all duration-150 text-left
-                    disabled:opacity-40 disabled:cursor-not-allowed
-                    ${
-                      isSelected
-                        ? `${colors.accent} ${colors.text} ${colors.glow}`
-                        : `text-surface-800 hover:text-surface-950 hover:bg-surface-200/50`
-                    }
-                  `}
-                >
-                  <Icon
-                    className={`w-4 h-4 flex-shrink-0 ${isSelected ? colors.text : 'text-surface-600'}`}
-                  />
-                  <span className="font-medium text-[13px] truncate">{entity.name}</span>
-                </button>
-              );
-            })}
-
-            {/* Add Entity Button */}
-            {onAddEntity && (
-              <button
-                onClick={onAddEntity}
-                disabled={isProcessing}
-                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-surface-600 hover:text-surface-800 hover:bg-surface-200/50 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <Plus className="w-4 h-4" />
-                <span className="font-medium text-[13px]">Add Entity</span>
-              </button>
-            )}
+            <EntityButton
+              entity={allEntity}
+              isSelected={selectedEntity === 'all'}
+              isProcessing={isProcessing}
+              onClick={() => handleEntityClick(allEntity)}
+            />
           </div>
         </div>
+
+        {/* Tax Entities */}
+        {taxEntities.length > 0 && (
+          <div className="mb-3">
+            <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
+              Tax
+            </h3>
+            <div className="space-y-0.5">
+              {taxEntities.map((entity) => (
+                <EntityButton
+                  key={entity.id}
+                  entity={entity}
+                  isSelected={selectedEntity === entity.id}
+                  isProcessing={isProcessing}
+                  onClick={() => handleEntityClick(entity)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Document Entities */}
+        {docEntities.length > 0 && (
+          <div className="mb-3">
+            <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
+              Documents
+            </h3>
+            <div className="space-y-0.5">
+              {docEntities.map((entity) => (
+                <EntityButton
+                  key={entity.id}
+                  entity={entity}
+                  isSelected={selectedEntity === entity.id}
+                  isProcessing={isProcessing}
+                  onClick={() => handleEntityClick(entity)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Add Entity Button */}
+        {onAddEntity && (
+          <div className="mb-5">
+            <button
+              onClick={onAddEntity}
+              disabled={isProcessing}
+              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-surface-600 hover:text-surface-800 hover:bg-surface-200/50 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="font-medium text-[13px]">Add Entity</span>
+            </button>
+          </div>
+        )}
 
         {/* Views Section */}
         <div className="mb-5">
@@ -282,6 +363,26 @@ export function Sidebar({ onAddEntity }: SidebarProps) {
                 className={`w-4 h-4 flex-shrink-0 ${activeView === 'business-docs' ? 'text-accent-400' : 'text-surface-600'}`}
               />
               <span className="font-medium text-[13px]">Business Docs</span>
+            </button>
+
+            {/* All Files view button */}
+            <button
+              onClick={() => handleViewClick('all-files')}
+              disabled={isProcessing}
+              className={`
+                w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-all duration-150 text-left
+                disabled:opacity-40 disabled:cursor-not-allowed
+                ${
+                  activeView === 'all-files'
+                    ? 'bg-accent-500/10 text-accent-400 glow-emerald'
+                    : 'text-surface-800 hover:text-surface-950 hover:bg-surface-200/50'
+                }
+              `}
+            >
+              <Files
+                className={`w-4 h-4 flex-shrink-0 ${activeView === 'all-files' ? 'text-accent-400' : 'text-surface-600'}`}
+              />
+              <span className="font-medium text-[13px]">All Files</span>
             </button>
           </div>
         </div>

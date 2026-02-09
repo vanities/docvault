@@ -95,7 +95,8 @@ export function TaxYearView() {
       entity,
       taxYear,
       expenseCategory as ExpenseCategory | undefined,
-      customFilename
+      customFilename,
+      parsedData as Record<string, unknown> | undefined
     );
 
     if (success) {
@@ -173,18 +174,49 @@ export function TaxYearView() {
 
   // Compute expense summary from scanned documents
   const expenseSummary = useMemo((): ExpenseSummaryType => {
-    const receiptDocs = scannedDocuments.filter((d) => d.type === 'receipt');
+    // Include receipts and any doc in an expenses folder
+    const expenseDocs = scannedDocuments.filter(
+      (d) => d.type === 'receipt' || d.filePath.toLowerCase().includes('/expenses/')
+    );
     const categoryTotals = new Map<ExpenseCategory, { total: number; count: number }>();
 
-    receiptDocs.forEach((doc) => {
-      const data = doc.parsedData as { category?: ExpenseCategory; amount?: number } | undefined;
-      if (data && data.category && data.amount) {
-        const existing = categoryTotals.get(data.category) || { total: 0, count: 0 };
-        categoryTotals.set(data.category, {
-          total: existing.total + data.amount,
-          count: existing.count + 1,
-        });
+    expenseDocs.forEach((doc) => {
+      const data = doc.parsedData as Record<string, unknown> | undefined;
+      if (!data) return;
+
+      // Extract category — from parsed data or from file path
+      let category = data.category as ExpenseCategory | undefined;
+      if (!category && doc.filePath) {
+        const pathLower = doc.filePath.toLowerCase();
+        if (pathLower.includes('/equipment/')) category = 'equipment';
+        else if (pathLower.includes('/software/')) category = 'software';
+        else if (pathLower.includes('/meals/')) category = 'meals';
+        else if (pathLower.includes('/childcare/')) category = 'childcare';
+        else if (pathLower.includes('/medical/')) category = 'medical';
+        else if (pathLower.includes('/travel/')) category = 'travel';
+        else if (pathLower.includes('/office/')) category = 'office';
       }
+      if (!category) return;
+
+      // Extract amount — check multiple fields including nested
+      let amount = 0;
+      if (typeof data.amount === 'number') amount = data.amount;
+      else if (typeof data.totalAmount === 'number') amount = data.totalAmount;
+      else if (typeof data.total === 'number') amount = data.total;
+      else {
+        const financing = data.financing as Record<string, unknown> | undefined;
+        if (financing) {
+          if (typeof financing.cashPrice === 'number') amount = financing.cashPrice;
+          else if (typeof financing.totalSalePrice === 'number') amount = financing.totalSalePrice;
+        }
+      }
+      if (!amount) return;
+
+      const existing = categoryTotals.get(category) || { total: 0, count: 0 };
+      categoryTotals.set(category, {
+        total: existing.total + amount,
+        count: existing.count + 1,
+      });
     });
 
     const items = EXPENSE_CATEGORIES.map((cat) => {
@@ -294,7 +326,9 @@ export function TaxYearView() {
       {activeTab === 'expenses' && (
         <ExpenseSummary
           summary={expenseSummary}
-          documents={filteredDocuments.filter((d) => d.type === 'receipt')}
+          documents={filteredDocuments.filter(
+            (d) => d.type === 'receipt' || d.filePath.toLowerCase().includes('/expenses/')
+          )}
         />
       )}
     </div>

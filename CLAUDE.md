@@ -1,6 +1,6 @@
-# TaxVault
+# DocVault
 
-Personal tax document organization web app for managing tax documents across multiple entities (personal, LLCs).
+Personal document organization web app for managing tax documents, personal records, and important files across multiple entities (personal, LLCs, military, medical, etc.).
 
 ## Quick Start
 
@@ -25,7 +25,7 @@ bun run dev     # Frontend on http://localhost:5173
 ## Project Structure
 
 ```
-taxvault/
+docvault/
 ├── server/
 │   ├── index.ts      # Bun.serve() API server
 │   └── config.json   # Entity configuration
@@ -34,6 +34,7 @@ taxvault/
 │   │   ├── Layout/        # Sidebar, Header, main layout wrapper
 │   │   ├── TaxYear/       # Tax year view with Documents/Income/Expenses tabs
 │   │   ├── BusinessDocs/  # Business documents view (formation, EIN, contracts)
+│   │   ├── AllFiles/      # All files view (flat listing for non-tax entities)
 │   │   ├── Settings/      # Settings view with API key and entity management
 │   │   ├── Documents/     # Document list, card, viewer, upload zone
 │   │   └── Summary/       # Income and expense summaries
@@ -51,7 +52,16 @@ taxvault/
 ├── data/                  # Symlinks to actual storage locations
 │   ├── personal -> Dropbox/important/taxes
 │   ├── am2-llc -> Dropbox/important/AM2 LLC
-│   └── manna-llc -> Dropbox/important/Manna of the Valley LLC
+│   ├── manna-llc -> Dropbox/important/Manna of the Valley LLC
+│   ├── military -> Dropbox/important/DD-214
+│   ├── va -> Dropbox/important/VA
+│   ├── eye-health -> Dropbox/important/Eye
+│   ├── id-docs -> Dropbox/important/ID
+│   ├── land -> Dropbox/important/Land
+│   ├── navy-evals -> Dropbox/important/Navy
+│   ├── education -> Dropbox/important/MTSU Transcript
+│   ├── personality -> Dropbox/important/personality
+│   └── resume -> Dropbox/important/Resume
 ├── NAMING_STANDARD.md     # File naming conventions
 └── package.json
 ```
@@ -68,6 +78,7 @@ All endpoints are entity-aware:
 | DELETE | `/api/entities/:id`                      | Remove entity                 |
 | GET    | `/api/years/:entity`                     | List tax years for entity     |
 | GET    | `/api/files/:entity/:year`               | List files for entity/year    |
+| GET    | `/api/files-all/:entity`                 | List all files recursively    |
 | GET    | `/api/file/:entity/:path`                | Serve file content            |
 | DELETE | `/api/file/:entity/:path`                | Delete file                   |
 | POST   | `/api/upload?entity=X&path=Y&filename=Z` | Upload file                   |
@@ -78,11 +89,25 @@ All endpoints are entity-aware:
 
 ## Entities
 
-Configured in `server/config.json`:
+Configured in `server/config.json`. Two types:
+
+### Tax Entities (`type: "tax"`)
 
 - **personal** - Personal tax documents (taxes folder)
 - **am2-llc** - AM2 LLC business documents
 - **manna-llc** - Manna of the Valley LLC documents
+
+### Document Entities (`type: "docs"`)
+
+- **military** - Military & DD-214 records
+- **va** - VA Benefits documents
+- **eye-health** - Eye Health records
+- **id-docs** - ID & Identity documents
+- **land** - Land & Property documents
+- **navy-evals** - Navy Evals
+- **education** - Education transcripts
+- **personality** - Personality assessments
+- **resume** - Resume & Career documents
 
 ## Document Types
 
@@ -105,7 +130,7 @@ Configured in `server/config.json`:
 - Server uses Bun's native `Bun.serve()` (not Express)
 - Hot-reload enabled via `bun --watch`
 - Files stored in Dropbox via symlinks in `data/` directory
-- Parsed data stored in `data/.taxvault-parsed.json`
+- Parsed data stored in `data/.docvault-parsed.json`
 - Works in Firefox (no File System Access API dependency)
 - **Do NOT run `bun run dev`, `bun start`, or `bun run build`** - the user manages the dev server manually
 
@@ -121,6 +146,9 @@ Configured in `server/config.json`:
 - [x] Business document storage (formation docs, contracts, EIN letters, licenses)
 - [x] Sidebar navigation (entity selection, views, settings)
 - [x] File naming standard with auto-naming on upload
+- [x] Dynamic entity types (tax vs docs)
+- [x] All Files view for non-tax entities
+- [x] Rebrand from TaxVault to DocVault
 
 ## Document Parsing
 

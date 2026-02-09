@@ -11,6 +11,7 @@ export interface EntityConfig {
   color: string;
   path: string;
   icon?: string;
+  type?: 'tax' | 'docs';
 }
 
 // File info from the server
@@ -244,10 +245,7 @@ export function useFileSystemServer() {
 
         if (entity === 'all') {
           // Scan all entities in parallel
-          const entitiesToScan = entities.map((e) => e.id as Entity);
-          const results = await Promise.all(
-            entitiesToScan.map((e) => scanSingleEntity(e, taxYear))
-          );
+          const results = await Promise.all(entities.map((e) => scanSingleEntity(e.id, taxYear)));
           documents = results.flat();
         } else {
           documents = await scanSingleEntity(entity, taxYear);
@@ -275,10 +273,9 @@ export function useFileSystemServer() {
       try {
         if (entity === 'all') {
           // Scan all entities in parallel
-          const entitiesToScan = entities.map((e) => e.id as Entity);
           const results = await Promise.all(
-            entitiesToScan.map(async (e) => {
-              const response = await fetch(`${API_BASE}/business-docs/${e}`);
+            entities.map(async (ent) => {
+              const response = await fetch(`${API_BASE}/business-docs/${ent.id}`);
               const data = await response.json();
               if (!data.files) return [];
 
@@ -288,13 +285,13 @@ export function useFileSystemServer() {
                   const docType = detectDocumentType(file.name, file.path);
 
                   const doc: TaxDocument = {
-                    id: `${e}/${file.path}-${file.lastModified}`,
+                    id: `${ent.id}/${file.path}-${file.lastModified}`,
                     fileName: file.name,
                     fileType: file.type,
                     fileSize: file.size,
                     filePath: file.path,
                     type: docType,
-                    entity: e,
+                    entity: ent.id,
                     taxYear: 0, // 0 indicates business doc (no year)
                     tags: [],
                     createdAt: new Date(file.lastModified).toISOString(),
@@ -348,6 +345,88 @@ export function useFileSystemServer() {
     [isConnected, entities]
   );
 
+  // Scan all files recursively for an entity (for non-tax entities)
+  const scanAllFiles = useCallback(
+    async (entity: Entity): Promise<TaxDocument[]> => {
+      if (!isConnected) {
+        return [];
+      }
+
+      try {
+        if (entity === 'all') {
+          // Scan all entities in parallel
+          const results = await Promise.all(
+            entities.map(async (ent) => {
+              const response = await fetch(`${API_BASE}/files-all/${ent.id}`);
+              const data = await response.json();
+              if (!data.files) return [];
+
+              return data.files
+                .filter((f: FileInfo) => !f.name.startsWith('.'))
+                .map((file: FileInfo & { parsedData?: Record<string, unknown> }) => {
+                  const docType = detectDocumentType(file.name, file.path);
+
+                  const doc: TaxDocument = {
+                    id: `${ent.id}/${file.path}-${file.lastModified}`,
+                    fileName: file.name,
+                    fileType: file.type,
+                    fileSize: file.size,
+                    filePath: file.path,
+                    type: docType,
+                    entity: ent.id,
+                    taxYear: 0,
+                    tags: [],
+                    createdAt: new Date(file.lastModified).toISOString(),
+                    updatedAt: new Date(file.lastModified).toISOString(),
+                    parsedData: file.parsedData as TaxDocument['parsedData'],
+                  };
+
+                  return doc;
+                });
+            })
+          );
+          return results.flat();
+        }
+
+        const response = await fetch(`${API_BASE}/files-all/${entity}`);
+        const data = await response.json();
+
+        if (!data.files) {
+          return [];
+        }
+
+        const documents: TaxDocument[] = data.files
+          .filter((f: FileInfo) => !f.name.startsWith('.'))
+          .map((file: FileInfo & { parsedData?: Record<string, unknown> }) => {
+            const docType = detectDocumentType(file.name, file.path);
+
+            const doc: TaxDocument = {
+              id: `${entity}/${file.path}-${file.lastModified}`,
+              fileName: file.name,
+              fileType: file.type,
+              fileSize: file.size,
+              filePath: file.path,
+              type: docType,
+              entity,
+              taxYear: 0,
+              tags: [],
+              createdAt: new Date(file.lastModified).toISOString(),
+              updatedAt: new Date(file.lastModified).toISOString(),
+              parsedData: file.parsedData as TaxDocument['parsedData'],
+            };
+
+            return doc;
+          });
+
+        return documents;
+      } catch (err) {
+        console.error(`All files scan error for ${entity}:`, err);
+        return [];
+      }
+    },
+    [isConnected, entities]
+  );
+
   // Import a file to the correct folder
   const importFile = useCallback(
     async (
@@ -356,7 +435,8 @@ export function useFileSystemServer() {
       entity: Entity,
       taxYear: number,
       expenseCategory?: ExpenseCategory,
-      customFilename?: string
+      customFilename?: string,
+      parsedData?: Record<string, unknown>
     ): Promise<boolean> => {
       if (!isConnected) return false;
 
@@ -422,7 +502,26 @@ export function useFileSystemServer() {
         );
 
         const data = await response.json();
-        return data.ok === true;
+        if (!data.ok) return false;
+
+        // Save parsed data separately if provided
+        if (parsedData) {
+          try {
+            await fetch(`${API_BASE}/save-parsed`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                entity,
+                filePath: `${destPath}/${filename}`,
+                parsedData,
+              }),
+            });
+          } catch (err) {
+            console.error('Save parsed data error:', err);
+          }
+        }
+
+        return true;
       } catch (err) {
         console.error('Import file error:', err);
         return false;
@@ -670,6 +769,7 @@ export function useFileSystemServer() {
     getYearsForEntity,
     scanTaxYear,
     scanBusinessDocs,
+    scanAllFiles,
     importFile,
     openFile,
     deleteFile,

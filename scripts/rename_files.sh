@@ -1,5 +1,5 @@
 #!/bin/bash
-# TaxVault File Rename Script
+# DocVault File Rename Script
 # Generated based on NAMING_STANDARD.md
 # Pattern: {Source}_{Type}_{Date} - date always LAST
 #

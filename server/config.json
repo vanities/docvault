@@ -4,19 +4,97 @@
       "id": "personal",
       "name": "Personal",
       "color": "blue",
-      "path": "personal"
+      "path": "personal",
+      "icon": "user",
+      "type": "tax"
     },
     {
       "id": "am2-llc",
       "name": "AM2 LLC",
       "color": "green",
-      "path": "am2-llc"
+      "path": "am2-llc",
+      "icon": "building",
+      "type": "tax"
     },
     {
       "id": "manna-llc",
       "name": "Manna of the Valley LLC",
       "color": "amber",
-      "path": "manna-llc"
+      "path": "manna-llc",
+      "icon": "tractor",
+      "type": "tax"
+    },
+    {
+      "id": "military",
+      "name": "Military & DD-214",
+      "color": "red",
+      "path": "military",
+      "icon": "star",
+      "type": "docs"
+    },
+    {
+      "id": "va",
+      "name": "VA Benefits",
+      "color": "red",
+      "path": "va",
+      "icon": "heart",
+      "type": "docs"
+    },
+    {
+      "id": "eye-health",
+      "name": "Eye Health",
+      "color": "pink",
+      "path": "eye-health",
+      "icon": "heart",
+      "type": "docs"
+    },
+    {
+      "id": "id-docs",
+      "name": "ID & Identity",
+      "color": "gray",
+      "path": "id-docs",
+      "icon": "user",
+      "type": "docs"
+    },
+    {
+      "id": "land",
+      "name": "Land & Property",
+      "color": "amber",
+      "path": "land",
+      "icon": "landmark",
+      "type": "docs"
+    },
+    {
+      "id": "navy-evals",
+      "name": "Navy Evals",
+      "color": "blue",
+      "path": "navy-evals",
+      "icon": "star",
+      "type": "docs"
+    },
+    {
+      "id": "education",
+      "name": "Education",
+      "color": "purple",
+      "path": "education",
+      "icon": "landmark",
+      "type": "docs"
+    },
+    {
+      "id": "personality",
+      "name": "Personality",
+      "color": "purple",
+      "path": "personality",
+      "icon": "zap",
+      "type": "docs"
+    },
+    {
+      "id": "resume",
+      "name": "Resume & Career",
+      "color": "green",
+      "path": "resume",
+      "icon": "briefcase",
+      "type": "docs"
     }
   ]
 }

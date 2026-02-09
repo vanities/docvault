@@ -25,11 +25,11 @@ type TabType = 'documents' | 'income' | 'expenses';
 export function Dashboard() {
   const currentYear = new Date().getFullYear();
   const [selectedEntity, setSelectedEntity] = useState<Entity>(() => {
-    const saved = localStorage.getItem('taxvault-entity');
+    const saved = localStorage.getItem('docvault-entity');
     return (saved as Entity) || 'personal';
   });
   const [selectedYear, setSelectedYear] = useState(() => {
-    const saved = localStorage.getItem('taxvault-year');
+    const saved = localStorage.getItem('docvault-year');
     return saved ? parseInt(saved, 10) : currentYear;
   });
   const [activeTab, setActiveTab] = useState<TabType>('documents');
@@ -67,11 +67,11 @@ export function Dashboard() {
 
   // Persist selections to localStorage
   useEffect(() => {
-    localStorage.setItem('taxvault-entity', selectedEntity);
+    localStorage.setItem('docvault-entity', selectedEntity);
   }, [selectedEntity]);
 
   useEffect(() => {
-    localStorage.setItem('taxvault-year', String(selectedYear));
+    localStorage.setItem('docvault-year', String(selectedYear));
   }, [selectedYear]);
 
   // Fetch available years when entity changes
@@ -286,7 +286,7 @@ export function Dashboard() {
           </div>
           <h1 className="text-xl font-bold text-gray-900 mb-2">Server Not Connected</h1>
           <p className="text-gray-600 mb-6">
-            The TaxVault API server is not running. Start it with:
+            The DocVault API server is not running. Start it with:
             <code className="block mt-2 bg-gray-100 p-2 rounded text-sm font-mono">
               bun run server
             </code>
@@ -319,7 +319,7 @@ export function Dashboard() {
                 <Vault className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">TaxVault</h1>
+                <h1 className="text-xl font-bold text-gray-900">DocVault</h1>
                 <p className="text-xs text-gray-500">{dataDir}</p>
               </div>
             </div>

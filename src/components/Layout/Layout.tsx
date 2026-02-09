@@ -5,11 +5,13 @@ import { Header } from './Header';
 import { useAppContext } from '../../contexts/AppContext';
 import { TaxYearView } from '../TaxYear/TaxYearView';
 import { BusinessDocsView } from '../BusinessDocs/BusinessDocsView';
+import { AllFilesView } from '../AllFiles/AllFilesView';
 import { SettingsView } from '../Settings/SettingsView';
 import { AddEntityModal } from '../Settings/AddEntityModal';
+import { SearchResultsView } from '../Search/SearchResultsView';
 
 export function Layout() {
-  const { isConnected, checkConnection, fsError, activeView } = useAppContext();
+  const { isConnected, checkConnection, fsError, activeView, searchActive } = useAppContext();
   const [showAddEntityModal, setShowAddEntityModal] = useState(false);
 
   // Show server connection error if not connected
@@ -24,7 +26,7 @@ export function Layout() {
             Server Not Connected
           </h1>
           <p className="text-surface-800 mb-6 text-sm leading-relaxed">
-            The TaxVault API server is not running. Start it with:
+            The DocVault API server is not running. Start it with:
             <code className="block mt-3 bg-surface-200/50 text-accent-400 p-3 rounded-lg text-sm font-mono">
               bun run server
             </code>
@@ -46,13 +48,19 @@ export function Layout() {
     );
   }
 
-  // Render the active view
+  // Render the active view (search overrides everything)
   const renderContent = () => {
+    if (searchActive) {
+      return <SearchResultsView />;
+    }
+
     switch (activeView) {
       case 'tax-year':
         return <TaxYearView />;
       case 'business-docs':
         return <BusinessDocsView />;
+      case 'all-files':
+        return <AllFilesView />;
       case 'settings':
         return <SettingsView />;
       default:

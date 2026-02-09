@@ -10,8 +10,8 @@ import type {
 } from '../types';
 import { EXPENSE_CATEGORIES } from '../config';
 
-const STORAGE_KEY = 'taxvault_documents';
-const STATUS_STORAGE_KEY = 'taxvault_tax_years';
+const STORAGE_KEY = 'docvault_documents';
+const STATUS_STORAGE_KEY = 'docvault_tax_years';
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
