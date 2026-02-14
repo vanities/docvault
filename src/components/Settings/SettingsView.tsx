@@ -158,6 +158,7 @@ export function SettingsView() {
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState('');
   const [editIcon, setEditIcon] = useState('');
+  const [editDescription, setEditDescription] = useState('');
   const [isEntitySaving, setIsEntitySaving] = useState(false);
 
   // Load settings on mount
@@ -236,6 +237,7 @@ export function SettingsView() {
     setEditName(entity.name);
     setEditColor(entity.color);
     setEditIcon(entity.icon || DEFAULT_ENTITY_ICONS[entity.id] || 'building');
+    setEditDescription(entity.description || '');
   };
 
   const handleCancelEdit = () => {
@@ -243,6 +245,7 @@ export function SettingsView() {
     setEditName('');
     setEditColor('');
     setEditIcon('');
+    setEditDescription('');
   };
 
   const handleSaveEntity = async () => {
@@ -253,6 +256,7 @@ export function SettingsView() {
       name: editName,
       color: editColor,
       icon: editIcon,
+      description: editDescription,
     });
     setIsEntitySaving(false);
 
@@ -454,6 +458,20 @@ export function SettingsView() {
                       />
                     </div>
 
+                    {/* Edit Description */}
+                    <div>
+                      <label className="block text-[11px] font-medium text-surface-600 mb-1">
+                        Description
+                      </label>
+                      <textarea
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        placeholder="What documents does this entity contain? Notes for tax planning..."
+                        rows={2}
+                        className="w-full px-3 py-2.5 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 resize-none placeholder:text-surface-500"
+                      />
+                    </div>
+
                     {/* Edit Icon */}
                     <div>
                       <label className="block text-[11px] font-medium text-surface-600 mb-2">
@@ -530,6 +548,11 @@ export function SettingsView() {
                       <div>
                         <p className={`font-medium ${colors.text}`}>{entity.name}</p>
                         <p className="text-[11px] text-surface-600">{entity.id}</p>
+                        {entity.description && (
+                          <p className="text-[11px] text-surface-500 mt-0.5">
+                            {entity.description}
+                          </p>
+                        )}
                       </div>
                     </div>
 

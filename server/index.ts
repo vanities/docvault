@@ -23,6 +23,7 @@ interface EntityConfig {
   name: string;
   color: string;
   path: string;
+  description?: string;
 }
 
 interface Config {
@@ -385,7 +386,7 @@ async function handleRequest(req: Request): Promise<Response> {
   if (entityUpdateMatch && req.method === 'PUT') {
     const entityId = entityUpdateMatch[1];
     const body = await req.json();
-    const { name, color, icon } = body;
+    const { name, color, icon, description } = body;
 
     const config = await loadConfig();
     const entityIndex = config.entities.findIndex((e) => e.id === entityId);
@@ -398,6 +399,7 @@ async function handleRequest(req: Request): Promise<Response> {
     if (name) config.entities[entityIndex].name = name;
     if (color) config.entities[entityIndex].color = color;
     if (icon !== undefined) (config.entities[entityIndex] as Record<string, unknown>).icon = icon;
+    if (description !== undefined) config.entities[entityIndex].description = description;
 
     await saveConfig(config);
 
@@ -918,6 +920,107 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse({ ok: true });
     } catch (err) {
       return jsonResponse({ error: 'Failed to move file', details: String(err) }, 500);
+    }
+  }
+
+  // GET /api/tax-summary/:year - Get consolidated tax data across all tax entities
+  const taxSummaryMatch = pathname.match(/^\/api\/tax-summary\/(\d{4})$/);
+  if (taxSummaryMatch && req.method === 'GET') {
+    const year = taxSummaryMatch[1];
+
+    try {
+      const config = await loadConfig();
+      const parsedDataMap = await loadParsedData();
+      const taxEntities = config.entities.filter(
+        (e) => (e as Record<string, unknown>).type === 'tax'
+      );
+
+      const summary: Record<
+        string,
+        {
+          entity: EntityConfig;
+          documents: { name: string; path: string; type: string; parsedData: ParsedData | null }[];
+          income: { source: string; amount: number; type: string }[];
+          expenses: { vendor: string; amount: number; category: string }[];
+        }
+      > = {};
+
+      for (const entity of taxEntities) {
+        const entityPath = await getEntityPath(entity.id);
+        if (!entityPath) continue;
+
+        const yearPath = path.join(entityPath, year);
+        let files: FileInfo[] = [];
+        try {
+          await fs.access(yearPath);
+          files = await scanDirectory(yearPath, year);
+        } catch {
+          continue;
+        }
+
+        const entitySummary = {
+          entity,
+          documents: [] as {
+            name: string;
+            path: string;
+            type: string;
+            parsedData: ParsedData | null;
+          }[],
+          income: [] as { source: string; amount: number; type: string }[],
+          expenses: [] as { vendor: string; amount: number; category: string }[],
+        };
+
+        for (const file of files) {
+          const parsedKey = `${entity.id}/${file.path}`;
+          const parsed = parsedDataMap[parsedKey] || null;
+
+          entitySummary.documents.push({
+            name: file.name,
+            path: file.path,
+            type: file.type,
+            parsedData: parsed,
+          });
+
+          if (parsed) {
+            // Extract income
+            if (
+              parsed.wages ||
+              parsed.nonemployeeCompensation ||
+              parsed.ordinaryDividends ||
+              parsed.interestIncome
+            ) {
+              entitySummary.income.push({
+                source: (parsed.employerName || parsed.payerName || file.name) as string,
+                amount:
+                  ((parsed.wages ||
+                    parsed.nonemployeeCompensation ||
+                    parsed.ordinaryDividends ||
+                    parsed.interestIncome) as number) || 0,
+                type: file.path.includes('w2')
+                  ? 'W-2'
+                  : file.path.includes('1099')
+                    ? '1099'
+                    : 'other',
+              });
+            }
+
+            // Extract expenses
+            if (parsed.amount && (parsed.vendor || parsed.category)) {
+              entitySummary.expenses.push({
+                vendor: (parsed.vendor || 'Unknown') as string,
+                amount: (parsed.totalAmount || parsed.amount) as number,
+                category: (parsed.category || 'other') as string,
+              });
+            }
+          }
+        }
+
+        summary[entity.id] = entitySummary;
+      }
+
+      return jsonResponse({ year, summary });
+    } catch (err) {
+      return jsonResponse({ error: 'Failed to generate tax summary', details: String(err) }, 500);
     }
   }
 

@@ -34,5 +34,8 @@ server/settings.json
 data/
 data-backup
 
+# Tax plan workspace (personal, private)
+tax-plan/
+
 # Lock files (use bun.lock)
 pnpm-lock.yaml

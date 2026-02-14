@@ -12,6 +12,7 @@ export interface EntityConfig {
   path: string;
   icon?: string;
   type?: 'tax' | 'docs';
+  description?: string;
 }
 
 // File info from the server
@@ -698,7 +699,7 @@ export function useFileSystemServer() {
   const updateEntity = useCallback(
     async (
       id: string,
-      updates: { name?: string; color?: string; icon?: string }
+      updates: { name?: string; color?: string; icon?: string; description?: string }
     ): Promise<EntityConfig | null> => {
       if (!isConnected) return null;
 

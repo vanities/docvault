@@ -28,7 +28,8 @@ bun run dev     # Frontend on http://localhost:5173
 docvault/
 ├── server/
 │   ├── index.ts      # Bun.serve() API server
-│   └── config.json   # Entity configuration
+│   └── config.json   # Entity configuration (with descriptions)
+├── tax-plan/          # Gitignored - personal tax planning workspace
 ├── src/
 │   ├── components/
 │   │   ├── Layout/        # Sidebar, Header, main layout wrapper
@@ -70,22 +71,23 @@ docvault/
 
 All endpoints are entity-aware:
 
-| Method | Endpoint                                 | Description                   |
-| ------ | ---------------------------------------- | ----------------------------- |
-| GET    | `/api/status`                            | Server status and entity list |
-| GET    | `/api/entities`                          | List all entities             |
-| POST   | `/api/entities`                          | Add new entity                |
-| DELETE | `/api/entities/:id`                      | Remove entity                 |
-| GET    | `/api/years/:entity`                     | List tax years for entity     |
-| GET    | `/api/files/:entity/:year`               | List files for entity/year    |
-| GET    | `/api/files-all/:entity`                 | List all files recursively    |
-| GET    | `/api/file/:entity/:path`                | Serve file content            |
-| DELETE | `/api/file/:entity/:path`                | Delete file                   |
-| POST   | `/api/upload?entity=X&path=Y&filename=Z` | Upload file                   |
-| POST   | `/api/mkdir`                             | Create directory              |
-| POST   | `/api/parse/:entity/:path`               | Parse single file             |
-| POST   | `/api/parse-all/:entity/:year`           | Parse all files in year       |
-| POST   | `/api/move`                              | Move file                     |
+| Method | Endpoint                                 | Description                    |
+| ------ | ---------------------------------------- | ------------------------------ |
+| GET    | `/api/status`                            | Server status and entity list  |
+| GET    | `/api/entities`                          | List all entities              |
+| POST   | `/api/entities`                          | Add new entity                 |
+| DELETE | `/api/entities/:id`                      | Remove entity                  |
+| GET    | `/api/years/:entity`                     | List tax years for entity      |
+| GET    | `/api/files/:entity/:year`               | List files for entity/year     |
+| GET    | `/api/files-all/:entity`                 | List all files recursively     |
+| GET    | `/api/file/:entity/:path`                | Serve file content             |
+| DELETE | `/api/file/:entity/:path`                | Delete file                    |
+| POST   | `/api/upload?entity=X&path=Y&filename=Z` | Upload file                    |
+| POST   | `/api/mkdir`                             | Create directory               |
+| POST   | `/api/parse/:entity/:path`               | Parse single file              |
+| POST   | `/api/parse-all/:entity/:year`           | Parse all files in year        |
+| POST   | `/api/move`                              | Move file                      |
+| GET    | `/api/tax-summary/:year`                 | Consolidated tax data for year |
 
 ## Entities
 

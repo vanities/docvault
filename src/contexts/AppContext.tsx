@@ -98,7 +98,7 @@ interface AppContextValue {
   removeEntity: (id: string) => Promise<boolean>;
   updateEntity: (
     id: string,
-    updates: { name?: string; color?: string; icon?: string }
+    updates: { name?: string; color?: string; icon?: string; description?: string }
   ) => Promise<EntityConfig | null>;
   moveFile: (
     fromEntity: Entity,
