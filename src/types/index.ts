@@ -136,6 +136,28 @@ export interface ExpenseSummary {
   totalDeductible: number;
 }
 
+// Reminders
+export interface Reminder {
+  id: string;
+  entityId: Entity;
+  title: string;
+  dueDate: string; // YYYY-MM-DD
+  recurrence?: 'yearly' | 'monthly' | 'quarterly' | null;
+  status: 'pending' | 'completed' | 'dismissed';
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Todos
+export interface Todo {
+  id: string;
+  title: string;
+  status: 'pending' | 'completed';
+  createdAt: string;
+  updatedAt: string;
+}
+
 // App state
 export interface AppState {
   selectedEntity: Entity;

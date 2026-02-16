@@ -31,7 +31,7 @@ import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 
-const API_BASE = 'http://localhost:3005/api';
+const API_BASE = '/api';
 
 // Available icons for entities
 const AVAILABLE_ICONS: { id: string; icon: LucideIcon; label: string }[] = [

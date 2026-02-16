@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { TaxDocument, DocumentType, Entity, ExpenseCategory } from '../types';
+import type { TaxDocument, DocumentType, Entity, ExpenseCategory, Reminder, Todo } from '../types';
 import { isBusinessDocumentType, getBusinessSubfolder } from '../config';
 
-const API_BASE = 'http://localhost:3005/api';
+const API_BASE = '/api';
 
 // Entity config from server
 export interface EntityConfig {
@@ -760,12 +760,166 @@ export function useFileSystemServer() {
     [isConnected]
   );
 
+  // Reminder operations
+  const [reminders, setReminders] = useState<Reminder[]>([]);
+
+  // Fetch reminders on connect
+  useEffect(() => {
+    if (!isConnected) return;
+    fetch(`${API_BASE}/reminders`)
+      .then((r) => r.json())
+      .then((data) => setReminders(data.reminders || []))
+      .catch(() => {});
+  }, [isConnected]);
+
+  const addReminder = useCallback(
+    async (
+      reminder: Omit<Reminder, 'id' | 'createdAt' | 'updatedAt' | 'status'>
+    ): Promise<Reminder | null> => {
+      if (!isConnected) return null;
+      try {
+        const response = await fetch(`${API_BASE}/reminders`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(reminder),
+        });
+        const data = await response.json();
+        if (data.ok && data.reminder) {
+          setReminders((prev) => [...prev, data.reminder]);
+          return data.reminder;
+        }
+        return null;
+      } catch {
+        return null;
+      }
+    },
+    [isConnected]
+  );
+
+  const updateReminder = useCallback(
+    async (id: string, updates: Partial<Reminder>): Promise<Reminder | null> => {
+      if (!isConnected) return null;
+      try {
+        const response = await fetch(`${API_BASE}/reminders/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updates),
+        });
+        const data = await response.json();
+        if (data.ok) {
+          // Refetch all reminders to pick up any new recurring ones
+          const refetch = await fetch(`${API_BASE}/reminders`);
+          const refetchData = await refetch.json();
+          setReminders(refetchData.reminders || []);
+          return data.reminder;
+        }
+        return null;
+      } catch {
+        return null;
+      }
+    },
+    [isConnected]
+  );
+
+  const deleteReminder = useCallback(
+    async (id: string): Promise<boolean> => {
+      if (!isConnected) return false;
+      try {
+        const response = await fetch(`${API_BASE}/reminders/${id}`, { method: 'DELETE' });
+        const data = await response.json();
+        if (data.ok) {
+          setReminders((prev) => prev.filter((r) => r.id !== id));
+          return true;
+        }
+        return false;
+      } catch {
+        return false;
+      }
+    },
+    [isConnected]
+  );
+
+  // Todo operations
+  const [todos, setTodos] = useState<Todo[]>([]);
+
+  // Fetch todos on connect
+  useEffect(() => {
+    if (!isConnected) return;
+    fetch(`${API_BASE}/todos`)
+      .then((r) => r.json())
+      .then((data) => setTodos(data.todos || []))
+      .catch(() => {});
+  }, [isConnected]);
+
+  const addTodo = useCallback(
+    async (title: string): Promise<Todo | null> => {
+      if (!isConnected) return null;
+      try {
+        const response = await fetch(`${API_BASE}/todos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title }),
+        });
+        const data = await response.json();
+        if (data.ok && data.todo) {
+          setTodos((prev) => [...prev, data.todo]);
+          return data.todo;
+        }
+        return null;
+      } catch {
+        return null;
+      }
+    },
+    [isConnected]
+  );
+
+  const updateTodo = useCallback(
+    async (id: string, updates: Partial<Todo>): Promise<Todo | null> => {
+      if (!isConnected) return null;
+      try {
+        const response = await fetch(`${API_BASE}/todos/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updates),
+        });
+        const data = await response.json();
+        if (data.ok && data.todo) {
+          setTodos((prev) => prev.map((t) => (t.id === id ? data.todo : t)));
+          return data.todo;
+        }
+        return null;
+      } catch {
+        return null;
+      }
+    },
+    [isConnected]
+  );
+
+  const deleteTodo = useCallback(
+    async (id: string): Promise<boolean> => {
+      if (!isConnected) return false;
+      try {
+        const response = await fetch(`${API_BASE}/todos/${id}`, { method: 'DELETE' });
+        const data = await response.json();
+        if (data.ok) {
+          setTodos((prev) => prev.filter((t) => t.id !== id));
+          return true;
+        }
+        return false;
+      } catch {
+        return false;
+      }
+    },
+    [isConnected]
+  );
+
   return {
     isConnected,
     dataDir,
     isScanning,
     error,
     entities,
+    reminders,
     checkConnection,
     getYearsForEntity,
     scanTaxYear,
@@ -781,5 +935,12 @@ export function useFileSystemServer() {
     removeEntity,
     updateEntity,
     moveFile,
+    addReminder,
+    updateReminder,
+    deleteReminder,
+    todos,
+    addTodo,
+    updateTodo,
+    deleteTodo,
   };
 }

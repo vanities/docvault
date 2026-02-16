@@ -33,7 +33,7 @@ interface DocumentViewerProps {
   availableYears?: number[];
 }
 
-const API_BASE = 'http://localhost:3005/api';
+const API_BASE = '/api';
 
 function getFileUrl(entity: string, filePath: string): string {
   return `${API_BASE}/file/${entity}/${encodeURIComponent(filePath)}`;

@@ -12,7 +12,7 @@ interface SettingsData {
   keyHint?: string; // Last 4 chars of the key
 }
 
-const API_BASE = 'http://localhost:3005/api';
+const API_BASE = '/api';
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [anthropicKey, setAnthropicKey] = useState('');

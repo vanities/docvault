@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Upload, FolderOpen, RefreshCw } from 'lucide-react';
+import { TodoList } from '../Todos/TodoList';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import { DocumentList } from '../Documents/DocumentList';
@@ -89,6 +90,9 @@ export function AllFilesView() {
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
+      {/* Todos */}
+      <TodoList />
+
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold text-surface-950">All Files</h2>

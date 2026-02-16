@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useFileSystemServer, type EntityConfig } from '../hooks/useFileSystemServer';
-import type { Entity, TaxDocument, DocumentType, ExpenseCategory } from '../types';
+import type { Entity, TaxDocument, DocumentType, ExpenseCategory, Reminder, Todo } from '../types';
 
 // Navigation views
 export type NavView = 'tax-year' | 'business-docs' | 'all-files' | 'settings';
@@ -107,6 +107,20 @@ interface AppContextValue {
     toYear: number
   ) => Promise<boolean>;
   getYearsForEntity: (entity: Entity) => Promise<number[]>;
+
+  // Reminders
+  reminders: Reminder[];
+  addReminder: (
+    reminder: Omit<Reminder, 'id' | 'createdAt' | 'updatedAt' | 'status'>
+  ) => Promise<Reminder | null>;
+  updateReminder: (id: string, updates: Partial<Reminder>) => Promise<Reminder | null>;
+  deleteReminder: (id: string) => Promise<boolean>;
+
+  // Todos
+  todos: Todo[];
+  addTodo: (title: string) => Promise<Todo | null>;
+  updateTodo: (id: string, updates: Partial<Todo>) => Promise<Todo | null>;
+  deleteTodo: (id: string) => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -174,7 +188,7 @@ export function AppProvider({ children }: AppProviderProps) {
     debounceRef.current = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const res = await fetch(`http://localhost:3005/api/search?q=${encodeURIComponent(query)}`);
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
         const data = await res.json();
         setSearchResults(data.files || []);
       } catch {
@@ -210,6 +224,14 @@ export function AppProvider({ children }: AppProviderProps) {
     removeEntity,
     updateEntity,
     moveFile,
+    reminders,
+    addReminder,
+    updateReminder,
+    deleteReminder,
+    todos,
+    addTodo,
+    updateTodo,
+    deleteTodo,
   } = useFileSystemServer();
 
   // Global processing state
@@ -308,6 +330,18 @@ export function AppProvider({ children }: AppProviderProps) {
     updateEntity,
     moveFile,
     getYearsForEntity,
+
+    // Reminders
+    reminders,
+    addReminder,
+    updateReminder,
+    deleteReminder,
+
+    // Todos
+    todos,
+    addTodo,
+    updateTodo,
+    deleteTodo,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

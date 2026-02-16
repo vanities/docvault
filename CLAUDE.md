@@ -38,6 +38,7 @@ docvault/
 │   │   ├── AllFiles/      # All files view (flat listing for non-tax entities)
 │   │   ├── Settings/      # Settings view with API key and entity management
 │   │   ├── Documents/     # Document list, card, viewer, upload zone
+│   │   ├── Reminders/     # Reminder banner for deadlines (tax filings, annual reports)
 │   │   └── Summary/       # Income and expense summaries
 │   ├── contexts/
 │   │   └── AppContext.tsx # Central state management
@@ -71,23 +72,27 @@ docvault/
 
 All endpoints are entity-aware:
 
-| Method | Endpoint                                 | Description                    |
-| ------ | ---------------------------------------- | ------------------------------ |
-| GET    | `/api/status`                            | Server status and entity list  |
-| GET    | `/api/entities`                          | List all entities              |
-| POST   | `/api/entities`                          | Add new entity                 |
-| DELETE | `/api/entities/:id`                      | Remove entity                  |
-| GET    | `/api/years/:entity`                     | List tax years for entity      |
-| GET    | `/api/files/:entity/:year`               | List files for entity/year     |
-| GET    | `/api/files-all/:entity`                 | List all files recursively     |
-| GET    | `/api/file/:entity/:path`                | Serve file content             |
-| DELETE | `/api/file/:entity/:path`                | Delete file                    |
-| POST   | `/api/upload?entity=X&path=Y&filename=Z` | Upload file                    |
-| POST   | `/api/mkdir`                             | Create directory               |
-| POST   | `/api/parse/:entity/:path`               | Parse single file              |
-| POST   | `/api/parse-all/:entity/:year`           | Parse all files in year        |
-| POST   | `/api/move`                              | Move file                      |
-| GET    | `/api/tax-summary/:year`                 | Consolidated tax data for year |
+| Method | Endpoint                                 | Description                                      |
+| ------ | ---------------------------------------- | ------------------------------------------------ |
+| GET    | `/api/status`                            | Server status and entity list                    |
+| GET    | `/api/entities`                          | List all entities                                |
+| POST   | `/api/entities`                          | Add new entity                                   |
+| DELETE | `/api/entities/:id`                      | Remove entity                                    |
+| GET    | `/api/years/:entity`                     | List tax years for entity                        |
+| GET    | `/api/files/:entity/:year`               | List files for entity/year                       |
+| GET    | `/api/files-all/:entity`                 | List all files recursively                       |
+| GET    | `/api/file/:entity/:path`                | Serve file content                               |
+| DELETE | `/api/file/:entity/:path`                | Delete file                                      |
+| POST   | `/api/upload?entity=X&path=Y&filename=Z` | Upload file                                      |
+| POST   | `/api/mkdir`                             | Create directory                                 |
+| POST   | `/api/parse/:entity/:path`               | Parse single file                                |
+| POST   | `/api/parse-all/:entity/:year`           | Parse all files in year                          |
+| POST   | `/api/move`                              | Move file                                        |
+| GET    | `/api/tax-summary/:year`                 | Consolidated tax data for year                   |
+| GET    | `/api/reminders?entity=X`                | List reminders (optional entity filter)          |
+| POST   | `/api/reminders`                         | Create reminder                                  |
+| PUT    | `/api/reminders/:id`                     | Update reminder (auto-creates next if recurring) |
+| DELETE | `/api/reminders/:id`                     | Delete reminder                                  |
 
 ## Entities
 

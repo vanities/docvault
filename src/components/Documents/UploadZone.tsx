@@ -106,7 +106,7 @@ export function UploadZone({ entity, taxYear, onUpload, disabled = false }: Uplo
       try {
         const arrayBuffer = await file.arrayBuffer();
         const response = await fetch(
-          `http://localhost:3005/api/suggest-filename?filename=${encodeURIComponent(file.name)}&year=${taxYear}`,
+          `/api/suggest-filename?filename=${encodeURIComponent(file.name)}&year=${taxYear}`,
           {
             method: 'POST',
             body: arrayBuffer,

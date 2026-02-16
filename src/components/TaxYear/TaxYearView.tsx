@@ -4,6 +4,8 @@ import { useAppContext, type TabType } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import { useDocuments } from '../../hooks/useDocuments';
 import { QuickStats } from '../Dashboard/QuickStats';
+import { ReminderBanner } from '../Reminders/ReminderBanner';
+import { TodoList } from '../Todos/TodoList';
 import { UploadZone } from '../Documents/UploadZone';
 import { DocumentList } from '../Documents/DocumentList';
 import { IncomeSummary } from '../Summary/IncomeSummary';
@@ -249,6 +251,12 @@ export function TaxYearView() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-6">
+      {/* Reminders */}
+      <ReminderBanner />
+
+      {/* Todos */}
+      <TodoList />
+
       {/* Quick Stats */}
       <div className="mb-6">
         <QuickStats

@@ -112,6 +112,17 @@ function getMimeType(filename: string): string {
     xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     xls: 'application/vnd.ms-excel',
     txf: 'text/plain',
+    html: 'text/html',
+    js: 'application/javascript',
+    mjs: 'application/javascript',
+    css: 'text/css',
+    svg: 'image/svg+xml',
+    ico: 'image/x-icon',
+    woff: 'font/woff',
+    woff2: 'font/woff2',
+    ttf: 'font/ttf',
+    eot: 'application/vnd.ms-fontobject',
+    map: 'application/json',
     doc: 'application/msword',
     docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     ods: 'application/vnd.oasis.opendocument.spreadsheet',
@@ -212,6 +223,7 @@ async function getEntityPath(entityId: string): Promise<string | null> {
 
 const PARSED_DATA_FILE = path.join(DATA_DIR, '.docvault-parsed.json');
 const LEGACY_PARSED_DATA_FILE = path.join(DATA_DIR, '.taxvault-parsed.json');
+const REMINDERS_FILE = path.join(DATA_DIR, '.docvault-reminders.json');
 
 // Migrate legacy parsed data file on first load
 let parsedDataMigrated = false;
@@ -251,6 +263,62 @@ async function _getParsedDataForFile(filePath: string): Promise<ParsedData | nul
   return allData[filePath] || null;
 }
 void _getParsedDataForFile;
+
+// ============================================================================
+// Reminders Storage
+// ============================================================================
+
+interface Reminder {
+  id: string;
+  entityId: string;
+  title: string;
+  dueDate: string; // ISO date (YYYY-MM-DD)
+  recurrence?: 'yearly' | 'monthly' | 'quarterly' | null;
+  status: 'pending' | 'completed' | 'dismissed';
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+async function loadReminders(): Promise<Reminder[]> {
+  try {
+    const content = await fs.readFile(REMINDERS_FILE, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return [];
+  }
+}
+
+async function saveReminders(reminders: Reminder[]): Promise<void> {
+  await fs.writeFile(REMINDERS_FILE, JSON.stringify(reminders, null, 2));
+}
+
+// ============================================================================
+// Todos Storage
+// ============================================================================
+
+const TODOS_FILE = path.join(DATA_DIR, '.docvault-todos.json');
+
+interface Todo {
+  id: string;
+  title: string;
+  status: 'pending' | 'completed';
+  createdAt: string;
+  updatedAt: string;
+}
+
+async function loadTodos(): Promise<Todo[]> {
+  try {
+    const content = await fs.readFile(TODOS_FILE, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return [];
+  }
+}
+
+async function saveTodos(todos: Todo[]): Promise<void> {
+  await fs.writeFile(TODOS_FILE, JSON.stringify(todos, null, 2));
+}
 
 // Queue to serialize writes to parsed data file
 let parsedDataWriteQueue: Promise<void> = Promise.resolve();
@@ -1024,6 +1092,190 @@ async function handleRequest(req: Request): Promise<Response> {
     }
   }
 
+  // ========================================================================
+  // Reminders API
+  // ========================================================================
+
+  // GET /api/reminders - Get all reminders (optionally filter by entity)
+  if (pathname === '/api/reminders' && req.method === 'GET') {
+    const entityFilter = url.searchParams.get('entity');
+    let reminders = await loadReminders();
+    if (entityFilter) {
+      reminders = reminders.filter((r) => r.entityId === entityFilter);
+    }
+    return jsonResponse({ reminders });
+  }
+
+  // POST /api/reminders - Create a reminder
+  if (pathname === '/api/reminders' && req.method === 'POST') {
+    const body = await req.json();
+    const { entityId, title, dueDate, recurrence, notes } = body;
+
+    if (!entityId || !title || !dueDate) {
+      return jsonResponse({ error: 'Missing entityId, title, or dueDate' }, 400);
+    }
+
+    const now = new Date().toISOString();
+    const reminder: Reminder = {
+      id: crypto.randomUUID(),
+      entityId,
+      title,
+      dueDate,
+      recurrence: recurrence || null,
+      status: 'pending',
+      notes: notes || undefined,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const reminders = await loadReminders();
+    reminders.push(reminder);
+    await saveReminders(reminders);
+
+    return jsonResponse({ ok: true, reminder });
+  }
+
+  // PUT /api/reminders/:id - Update a reminder
+  const reminderUpdateMatch = pathname.match(/^\/api\/reminders\/([^/]+)$/);
+  if (reminderUpdateMatch && req.method === 'PUT') {
+    const reminderId = reminderUpdateMatch[1];
+    const body = await req.json();
+
+    const reminders = await loadReminders();
+    const idx = reminders.findIndex((r) => r.id === reminderId);
+    if (idx === -1) {
+      return jsonResponse({ error: 'Reminder not found' }, 404);
+    }
+
+    const { title, dueDate, recurrence, status, notes } = body;
+    if (title !== undefined) reminders[idx].title = title;
+    if (dueDate !== undefined) reminders[idx].dueDate = dueDate;
+    if (recurrence !== undefined) reminders[idx].recurrence = recurrence;
+    if (status !== undefined) reminders[idx].status = status;
+    if (notes !== undefined) reminders[idx].notes = notes;
+    reminders[idx].updatedAt = new Date().toISOString();
+
+    // If completing a recurring reminder, create the next one
+    if (status === 'completed' && reminders[idx].recurrence) {
+      const current = new Date(reminders[idx].dueDate);
+      let nextDate: Date;
+      switch (reminders[idx].recurrence) {
+        case 'yearly':
+          nextDate = new Date(current);
+          nextDate.setFullYear(nextDate.getFullYear() + 1);
+          break;
+        case 'quarterly':
+          nextDate = new Date(current);
+          nextDate.setMonth(nextDate.getMonth() + 3);
+          break;
+        case 'monthly':
+          nextDate = new Date(current);
+          nextDate.setMonth(nextDate.getMonth() + 1);
+          break;
+        default:
+          nextDate = current;
+      }
+
+      const now = new Date().toISOString();
+      reminders.push({
+        id: crypto.randomUUID(),
+        entityId: reminders[idx].entityId,
+        title: reminders[idx].title,
+        dueDate: nextDate.toISOString().split('T')[0],
+        recurrence: reminders[idx].recurrence,
+        status: 'pending',
+        notes: reminders[idx].notes,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    await saveReminders(reminders);
+    return jsonResponse({ ok: true, reminder: reminders[idx] });
+  }
+
+  // DELETE /api/reminders/:id
+  const reminderDeleteMatch = pathname.match(/^\/api\/reminders\/([^/]+)$/);
+  if (reminderDeleteMatch && req.method === 'DELETE') {
+    const reminderId = reminderDeleteMatch[1];
+    const reminders = await loadReminders();
+    const filtered = reminders.filter((r) => r.id !== reminderId);
+    if (filtered.length === reminders.length) {
+      return jsonResponse({ error: 'Reminder not found' }, 404);
+    }
+    await saveReminders(filtered);
+    return jsonResponse({ ok: true });
+  }
+
+  // ========================================================================
+  // Todos API
+  // ========================================================================
+
+  // GET /api/todos - Get all todos
+  if (pathname === '/api/todos' && req.method === 'GET') {
+    const todos = await loadTodos();
+    return jsonResponse({ todos });
+  }
+
+  // POST /api/todos - Create a todo
+  if (pathname === '/api/todos' && req.method === 'POST') {
+    const body = await req.json();
+    const { title } = body;
+
+    if (!title) {
+      return jsonResponse({ error: 'Missing title' }, 400);
+    }
+
+    const now = new Date().toISOString();
+    const todo: Todo = {
+      id: crypto.randomUUID(),
+      title,
+      status: 'pending',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const todos = await loadTodos();
+    todos.push(todo);
+    await saveTodos(todos);
+
+    return jsonResponse({ ok: true, todo });
+  }
+
+  // PUT /api/todos/:id - Update a todo
+  const todoUpdateMatch = pathname.match(/^\/api\/todos\/([^/]+)$/);
+  if (todoUpdateMatch && req.method === 'PUT') {
+    const todoId = todoUpdateMatch[1];
+    const body = await req.json();
+
+    const todos = await loadTodos();
+    const idx = todos.findIndex((t) => t.id === todoId);
+    if (idx === -1) {
+      return jsonResponse({ error: 'Todo not found' }, 404);
+    }
+
+    const { title, status } = body;
+    if (title !== undefined) todos[idx].title = title;
+    if (status !== undefined) todos[idx].status = status;
+    todos[idx].updatedAt = new Date().toISOString();
+
+    await saveTodos(todos);
+    return jsonResponse({ ok: true, todo: todos[idx] });
+  }
+
+  // DELETE /api/todos/:id
+  const todoDeleteMatch = pathname.match(/^\/api\/todos\/([^/]+)$/);
+  if (todoDeleteMatch && req.method === 'DELETE') {
+    const todoId = todoDeleteMatch[1];
+    const todos = await loadTodos();
+    const filtered = todos.filter((t) => t.id !== todoId);
+    if (filtered.length === todos.length) {
+      return jsonResponse({ error: 'Todo not found' }, 404);
+    }
+    await saveTodos(filtered);
+    return jsonResponse({ ok: true });
+  }
+
   // GET /api/search?q=query - Search all files across all entities and years
   if (pathname === '/api/search' && req.method === 'GET') {
     const query = url.searchParams.get('q')?.toLowerCase();
@@ -1271,6 +1523,52 @@ Return: { "naming": {...}, "parsedData": {...} }`,
     } catch (err) {
       console.error('[AI Filename] Error:', err);
       return jsonResponse({ error: 'Failed to analyze file', details: String(err) }, 500);
+    }
+  }
+
+  // ========================================================================
+  // Static file serving (built frontend)
+  // ========================================================================
+
+  // Only serve static files for non-API routes
+  if (!pathname.startsWith('/api/')) {
+    const STATIC_DIR = path.join(__dirname, '..', 'dist');
+
+    try {
+      // Try to serve the exact file requested
+      let filePath = path.join(STATIC_DIR, pathname);
+
+      // Security: ensure we're within STATIC_DIR
+      const resolvedPath = path.resolve(filePath);
+      if (!resolvedPath.startsWith(path.resolve(STATIC_DIR))) {
+        return jsonResponse({ error: 'Access denied' }, 403);
+      }
+
+      let file = Bun.file(filePath);
+      if (await file.exists()) {
+        return new Response(file, {
+          headers: {
+            'Content-Type': getMimeType(filePath) || 'application/octet-stream',
+            'Cache-Control': pathname.includes('/assets/')
+              ? 'public, max-age=31536000, immutable'
+              : 'no-cache',
+          },
+        });
+      }
+
+      // SPA fallback: serve index.html for client-side routes
+      filePath = path.join(STATIC_DIR, 'index.html');
+      file = Bun.file(filePath);
+      if (await file.exists()) {
+        return new Response(file, {
+          headers: {
+            'Content-Type': 'text/html',
+            'Cache-Control': 'no-cache',
+          },
+        });
+      }
+    } catch {
+      // Static dir doesn't exist (dev mode) — fall through to 404
     }
   }
 
