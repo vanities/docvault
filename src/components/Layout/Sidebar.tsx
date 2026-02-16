@@ -144,7 +144,7 @@ function EntityButton({
       onClick={onClick}
       disabled={isProcessing}
       className={`
-        w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-all duration-150 text-left
+        w-full flex items-center gap-2.5 px-2.5 py-3 md:py-2 rounded-lg transition-all duration-150 text-left
         disabled:opacity-40 disabled:cursor-not-allowed
         ${
           isSelected
@@ -220,9 +220,10 @@ function SyncIndicator() {
 
 interface SidebarProps {
   onAddEntity?: () => void;
+  onClose?: () => void;
 }
 
-export function Sidebar({ onAddEntity }: SidebarProps) {
+export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
   const {
     selectedEntity,
     setSelectedEntity,
@@ -261,10 +262,12 @@ export function Sidebar({ onAddEntity }: SidebarProps) {
     ) {
       setActiveView('tax-year');
     }
+    onClose?.();
   };
 
   const handleViewClick = (view: NavView) => {
     setActiveView(view);
+    onClose?.();
   };
 
   return (
@@ -341,7 +344,7 @@ export function Sidebar({ onAddEntity }: SidebarProps) {
             <button
               onClick={onAddEntity}
               disabled={isProcessing}
-              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-surface-600 hover:text-surface-800 hover:bg-surface-200/50 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full flex items-center gap-2.5 px-2.5 py-3 md:py-2 rounded-lg text-surface-600 hover:text-surface-800 hover:bg-surface-200/50 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Plus className="w-4 h-4" />
               <span className="font-medium text-[13px]">Add Entity</span>
@@ -358,7 +361,7 @@ export function Sidebar({ onAddEntity }: SidebarProps) {
             {/* Tax Year view button with year stepper */}
             <div
               className={`
-                w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-all duration-150
+                w-full flex items-center gap-2.5 px-2.5 py-3 md:py-2 rounded-lg transition-all duration-150
                 ${
                   activeView === 'tax-year'
                     ? 'bg-accent-500/10 text-accent-400 glow-emerald'
@@ -387,7 +390,7 @@ export function Sidebar({ onAddEntity }: SidebarProps) {
                     isProcessing ||
                     availableYears.indexOf(selectedYear) >= availableYears.length - 1
                   }
-                  className="p-0.5 rounded hover:bg-surface-300/40 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="p-1.5 md:p-0.5 rounded hover:bg-surface-300/40 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <ChevronLeft className="w-3 h-3" />
                 </button>
@@ -401,7 +404,7 @@ export function Sidebar({ onAddEntity }: SidebarProps) {
                     if (idx > 0) setSelectedYear(availableYears[idx - 1]);
                   }}
                   disabled={isProcessing || availableYears.indexOf(selectedYear) <= 0}
-                  className="p-0.5 rounded hover:bg-surface-300/40 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="p-1.5 md:p-0.5 rounded hover:bg-surface-300/40 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <ChevronRight className="w-3 h-3" />
                 </button>
@@ -413,7 +416,7 @@ export function Sidebar({ onAddEntity }: SidebarProps) {
               onClick={() => handleViewClick('business-docs')}
               disabled={isProcessing}
               className={`
-                w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-all duration-150 text-left
+                w-full flex items-center gap-2.5 px-2.5 py-3 md:py-2 rounded-lg transition-all duration-150 text-left
                 disabled:opacity-40 disabled:cursor-not-allowed
                 ${
                   activeView === 'business-docs'
@@ -433,7 +436,7 @@ export function Sidebar({ onAddEntity }: SidebarProps) {
               onClick={() => handleViewClick('all-files')}
               disabled={isProcessing}
               className={`
-                w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-all duration-150 text-left
+                w-full flex items-center gap-2.5 px-2.5 py-3 md:py-2 rounded-lg transition-all duration-150 text-left
                 disabled:opacity-40 disabled:cursor-not-allowed
                 ${
                   activeView === 'all-files'
@@ -458,7 +461,7 @@ export function Sidebar({ onAddEntity }: SidebarProps) {
           onClick={() => handleViewClick('settings')}
           disabled={isProcessing}
           className={`
-            w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-all duration-150 text-left
+            w-full flex items-center gap-2.5 px-2.5 py-3 md:py-2 rounded-lg transition-all duration-150 text-left
             disabled:opacity-40 disabled:cursor-not-allowed
             ${
               activeView === 'settings'

@@ -1,10 +1,11 @@
-import { RefreshCw, Sparkles, Search, X } from 'lucide-react';
+import { RefreshCw, Sparkles, Search, X, Menu } from 'lucide-react';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 
 export function Header() {
   const {
     dataDir,
+    setSidebarOpen,
     activeView,
     selectedEntity,
     selectedYear,
@@ -59,20 +60,29 @@ export function Header() {
   const showTaxYearControls = activeView === 'tax-year' && !searchActive;
 
   return (
-    <header className="glass-strong h-14 flex items-center px-6 border-b border-border relative z-20">
-      <div className="flex items-center gap-3 flex-1">
+    <header className="glass-strong h-14 flex items-center px-4 md:px-6 gap-3 border-b border-border relative z-20">
+      {/* Hamburger — mobile only */}
+      <button
+        onClick={() => setSidebarOpen(true)}
+        className="md:hidden p-2 -ml-1 text-surface-700 hover:text-surface-900 hover:bg-surface-300/30 rounded-lg transition-colors"
+      >
+        <Menu className="w-5 h-5" />
+      </button>
+
+      {/* Data dir — desktop only */}
+      <div className="hidden md:flex items-center gap-3 flex-1">
         <p className="text-xs text-surface-600 truncate max-w-[300px] font-mono">{dataDir}</p>
       </div>
 
       {/* Search Bar */}
-      <div className="relative flex items-center">
+      <div className="relative flex items-center flex-1 md:flex-none">
         <Search className="absolute left-2.5 w-3.5 h-3.5 text-surface-600 pointer-events-none" />
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search all files..."
-          className="w-56 pl-8 pr-7 py-1.5 text-[13px] bg-surface-200/50 border border-border rounded-lg text-surface-900 placeholder-surface-600 focus:outline-none focus:border-accent-500/50 focus:bg-surface-200/80 transition-all"
+          className="w-full md:w-56 pl-8 pr-7 py-1.5 text-[13px] bg-surface-200/50 border border-border rounded-lg text-surface-900 placeholder-surface-600 focus:outline-none focus:border-accent-500/50 focus:bg-surface-200/80 transition-all"
         />
         {searchQuery && (
           <button
@@ -98,7 +108,7 @@ export function Header() {
             }
           >
             <Sparkles className={`w-3.5 h-3.5 ${isParsing ? 'animate-pulse' : ''}`} />
-            {isParsing ? 'Parsing...' : 'Parse Expenses'}
+            <span className="hidden sm:inline">{isParsing ? 'Parsing...' : 'Parse Expenses'}</span>
           </button>
 
           <button

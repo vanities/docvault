@@ -173,7 +173,7 @@ export function DocumentCard({ document: doc, onUpdate, onDelete, onClick }: Doc
             <div className="relative">
               <button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="p-1 text-surface-600 hover:text-surface-900 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                className="p-2 md:p-1 text-surface-600 hover:text-surface-900 rounded opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
               >
                 <MoreVertical className="w-4 h-4" />
               </button>

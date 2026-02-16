@@ -89,11 +89,11 @@ export function AllFilesView() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-8">
+    <div className="max-w-5xl mx-auto px-4 md:px-6 py-8">
       {/* Todos */}
       <TodoList />
 
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h2 className="text-2xl font-bold text-surface-950">All Files</h2>
           <p className="text-[13px] text-surface-600 mt-1">

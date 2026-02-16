@@ -11,7 +11,15 @@ import { AddEntityModal } from '../Settings/AddEntityModal';
 import { SearchResultsView } from '../Search/SearchResultsView';
 
 export function Layout() {
-  const { isConnected, checkConnection, fsError, activeView, searchActive } = useAppContext();
+  const {
+    isConnected,
+    checkConnection,
+    fsError,
+    activeView,
+    searchActive,
+    sidebarOpen,
+    setSidebarOpen,
+  } = useAppContext();
   const [showAddEntityModal, setShowAddEntityModal] = useState(false);
 
   // Show server connection error if not connected
@@ -70,7 +78,32 @@ export function Layout() {
 
   return (
     <div className="noise flex h-screen bg-surface-0">
-      <Sidebar onAddEntity={() => setShowAddEntityModal(true)} />
+      {/* Desktop Sidebar */}
+      <div className="hidden md:flex">
+        <Sidebar onAddEntity={() => setShowAddEntityModal(true)} />
+      </div>
+
+      {/* Mobile Sidebar Drawer */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 md:hidden">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setSidebarOpen(false)}
+          />
+          {/* Drawer */}
+          <div className="relative w-72 h-full animate-slide-in">
+            <Sidebar
+              onAddEntity={() => {
+                setShowAddEntityModal(true);
+                setSidebarOpen(false);
+              }}
+              onClose={() => setSidebarOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header />
         <main className="flex-1 overflow-auto">{renderContent()}</main>

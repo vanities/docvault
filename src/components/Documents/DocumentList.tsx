@@ -480,7 +480,7 @@ export function DocumentList({
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
         {/* Search */}
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative w-full md:flex-1 md:min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-600" />
           <input
             type="text"

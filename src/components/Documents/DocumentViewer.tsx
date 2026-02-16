@@ -152,7 +152,7 @@ export function DocumentViewer({
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
       {/* Panel */}
-      <div className="relative ml-auto w-full max-w-2xl bg-surface-100 shadow-2xl flex flex-col h-full animate-slide-in border-l border-border">
+      <div className="relative ml-auto w-full md:max-w-2xl bg-surface-100 shadow-2xl flex flex-col h-full animate-slide-in border-l border-border">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">
           <div className="flex items-center gap-3 min-w-0">
@@ -204,7 +204,7 @@ export function DocumentViewer({
         {/* Details */}
         <div className="border-t border-border p-4 space-y-4 max-h-80 overflow-y-auto">
           {/* File Info */}
-          <div className="grid grid-cols-2 gap-3 text-[13px]">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[13px]">
             <div className="flex items-center gap-2 text-surface-700">
               <HardDrive className="w-4 h-4 text-surface-600" />
               <span>{formatFileSize(document.fileSize)}</span>
@@ -255,7 +255,7 @@ export function DocumentViewer({
           {document.parsedData && (
             <div className="bg-surface-200/40 rounded-xl p-4">
               <h3 className="font-medium text-surface-950 mb-3 text-[13px]">Parsed Data</h3>
-              <dl className="grid grid-cols-2 gap-2 text-[13px]">
+              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[13px]">
                 {Object.entries(document.parsedData)
                   .filter(
                     ([key]) => key !== 'parsed' && key !== 'parsedAt' && key !== 'documentType'
@@ -352,7 +352,7 @@ export function DocumentViewer({
         </div>
 
         {/* Actions */}
-        <div className="border-t border-border p-4 flex gap-2">
+        <div className="border-t border-border p-4 flex flex-col sm:flex-row gap-2">
           <button
             onClick={handleDownload}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-surface-300/30 text-surface-800 rounded-xl hover:bg-surface-300/50 transition-all text-[13px] font-medium"

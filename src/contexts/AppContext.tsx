@@ -108,6 +108,10 @@ interface AppContextValue {
   ) => Promise<boolean>;
   getYearsForEntity: (entity: Entity) => Promise<number[]>;
 
+  // Mobile sidebar
+  sidebarOpen: boolean;
+  setSidebarOpen: (open: boolean) => void;
+
   // Reminders
   reminders: Reminder[];
   addReminder: (
@@ -147,9 +151,13 @@ export function AppProvider({ children }: AppProviderProps) {
   });
   const [activeTab, setActiveTab] = useState<TabType>('documents');
 
+  // Mobile sidebar state (declared before callbacks that reference it)
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   const setActiveView = useCallback((view: NavView) => {
     setActiveViewState(view);
     localStorage.setItem('docvault-view', view);
+    setSidebarOpen(false);
   }, []);
 
   // Entity state with localStorage persistence
@@ -241,6 +249,7 @@ export function AppProvider({ children }: AppProviderProps) {
   const setSelectedEntity = useCallback((entity: Entity) => {
     setSelectedEntityState(entity);
     localStorage.setItem('docvault-entity', entity);
+    setSidebarOpen(false);
   }, []);
 
   // Persist year selection
@@ -330,6 +339,10 @@ export function AppProvider({ children }: AppProviderProps) {
     updateEntity,
     moveFile,
     getYearsForEntity,
+
+    // Mobile sidebar
+    sidebarOpen,
+    setSidebarOpen,
 
     // Reminders
     reminders,

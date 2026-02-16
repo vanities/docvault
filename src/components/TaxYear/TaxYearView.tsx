@@ -250,7 +250,7 @@ export function TaxYearView() {
   ];
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-6">
+    <div className="max-w-7xl mx-auto px-4 md:px-6 py-6">
       {/* Reminders */}
       <ReminderBanner />
 
@@ -280,13 +280,13 @@ export function TaxYearView() {
 
       {/* Tab Navigation */}
       <div className="border-b border-border mb-6">
-        <nav className="flex gap-6">
+        <nav className="flex gap-4 md:gap-6">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`
-                pb-3 px-1 text-[13px] font-medium border-b-2 transition-all duration-200
+                pb-3 pt-1 md:pt-0 px-1 text-[13px] font-medium border-b-2 transition-all duration-200
                 ${
                   activeTab === tab.id
                     ? 'border-accent-400 text-accent-400'

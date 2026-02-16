@@ -330,7 +330,7 @@ export function SettingsView() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-8">
+    <div className="max-w-3xl mx-auto px-4 md:px-6 py-8">
       <h2 className="text-2xl font-bold text-surface-950 mb-8">Settings</h2>
 
       {/* API Key Section */}
