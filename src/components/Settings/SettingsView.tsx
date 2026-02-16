@@ -25,8 +25,11 @@ import {
   Star,
   Zap,
   Globe,
+  Cloud,
+  RefreshCw,
   type LucideIcon,
 } from 'lucide-react';
+import type { SyncStatus } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
@@ -138,6 +141,32 @@ function getEntityIcon(entity: EntityConfig): LucideIcon {
   return Building2;
 }
 
+function formatRelativeTime(isoStr: string): string {
+  const date = new Date(isoStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.round(diffMs / 60000);
+
+  if (diffMin < 0) {
+    // Future
+    const futureMin = Math.abs(diffMin);
+    if (futureMin < 1) return 'any moment';
+    if (futureMin < 60) return `in ${futureMin}m`;
+    return `in ${Math.round(futureMin / 60)}h`;
+  }
+
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export function SettingsView() {
   const { entities, updateEntity, removeEntity, selectedEntity, setSelectedEntity } =
     useAppContext();
@@ -153,6 +182,9 @@ export function SettingsView() {
   const [keySource, setKeySource] = useState<'settings' | 'env' | undefined>();
   const [keyHint, setKeyHint] = useState<string | undefined>();
 
+  // Sync status state
+  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
+
   // Entity editing state
   const [editingEntity, setEditingEntity] = useState<EntityConfig | null>(null);
   const [editName, setEditName] = useState('');
@@ -161,10 +193,23 @@ export function SettingsView() {
   const [editDescription, setEditDescription] = useState('');
   const [isEntitySaving, setIsEntitySaving] = useState(false);
 
-  // Load settings on mount
+  // Load settings and sync status on mount
   useEffect(() => {
     loadSettings();
+    loadSyncStatus();
+    const interval = setInterval(loadSyncStatus, 30000); // Poll every 30s
+    return () => clearInterval(interval);
   }, []);
+
+  const loadSyncStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/sync-status`);
+      const data: SyncStatus = await res.json();
+      setSyncStatus(data);
+    } catch {
+      setSyncStatus(null);
+    }
+  };
 
   const loadSettings = async () => {
     setIsLoading(true);
@@ -417,6 +462,106 @@ export function SettingsView() {
                 <span className="text-[13px] text-danger-400">Failed to save settings</span>
               </div>
             )}
+          </div>
+        )}
+      </section>
+
+      {/* Dropbox Sync Status */}
+      <section className="glass-card rounded-xl p-6 mb-8">
+        <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
+          <Cloud className="w-5 h-5" />
+          Dropbox Sync
+        </h3>
+
+        {syncStatus === null || syncStatus.status === 'unknown' ? (
+          <div className="flex items-center gap-3 p-4 bg-surface-200/30 border border-surface-400/20 rounded-xl">
+            <div className="w-2.5 h-2.5 rounded-full bg-surface-500" />
+            <div>
+              <p className="text-[13px] text-surface-700">Not configured</p>
+              <p className="text-[11px] text-surface-500">
+                Sync status file not found. Sync runs via cron on the NAS.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {/* Status indicator */}
+            <div
+              className={`flex items-center gap-3 p-4 rounded-xl border ${
+                syncStatus.status === 'ok'
+                  ? 'bg-emerald-500/8 border-emerald-500/20'
+                  : syncStatus.status === 'syncing'
+                    ? 'bg-blue-500/8 border-blue-500/20'
+                    : syncStatus.status === 'error'
+                      ? 'bg-red-500/10 border-red-500/25'
+                      : 'bg-surface-200/30 border-surface-400/20'
+              }`}
+            >
+              <div
+                className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                  syncStatus.status === 'ok'
+                    ? 'bg-emerald-400'
+                    : syncStatus.status === 'syncing'
+                      ? 'bg-blue-400 animate-pulse'
+                      : syncStatus.status === 'error'
+                        ? 'bg-red-400'
+                        : 'bg-surface-500'
+                }`}
+              />
+              <div className="flex-1">
+                <p
+                  className={`text-[13px] font-medium ${
+                    syncStatus.status === 'ok'
+                      ? 'text-emerald-400'
+                      : syncStatus.status === 'syncing'
+                        ? 'text-blue-400'
+                        : syncStatus.status === 'error'
+                          ? 'text-red-400'
+                          : 'text-surface-700'
+                  }`}
+                >
+                  {syncStatus.status === 'ok'
+                    ? 'Synced to Dropbox'
+                    : syncStatus.status === 'syncing'
+                      ? 'Syncing...'
+                      : syncStatus.status === 'error'
+                        ? `Sync errors (${syncStatus.errors})`
+                        : 'Unknown'}
+                </p>
+                {syncStatus.status === 'ok' && (
+                  <p className="text-[11px] text-surface-600">
+                    {syncStatus.entitiesSynced} entities synced
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={loadSyncStatus}
+                className="p-1.5 rounded-lg hover:bg-surface-300/30 text-surface-600 hover:text-surface-800 transition-colors"
+                title="Refresh status"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Timing details */}
+            <div className="grid grid-cols-2 gap-3">
+              {syncStatus.lastSync && (
+                <div className="p-3 bg-surface-200/20 rounded-lg">
+                  <p className="text-[11px] text-surface-500 mb-0.5">Last sync</p>
+                  <p className="text-[13px] text-surface-800">
+                    {formatRelativeTime(syncStatus.lastSync)}
+                  </p>
+                </div>
+              )}
+              {syncStatus.nextSync && (
+                <div className="p-3 bg-surface-200/20 rounded-lg">
+                  <p className="text-[11px] text-surface-500 mb-0.5">Next sync</p>
+                  <p className="text-[13px] text-surface-800">
+                    {formatRelativeTime(syncStatus.nextSync)}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </section>

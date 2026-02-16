@@ -1364,6 +1364,23 @@ async function handleRequest(req: Request): Promise<Response> {
     }
   }
 
+  // GET /api/sync-status - Get Dropbox sync status
+  if (pathname === '/api/sync-status' && req.method === 'GET') {
+    try {
+      const statusPath = path.join(DATA_DIR, '.docvault-sync-status.json');
+      const content = await fs.readFile(statusPath, 'utf-8');
+      return jsonResponse(JSON.parse(content));
+    } catch {
+      return jsonResponse({
+        status: 'unknown',
+        lastSync: null,
+        errors: 0,
+        entitiesSynced: 0,
+        nextSync: null,
+      });
+    }
+  }
+
   // POST /api/save-parsed - Save parsed data for a file
   if (pathname === '/api/save-parsed' && req.method === 'POST') {
     try {

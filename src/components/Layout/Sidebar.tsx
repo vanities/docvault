@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import {
   Building2,
   User,
@@ -22,10 +23,13 @@ import {
   Zap,
   Globe,
   Files,
+  Cloud,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { useAppContext, type NavView } from '../../contexts/AppContext';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import type { SyncStatus } from '../../types';
 
 // Default icons for known entities
 const DEFAULT_ENTITY_ICONS: Record<string, string> = {
@@ -152,6 +156,65 @@ function EntityButton({
       {renderEntityIcon(entity, iconClassName)}
       <span className="font-medium text-[13px] truncate">{entity.name}</span>
     </button>
+  );
+}
+
+function formatShortRelative(isoStr: string): string {
+  const diffMin = Math.round((Date.now() - new Date(isoStr).getTime()) / 60000);
+  if (diffMin < 0) return `in ${Math.abs(diffMin)}m`;
+  if (diffMin < 1) return 'now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const hr = Math.round(diffMin / 60);
+  if (hr < 24) return `${hr}h ago`;
+  return new Date(isoStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function SyncIndicator() {
+  const [sync, setSync] = useState<SyncStatus | null>(null);
+
+  useEffect(() => {
+    const load = () =>
+      fetch('/api/sync-status')
+        .then((r) => r.json())
+        .then(setSync)
+        .catch(() => setSync(null));
+    load();
+    const id = setInterval(load, 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!sync || sync.status === 'unknown') return null;
+
+  const dotColor =
+    sync.status === 'ok'
+      ? 'bg-emerald-400'
+      : sync.status === 'syncing'
+        ? 'bg-blue-400 animate-pulse'
+        : sync.status === 'error'
+          ? 'bg-red-400'
+          : 'bg-surface-500';
+
+  return (
+    <div
+      className="flex items-center gap-2.5 px-2.5 py-1.5 text-surface-600"
+      title={
+        sync.lastSync ? `Last synced: ${new Date(sync.lastSync).toLocaleString()}` : 'Dropbox sync'
+      }
+    >
+      <div className="relative">
+        <Cloud className="w-4 h-4" />
+        <div
+          className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ${dotColor} ring-1 ring-surface-50`}
+        />
+      </div>
+      <span className="text-[11px]">
+        {sync.status === 'syncing'
+          ? 'Syncing...'
+          : sync.lastSync
+            ? formatShortRelative(sync.lastSync)
+            : 'No sync yet'}
+      </span>
+    </div>
   );
 }
 
@@ -388,8 +451,9 @@ export function Sidebar({ onAddEntity }: SidebarProps) {
         </div>
       </div>
 
-      {/* Settings Section - Fixed at bottom */}
-      <div className="border-t border-border p-3">
+      {/* Footer — Sync + Settings */}
+      <div className="border-t border-border p-3 space-y-1">
+        <SyncIndicator />
         <button
           onClick={() => handleViewClick('settings')}
           disabled={isProcessing}

@@ -20,7 +20,8 @@ bun run dev     # Frontend on http://localhost:5173
 
 - **Frontend:** Vite + React + TypeScript + Tailwind CSS
 - **Backend:** Bun native server (not Express)
-- **Storage:** Local filesystem with symlinks to Dropbox
+- **Storage:** Local filesystem (symlinks to Dropbox locally, direct volume mount in Docker)
+- **Infrastructure:** Docker (multi-stage build), GitHub Actions → GHCR, rclone for Dropbox sync
 
 ## Project Structure
 
@@ -64,6 +65,11 @@ docvault/
 │   ├── education -> Dropbox/important/MTSU Transcript
 │   ├── personality -> Dropbox/important/personality
 │   └── resume -> Dropbox/important/Resume
+├── Dockerfile             # Multi-stage build (Vite build → Bun slim runtime)
+├── docker-compose.yml     # Unraid-friendly compose file
+├── .dockerignore
+├── .github/workflows/
+│   └── docker.yml         # GHCR auto-publish (amd64 + arm64) on push to main
 ├── NAMING_STANDARD.md     # File naming conventions
 └── package.json
 ```
@@ -93,6 +99,7 @@ All endpoints are entity-aware:
 | POST   | `/api/reminders`                         | Create reminder                                  |
 | PUT    | `/api/reminders/:id`                     | Update reminder (auto-creates next if recurring) |
 | DELETE | `/api/reminders/:id`                     | Delete reminder                                  |
+| GET    | `/api/sync-status`                       | Dropbox sync status (from NAS cron job)          |
 
 ## Entities
 
@@ -131,15 +138,37 @@ Configured in `server/config.json`. Two types:
 - `src/components/Documents/UploadZone.tsx` - Upload with auto-naming
 - `src/utils/filenaming.ts` - Generates standardized filenames
 - `NAMING_STANDARD.md` - File naming conventions documentation
+- `Dockerfile` - Multi-stage Docker build
+- `docker-compose.yml` - Unraid-friendly compose file
+- `.github/workflows/docker.yml` - GHCR auto-publish workflow
 
 ## Development Notes
 
 - Server uses Bun's native `Bun.serve()` (not Express)
 - Hot-reload enabled via `bun --watch`
-- Files stored in Dropbox via symlinks in `data/` directory
+- Files stored in Dropbox via symlinks in `data/` directory (local dev), or direct volume mount (Docker)
 - Parsed data stored in `data/.docvault-parsed.json`
+- Sync status stored in `data/.docvault-sync-status.json` (written by NAS cron, read by API)
+- Frontend uses relative `/api` URLs — Vite proxy handles dev, Bun static serving handles production
 - Works in Firefox (no File System Access API dependency)
 - **Do NOT run `bun run dev`, `bun start`, or `bun run build`** - the user manages the dev server manually
+
+## Docker
+
+- **Dockerfile** uses multi-stage build: stage 1 builds Vite frontend (`bunx vite build`), stage 2 is `oven/bun:1-slim` runtime
+- Server serves built static files from `dist/` for non-API routes, with SPA fallback to `index.html`
+- GitHub Actions (`.github/workflows/docker.yml`) auto-publishes to GHCR on push to main (linux/amd64 + arm64)
+- Image: `ghcr.io/vanities/docvault:latest`
+- `DOCVAULT_DATA_DIR` env var controls the data directory (default `/data` in container)
+
+## Dropbox Sync (NAS)
+
+- `sync-to-dropbox.sh` on NAS host runs via cron every 15 minutes
+- Uses `rclone copy --update` — one-way push, won't delete Dropbox files
+- Maps each DocVault entity to its Dropbox path (e.g., `personal` → `important/taxes`, `am2-llc` → `important/AM2 LLC`)
+- Writes `.docvault-sync-status.json` to the data dir with status, last sync time, next sync, entity count, errors
+- UI shows sync status in sidebar footer (cloud icon + status dot) and in Settings (detailed panel)
+- rclone config lives at `/root/.config/rclone/rclone.conf` on NAS; authorize on a machine with a browser via `rclone authorize "dropbox"` then `scp` the config over
 
 ## TODO
 
@@ -156,6 +185,10 @@ Configured in `server/config.json`. Two types:
 - [x] Dynamic entity types (tax vs docs)
 - [x] All Files view for non-tax entities
 - [x] Rebrand from TaxVault to DocVault
+- [x] Reminders system (deadlines, recurring, per-entity)
+- [x] Dockerize for Unraid (multi-stage build, static serving, GHCR)
+- [x] Dropbox sync via rclone (NAS cron, status API, UI indicator)
+- [x] Relative API URLs (works at any host/port, Vite proxy for dev)
 
 ## Document Parsing
 

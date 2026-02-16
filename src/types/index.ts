@@ -158,6 +158,15 @@ export interface Todo {
   updatedAt: string;
 }
 
+// Sync status (Dropbox)
+export interface SyncStatus {
+  status: 'ok' | 'error' | 'syncing' | 'unknown';
+  lastSync: string | null;
+  entitiesSynced: number;
+  errors: number;
+  nextSync: string | null;
+}
+
 // App state
 export interface AppState {
   selectedEntity: Entity;
