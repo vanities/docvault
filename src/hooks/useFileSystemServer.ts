@@ -23,6 +23,8 @@ export interface FileInfo {
   lastModified: number;
   type: string;
   isDirectory: boolean;
+  tags?: string[];
+  notes?: string;
 }
 
 // Detect document type from filename
@@ -209,7 +211,8 @@ export function useFileSystemServer() {
               type: docType,
               entity,
               taxYear,
-              tags: [],
+              tags: file.tags || [],
+              notes: file.notes || '',
               createdAt: new Date(file.lastModified).toISOString(),
               updatedAt: new Date(file.lastModified).toISOString(),
               parsedData: file.parsedData as TaxDocument['parsedData'],
@@ -335,7 +338,8 @@ export function useFileSystemServer() {
               type: docType,
               entity,
               taxYear: 0, // 0 indicates business doc (no year)
-              tags: [],
+              tags: file.tags || [],
+              notes: file.notes || '',
               createdAt: new Date(file.lastModified).toISOString(),
               updatedAt: new Date(file.lastModified).toISOString(),
               parsedData: file.parsedData as TaxDocument['parsedData'],
@@ -417,7 +421,8 @@ export function useFileSystemServer() {
               type: docType,
               entity,
               taxYear: 0,
-              tags: [],
+              tags: file.tags || [],
+              notes: file.notes || '',
               createdAt: new Date(file.lastModified).toISOString(),
               updatedAt: new Date(file.lastModified).toISOString(),
               parsedData: file.parsedData as TaxDocument['parsedData'],
