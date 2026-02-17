@@ -57,10 +57,18 @@ function detectDocumentType(filename: string, filePath?: string): DocumentType {
   if (/contract|agreement|w-?9|nda/i.test(lower)) return 'contract';
 
   // Business document detection by filename (for uploads)
-  if (/formation|articles.*incorporation|operating.*agreement|certificate.*formation/i.test(lower))
-    return 'formation';
+  if (/formation|articles.*incorporation|certificate.*formation/i.test(lower)) return 'formation';
+  if (/operating.?agreement/i.test(lower)) return 'operating-agreement';
   if (/ein|employer.*identification/i.test(lower)) return 'ein-letter';
   if (/license|permit|registration/i.test(lower)) return 'license';
+  if (/annual.?report/i.test(lower)) return 'annual-report';
+  if (/insurance.?polic/i.test(lower)) return 'insurance-policy';
+
+  // General document types
+  if (/statement/i.test(lower)) return 'statement';
+  if (/medical.?record/i.test(lower)) return 'medical-record';
+  if (/appraisal|assessment/i.test(lower)) return 'appraisal';
+  if (/certificate|cert\b/i.test(lower)) return 'certificate';
 
   // Detect expenses from filename keywords or expenses folder path
   if (
@@ -531,6 +539,92 @@ export function useFileSystemServer() {
     [isConnected]
   );
 
+  // Compute destination path for a document type (same logic as importFile routing)
+  const getDestPath = (
+    docType: DocumentType,
+    taxYear: number,
+    fileName: string,
+    expenseCategory?: ExpenseCategory
+  ): string => {
+    if (isBusinessDocumentType(docType)) {
+      const subfolder = getBusinessSubfolder(docType);
+      return `business-docs/${subfolder}/${fileName}`;
+    }
+
+    let destPath = `${taxYear}`;
+
+    if (docType === 'w2') {
+      destPath += '/income/w2';
+    } else if (docType.startsWith('1099')) {
+      destPath += '/income/1099';
+    } else if (docType === 'receipt' && expenseCategory) {
+      const folderMap: Record<ExpenseCategory, string> = {
+        childcare: 'expenses/childcare',
+        medical: 'expenses/medical',
+        meals: 'expenses/business',
+        software: 'expenses/business',
+        equipment: 'expenses/business',
+        'office-supplies': 'expenses/business',
+        'professional-services': 'expenses/business',
+        travel: 'expenses/business',
+        utilities: 'expenses/business',
+        insurance: 'expenses/business',
+        education: 'expenses/business',
+        other: 'expenses/business',
+      };
+      destPath += '/' + folderMap[expenseCategory];
+    } else if (docType === 'crypto') {
+      destPath += '/crypto';
+    } else if (docType === 'return') {
+      destPath += '/returns';
+    } else if (docType === 'medical-record') {
+      destPath += '/expenses/medical';
+    } else {
+      destPath += '/income/other';
+    }
+
+    return `${destPath}/${fileName}`;
+  };
+
+  // Relocate a file when type, entity, or year changes
+  const relocateFile = useCallback(
+    async (
+      fromEntity: Entity,
+      fromPath: string,
+      toEntity: Entity,
+      toYear: number,
+      newDocType: DocumentType,
+      expenseCategory?: ExpenseCategory
+    ): Promise<boolean> => {
+      if (!isConnected) return false;
+
+      try {
+        const fileName = fromPath.split('/').pop() || '';
+        const toPath = getDestPath(newDocType, toYear, fileName, expenseCategory);
+
+        // Skip if source and destination are the same
+        if (fromEntity === toEntity && fromPath === toPath) return true;
+
+        const response = await fetch(`${API_BASE}/move-between`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fromEntity,
+            fromPath,
+            toEntity,
+            toPath,
+          }),
+        });
+        const data = await response.json();
+        return data.ok === true;
+      } catch (err) {
+        console.error('Relocate file error:', err);
+        return false;
+      }
+    },
+    [isConnected]
+  );
+
   // Open a file for viewing
   const openFile = useCallback(
     async (entity: Entity, filePath: string): Promise<void> => {
@@ -935,6 +1029,7 @@ export function useFileSystemServer() {
     removeEntity,
     updateEntity,
     moveFile,
+    relocateFile,
     addReminder,
     updateReminder,
     deleteReminder,

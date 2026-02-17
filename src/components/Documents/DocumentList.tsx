@@ -26,6 +26,13 @@ interface DocumentListProps {
     toEntity: Entity,
     toYear: number
   ) => Promise<boolean>;
+  onRelocate?: (
+    fromEntity: Entity,
+    fromPath: string,
+    toEntity: Entity,
+    toYear: number,
+    newDocType: DocumentType
+  ) => Promise<boolean>;
   entities?: EntityConfig[];
   availableYears?: number[];
 }
@@ -364,6 +371,7 @@ export function DocumentList({
   onDelete,
   onParse,
   onMove,
+  onRelocate,
   entities,
   availableYears,
 }: DocumentListProps) {
@@ -607,6 +615,9 @@ export function DocumentList({
                         document={doc}
                         onUpdate={onUpdate}
                         onDelete={onDelete}
+                        onRelocate={onRelocate}
+                        entities={entities}
+                        availableYears={availableYears}
                         onClick={() => setSelectedDocument(doc)}
                       />
                     ))}

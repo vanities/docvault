@@ -13,6 +13,7 @@ import { ExpenseSummary } from '../Summary/ExpenseSummary';
 import { EXPENSE_CATEGORIES } from '../../config';
 import type {
   Entity,
+  DocumentType,
   TaxDocument,
   IncomeSummary as IncomeSummaryType,
   ExpenseSummary as ExpenseSummaryType,
@@ -36,6 +37,7 @@ export function TaxYearView() {
     deleteFile,
     parseFile,
     moveFile,
+    relocateFile,
   } = useAppContext();
 
   const { addToast } = useToast();
@@ -119,6 +121,25 @@ export function TaxYearView() {
     if (success) {
       addToast(`Document moved to ${toEntity} / ${toYear}`, 'success');
       // Rescan to update the list
+      const docs = await scanTaxYear(selectedEntity, selectedYear);
+      setScannedDocuments(docs);
+    } else {
+      addToast('Failed to move document', 'error');
+    }
+    return success;
+  };
+
+  // Relocate document (type/entity/year change from inline edit)
+  const handleRelocateDocument = async (
+    fromEntity: Entity,
+    fromPath: string,
+    toEntity: Entity,
+    toYear: number,
+    newDocType: DocumentType
+  ): Promise<boolean> => {
+    const success = await relocateFile(fromEntity, fromPath, toEntity, toYear, newDocType);
+    if (success) {
+      addToast('Document moved', 'success');
       const docs = await scanTaxYear(selectedEntity, selectedYear);
       setScannedDocuments(docs);
     } else {
@@ -321,6 +342,7 @@ export function TaxYearView() {
           onDelete={handleDeleteDoc}
           onParse={handleParseDocument}
           onMove={handleMoveDocument}
+          onRelocate={handleRelocateDocument}
           entities={entities}
           availableYears={availableYears}
         />

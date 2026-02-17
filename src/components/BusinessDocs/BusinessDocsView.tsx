@@ -6,7 +6,7 @@ import { DOCUMENT_TYPES } from '../../config';
 import { DocumentList } from '../Documents/DocumentList';
 import { ReminderBanner } from '../Reminders/ReminderBanner';
 import { TodoList } from '../Todos/TodoList';
-import type { TaxDocument, DocumentType } from '../../types';
+import type { TaxDocument, DocumentType, Entity } from '../../types';
 
 // Business document types for the upload modal
 const BUSINESS_DOC_TYPES = DOCUMENT_TYPES.filter((dt) => dt.category === 'business');
@@ -21,6 +21,7 @@ export function BusinessDocsView() {
     isProcessing,
     entities,
     setIsParsing,
+    relocateFile,
   } = useAppContext();
 
   const { addToast } = useToast();
@@ -109,6 +110,23 @@ export function BusinessDocsView() {
     }
   };
 
+  const handleRelocateDocument = async (
+    fromEntity: Entity,
+    fromPath: string,
+    toEntity: Entity,
+    toYear: number,
+    newDocType: DocumentType
+  ): Promise<boolean> => {
+    const success = await relocateFile(fromEntity, fromPath, toEntity, toYear, newDocType);
+    if (success) {
+      addToast('Document moved', 'success');
+      await loadBusinessDocs();
+    } else {
+      addToast('Failed to move document', 'error');
+    }
+    return success;
+  };
+
   return (
     <div className="max-w-5xl mx-auto px-4 md:px-6 py-8">
       {/* Reminders */}
@@ -181,6 +199,7 @@ export function BusinessDocsView() {
           onUpdate={handleUpdateDoc}
           onDelete={handleDeleteDoc}
           onParse={handleParseDoc}
+          onRelocate={handleRelocateDocument}
           entities={entities}
         />
       )}

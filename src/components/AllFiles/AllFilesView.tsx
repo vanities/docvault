@@ -4,7 +4,7 @@ import { TodoList } from '../Todos/TodoList';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import { DocumentList } from '../Documents/DocumentList';
-import type { TaxDocument } from '../../types';
+import type { TaxDocument, Entity, DocumentType } from '../../types';
 
 export function AllFilesView() {
   const {
@@ -16,6 +16,7 @@ export function AllFilesView() {
     isProcessing,
     entities,
     setIsParsing,
+    relocateFile,
   } = useAppContext();
 
   const { addToast } = useToast();
@@ -88,6 +89,23 @@ export function AllFilesView() {
     }
   };
 
+  const handleRelocateDocument = async (
+    fromEntity: Entity,
+    fromPath: string,
+    toEntity: Entity,
+    toYear: number,
+    newDocType: DocumentType
+  ): Promise<boolean> => {
+    const success = await relocateFile(fromEntity, fromPath, toEntity, toYear, newDocType);
+    if (success) {
+      addToast('File moved', 'success');
+      await loadAllFiles();
+    } else {
+      addToast('Failed to move file', 'error');
+    }
+    return success;
+  };
+
   return (
     <div className="max-w-5xl mx-auto px-4 md:px-6 py-8">
       {/* Todos */}
@@ -155,6 +173,7 @@ export function AllFilesView() {
           onUpdate={handleUpdateDoc}
           onDelete={handleDeleteDoc}
           onParse={handleParseDoc}
+          onRelocate={handleRelocateDocument}
           entities={entities}
         />
       )}

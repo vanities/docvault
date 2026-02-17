@@ -171,9 +171,73 @@ For payment histories or transaction lists (like Venmo, PayPal, bank statements 
 - endDate: Latest transaction date (YYYY-MM-DD)
 - category: One of: meals, software, equipment, childcare, medical, travel, office, other
 
+For annual reports (state filings for LLCs/corporations), extract:
+- entityName: Business name
+- state: State of filing
+- filingDate: Date filed (YYYY-MM-DD)
+- filingPeriod: Period covered (e.g., "2024")
+- filingFee: Fee amount paid
+- registeredAgent: Registered agent name
+- status: Good standing, active, etc.
+
+For operating agreements, extract:
+- entityName: Business/LLC name
+- members: Array of {name, ownershipPercentage}
+- effectiveDate: Date agreement is effective (YYYY-MM-DD)
+- state: State of organization
+
+For insurance policies, extract:
+- insurer: Insurance company name
+- policyNumber: Policy number
+- policyType: Type (general liability, E&O, etc.)
+- premium: Premium amount
+- effectiveDate: Start date (YYYY-MM-DD)
+- expirationDate: End date (YYYY-MM-DD)
+- coverageAmount: Coverage limit
+
+For statements (bank, brokerage, account statements), extract:
+- institution: Bank/brokerage name
+- accountNumber: Account number (may be partial)
+- statementPeriod: Period covered
+- startDate: Start date (YYYY-MM-DD)
+- endDate: End date (YYYY-MM-DD)
+- beginningBalance: Opening balance
+- endingBalance: Closing balance
+- totalDeposits: Total deposits/credits
+- totalWithdrawals: Total withdrawals/debits
+
+For letters/correspondence (IRS notices, VA letters, etc.), extract:
+- sender: Organization/person sending
+- recipient: Recipient name
+- date: Date of letter (YYYY-MM-DD)
+- subject: Subject or reference
+- referenceNumber: Case/notice number if any
+
+For certificates (DD-214, degrees, certifications), extract:
+- title: Certificate title
+- issuedTo: Person's name
+- issuer: Issuing organization
+- issueDate: Date issued (YYYY-MM-DD)
+- expirationDate: Expiration date if applicable (YYYY-MM-DD)
+
+For medical records, extract:
+- provider: Healthcare provider/facility
+- patient: Patient name
+- date: Date of service (YYYY-MM-DD)
+- diagnosis: Diagnosis if shown
+- amount: Amount billed/paid
+
+For appraisals/assessments (property, tax assessments), extract:
+- property: Property description or address
+- appraiser: Appraiser/assessor name
+- date: Appraisal date (YYYY-MM-DD)
+- assessedValue: Assessed/appraised value
+- taxYear: Tax year if applicable
+
 IMPORTANT:
 - Extract ALL data visible on the document. Include every field that has a value.
 - For documents with multiple payments/transactions, ALWAYS calculate the totalAmount by summing all amounts.
+- Include a "documentType" field in your response with one of: w2, 1099-nec, 1099-misc, 1099-div, 1099-int, 1099-b, receipt, invoice, crypto, return, contract, annual-report, operating-agreement, insurance-policy, statement, letter, certificate, medical-record, appraisal, other
 - Respond ONLY with a valid JSON object.
 - All monetary values should be numbers (not strings).
 - If a field is empty or not found, omit it.`;
@@ -199,6 +263,13 @@ function detectDocumentType(filename: string): string {
   if (/1099-?int/i.test(lower)) return '1099-INT';
   if (/w-?2/i.test(lower)) return 'W-2';
   if (/receipt|expense|purchase/i.test(lower)) return 'receipt';
+  if (/annual.?report/i.test(lower)) return 'annual-report';
+  if (/operating.?agreement/i.test(lower)) return 'operating-agreement';
+  if (/insurance.?polic/i.test(lower)) return 'insurance-policy';
+  if (/statement/i.test(lower)) return 'statement';
+  if (/certificate|cert\b/i.test(lower)) return 'certificate';
+  if (/medical.?record/i.test(lower)) return 'medical-record';
+  if (/appraisal|assessment/i.test(lower)) return 'appraisal';
   return 'unknown';
 }
 
@@ -321,6 +392,18 @@ export async function parseWithAI(
         documentType = '1099-div';
       } else if (parsed.interestIncome !== undefined) {
         documentType = '1099-int';
+      } else if (parsed.filingFee !== undefined || parsed.registeredAgent !== undefined) {
+        documentType = 'annual-report';
+      } else if (parsed.members !== undefined && parsed.ownershipPercentage !== undefined) {
+        documentType = 'operating-agreement';
+      } else if (parsed.policyNumber !== undefined || parsed.premium !== undefined) {
+        documentType = 'insurance-policy';
+      } else if (parsed.beginningBalance !== undefined || parsed.endingBalance !== undefined) {
+        documentType = 'statement';
+      } else if (parsed.diagnosis !== undefined && parsed.provider !== undefined) {
+        documentType = 'medical-record';
+      } else if (parsed.assessedValue !== undefined) {
+        documentType = 'appraisal';
       } else {
         documentType = 'receipt';
       }

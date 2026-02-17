@@ -11,13 +11,23 @@ import {
   Check,
   Sparkles,
 } from 'lucide-react';
-import type { TaxDocument, DocumentType } from '../../types';
+import type { TaxDocument, DocumentType, Entity } from '../../types';
 import { DOCUMENT_TYPES, EXPENSE_CATEGORIES } from '../../config';
+import type { EntityConfig } from '../../hooks/useFileSystemServer';
 
 interface DocumentCardProps {
   document: TaxDocument;
   onUpdate: (id: string, updates: Partial<TaxDocument>) => void;
   onDelete: (id: string) => void;
+  onRelocate?: (
+    fromEntity: Entity,
+    fromPath: string,
+    toEntity: Entity,
+    toYear: number,
+    newDocType: DocumentType
+  ) => Promise<boolean>;
+  entities?: EntityConfig[];
+  availableYears?: number[];
   onClick?: () => void;
 }
 
@@ -59,19 +69,53 @@ function getDocumentTypeColor(type: DocumentType): string {
   }
 }
 
-export function DocumentCard({ document: doc, onUpdate, onDelete, onClick }: DocumentCardProps) {
+export function DocumentCard({
+  document: doc,
+  onUpdate,
+  onDelete,
+  onRelocate,
+  entities,
+  availableYears,
+  onClick,
+}: DocumentCardProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedType, setEditedType] = useState(doc.type);
   const [editedNotes, setEditedNotes] = useState(doc.notes || '');
+  const [editedEntity, setEditedEntity] = useState(doc.entity);
+  const [editedYear, setEditedYear] = useState(doc.taxYear);
+  const [isSaving, setIsSaving] = useState(false);
   const [newTag, setNewTag] = useState('');
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    setIsSaving(true);
+
+    const typeChanged = editedType !== doc.type;
+    const entityChanged = editedEntity !== doc.entity;
+    const yearChanged = editedYear !== doc.taxYear;
+
+    // If type, entity, or year changed, relocate the file
+    if ((typeChanged || entityChanged || yearChanged) && onRelocate && doc.filePath) {
+      const success = await onRelocate(
+        doc.entity,
+        doc.filePath,
+        editedEntity,
+        editedYear,
+        editedType
+      );
+      if (!success) {
+        setIsSaving(false);
+        return;
+      }
+    }
+
+    // Update metadata
     onUpdate(doc.id, {
       type: editedType,
       notes: editedNotes,
     });
     setIsEditing(false);
+    setIsSaving(false);
   };
 
   const handleAddTag = () => {
@@ -276,6 +320,42 @@ export function DocumentCard({ document: doc, onUpdate, onDelete, onClick }: Doc
                   ))}
                 </select>
               </div>
+              {entities && entities.length > 0 && (
+                <div>
+                  <label className="block text-[11px] font-medium text-surface-700 mb-1">
+                    Entity
+                  </label>
+                  <select
+                    value={editedEntity}
+                    onChange={(e) => setEditedEntity(e.target.value)}
+                    className="w-full text-[13px] bg-surface-200/50 border border-border text-surface-900 rounded-lg px-2 py-1.5"
+                  >
+                    {entities.map((ent) => (
+                      <option key={ent.id} value={ent.id}>
+                        {ent.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {availableYears && availableYears.length > 0 && doc.taxYear > 0 && (
+                <div>
+                  <label className="block text-[11px] font-medium text-surface-700 mb-1">
+                    Tax Year
+                  </label>
+                  <select
+                    value={editedYear}
+                    onChange={(e) => setEditedYear(parseInt(e.target.value, 10))}
+                    className="w-full text-[13px] bg-surface-200/50 border border-border text-surface-900 rounded-lg px-2 py-1.5"
+                  >
+                    {availableYears.map((yr) => (
+                      <option key={yr} value={yr}>
+                        {yr}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-[11px] font-medium text-surface-700 mb-1">Notes</label>
                 <textarea
@@ -289,16 +369,19 @@ export function DocumentCard({ document: doc, onUpdate, onDelete, onClick }: Doc
               <div className="flex gap-2">
                 <button
                   onClick={handleSave}
-                  className="flex items-center gap-1 px-2.5 py-1 bg-accent-500 text-surface-0 text-[11px] font-medium rounded-lg hover:bg-accent-400"
+                  disabled={isSaving}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-accent-500 text-surface-0 text-[11px] font-medium rounded-lg hover:bg-accent-400 disabled:opacity-50"
                 >
                   <Check className="w-3 h-3" />
-                  Save
+                  {isSaving ? 'Saving...' : 'Save'}
                 </button>
                 <button
                   onClick={() => {
                     setIsEditing(false);
                     setEditedType(doc.type);
                     setEditedNotes(doc.notes || '');
+                    setEditedEntity(doc.entity);
+                    setEditedYear(doc.taxYear);
                   }}
                   className="px-2.5 py-1 text-surface-700 text-[11px] hover:bg-surface-300/30 rounded-lg"
                 >

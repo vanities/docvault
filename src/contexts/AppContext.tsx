@@ -106,6 +106,14 @@ interface AppContextValue {
     toEntity: Entity,
     toYear: number
   ) => Promise<boolean>;
+  relocateFile: (
+    fromEntity: Entity,
+    fromPath: string,
+    toEntity: Entity,
+    toYear: number,
+    newDocType: DocumentType,
+    expenseCategory?: ExpenseCategory
+  ) => Promise<boolean>;
   getYearsForEntity: (entity: Entity) => Promise<number[]>;
 
   // Mobile sidebar
@@ -232,6 +240,7 @@ export function AppProvider({ children }: AppProviderProps) {
     removeEntity,
     updateEntity,
     moveFile,
+    relocateFile,
     reminders,
     addReminder,
     updateReminder,
@@ -338,6 +347,7 @@ export function AppProvider({ children }: AppProviderProps) {
     removeEntity,
     updateEntity,
     moveFile,
+    relocateFile,
     getYearsForEntity,
 
     // Mobile sidebar
