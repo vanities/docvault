@@ -941,6 +941,74 @@ async function handleRequest(req: Request): Promise<Response> {
     }
   }
 
+  // POST /api/rename - Rename a file in place (same directory, new name)
+  if (pathname === '/api/rename' && req.method === 'POST') {
+    const body = await req.json();
+    const { entity: entityId, filePath, newFilename } = body;
+
+    if (!filePath || !newFilename) {
+      return jsonResponse({ error: 'Missing filePath or newFilename' }, 400);
+    }
+
+    if (newFilename.includes('/') || newFilename.includes('\\')) {
+      return jsonResponse({ error: 'newFilename must not contain path separators' }, 400);
+    }
+
+    const entityPath = await getEntityPath(entityId || 'personal');
+    if (!entityPath) {
+      return jsonResponse({ error: 'Entity not found' }, 404);
+    }
+
+    const oldFullPath = path.join(entityPath, filePath);
+    const dir = path.dirname(oldFullPath);
+    const newFullPath = path.join(dir, newFilename);
+
+    if (!oldFullPath.startsWith(entityPath) || !newFullPath.startsWith(entityPath)) {
+      return jsonResponse({ error: 'Access denied' }, 403);
+    }
+
+    try {
+      // Check source exists
+      await fs.access(oldFullPath);
+
+      // Check destination doesn't already exist
+      try {
+        await fs.access(newFullPath);
+        return jsonResponse({ error: 'A file with that name already exists' }, 409);
+      } catch {
+        // Good — destination doesn't exist
+      }
+
+      // Rename on disk
+      await fs.rename(oldFullPath, newFullPath);
+
+      // Build old and new keys for parsed data / metadata
+      const oldKey = `${entityId}/${filePath}`;
+      const newPath = filePath.replace(/[^/]+$/, newFilename);
+      const newKey = `${entityId}/${newPath}`;
+
+      // Update parsed data key
+      const parsedData = await loadParsedData();
+      if (parsedData[oldKey]) {
+        parsedData[newKey] = parsedData[oldKey];
+        delete parsedData[oldKey];
+        await saveParsedData(parsedData);
+      }
+
+      // Update metadata key
+      const metadata = await loadMetadata();
+      if (metadata[oldKey]) {
+        metadata[newKey] = metadata[oldKey];
+        delete metadata[oldKey];
+        await saveMetadata(metadata);
+      }
+
+      return jsonResponse({ ok: true, newPath });
+    } catch (err) {
+      return jsonResponse({ error: 'Failed to rename file', details: String(err) }, 500);
+    }
+  }
+
   // GET /api/business-docs/:entity - Get business documents (not tied to tax year)
   const businessDocsMatch = pathname.match(/^\/api\/business-docs\/([^/]+)$/);
   if (businessDocsMatch && req.method === 'GET') {

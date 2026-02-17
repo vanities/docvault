@@ -86,6 +86,7 @@ function getCategoryLabel(category: ExpenseCategory): string {
     utilities: 'utilities',
     insurance: 'insurance',
     education: 'education',
+    'taxes-licenses': 'taxes',
     other: 'expense',
   };
   return categoryMap[category] || 'expense';

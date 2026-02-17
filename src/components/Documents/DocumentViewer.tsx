@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   X,
   Download,
@@ -13,11 +13,16 @@ import {
   FolderOpen,
   Tag,
   MoveRight,
+  Pencil,
+  Check,
+  Sparkles,
 } from 'lucide-react';
-import type { TaxDocument, Entity } from '../../types';
+import type { TaxDocument, Entity, ExpenseCategory } from '../../types';
 import { DOCUMENT_TYPES, EXPENSE_CATEGORIES } from '../../config';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import { useToast } from '../../hooks/useToast';
+import { useAppContext } from '../../contexts/AppContext';
+import { generateStandardFilename, getExtension } from '../../utils/filenaming';
 
 interface DocumentViewerProps {
   document: TaxDocument;
@@ -82,7 +87,147 @@ export function DocumentViewer({
   const [moveToYear, setMoveToYear] = useState<number>(document.taxYear);
   const [isMoving, setIsMoving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [isRenameSaving, setIsRenameSaving] = useState(false);
+  const renameInputRef = useRef<HTMLInputElement>(null);
   const { addToast } = useToast();
+  const { renameFile, setScannedDocuments, parseFile } = useAppContext();
+  const [isAiRenaming, setIsAiRenaming] = useState(false);
+
+  // Split filename into name and extension for the rename input
+  const extMatch = document.fileName.match(/(\.[^.]+)$/);
+  const fileExtension = extMatch ? extMatch[1] : '';
+  const fileBaseName = fileExtension
+    ? document.fileName.slice(0, -fileExtension.length)
+    : document.fileName;
+
+  const startRenaming = useCallback(() => {
+    setRenameValue(fileBaseName);
+    setIsRenaming(true);
+  }, [fileBaseName]);
+
+  // Auto-focus the input when rename mode activates
+  useEffect(() => {
+    if (isRenaming && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [isRenaming]);
+
+  const cancelRename = useCallback(() => {
+    setIsRenaming(false);
+    setRenameValue('');
+  }, []);
+
+  const saveRename = useCallback(async () => {
+    const trimmed = renameValue.trim();
+    if (!trimmed || trimmed === fileBaseName) {
+      cancelRename();
+      return;
+    }
+
+    const newFilename = trimmed + fileExtension;
+    setIsRenameSaving(true);
+    try {
+      const newPath = await renameFile(document.entity, document.filePath, newFilename);
+      if (newPath) {
+        addToast(`Renamed to ${newFilename}`, 'success');
+        // Update the document in the scanned list so UI reflects the change
+        setScannedDocuments((prev) =>
+          prev.map((d) =>
+            d.id === document.id
+              ? {
+                  ...d,
+                  fileName: newFilename,
+                  filePath: newPath,
+                  id: `${document.entity}/${newPath}-${d.fileSize}`,
+                }
+              : d
+          )
+        );
+        setIsRenaming(false);
+        onClose();
+      } else {
+        addToast('Rename failed — file may already exist', 'error');
+      }
+    } finally {
+      setIsRenameSaving(false);
+    }
+  }, [
+    renameValue,
+    fileBaseName,
+    fileExtension,
+    renameFile,
+    document,
+    addToast,
+    setScannedDocuments,
+    cancelRename,
+    onClose,
+  ]);
+
+  const handleAiRename = useCallback(async () => {
+    if (!document.filePath) return;
+
+    setIsAiRenaming(true);
+    try {
+      // Use existing parsed data, or parse first
+      let parsed = document.parsedData as Record<string, unknown> | null | undefined;
+      if (!parsed) {
+        addToast('Parsing document first...', 'info');
+        parsed = await parseFile(document.entity, document.filePath);
+        if (!parsed) {
+          addToast('Could not parse document — rename manually instead', 'error');
+          return;
+        }
+      }
+
+      // Extract source name from parsed data
+      const source =
+        (parsed.employerName as string) ||
+        (parsed.employer as string) ||
+        (parsed.payerName as string) ||
+        (parsed.payer as string) ||
+        (parsed.vendor as string) ||
+        (parsed.source as string) ||
+        '';
+
+      if (!source) {
+        addToast('Could not determine source name from parsed data', 'error');
+        return;
+      }
+
+      // Extract date parts
+      const dateStr = parsed.date as string | undefined;
+      let month: number | undefined;
+      let day: number | undefined;
+      if (dateStr) {
+        const parts = dateStr.split('-');
+        if (parts.length >= 2) month = parseInt(parts[1], 10);
+        if (parts.length >= 3) day = parseInt(parts[2], 10);
+      }
+
+      const ext = getExtension(document.fileName) || '.pdf';
+      const suggested = generateStandardFilename({
+        source,
+        docType: document.type,
+        year: document.taxYear || new Date().getFullYear(),
+        month,
+        day,
+        expenseCategory: parsed.category as ExpenseCategory | undefined,
+        description: parsed.description as string | undefined,
+        extension: ext,
+      });
+
+      // Pre-fill the rename input with the AI suggestion
+      const suggestedBase = ext ? suggested.slice(0, -ext.length) : suggested;
+      setRenameValue(suggestedBase);
+      setIsRenaming(true);
+      addToast(`Suggested: ${suggested}`, 'success');
+    } finally {
+      setIsAiRenaming(false);
+    }
+  }, [document, parseFile, addToast]);
 
   const copyToClipboard = useCallback(
     async (text: string) => {
@@ -186,9 +331,50 @@ export function DocumentViewer({
           <div className="flex items-center gap-3 min-w-0">
             <FileIcon fileType={document.fileType} className="w-5 h-5 text-surface-700 shrink-0" />
             <div className="min-w-0">
-              <h2 className="font-semibold text-surface-950 truncate text-[14px]">
-                {document.fileName}
-              </h2>
+              {isRenaming ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    ref={renameInputRef}
+                    type="text"
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') saveRename();
+                      if (e.key === 'Escape') cancelRename();
+                    }}
+                    onBlur={cancelRename}
+                    disabled={isRenameSaving}
+                    className="bg-surface-200/50 border border-border rounded-md px-2 py-0.5 text-[14px] font-semibold text-surface-950 w-full min-w-0"
+                  />
+                  <span className="text-[14px] font-semibold text-surface-600 shrink-0">
+                    {fileExtension}
+                  </span>
+                  <button
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      saveRename();
+                    }}
+                    disabled={isRenameSaving}
+                    className="p-1 text-success-500 hover:bg-success-500/10 rounded transition-all shrink-0"
+                    title="Save"
+                  >
+                    <Check className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <h2 className="font-semibold text-surface-950 truncate text-[14px]">
+                    {document.fileName}
+                  </h2>
+                  <button
+                    onClick={startRenaming}
+                    className="p-1 text-surface-500 hover:text-surface-800 hover:bg-surface-300/30 rounded transition-all shrink-0"
+                    title="Rename file"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
               <p className="text-[12px] text-surface-700">{docTypeInfo?.label || document.type}</p>
             </div>
           </div>
@@ -393,6 +579,15 @@ export function DocumentViewer({
           >
             <RefreshCw className={`w-4 h-4 ${isParsing ? 'animate-spin' : ''}`} />
             {isParsing ? 'Parsing...' : 'Parse Document'}
+          </button>
+          <button
+            onClick={handleAiRename}
+            disabled={isAiRenaming}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-violet-500/15 text-violet-400 rounded-xl hover:bg-violet-500/25 transition-all disabled:opacity-40 text-[13px] font-medium"
+            title="AI Renaming"
+          >
+            <Sparkles className={`w-4 h-4 ${isAiRenaming ? 'animate-pulse' : ''}`} />
+            {isAiRenaming ? 'Renaming...' : 'Rename with AI'}
           </button>
           {onMove && entities && availableYears && (
             <button

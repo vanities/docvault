@@ -118,6 +118,7 @@ interface AppContextValue {
     newDocType: DocumentType,
     expenseCategory?: ExpenseCategory
   ) => Promise<boolean>;
+  renameFile: (entity: Entity, filePath: string, newFilename: string) => Promise<string | null>;
   getYearsForEntity: (entity: Entity) => Promise<number[]>;
 
   // Mobile sidebar
@@ -252,6 +253,7 @@ export function AppProvider({ children }: AppProviderProps) {
     updateEntity,
     moveFile,
     relocateFile,
+    renameFile,
     reminders,
     addReminder,
     updateReminder,
@@ -360,6 +362,7 @@ export function AppProvider({ children }: AppProviderProps) {
     updateEntity,
     moveFile,
     relocateFile,
+    renameFile,
     getYearsForEntity,
 
     // Mobile sidebar

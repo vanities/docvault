@@ -1052,6 +1052,29 @@ export function useFileSystemServer() {
     [isConnected]
   );
 
+  // Rename a file in place (same directory, new filename)
+  const renameFile = useCallback(
+    async (entity: Entity, filePath: string, newFilename: string): Promise<string | null> => {
+      if (!isConnected) return null;
+
+      try {
+        const response = await fetch(`${API_BASE}/rename`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ entity, filePath, newFilename }),
+        });
+        const data = await response.json();
+        if (data.ok) return data.newPath;
+        console.error('Rename error:', data.error);
+        return null;
+      } catch (err) {
+        console.error('Rename file error:', err);
+        return null;
+      }
+    },
+    [isConnected]
+  );
+
   // Update document metadata (tags, notes) - persists to server
   const updateDocMetadata = useCallback(
     async (
@@ -1098,6 +1121,7 @@ export function useFileSystemServer() {
     updateEntity,
     moveFile,
     relocateFile,
+    renameFile,
     addReminder,
     updateReminder,
     deleteReminder,
