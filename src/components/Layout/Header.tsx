@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { RefreshCw, Sparkles, Search, X, Menu } from 'lucide-react';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
@@ -24,6 +25,11 @@ export function Header() {
   } = useAppContext();
 
   const { addToast } = useToast();
+  const [parseProgress, setParseProgress] = useState<{
+    current: number;
+    total: number;
+    fileName: string;
+  } | null>(null);
 
   // Rescan files
   const handleRescan = async () => {
@@ -34,11 +40,14 @@ export function Header() {
   // Parse all unparsed income and expense files with Claude Vision AI
   const handleParseAll = async () => {
     setIsParsing(true);
+    setParseProgress(null);
     const result = await parseAllFiles(selectedEntity, selectedYear, {
       filter: ['income', 'expenses'],
       unparsedOnly: true,
+      onProgress: setParseProgress,
     });
     setIsParsing(false);
+    setParseProgress(null);
 
     if (result) {
       if (result.failed === 0) {
@@ -108,7 +117,13 @@ export function Header() {
             }
           >
             <Sparkles className={`w-3.5 h-3.5 ${isParsing ? 'animate-pulse' : ''}`} />
-            <span className="hidden sm:inline">{isParsing ? 'Parsing...' : 'Parse All'}</span>
+            <span className="hidden sm:inline">
+              {parseProgress
+                ? `${parseProgress.current}/${parseProgress.total}`
+                : isParsing
+                  ? 'Parsing...'
+                  : 'Parse All'}
+            </span>
           </button>
 
           <button
@@ -119,6 +134,21 @@ export function Header() {
           >
             <RefreshCw className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
           </button>
+        </div>
+      )}
+
+      {/* Parse progress bar */}
+      {parseProgress && (
+        <div className="absolute bottom-0 left-0 right-0 translate-y-full z-10">
+          <div className="h-1 bg-purple-500/10">
+            <div
+              className="h-full bg-purple-400 transition-all duration-300"
+              style={{ width: `${(parseProgress.current / parseProgress.total) * 100}%` }}
+            />
+          </div>
+          <div className="px-4 py-1 bg-surface-100/90 backdrop-blur-sm border-b border-border text-[11px] text-surface-600 truncate">
+            Parsing {parseProgress.current}/{parseProgress.total}: {parseProgress.fileName}
+          </div>
         </div>
       )}
     </header>

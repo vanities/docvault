@@ -846,36 +846,64 @@ async function handleRequest(req: Request): Promise<Response> {
 
       let parsed = 0;
       let failed = 0;
-      const skipped = 0;
 
-      for (const file of files) {
-        try {
-          const fullPath = path.join(entityPath, file.path);
+      // Stream progress as NDJSON
+      const stream = new ReadableStream({
+        async start(controller) {
+          const enc = new TextEncoder();
+          for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            controller.enqueue(
+              enc.encode(
+                JSON.stringify({
+                  type: 'progress',
+                  current: i + 1,
+                  total: files.length,
+                  fileName: file.name,
+                }) + '\n'
+              )
+            );
 
-          let parsedData: ParsedData = {
-            parsed: true,
-            parsedAt: new Date().toISOString(),
-          };
+            try {
+              const fullPath = path.join(entityPath, file.path);
 
-          // Always use AI parsing
-          console.log(`[Parse All] Using Claude Vision AI for ${file.name}`);
-          const aiData = await parseWithAI(fullPath, file.name);
-          if (aiData) {
-            parsedData = {
-              ...parsedData,
-              ...aiData,
-            };
+              let parsedData: ParsedData = {
+                parsed: true,
+                parsedAt: new Date().toISOString(),
+              };
+
+              console.log(`[Parse All] Using Claude Vision AI for ${file.name}`);
+              const aiData = await parseWithAI(fullPath, file.name);
+              if (aiData) {
+                parsedData = {
+                  ...parsedData,
+                  ...aiData,
+                };
+              }
+
+              await setParsedDataForFile(`${entityId}/${file.path}`, parsedData);
+              parsed++;
+            } catch (err) {
+              console.error(`Failed to parse ${file.path}:`, err);
+              failed++;
+            }
           }
 
-          await setParsedDataForFile(`${entityId}/${file.path}`, parsedData);
-          parsed++;
-        } catch (err) {
-          console.error(`Failed to parse ${file.path}:`, err);
-          failed++;
-        }
-      }
+          controller.enqueue(
+            enc.encode(
+              JSON.stringify({ type: 'done', ok: true, parsed, failed, total: files.length }) + '\n'
+            )
+          );
+          controller.close();
+        },
+      });
 
-      return jsonResponse({ ok: true, parsed, failed, skipped, total: files.length });
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'application/x-ndjson',
+          'Cache-Control': 'no-cache',
+        },
+      });
     } catch (err) {
       return jsonResponse({ error: 'Failed to parse files', details: String(err) }, 500);
     }

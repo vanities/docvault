@@ -482,6 +482,7 @@ export function useFileSystemServer() {
               utilities: 'expenses/business',
               insurance: 'expenses/business',
               education: 'expenses/business',
+              'taxes-licenses': 'expenses/business',
               other: 'expenses/business',
             };
             destPath += '/' + folderMap[expenseCategory];
@@ -574,6 +575,7 @@ export function useFileSystemServer() {
         utilities: 'expenses/business',
         insurance: 'expenses/business',
         education: 'expenses/business',
+        'taxes-licenses': 'expenses/business',
         other: 'expenses/business',
       };
       destPath += '/' + folderMap[expenseCategory];
@@ -722,7 +724,11 @@ export function useFileSystemServer() {
     async (
       entity: Entity,
       year: number,
-      options?: { filter?: string[]; unparsedOnly?: boolean }
+      options?: {
+        filter?: string[];
+        unparsedOnly?: boolean;
+        onProgress?: (progress: { current: number; total: number; fileName: string }) => void;
+      }
     ): Promise<{ parsed: number; failed: number; total: number } | null> => {
       if (!isConnected) return null;
 
@@ -732,11 +738,46 @@ export function useFileSystemServer() {
         if (options?.unparsedOnly) params.set('unparsed', 'true');
         const qs = params.toString();
         const url = `${API_BASE}/parse-all/${entity}/${year}${qs ? `?${qs}` : ''}`;
-        const response = await fetch(url, {
-          method: 'POST',
-        });
-        const data = await response.json();
-        return { parsed: data.parsed, failed: data.failed, total: data.total };
+        const response = await fetch(url, { method: 'POST' });
+
+        if (!response.body) {
+          const data = await response.json();
+          return { parsed: data.parsed, failed: data.failed, total: data.total };
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let result: { parsed: number; failed: number; total: number } | null = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const lines = buffer.split('\n');
+          buffer = lines.pop()!;
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const data = JSON.parse(line);
+              if (data.type === 'progress' && options?.onProgress) {
+                options.onProgress({
+                  current: data.current,
+                  total: data.total,
+                  fileName: data.fileName,
+                });
+              } else if (data.type === 'done') {
+                result = { parsed: data.parsed, failed: data.failed, total: data.total };
+              }
+            } catch {
+              // skip malformed lines
+            }
+          }
+        }
+
+        return result;
       } catch (err) {
         console.error('Parse all files error:', err);
         return null;
