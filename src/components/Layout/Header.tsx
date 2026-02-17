@@ -31,11 +31,11 @@ export function Header() {
     setScannedDocuments(docs);
   };
 
-  // Parse all expense/invoice files with Claude Vision AI
+  // Parse all unparsed income and expense files with Claude Vision AI
   const handleParseAll = async () => {
     setIsParsing(true);
     const result = await parseAllFiles(selectedEntity, selectedYear, {
-      filter: ['expenses', 'invoices'],
+      filter: ['income', 'expenses'],
       unparsedOnly: true,
     });
     setIsParsing(false);
@@ -104,11 +104,11 @@ export function Header() {
             title={
               selectedEntity === 'all'
                 ? 'Select a specific entity to parse'
-                : 'Parse unparsed expenses & invoices with Claude AI'
+                : 'Parse unparsed income & expenses with Claude AI'
             }
           >
             <Sparkles className={`w-3.5 h-3.5 ${isParsing ? 'animate-pulse' : ''}`} />
-            <span className="hidden sm:inline">{isParsing ? 'Parsing...' : 'Parse Expenses'}</span>
+            <span className="hidden sm:inline">{isParsing ? 'Parsing...' : 'Parse All'}</span>
           </button>
 
           <button
