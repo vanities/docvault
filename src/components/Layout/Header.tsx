@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { RefreshCw, Sparkles, Search, X, Menu } from 'lucide-react';
+import { useState, useMemo, useRef, useEffect } from 'react';
+import { RefreshCw, Sparkles, Search, X, Menu, ChevronDown } from 'lucide-react';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 
@@ -30,6 +30,29 @@ export function Header() {
     total: number;
     fileName: string;
   } | null>(null);
+  const [showParseMenu, setShowParseMenu] = useState(false);
+  const parseMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!showParseMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      if (parseMenuRef.current && !parseMenuRef.current.contains(e.target as Node)) {
+        setShowParseMenu(false);
+      }
+    };
+    window.document.addEventListener('mousedown', handleClick);
+    return () => window.document.removeEventListener('mousedown', handleClick);
+  }, [showParseMenu]);
+
+  // Count unparsed income/expense files
+  const unparsedCount = useMemo(() => {
+    return scannedDocuments.filter((doc) => {
+      const pathLower = doc.filePath.toLowerCase();
+      const isIncomeOrExpense = pathLower.includes('/income/') || pathLower.includes('/expenses/');
+      return isIncomeOrExpense && !doc.parsedData;
+    }).length;
+  }, [scannedDocuments]);
 
   // Rescan files
   const handleRescan = async () => {
@@ -37,13 +60,14 @@ export function Header() {
     setScannedDocuments(docs);
   };
 
-  // Parse all unparsed income and expense files with Claude Vision AI
-  const handleParseAll = async () => {
+  // Parse files with Claude Vision AI
+  const handleParse = async (unparsedOnly: boolean) => {
+    setShowParseMenu(false);
     setIsParsing(true);
     setParseProgress(null);
     const result = await parseAllFiles(selectedEntity, selectedYear, {
       filter: ['income', 'expenses'],
-      unparsedOnly: true,
+      unparsedOnly,
       onProgress: setParseProgress,
     });
     setIsParsing(false);
@@ -106,25 +130,56 @@ export function Header() {
       {/* Tax Year Controls - only visible in tax-year view when not searching */}
       {showTaxYearControls && (
         <div className="flex items-center gap-2 ml-4">
-          <button
-            onClick={handleParseAll}
-            disabled={isProcessing || scannedDocuments.length === 0 || selectedEntity === 'all'}
-            className="flex items-center gap-2 px-3 py-1.5 text-[13px] font-medium text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 rounded-lg transition-all duration-150 disabled:opacity-40"
-            title={
-              selectedEntity === 'all'
-                ? 'Select a specific entity to parse'
-                : 'Parse unparsed income & expenses with Claude AI'
-            }
-          >
-            <Sparkles className={`w-3.5 h-3.5 ${isParsing ? 'animate-pulse' : ''}`} />
-            <span className="hidden sm:inline">
-              {parseProgress
-                ? `${parseProgress.current}/${parseProgress.total}`
-                : isParsing
-                  ? 'Parsing...'
-                  : 'Parse All'}
-            </span>
-          </button>
+          {/* Split parse button */}
+          <div className="relative" ref={parseMenuRef}>
+            <div className="flex items-center">
+              <button
+                onClick={() => handleParse(true)}
+                disabled={isProcessing || unparsedCount === 0 || selectedEntity === 'all'}
+                className="flex items-center gap-2 px-3 py-1.5 text-[13px] font-medium text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 rounded-l-lg transition-all duration-150 disabled:opacity-40"
+                title={
+                  selectedEntity === 'all'
+                    ? 'Select a specific entity to parse'
+                    : 'Parse unparsed income & expenses with Claude AI'
+                }
+              >
+                <Sparkles className={`w-3.5 h-3.5 ${isParsing ? 'animate-pulse' : ''}`} />
+                <span className="hidden sm:inline">
+                  {parseProgress
+                    ? `${parseProgress.current}/${parseProgress.total}`
+                    : isParsing
+                      ? 'Parsing...'
+                      : `Parse ${unparsedCount} unparsed`}
+                </span>
+              </button>
+              <button
+                onClick={() => setShowParseMenu((v) => !v)}
+                disabled={isProcessing || scannedDocuments.length === 0 || selectedEntity === 'all'}
+                className="px-1.5 py-1.5 text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 rounded-r-lg border-l border-purple-500/20 transition-all duration-150 disabled:opacity-40"
+                title="More parse options"
+              >
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {showParseMenu && (
+              <div className="absolute right-0 top-full mt-1 bg-surface-100 border border-border rounded-lg shadow-xl py-1 min-w-[180px] z-30">
+                <button
+                  onClick={() => handleParse(true)}
+                  disabled={unparsedCount === 0}
+                  className="w-full text-left px-3 py-2 text-[13px] text-surface-800 hover:bg-surface-300/30 disabled:opacity-40"
+                >
+                  Parse {unparsedCount} unparsed
+                </button>
+                <button
+                  onClick={() => handleParse(false)}
+                  className="w-full text-left px-3 py-2 text-[13px] text-warn-400 hover:bg-surface-300/30"
+                >
+                  Force re-parse all
+                </button>
+              </div>
+            )}
+          </div>
 
           <button
             onClick={handleRescan}

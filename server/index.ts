@@ -879,10 +879,12 @@ async function handleRequest(req: Request): Promise<Response> {
                   ...parsedData,
                   ...aiData,
                 };
+                await setParsedDataForFile(`${entityId}/${file.path}`, parsedData);
+                parsed++;
+              } else {
+                console.error(`AI returned no data for ${file.name}`);
+                failed++;
               }
-
-              await setParsedDataForFile(`${entityId}/${file.path}`, parsedData);
-              parsed++;
             } catch (err) {
               console.error(`Failed to parse ${file.path}:`, err);
               failed++;

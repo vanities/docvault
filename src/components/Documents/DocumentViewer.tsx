@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   X,
   Download,
@@ -17,6 +17,7 @@ import {
 import type { TaxDocument, Entity } from '../../types';
 import { DOCUMENT_TYPES, EXPENSE_CATEGORIES } from '../../config';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
+import { useToast } from '../../hooks/useToast';
 
 interface DocumentViewerProps {
   document: TaxDocument;
@@ -81,6 +82,33 @@ export function DocumentViewer({
   const [moveToYear, setMoveToYear] = useState<number>(document.taxYear);
   const [isMoving, setIsMoving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const { addToast } = useToast();
+
+  const copyToClipboard = useCallback(
+    async (text: string) => {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          // Fallback for non-HTTPS (e.g. Unraid over HTTP)
+          const textarea = window.document.createElement('textarea');
+          textarea.value = text;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          window.document.body.appendChild(textarea);
+          textarea.select();
+          window.document.execCommand('copy');
+          window.document.body.removeChild(textarea);
+        }
+        setCopied(true);
+        addToast('Path copied to clipboard', 'success');
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        addToast('Failed to copy path', 'error');
+      }
+    },
+    [addToast]
+  );
 
   const fileUrl = getFileUrl(document.entity, document.filePath);
   const isImage = document.fileType.includes('image');
@@ -221,9 +249,7 @@ export function DocumentViewer({
                   const fullPath = entityConfig
                     ? `${entityConfig.path}/${document.filePath}`
                     : document.filePath;
-                  navigator.clipboard.writeText(fullPath);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
+                  copyToClipboard(fullPath);
                 }}
                 className="truncate hover:text-accent-400 cursor-pointer text-left font-mono text-[12px]"
                 title="Click to copy full path"
