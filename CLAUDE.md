@@ -161,7 +161,18 @@ Configured in `server/config.json`. Two types:
 - Image: `ghcr.io/vanities/docvault:latest`
 - `DOCVAULT_DATA_DIR` env var controls the data directory (default `/data` in container)
 
-## Dropbox Sync (NAS)
+## NAS (Unraid)
+
+- SSH host: `nas` (configured in `~/.ssh/config`)
+- DocVault data dir: `/mnt/user/appdata/docvault/data/`
+- App config: `/mnt/user/appdata/docvault/config.json`
+- Settings: `/mnt/user/appdata/docvault/settings.json`
+- Key data files on NAS:
+  - `.docvault-reminders.json` — reminder deadlines
+  - `.docvault-parsed.json` — cached AI parse results
+  - `.docvault-sync-status.json` — Dropbox sync status (written by cron)
+
+### Dropbox Sync
 
 - `sync-to-dropbox.sh` on NAS host runs via cron every 15 minutes
 - Uses `rclone copy --update` — one-way push, won't delete Dropbox files
