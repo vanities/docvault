@@ -26,7 +26,6 @@ export type DocumentType =
   | 'ein-letter'
   | 'license'
   | 'business-agreement'
-  | 'annual-report'
   | 'operating-agreement'
   | 'insurance-policy'
   // General document types (not tied to tax year or business)

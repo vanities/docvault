@@ -66,7 +66,6 @@ function detectDocumentType(filename: string): DocumentType {
   if (/w-?9/i.test(lower)) return 'contract'; // W-9 stays as tax contract
 
   // New document types
-  if (/annual.?report/i.test(lower)) return 'annual-report';
   if (/operating.?agreement/i.test(lower)) return 'operating-agreement';
   if (/insurance.?polic/i.test(lower)) return 'insurance-policy';
   if (/statement/i.test(lower)) return 'statement';

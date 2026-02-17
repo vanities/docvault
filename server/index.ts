@@ -1476,7 +1476,6 @@ Document type patterns:
 - Formation: Articles_of_Organization.pdf
 - EIN: EIN_Letter.pdf
 - License: Business_License_{Year}.pdf
-- Annual Report: {State}_Annual_Report_{Year}.pdf
 - Operating Agreement: Operating_Agreement.pdf
 - Insurance Policy: {Provider}_Insurance_Policy_{Year}.pdf
 - Statement: {Institution}_Statement_{Year}-{MM}.pdf
@@ -1497,7 +1496,7 @@ Respond ONLY with valid JSON. No markdown.`,
 1. "naming" - for filename generation:
 {
   "source": "Company or vendor name (plain text, spaces ok)",
-  "documentType": "w2|1099-nec|1099-misc|1099-div|1099-int|1099-b|1099-r|receipt|invoice|crypto|return|contract|formation|ein-letter|license|business-agreement|annual-report|operating-agreement|insurance-policy|statement|letter|certificate|medical-record|appraisal|other",
+  "documentType": "w2|1099-nec|1099-misc|1099-div|1099-int|1099-b|1099-r|receipt|invoice|crypto|return|contract|formation|ein-letter|license|business-agreement|operating-agreement|insurance-policy|statement|letter|certificate|medical-record|appraisal|other",
   "expenseCategory": "meals|software|equipment|travel|office-supplies|professional-services|utilities|insurance|taxes-licenses|childcare|medical|education|other" (only if receipt/expense),
   "description": "short description if receipt" (optional),
   "year": YYYY (the year from the document - tax year for W-2/1099, or date year for receipts/invoices),
@@ -1505,7 +1504,7 @@ Respond ONLY with valid JSON. No markdown.`,
   "day": 1-31 (if visible on document)
 }
 
-IMPORTANT: If a document is a PAYMENT RECEIPT or CONFIRMATION for a filing fee (e.g. annual report filing fee, state registration fee, business license renewal), classify it as "receipt" with expenseCategory "taxes-licenses", NOT as "annual-report" or other business doc type. Only use "annual-report" for the actual filed annual report document itself.
+IMPORTANT: If a document is a PAYMENT RECEIPT or CONFIRMATION for a filing fee (e.g. annual report filing fee, state registration fee, business license renewal), classify it as "receipt" with expenseCategory "taxes-licenses".
 
 2. "parsedData" - full extracted data from the document:
 - For receipts/expenses: { vendor, vendorAddress, amount, totalAmount, subtotal, tax, date (YYYY-MM-DD), paymentMethod, lastFourCard, items: [{description, quantity, price}], category }

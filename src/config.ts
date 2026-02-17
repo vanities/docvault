@@ -73,7 +73,6 @@ export const DOCUMENT_TYPES: {
   { id: 'ein-letter', label: 'EIN Letter', category: 'business' },
   { id: 'license', label: 'License/Permit', category: 'business' },
   { id: 'business-agreement', label: 'Agreement/Contract', category: 'business' },
-  { id: 'annual-report', label: 'Annual Report', category: 'business' },
   { id: 'operating-agreement', label: 'Operating Agreement', category: 'business' },
   { id: 'insurance-policy', label: 'Insurance Policy', category: 'business' },
   // General document types (useful across entity types)
@@ -94,7 +93,6 @@ export const BUSINESS_FOLDER_STRUCTURE: Record<string, string[]> = {
   contracts: ['business-agreement', 'contract'],
   ein: ['ein-letter'],
   licenses: ['license'],
-  'annual-reports': ['annual-report'],
   agreements: ['operating-agreement'],
   insurance: ['insurance-policy'],
 };
@@ -106,7 +104,6 @@ export function isBusinessDocumentType(docType: DocumentType): boolean {
     'ein-letter',
     'license',
     'business-agreement',
-    'annual-report',
     'operating-agreement',
     'insurance-policy',
   ];

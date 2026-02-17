@@ -61,7 +61,6 @@ function detectDocumentType(filename: string, filePath?: string): DocumentType {
   if (/operating.?agreement/i.test(lower)) return 'operating-agreement';
   if (/ein|employer.*identification/i.test(lower)) return 'ein-letter';
   if (/license|permit|registration/i.test(lower)) return 'license';
-  if (/annual.?report/i.test(lower)) return 'annual-report';
   if (/insurance.?polic/i.test(lower)) return 'insurance-policy';
 
   // General document types

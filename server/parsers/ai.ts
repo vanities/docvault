@@ -171,15 +171,6 @@ For payment histories or transaction lists (like Venmo, PayPal, bank statements 
 - endDate: Latest transaction date (YYYY-MM-DD)
 - category: One of: meals, software, equipment, childcare, medical, travel, office, other
 
-For annual reports (state filings for LLCs/corporations), extract:
-- entityName: Business name
-- state: State of filing
-- filingDate: Date filed (YYYY-MM-DD)
-- filingPeriod: Period covered (e.g., "2024")
-- filingFee: Fee amount paid
-- registeredAgent: Registered agent name
-- status: Good standing, active, etc.
-
 For operating agreements, extract:
 - entityName: Business/LLC name
 - members: Array of {name, ownershipPercentage}
@@ -237,7 +228,7 @@ For appraisals/assessments (property, tax assessments), extract:
 IMPORTANT:
 - Extract ALL data visible on the document. Include every field that has a value.
 - For documents with multiple payments/transactions, ALWAYS calculate the totalAmount by summing all amounts.
-- Include a "documentType" field in your response with one of: w2, 1099-nec, 1099-misc, 1099-div, 1099-int, 1099-b, receipt, invoice, crypto, return, contract, annual-report, operating-agreement, insurance-policy, statement, letter, certificate, medical-record, appraisal, other
+- Include a "documentType" field in your response with one of: w2, 1099-nec, 1099-misc, 1099-div, 1099-int, 1099-b, receipt, invoice, crypto, return, contract, operating-agreement, insurance-policy, statement, letter, certificate, medical-record, appraisal, other
 - Respond ONLY with a valid JSON object.
 - All monetary values should be numbers (not strings).
 - If a field is empty or not found, omit it.`;
@@ -263,7 +254,6 @@ function detectDocumentType(filename: string): string {
   if (/1099-?int/i.test(lower)) return '1099-INT';
   if (/w-?2/i.test(lower)) return 'W-2';
   if (/receipt|expense|purchase/i.test(lower)) return 'receipt';
-  if (/annual.?report/i.test(lower)) return 'annual-report';
   if (/operating.?agreement/i.test(lower)) return 'operating-agreement';
   if (/insurance.?polic/i.test(lower)) return 'insurance-policy';
   if (/statement/i.test(lower)) return 'statement';
@@ -392,8 +382,8 @@ export async function parseWithAI(
         documentType = '1099-div';
       } else if (parsed.interestIncome !== undefined) {
         documentType = '1099-int';
-      } else if (parsed.filingFee !== undefined || parsed.registeredAgent !== undefined) {
-        documentType = 'annual-report';
+      } else if (parsed.filingFee !== undefined) {
+        documentType = 'receipt'; // Filing fees are expenses (taxes-licenses category)
       } else if (parsed.members !== undefined && parsed.ownershipPercentage !== undefined) {
         documentType = 'operating-agreement';
       } else if (parsed.policyNumber !== undefined || parsed.premium !== undefined) {
