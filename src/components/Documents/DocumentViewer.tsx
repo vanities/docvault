@@ -15,7 +15,7 @@ import {
   MoveRight,
   Pencil,
   Check,
-  Sparkles,
+  Wand2,
 } from 'lucide-react';
 import type { TaxDocument, Entity, ExpenseCategory } from '../../types';
 import { DOCUMENT_TYPES, EXPENSE_CATEGORIES } from '../../config';
@@ -182,14 +182,20 @@ export function DocumentViewer({
         }
       }
 
-      // Extract source name from parsed data
+      // Extract source name from parsed data (field names vary by doc type)
       const source =
         (parsed.employerName as string) ||
         (parsed.employer as string) ||
         (parsed.payerName as string) ||
         (parsed.payer as string) ||
         (parsed.vendor as string) ||
+        (parsed.institution as string) ||
+        (parsed.recipientName as string) ||
+        (parsed.billTo as string) ||
+        (parsed.customerName as string) ||
         (parsed.source as string) ||
+        // Fallback: extract from existing filename (first segment before underscore)
+        fileBaseName.split('_')[0]?.replace(/-/g, ' ') ||
         '';
 
       if (!source) {
@@ -584,10 +590,10 @@ export function DocumentViewer({
             onClick={handleAiRename}
             disabled={isAiRenaming}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-violet-500/15 text-violet-400 rounded-xl hover:bg-violet-500/25 transition-all disabled:opacity-40 text-[13px] font-medium"
-            title="AI Renaming"
+            title="Auto rename from parsed data"
           >
-            <Sparkles className={`w-4 h-4 ${isAiRenaming ? 'animate-pulse' : ''}`} />
-            {isAiRenaming ? 'Renaming...' : 'Rename with AI'}
+            <Wand2 className={`w-4 h-4 ${isAiRenaming ? 'animate-pulse' : ''}`} />
+            {isAiRenaming ? 'Renaming...' : 'Auto Rename'}
           </button>
           {onMove && entities && availableYears && (
             <button
