@@ -268,30 +268,28 @@ export function UploadZone({
   const processFiles = useCallback(
     (files: FileList) => {
       const newPending: PendingFile[] = [];
-      const newTypes = new Map(selectedTypes);
-      const newMetadata = new Map(fileMetadata);
+      const newFileTypes: [string, DocumentType][] = [];
+      const newFileMeta: [string, FileMetadata][] = [];
       const filesToSuggest: File[] = [];
 
       Array.from(files).forEach((file) => {
         const detectedType = detectDocumentType(file.name);
-        newTypes.set(file.name, detectedType);
+        newFileTypes.push([file.name, detectedType]);
 
-        // Try to extract source from filename
         const extractedSource = extractSourceFromFilename(file.name);
-
-        // Initialize metadata with extracted source
-        newMetadata.set(file.name, {
-          source: extractedSource,
-          description: '',
-          year: 0,
-          month: new Date().getMonth() + 1, // Current month as default
-          day: 0,
-          customFilename: '',
-        });
+        newFileMeta.push([
+          file.name,
+          {
+            source: extractedSource,
+            description: '',
+            year: 0,
+            month: new Date().getMonth() + 1,
+            day: 0,
+            customFilename: '',
+          },
+        ]);
 
         const pending: PendingFile = { file, detectedType };
-
-        // Create preview for images
         if (file.type.startsWith('image/')) {
           pending.preview = URL.createObjectURL(file);
         }
@@ -301,13 +299,21 @@ export function UploadZone({
       });
 
       setPendingFiles((prev) => [...prev, ...newPending]);
-      setSelectedTypes(newTypes);
-      setFileMetadata(newMetadata);
+      // Use callback form so we MERGE into current state instead of replacing with a stale snapshot
+      setSelectedTypes((prev) => {
+        const next = new Map(prev);
+        newFileTypes.forEach(([name, type]) => next.set(name, type));
+        return next;
+      });
+      setFileMetadata((prev) => {
+        const next = new Map(prev);
+        newFileMeta.forEach(([name, meta]) => next.set(name, meta));
+        return next;
+      });
 
-      // Auto-trigger AI filename suggestion for each file
       filesToSuggest.forEach((file) => suggestFilename(file));
     },
-    [selectedTypes, fileMetadata, suggestFilename]
+    [suggestFilename]
   );
 
   const handleDrop = useCallback(
