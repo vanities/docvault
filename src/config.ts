@@ -73,6 +73,15 @@ export const DOCUMENT_TYPES: {
   { id: 'ein-letter', label: 'EIN Letter', category: 'business' },
   { id: 'license', label: 'License/Permit', category: 'business' },
   { id: 'business-agreement', label: 'Agreement/Contract', category: 'business' },
+  { id: 'annual-report', label: 'Annual Report', category: 'business' },
+  { id: 'operating-agreement', label: 'Operating Agreement', category: 'business' },
+  { id: 'insurance-policy', label: 'Insurance Policy', category: 'business' },
+  // General document types (useful across entity types)
+  { id: 'statement', label: 'Statement', category: 'other' },
+  { id: 'letter', label: 'Letter/Correspondence', category: 'other' },
+  { id: 'certificate', label: 'Certificate', category: 'other' },
+  { id: 'medical-record', label: 'Medical Record', category: 'other' },
+  { id: 'appraisal', label: 'Appraisal/Assessment', category: 'other' },
 ];
 
 // =============================================================================
@@ -85,6 +94,9 @@ export const BUSINESS_FOLDER_STRUCTURE: Record<string, string[]> = {
   contracts: ['business-agreement', 'contract'],
   ein: ['ein-letter'],
   licenses: ['license'],
+  'annual-reports': ['annual-report'],
+  agreements: ['operating-agreement'],
+  insurance: ['insurance-policy'],
 };
 
 // Helper to check if a document type is a business document
@@ -94,6 +106,9 @@ export function isBusinessDocumentType(docType: DocumentType): boolean {
     'ein-letter',
     'license',
     'business-agreement',
+    'annual-report',
+    'operating-agreement',
+    'insurance-policy',
   ];
   return businessTypes.includes(docType);
 }

@@ -25,7 +25,16 @@ export type DocumentType =
   | 'formation'
   | 'ein-letter'
   | 'license'
-  | 'business-agreement';
+  | 'business-agreement'
+  | 'annual-report'
+  | 'operating-agreement'
+  | 'insurance-policy'
+  // General document types (not tied to tax year or business)
+  | 'statement'
+  | 'letter'
+  | 'certificate'
+  | 'medical-record'
+  | 'appraisal';
 
 // Expense categories for Schedule C
 export type ExpenseCategory =
