@@ -75,14 +75,29 @@ function ReminderRow({
 }: {
   reminder: Reminder;
   entityName: string;
-  onComplete: () => void;
-  onDismiss: () => void;
+  onComplete: () => Promise<void>;
+  onDismiss: () => Promise<void>;
 }) {
+  const [isBusy, setIsBusy] = useState(false);
   const colors = urgencyColor(reminder.dueDate, reminder.status);
+
+  const handleComplete = async () => {
+    if (isBusy) return;
+    setIsBusy(true);
+    await onComplete();
+    setIsBusy(false);
+  };
+
+  const handleDismiss = async () => {
+    if (isBusy) return;
+    setIsBusy(true);
+    await onDismiss();
+    setIsBusy(false);
+  };
 
   return (
     <div
-      className={`flex items-center gap-3 px-3 py-2 rounded-lg ${colors.bg} border ${colors.border} transition-all`}
+      className={`flex items-center gap-3 px-3 py-2 rounded-lg ${colors.bg} border ${colors.border} transition-all ${isBusy ? 'opacity-50' : ''}`}
     >
       <div className={`w-2 h-2 rounded-full flex-shrink-0 ${colors.dot}`} />
       <div className="flex-1 min-w-0">
@@ -109,15 +124,17 @@ function ReminderRow({
       </div>
       <div className="flex items-center gap-1 flex-shrink-0">
         <button
-          onClick={onComplete}
-          className="p-1 rounded-md hover:bg-emerald-500/15 text-surface-600 hover:text-emerald-400 transition-colors"
+          onClick={handleComplete}
+          disabled={isBusy}
+          className="p-1 rounded-md hover:bg-emerald-500/15 text-surface-600 hover:text-emerald-400 transition-colors disabled:opacity-40"
           title="Mark complete"
         >
           <Check className="w-3.5 h-3.5" />
         </button>
         <button
-          onClick={onDismiss}
-          className="p-1 rounded-md hover:bg-red-500/10 text-surface-600 hover:text-red-400 transition-colors"
+          onClick={handleDismiss}
+          disabled={isBusy}
+          className="p-1 rounded-md hover:bg-red-500/10 text-surface-600 hover:text-red-400 transition-colors disabled:opacity-40"
           title="Dismiss"
         >
           <X className="w-3.5 h-3.5" />
@@ -135,10 +152,11 @@ export function ReminderBanner() {
   const [newRecurrence, setNewRecurrence] = useState<string>('');
   const [newNotes, setNewNotes] = useState('');
 
-  // Filter to active reminders for the current entity (or all)
+  // Filter to active reminders: pending, matching entity, and due within 60 days (or overdue)
   const activeReminders = reminders
     .filter((r) => r.status === 'pending')
     .filter((r) => selectedEntity === 'all' || r.entityId === selectedEntity)
+    .filter((r) => daysUntil(r.dueDate) <= 60)
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
   const handleComplete = async (id: string) => {

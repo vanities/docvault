@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Upload, FileText, Image, File, X, Wand2, Sparkles, Loader2 } from 'lucide-react';
 import type { Entity, DocumentType, TaxDocument, ExpenseCategory } from '../../types';
 import { DOCUMENT_TYPES, EXPENSE_CATEGORIES } from '../../config';
@@ -115,6 +115,9 @@ export function UploadZone({
   const [aiParsedData, setAiParsedData] = useState<Map<string, Record<string, unknown>>>(new Map());
   // Track which fields the user has manually edited (so AI doesn't overwrite)
   const [userEditedFields, setUserEditedFields] = useState<Map<string, Set<string>>>(new Map());
+  // Ref to always read the latest userEditedFields inside async callbacks (avoids stale closure)
+  const userEditedFieldsRef = useRef(userEditedFields);
+  userEditedFieldsRef.current = userEditedFields;
 
   // Ask Claude AI to suggest filename metadata for a file
   const suggestFilename = useCallback(
@@ -135,7 +138,8 @@ export function UploadZone({
 
         if (data.ok && data.suggestion) {
           const s = data.suggestion;
-          const edited = userEditedFields.get(file.name) || new Set();
+          // Read from ref to get the LATEST user edits (not the stale closure value)
+          const edited = userEditedFieldsRef.current.get(file.name) || new Set();
 
           // Update document type (only if user hasn't manually changed it)
           if (s.documentType && !edited.has('type')) {
@@ -188,7 +192,7 @@ export function UploadZone({
         });
       }
     },
-    [taxYear, userEditedFields]
+    [taxYear]
   );
 
   // Generate standard filename when metadata changes
@@ -328,6 +332,9 @@ export function UploadZone({
       const fields = new Set(next.get(fileName) || []);
       fields.add(field);
       next.set(fileName, fields);
+      // Update ref immediately so async AI callbacks see the latest edits
+      // (don't wait for React re-render to flush the state update)
+      userEditedFieldsRef.current = next;
       return next;
     });
   };
