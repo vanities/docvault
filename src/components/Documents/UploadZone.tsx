@@ -115,9 +115,11 @@ export function UploadZone({
   const [aiParsedData, setAiParsedData] = useState<Map<string, Record<string, unknown>>>(new Map());
   // Track which fields the user has manually edited (so AI doesn't overwrite)
   const [userEditedFields, setUserEditedFields] = useState<Map<string, Set<string>>>(new Map());
-  // Ref to always read the latest userEditedFields inside async callbacks (avoids stale closure)
+  // Refs to always read the latest values inside async callbacks (avoids stale closures)
   const userEditedFieldsRef = useRef(userEditedFields);
   userEditedFieldsRef.current = userEditedFields;
+  const fileMetadataRef = useRef(fileMetadata);
+  fileMetadataRef.current = fileMetadata;
 
   // Ask Claude AI to suggest filename metadata for a file
   const suggestFilename = useCallback(
@@ -200,7 +202,8 @@ export function UploadZone({
     (fileName: string) => {
       const docType = selectedTypes.get(fileName) || 'other';
       const category = selectedCategory.get(fileName) as ExpenseCategory | undefined;
-      const metadata = fileMetadata.get(fileName);
+      // Read from ref to avoid circular dependency (this fn writes to fileMetadata)
+      const metadata = fileMetadataRef.current.get(fileName);
       const pendingFile = pendingFiles.find((p) => p.file.name === fileName);
 
       if (!pendingFile || !metadata?.source) return;
@@ -219,19 +222,23 @@ export function UploadZone({
       });
 
       setFileMetadata((prev) => {
+        const existing = prev.get(fileName);
+        // Bail out if nothing changed — prevents infinite re-render loop
+        if (existing && existing.customFilename === generatedName) return prev;
         const next = new Map(prev);
-        const existing = next.get(fileName) || {
+        const base = existing || {
           source: '',
           description: '',
+          year: 0,
           month: 0,
           day: 0,
           customFilename: '',
         };
-        next.set(fileName, { ...existing, customFilename: generatedName });
+        next.set(fileName, { ...base, customFilename: generatedName });
         return next;
       });
     },
-    [selectedTypes, selectedCategory, pendingFiles, taxYear, fileMetadata]
+    [selectedTypes, selectedCategory, pendingFiles, taxYear]
   );
 
   // Update filename when relevant fields change
