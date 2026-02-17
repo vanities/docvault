@@ -190,12 +190,12 @@ export function DocumentViewer({
         (parsed.payer as string) ||
         (parsed.vendor as string) ||
         (parsed.institution as string) ||
+        (parsed.lenderName as string) ||
+        (parsed.lender as string) ||
         (parsed.recipientName as string) ||
         (parsed.billTo as string) ||
         (parsed.customerName as string) ||
         (parsed.source as string) ||
-        // Fallback: extract from existing filename (first segment before underscore)
-        fileBaseName.split('_')[0]?.replace(/-/g, ' ') ||
         '';
 
       if (!source) {
