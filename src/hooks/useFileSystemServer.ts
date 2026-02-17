@@ -1006,6 +1006,29 @@ export function useFileSystemServer() {
     [isConnected]
   );
 
+  // Update document metadata (tags, notes) - persists to server
+  const updateDocMetadata = useCallback(
+    async (
+      entity: string,
+      filePath: string,
+      updates: { tags?: string[]; notes?: string }
+    ): Promise<boolean> => {
+      if (!isConnected) return false;
+      try {
+        const response = await fetch(`${API_BASE}/metadata`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ entity, filePath, ...updates }),
+        });
+        const data = await response.json();
+        return data.ok === true;
+      } catch {
+        return false;
+      }
+    },
+    [isConnected]
+  );
+
   return {
     isConnected,
     dataDir,
@@ -1036,5 +1059,6 @@ export function useFileSystemServer() {
     addTodo,
     updateTodo,
     deleteTodo,
+    updateDocMetadata,
   };
 }

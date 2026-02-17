@@ -265,6 +265,30 @@ async function _getParsedDataForFile(filePath: string): Promise<ParsedData | nul
 void _getParsedDataForFile;
 
 // ============================================================================
+// Document Metadata Storage (tags, notes)
+// ============================================================================
+
+const METADATA_FILE = path.join(DATA_DIR, '.docvault-metadata.json');
+
+interface DocMetadata {
+  tags?: string[];
+  notes?: string;
+}
+
+async function loadMetadata(): Promise<Record<string, DocMetadata>> {
+  try {
+    const content = await fs.readFile(METADATA_FILE, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return {};
+  }
+}
+
+async function saveMetadata(data: Record<string, DocMetadata>): Promise<void> {
+  await fs.writeFile(METADATA_FILE, JSON.stringify(data, null, 2));
+}
+
+// ============================================================================
 // Reminders Storage
 // ============================================================================
 
@@ -560,14 +584,21 @@ async function handleRequest(req: Request): Promise<Response> {
       await fs.access(yearPath);
       const files = await scanDirectory(yearPath, year);
 
-      // Attach parsed data to files
+      // Attach parsed data and metadata to files
       const parsedDataMap = await loadParsedData();
-      const filesWithParsedData = files.map((f) => ({
-        ...f,
-        parsedData: parsedDataMap[`${entityId}/${f.path}`] || null,
-      }));
+      const metadataMap = await loadMetadata();
+      const filesWithData = files.map((f) => {
+        const key = `${entityId}/${f.path}`;
+        const meta = metadataMap[key];
+        return {
+          ...f,
+          parsedData: parsedDataMap[key] || null,
+          tags: meta?.tags || [],
+          notes: meta?.notes || '',
+        };
+      });
 
-      return jsonResponse({ files: filesWithParsedData });
+      return jsonResponse({ files: filesWithData });
     } catch {
       return jsonResponse({ files: [] });
     }
@@ -896,14 +927,21 @@ async function handleRequest(req: Request): Promise<Response> {
       await fs.access(businessDocsPath);
       const files = await scanDirectory(businessDocsPath, 'business-docs');
 
-      // Attach parsed data to files
+      // Attach parsed data and metadata to files
       const parsedDataMap = await loadParsedData();
-      const filesWithParsedData = files.map((f) => ({
-        ...f,
-        parsedData: parsedDataMap[`${entityId}/${f.path}`] || null,
-      }));
+      const metadataMap = await loadMetadata();
+      const filesWithData = files.map((f) => {
+        const key = `${entityId}/${f.path}`;
+        const meta = metadataMap[key];
+        return {
+          ...f,
+          parsedData: parsedDataMap[key] || null,
+          tags: meta?.tags || [],
+          notes: meta?.notes || '',
+        };
+      });
 
-      return jsonResponse({ files: filesWithParsedData });
+      return jsonResponse({ files: filesWithData });
     } catch {
       // Directory doesn't exist yet - return empty
       return jsonResponse({ files: [] });
@@ -924,14 +962,21 @@ async function handleRequest(req: Request): Promise<Response> {
       await fs.access(entityPath);
       const files = await scanDirectory(entityPath, '');
 
-      // Attach parsed data to files
+      // Attach parsed data and metadata to files
       const parsedDataMap = await loadParsedData();
-      const filesWithParsedData = files.map((f) => ({
-        ...f,
-        parsedData: parsedDataMap[`${entityId}/${f.path}`] || null,
-      }));
+      const metadataMap = await loadMetadata();
+      const filesWithData = files.map((f) => {
+        const key = `${entityId}/${f.path}`;
+        const meta = metadataMap[key];
+        return {
+          ...f,
+          parsedData: parsedDataMap[key] || null,
+          tags: meta?.tags || [],
+          notes: meta?.notes || '',
+        };
+      });
 
-      return jsonResponse({ files: filesWithParsedData });
+      return jsonResponse({ files: filesWithData });
     } catch {
       return jsonResponse({ files: [] });
     }
@@ -975,20 +1020,55 @@ async function handleRequest(req: Request): Promise<Response> {
       await fs.copyFile(fullFromPath, fullToPath);
       await fs.unlink(fullFromPath);
 
-      // Update parsed data key if it exists
-      const parsedData = await loadParsedData();
+      // Update parsed data and metadata keys if they exist
       const oldKey = `${fromEntity}/${from}`;
       const newKey = `${toEntity}/${to}`;
+
+      const parsedData = await loadParsedData();
       if (parsedData[oldKey]) {
         parsedData[newKey] = parsedData[oldKey];
         delete parsedData[oldKey];
         await saveParsedData(parsedData);
       }
 
+      const metadata = await loadMetadata();
+      if (metadata[oldKey]) {
+        metadata[newKey] = metadata[oldKey];
+        delete metadata[oldKey];
+        await saveMetadata(metadata);
+      }
+
       return jsonResponse({ ok: true });
     } catch (err) {
       return jsonResponse({ error: 'Failed to move file', details: String(err) }, 500);
     }
+  }
+
+  // PUT /api/metadata - Update document metadata (tags, notes)
+  if (pathname === '/api/metadata' && req.method === 'PUT') {
+    const body = await req.json();
+    const { entity, filePath: fp, tags, notes } = body;
+
+    if (!entity || !fp) {
+      return jsonResponse({ error: 'Missing entity or filePath' }, 400);
+    }
+
+    const key = `${entity}/${fp}`;
+    const metadata = await loadMetadata();
+    const existing = metadata[key] || {};
+
+    if (tags !== undefined) existing.tags = tags;
+    if (notes !== undefined) existing.notes = notes;
+
+    // Clean up empty entries
+    if ((!existing.tags || existing.tags.length === 0) && !existing.notes) {
+      delete metadata[key];
+    } else {
+      metadata[key] = existing;
+    }
+
+    await saveMetadata(metadata);
+    return jsonResponse({ ok: true });
   }
 
   // GET /api/tax-summary/:year - Get consolidated tax data across all tax entities

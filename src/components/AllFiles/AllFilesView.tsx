@@ -17,6 +17,7 @@ export function AllFilesView() {
     entities,
     setIsParsing,
     relocateFile,
+    updateDocMetadata,
   } = useAppContext();
 
   const { addToast } = useToast();
@@ -54,6 +55,16 @@ export function AllFilesView() {
 
   const handleUpdateDoc = (id: string, updates: Partial<TaxDocument>) => {
     setAllFiles((prev) => prev.map((doc) => (doc.id === id ? { ...doc, ...updates } : doc)));
+    if ('tags' in updates || 'notes' in updates) {
+      const doc = allFiles.find((d) => d.id === id);
+      if (doc?.filePath) {
+        const merged = { ...doc, ...updates };
+        updateDocMetadata(doc.entity, doc.filePath, {
+          tags: merged.tags,
+          notes: merged.notes || '',
+        });
+      }
+    }
   };
 
   const handleDeleteDoc = async (id: string) => {

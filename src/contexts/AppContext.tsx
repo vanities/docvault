@@ -133,6 +133,13 @@ interface AppContextValue {
   addTodo: (title: string) => Promise<Todo | null>;
   updateTodo: (id: string, updates: Partial<Todo>) => Promise<Todo | null>;
   deleteTodo: (id: string) => Promise<boolean>;
+
+  // Document metadata
+  updateDocMetadata: (
+    entity: string,
+    filePath: string,
+    updates: { tags?: string[]; notes?: string }
+  ) => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -249,6 +256,7 @@ export function AppProvider({ children }: AppProviderProps) {
     addTodo,
     updateTodo,
     deleteTodo,
+    updateDocMetadata,
   } = useFileSystemServer();
 
   // Global processing state
@@ -365,6 +373,9 @@ export function AppProvider({ children }: AppProviderProps) {
     addTodo,
     updateTodo,
     deleteTodo,
+
+    // Document metadata
+    updateDocMetadata,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

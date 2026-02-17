@@ -37,15 +37,27 @@ export function TaxYearView() {
     parseFile,
     moveFile,
     relocateFile,
+    updateDocMetadata,
   } = useAppContext();
 
   const { addToast } = useToast();
 
-  // Update document in the scanned documents list (in-memory for display)
+  // Update document in the scanned documents list and persist metadata
   const handleUpdateDoc = (id: string, updates: Partial<TaxDocument>) => {
     setScannedDocuments((prev) =>
       prev.map((doc) => (doc.id === id ? { ...doc, ...updates } : doc))
     );
+    // Persist tags and notes to server
+    if ('tags' in updates || 'notes' in updates) {
+      const doc = scannedDocuments.find((d) => d.id === id);
+      if (doc?.filePath) {
+        const merged = { ...doc, ...updates };
+        updateDocMetadata(doc.entity, doc.filePath, {
+          tags: merged.tags,
+          notes: merged.notes || '',
+        });
+      }
+    }
   };
 
   // Delete a document via server API
