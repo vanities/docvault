@@ -90,32 +90,37 @@ export function DocumentCard({
   const handleSave = async () => {
     setIsSaving(true);
 
-    const typeChanged = editedType !== doc.type;
-    const entityChanged = editedEntity !== doc.entity;
-    const yearChanged = editedYear !== doc.taxYear;
+    try {
+      const typeChanged = editedType !== doc.type;
+      const entityChanged = editedEntity !== doc.entity;
+      const yearChanged = editedYear !== doc.taxYear;
 
-    // If type, entity, or year changed, relocate the file
-    if ((typeChanged || entityChanged || yearChanged) && onRelocate && doc.filePath) {
-      const success = await onRelocate(
-        doc.entity,
-        doc.filePath,
-        editedEntity,
-        editedYear,
-        editedType
-      );
-      if (!success) {
-        setIsSaving(false);
-        return;
+      // If type, entity, or year changed, relocate the file
+      if ((typeChanged || entityChanged || yearChanged) && onRelocate && doc.filePath) {
+        const success = await onRelocate(
+          doc.entity,
+          doc.filePath,
+          editedEntity,
+          editedYear,
+          editedType
+        );
+        if (!success) {
+          setIsSaving(false);
+          return;
+        }
       }
-    }
 
-    // Update metadata
-    onUpdate(doc.id, {
-      type: editedType,
-      notes: editedNotes,
-    });
-    setIsEditing(false);
-    setIsSaving(false);
+      // Update metadata
+      onUpdate(doc.id, {
+        type: editedType,
+        notes: editedNotes,
+      });
+    } catch (err) {
+      console.error('Save error:', err);
+    } finally {
+      setIsEditing(false);
+      setIsSaving(false);
+    }
   };
 
   const handleAddTag = () => {

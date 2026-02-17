@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useAppContext, type TabType } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
-import { useDocuments } from '../../hooks/useDocuments';
 import { QuickStats } from '../Dashboard/QuickStats';
 import { ReminderBanner } from '../Reminders/ReminderBanner';
 import { TodoList } from '../Todos/TodoList';
@@ -41,7 +40,13 @@ export function TaxYearView() {
   } = useAppContext();
 
   const { addToast } = useToast();
-  const { updateDocument } = useDocuments();
+
+  // Update document in the scanned documents list (in-memory for display)
+  const handleUpdateDoc = (id: string, updates: Partial<TaxDocument>) => {
+    setScannedDocuments((prev) =>
+      prev.map((doc) => (doc.id === id ? { ...doc, ...updates } : doc))
+    );
+  };
 
   // Delete a document via server API
   const handleDeleteDoc = async (id: string) => {
@@ -339,7 +344,7 @@ export function TaxYearView() {
       {activeTab === 'documents' && (
         <DocumentList
           documents={filteredDocuments}
-          onUpdate={updateDocument}
+          onUpdate={handleUpdateDoc}
           onDelete={handleDeleteDoc}
           onParse={handleParseDocument}
           onMove={handleMoveDocument}
