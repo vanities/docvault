@@ -1498,12 +1498,14 @@ Respond ONLY with valid JSON. No markdown.`,
 {
   "source": "Company or vendor name (plain text, spaces ok)",
   "documentType": "w2|1099-nec|1099-misc|1099-div|1099-int|1099-b|1099-r|receipt|invoice|crypto|return|contract|formation|ein-letter|license|business-agreement|annual-report|operating-agreement|insurance-policy|statement|letter|certificate|medical-record|appraisal|other",
-  "expenseCategory": "meals|software|equipment|travel|office|childcare|medical|other" (only if receipt/expense),
+  "expenseCategory": "meals|software|equipment|travel|office-supplies|professional-services|utilities|insurance|taxes-licenses|childcare|medical|education|other" (only if receipt/expense),
   "description": "short description if receipt" (optional),
   "year": YYYY (the year from the document - tax year for W-2/1099, or date year for receipts/invoices),
   "month": 1-12 (if visible on document),
   "day": 1-31 (if visible on document)
 }
+
+IMPORTANT: If a document is a PAYMENT RECEIPT or CONFIRMATION for a filing fee (e.g. annual report filing fee, state registration fee, business license renewal), classify it as "receipt" with expenseCategory "taxes-licenses", NOT as "annual-report" or other business doc type. Only use "annual-report" for the actual filed annual report document itself.
 
 2. "parsedData" - full extracted data from the document:
 - For receipts/expenses: { vendor, vendorAddress, amount, totalAmount, subtotal, tax, date (YYYY-MM-DD), paymentMethod, lastFourCard, items: [{description, quantity, price}], category }

@@ -187,6 +187,13 @@ export const EXPENSE_CATEGORIES: {
     scheduleC: 'Line 15',
     folder: 'business',
   },
+  {
+    id: 'taxes-licenses',
+    label: 'Taxes & Licenses',
+    deductionRate: 1,
+    scheduleC: 'Line 23',
+    folder: 'business',
+  },
   { id: 'childcare', label: 'Childcare', deductionRate: 1, folder: 'childcare' },
   { id: 'medical', label: 'Medical', deductionRate: 1, folder: 'medical' },
   { id: 'education', label: 'Education', deductionRate: 1, folder: 'business' },

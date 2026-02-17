@@ -46,6 +46,7 @@ export type ExpenseCategory =
   | 'travel'
   | 'utilities'
   | 'insurance'
+  | 'taxes-licenses'
   | 'childcare'
   | 'medical'
   | 'education'
