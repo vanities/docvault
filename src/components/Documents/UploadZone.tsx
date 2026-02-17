@@ -11,6 +11,7 @@ import {
 interface UploadZoneProps {
   entity: Entity;
   taxYear: number;
+  availableYears?: number[];
   onUpload: (
     file: File,
     type: DocumentType,
@@ -64,6 +65,15 @@ function detectDocumentType(filename: string): DocumentType {
   if (/contract|agreement|nda/i.test(lower)) return 'business-agreement';
   if (/w-?9/i.test(lower)) return 'contract'; // W-9 stays as tax contract
 
+  // New document types
+  if (/annual.?report/i.test(lower)) return 'annual-report';
+  if (/operating.?agreement/i.test(lower)) return 'operating-agreement';
+  if (/insurance.?polic/i.test(lower)) return 'insurance-policy';
+  if (/statement/i.test(lower)) return 'statement';
+  if (/medical.?record/i.test(lower)) return 'medical-record';
+  if (/appraisal|assessment/i.test(lower)) return 'appraisal';
+  if (/certificate|cert\b/i.test(lower)) return 'certificate';
+
   return 'other';
 }
 
@@ -89,7 +99,13 @@ const MONTHS = [
   { value: 12, label: 'December' },
 ];
 
-export function UploadZone({ entity, taxYear, onUpload, disabled = false }: UploadZoneProps) {
+export function UploadZone({
+  entity,
+  taxYear,
+  availableYears,
+  onUpload,
+  disabled = false,
+}: UploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [selectedTypes, setSelectedTypes] = useState<Map<string, DocumentType>>(new Map());
@@ -97,6 +113,8 @@ export function UploadZone({ entity, taxYear, onUpload, disabled = false }: Uplo
   const [fileMetadata, setFileMetadata] = useState<Map<string, FileMetadata>>(new Map());
   const [aiLoading, setAiLoading] = useState<Set<string>>(new Set());
   const [aiParsedData, setAiParsedData] = useState<Map<string, Record<string, unknown>>>(new Map());
+  // Track which fields the user has manually edited (so AI doesn't overwrite)
+  const [userEditedFields, setUserEditedFields] = useState<Map<string, Set<string>>>(new Map());
 
   // Ask Claude AI to suggest filename metadata for a file
   const suggestFilename = useCallback(
@@ -117,20 +135,21 @@ export function UploadZone({ entity, taxYear, onUpload, disabled = false }: Uplo
 
         if (data.ok && data.suggestion) {
           const s = data.suggestion;
+          const edited = userEditedFields.get(file.name) || new Set();
 
-          // Update document type
-          if (s.documentType) {
+          // Update document type (only if user hasn't manually changed it)
+          if (s.documentType && !edited.has('type')) {
             setSelectedTypes((prev) =>
               new Map(prev).set(file.name, s.documentType as DocumentType)
             );
           }
 
-          // Update expense category
-          if (s.expenseCategory && s.expenseCategory !== 'other') {
+          // Update expense category (only if user hasn't manually changed it)
+          if (s.expenseCategory && s.expenseCategory !== 'other' && !edited.has('category')) {
             setSelectedCategory((prev) => new Map(prev).set(file.name, s.expenseCategory));
           }
 
-          // Update metadata fields
+          // Update metadata fields (only non-user-edited ones)
           setFileMetadata((prev) => {
             const next = new Map(prev);
             const existing = next.get(file.name) || {
@@ -143,11 +162,13 @@ export function UploadZone({ entity, taxYear, onUpload, disabled = false }: Uplo
             };
             next.set(file.name, {
               ...existing,
-              source: s.source || existing.source,
-              description: s.description || existing.description,
-              year: s.year || existing.year,
-              month: s.month || existing.month,
-              day: s.day || existing.day,
+              source: !edited.has('source') ? s.source || existing.source : existing.source,
+              description: !edited.has('description')
+                ? s.description || existing.description
+                : existing.description,
+              year: !edited.has('year') ? s.year || existing.year : existing.year,
+              month: !edited.has('month') ? s.month || existing.month : existing.month,
+              day: !edited.has('day') ? s.day || existing.day : existing.day,
             });
             return next;
           });
@@ -167,7 +188,7 @@ export function UploadZone({ entity, taxYear, onUpload, disabled = false }: Uplo
         });
       }
     },
-    [taxYear]
+    [taxYear, userEditedFields]
   );
 
   // Generate standard filename when metadata changes
@@ -301,11 +322,23 @@ export function UploadZone({ entity, taxYear, onUpload, disabled = false }: Uplo
     [processFiles]
   );
 
+  const markUserEdited = (fileName: string, field: string) => {
+    setUserEditedFields((prev) => {
+      const next = new Map(prev);
+      const fields = new Set(next.get(fileName) || []);
+      fields.add(field);
+      next.set(fileName, fields);
+      return next;
+    });
+  };
+
   const handleTypeChange = (fileName: string, type: DocumentType) => {
+    markUserEdited(fileName, 'type');
     setSelectedTypes((prev) => new Map(prev).set(fileName, type));
   };
 
   const handleCategoryChange = (fileName: string, category: string) => {
+    markUserEdited(fileName, 'category');
     setSelectedCategory((prev) => new Map(prev).set(fileName, category));
   };
 
@@ -314,6 +347,7 @@ export function UploadZone({ entity, taxYear, onUpload, disabled = false }: Uplo
     field: keyof FileMetadata,
     value: string | number
   ) => {
+    markUserEdited(fileName, field);
     setFileMetadata((prev) => {
       const next = new Map(prev);
       const existing = next.get(fileName) || {
@@ -342,6 +376,11 @@ export function UploadZone({ entity, taxYear, onUpload, disabled = false }: Uplo
       return next;
     });
     setFileMetadata((prev) => {
+      const next = new Map(prev);
+      next.delete(fileName);
+      return next;
+    });
+    setUserEditedFields((prev) => {
       const next = new Map(prev);
       next.delete(fileName);
       return next;
@@ -392,6 +431,7 @@ export function UploadZone({ entity, taxYear, onUpload, disabled = false }: Uplo
     setSelectedCategory(new Map());
     setFileMetadata(new Map());
     setAiParsedData(new Map());
+    setUserEditedFields(new Map());
   };
 
   // Check if document type needs month input
@@ -505,6 +545,26 @@ export function UploadZone({ entity, taxYear, onUpload, disabled = false }: Uplo
                               {EXPENSE_CATEGORIES.map((cat) => (
                                 <option key={cat.id} value={cat.id}>
                                   {cat.label}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+
+                          {availableYears && availableYears.length > 0 && (
+                            <select
+                              value={metadata.year || taxYear}
+                              onChange={(e) =>
+                                handleMetadataChange(
+                                  file.name,
+                                  'year',
+                                  parseInt(e.target.value, 10)
+                                )
+                              }
+                              className="text-[12px] bg-surface-200/50 border border-border text-surface-900 rounded px-2 py-1"
+                            >
+                              {availableYears.map((yr) => (
+                                <option key={yr} value={yr}>
+                                  {yr}
                                 </option>
                               ))}
                             </select>

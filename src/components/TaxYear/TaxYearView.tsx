@@ -293,6 +293,7 @@ export function TaxYearView() {
           <UploadZone
             entity={selectedEntity}
             taxYear={selectedYear}
+            availableYears={availableYears}
             onUpload={handleImport}
             disabled={isProcessing}
           />
