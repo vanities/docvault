@@ -1,34 +1,16 @@
 import { useState, useEffect } from 'react';
-import {
-  Building2,
-  User,
-  Tractor,
-  Plus,
-  X,
-  Settings,
-  LayoutGrid,
-  Pencil,
-  FileText,
-  Upload,
-  Briefcase,
-  Home,
-  Store,
-  Factory,
-  Landmark,
-  ShoppingBag,
-  Truck,
-  Wrench,
-  Coffee,
-  Leaf,
-  Heart,
-  Star,
-  Zap,
-  Globe,
-  type LucideIcon,
-} from 'lucide-react';
+import { Plus, X, Settings, LayoutGrid, Pencil, FileText, Upload } from 'lucide-react';
 import type { Entity, TaxDocument, DocumentType } from '../../types';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import { DOCUMENT_TYPES } from '../../config';
+import {
+  AVAILABLE_ICONS,
+  ICON_MAP,
+  DEFAULT_ENTITY_ICONS,
+  getEntityIcon,
+  ENTITY_COLOR_MAP as COLOR_MAP,
+  AVAILABLE_COLORS,
+} from '../../utils/entityDisplay';
 
 interface EntitySwitcherProps {
   selectedEntity: Entity;
@@ -47,119 +29,6 @@ interface EntitySwitcherProps {
   onDeleteFile?: (entity: Entity, filePath: string) => Promise<boolean>;
   disabled?: boolean;
 }
-
-// Available icons for entities
-const AVAILABLE_ICONS: { id: string; icon: LucideIcon; label: string }[] = [
-  { id: 'user', icon: User, label: 'Person' },
-  { id: 'building', icon: Building2, label: 'Building' },
-  { id: 'briefcase', icon: Briefcase, label: 'Briefcase' },
-  { id: 'home', icon: Home, label: 'Home' },
-  { id: 'store', icon: Store, label: 'Store' },
-  { id: 'factory', icon: Factory, label: 'Factory' },
-  { id: 'landmark', icon: Landmark, label: 'Bank' },
-  { id: 'shopping', icon: ShoppingBag, label: 'Shopping' },
-  { id: 'truck', icon: Truck, label: 'Truck' },
-  { id: 'tractor', icon: Tractor, label: 'Farm' },
-  { id: 'wrench', icon: Wrench, label: 'Tools' },
-  { id: 'coffee', icon: Coffee, label: 'Cafe' },
-  { id: 'leaf', icon: Leaf, label: 'Nature' },
-  { id: 'heart', icon: Heart, label: 'Health' },
-  { id: 'star', icon: Star, label: 'Star' },
-  { id: 'zap', icon: Zap, label: 'Energy' },
-  { id: 'globe', icon: Globe, label: 'Global' },
-];
-
-// Icon mapping - extend as needed
-const ICON_MAP: Record<string, LucideIcon> = {
-  user: User,
-  building: Building2,
-  briefcase: Briefcase,
-  home: Home,
-  store: Store,
-  factory: Factory,
-  landmark: Landmark,
-  shopping: ShoppingBag,
-  truck: Truck,
-  tractor: Tractor,
-  wrench: Wrench,
-  coffee: Coffee,
-  leaf: Leaf,
-  heart: Heart,
-  star: Star,
-  zap: Zap,
-  globe: Globe,
-};
-
-// Default icons for known entities (used if no icon is set)
-const DEFAULT_ENTITY_ICONS: Record<string, string> = {
-  all: 'grid',
-  personal: 'user',
-  'am2-llc': 'building',
-  'manna-llc': 'tractor',
-};
-
-// Get the icon component for an entity
-function getEntityIcon(entity: EntityConfig): LucideIcon {
-  // Use stored icon if available
-  if (entity.icon && ICON_MAP[entity.icon]) {
-    return ICON_MAP[entity.icon];
-  }
-  // Fall back to default based on ID
-  const defaultIcon = DEFAULT_ENTITY_ICONS[entity.id];
-  if (defaultIcon && ICON_MAP[defaultIcon]) {
-    return ICON_MAP[defaultIcon];
-  }
-  // Default to Building2
-  return Building2;
-}
-
-// Color mapping for Tailwind classes
-const COLOR_MAP: Record<string, { bg: string; border: string; text: string; ring: string }> = {
-  blue: {
-    bg: 'bg-blue-50',
-    border: 'border-blue-200',
-    text: 'text-blue-700',
-    ring: 'ring-blue-500',
-  },
-  green: {
-    bg: 'bg-green-50',
-    border: 'border-green-200',
-    text: 'text-green-700',
-    ring: 'ring-green-500',
-  },
-  amber: {
-    bg: 'bg-amber-50',
-    border: 'border-amber-200',
-    text: 'text-amber-700',
-    ring: 'ring-amber-500',
-  },
-  purple: {
-    bg: 'bg-purple-50',
-    border: 'border-purple-200',
-    text: 'text-purple-700',
-    ring: 'ring-purple-500',
-  },
-  pink: {
-    bg: 'bg-pink-50',
-    border: 'border-pink-200',
-    text: 'text-pink-700',
-    ring: 'ring-pink-500',
-  },
-  red: {
-    bg: 'bg-red-50',
-    border: 'border-red-200',
-    text: 'text-red-700',
-    ring: 'ring-red-500',
-  },
-  gray: {
-    bg: 'bg-gray-50',
-    border: 'border-gray-200',
-    text: 'text-gray-700',
-    ring: 'ring-gray-500',
-  },
-};
-
-const AVAILABLE_COLORS = ['blue', 'green', 'amber', 'purple', 'pink', 'red'];
 
 // Business document types for filtering
 const BUSINESS_DOC_TYPES = DOCUMENT_TYPES.filter((dt) => dt.category === 'business');

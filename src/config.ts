@@ -196,3 +196,25 @@ export const EXPENSE_CATEGORIES: {
   { id: 'education', label: 'Education', deductionRate: 1, folder: 'business' },
   { id: 'other', label: 'Other', deductionRate: 1, scheduleC: 'Line 27a', folder: 'business' },
 ];
+
+// =============================================================================
+// EXPENSE FOLDER MAP
+// =============================================================================
+// Maps expense categories to folder paths within a tax year directory.
+// Used by importFile and getDestPath in useFileSystemServer.
+
+export const EXPENSE_FOLDER_MAP: Record<ExpenseCategory, string> = {
+  childcare: 'expenses/childcare',
+  medical: 'expenses/medical',
+  meals: 'expenses/business',
+  software: 'expenses/business',
+  equipment: 'expenses/business',
+  'office-supplies': 'expenses/business',
+  'professional-services': 'expenses/business',
+  travel: 'expenses/business',
+  utilities: 'expenses/business',
+  insurance: 'expenses/business',
+  education: 'expenses/business',
+  'taxes-licenses': 'expenses/business',
+  other: 'expenses/business',
+};

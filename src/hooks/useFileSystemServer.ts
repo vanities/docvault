@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { TaxDocument, DocumentType, Entity, ExpenseCategory, Reminder, Todo } from '../types';
-import { isBusinessDocumentType, getBusinessSubfolder } from '../config';
-
-const API_BASE = '/api';
+import { isBusinessDocumentType, getBusinessSubfolder, EXPENSE_FOLDER_MAP } from '../config';
+import { API_BASE } from '../constants';
+import { mapFileToDocument } from '../utils/mapFileToDocument';
 
 // Entity config from server
 export interface EntityConfig {
@@ -25,76 +25,6 @@ export interface FileInfo {
   isDirectory: boolean;
   tags?: string[];
   notes?: string;
-}
-
-// Detect document type from filename
-function detectDocumentType(filename: string, filePath?: string): DocumentType {
-  const lower = filename.toLowerCase();
-  const pathLower = filePath?.toLowerCase() || '';
-
-  // Business document detection (check path for business-docs folder)
-  if (pathLower.includes('business-docs/')) {
-    if (
-      /formation|articles.*incorporation|operating.*agreement|certificate.*formation/i.test(lower)
-    )
-      return 'formation';
-    if (/ein|employer.*identification/i.test(lower)) return 'ein-letter';
-    if (/license|permit|registration/i.test(lower)) return 'license';
-    if (/contract|agreement|nda|w-?9/i.test(lower)) return 'business-agreement';
-  }
-
-  // Tax document detection
-  if (/w-?2/i.test(lower)) return 'w2';
-  if (/1099-?nec/i.test(lower)) return '1099-nec';
-  if (/1099-?misc/i.test(lower)) return '1099-misc';
-  if (/1099-?r/i.test(lower)) return '1099-r';
-  if (/1099-?div/i.test(lower)) return '1099-div';
-  if (/1099-?int/i.test(lower)) return '1099-int';
-  if (/1099-?b/i.test(lower)) return '1099-b';
-  if (/1099/i.test(lower)) return '1099-nec';
-  if (/receipt|expense|purchase/i.test(lower)) return 'receipt';
-  if (/invoice/i.test(lower)) return 'invoice';
-  if (/koinly|coinbase|kraken|crypto|8949/i.test(lower)) return 'crypto';
-  if (/\.tax\d{4}$|return|final/i.test(lower)) return 'return';
-  if (/contract|agreement|w-?9|nda/i.test(lower)) return 'contract';
-
-  // Business document detection by filename (for uploads)
-  if (/formation|articles.*incorporation|certificate.*formation/i.test(lower)) return 'formation';
-  if (/operating.?agreement/i.test(lower)) return 'operating-agreement';
-  if (/ein|employer.*identification/i.test(lower)) return 'ein-letter';
-  if (/license|permit|registration/i.test(lower)) return 'license';
-  if (/insurance.?polic/i.test(lower)) return 'insurance-policy';
-
-  // General document types
-  if (/statement/i.test(lower)) return 'statement';
-  if (/medical.?record/i.test(lower)) return 'medical-record';
-  if (/appraisal|assessment/i.test(lower)) return 'appraisal';
-  if (/certificate|cert\b/i.test(lower)) return 'certificate';
-
-  // Detect expenses from filename keywords or expenses folder path
-  if (
-    /software|equipment|meals|childcare|medical|travel|office|utility|subscription/i.test(lower) ||
-    pathLower.includes('/expenses/')
-  )
-    return 'receipt';
-
-  return 'other';
-}
-
-// Detect expense category from path/filename
-function detectExpenseCategory(path: string): ExpenseCategory | undefined {
-  const lower = path.toLowerCase();
-
-  if (lower.includes('childcare')) return 'childcare';
-  if (lower.includes('medical')) return 'medical';
-  if (lower.includes('meal') || lower.includes('food') || lower.includes('restaurant'))
-    return 'meals';
-  if (lower.includes('software') || lower.includes('subscription')) return 'software';
-  if (lower.includes('equipment') || lower.includes('hardware')) return 'equipment';
-  if (lower.includes('travel') || lower.includes('flight') || lower.includes('hotel'))
-    return 'travel';
-
-  return undefined;
 }
 
 export function useFileSystemServer() {
@@ -124,7 +54,7 @@ export function useFileSystemServer() {
 
   // Check server connection on mount
   useEffect(() => {
-    const connect = async () => {
+    (async () => {
       try {
         const response = await fetch(`${API_BASE}/status`);
         const data = await response.json();
@@ -140,8 +70,7 @@ export function useFileSystemServer() {
         setIsConnected(false);
         setError('Cannot connect to server. Make sure the API server is running.');
       }
-    };
-    connect();
+    })();
   }, []);
 
   // Get available years for an entity (or all entities combined)
@@ -198,38 +127,9 @@ export function useFileSystemServer() {
         // Convert to TaxDocuments
         const documents: TaxDocument[] = data.files
           .filter((f: FileInfo) => !f.name.startsWith('.'))
-          .map((file: FileInfo & { parsedData?: Record<string, unknown> }) => {
-            const docType = detectDocumentType(file.name, file.path);
-            const expenseCategory = detectExpenseCategory(file.path);
-
-            const doc: TaxDocument = {
-              id: `${entity}/${file.path}-${file.lastModified}`,
-              fileName: file.name,
-              fileType: file.type,
-              fileSize: file.size,
-              filePath: file.path,
-              type: docType,
-              entity,
-              taxYear,
-              tags: file.tags || [],
-              notes: file.notes || '',
-              createdAt: new Date(file.lastModified).toISOString(),
-              updatedAt: new Date(file.lastModified).toISOString(),
-              parsedData: file.parsedData as TaxDocument['parsedData'],
-            };
-
-            // Add parsed data for receipts with detected category if not already parsed
-            if (!doc.parsedData && docType === 'receipt' && expenseCategory) {
-              doc.parsedData = {
-                vendor: '',
-                amount: 0,
-                date: new Date(file.lastModified).toISOString().split('T')[0],
-                category: expenseCategory,
-              };
-            }
-
-            return doc;
-          });
+          .map((file: FileInfo & { parsedData?: Record<string, unknown> }) =>
+            mapFileToDocument(file, entity, taxYear)
+          );
 
         return documents;
       } catch (err) {
@@ -292,26 +192,9 @@ export function useFileSystemServer() {
 
               return data.files
                 .filter((f: FileInfo) => !f.name.startsWith('.'))
-                .map((file: FileInfo & { parsedData?: Record<string, unknown> }) => {
-                  const docType = detectDocumentType(file.name, file.path);
-
-                  const doc: TaxDocument = {
-                    id: `${ent.id}/${file.path}-${file.lastModified}`,
-                    fileName: file.name,
-                    fileType: file.type,
-                    fileSize: file.size,
-                    filePath: file.path,
-                    type: docType,
-                    entity: ent.id,
-                    taxYear: 0, // 0 indicates business doc (no year)
-                    tags: [],
-                    createdAt: new Date(file.lastModified).toISOString(),
-                    updatedAt: new Date(file.lastModified).toISOString(),
-                    parsedData: file.parsedData as TaxDocument['parsedData'],
-                  };
-
-                  return doc;
-                });
+                .map((file: FileInfo & { parsedData?: Record<string, unknown> }) =>
+                  mapFileToDocument(file, ent.id, 0)
+                );
             })
           );
           return results.flat();
@@ -326,27 +209,9 @@ export function useFileSystemServer() {
 
         const documents: TaxDocument[] = data.files
           .filter((f: FileInfo) => !f.name.startsWith('.'))
-          .map((file: FileInfo & { parsedData?: Record<string, unknown> }) => {
-            const docType = detectDocumentType(file.name, file.path);
-
-            const doc: TaxDocument = {
-              id: `${entity}/${file.path}-${file.lastModified}`,
-              fileName: file.name,
-              fileType: file.type,
-              fileSize: file.size,
-              filePath: file.path,
-              type: docType,
-              entity,
-              taxYear: 0, // 0 indicates business doc (no year)
-              tags: file.tags || [],
-              notes: file.notes || '',
-              createdAt: new Date(file.lastModified).toISOString(),
-              updatedAt: new Date(file.lastModified).toISOString(),
-              parsedData: file.parsedData as TaxDocument['parsedData'],
-            };
-
-            return doc;
-          });
+          .map((file: FileInfo & { parsedData?: Record<string, unknown> }) =>
+            mapFileToDocument(file, entity, 0)
+          );
 
         return documents;
       } catch (err) {
@@ -375,26 +240,9 @@ export function useFileSystemServer() {
 
               return data.files
                 .filter((f: FileInfo) => !f.name.startsWith('.'))
-                .map((file: FileInfo & { parsedData?: Record<string, unknown> }) => {
-                  const docType = detectDocumentType(file.name, file.path);
-
-                  const doc: TaxDocument = {
-                    id: `${ent.id}/${file.path}-${file.lastModified}`,
-                    fileName: file.name,
-                    fileType: file.type,
-                    fileSize: file.size,
-                    filePath: file.path,
-                    type: docType,
-                    entity: ent.id,
-                    taxYear: 0,
-                    tags: [],
-                    createdAt: new Date(file.lastModified).toISOString(),
-                    updatedAt: new Date(file.lastModified).toISOString(),
-                    parsedData: file.parsedData as TaxDocument['parsedData'],
-                  };
-
-                  return doc;
-                });
+                .map((file: FileInfo & { parsedData?: Record<string, unknown> }) =>
+                  mapFileToDocument(file, ent.id, 0)
+                );
             })
           );
           return results.flat();
@@ -409,27 +257,9 @@ export function useFileSystemServer() {
 
         const documents: TaxDocument[] = data.files
           .filter((f: FileInfo) => !f.name.startsWith('.'))
-          .map((file: FileInfo & { parsedData?: Record<string, unknown> }) => {
-            const docType = detectDocumentType(file.name, file.path);
-
-            const doc: TaxDocument = {
-              id: `${entity}/${file.path}-${file.lastModified}`,
-              fileName: file.name,
-              fileType: file.type,
-              fileSize: file.size,
-              filePath: file.path,
-              type: docType,
-              entity,
-              taxYear: 0,
-              tags: file.tags || [],
-              notes: file.notes || '',
-              createdAt: new Date(file.lastModified).toISOString(),
-              updatedAt: new Date(file.lastModified).toISOString(),
-              parsedData: file.parsedData as TaxDocument['parsedData'],
-            };
-
-            return doc;
-          });
+          .map((file: FileInfo & { parsedData?: Record<string, unknown> }) =>
+            mapFileToDocument(file, entity, 0)
+          );
 
         return documents;
       } catch (err) {
@@ -470,22 +300,7 @@ export function useFileSystemServer() {
           } else if (docType.startsWith('1099')) {
             destPath += '/income/1099';
           } else if (docType === 'receipt' && expenseCategory) {
-            const folderMap: Record<ExpenseCategory, string> = {
-              childcare: 'expenses/childcare',
-              medical: 'expenses/medical',
-              meals: 'expenses/business',
-              software: 'expenses/business',
-              equipment: 'expenses/business',
-              'office-supplies': 'expenses/business',
-              'professional-services': 'expenses/business',
-              travel: 'expenses/business',
-              utilities: 'expenses/business',
-              insurance: 'expenses/business',
-              education: 'expenses/business',
-              'taxes-licenses': 'expenses/business',
-              other: 'expenses/business',
-            };
-            destPath += '/' + folderMap[expenseCategory];
+            destPath += '/' + EXPENSE_FOLDER_MAP[expenseCategory];
           } else if (docType === 'crypto') {
             destPath += '/crypto';
           } else if (docType === 'return') {
@@ -563,22 +378,7 @@ export function useFileSystemServer() {
     } else if (docType.startsWith('1099')) {
       destPath += '/income/1099';
     } else if (docType === 'receipt' && expenseCategory) {
-      const folderMap: Record<ExpenseCategory, string> = {
-        childcare: 'expenses/childcare',
-        medical: 'expenses/medical',
-        meals: 'expenses/business',
-        software: 'expenses/business',
-        equipment: 'expenses/business',
-        'office-supplies': 'expenses/business',
-        'professional-services': 'expenses/business',
-        travel: 'expenses/business',
-        utilities: 'expenses/business',
-        insurance: 'expenses/business',
-        education: 'expenses/business',
-        'taxes-licenses': 'expenses/business',
-        other: 'expenses/business',
-      };
-      destPath += '/' + folderMap[expenseCategory];
+      destPath += '/' + EXPENSE_FOLDER_MAP[expenseCategory];
     } else if (docType === 'crypto') {
       destPath += '/crypto';
     } else if (docType === 'return') {

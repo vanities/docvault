@@ -7,138 +7,28 @@ import {
   CheckCircle,
   AlertCircle,
   Building2,
-  User,
-  Tractor,
   Pencil,
   Trash2,
-  Briefcase,
-  Home,
-  Store,
-  Factory,
-  Landmark,
-  ShoppingBag,
-  Truck,
-  Wrench,
-  Coffee,
-  Leaf,
-  Heart,
-  Star,
-  Zap,
-  Globe,
   Cloud,
   RefreshCw,
-  type LucideIcon,
 } from 'lucide-react';
 import type { SyncStatus } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
-
-const API_BASE = '/api';
-
-// Available icons for entities
-const AVAILABLE_ICONS: { id: string; icon: LucideIcon; label: string }[] = [
-  { id: 'user', icon: User, label: 'Person' },
-  { id: 'building', icon: Building2, label: 'Building' },
-  { id: 'briefcase', icon: Briefcase, label: 'Briefcase' },
-  { id: 'home', icon: Home, label: 'Home' },
-  { id: 'store', icon: Store, label: 'Store' },
-  { id: 'factory', icon: Factory, label: 'Factory' },
-  { id: 'landmark', icon: Landmark, label: 'Bank' },
-  { id: 'shopping', icon: ShoppingBag, label: 'Shopping' },
-  { id: 'truck', icon: Truck, label: 'Truck' },
-  { id: 'tractor', icon: Tractor, label: 'Farm' },
-  { id: 'wrench', icon: Wrench, label: 'Tools' },
-  { id: 'coffee', icon: Coffee, label: 'Cafe' },
-  { id: 'leaf', icon: Leaf, label: 'Nature' },
-  { id: 'heart', icon: Heart, label: 'Health' },
-  { id: 'star', icon: Star, label: 'Star' },
-  { id: 'zap', icon: Zap, label: 'Energy' },
-  { id: 'globe', icon: Globe, label: 'Global' },
-];
-
-const ICON_MAP: Record<string, LucideIcon> = {
-  user: User,
-  building: Building2,
-  briefcase: Briefcase,
-  home: Home,
-  store: Store,
-  factory: Factory,
-  landmark: Landmark,
-  shopping: ShoppingBag,
-  truck: Truck,
-  tractor: Tractor,
-  wrench: Wrench,
-  coffee: Coffee,
-  leaf: Leaf,
-  heart: Heart,
-  star: Star,
-  zap: Zap,
-  globe: Globe,
-};
-
-const DEFAULT_ENTITY_ICONS: Record<string, string> = {
-  personal: 'user',
-  'am2-llc': 'building',
-  'manna-llc': 'tractor',
-};
-
-const COLOR_MAP: Record<string, { bg: string; border: string; text: string; ring: string }> = {
-  blue: {
-    bg: 'bg-blue-500/15',
-    border: 'border-blue-500/30',
-    text: 'text-blue-400',
-    ring: 'ring-blue-500',
-  },
-  green: {
-    bg: 'bg-emerald-500/15',
-    border: 'border-emerald-500/30',
-    text: 'text-emerald-400',
-    ring: 'ring-emerald-500',
-  },
-  amber: {
-    bg: 'bg-amber-500/15',
-    border: 'border-amber-500/30',
-    text: 'text-amber-400',
-    ring: 'ring-amber-500',
-  },
-  purple: {
-    bg: 'bg-purple-500/15',
-    border: 'border-purple-500/30',
-    text: 'text-purple-400',
-    ring: 'ring-purple-500',
-  },
-  pink: {
-    bg: 'bg-pink-500/15',
-    border: 'border-pink-500/30',
-    text: 'text-pink-400',
-    ring: 'ring-pink-500',
-  },
-  red: {
-    bg: 'bg-red-500/15',
-    border: 'border-red-500/30',
-    text: 'text-red-400',
-    ring: 'ring-red-500',
-  },
-};
-
-const AVAILABLE_COLORS = ['blue', 'green', 'amber', 'purple', 'pink', 'red'];
+import { API_BASE } from '../../constants';
+import {
+  AVAILABLE_ICONS,
+  DEFAULT_ENTITY_ICONS,
+  getEntityIcon,
+  SETTINGS_COLOR_MAP as COLOR_MAP,
+  AVAILABLE_COLORS,
+} from '../../utils/entityDisplay';
 
 interface SettingsData {
   hasAnthropicKey: boolean;
   keySource?: 'settings' | 'env';
   keyHint?: string;
-}
-
-function getEntityIcon(entity: EntityConfig): LucideIcon {
-  if (entity.icon && ICON_MAP[entity.icon]) {
-    return ICON_MAP[entity.icon];
-  }
-  const defaultIcon = DEFAULT_ENTITY_ICONS[entity.id];
-  if (defaultIcon && ICON_MAP[defaultIcon]) {
-    return ICON_MAP[defaultIcon];
-  }
-  return Building2;
 }
 
 function formatRelativeTime(isoStr: string): string {

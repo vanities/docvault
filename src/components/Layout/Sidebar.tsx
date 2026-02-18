@@ -1,27 +1,9 @@
 import { useState, useEffect } from 'react';
 import {
-  Building2,
-  User,
-  Tractor,
   Plus,
-  LayoutGrid,
   Calendar,
   FolderOpen,
   Settings,
-  Briefcase,
-  Home,
-  Store,
-  Factory,
-  Landmark,
-  ShoppingBag,
-  Truck,
-  Wrench,
-  Coffee,
-  Leaf,
-  Heart,
-  Star,
-  Zap,
-  Globe,
   Files,
   Cloud,
   ChevronLeft,
@@ -30,100 +12,7 @@ import {
 import { useAppContext, type NavView } from '../../contexts/AppContext';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import type { SyncStatus } from '../../types';
-
-// Default icons for known entities
-const DEFAULT_ENTITY_ICONS: Record<string, string> = {
-  all: 'grid',
-  personal: 'user',
-  'am2-llc': 'building',
-  'manna-llc': 'tractor',
-};
-
-// Color mapping for dark theme
-const COLOR_MAP: Record<string, { accent: string; glow: string; bg: string; text: string }> = {
-  blue: {
-    accent: 'bg-blue-500/15',
-    glow: 'glow-blue',
-    bg: 'bg-blue-500/10',
-    text: 'text-blue-400',
-  },
-  green: {
-    accent: 'bg-emerald-500/15',
-    glow: 'glow-emerald',
-    bg: 'bg-emerald-500/10',
-    text: 'text-emerald-400',
-  },
-  amber: {
-    accent: 'bg-amber-500/15',
-    glow: 'glow-amber',
-    bg: 'bg-amber-500/10',
-    text: 'text-amber-400',
-  },
-  purple: {
-    accent: 'bg-purple-500/15',
-    glow: 'glow-purple',
-    bg: 'bg-purple-500/10',
-    text: 'text-purple-400',
-  },
-  pink: {
-    accent: 'bg-pink-500/15',
-    glow: 'glow-purple',
-    bg: 'bg-pink-500/10',
-    text: 'text-pink-400',
-  },
-  red: { accent: 'bg-red-500/15', glow: 'glow-red', bg: 'bg-red-500/10', text: 'text-red-400' },
-  gray: {
-    accent: 'bg-surface-400/20',
-    glow: '',
-    bg: 'bg-surface-400/10',
-    text: 'text-surface-800',
-  },
-};
-
-function renderEntityIcon(entity: EntityConfig, className: string) {
-  const iconKey =
-    entity.id === 'all' ? 'grid' : entity.icon || DEFAULT_ENTITY_ICONS[entity.id] || 'building';
-  switch (iconKey) {
-    case 'grid':
-      return <LayoutGrid className={className} />;
-    case 'user':
-      return <User className={className} />;
-    case 'building':
-      return <Building2 className={className} />;
-    case 'briefcase':
-      return <Briefcase className={className} />;
-    case 'home':
-      return <Home className={className} />;
-    case 'store':
-      return <Store className={className} />;
-    case 'factory':
-      return <Factory className={className} />;
-    case 'landmark':
-      return <Landmark className={className} />;
-    case 'shopping':
-      return <ShoppingBag className={className} />;
-    case 'truck':
-      return <Truck className={className} />;
-    case 'tractor':
-      return <Tractor className={className} />;
-    case 'wrench':
-      return <Wrench className={className} />;
-    case 'coffee':
-      return <Coffee className={className} />;
-    case 'leaf':
-      return <Leaf className={className} />;
-    case 'heart':
-      return <Heart className={className} />;
-    case 'star':
-      return <Star className={className} />;
-    case 'zap':
-      return <Zap className={className} />;
-    case 'globe':
-      return <Globe className={className} />;
-    default:
-      return <Building2 className={className} />;
-  }
-}
+import { SIDEBAR_COLOR_MAP as COLOR_MAP, renderEntityIcon } from '../../utils/entityDisplay';
 
 function EntityButton({
   entity,

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Upload, FileText, Image, File, X, Wand2, Sparkles, Loader2 } from 'lucide-react';
+import { Upload, X, Wand2, Sparkles, Loader2 } from 'lucide-react';
 import type { Entity, DocumentType, TaxDocument, ExpenseCategory } from '../../types';
 import { DOCUMENT_TYPES, EXPENSE_CATEGORIES } from '../../config';
 import {
@@ -7,6 +7,8 @@ import {
   getExtension,
   extractSourceFromFilename,
 } from '../../utils/filenaming';
+import { detectDocumentType } from '../../utils/documentDetection';
+import { FileIcon } from '../common/FileIcon';
 
 interface UploadZoneProps {
   entity: Entity;
@@ -36,50 +38,6 @@ interface FileMetadata {
   month: number;
   day: number;
   customFilename: string;
-}
-
-// Detect document type from filename
-function detectDocumentType(filename: string): DocumentType {
-  const lower = filename.toLowerCase();
-
-  // Business document detection
-  if (/formation|articles.*incorporation|operating.*agreement|certificate.*formation/i.test(lower))
-    return 'formation';
-  if (/ein|employer.*identification/i.test(lower)) return 'ein-letter';
-  if (/license|permit|registration/i.test(lower)) return 'license';
-
-  // Tax document detection
-  if (/w-?2/i.test(lower)) return 'w2';
-  if (/1099-?nec/i.test(lower)) return '1099-nec';
-  if (/1099-?misc/i.test(lower)) return '1099-misc';
-  if (/1099-?r/i.test(lower)) return '1099-r';
-  if (/1099-?div/i.test(lower)) return '1099-div';
-  if (/1099-?int/i.test(lower)) return '1099-int';
-  if (/1099-?b/i.test(lower)) return '1099-b';
-  if (/1099/i.test(lower)) return '1099-nec'; // Default 1099 type
-  if (/receipt|expense|purchase/i.test(lower)) return 'receipt';
-  if (/invoice/i.test(lower)) return 'invoice';
-  if (/koinly|coinbase|kraken|crypto/i.test(lower)) return 'crypto';
-  if (/return|\.tax\d{4}$/i.test(lower)) return 'return';
-  // Check for business agreement (contracts not in tax year context)
-  if (/contract|agreement|nda/i.test(lower)) return 'business-agreement';
-  if (/w-?9/i.test(lower)) return 'contract'; // W-9 stays as tax contract
-
-  // New document types
-  if (/operating.?agreement/i.test(lower)) return 'operating-agreement';
-  if (/insurance.?polic/i.test(lower)) return 'insurance-policy';
-  if (/statement/i.test(lower)) return 'statement';
-  if (/medical.?record/i.test(lower)) return 'medical-record';
-  if (/appraisal|assessment/i.test(lower)) return 'appraisal';
-  if (/certificate|cert\b/i.test(lower)) return 'certificate';
-
-  return 'other';
-}
-
-function FileIcon({ fileType, className }: { fileType: string; className?: string }) {
-  if (fileType.startsWith('image/')) return <Image className={className} />;
-  if (fileType === 'application/pdf') return <FileText className={className} />;
-  return <File className={className} />;
 }
 
 // Month names for dropdown

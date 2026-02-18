@@ -4,8 +4,6 @@ import {
   Download,
   RefreshCw,
   Trash2,
-  FileText,
-  Image,
   File,
   ExternalLink,
   Calendar,
@@ -23,6 +21,8 @@ import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import { useToast } from '../../hooks/useToast';
 import { useAppContext } from '../../contexts/AppContext';
 import { generateStandardFilename, getExtension } from '../../utils/filenaming';
+import { API_BASE } from '../../constants';
+import { FileIcon } from '../common/FileIcon';
 
 interface DocumentViewerProps {
   document: TaxDocument;
@@ -38,8 +38,6 @@ interface DocumentViewerProps {
   entities?: EntityConfig[];
   availableYears?: number[];
 }
-
-const API_BASE = '/api';
 
 function getFileUrl(entity: string, filePath: string): string {
   return `${API_BASE}/file/${entity}/${encodeURIComponent(filePath)}`;
@@ -59,16 +57,6 @@ function formatDate(dateString: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
-}
-
-function FileIcon({ fileType, className }: { fileType: string; className?: string }) {
-  if (fileType.includes('pdf')) {
-    return <FileText className={className} />;
-  }
-  if (fileType.includes('image')) {
-    return <Image className={className} />;
-  }
-  return <File className={className} />;
 }
 
 export function DocumentViewer({

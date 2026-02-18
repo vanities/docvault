@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Key, Save, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucide-react';
+import { API_BASE } from '../../constants';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -11,8 +12,6 @@ interface SettingsData {
   keySource?: 'settings' | 'env';
   keyHint?: string; // Last 4 chars of the key
 }
-
-const API_BASE = '/api';
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [anthropicKey, setAnthropicKey] = useState('');
