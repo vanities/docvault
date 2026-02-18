@@ -234,7 +234,7 @@ export function TaxYearView() {
         else if (pathLower.includes('/childcare/')) category = 'childcare';
         else if (pathLower.includes('/medical/')) category = 'medical';
         else if (pathLower.includes('/travel/')) category = 'travel';
-        else if (pathLower.includes('/office/')) category = 'office';
+        else if (pathLower.includes('/office/')) category = 'office-supplies';
       }
       if (!category) return;
 
