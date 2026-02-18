@@ -97,12 +97,14 @@ function ReminderRow({
 
   return (
     <div
-      className={`flex items-center gap-3 px-3 py-2 rounded-lg ${colors.bg} border ${colors.border} transition-all ${isBusy ? 'opacity-50' : ''}`}
+      className={`flex items-start gap-2 sm:gap-3 px-3 py-2 rounded-lg ${colors.bg} border ${colors.border} transition-all ${isBusy ? 'opacity-50' : ''}`}
     >
-      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${colors.dot}`} />
+      <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${colors.dot}`} />
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className={`text-[13px] font-medium ${colors.text}`}>{reminder.title}</span>
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <span className={`text-[13px] font-medium truncate ${colors.text}`}>
+            {reminder.title}
+          </span>
           {reminder.recurrence && (
             <Repeat
               className="w-3 h-3 text-surface-600 flex-shrink-0"
@@ -110,14 +112,18 @@ function ReminderRow({
             />
           )}
         </div>
-        <div className="flex items-center gap-2 mt-0.5">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
           <span className="text-[11px] text-surface-600">{entityName}</span>
           <span className="text-[11px] text-surface-500">·</span>
-          <span className={`text-[11px] ${colors.text}`}>{formatDueDate(reminder.dueDate)}</span>
+          <span className={`text-[11px] whitespace-nowrap ${colors.text}`}>
+            {formatDueDate(reminder.dueDate)}
+          </span>
           {reminder.notes && (
             <>
-              <span className="text-[11px] text-surface-500">·</span>
-              <span className="text-[11px] text-surface-600 truncate">{reminder.notes}</span>
+              <span className="text-[11px] text-surface-500 hidden sm:inline">·</span>
+              <span className="text-[11px] text-surface-600 truncate max-w-[200px] sm:max-w-none">
+                {reminder.notes}
+              </span>
             </>
           )}
         </div>
