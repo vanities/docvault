@@ -1,4 +1,4 @@
-import { Receipt, TrendingDown, Percent } from 'lucide-react';
+import { Receipt, TrendingDown, Percent, Download } from 'lucide-react';
 import { CopyableField } from './CopyableField';
 import type { ExpenseSummary as ExpenseSummaryType, TaxDocument, ParsedReceipt } from '../../types';
 import { EXPENSE_CATEGORIES } from '../../config';
@@ -6,6 +6,7 @@ import { EXPENSE_CATEGORIES } from '../../config';
 interface ExpenseSummaryProps {
   summary: ExpenseSummaryType;
   documents: TaxDocument[];
+  onDownload?: () => void;
 }
 
 function formatCurrency(amount: number): string {
@@ -23,7 +24,7 @@ function formatDate(dateString: string): string {
   });
 }
 
-export function ExpenseSummary({ summary, documents }: ExpenseSummaryProps) {
+export function ExpenseSummary({ summary, documents, onDownload }: ExpenseSummaryProps) {
   // Group documents by category
   const docsByCategory = documents.reduce(
     (acc, doc) => {
@@ -38,6 +39,19 @@ export function ExpenseSummary({ summary, documents }: ExpenseSummaryProps) {
 
   return (
     <div className="space-y-6">
+      {/* Header with download */}
+      {onDownload && documents.length > 0 && (
+        <div className="flex justify-end">
+          <button
+            onClick={onDownload}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-surface-700 hover:text-surface-950 bg-surface-200/50 hover:bg-surface-200 border border-border rounded-lg transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Download Expense Docs
+          </button>
+        </div>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="glass-card rounded-xl p-5">

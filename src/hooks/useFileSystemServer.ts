@@ -25,6 +25,7 @@ export interface FileInfo {
   isDirectory: boolean;
   tags?: string[];
   notes?: string;
+  tracked?: boolean;
 }
 
 export function useFileSystemServer() {
@@ -875,12 +876,47 @@ export function useFileSystemServer() {
     [isConnected]
   );
 
-  // Update document metadata (tags, notes) - persists to server
+  // Download files as a zip archive
+  const downloadZip = useCallback(
+    async (entity: string, year: number, filter: 'income' | 'expenses' | 'invoices' | 'all') => {
+      if (!isConnected) return;
+
+      try {
+        const response = await fetch(`${API_BASE}/download/zip`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ entity, year: String(year), filter }),
+        });
+
+        if (!response.ok) {
+          console.error('Download zip failed:', await response.text());
+          return;
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download =
+          response.headers.get('Content-Disposition')?.match(/filename="?(.+?)"?$/)?.[1] ||
+          `${entity}_${year}_${filter}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error('Download zip error:', err);
+      }
+    },
+    [isConnected]
+  );
+
+  // Update document metadata (tags, notes, tracked) - persists to server
   const updateDocMetadata = useCallback(
     async (
       entity: string,
       filePath: string,
-      updates: { tags?: string[]; notes?: string }
+      updates: { tags?: string[]; notes?: string; tracked?: boolean }
     ): Promise<boolean> => {
       if (!isConnected) return false;
       try {
@@ -930,5 +966,6 @@ export function useFileSystemServer() {
     updateTodo,
     deleteTodo,
     updateDocMetadata,
+    downloadZip,
   };
 }

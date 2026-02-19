@@ -10,6 +10,8 @@ import {
   X,
   Check,
   Sparkles,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import type { TaxDocument, DocumentType, Entity } from '../../types';
 import { DOCUMENT_TYPES, EXPENSE_CATEGORIES } from '../../config';
@@ -176,9 +178,11 @@ export function DocumentCard({
     return null;
   })();
 
+  const isTracked = doc.tracked !== false;
+
   return (
     <div
-      className="glass-card rounded-xl p-4 hover:border-border-strong transition-all duration-200 cursor-pointer group"
+      className={`glass-card rounded-xl p-4 hover:border-border-strong transition-all duration-200 cursor-pointer group ${!isTracked ? 'opacity-50' : ''}`}
       onClick={(e) => {
         // Don't trigger onClick if clicking on interactive elements
         if ((e.target as HTMLElement).closest('button, input, select, textarea')) return;
@@ -218,42 +222,55 @@ export function DocumentCard({
               </p>
             </div>
 
-            {/* Menu */}
-            <div className="relative">
+            {/* Track toggle & Menu */}
+            <div className="flex items-center gap-0.5">
               <button
-                onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="p-2 md:p-1 text-surface-600 hover:text-surface-900 rounded opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                onClick={() => onUpdate(doc.id, { tracked: !isTracked })}
+                className={`p-2 md:p-1 rounded transition-opacity ${
+                  !isTracked
+                    ? 'text-surface-500 opacity-100'
+                    : 'text-surface-600 hover:text-surface-900 opacity-100 md:opacity-0 md:group-hover:opacity-100'
+                }`}
+                title={isTracked ? 'Exclude from totals' : 'Include in totals'}
               >
-                <MoreVertical className="w-4 h-4" />
+                {isTracked ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
               </button>
+              <div className="relative">
+                <button
+                  onClick={() => setIsMenuOpen(!isMenuOpen)}
+                  className="p-2 md:p-1 text-surface-600 hover:text-surface-900 rounded opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </button>
 
-              {isMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setIsMenuOpen(false)} />
-                  <div className="absolute right-0 mt-1 glass-strong rounded-lg shadow-2xl z-20 py-1 min-w-[120px] animate-scale-in">
-                    <button
-                      onClick={() => {
-                        setIsEditing(true);
-                        setIsMenuOpen(false);
-                      }}
-                      className="w-full px-3 py-2 text-left text-[13px] text-surface-800 hover:bg-surface-300/30 flex items-center gap-2"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => {
-                        onDelete(doc.id);
-                        setIsMenuOpen(false);
-                      }}
-                      className="w-full px-3 py-2 text-left text-[13px] text-danger-400 hover:bg-danger-500/10 flex items-center gap-2"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      Delete
-                    </button>
-                  </div>
-                </>
-              )}
+                {isMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setIsMenuOpen(false)} />
+                    <div className="absolute right-0 mt-1 glass-strong rounded-lg shadow-2xl z-20 py-1 min-w-[120px] animate-scale-in">
+                      <button
+                        onClick={() => {
+                          setIsEditing(true);
+                          setIsMenuOpen(false);
+                        }}
+                        className="w-full px-3 py-2 text-left text-[13px] text-surface-800 hover:bg-surface-300/30 flex items-center gap-2"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => {
+                          onDelete(doc.id);
+                          setIsMenuOpen(false);
+                        }}
+                        className="w-full px-3 py-2 text-left text-[13px] text-danger-400 hover:bg-danger-500/10 flex items-center gap-2"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Delete
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 

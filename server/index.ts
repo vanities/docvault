@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { parseWithAI } from './parsers/ai.js';
+import { zipSync } from 'fflate';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 3005;
@@ -273,6 +274,7 @@ const METADATA_FILE = path.join(DATA_DIR, '.docvault-metadata.json');
 interface DocMetadata {
   tags?: string[];
   notes?: string;
+  tracked?: boolean;
 }
 
 async function loadMetadata(): Promise<Record<string, DocMetadata>> {
@@ -595,6 +597,7 @@ async function handleRequest(req: Request): Promise<Response> {
           parsedData: parsedDataMap[key] || null,
           tags: meta?.tags || [],
           notes: meta?.notes || '',
+          tracked: meta?.tracked !== false,
         };
       });
 
@@ -1036,6 +1039,7 @@ async function handleRequest(req: Request): Promise<Response> {
           parsedData: parsedDataMap[key] || null,
           tags: meta?.tags || [],
           notes: meta?.notes || '',
+          tracked: meta?.tracked !== false,
         };
       });
 
@@ -1071,6 +1075,7 @@ async function handleRequest(req: Request): Promise<Response> {
           parsedData: parsedDataMap[key] || null,
           tags: meta?.tags || [],
           notes: meta?.notes || '',
+          tracked: meta?.tracked !== false,
         };
       });
 
@@ -1142,10 +1147,10 @@ async function handleRequest(req: Request): Promise<Response> {
     }
   }
 
-  // PUT /api/metadata - Update document metadata (tags, notes)
+  // PUT /api/metadata - Update document metadata (tags, notes, tracked)
   if (pathname === '/api/metadata' && req.method === 'PUT') {
     const body = await req.json();
-    const { entity, filePath: fp, tags, notes } = body;
+    const { entity, filePath: fp, tags, notes, tracked } = body;
 
     if (!entity || !fp) {
       return jsonResponse({ error: 'Missing entity or filePath' }, 400);
@@ -1157,9 +1162,12 @@ async function handleRequest(req: Request): Promise<Response> {
 
     if (tags !== undefined) existing.tags = tags;
     if (notes !== undefined) existing.notes = notes;
+    if (tracked !== undefined) existing.tracked = tracked;
 
-    // Clean up empty entries
-    if ((!existing.tags || existing.tags.length === 0) && !existing.notes) {
+    // Clean up empty entries (only if all fields are default/empty)
+    const hasContent =
+      (existing.tags && existing.tags.length > 0) || existing.notes || existing.tracked === false;
+    if (!hasContent) {
       delete metadata[key];
     } else {
       metadata[key] = existing;
@@ -1180,6 +1188,8 @@ async function handleRequest(req: Request): Promise<Response> {
       const taxEntities = config.entities.filter(
         (e) => (e as Record<string, unknown>).type === 'tax'
       );
+
+      const metadataMap = await loadMetadata();
 
       const summary: Record<
         string,
@@ -1219,6 +1229,10 @@ async function handleRequest(req: Request): Promise<Response> {
         for (const file of files) {
           const parsedKey = `${entity.id}/${file.path}`;
           const parsed = parsedDataMap[parsedKey] || null;
+
+          // Skip untracked files from summaries
+          const meta = metadataMap[parsedKey];
+          if (meta?.tracked === false) continue;
 
           entitySummary.documents.push({
             name: file.name,
@@ -1726,6 +1740,93 @@ Return: { "naming": {...}, "parsedData": {...} }`,
     } catch (err) {
       console.error('[AI Filename] Error:', err);
       return jsonResponse({ error: 'Failed to analyze file', details: String(err) }, 500);
+    }
+  }
+
+  // ========================================================================
+  // Zip Download
+  // ========================================================================
+
+  // POST /api/download/zip - Download filtered files as a zip archive
+  if (pathname === '/api/download/zip' && req.method === 'POST') {
+    try {
+      const body = await req.json();
+      const {
+        entity: entityId,
+        year,
+        filter,
+      } = body as {
+        entity: string;
+        year: string;
+        filter: 'income' | 'expenses' | 'invoices' | 'all';
+      };
+
+      if (!entityId || !year) {
+        return jsonResponse({ error: 'Missing entity or year' }, 400);
+      }
+
+      const entityPath = await getEntityPath(entityId);
+      if (!entityPath) {
+        return jsonResponse({ error: 'Entity not found' }, 404);
+      }
+
+      const yearPath = path.join(entityPath, year);
+      let files: FileInfo[] = [];
+      try {
+        await fs.access(yearPath);
+        files = await scanDirectory(yearPath, year);
+      } catch {
+        return jsonResponse({ error: 'Year directory not found' }, 404);
+      }
+
+      // Filter files based on the requested category
+      if (filter && filter !== 'all') {
+        files = files.filter((file) => {
+          const fileLower = file.path.toLowerCase();
+          switch (filter) {
+            case 'income':
+              return fileLower.includes('/income/w2/') || fileLower.includes('/income/1099/');
+            case 'expenses':
+              return fileLower.includes('/expenses/');
+            case 'invoices':
+              return fileLower.includes('/income/other/');
+            default:
+              return true;
+          }
+        });
+      }
+
+      if (files.length === 0) {
+        return jsonResponse({ error: 'No files match the filter' }, 404);
+      }
+
+      // Read all files and build zip data
+      const zipData: Record<string, Uint8Array> = {};
+      for (const file of files) {
+        const fullPath = path.join(entityPath, file.path);
+        try {
+          const content = await fs.readFile(fullPath);
+          // Use the relative path within the year as the zip entry name
+          zipData[file.path] = new Uint8Array(content);
+        } catch {
+          console.error(`[Zip] Failed to read ${file.path}`);
+        }
+      }
+
+      const zipped = zipSync(zipData);
+      const filterLabel = filter || 'all';
+      const filename = `${entityId}_${year}_${filterLabel}.zip`;
+
+      return new Response(zipped, {
+        headers: {
+          'Content-Type': 'application/zip',
+          'Content-Disposition': `attachment; filename="${filename}"`,
+          'Content-Length': String(zipped.length),
+          ...corsHeaders(),
+        },
+      });
+    } catch (err) {
+      return jsonResponse({ error: 'Failed to create zip', details: String(err) }, 500);
     }
   }
 

@@ -111,6 +111,7 @@ export interface TaxDocument {
   taxYear: number;
   tags: string[];
   notes?: string;
+  tracked: boolean; // Whether to include in totals (default true)
   incomeSourceId?: string; // For W-2s: links to INCOME_SOURCES
   parsedData?: ParsedW2 | Parsed1099 | ParsedReceipt | ParsedCrypto;
   createdAt: string; // ISO date string
@@ -143,6 +144,21 @@ export interface ExpenseSummary {
   items: ExpenseSummaryItem[];
   totalExpenses: number;
   totalDeductible: number;
+}
+
+// Invoice summary types for CPA prep
+export interface InvoiceCustomerGroup {
+  customer: string;
+  total: number;
+  count: number;
+}
+
+export interface InvoiceSummaryData {
+  entity: Entity;
+  taxYear: number;
+  invoiceTotal: number;
+  invoiceCount: number;
+  byCustomer: InvoiceCustomerGroup[];
 }
 
 // Reminders

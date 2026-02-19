@@ -28,6 +28,7 @@ export function mapFileToDocument(
     taxYear,
     tags: file.tags || [],
     notes: file.notes || '',
+    tracked: file.tracked !== false,
     createdAt: new Date(file.lastModified).toISOString(),
     updatedAt: new Date(file.lastModified).toISOString(),
     parsedData: file.parsedData as TaxDocument['parsedData'],

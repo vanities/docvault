@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { useMemo, useState, useRef, useEffect } from 'react';
+import { RefreshCw, Download, ChevronDown } from 'lucide-react';
 import { useAppContext, type TabType } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import { QuickStats } from '../Dashboard/QuickStats';
@@ -9,6 +9,7 @@ import { UploadZone } from '../Documents/UploadZone';
 import { DocumentList } from '../Documents/DocumentList';
 import { IncomeSummary } from '../Summary/IncomeSummary';
 import { ExpenseSummary } from '../Summary/ExpenseSummary';
+import { InvoiceSummary } from '../Summary/InvoiceSummary';
 import { EXPENSE_CATEGORIES } from '../../config';
 import type {
   Entity,
@@ -16,8 +17,92 @@ import type {
   TaxDocument,
   IncomeSummary as IncomeSummaryType,
   ExpenseSummary as ExpenseSummaryType,
+  InvoiceSummaryData,
   ExpenseCategory,
 } from '../../types';
+
+/** Download dropdown for zip exports */
+function DownloadDropdown({
+  entity,
+  year,
+  onDownload,
+}: {
+  entity: string;
+  year: number;
+  onDownload: (
+    entity: string,
+    year: number,
+    filter: 'income' | 'expenses' | 'invoices' | 'all'
+  ) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const options: { label: string; filter: 'all' | 'income' | 'expenses' | 'invoices' }[] = [
+    { label: 'Download All', filter: 'all' },
+    { label: 'Download Income', filter: 'income' },
+    { label: 'Download Expenses', filter: 'expenses' },
+    { label: 'Download Invoices', filter: 'invoices' },
+  ];
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 px-3 py-1.5 mb-1 text-[13px] font-medium text-surface-700 hover:text-surface-950 bg-surface-200/50 hover:bg-surface-200 border border-border rounded-lg transition-colors"
+      >
+        <Download className="w-4 h-4" />
+        <span className="hidden sm:inline">Download</span>
+        <ChevronDown className="w-3.5 h-3.5" />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 mt-1 glass-strong rounded-lg shadow-2xl z-20 py-1 min-w-[180px] animate-scale-in">
+          {options.map((opt) => (
+            <button
+              key={opt.filter}
+              onClick={() => {
+                onDownload(entity, year, opt.filter);
+                setOpen(false);
+              }}
+              className="w-full px-3 py-2 text-left text-[13px] text-surface-800 hover:bg-surface-300/30 flex items-center gap-2"
+            >
+              <Download className="w-3.5 h-3.5" />
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Extract vendor/customer from an invoice document */
+function getInvoiceVendor(doc: TaxDocument): string {
+  const data = doc.parsedData as Record<string, unknown> | undefined;
+  if (data) {
+    if (typeof data.billTo === 'string' && data.billTo) return data.billTo;
+    if (typeof data.customerName === 'string' && data.customerName) return data.customerName;
+    if (typeof data.vendor === 'string' && data.vendor) return data.vendor;
+  }
+  // Fall back to filename: {Source}_{Type}_{Date}.ext
+  const base = doc.fileName.replace(/\.[^.]+$/, '');
+  const parts = base.split('_');
+  const typeKeywords = ['invoice', 'Invoice'];
+  const typeIdx = parts.findIndex((p) =>
+    typeKeywords.some((kw) => p.toLowerCase() === kw.toLowerCase())
+  );
+  if (typeIdx > 0) return parts.slice(0, typeIdx).join(' ');
+  return parts[0] || 'Unknown';
+}
 
 export function TaxYearView() {
   const {
@@ -38,6 +123,7 @@ export function TaxYearView() {
     moveFile,
     relocateFile,
     updateDocMetadata,
+    downloadZip,
   } = useAppContext();
 
   const { addToast } = useToast();
@@ -47,14 +133,15 @@ export function TaxYearView() {
     setScannedDocuments((prev) =>
       prev.map((doc) => (doc.id === id ? { ...doc, ...updates } : doc))
     );
-    // Persist tags and notes to server
-    if ('tags' in updates || 'notes' in updates) {
+    // Persist tags, notes, and tracked to server
+    if ('tags' in updates || 'notes' in updates || 'tracked' in updates) {
       const doc = scannedDocuments.find((d) => d.id === id);
       if (doc?.filePath) {
         const merged = { ...doc, ...updates };
         updateDocMetadata(doc.entity, doc.filePath, {
           tags: merged.tags,
           notes: merged.notes || '',
+          ...('tracked' in updates ? { tracked: updates.tracked } : {}),
         });
       }
     }
@@ -168,10 +255,16 @@ export function TaxYearView() {
   // Use scanned documents
   const filteredDocuments = scannedDocuments;
 
-  // Compute income summary from scanned documents
+  // Filter to tracked documents for summary computations
+  const trackedDocuments = useMemo(
+    () => scannedDocuments.filter((d) => d.tracked !== false),
+    [scannedDocuments]
+  );
+
+  // Compute income summary from tracked documents
   const incomeSummary = useMemo((): IncomeSummaryType => {
-    const w2Docs = scannedDocuments.filter((d) => d.type === 'w2');
-    const income1099Docs = scannedDocuments.filter((d) => d.type.startsWith('1099'));
+    const w2Docs = trackedDocuments.filter((d) => d.type === 'w2');
+    const income1099Docs = trackedDocuments.filter((d) => d.type.startsWith('1099'));
 
     let w2Total = 0;
     let federalWithheld = 0;
@@ -210,12 +303,12 @@ export function TaxYearView() {
       federalWithheld,
       stateWithheld,
     };
-  }, [scannedDocuments, selectedEntity, selectedYear]);
+  }, [trackedDocuments, selectedEntity, selectedYear]);
 
-  // Compute expense summary from scanned documents
+  // Compute expense summary from tracked documents
   const expenseSummary = useMemo((): ExpenseSummaryType => {
     // Include receipts and any doc in an expenses folder
-    const expenseDocs = scannedDocuments.filter(
+    const expenseDocs = trackedDocuments.filter(
       (d) => d.type === 'receipt' || d.filePath.toLowerCase().includes('/expenses/')
     );
     const categoryTotals = new Map<ExpenseCategory, { total: number; count: number }>();
@@ -279,12 +372,50 @@ export function TaxYearView() {
       totalExpenses,
       totalDeductible,
     };
-  }, [scannedDocuments, selectedEntity, selectedYear]);
+  }, [trackedDocuments, selectedEntity, selectedYear]);
+
+  // Compute invoice summary from tracked documents
+  const invoiceSummary = useMemo((): InvoiceSummaryData => {
+    const invoiceDocs = trackedDocuments.filter((d) => d.type === 'invoice');
+
+    // Group by customer/vendor
+    const customerMap = new Map<string, { total: number; count: number }>();
+    for (const doc of invoiceDocs) {
+      const data = doc.parsedData as Record<string, unknown> | undefined;
+      const customer = getInvoiceVendor(doc);
+      const amount = data
+        ? typeof data.totalAmount === 'number'
+          ? data.totalAmount
+          : typeof data.amount === 'number'
+            ? data.amount
+            : 0
+        : 0;
+
+      const existing = customerMap.get(customer) || { total: 0, count: 0 };
+      customerMap.set(customer, {
+        total: existing.total + amount,
+        count: existing.count + 1,
+      });
+    }
+
+    const byCustomer = Array.from(customerMap.entries())
+      .map(([customer, { total, count }]) => ({ customer, total, count }))
+      .sort((a, b) => b.total - a.total);
+
+    return {
+      entity: selectedEntity,
+      taxYear: selectedYear,
+      invoiceTotal: byCustomer.reduce((sum, g) => sum + g.total, 0),
+      invoiceCount: invoiceDocs.length,
+      byCustomer,
+    };
+  }, [trackedDocuments, selectedEntity, selectedYear]);
 
   const tabs: { id: TabType; label: string }[] = [
     { id: 'documents', label: 'Documents' },
     { id: 'income', label: 'Income' },
     { id: 'expenses', label: 'Expenses' },
+    { id: 'invoices', label: 'Invoices' },
   ];
 
   return (
@@ -319,29 +450,40 @@ export function TaxYearView() {
 
       {/* Tab Navigation */}
       <div className="border-b border-border mb-6">
-        <nav className="flex gap-4 md:gap-6">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`
-                pb-3 pt-1 md:pt-0 px-1 text-[13px] font-medium border-b-2 transition-all duration-200
-                ${
-                  activeTab === tab.id
-                    ? 'border-accent-400 text-accent-400'
-                    : 'border-transparent text-surface-700 hover:text-surface-900 hover:border-surface-500'
-                }
-              `}
-            >
-              {tab.label}
-              {tab.id === 'documents' && (
-                <span className="ml-2 text-[11px] text-surface-600">
-                  ({filteredDocuments.length})
-                </span>
-              )}
-            </button>
-          ))}
-        </nav>
+        <div className="flex items-center justify-between">
+          <nav className="flex gap-4 md:gap-6">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`
+                  pb-3 pt-1 md:pt-0 px-1 text-[13px] font-medium border-b-2 transition-all duration-200
+                  ${
+                    activeTab === tab.id
+                      ? 'border-accent-400 text-accent-400'
+                      : 'border-transparent text-surface-700 hover:text-surface-900 hover:border-surface-500'
+                  }
+                `}
+              >
+                {tab.label}
+                {tab.id === 'documents' && (
+                  <span className="ml-2 text-[11px] text-surface-600">
+                    ({filteredDocuments.length})
+                  </span>
+                )}
+              </button>
+            ))}
+          </nav>
+
+          {/* Download Dropdown */}
+          {selectedEntity !== 'all' && (
+            <DownloadDropdown
+              entity={selectedEntity}
+              year={selectedYear}
+              onDownload={downloadZip}
+            />
+          )}
+        </div>
       </div>
 
       {/* Scanning indicator */}
@@ -368,15 +510,36 @@ export function TaxYearView() {
       {activeTab === 'income' && (
         <IncomeSummary
           summary={incomeSummary}
-          documents={filteredDocuments.filter((d) => d.type === 'w2' || d.type.startsWith('1099'))}
+          documents={trackedDocuments.filter((d) => d.type === 'w2' || d.type.startsWith('1099'))}
+          onDownload={
+            selectedEntity !== 'all'
+              ? () => downloadZip(selectedEntity, selectedYear, 'income')
+              : undefined
+          }
         />
       )}
       {activeTab === 'expenses' && (
         <ExpenseSummary
           summary={expenseSummary}
-          documents={filteredDocuments.filter(
-            (d) => d.type === 'receipt' || d.filePath.toLowerCase().includes('/expenses/')
+          documents={trackedDocuments.filter(
+            (d) => d.type === 'receipt' || d.filePath?.toLowerCase().includes('/expenses/')
           )}
+          onDownload={
+            selectedEntity !== 'all'
+              ? () => downloadZip(selectedEntity, selectedYear, 'expenses')
+              : undefined
+          }
+        />
+      )}
+      {activeTab === 'invoices' && (
+        <InvoiceSummary
+          summary={invoiceSummary}
+          documents={trackedDocuments.filter((d) => d.type === 'invoice')}
+          onDownload={
+            selectedEntity !== 'all'
+              ? () => downloadZip(selectedEntity, selectedYear, 'invoices')
+              : undefined
+          }
         />
       )}
     </div>

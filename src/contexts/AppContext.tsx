@@ -16,7 +16,7 @@ import type { Entity, TaxDocument, DocumentType, ExpenseCategory, Reminder, Todo
 export type NavView = 'tax-year' | 'business-docs' | 'all-files' | 'settings';
 
 // Tab types for tax year view
-export type TabType = 'documents' | 'income' | 'expenses';
+export type TabType = 'documents' | 'income' | 'expenses' | 'invoices';
 
 // Search result from server
 export interface SearchResult {
@@ -143,8 +143,15 @@ interface AppContextValue {
   updateDocMetadata: (
     entity: string,
     filePath: string,
-    updates: { tags?: string[]; notes?: string }
+    updates: { tags?: string[]; notes?: string; tracked?: boolean }
   ) => Promise<boolean>;
+
+  // Zip download
+  downloadZip: (
+    entity: string,
+    year: number,
+    filter: 'income' | 'expenses' | 'invoices' | 'all'
+  ) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -263,6 +270,7 @@ export function AppProvider({ children }: AppProviderProps) {
     updateTodo,
     deleteTodo,
     updateDocMetadata,
+    downloadZip,
   } = useFileSystemServer();
 
   // Global processing state
@@ -383,6 +391,9 @@ export function AppProvider({ children }: AppProviderProps) {
 
     // Document metadata
     updateDocMetadata,
+
+    // Zip download
+    downloadZip,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

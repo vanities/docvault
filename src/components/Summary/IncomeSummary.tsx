@@ -1,4 +1,4 @@
-import { FileText, DollarSign, Building } from 'lucide-react';
+import { FileText, DollarSign, Building, Download } from 'lucide-react';
 import { CopyableField } from './CopyableField';
 import type {
   IncomeSummary as IncomeSummaryType,
@@ -11,6 +11,7 @@ import { DOCUMENT_TYPES } from '../../config';
 interface IncomeSummaryProps {
   summary: IncomeSummaryType;
   documents: TaxDocument[];
+  onDownload?: () => void;
 }
 
 function formatCurrency(amount: number): string {
@@ -21,7 +22,7 @@ function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
-export function IncomeSummary({ summary, documents }: IncomeSummaryProps) {
+export function IncomeSummary({ summary, documents, onDownload }: IncomeSummaryProps) {
   const w2Docs = documents.filter((d) => d.type === 'w2');
   const income1099Docs = documents.filter((d) => d.type.startsWith('1099'));
 
@@ -37,6 +38,19 @@ export function IncomeSummary({ summary, documents }: IncomeSummaryProps) {
 
   return (
     <div className="space-y-6">
+      {/* Header with download */}
+      {onDownload && documents.length > 0 && (
+        <div className="flex justify-end">
+          <button
+            onClick={onDownload}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-surface-700 hover:text-surface-950 bg-surface-200/50 hover:bg-surface-200 border border-border rounded-lg transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Download Income Docs
+          </button>
+        </div>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="glass-card rounded-xl p-5">
