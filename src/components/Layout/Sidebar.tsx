@@ -274,6 +274,7 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
                     e.stopPropagation();
                     const idx = availableYears.indexOf(selectedYear);
                     if (idx < availableYears.length - 1) setSelectedYear(availableYears[idx + 1]);
+                    if (activeView !== 'tax-year') setActiveView('tax-year');
                   }}
                   disabled={
                     isProcessing ||
@@ -291,6 +292,7 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
                     e.stopPropagation();
                     const idx = availableYears.indexOf(selectedYear);
                     if (idx > 0) setSelectedYear(availableYears[idx - 1]);
+                    if (activeView !== 'tax-year') setActiveView('tax-year');
                   }}
                   disabled={isProcessing || availableYears.indexOf(selectedYear) <= 0}
                   className="p-1.5 md:p-0.5 rounded hover:bg-surface-300/40 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
