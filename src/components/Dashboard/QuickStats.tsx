@@ -1,9 +1,10 @@
-import { DollarSign, TrendingUp, TrendingDown, FileText } from 'lucide-react';
-import type { IncomeSummary, ExpenseSummary } from '../../types';
+import { DollarSign, TrendingUp, TrendingDown, FileText, Receipt } from 'lucide-react';
+import type { IncomeSummary, ExpenseSummary, InvoiceSummaryData } from '../../types';
 
 interface QuickStatsProps {
   incomeSummary: IncomeSummary;
   expenseSummary: ExpenseSummary;
+  invoiceSummary: InvoiceSummaryData;
   documentCount: number;
 }
 
@@ -54,17 +55,36 @@ function StatCard({ icon: Icon, label, value, subtext, color }: StatCardProps) {
   );
 }
 
-export function QuickStats({ incomeSummary, expenseSummary, documentCount }: QuickStatsProps) {
-  const netIncome = incomeSummary.totalIncome - expenseSummary.totalDeductible;
+export function QuickStats({
+  incomeSummary,
+  expenseSummary,
+  invoiceSummary,
+  documentCount,
+}: QuickStatsProps) {
+  const totalRevenue = incomeSummary.totalIncome + invoiceSummary.invoiceTotal;
+  const netIncome = totalRevenue - expenseSummary.totalDeductible;
   const estimatedTax = netIncome * 0.25; // Rough estimate
 
+  // Build subtext parts for Total Income
+  const incomeParts: string[] = [];
+  if (incomeSummary.w2Count > 0) incomeParts.push(`${incomeSummary.w2Count} W-2s`);
+  if (incomeSummary.income1099Count > 0) incomeParts.push(`${incomeSummary.income1099Count} 1099s`);
+  if (invoiceSummary.invoiceCount > 0) incomeParts.push(`${invoiceSummary.invoiceCount} invoices`);
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 stagger">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 stagger">
       <StatCard
         icon={TrendingUp}
         label="Total Income"
-        value={formatCurrency(incomeSummary.totalIncome)}
-        subtext={`${incomeSummary.w2Count} W-2s, ${incomeSummary.income1099Count} 1099s`}
+        value={formatCurrency(totalRevenue)}
+        subtext={incomeParts.join(', ') || 'No income docs'}
+        color="green"
+      />
+      <StatCard
+        icon={Receipt}
+        label="Invoiced Revenue"
+        value={formatCurrency(invoiceSummary.invoiceTotal)}
+        subtext={`${invoiceSummary.invoiceCount} invoices, ${invoiceSummary.byCustomer.length} customers`}
         color="green"
       />
       <StatCard

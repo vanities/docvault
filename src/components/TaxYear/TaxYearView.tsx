@@ -431,6 +431,7 @@ export function TaxYearView() {
         <QuickStats
           incomeSummary={incomeSummary}
           expenseSummary={expenseSummary}
+          invoiceSummary={invoiceSummary}
           documentCount={filteredDocuments.length}
         />
       </div>
