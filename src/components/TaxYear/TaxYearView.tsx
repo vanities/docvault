@@ -388,7 +388,11 @@ export function TaxYearView() {
           ? data.totalAmount
           : typeof data.amount === 'number'
             ? data.amount
-            : 0
+            : typeof data.total === 'number'
+              ? data.total
+              : typeof data.subtotal === 'number'
+                ? data.subtotal
+                : 0
         : 0;
 
       const existing = customerMap.get(customer) || { total: 0, count: 0 };

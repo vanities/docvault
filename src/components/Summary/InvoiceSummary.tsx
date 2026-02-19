@@ -64,7 +64,11 @@ function CustomerSection({ customer, docs }: { customer: string; docs: TaxDocume
         ? data.totalAmount
         : typeof data.amount === 'number'
           ? data.amount
-          : 0;
+          : typeof data.total === 'number'
+            ? data.total
+            : typeof data.subtotal === 'number'
+              ? data.subtotal
+              : 0;
     return sum + amount;
   }, 0);
 
@@ -101,7 +105,11 @@ function CustomerSection({ customer, docs }: { customer: string; docs: TaxDocume
                 ? data.totalAmount
                 : data && typeof data.amount === 'number'
                   ? data.amount
-                  : null;
+                  : data && typeof data.total === 'number'
+                    ? data.total
+                    : data && typeof data.subtotal === 'number'
+                      ? data.subtotal
+                      : null;
             const invoiceNum =
               data && typeof data.invoiceNumber === 'string' ? data.invoiceNumber : null;
 
@@ -148,7 +156,11 @@ export function InvoiceSummary({ summary, documents, onDownload }: InvoiceSummar
           ? data.totalAmount
           : typeof data?.amount === 'number'
             ? data.amount
-            : 0)
+            : typeof data?.total === 'number'
+              ? data.total
+              : typeof data?.subtotal === 'number'
+                ? data.subtotal
+                : 0)
       );
     }, 0);
     const totalB = b[1].reduce((sum, doc) => {
@@ -159,7 +171,11 @@ export function InvoiceSummary({ summary, documents, onDownload }: InvoiceSummar
           ? data.totalAmount
           : typeof data?.amount === 'number'
             ? data.amount
-            : 0)
+            : typeof data?.total === 'number'
+              ? data.total
+              : typeof data?.subtotal === 'number'
+                ? data.subtotal
+                : 0)
       );
     }, 0);
     return totalB - totalA;

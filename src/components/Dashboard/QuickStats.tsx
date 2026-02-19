@@ -61,22 +61,20 @@ export function QuickStats({
   invoiceSummary,
   documentCount,
 }: QuickStatsProps) {
-  const totalRevenue = incomeSummary.totalIncome + invoiceSummary.invoiceTotal;
-  const netIncome = totalRevenue - expenseSummary.totalDeductible;
+  const netIncome = incomeSummary.totalIncome - expenseSummary.totalDeductible;
   const estimatedTax = netIncome * 0.25; // Rough estimate
 
-  // Build subtext parts for Total Income
+  // Build subtext parts for Total Income (W-2s + 1099s only)
   const incomeParts: string[] = [];
   if (incomeSummary.w2Count > 0) incomeParts.push(`${incomeSummary.w2Count} W-2s`);
   if (incomeSummary.income1099Count > 0) incomeParts.push(`${incomeSummary.income1099Count} 1099s`);
-  if (invoiceSummary.invoiceCount > 0) incomeParts.push(`${invoiceSummary.invoiceCount} invoices`);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 stagger">
       <StatCard
         icon={TrendingUp}
         label="Total Income"
-        value={formatCurrency(totalRevenue)}
+        value={formatCurrency(incomeSummary.totalIncome)}
         subtext={incomeParts.join(', ') || 'No income docs'}
         color="green"
       />
