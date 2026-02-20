@@ -228,7 +228,7 @@ For appraisals/assessments (property, tax assessments), extract:
 IMPORTANT:
 - Extract ALL data visible on the document. Include every field that has a value.
 - For documents with multiple payments/transactions, ALWAYS calculate the totalAmount by summing all amounts.
-- Include a "documentType" field in your response with one of: w2, 1099-nec, 1099-misc, 1099-div, 1099-int, 1099-b, receipt, invoice, crypto, return, contract, operating-agreement, insurance-policy, statement, letter, certificate, medical-record, appraisal, other
+- Include a "documentType" field in your response with one of: w2, 1099-nec, 1099-misc, 1099-div, 1099-int, 1099-b, receipt, invoice, crypto, return, contract, operating-agreement, insurance-policy, bank-statement, credit-card-statement, statement, letter, certificate, medical-record, appraisal, other
 - Respond ONLY with a valid JSON object.
 - All monetary values should be numbers (not strings).
 - If a field is empty or not found, omit it.`;
@@ -256,6 +256,8 @@ function detectDocumentType(filename: string): string {
   if (/receipt|expense|purchase/i.test(lower)) return 'receipt';
   if (/operating.?agreement/i.test(lower)) return 'operating-agreement';
   if (/insurance.?polic/i.test(lower)) return 'insurance-policy';
+  if (/bank.?statement/i.test(lower)) return 'bank-statement';
+  if (/credit.?card.?statement/i.test(lower)) return 'credit-card-statement';
   if (/statement/i.test(lower)) return 'statement';
   if (/certificate|cert\b/i.test(lower)) return 'certificate';
   if (/medical.?record/i.test(lower)) return 'medical-record';

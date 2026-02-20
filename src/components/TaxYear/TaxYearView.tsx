@@ -1,5 +1,5 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
-import { RefreshCw, Download, ChevronDown } from 'lucide-react';
+import { RefreshCw, Download, ChevronDown, Briefcase } from 'lucide-react';
 import { useAppContext, type TabType } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import { QuickStats } from '../Dashboard/QuickStats';
@@ -124,6 +124,7 @@ export function TaxYearView() {
     relocateFile,
     updateDocMetadata,
     downloadZip,
+    downloadCpaPackage,
   } = useAppContext();
 
   const { addToast } = useToast();
@@ -480,13 +481,22 @@ export function TaxYearView() {
             ))}
           </nav>
 
-          {/* Download Dropdown */}
+          {/* CPA Package + Download Dropdown */}
           {selectedEntity !== 'all' && (
-            <DownloadDropdown
-              entity={selectedEntity}
-              year={selectedYear}
-              onDownload={downloadZip}
-            />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => downloadCpaPackage(selectedEntity, selectedYear)}
+                className="flex items-center gap-1.5 px-3 py-1.5 mb-1 text-[13px] font-medium text-white bg-accent-500 hover:bg-accent-600 border border-accent-600 rounded-lg transition-colors"
+              >
+                <Briefcase className="w-4 h-4" />
+                <span className="hidden sm:inline">CPA Package</span>
+              </button>
+              <DownloadDropdown
+                entity={selectedEntity}
+                year={selectedYear}
+                onDownload={downloadZip}
+              />
+            </div>
           )}
         </div>
       </div>

@@ -302,6 +302,10 @@ export function useFileSystemServer() {
             destPath += '/income/1099';
           } else if (docType === 'receipt' && expenseCategory) {
             destPath += '/' + EXPENSE_FOLDER_MAP[expenseCategory];
+          } else if (docType === 'bank-statement') {
+            destPath += '/statements/bank';
+          } else if (docType === 'credit-card-statement') {
+            destPath += '/statements/credit-card';
           } else if (docType === 'crypto') {
             destPath += '/crypto';
           } else if (docType === 'return') {
@@ -380,6 +384,10 @@ export function useFileSystemServer() {
       destPath += '/income/1099';
     } else if (docType === 'receipt' && expenseCategory) {
       destPath += '/' + EXPENSE_FOLDER_MAP[expenseCategory];
+    } else if (docType === 'bank-statement') {
+      destPath += '/statements/bank';
+    } else if (docType === 'credit-card-statement') {
+      destPath += '/statements/credit-card';
     } else if (docType === 'crypto') {
       destPath += '/crypto';
     } else if (docType === 'return') {
@@ -478,6 +486,8 @@ export function useFileSystemServer() {
         `${year}/expenses/business`,
         `${year}/expenses/childcare`,
         `${year}/expenses/medical`,
+        `${year}/statements/bank`,
+        `${year}/statements/credit-card`,
         `${year}/crypto`,
         `${year}/returns`,
         `${year}/turbotax`,
@@ -911,6 +921,41 @@ export function useFileSystemServer() {
     [isConnected]
   );
 
+  // Download CPA package (tracked files + TAX_SUMMARY.txt manifest)
+  const downloadCpaPackage = useCallback(
+    async (entity: string, year: number) => {
+      if (!isConnected) return;
+
+      try {
+        const response = await fetch(`${API_BASE}/download/cpa-package`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ entity, year }),
+        });
+
+        if (!response.ok) {
+          console.error('Download CPA package failed:', await response.text());
+          return;
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download =
+          response.headers.get('Content-Disposition')?.match(/filename="?(.+?)"?$/)?.[1] ||
+          `${entity}_${year}_CPA_Package.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error('Download CPA package error:', err);
+      }
+    },
+    [isConnected]
+  );
+
   // Update document metadata (tags, notes, tracked) - persists to server
   const updateDocMetadata = useCallback(
     async (
@@ -967,5 +1012,6 @@ export function useFileSystemServer() {
     deleteTodo,
     updateDocMetadata,
     downloadZip,
+    downloadCpaPackage,
   };
 }

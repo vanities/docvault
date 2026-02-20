@@ -152,6 +152,9 @@ interface AppContextValue {
     year: number,
     filter: 'income' | 'expenses' | 'invoices' | 'all'
   ) => Promise<void>;
+
+  // CPA Package download
+  downloadCpaPackage: (entity: string, year: number) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -271,6 +274,7 @@ export function AppProvider({ children }: AppProviderProps) {
     deleteTodo,
     updateDocMetadata,
     downloadZip,
+    downloadCpaPackage,
   } = useFileSystemServer();
 
   // Global processing state
@@ -394,6 +398,9 @@ export function AppProvider({ children }: AppProviderProps) {
 
     // Zip download
     downloadZip,
+
+    // CPA Package
+    downloadCpaPackage,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

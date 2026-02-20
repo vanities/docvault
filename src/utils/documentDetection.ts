@@ -39,6 +39,8 @@ export function detectDocumentType(filename: string, filePath?: string): Documen
   if (/insurance.?polic/i.test(lower)) return 'insurance-policy';
 
   // General document types
+  if (/bank.?statement/i.test(lower)) return 'bank-statement';
+  if (/credit.?card.?statement/i.test(lower)) return 'credit-card-statement';
   if (/statement/i.test(lower)) return 'statement';
   if (/medical.?record/i.test(lower)) return 'medical-record';
   if (/appraisal|assessment/i.test(lower)) return 'appraisal';

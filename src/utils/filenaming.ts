@@ -66,6 +66,8 @@ function getTypeLabel(docType: DocumentType): string {
     'ein-letter': '',
     license: '',
     'business-agreement': 'Contractor_Agreement',
+    'bank-statement': 'Bank_Statement',
+    'credit-card-statement': 'CC_Statement',
   };
   return typeMap[docType] || '';
 }
@@ -163,6 +165,18 @@ export function generateStandardFilename(params: FilenameParams): string {
   // Contract (W-9): {Company}_W9_{Year}.pdf
   if (docType === 'contract') {
     return `${sourcePart}_W9_${year}${ext}`;
+  }
+
+  // Bank Statement: {Institution}_Bank_Statement_{Year}-{MM}.pdf
+  if (docType === 'bank-statement') {
+    const monthStr = month ? String(month).padStart(2, '0') : '01';
+    return `${sourcePart}_Bank_Statement_${year}-${monthStr}${ext}`;
+  }
+
+  // Credit Card Statement: {Issuer}_CC_Statement_{Year}-{MM}.pdf
+  if (docType === 'credit-card-statement') {
+    const monthStr = month ? String(month).padStart(2, '0') : '01';
+    return `${sourcePart}_CC_Statement_${year}-${monthStr}${ext}`;
   }
 
   // Default: {Source}_{Year}.ext

@@ -29,6 +29,8 @@ export type DocumentType =
   | 'operating-agreement'
   | 'insurance-policy'
   // General document types (not tied to tax year or business)
+  | 'bank-statement'
+  | 'credit-card-statement'
   | 'statement'
   | 'letter'
   | 'certificate'

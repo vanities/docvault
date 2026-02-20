@@ -1670,6 +1670,8 @@ Document type patterns:
 - License: Business_License_{Year}.pdf
 - Operating Agreement: Operating_Agreement.pdf
 - Insurance Policy: {Provider}_Insurance_Policy_{Year}.pdf
+- Bank Statement: {Institution}_Bank_Statement_{Year}-{MM}.pdf
+- Credit Card Statement: {Issuer}_CC_Statement_{Year}-{MM}.pdf
 - Statement: {Institution}_Statement_{Year}-{MM}.pdf
 - Certificate: {Issuer}_Certificate_{Year}.pdf
 - Medical Record: {Provider}_Medical_Record_{Date}.pdf
@@ -1688,7 +1690,7 @@ Respond ONLY with valid JSON. No markdown.`,
 1. "naming" - for filename generation:
 {
   "source": "Company or vendor name (plain text, spaces ok)",
-  "documentType": "w2|1099-nec|1099-misc|1099-div|1099-int|1099-b|1099-r|receipt|invoice|crypto|return|contract|formation|ein-letter|license|business-agreement|operating-agreement|insurance-policy|statement|letter|certificate|medical-record|appraisal|other",
+  "documentType": "w2|1099-nec|1099-misc|1099-div|1099-int|1099-b|1099-r|receipt|invoice|crypto|return|contract|formation|ein-letter|license|business-agreement|operating-agreement|insurance-policy|bank-statement|credit-card-statement|statement|letter|certificate|medical-record|appraisal|other",
   "expenseCategory": "meals|software|equipment|travel|office-supplies|professional-services|utilities|insurance|taxes-licenses|childcare|medical|education|other" (only if receipt/expense),
   "description": "short description if receipt" (optional),
   "year": YYYY (the year from the document - tax year for W-2/1099, or date year for receipts/invoices),
@@ -1779,6 +1781,14 @@ Return: { "naming": {...}, "parsedData": {...} }`,
         return jsonResponse({ error: 'Year directory not found' }, 404);
       }
 
+      // Filter out untracked files
+      const metadataMap = await loadMetadata();
+      files = files.filter((file) => {
+        const metaKey = `${entityId}/${file.path}`;
+        const meta = metadataMap[metaKey];
+        return meta?.tracked !== false;
+      });
+
       // Filter files based on the requested category
       if (filter && filter !== 'all') {
         files = files.filter((file) => {
@@ -1827,6 +1837,214 @@ Return: { "naming": {...}, "parsedData": {...} }`,
       });
     } catch (err) {
       return jsonResponse({ error: 'Failed to create zip', details: String(err) }, 500);
+    }
+  }
+
+  // POST /api/download/cpa-package - Download CPA-ready zip with TAX_SUMMARY.txt manifest
+  if (pathname === '/api/download/cpa-package' && req.method === 'POST') {
+    try {
+      const body = await req.json();
+      const { entity: entityId, year } = body as { entity: string; year: number };
+
+      if (!entityId || !year) {
+        return jsonResponse({ error: 'Missing entity or year' }, 400);
+      }
+
+      const entityPath = await getEntityPath(entityId);
+      if (!entityPath) {
+        return jsonResponse({ error: 'Entity not found' }, 404);
+      }
+
+      const yearStr = String(year);
+      const yearPath = path.join(entityPath, yearStr);
+      let files: FileInfo[] = [];
+      try {
+        await fs.access(yearPath);
+        files = await scanDirectory(yearPath, yearStr);
+      } catch {
+        return jsonResponse({ error: 'Year directory not found' }, 404);
+      }
+
+      // Filter out untracked files
+      const metadataMap = await loadMetadata();
+      files = files.filter((file) => {
+        const metaKey = `${entityId}/${file.path}`;
+        const meta = metadataMap[metaKey];
+        return meta?.tracked !== false;
+      });
+
+      if (files.length === 0) {
+        return jsonResponse({ error: 'No tracked files found' }, 404);
+      }
+
+      // Load parsed data for manifest generation
+      const parsedDataMap = await loadParsedData();
+
+      // Build TAX_SUMMARY.txt manifest
+      const lines: string[] = [];
+      lines.push('='.repeat(60));
+      lines.push(`TAX SUMMARY — ${entityId.toUpperCase()} — ${year}`);
+      lines.push(`Generated: ${new Date().toISOString().split('T')[0]}`);
+      lines.push('='.repeat(60));
+      lines.push('');
+
+      // --- Income Section ---
+      const w2Files = files.filter((f) => f.path.toLowerCase().includes('/income/w2/'));
+      const f1099Files = files.filter((f) => f.path.toLowerCase().includes('/income/1099/'));
+      lines.push('INCOME');
+      lines.push('-'.repeat(40));
+
+      let totalW2 = 0;
+      if (w2Files.length > 0) {
+        lines.push('  W-2 Wages:');
+        for (const f of w2Files) {
+          const key = `${entityId}/${f.path}`;
+          const pd = parsedDataMap[key] as Record<string, unknown> | undefined;
+          const employer = (pd?.employerName || pd?.employer || f.name.split('_')[0]) as string;
+          const wages = Number(pd?.wages || 0);
+          totalW2 += wages;
+          lines.push(
+            `    ${employer}: $${wages.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+          );
+        }
+      }
+
+      let total1099 = 0;
+      if (f1099Files.length > 0) {
+        lines.push('  1099 Income:');
+        for (const f of f1099Files) {
+          const key = `${entityId}/${f.path}`;
+          const pd = parsedDataMap[key] as Record<string, unknown> | undefined;
+          const payer = (pd?.payerName || pd?.payer || f.name.split('_')[0]) as string;
+          const amount = Number(
+            pd?.nonemployeeCompensation ||
+              pd?.amount ||
+              pd?.ordinaryDividends ||
+              pd?.interestIncome ||
+              0
+          );
+          total1099 += amount;
+          lines.push(
+            `    ${payer}: $${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+          );
+        }
+      }
+
+      const totalIncome = totalW2 + total1099;
+      lines.push(
+        `  TOTAL INCOME: $${totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+      );
+      lines.push('');
+
+      // --- Invoices Section ---
+      const invoiceFiles = files.filter((f) => {
+        const key = `${entityId}/${f.path}`;
+        const pd = parsedDataMap[key] as Record<string, unknown> | undefined;
+        return pd?.documentType === 'invoice' || f.name.toLowerCase().includes('invoice');
+      });
+
+      if (invoiceFiles.length > 0) {
+        lines.push('INVOICED REVENUE');
+        lines.push('-'.repeat(40));
+        const customerTotals = new Map<string, number>();
+        for (const f of invoiceFiles) {
+          const key = `${entityId}/${f.path}`;
+          const pd = parsedDataMap[key] as Record<string, unknown> | undefined;
+          const customer = (pd?.billTo ||
+            pd?.customerName ||
+            pd?.vendor ||
+            f.name.split('_')[0]) as string;
+          const amount = Number(pd?.totalAmount || pd?.amount || pd?.total || pd?.subtotal || 0);
+          customerTotals.set(customer, (customerTotals.get(customer) || 0) + amount);
+        }
+        let invoiceTotal = 0;
+        for (const [customer, total] of customerTotals) {
+          invoiceTotal += total;
+          lines.push(
+            `  ${customer}: $${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+          );
+        }
+        lines.push(
+          `  TOTAL INVOICED: $${invoiceTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+        );
+        lines.push('');
+      }
+
+      // --- Expenses Section ---
+      const expenseFiles = files.filter((f) => f.path.toLowerCase().includes('/expenses/'));
+      if (expenseFiles.length > 0) {
+        lines.push('EXPENSES');
+        lines.push('-'.repeat(40));
+        const categoryTotals = new Map<string, number>();
+        for (const f of expenseFiles) {
+          const key = `${entityId}/${f.path}`;
+          const pd = parsedDataMap[key] as Record<string, unknown> | undefined;
+          const category = (pd?.category || 'other') as string;
+          const amount = Number(pd?.totalAmount || pd?.amount || pd?.total || 0);
+          categoryTotals.set(category, (categoryTotals.get(category) || 0) + amount);
+        }
+        let expenseTotal = 0;
+        for (const [category, total] of categoryTotals) {
+          expenseTotal += total;
+          lines.push(
+            `  ${category}: $${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+          );
+        }
+        lines.push(
+          `  TOTAL EXPENSES: $${expenseTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+        );
+        lines.push('');
+      }
+
+      // --- Statements Section ---
+      const statementFiles = files.filter((f) => f.path.toLowerCase().includes('/statements/'));
+      if (statementFiles.length > 0) {
+        lines.push('STATEMENTS');
+        lines.push('-'.repeat(40));
+        for (const f of statementFiles) {
+          lines.push(`  ${f.name}`);
+        }
+        lines.push('');
+      }
+
+      // --- Document Inventory ---
+      lines.push('DOCUMENT INVENTORY');
+      lines.push('-'.repeat(40));
+      for (const f of files) {
+        lines.push(`  ${f.path}`);
+      }
+      lines.push('');
+      lines.push(`Total files: ${files.length}`);
+
+      const manifest = lines.join('\n');
+
+      // Build zip with all tracked files + manifest
+      const zipData: Record<string, Uint8Array> = {};
+      zipData['TAX_SUMMARY.txt'] = new TextEncoder().encode(manifest);
+
+      for (const file of files) {
+        const fullPath = path.join(entityPath, file.path);
+        try {
+          const content = await fs.readFile(fullPath);
+          zipData[file.path] = new Uint8Array(content);
+        } catch {
+          console.error(`[CPA Package] Failed to read ${file.path}`);
+        }
+      }
+
+      const zipped = zipSync(zipData);
+      const filename = `${entityId}_${year}_CPA_Package.zip`;
+
+      return new Response(zipped, {
+        headers: {
+          'Content-Type': 'application/zip',
+          'Content-Disposition': `attachment; filename="${filename}"`,
+          'Content-Length': String(zipped.length),
+          ...corsHeaders(),
+        },
+      });
+    } catch (err) {
+      return jsonResponse({ error: 'Failed to create CPA package', details: String(err) }, 500);
     }
   }
 

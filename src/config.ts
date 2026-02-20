@@ -14,6 +14,8 @@ export const TAX_YEAR_STRUCTURE = {
   'expenses/business': ['receipt'],
   'expenses/childcare': ['receipt'],
   'expenses/medical': ['receipt'],
+  'statements/bank': ['bank-statement'],
+  'statements/credit-card': ['credit-card-statement'],
   crypto: ['crypto'],
   returns: ['return'],
   turbotax: ['return'],
@@ -76,6 +78,8 @@ export const DOCUMENT_TYPES: {
   { id: 'operating-agreement', label: 'Operating Agreement', category: 'business' },
   { id: 'insurance-policy', label: 'Insurance Policy', category: 'business' },
   // General document types (useful across entity types)
+  { id: 'bank-statement', label: 'Bank Statement', category: 'other' },
+  { id: 'credit-card-statement', label: 'Credit Card Statement', category: 'other' },
   { id: 'statement', label: 'Statement', category: 'other' },
   { id: 'letter', label: 'Letter/Correspondence', category: 'other' },
   { id: 'certificate', label: 'Certificate', category: 'other' },
