@@ -15,6 +15,7 @@ export type DocumentType =
   | '1099-div'
   | '1099-int'
   | '1099-b'
+  | '1098'
   | 'receipt'
   | 'invoice'
   | 'crypto'

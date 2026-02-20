@@ -10,6 +10,7 @@ import type { Entity, DocumentType, ExpenseCategory } from './types';
 export const TAX_YEAR_STRUCTURE = {
   'income/w2': ['w2'],
   'income/1099': ['1099-nec', '1099-misc', '1099-r', '1099-div', '1099-int', '1099-b'],
+  'income/1098': ['1098'],
   'income/other': ['invoice', 'other'],
   'expenses/business': ['receipt'],
   'expenses/childcare': ['receipt'],
@@ -64,6 +65,7 @@ export const DOCUMENT_TYPES: {
   { id: '1099-div', label: '1099-DIV', category: 'income' },
   { id: '1099-int', label: '1099-INT', category: 'income' },
   { id: '1099-b', label: '1099-B', category: 'income' },
+  { id: '1098', label: '1098 (Mortgage Interest)', category: 'other' },
   { id: 'receipt', label: 'Receipt', category: 'expense' },
   { id: 'invoice', label: 'Invoice', category: 'income' },
   { id: 'crypto', label: 'Crypto Report', category: 'crypto' },

@@ -187,6 +187,21 @@ For insurance policies, extract:
 - expirationDate: End date (YYYY-MM-DD)
 - coverageAmount: Coverage limit
 
+For 1098 (Mortgage Interest Statement), extract:
+- lender: Lending institution name
+- loanNumber: Loan/account number
+- borrowerName: Borrower's name
+- borrowerAddress: Borrower's address
+- mortgageInterest: Box 1 - Mortgage interest received from borrower
+- outstandingPrincipal: Box 2 - Outstanding mortgage principal
+- mortgageOriginationDate: Box 3 - Mortgage origination date
+- refundOfOverpaidInterest: Box 4 - Refund of overpaid interest
+- mortgageInsurancePremiums: Box 5 - Mortgage insurance premiums
+- pointsPaid: Box 6 - Points paid on purchase of principal residence
+- propertyAddress: Box 7 - Address of property securing mortgage
+- propertyTax: Box 10 - Property tax
+- taxYear: The tax year
+
 For statements (bank, brokerage, account statements), extract:
 - institution: Bank/brokerage name
 - accountNumber: Account number (may be partial)
@@ -229,7 +244,7 @@ For appraisals/assessments (property, tax assessments), extract:
 IMPORTANT:
 - Extract ALL data visible on the document. Include every field that has a value.
 - For documents with multiple payments/transactions, ALWAYS calculate the totalAmount by summing all amounts.
-- Include a "documentType" field in your response with one of: w2, 1099-nec, 1099-misc, 1099-div, 1099-int, 1099-b, receipt, invoice, crypto, return, contract, operating-agreement, insurance-policy, bank-statement, credit-card-statement, statement, letter, certificate, medical-record, appraisal, other
+- Include a "documentType" field in your response with one of: w2, 1099-nec, 1099-misc, 1099-div, 1099-int, 1099-b, 1098, receipt, invoice, crypto, return, contract, operating-agreement, insurance-policy, bank-statement, credit-card-statement, statement, letter, certificate, medical-record, appraisal, other
 - Respond ONLY with a valid JSON object.
 - All monetary values should be numbers (not strings).
 - If a field is empty or not found, omit it.`;
@@ -253,6 +268,7 @@ function detectDocumentType(filename: string): string {
   if (/1099-?misc/i.test(lower)) return '1099-MISC';
   if (/1099-?div/i.test(lower)) return '1099-DIV';
   if (/1099-?int/i.test(lower)) return '1099-INT';
+  if (/1098/i.test(lower)) return '1098';
   if (/w-?2/i.test(lower)) return 'W-2';
   if (/receipt|expense|purchase/i.test(lower)) return 'receipt';
   if (/operating.?agreement/i.test(lower)) return 'operating-agreement';
@@ -373,6 +389,8 @@ export async function parseWithAI(
       documentType = '1099-div';
     } else if (docTypeHint === '1099-INT') {
       documentType = '1099-int';
+    } else if (docTypeHint === '1098') {
+      documentType = '1098';
     } else if (docTypeHint === 'receipt') {
       documentType = 'receipt';
     } else {
@@ -393,6 +411,11 @@ export async function parseWithAI(
         documentType = 'operating-agreement';
       } else if (parsed.policyNumber !== undefined || parsed.premium !== undefined) {
         documentType = 'insurance-policy';
+      } else if (
+        parsed.mortgageInterest !== undefined ||
+        parsed.outstandingPrincipal !== undefined
+      ) {
+        documentType = '1098';
       } else if (parsed.beginningBalance !== undefined || parsed.endingBalance !== undefined) {
         documentType = 'statement';
       } else if (parsed.diagnosis !== undefined && parsed.provider !== undefined) {

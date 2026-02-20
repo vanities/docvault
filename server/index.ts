@@ -1672,6 +1672,7 @@ Document type patterns:
 - License: Business_License_{Year}.pdf
 - Operating Agreement: Operating_Agreement.pdf
 - Insurance Policy: {Provider}_Insurance_Policy_{Year}.pdf
+- 1098 Mortgage Interest: {Lender}_1098_{Year}.pdf
 - Bank Statement: {Institution}_Bank_Statement_{Year}-{MM}.pdf
 - Credit Card Statement: {Issuer}_CC_Statement_{Year}-{MM}.pdf
 - Statement: {Institution}_Statement_{Year}-{MM}.pdf
@@ -1692,7 +1693,7 @@ Respond ONLY with valid JSON. No markdown.`,
 1. "naming" - for filename generation:
 {
   "source": "Company or vendor name (plain text, spaces ok)",
-  "documentType": "w2|1099-nec|1099-misc|1099-div|1099-int|1099-b|1099-r|receipt|invoice|crypto|return|contract|formation|ein-letter|license|business-agreement|operating-agreement|insurance-policy|bank-statement|credit-card-statement|statement|letter|certificate|medical-record|appraisal|other",
+  "documentType": "w2|1099-nec|1099-misc|1099-div|1099-int|1099-b|1099-r|1098|receipt|invoice|crypto|return|contract|formation|ein-letter|license|business-agreement|operating-agreement|insurance-policy|bank-statement|credit-card-statement|statement|letter|certificate|medical-record|appraisal|other",
   "expenseCategory": "meals|software|equipment|travel|office-supplies|professional-services|utilities|insurance|taxes-licenses|childcare|medical|education|other" (only if receipt/expense),
   "description": "short description if receipt" (optional),
   "year": YYYY (the year from the document - tax year for W-2/1099, or date year for receipts/invoices),
@@ -1708,6 +1709,7 @@ IMPORTANT: If a document is a PAYMENT RECEIPT or CONFIRMATION for a filing fee (
 - For 1099-NEC: { payerName, nonemployeeCompensation, federalWithheld, etc }
 - For 1099-DIV: { payerName, ordinaryDividends, qualifiedDividends, federalWithheld, etc }
 - For 1099-INT: { payerName, interestIncome, federalWithheld, etc }
+- For 1098: { lender, loanNumber, borrowerName, mortgageInterest, outstandingPrincipal, mortgageInsurancePremiums, pointsPaid, propertyAddress, propertyTax, taxYear }
 - For invoices: { vendor, amount, date, invoiceNumber, items, etc }
 - Include ALL visible fields. All monetary values as numbers.
 
@@ -1938,6 +1940,30 @@ Return: { "naming": {...}, "parsedData": {...} }`,
         `  TOTAL INCOME: $${totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
       );
       lines.push('');
+
+      // --- Mortgage Interest (1098) Section ---
+      const f1098Files = files.filter((f) => f.path.toLowerCase().includes('/income/1098/'));
+      if (f1098Files.length > 0) {
+        lines.push('MORTGAGE INTEREST (1098)');
+        lines.push('-'.repeat(40));
+        let totalMortgageInterest = 0;
+        for (const f of f1098Files) {
+          const key = `${entityId}/${f.path}`;
+          const pd = parsedDataMap[key] as Record<string, unknown> | undefined;
+          const lender = (pd?.lender || pd?.institution || f.name.split('_')[0]) as string;
+          const interest = Number(pd?.mortgageInterest || 0);
+          totalMortgageInterest += interest;
+          lines.push(
+            `  ${lender}: $${interest.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+          );
+        }
+        if (totalMortgageInterest > 0) {
+          lines.push(
+            `  TOTAL MORTGAGE INTEREST PAID: $${totalMortgageInterest.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+          );
+        }
+        lines.push('');
+      }
 
       // --- Invoices Section ---
       const invoiceFiles = files.filter((f) => {
