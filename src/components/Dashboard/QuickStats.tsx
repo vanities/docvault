@@ -6,6 +6,10 @@ interface QuickStatsProps {
   expenseSummary: ExpenseSummary;
   invoiceSummary: InvoiceSummaryData;
   documentCount: number;
+  allIncomeSummary?: IncomeSummary;
+  allExpenseSummary?: ExpenseSummary;
+  allInvoiceSummary?: InvoiceSummaryData;
+  allDocumentCount?: number;
 }
 
 function formatCurrency(amount: number): string {
@@ -21,11 +25,12 @@ interface StatCardProps {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   value: string;
+  altValue?: string;
   subtext?: string;
   color: 'green' | 'red' | 'blue' | 'gray';
 }
 
-function StatCard({ icon: Icon, label, value, subtext, color }: StatCardProps) {
+function StatCard({ icon: Icon, label, value, altValue, subtext, color }: StatCardProps) {
   const colorConfig = {
     green: { icon: 'text-emerald-400', bg: 'bg-emerald-500/10', glow: 'glow-emerald' },
     red: { icon: 'text-red-400', bg: 'bg-red-500/10', glow: 'glow-red' },
@@ -45,6 +50,9 @@ function StatCard({ icon: Icon, label, value, subtext, color }: StatCardProps) {
           <p className="text-2xl font-bold text-surface-950 mt-1.5 font-mono tracking-tight">
             {value}
           </p>
+          {altValue && altValue !== value && (
+            <p className="text-xs text-surface-500 mt-0.5 font-mono">{altValue} w/ hidden</p>
+          )}
           {subtext && <p className="text-[11px] text-surface-600 mt-1">{subtext}</p>}
         </div>
         <div className={`p-2.5 rounded-xl ${c.bg}`}>
@@ -60,9 +68,23 @@ export function QuickStats({
   expenseSummary,
   invoiceSummary,
   documentCount,
+  allIncomeSummary,
+  allExpenseSummary,
+  allInvoiceSummary,
+  allDocumentCount,
 }: QuickStatsProps) {
   const netIncome = incomeSummary.totalIncome - expenseSummary.totalDeductible;
   const estimatedTax = netIncome * 0.25; // Rough estimate
+
+  // Compute "all" tax liability when all summaries are provided
+  const allEstimatedTax =
+    allIncomeSummary && allExpenseSummary
+      ? (allIncomeSummary.totalIncome - allExpenseSummary.totalDeductible) * 0.25
+      : undefined;
+  const allTaxLiability =
+    allEstimatedTax !== undefined && allIncomeSummary
+      ? formatCurrency(Math.max(0, allEstimatedTax - allIncomeSummary.federalWithheld))
+      : undefined;
 
   // Build subtext parts for Total Income (W-2s + 1099s only)
   const incomeParts: string[] = [];
@@ -75,6 +97,7 @@ export function QuickStats({
         icon={TrendingUp}
         label="Total Income"
         value={formatCurrency(incomeSummary.totalIncome)}
+        altValue={allIncomeSummary ? formatCurrency(allIncomeSummary.totalIncome) : undefined}
         subtext={incomeParts.join(', ') || 'No income docs'}
         color="green"
       />
@@ -82,6 +105,7 @@ export function QuickStats({
         icon={Receipt}
         label="Invoiced Revenue"
         value={formatCurrency(invoiceSummary.invoiceTotal)}
+        altValue={allInvoiceSummary ? formatCurrency(allInvoiceSummary.invoiceTotal) : undefined}
         subtext={`${invoiceSummary.invoiceCount} invoices, ${invoiceSummary.byCustomer.length} customers`}
         color="green"
       />
@@ -89,6 +113,7 @@ export function QuickStats({
         icon={TrendingDown}
         label="Deductible Expenses"
         value={formatCurrency(expenseSummary.totalDeductible)}
+        altValue={allExpenseSummary ? formatCurrency(allExpenseSummary.totalDeductible) : undefined}
         subtext={`${expenseSummary.items.reduce((sum, i) => sum + i.count, 0)} receipts`}
         color="red"
       />
@@ -96,6 +121,7 @@ export function QuickStats({
         icon={DollarSign}
         label="Est. Tax Liability"
         value={formatCurrency(Math.max(0, estimatedTax - incomeSummary.federalWithheld))}
+        altValue={allTaxLiability}
         subtext={`${formatCurrency(incomeSummary.federalWithheld)} withheld`}
         color="blue"
       />
@@ -103,6 +129,7 @@ export function QuickStats({
         icon={FileText}
         label="Documents"
         value={documentCount.toString()}
+        altValue={allDocumentCount !== undefined ? allDocumentCount.toString() : undefined}
         subtext="Total uploaded"
         color="gray"
       />

@@ -416,6 +416,137 @@ export function TaxYearView() {
     };
   }, [trackedDocuments, selectedEntity, selectedYear]);
 
+  // --- "All docs" summaries (including hidden/untracked) for QuickStats alt values ---
+
+  const hasHiddenDocs = scannedDocuments.length !== trackedDocuments.length;
+
+  const allIncomeSummary = useMemo((): IncomeSummaryType | undefined => {
+    if (!hasHiddenDocs) return undefined;
+    const w2Docs = scannedDocuments.filter((d) => d.type === 'w2');
+    const income1099Docs = scannedDocuments.filter((d) => d.type.startsWith('1099'));
+    let w2Total = 0,
+      federalWithheld = 0,
+      stateWithheld = 0;
+    w2Docs.forEach((doc) => {
+      const data = doc.parsedData as
+        | { wages?: number; federalWithheld?: number; stateWithheld?: number }
+        | undefined;
+      if (data) {
+        w2Total += data.wages || 0;
+        federalWithheld += data.federalWithheld || 0;
+        stateWithheld += data.stateWithheld || 0;
+      }
+    });
+    let income1099Total = 0;
+    income1099Docs.forEach((doc) => {
+      const data = doc.parsedData as
+        | { nonemployeeCompensation?: number; amount?: number; federalWithheld?: number }
+        | undefined;
+      if (data) {
+        income1099Total += data.nonemployeeCompensation || data.amount || 0;
+        federalWithheld += data.federalWithheld || 0;
+      }
+    });
+    return {
+      entity: selectedEntity,
+      taxYear: selectedYear,
+      w2Total,
+      w2Count: w2Docs.length,
+      income1099Total,
+      income1099Count: income1099Docs.length,
+      totalIncome: w2Total + income1099Total,
+      federalWithheld,
+      stateWithheld,
+    };
+  }, [scannedDocuments, hasHiddenDocs, selectedEntity, selectedYear]);
+
+  const allExpenseSummary = useMemo((): ExpenseSummaryType | undefined => {
+    if (!hasHiddenDocs) return undefined;
+    const expenseDocs = scannedDocuments.filter(
+      (d) => d.type === 'receipt' || d.filePath.toLowerCase().includes('/expenses/')
+    );
+    const categoryTotals = new Map<ExpenseCategory, { total: number; count: number }>();
+    expenseDocs.forEach((doc) => {
+      const data = doc.parsedData as Record<string, unknown> | undefined;
+      if (!data) return;
+      let category = data.category as ExpenseCategory | undefined;
+      if (!category && doc.filePath) {
+        const pathLower = doc.filePath.toLowerCase();
+        if (pathLower.includes('/equipment/')) category = 'equipment';
+        else if (pathLower.includes('/software/')) category = 'software';
+        else if (pathLower.includes('/meals/')) category = 'meals';
+        else if (pathLower.includes('/childcare/')) category = 'childcare';
+        else if (pathLower.includes('/medical/')) category = 'medical';
+        else if (pathLower.includes('/travel/')) category = 'travel';
+        else if (pathLower.includes('/office/')) category = 'office-supplies';
+      }
+      if (!category) return;
+      let amount = 0;
+      if (typeof data.amount === 'number') amount = data.amount;
+      else if (typeof data.totalAmount === 'number') amount = data.totalAmount;
+      else if (typeof data.total === 'number') amount = data.total;
+      else {
+        const financing = data.financing as Record<string, unknown> | undefined;
+        if (financing) {
+          if (typeof financing.cashPrice === 'number') amount = financing.cashPrice;
+          else if (typeof financing.totalSalePrice === 'number') amount = financing.totalSalePrice;
+        }
+      }
+      if (!amount) return;
+      const existing = categoryTotals.get(category) || { total: 0, count: 0 };
+      categoryTotals.set(category, { total: existing.total + amount, count: existing.count + 1 });
+    });
+    const items = EXPENSE_CATEGORIES.map((cat) => {
+      const totals = categoryTotals.get(cat.id) || { total: 0, count: 0 };
+      return {
+        category: cat.id,
+        total: totals.total,
+        deductibleAmount: totals.total * cat.deductionRate,
+        count: totals.count,
+      };
+    }).filter((item) => item.total > 0);
+    return {
+      entity: selectedEntity,
+      taxYear: selectedYear,
+      items,
+      totalExpenses: items.reduce((sum, item) => sum + item.total, 0),
+      totalDeductible: items.reduce((sum, item) => sum + item.deductibleAmount, 0),
+    };
+  }, [scannedDocuments, hasHiddenDocs, selectedEntity, selectedYear]);
+
+  const allInvoiceSummary = useMemo((): InvoiceSummaryData | undefined => {
+    if (!hasHiddenDocs) return undefined;
+    const invoiceDocs = scannedDocuments.filter((d) => d.type === 'invoice');
+    const customerMap = new Map<string, { total: number; count: number }>();
+    for (const doc of invoiceDocs) {
+      const data = doc.parsedData as Record<string, unknown> | undefined;
+      const customer = getInvoiceVendor(doc);
+      const amount = data
+        ? typeof data.totalAmount === 'number'
+          ? data.totalAmount
+          : typeof data.amount === 'number'
+            ? data.amount
+            : typeof data.total === 'number'
+              ? data.total
+              : typeof data.subtotal === 'number'
+                ? data.subtotal
+                : 0
+        : 0;
+      const existing = customerMap.get(customer) || { total: 0, count: 0 };
+      customerMap.set(customer, { total: existing.total + amount, count: existing.count + 1 });
+    }
+    const byCustomer = Array.from(customerMap.entries())
+      .map(([customer, { total, count }]) => ({ customer, total, count }))
+      .sort((a, b) => b.total - a.total);
+    return {
+      entity: selectedEntity,
+      taxYear: selectedYear,
+      invoiceTotal: byCustomer.reduce((sum, g) => sum + g.total, 0),
+      invoiceCount: invoiceDocs.length,
+      byCustomer,
+    };
+  }, [scannedDocuments, hasHiddenDocs, selectedEntity, selectedYear]);
+
   const tabs: { id: TabType; label: string }[] = [
     { id: 'documents', label: 'Documents' },
     { id: 'income', label: 'Income' },
@@ -438,6 +569,10 @@ export function TaxYearView() {
           expenseSummary={expenseSummary}
           invoiceSummary={invoiceSummary}
           documentCount={filteredDocuments.length}
+          allIncomeSummary={allIncomeSummary}
+          allExpenseSummary={allExpenseSummary}
+          allInvoiceSummary={allInvoiceSummary}
+          allDocumentCount={hasHiddenDocs ? scannedDocuments.length : undefined}
         />
       </div>
 
