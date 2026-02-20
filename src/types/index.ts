@@ -16,6 +16,7 @@ export type DocumentType =
   | '1099-int'
   | '1099-b'
   | '1098'
+  | 'retirement-statement'
   | 'receipt'
   | 'invoice'
   | 'crypto'
@@ -102,6 +103,16 @@ export interface ParsedCrypto {
   transactions?: number;
 }
 
+export interface ParsedRetirementStatement {
+  institution: string;
+  accountType: string; // e.g. "Solo 401(k)", "SEP-IRA", "Traditional IRA"
+  employerContributions: number;
+  employeeContributions: number;
+  totalContributions: number;
+  taxYear: number;
+  accountNumber?: string;
+}
+
 // Main document interface
 export interface TaxDocument {
   id: string;
@@ -116,7 +127,7 @@ export interface TaxDocument {
   notes?: string;
   tracked: boolean; // Whether to include in totals (default true)
   incomeSourceId?: string; // For W-2s: links to INCOME_SOURCES
-  parsedData?: ParsedW2 | Parsed1099 | ParsedReceipt | ParsedCrypto;
+  parsedData?: ParsedW2 | Parsed1099 | ParsedReceipt | ParsedCrypto | ParsedRetirementStatement;
   createdAt: string; // ISO date string
   updatedAt: string; // ISO date string
 }
@@ -162,6 +173,15 @@ export interface InvoiceSummaryData {
   invoiceTotal: number;
   invoiceCount: number;
   byCustomer: InvoiceCustomerGroup[];
+}
+
+// Retirement summary for QuickStats
+export interface RetirementSummary {
+  totalContributions: number;
+  employerContributions: number;
+  employeeContributions: number;
+  statementCount: number;
+  byAccount: { institution: string; accountType: string; total: number }[];
 }
 
 // Reminders

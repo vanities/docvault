@@ -300,6 +300,8 @@ export function useFileSystemServer() {
             destPath += '/income/w2';
           } else if (docType === '1098') {
             destPath += '/income/1098';
+          } else if (docType === 'retirement-statement') {
+            destPath += '/retirement';
           } else if (docType.startsWith('1099')) {
             destPath += '/income/1099';
           } else if (docType === 'receipt' && expenseCategory) {
@@ -384,6 +386,8 @@ export function useFileSystemServer() {
       destPath += '/income/w2';
     } else if (docType === '1098') {
       destPath += '/income/1098';
+    } else if (docType === 'retirement-statement') {
+      destPath += '/retirement';
     } else if (docType.startsWith('1099')) {
       destPath += '/income/1099';
     } else if (docType === 'receipt' && expenseCategory) {
@@ -493,6 +497,7 @@ export function useFileSystemServer() {
         `${year}/expenses/medical`,
         `${year}/statements/bank`,
         `${year}/statements/credit-card`,
+        `${year}/retirement`,
         `${year}/crypto`,
         `${year}/returns`,
         `${year}/turbotax`,

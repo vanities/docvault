@@ -1,5 +1,10 @@
-import { DollarSign, TrendingUp, TrendingDown, FileText, Receipt } from 'lucide-react';
-import type { IncomeSummary, ExpenseSummary, InvoiceSummaryData } from '../../types';
+import { DollarSign, TrendingUp, TrendingDown, FileText, Receipt, Landmark } from 'lucide-react';
+import type {
+  IncomeSummary,
+  ExpenseSummary,
+  InvoiceSummaryData,
+  RetirementSummary,
+} from '../../types';
 
 interface QuickStatsProps {
   incomeSummary: IncomeSummary;
@@ -10,6 +15,8 @@ interface QuickStatsProps {
   allExpenseSummary?: ExpenseSummary;
   allInvoiceSummary?: InvoiceSummaryData;
   allDocumentCount?: number;
+  retirementSummary?: RetirementSummary | null;
+  allRetirementSummary?: RetirementSummary | null;
 }
 
 function formatCurrency(amount: number): string {
@@ -72,6 +79,8 @@ export function QuickStats({
   allExpenseSummary,
   allInvoiceSummary,
   allDocumentCount,
+  retirementSummary,
+  allRetirementSummary,
 }: QuickStatsProps) {
   const netIncome = incomeSummary.totalIncome - expenseSummary.totalDeductible;
   const estimatedTax = netIncome * 0.25; // Rough estimate
@@ -91,8 +100,26 @@ export function QuickStats({
   if (incomeSummary.w2Count > 0) incomeParts.push(`${incomeSummary.w2Count} W-2s`);
   if (incomeSummary.income1099Count > 0) incomeParts.push(`${incomeSummary.income1099Count} 1099s`);
 
+  const hasRetirement = retirementSummary && retirementSummary.totalContributions > 0;
+
+  // Build retirement subtext (e.g. "$43k employer, $23k employee")
+  const retirementSubtext = hasRetirement
+    ? [
+        retirementSummary.employerContributions > 0
+          ? `${formatCurrency(retirementSummary.employerContributions)} employer`
+          : null,
+        retirementSummary.employeeContributions > 0
+          ? `${formatCurrency(retirementSummary.employeeContributions)} employee`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(', ') || `${retirementSummary.statementCount} statements`
+    : undefined;
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 stagger">
+    <div
+      className={`grid grid-cols-1 md:grid-cols-2 ${hasRetirement ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} gap-3 stagger`}
+    >
       <StatCard
         icon={TrendingUp}
         label="Total Income"
@@ -109,6 +136,20 @@ export function QuickStats({
         subtext={`${invoiceSummary.invoiceCount} invoices, ${invoiceSummary.byCustomer.length} customers`}
         color="green"
       />
+      {hasRetirement && (
+        <StatCard
+          icon={Landmark}
+          label="Retirement"
+          value={formatCurrency(retirementSummary.totalContributions)}
+          altValue={
+            allRetirementSummary
+              ? formatCurrency(allRetirementSummary.totalContributions)
+              : undefined
+          }
+          subtext={retirementSubtext}
+          color="blue"
+        />
+      )}
       <StatCard
         icon={TrendingDown}
         label="Deductible Expenses"

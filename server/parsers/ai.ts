@@ -202,6 +202,15 @@ For 1098 (Mortgage Interest Statement), extract:
 - propertyTax: Box 10 - Property tax
 - taxYear: The tax year
 
+For retirement contribution statements (Solo 401k, SEP-IRA, Traditional IRA, Roth IRA, etc.), extract:
+- institution: Financial institution name (e.g., Fidelity, Vanguard, Schwab)
+- accountType: Account type (e.g., Solo 401(k), SEP-IRA, Traditional IRA, Roth IRA)
+- accountNumber: Account number (may be partial)
+- employerContributions: Employer/profit-sharing contribution amount
+- employeeContributions: Employee/elective deferral contribution amount
+- totalContributions: Total contributions for the year
+- taxYear: The tax year
+
 For statements (bank, brokerage, account statements), extract:
 - institution: Bank/brokerage name
 - accountNumber: Account number (may be partial)
@@ -244,7 +253,7 @@ For appraisals/assessments (property, tax assessments), extract:
 IMPORTANT:
 - Extract ALL data visible on the document. Include every field that has a value.
 - For documents with multiple payments/transactions, ALWAYS calculate the totalAmount by summing all amounts.
-- Include a "documentType" field in your response with one of: w2, 1099-nec, 1099-misc, 1099-div, 1099-int, 1099-b, 1098, receipt, invoice, crypto, return, contract, operating-agreement, insurance-policy, bank-statement, credit-card-statement, statement, letter, certificate, medical-record, appraisal, other
+- Include a "documentType" field in your response with one of: w2, 1099-nec, 1099-misc, 1099-div, 1099-int, 1099-b, 1098, retirement-statement, receipt, invoice, crypto, return, contract, operating-agreement, insurance-policy, bank-statement, credit-card-statement, statement, letter, certificate, medical-record, appraisal, other
 - Respond ONLY with a valid JSON object.
 - All monetary values should be numbers (not strings).
 - If a field is empty or not found, omit it.`;
@@ -273,6 +282,8 @@ function detectDocumentType(filename: string): string {
   if (/receipt|expense|purchase/i.test(lower)) return 'receipt';
   if (/operating.?agreement/i.test(lower)) return 'operating-agreement';
   if (/insurance.?polic/i.test(lower)) return 'insurance-policy';
+  if (/retirement|401k|401\(k\)|sep.?ira|roth.?ira|traditional.?ira/i.test(lower))
+    return 'retirement-statement';
   if (/bank.?statement/i.test(lower)) return 'bank-statement';
   if (/credit.?card.?statement/i.test(lower)) return 'credit-card-statement';
   if (/statement/i.test(lower)) return 'statement';
@@ -391,6 +402,8 @@ export async function parseWithAI(
       documentType = '1099-int';
     } else if (docTypeHint === '1098') {
       documentType = '1098';
+    } else if (docTypeHint === 'retirement-statement') {
+      documentType = 'retirement-statement';
     } else if (docTypeHint === 'receipt') {
       documentType = 'receipt';
     } else {
@@ -416,6 +429,12 @@ export async function parseWithAI(
         parsed.outstandingPrincipal !== undefined
       ) {
         documentType = '1098';
+      } else if (
+        parsed.employerContributions !== undefined ||
+        parsed.employeeContributions !== undefined ||
+        parsed.totalContributions !== undefined
+      ) {
+        documentType = 'retirement-statement';
       } else if (parsed.beginningBalance !== undefined || parsed.endingBalance !== undefined) {
         documentType = 'statement';
       } else if (parsed.diagnosis !== undefined && parsed.provider !== undefined) {

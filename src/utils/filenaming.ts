@@ -68,6 +68,14 @@ function getTypeLabel(docType: DocumentType): string {
     'business-agreement': 'Contractor_Agreement',
     'bank-statement': 'Bank_Statement',
     'credit-card-statement': 'CC_Statement',
+    'retirement-statement': 'Retirement',
+    statement: 'Statement',
+    letter: 'Letter',
+    certificate: 'Certificate',
+    'medical-record': 'Medical_Record',
+    appraisal: 'Appraisal',
+    'operating-agreement': 'Operating_Agreement',
+    'insurance-policy': 'Insurance_Policy',
   };
   return typeMap[docType] || '';
 }
@@ -165,6 +173,11 @@ export function generateStandardFilename(params: FilenameParams): string {
   // Contract (W-9): {Company}_W9_{Year}.pdf
   if (docType === 'contract') {
     return `${sourcePart}_W9_${year}${ext}`;
+  }
+
+  // Retirement Statement: {Institution}_Retirement_{Year}.pdf
+  if (docType === 'retirement-statement') {
+    return `${sourcePart}_Retirement_${year}${ext}`;
   }
 
   // Bank Statement: {Institution}_Bank_Statement_{Year}-{MM}.pdf

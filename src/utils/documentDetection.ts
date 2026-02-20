@@ -38,6 +38,13 @@ export function detectDocumentType(filename: string, filePath?: string): Documen
   if (/license|permit|registration/i.test(lower)) return 'license';
   if (/insurance.?polic/i.test(lower)) return 'insurance-policy';
 
+  // Retirement document detection
+  if (
+    /retirement|401k|401\(k\)|sep.?ira|roth.?ira|traditional.?ira|fidelity.*statement/i.test(lower)
+  )
+    return 'retirement-statement';
+  if (pathLower.includes('/retirement/')) return 'retirement-statement';
+
   // General document types
   if (/bank.?statement/i.test(lower)) return 'bank-statement';
   if (/credit.?card.?statement/i.test(lower)) return 'credit-card-statement';

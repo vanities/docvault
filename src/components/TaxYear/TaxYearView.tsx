@@ -18,6 +18,7 @@ import type {
   IncomeSummary as IncomeSummaryType,
   ExpenseSummary as ExpenseSummaryType,
   InvoiceSummaryData,
+  RetirementSummary,
   ExpenseCategory,
 } from '../../types';
 
@@ -547,6 +548,94 @@ export function TaxYearView() {
     };
   }, [scannedDocuments, hasHiddenDocs, selectedEntity, selectedYear]);
 
+  // Compute retirement summary from tracked documents
+  const retirementSummary = useMemo((): RetirementSummary | null => {
+    const retirementDocs = trackedDocuments.filter(
+      (d) => d.type === 'retirement-statement' || d.filePath?.toLowerCase().includes('/retirement/')
+    );
+    if (retirementDocs.length === 0) return null;
+
+    let totalEmployer = 0;
+    let totalEmployee = 0;
+    let totalContributions = 0;
+    const accountMap = new Map<
+      string,
+      { institution: string; accountType: string; total: number }
+    >();
+
+    for (const doc of retirementDocs) {
+      const data = doc.parsedData as Record<string, unknown> | undefined;
+      const employer = Number(data?.employerContributions || 0);
+      const employee = Number(data?.employeeContributions || 0);
+      const total = Number(data?.totalContributions || employer + employee);
+      totalEmployer += employer;
+      totalEmployee += employee;
+      totalContributions += total;
+
+      const institution = (data?.institution || doc.fileName.split('_')[0] || 'Unknown') as string;
+      const accountType = (data?.accountType || 'Retirement') as string;
+      const key = `${institution}|${accountType}`;
+      const existing = accountMap.get(key);
+      if (existing) {
+        existing.total += total;
+      } else {
+        accountMap.set(key, { institution, accountType, total });
+      }
+    }
+
+    return {
+      totalContributions,
+      employerContributions: totalEmployer,
+      employeeContributions: totalEmployee,
+      statementCount: retirementDocs.length,
+      byAccount: Array.from(accountMap.values()),
+    };
+  }, [trackedDocuments]);
+
+  const allRetirementSummary = useMemo((): RetirementSummary | null => {
+    if (!hasHiddenDocs) return null;
+    const retirementDocs = scannedDocuments.filter(
+      (d) => d.type === 'retirement-statement' || d.filePath?.toLowerCase().includes('/retirement/')
+    );
+    if (retirementDocs.length === 0) return null;
+
+    let totalEmployer = 0;
+    let totalEmployee = 0;
+    let totalContributions = 0;
+    const accountMap = new Map<
+      string,
+      { institution: string; accountType: string; total: number }
+    >();
+
+    for (const doc of retirementDocs) {
+      const data = doc.parsedData as Record<string, unknown> | undefined;
+      const employer = Number(data?.employerContributions || 0);
+      const employee = Number(data?.employeeContributions || 0);
+      const total = Number(data?.totalContributions || employer + employee);
+      totalEmployer += employer;
+      totalEmployee += employee;
+      totalContributions += total;
+
+      const institution = (data?.institution || doc.fileName.split('_')[0] || 'Unknown') as string;
+      const accountType = (data?.accountType || 'Retirement') as string;
+      const key = `${institution}|${accountType}`;
+      const existing = accountMap.get(key);
+      if (existing) {
+        existing.total += total;
+      } else {
+        accountMap.set(key, { institution, accountType, total });
+      }
+    }
+
+    return {
+      totalContributions,
+      employerContributions: totalEmployer,
+      employeeContributions: totalEmployee,
+      statementCount: retirementDocs.length,
+      byAccount: Array.from(accountMap.values()),
+    };
+  }, [scannedDocuments, hasHiddenDocs]);
+
   const tabs: { id: TabType; label: string }[] = [
     { id: 'documents', label: 'Documents' },
     { id: 'income', label: 'Income' },
@@ -573,6 +662,8 @@ export function TaxYearView() {
           allExpenseSummary={allExpenseSummary}
           allInvoiceSummary={allInvoiceSummary}
           allDocumentCount={hasHiddenDocs ? scannedDocuments.length : undefined}
+          retirementSummary={retirementSummary}
+          allRetirementSummary={allRetirementSummary}
         />
       </div>
 

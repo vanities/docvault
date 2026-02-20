@@ -1673,6 +1673,7 @@ Document type patterns:
 - Operating Agreement: Operating_Agreement.pdf
 - Insurance Policy: {Provider}_Insurance_Policy_{Year}.pdf
 - 1098 Mortgage Interest: {Lender}_1098_{Year}.pdf
+- Retirement Statement: {Institution}_Retirement_{Year}.pdf
 - Bank Statement: {Institution}_Bank_Statement_{Year}-{MM}.pdf
 - Credit Card Statement: {Issuer}_CC_Statement_{Year}-{MM}.pdf
 - Statement: {Institution}_Statement_{Year}-{MM}.pdf
@@ -1693,7 +1694,7 @@ Respond ONLY with valid JSON. No markdown.`,
 1. "naming" - for filename generation:
 {
   "source": "Company or vendor name (plain text, spaces ok)",
-  "documentType": "w2|1099-nec|1099-misc|1099-div|1099-int|1099-b|1099-r|1098|receipt|invoice|crypto|return|contract|formation|ein-letter|license|business-agreement|operating-agreement|insurance-policy|bank-statement|credit-card-statement|statement|letter|certificate|medical-record|appraisal|other",
+  "documentType": "w2|1099-nec|1099-misc|1099-div|1099-int|1099-b|1099-r|1098|retirement-statement|receipt|invoice|crypto|return|contract|formation|ein-letter|license|business-agreement|operating-agreement|insurance-policy|bank-statement|credit-card-statement|statement|letter|certificate|medical-record|appraisal|other",
   "expenseCategory": "meals|software|equipment|travel|office-supplies|professional-services|utilities|insurance|taxes-licenses|childcare|medical|education|other" (only if receipt/expense),
   "description": "short description if receipt" (optional),
   "year": YYYY (the year from the document - tax year for W-2/1099, or date year for receipts/invoices),
@@ -1711,6 +1712,7 @@ IMPORTANT: If a document is a PAYMENT RECEIPT or CONFIRMATION for a filing fee (
 - For 1099-INT: { payerName, interestIncome, federalWithheld, etc }
 - For 1098: { lender, loanNumber, borrowerName, mortgageInterest, outstandingPrincipal, mortgageInsurancePremiums, pointsPaid, propertyAddress, propertyTax, taxYear }
 - For invoices: { vendor, amount, date, invoiceNumber, items, etc }
+- For retirement statements: { institution, accountType, accountNumber, employerContributions, employeeContributions, totalContributions, taxYear }
 - Include ALL visible fields. All monetary values as numbers.
 
 Return: { "naming": {...}, "parsedData": {...} }`,
@@ -1960,6 +1962,40 @@ Return: { "naming": {...}, "parsedData": {...} }`,
         if (totalMortgageInterest > 0) {
           lines.push(
             `  TOTAL MORTGAGE INTEREST PAID: $${totalMortgageInterest.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+          );
+        }
+        lines.push('');
+      }
+
+      // --- Retirement Contributions Section ---
+      const retirementFiles = files.filter((f) => f.path.toLowerCase().includes('/retirement/'));
+      if (retirementFiles.length > 0) {
+        lines.push('RETIREMENT CONTRIBUTIONS');
+        lines.push('-'.repeat(40));
+        let totalRetirement = 0;
+        for (const f of retirementFiles) {
+          const key = `${entityId}/${f.path}`;
+          const pd = parsedDataMap[key] as Record<string, unknown> | undefined;
+          const institution = (pd?.institution || f.name.split('_')[0]) as string;
+          const accountType = (pd?.accountType || 'Retirement Account') as string;
+          const employer = Number(pd?.employerContributions || 0);
+          const employee = Number(pd?.employeeContributions || 0);
+          const total = Number(pd?.totalContributions || employer + employee);
+          totalRetirement += total;
+          lines.push(`  ${institution} (${accountType}):`);
+          if (employer > 0)
+            lines.push(
+              `    Employer: $${employer.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+            );
+          if (employee > 0)
+            lines.push(
+              `    Employee: $${employee.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+            );
+          lines.push(`    Total: $${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
+        }
+        if (totalRetirement > 0) {
+          lines.push(
+            `  TOTAL RETIREMENT CONTRIBUTIONS: $${totalRetirement.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
           );
         }
         lines.push('');
