@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import Anthropic from '@anthropic-ai/sdk';
 import type { ParsedTaxDocument } from './pdf.js';
 import { getAnthropicKey } from '../index.js';
+import { withAILimit } from '../aiLimiter.js';
 
 // Create client lazily to pick up API key from settings
 let client: Anthropic | null = null;
@@ -12,7 +13,7 @@ async function getClient(): Promise<Anthropic> {
     throw new Error('Anthropic API key not configured. Please add it in Settings.');
   }
   // Recreate client if key changed
-  client = new Anthropic({ apiKey });
+  client = new Anthropic({ apiKey, maxRetries: 0 });
   return client;
 }
 
@@ -318,24 +319,26 @@ export async function parseWithAI(
           },
         };
 
-    // Call Claude Vision API
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 4096,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            fileContent,
-            {
-              type: 'text',
-              text: userPrompt,
-            },
-          ],
-        },
-      ],
-    });
+    // Call Claude Vision API (rate-limited + retry on 429)
+    const response = await withAILimit(() =>
+      anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4096,
+        system: SYSTEM_PROMPT,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              fileContent,
+              {
+                type: 'text',
+                text: userPrompt,
+              },
+            ],
+          },
+        ],
+      })
+    );
 
     // Extract text response
     const textContent = response.content.find((c) => c.type === 'text');

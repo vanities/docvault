@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { parseWithAI } from './parsers/ai.js';
 import { zipSync } from 'fflate';
+import { withAILimit } from './aiLimiter.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 3005;
@@ -1621,7 +1622,7 @@ async function handleRequest(req: Request): Promise<Response> {
       }
 
       const Anthropic = (await import('@anthropic-ai/sdk')).default;
-      const anthropic = new Anthropic({ apiKey });
+      const anthropic = new Anthropic({ apiKey, maxRetries: 0 });
 
       const isPdf = mimeType === 'application/pdf';
 
@@ -1643,10 +1644,11 @@ async function handleRequest(req: Request): Promise<Response> {
             },
           };
 
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4096,
-        system: `You analyze tax documents, suggest standardized filenames, and extract all parsed data.
+      const response = await withAILimit(() =>
+        anthropic.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 4096,
+          system: `You analyze tax documents, suggest standardized filenames, and extract all parsed data.
 
 Naming convention: {Source}_{Type}_{Date}.{ext}
 - Source: Company/vendor/employer name in Title_Case (e.g., "Google", "Art_City", "OpenAI")
@@ -1678,14 +1680,14 @@ Document type patterns:
 - Appraisal: {Subject}_Appraisal_{Year}.pdf
 
 Respond ONLY with valid JSON. No markdown.`,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              fileContent,
-              {
-                type: 'text',
-                text: `Analyze this document (current tax year context: ${taxYear}). Return JSON with TWO sections:
+          messages: [
+            {
+              role: 'user',
+              content: [
+                fileContent,
+                {
+                  type: 'text',
+                  text: `Analyze this document (current tax year context: ${taxYear}). Return JSON with TWO sections:
 
 1. "naming" - for filename generation:
 {
@@ -1710,11 +1712,12 @@ IMPORTANT: If a document is a PAYMENT RECEIPT or CONFIRMATION for a filing fee (
 - Include ALL visible fields. All monetary values as numbers.
 
 Return: { "naming": {...}, "parsedData": {...} }`,
-              },
-            ],
-          },
-        ],
-      });
+                },
+              ],
+            },
+          ],
+        })
+      );
 
       const textContent = response.content.find((c) => c.type === 'text');
       if (!textContent || textContent.type !== 'text') {
