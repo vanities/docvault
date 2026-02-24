@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Upload, FolderOpen, RefreshCw } from 'lucide-react';
 import { TodoList } from '../Todos/TodoList';
+import { EntityMetadataBanner } from '../EntityMetadata/EntityMetadataBanner';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import { DocumentList } from '../Documents/DocumentList';
@@ -119,6 +120,9 @@ export function AllFilesView() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 md:px-6 py-8">
+      {/* Entity Metadata */}
+      <EntityMetadataBanner entityConfig={entities.find((e) => e.id === selectedEntity)} />
+
       {/* Todos */}
       <TodoList />
 

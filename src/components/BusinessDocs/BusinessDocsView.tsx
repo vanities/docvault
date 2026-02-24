@@ -6,6 +6,7 @@ import { DOCUMENT_TYPES } from '../../config';
 import { DocumentList } from '../Documents/DocumentList';
 import { ReminderBanner } from '../Reminders/ReminderBanner';
 import { TodoList } from '../Todos/TodoList';
+import { EntityMetadataBanner } from '../EntityMetadata/EntityMetadataBanner';
 import type { TaxDocument, DocumentType, Entity } from '../../types';
 
 // Business document types for the upload modal
@@ -142,6 +143,9 @@ export function BusinessDocsView() {
     <div className="max-w-5xl mx-auto px-4 md:px-6 py-8">
       {/* Reminders */}
       <ReminderBanner />
+
+      {/* Entity Metadata */}
+      <EntityMetadataBanner entityConfig={entities.find((e) => e.id === selectedEntity)} />
 
       {/* Todos */}
       <TodoList />

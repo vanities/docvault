@@ -5,6 +5,7 @@ import { useToast } from '../../hooks/useToast';
 import { QuickStats } from '../Dashboard/QuickStats';
 import { ReminderBanner } from '../Reminders/ReminderBanner';
 import { TodoList } from '../Todos/TodoList';
+import { EntityMetadataBanner } from '../EntityMetadata/EntityMetadataBanner';
 import { UploadZone } from '../Documents/UploadZone';
 import { DocumentList } from '../Documents/DocumentList';
 import { IncomeSummary } from '../Summary/IncomeSummary';
@@ -726,6 +727,9 @@ export function TaxYearView() {
     <div className="max-w-7xl mx-auto px-4 md:px-6 py-6">
       {/* Reminders */}
       <ReminderBanner />
+
+      {/* Entity Metadata */}
+      <EntityMetadataBanner entityConfig={entities.find((e) => e.id === selectedEntity)} />
 
       {/* Todos */}
       <TodoList />

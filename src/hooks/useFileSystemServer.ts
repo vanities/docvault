@@ -13,6 +13,7 @@ export interface EntityConfig {
   icon?: string;
   type?: 'tax' | 'docs';
   description?: string;
+  metadata?: Record<string, string | string[]>;
 }
 
 // File info from the server

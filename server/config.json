@@ -16,7 +16,19 @@
       "path": "am2-llc",
       "icon": "building",
       "type": "tax",
-      "description": "Sole proprietorship LLC - software engineering consulting. Schedule C business income (1099-NEC), business expenses (software, equipment, home office), contracts, and W-9s"
+      "description": "Sole proprietorship LLC - software engineering consulting. Schedule C business income (1099-NEC), business expenses (software, equipment, home office), contracts, and W-9s",
+      "metadata": {
+        "ein": "99-0727836",
+        "sosControlNumber": "001479151",
+        "dateFormed": "01/01/2024",
+        "address": "1604 Silver Lane, Spring Hill, TN 37174",
+        "county": "Maury",
+        "naicsCodes": ["541510 - Custom Computer Programming Services"],
+        "fiscalYearEnd": "December",
+        "managedBy": "Member Managed",
+        "accountingMethod": "Cash",
+        "stateOfFormation": "Tennessee"
+      }
     },
     {
       "id": "manna-llc",
@@ -25,7 +37,22 @@
       "path": "manna-llc",
       "icon": "tractor",
       "type": "tax",
-      "description": "Dual-member LLC farm (co-owned with wife). Agricultural income/expenses, farm equipment, livestock, feed, land improvements. Files Form 1065 partnership return with Schedule K-1s"
+      "description": "Dual-member LLC farm (co-owned with wife). Agricultural income/expenses, farm equipment, livestock, feed, land improvements. Files Form 1065 partnership return with Schedule K-1s",
+      "metadata": {
+        "ein": "39-3979738",
+        "sosControlNumber": "002045846",
+        "dateFormed": "08/26/2025",
+        "address": "1604 Silver Ln, Spring Hill, TN 37174",
+        "county": "Maury",
+        "naicsCodes": [
+          "111334 - Berry Farming",
+          "112310 - Chicken Egg Production",
+          "111998 - Misc Crop Farming"
+        ],
+        "fiscalYearEnd": "December",
+        "managedBy": "Member Managed",
+        "stateOfFormation": "Tennessee"
+      }
     },
     {
       "id": "military",

@@ -26,6 +26,7 @@ interface EntityConfig {
   color: string;
   path: string;
   description?: string;
+  metadata?: Record<string, string | string[]>;
 }
 
 interface Config {
