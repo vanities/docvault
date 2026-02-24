@@ -15,6 +15,7 @@ export type DocumentType =
   | '1099-div'
   | '1099-int'
   | '1099-b'
+  | '1099-composite'
   | '1098'
   | 'retirement-statement'
   | 'receipt'
@@ -84,6 +85,51 @@ export interface Parsed1099 {
   incomeSourceId?: string; // Links to INCOME_SOURCES in config
 }
 
+export interface Parsed1099BSummary {
+  shortTermProceeds?: number;
+  shortTermCostBasis?: number;
+  shortTermGainLoss?: number;
+  longTermProceeds?: number;
+  longTermCostBasis?: number;
+  longTermGainLoss?: number;
+  totalProceeds?: number;
+  totalCostBasis?: number;
+  totalGainLoss?: number;
+  federalWithheld?: number;
+}
+
+export interface ParsedComposite1099 {
+  payer: string;
+  payerTin?: string;
+  accountNumber?: string;
+  div?: {
+    ordinaryDividends?: number;
+    qualifiedDividends?: number;
+    capitalGainDistributions?: number;
+    section199ADividends?: number;
+    foreignTaxPaid?: number;
+    nondividendDistributions?: number;
+    federalWithheld?: number;
+  };
+  int?: {
+    interestIncome?: number;
+    federalWithheld?: number;
+    taxExemptInterest?: number;
+  };
+  b?: Parsed1099BSummary;
+  misc?: {
+    rents?: number;
+    royalties?: number;
+    otherIncome?: number;
+    federalWithheld?: number;
+  };
+  totalDividendIncome?: number;
+  totalInterestIncome?: number;
+  totalCapitalGains?: number;
+  totalFederalWithheld?: number;
+  taxYear?: number;
+}
+
 export interface ParsedReceipt {
   vendor: string;
   amount: number;
@@ -127,7 +173,13 @@ export interface TaxDocument {
   notes?: string;
   tracked: boolean; // Whether to include in totals (default true)
   incomeSourceId?: string; // For W-2s: links to INCOME_SOURCES
-  parsedData?: ParsedW2 | Parsed1099 | ParsedReceipt | ParsedCrypto | ParsedRetirementStatement;
+  parsedData?:
+    | ParsedW2
+    | Parsed1099
+    | ParsedComposite1099
+    | ParsedReceipt
+    | ParsedCrypto
+    | ParsedRetirementStatement;
   createdAt: string; // ISO date string
   updatedAt: string; // ISO date string
 }
@@ -143,6 +195,9 @@ export interface IncomeSummary {
   totalIncome: number;
   federalWithheld: number;
   stateWithheld: number;
+  capitalGainsTotal: number;
+  capitalGainsShortTerm: number;
+  capitalGainsLongTerm: number;
 }
 
 export interface ExpenseSummaryItem {

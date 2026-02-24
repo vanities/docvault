@@ -1,4 +1,12 @@
-import { DollarSign, TrendingUp, TrendingDown, FileText, Receipt, Landmark } from 'lucide-react';
+import {
+  DollarSign,
+  TrendingUp,
+  TrendingDown,
+  FileText,
+  Receipt,
+  Landmark,
+  BarChart3,
+} from 'lucide-react';
 import type {
   IncomeSummary,
   ExpenseSummary,
@@ -82,13 +90,17 @@ export function QuickStats({
   retirementSummary,
   allRetirementSummary,
 }: QuickStatsProps) {
-  const netIncome = incomeSummary.totalIncome - expenseSummary.totalDeductible;
+  const netIncome =
+    incomeSummary.totalIncome + incomeSummary.capitalGainsTotal - expenseSummary.totalDeductible;
   const estimatedTax = netIncome * 0.25; // Rough estimate
 
   // Compute "all" tax liability when all summaries are provided
   const allEstimatedTax =
     allIncomeSummary && allExpenseSummary
-      ? (allIncomeSummary.totalIncome - allExpenseSummary.totalDeductible) * 0.25
+      ? (allIncomeSummary.totalIncome +
+          allIncomeSummary.capitalGainsTotal -
+          allExpenseSummary.totalDeductible) *
+        0.25
       : undefined;
   const allTaxLiability =
     allEstimatedTax !== undefined && allIncomeSummary
@@ -101,6 +113,7 @@ export function QuickStats({
   if (incomeSummary.income1099Count > 0) incomeParts.push(`${incomeSummary.income1099Count} 1099s`);
 
   const hasRetirement = retirementSummary && retirementSummary.totalContributions > 0;
+  const hasCapitalGains = incomeSummary.capitalGainsTotal !== 0;
 
   // Build retirement subtext (e.g. "$43k employer, $23k employee")
   const retirementSubtext = hasRetirement
@@ -116,10 +129,28 @@ export function QuickStats({
         .join(', ') || `${retirementSummary.statementCount} statements`
     : undefined;
 
+  // Build capital gains subtext (short-term / long-term breakdown)
+  const capitalGainsSubtext = hasCapitalGains
+    ? [
+        incomeSummary.capitalGainsShortTerm !== 0
+          ? `${formatCurrency(incomeSummary.capitalGainsShortTerm)} short-term`
+          : null,
+        incomeSummary.capitalGainsLongTerm !== 0
+          ? `${formatCurrency(incomeSummary.capitalGainsLongTerm)} long-term`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(', ') || 'Schedule D'
+    : undefined;
+
+  // Grid columns: 5 base + optional retirement + optional capital gains
+  // Use complete class names so Tailwind can detect them at build time
+  const extraCols = (hasRetirement ? 1 : 0) + (hasCapitalGains ? 1 : 0);
+  const gridCols =
+    extraCols === 2 ? 'lg:grid-cols-7' : extraCols === 1 ? 'lg:grid-cols-6' : 'lg:grid-cols-5';
+
   return (
-    <div
-      className={`grid grid-cols-1 md:grid-cols-2 ${hasRetirement ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} gap-3 stagger`}
-    >
+    <div className={`grid grid-cols-1 md:grid-cols-2 ${gridCols} gap-3 stagger`}>
       <StatCard
         icon={TrendingUp}
         label="Total Income"
@@ -136,6 +167,18 @@ export function QuickStats({
         subtext={`${invoiceSummary.invoiceCount} invoices, ${invoiceSummary.byCustomer.length} customers`}
         color="green"
       />
+      {hasCapitalGains && (
+        <StatCard
+          icon={BarChart3}
+          label="Capital Gains"
+          value={formatCurrency(incomeSummary.capitalGainsTotal)}
+          altValue={
+            allIncomeSummary ? formatCurrency(allIncomeSummary.capitalGainsTotal) : undefined
+          }
+          subtext={capitalGainsSubtext}
+          color={incomeSummary.capitalGainsTotal >= 0 ? 'green' : 'red'}
+        />
+      )}
       {hasRetirement && (
         <StatCard
           icon={Landmark}

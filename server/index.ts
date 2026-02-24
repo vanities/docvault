@@ -1672,6 +1672,7 @@ Document type patterns:
 - License: Business_License_{Year}.pdf
 - Operating Agreement: Operating_Agreement.pdf
 - Insurance Policy: {Provider}_Insurance_Policy_{Year}.pdf
+- 1099-Composite: {Brokerage}_1099-composite_{Year}.pdf
 - 1098 Mortgage Interest: {Lender}_1098_{Year}.pdf
 - Retirement Statement: {Institution}_Retirement_{Year}.pdf
 - Bank Statement: {Institution}_Bank_Statement_{Year}-{MM}.pdf
@@ -1694,7 +1695,7 @@ Respond ONLY with valid JSON. No markdown.`,
 1. "naming" - for filename generation:
 {
   "source": "Company or vendor name (plain text, spaces ok)",
-  "documentType": "w2|1099-nec|1099-misc|1099-div|1099-int|1099-b|1099-r|1098|retirement-statement|receipt|invoice|crypto|return|contract|formation|ein-letter|license|business-agreement|operating-agreement|insurance-policy|bank-statement|credit-card-statement|statement|letter|certificate|medical-record|appraisal|other",
+  "documentType": "w2|1099-nec|1099-misc|1099-div|1099-int|1099-b|1099-composite|1099-r|1098|retirement-statement|receipt|invoice|crypto|return|contract|formation|ein-letter|license|business-agreement|operating-agreement|insurance-policy|bank-statement|credit-card-statement|statement|letter|certificate|medical-record|appraisal|other",
   "expenseCategory": "meals|software|equipment|travel|office-supplies|professional-services|utilities|insurance|taxes-licenses|childcare|medical|education|other" (only if receipt/expense),
   "description": "short description if receipt" (optional),
   "year": YYYY (the year from the document - tax year for W-2/1099, or date year for receipts/invoices),
@@ -1917,23 +1918,81 @@ Return: { "naming": {...}, "parsedData": {...} }`,
       }
 
       let total1099 = 0;
+      let totalCapitalGains = 0;
+      const capitalGainsEntries: {
+        payer: string;
+        total: number;
+        shortTerm: number;
+        longTerm: number;
+      }[] = [];
+
       if (f1099Files.length > 0) {
         lines.push('  1099 Income:');
         for (const f of f1099Files) {
           const key = `${entityId}/${f.path}`;
           const pd = parsedDataMap[key] as Record<string, unknown> | undefined;
           const payer = (pd?.payerName || pd?.payer || f.name.split('_')[0]) as string;
-          const amount = Number(
-            pd?.nonemployeeCompensation ||
-              pd?.amount ||
-              pd?.ordinaryDividends ||
-              pd?.interestIncome ||
-              0
-          );
-          total1099 += amount;
-          lines.push(
-            `    ${payer}: $${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
-          );
+          const docType = (pd?.documentType || '') as string;
+
+          if (docType === '1099-composite') {
+            // Composite: extract dividend/interest income (not capital gains)
+            const div = pd?.div as Record<string, number> | undefined;
+            const int = pd?.int as Record<string, number> | undefined;
+            const b = pd?.b as Record<string, number> | undefined;
+            const misc = pd?.misc as Record<string, number> | undefined;
+            const divIncome = Number(div?.ordinaryDividends || pd?.totalDividendIncome || 0);
+            const intIncome = Number(int?.interestIncome || pd?.totalInterestIncome || 0);
+            const miscIncome =
+              Number(misc?.rents || 0) +
+              Number(misc?.royalties || 0) +
+              Number(misc?.otherIncome || 0);
+            if (divIncome > 0) {
+              total1099 += divIncome;
+              lines.push(
+                `    ${payer} (1099-DIV): $${divIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+              );
+            }
+            if (intIncome > 0) {
+              total1099 += intIncome;
+              lines.push(
+                `    ${payer} (1099-INT): $${intIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+              );
+            }
+            if (miscIncome > 0) {
+              total1099 += miscIncome;
+              lines.push(
+                `    ${payer} (1099-MISC): $${miscIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+              );
+            }
+            // Track capital gains separately
+            if (b) {
+              const st = Number(b.shortTermGainLoss || 0);
+              const lt = Number(b.longTermGainLoss || 0);
+              const total = Number(b.totalGainLoss || pd?.totalCapitalGains || st + lt);
+              totalCapitalGains += total;
+              capitalGainsEntries.push({ payer, total, shortTerm: st, longTerm: lt });
+            }
+          } else if (docType === '1099-b') {
+            // Standalone 1099-B: capital gains only, NOT income
+            const st = Number(pd?.shortTermGainLoss || 0);
+            const lt = Number(pd?.longTermGainLoss || 0);
+            const total = Number(pd?.totalGainLoss || st + lt);
+            totalCapitalGains += total;
+            capitalGainsEntries.push({ payer, total, shortTerm: st, longTerm: lt });
+          } else {
+            // Regular 1099s (NEC, MISC, DIV, INT, R)
+            const amount = Number(
+              pd?.nonemployeeCompensation ||
+                pd?.amount ||
+                pd?.ordinaryDividends ||
+                pd?.interestIncome ||
+                0
+            );
+            total1099 += amount;
+            lines.push(
+              `    ${payer}: $${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+            );
+          }
         }
       }
 
@@ -1943,8 +2002,37 @@ Return: { "naming": {...}, "parsedData": {...} }`,
       );
       lines.push('');
 
+      // --- Capital Gains (Schedule D) Section ---
+      if (capitalGainsEntries.length > 0) {
+        lines.push('CAPITAL GAINS (Schedule D)');
+        lines.push('-'.repeat(40));
+        for (const entry of capitalGainsEntries) {
+          lines.push(
+            `  ${entry.payer}: $${entry.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+          );
+          if (entry.shortTerm !== 0) {
+            lines.push(
+              `    Short-term: $${entry.shortTerm.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+            );
+          }
+          if (entry.longTerm !== 0) {
+            lines.push(
+              `    Long-term: $${entry.longTerm.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+            );
+          }
+        }
+        lines.push(
+          `  TOTAL NET CAPITAL GAINS: $${totalCapitalGains.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+        );
+        lines.push('');
+      }
+
       // --- Mortgage Interest (1098) Section ---
-      const f1098Files = files.filter((f) => f.path.toLowerCase().includes('/income/1098/'));
+      const f1098Files = files.filter(
+        (f) =>
+          f.path.toLowerCase().includes('/expenses/1098/') ||
+          f.path.toLowerCase().includes('/income/1098/')
+      );
       if (f1098Files.length > 0) {
         lines.push('MORTGAGE INTEREST (1098)');
         lines.push('-'.repeat(40));

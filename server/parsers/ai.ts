@@ -151,6 +151,39 @@ For 1099-INT forms, extract everything including:
 - stateIncome: Box 17 - State income
 - taxYear: The tax year
 
+For 1099-B (Proceeds From Broker Transactions), extract:
+- payerName: Brokerage name
+- payerTin: Payer's TIN
+- recipientName: Recipient's name
+- recipientTin: Recipient's TIN
+- accountNumber: Account number
+- shortTermProceeds: Short-term total proceeds
+- shortTermCostBasis: Short-term total cost basis
+- shortTermGainLoss: Short-term net gain/loss
+- longTermProceeds: Long-term total proceeds (covered + noncovered combined)
+- longTermCostBasis: Long-term total cost basis
+- longTermGainLoss: Long-term net gain/loss
+- totalProceeds: Total proceeds
+- totalCostBasis: Total cost basis
+- totalGainLoss: Total net gain/loss
+- federalWithheld: Federal income tax withheld
+- taxYear: The tax year
+
+For COMPOSITE/CONSOLIDATED 1099 statements (year-end brokerage statements from Vanguard, Fidelity, Schwab, etc. containing multiple 1099 forms in one PDF):
+- documentType: "1099-composite"
+- payer: Brokerage/institution name
+- payerTin: Payer's TIN
+- accountNumber: Account number
+- div: { ordinaryDividends, qualifiedDividends, capitalGainDistributions, section199ADividends, foreignTaxPaid, nondividendDistributions, federalWithheld } (only if 1099-DIV section has non-zero values)
+- int: { interestIncome, federalWithheld, taxExemptInterest } (only if 1099-INT section has non-zero values)
+- b: { shortTermProceeds, shortTermCostBasis, shortTermGainLoss, longTermProceeds, longTermCostBasis, longTermGainLoss, totalProceeds, totalCostBasis, totalGainLoss, federalWithheld } (only if 1099-B section has non-zero values)
+- misc: { rents, royalties, otherIncome, federalWithheld } (only if 1099-MISC section has non-zero values)
+- totalDividendIncome: sum of dividend income across sub-forms
+- totalInterestIncome: sum of interest income across sub-forms
+- totalCapitalGains: net capital gains from 1099-B section
+- totalFederalWithheld: total federal tax withheld across all sub-forms
+- taxYear: The tax year
+
 For receipts/expenses, extract:
 - vendor: Store/business name
 - vendorAddress: Full address if shown
@@ -253,7 +286,7 @@ For appraisals/assessments (property, tax assessments), extract:
 IMPORTANT:
 - Extract ALL data visible on the document. Include every field that has a value.
 - For documents with multiple payments/transactions, ALWAYS calculate the totalAmount by summing all amounts.
-- Include a "documentType" field in your response with one of: w2, 1099-nec, 1099-misc, 1099-div, 1099-int, 1099-b, 1098, retirement-statement, receipt, invoice, crypto, return, contract, operating-agreement, insurance-policy, bank-statement, credit-card-statement, statement, letter, certificate, medical-record, appraisal, other
+- Include a "documentType" field in your response with one of: w2, 1099-nec, 1099-misc, 1099-div, 1099-int, 1099-b, 1099-composite, 1098, retirement-statement, receipt, invoice, crypto, return, contract, operating-agreement, insurance-policy, bank-statement, credit-card-statement, statement, letter, certificate, medical-record, appraisal, other
 - Respond ONLY with a valid JSON object.
 - All monetary values should be numbers (not strings).
 - If a field is empty or not found, omit it.`;
@@ -273,6 +306,8 @@ function getMediaType(
 // Detect document type from filename
 function detectDocumentType(filename: string): string {
   const lower = filename.toLowerCase();
+  if (/1099-?composite|consolidated|year.?end.*tax/i.test(lower)) return '1099-composite';
+  if (/1099-?b\b/i.test(lower)) return '1099-B';
   if (/1099-?nec/i.test(lower)) return '1099-NEC';
   if (/1099-?misc/i.test(lower)) return '1099-MISC';
   if (/1099-?div/i.test(lower)) return '1099-DIV';
@@ -346,11 +381,14 @@ export async function parseWithAI(
           },
         };
 
+    // Composite 1099s are multi-page with many sub-forms — need more tokens
+    const maxTokens = docTypeHint === '1099-composite' ? 8192 : 4096;
+
     // Call Claude Vision API (rate-limited + retry on 429)
     const response = await withAILimit(() =>
       anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 4096,
+        max_tokens: maxTokens,
         system: SYSTEM_PROMPT,
         messages: [
           {
@@ -400,6 +438,10 @@ export async function parseWithAI(
       documentType = '1099-div';
     } else if (docTypeHint === '1099-INT') {
       documentType = '1099-int';
+    } else if (docTypeHint === '1099-composite') {
+      documentType = '1099-composite';
+    } else if (docTypeHint === '1099-B') {
+      documentType = '1099-b';
     } else if (docTypeHint === '1098') {
       documentType = '1098';
     } else if (docTypeHint === 'retirement-statement') {
@@ -408,7 +450,11 @@ export async function parseWithAI(
       documentType = 'receipt';
     } else {
       // Try to detect from parsed content
-      if (parsed.wages !== undefined || parsed.employer !== undefined) {
+      if (parsed.div && parsed.b) {
+        documentType = '1099-composite';
+      } else if (parsed.totalGainLoss !== undefined || parsed.shortTermGainLoss !== undefined) {
+        documentType = '1099-b';
+      } else if (parsed.wages !== undefined || parsed.employer !== undefined) {
         documentType = 'w2';
       } else if (parsed.nonemployeeCompensation !== undefined) {
         documentType = '1099-nec';

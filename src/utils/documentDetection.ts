@@ -16,7 +16,11 @@ export function detectDocumentType(filename: string, filePath?: string): Documen
     if (/contract|agreement|nda|w-?9/i.test(lower)) return 'business-agreement';
   }
 
-  // Tax document detection
+  // Tax document detection — composite must match before specific 1099 types
+  if (
+    /1099-?composite|consolidated.*1099|year.?end.*tax.*info|tax.*information.*package/i.test(lower)
+  )
+    return '1099-composite';
   if (/w-?2/i.test(lower)) return 'w2';
   if (/1099-?nec/i.test(lower)) return '1099-nec';
   if (/1099-?misc/i.test(lower)) return '1099-misc';

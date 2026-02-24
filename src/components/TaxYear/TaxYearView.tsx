@@ -284,13 +284,51 @@ export function TaxYearView() {
     });
 
     let income1099Total = 0;
+    let capitalGainsTotal = 0;
+    let capitalGainsShortTerm = 0;
+    let capitalGainsLongTerm = 0;
+
     income1099Docs.forEach((doc) => {
-      const data = doc.parsedData as
-        | { nonemployeeCompensation?: number; amount?: number; federalWithheld?: number }
-        | undefined;
-      if (data) {
-        income1099Total += data.nonemployeeCompensation || data.amount || 0;
-        federalWithheld += data.federalWithheld || 0;
+      const data = doc.parsedData as Record<string, unknown> | undefined;
+      if (!data) return;
+
+      if (doc.type === '1099-composite') {
+        // Composite: dividend + interest + misc income (NOT capital gains)
+        const div = data.div as Record<string, number> | undefined;
+        const int = data.int as Record<string, number> | undefined;
+        const b = data.b as Record<string, number> | undefined;
+        const misc = data.misc as Record<string, number> | undefined;
+        income1099Total += Number(div?.ordinaryDividends || data.totalDividendIncome || 0);
+        income1099Total += Number(int?.interestIncome || data.totalInterestIncome || 0);
+        income1099Total +=
+          Number(misc?.rents || 0) + Number(misc?.royalties || 0) + Number(misc?.otherIncome || 0);
+        federalWithheld += Number(data.totalFederalWithheld || 0);
+        // Capital gains tracked separately
+        if (b) {
+          const st = Number(b.shortTermGainLoss || 0);
+          const lt = Number(b.longTermGainLoss || 0);
+          capitalGainsShortTerm += st;
+          capitalGainsLongTerm += lt;
+          capitalGainsTotal += Number(b.totalGainLoss || data.totalCapitalGains || st + lt);
+        }
+      } else if (doc.type === '1099-b') {
+        // Standalone 1099-B: capital gains only, NOT income
+        const st = Number(data.shortTermGainLoss || 0);
+        const lt = Number(data.longTermGainLoss || 0);
+        capitalGainsShortTerm += st;
+        capitalGainsLongTerm += lt;
+        capitalGainsTotal += Number(data.totalGainLoss || st + lt);
+        federalWithheld += Number(data.federalWithheld || 0);
+      } else {
+        // Regular 1099s (NEC, MISC, DIV, INT, R)
+        income1099Total += Number(
+          (data as { nonemployeeCompensation?: number }).nonemployeeCompensation ||
+            (data as { ordinaryDividends?: number }).ordinaryDividends ||
+            (data as { interestIncome?: number }).interestIncome ||
+            (data as { amount?: number }).amount ||
+            0
+        );
+        federalWithheld += Number(data.federalWithheld || 0);
       }
     });
 
@@ -304,6 +342,9 @@ export function TaxYearView() {
       totalIncome: w2Total + income1099Total,
       federalWithheld,
       stateWithheld,
+      capitalGainsTotal,
+      capitalGainsShortTerm,
+      capitalGainsLongTerm,
     };
   }, [trackedDocuments, selectedEntity, selectedYear]);
 
@@ -439,15 +480,50 @@ export function TaxYearView() {
       }
     });
     let income1099Total = 0;
+    let capitalGainsTotal = 0;
+    let capitalGainsShortTerm = 0;
+    let capitalGainsLongTerm = 0;
+
     income1099Docs.forEach((doc) => {
-      const data = doc.parsedData as
-        | { nonemployeeCompensation?: number; amount?: number; federalWithheld?: number }
-        | undefined;
-      if (data) {
-        income1099Total += data.nonemployeeCompensation || data.amount || 0;
-        federalWithheld += data.federalWithheld || 0;
+      const data = doc.parsedData as Record<string, unknown> | undefined;
+      if (!data) return;
+
+      if (doc.type === '1099-composite') {
+        const div = data.div as Record<string, number> | undefined;
+        const int = data.int as Record<string, number> | undefined;
+        const b = data.b as Record<string, number> | undefined;
+        const misc = data.misc as Record<string, number> | undefined;
+        income1099Total += Number(div?.ordinaryDividends || data.totalDividendIncome || 0);
+        income1099Total += Number(int?.interestIncome || data.totalInterestIncome || 0);
+        income1099Total +=
+          Number(misc?.rents || 0) + Number(misc?.royalties || 0) + Number(misc?.otherIncome || 0);
+        federalWithheld += Number(data.totalFederalWithheld || 0);
+        if (b) {
+          const st = Number(b.shortTermGainLoss || 0);
+          const lt = Number(b.longTermGainLoss || 0);
+          capitalGainsShortTerm += st;
+          capitalGainsLongTerm += lt;
+          capitalGainsTotal += Number(b.totalGainLoss || data.totalCapitalGains || st + lt);
+        }
+      } else if (doc.type === '1099-b') {
+        const st = Number(data.shortTermGainLoss || 0);
+        const lt = Number(data.longTermGainLoss || 0);
+        capitalGainsShortTerm += st;
+        capitalGainsLongTerm += lt;
+        capitalGainsTotal += Number(data.totalGainLoss || st + lt);
+        federalWithheld += Number(data.federalWithheld || 0);
+      } else {
+        income1099Total += Number(
+          (data as { nonemployeeCompensation?: number }).nonemployeeCompensation ||
+            (data as { ordinaryDividends?: number }).ordinaryDividends ||
+            (data as { interestIncome?: number }).interestIncome ||
+            (data as { amount?: number }).amount ||
+            0
+        );
+        federalWithheld += Number(data.federalWithheld || 0);
       }
     });
+
     return {
       entity: selectedEntity,
       taxYear: selectedYear,
@@ -458,6 +534,9 @@ export function TaxYearView() {
       totalIncome: w2Total + income1099Total,
       federalWithheld,
       stateWithheld,
+      capitalGainsTotal,
+      capitalGainsShortTerm,
+      capitalGainsLongTerm,
     };
   }, [scannedDocuments, hasHiddenDocs, selectedEntity, selectedYear]);
 

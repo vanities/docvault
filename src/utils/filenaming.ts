@@ -55,6 +55,7 @@ function getTypeLabel(docType: DocumentType): string {
     '1099-div': '1099-div',
     '1099-int': '1099-int',
     '1099-b': '1099-b',
+    '1099-composite': '1099-composite',
     receipt: '', // Will use category instead
     invoice: 'Invoice',
     crypto: 'Crypto',

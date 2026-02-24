@@ -5,6 +5,7 @@ import type {
   TaxDocument,
   ParsedW2,
   Parsed1099,
+  ParsedComposite1099,
 } from '../../types';
 import { DOCUMENT_TYPES } from '../../config';
 
@@ -126,8 +127,32 @@ export function IncomeSummary({ summary, documents, onDownload }: IncomeSummaryP
           <CopyableField
             label="Total Gross Income"
             value={summary.totalIncome}
-            sublabel="All income sources"
+            sublabel="All income sources (excludes capital gains)"
           />
+          {summary.capitalGainsTotal !== 0 && (
+            <>
+              <div className="border-t border-border my-3" />
+              <CopyableField
+                label="Net Capital Gains (Schedule D)"
+                value={summary.capitalGainsTotal}
+                sublabel="From 1099-B / composite statements"
+              />
+              {summary.capitalGainsShortTerm !== 0 && (
+                <CopyableField
+                  label="Short-Term Capital Gains"
+                  value={summary.capitalGainsShortTerm}
+                  sublabel="Held < 1 year — taxed as ordinary income"
+                />
+              )}
+              {summary.capitalGainsLongTerm !== 0 && (
+                <CopyableField
+                  label="Long-Term Capital Gains"
+                  value={summary.capitalGainsLongTerm}
+                  sublabel="Held > 1 year — preferential tax rate"
+                />
+              )}
+            </>
+          )}
         </div>
       </div>
 
@@ -204,8 +229,177 @@ export function IncomeSummary({ summary, documents, onDownload }: IncomeSummaryP
 
           <div className="space-y-4">
             {docs.map((doc) => {
-              const data = doc.parsedData as Parsed1099 | undefined;
+              if (doc.type === '1099-composite') {
+                const data = doc.parsedData as ParsedComposite1099 | undefined;
+                return (
+                  <div key={doc.id} className="border border-border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <p className="font-medium text-surface-950 text-[13px]">
+                          {data?.payer || doc.fileName}
+                        </p>
+                        {data?.accountNumber && (
+                          <p className="text-[11px] text-surface-600">
+                            Account: {data.accountNumber}
+                          </p>
+                        )}
+                      </div>
+                      <span className="px-2 py-1 bg-purple-500/15 text-purple-400 text-[11px] font-medium rounded-md">
+                        Composite 1099
+                      </span>
+                    </div>
 
+                    {data ? (
+                      <div className="space-y-3">
+                        {/* DIV sub-form */}
+                        {data.div && (data.div.ordinaryDividends || 0) > 0 && (
+                          <div>
+                            <p className="text-[11px] font-semibold text-surface-700 uppercase tracking-wider mb-1">
+                              1099-DIV
+                            </p>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                              {data.div.ordinaryDividends !== undefined && (
+                                <div>
+                                  <p className="text-[11px] text-surface-600">Ordinary Dividends</p>
+                                  <p className="font-medium text-surface-950 font-mono text-[13px]">
+                                    {formatCurrency(data.div.ordinaryDividends)}
+                                  </p>
+                                </div>
+                              )}
+                              {data.div.qualifiedDividends !== undefined &&
+                                data.div.qualifiedDividends > 0 && (
+                                  <div>
+                                    <p className="text-[11px] text-surface-600">
+                                      Qualified Dividends
+                                    </p>
+                                    <p className="font-medium text-surface-950 font-mono text-[13px]">
+                                      {formatCurrency(data.div.qualifiedDividends)}
+                                    </p>
+                                  </div>
+                                )}
+                              {data.div.foreignTaxPaid !== undefined &&
+                                data.div.foreignTaxPaid > 0 && (
+                                  <div>
+                                    <p className="text-[11px] text-surface-600">Foreign Tax Paid</p>
+                                    <p className="font-medium text-surface-950 font-mono text-[13px]">
+                                      {formatCurrency(data.div.foreignTaxPaid)}
+                                    </p>
+                                  </div>
+                                )}
+                              {data.div.federalWithheld !== undefined &&
+                                data.div.federalWithheld > 0 && (
+                                  <div>
+                                    <p className="text-[11px] text-surface-600">Fed Withheld</p>
+                                    <p className="font-medium text-surface-950 font-mono text-[13px]">
+                                      {formatCurrency(data.div.federalWithheld)}
+                                    </p>
+                                  </div>
+                                )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* B sub-form (capital gains) */}
+                        {data.b &&
+                          (data.b.totalGainLoss ||
+                            data.b.shortTermGainLoss ||
+                            data.b.longTermGainLoss) && (
+                            <div>
+                              <p className="text-[11px] font-semibold text-surface-700 uppercase tracking-wider mb-1">
+                                1099-B (Capital Gains)
+                              </p>
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                {data.b.shortTermGainLoss !== undefined && (
+                                  <div>
+                                    <p className="text-[11px] text-surface-600">
+                                      Short-Term Gain/Loss
+                                    </p>
+                                    <p
+                                      className={`font-medium font-mono text-[13px] ${(data.b.shortTermGainLoss || 0) >= 0 ? 'text-emerald-500' : 'text-red-400'}`}
+                                    >
+                                      {formatCurrency(data.b.shortTermGainLoss)}
+                                    </p>
+                                  </div>
+                                )}
+                                {data.b.longTermGainLoss !== undefined && (
+                                  <div>
+                                    <p className="text-[11px] text-surface-600">
+                                      Long-Term Gain/Loss
+                                    </p>
+                                    <p
+                                      className={`font-medium font-mono text-[13px] ${(data.b.longTermGainLoss || 0) >= 0 ? 'text-emerald-500' : 'text-red-400'}`}
+                                    >
+                                      {formatCurrency(data.b.longTermGainLoss)}
+                                    </p>
+                                  </div>
+                                )}
+                                {data.b.totalGainLoss !== undefined && (
+                                  <div>
+                                    <p className="text-[11px] text-surface-600">Total Gain/Loss</p>
+                                    <p
+                                      className={`font-medium font-mono text-[13px] ${(data.b.totalGainLoss || 0) >= 0 ? 'text-emerald-500' : 'text-red-400'}`}
+                                    >
+                                      {formatCurrency(data.b.totalGainLoss)}
+                                    </p>
+                                  </div>
+                                )}
+                                {data.b.totalProceeds !== undefined && data.b.totalProceeds > 0 && (
+                                  <div>
+                                    <p className="text-[11px] text-surface-600">Total Proceeds</p>
+                                    <p className="font-medium text-surface-950 font-mono text-[13px]">
+                                      {formatCurrency(data.b.totalProceeds)}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                        {/* INT sub-form */}
+                        {data.int && (data.int.interestIncome || 0) > 0 && (
+                          <div>
+                            <p className="text-[11px] font-semibold text-surface-700 uppercase tracking-wider mb-1">
+                              1099-INT
+                            </p>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                              <div>
+                                <p className="text-[11px] text-surface-600">Interest Income</p>
+                                <p className="font-medium text-surface-950 font-mono text-[13px]">
+                                  {formatCurrency(data.int.interestIncome!)}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Totals */}
+                        {data.totalFederalWithheld !== undefined &&
+                          data.totalFederalWithheld > 0 && (
+                            <div className="border-t border-border pt-2">
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <p className="text-[11px] text-surface-600">
+                                    Total Federal Withheld
+                                  </p>
+                                  <p className="font-medium text-surface-950 font-mono text-[13px]">
+                                    {formatCurrency(data.totalFederalWithheld)}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                      </div>
+                    ) : (
+                      <p className="text-[13px] text-surface-600 italic">
+                        No parsed data - click Edit to add details
+                      </p>
+                    )}
+                  </div>
+                );
+              }
+
+              // Standard 1099 rendering
+              const data = doc.parsedData as Parsed1099 | undefined;
               return (
                 <div key={doc.id} className="border border-border rounded-lg p-4">
                   <div className="flex items-center justify-between mb-3">
