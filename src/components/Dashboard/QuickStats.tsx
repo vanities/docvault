@@ -6,12 +6,14 @@ import {
   Receipt,
   Landmark,
   BarChart3,
+  Building2,
 } from 'lucide-react';
 import type {
   IncomeSummary,
   ExpenseSummary,
   InvoiceSummaryData,
   RetirementSummary,
+  BankDepositSummary,
 } from '../../types';
 
 interface QuickStatsProps {
@@ -25,6 +27,8 @@ interface QuickStatsProps {
   allDocumentCount?: number;
   retirementSummary?: RetirementSummary | null;
   allRetirementSummary?: RetirementSummary | null;
+  bankDepositSummary?: BankDepositSummary | null;
+  allBankDepositSummary?: BankDepositSummary | null;
 }
 
 function formatCurrency(amount: number): string {
@@ -89,6 +93,8 @@ export function QuickStats({
   allDocumentCount,
   retirementSummary,
   allRetirementSummary,
+  bankDepositSummary,
+  allBankDepositSummary,
 }: QuickStatsProps) {
   const netIncome =
     incomeSummary.totalIncome + incomeSummary.capitalGainsTotal - expenseSummary.totalDeductible;
@@ -114,6 +120,7 @@ export function QuickStats({
 
   const hasRetirement = retirementSummary && retirementSummary.totalContributions > 0;
   const hasCapitalGains = incomeSummary.capitalGainsTotal !== 0;
+  const hasBankDeposits = bankDepositSummary && bankDepositSummary.totalDeposits > 0;
 
   // Build retirement subtext (e.g. "$43k employer, $23k employee")
   const retirementSubtext = hasRetirement
@@ -143,11 +150,17 @@ export function QuickStats({
         .join(', ') || 'Schedule D'
     : undefined;
 
-  // Grid columns: 5 base + optional retirement + optional capital gains
+  // Grid columns: 5 base + optional retirement + optional capital gains + optional bank deposits
   // Use complete class names so Tailwind can detect them at build time
-  const extraCols = (hasRetirement ? 1 : 0) + (hasCapitalGains ? 1 : 0);
+  const extraCols = (hasRetirement ? 1 : 0) + (hasCapitalGains ? 1 : 0) + (hasBankDeposits ? 1 : 0);
   const gridCols =
-    extraCols === 2 ? 'lg:grid-cols-7' : extraCols === 1 ? 'lg:grid-cols-6' : 'lg:grid-cols-5';
+    extraCols === 3
+      ? 'lg:grid-cols-8'
+      : extraCols === 2
+        ? 'lg:grid-cols-7'
+        : extraCols === 1
+          ? 'lg:grid-cols-6'
+          : 'lg:grid-cols-5';
 
   return (
     <div className={`grid grid-cols-1 md:grid-cols-2 ${gridCols} gap-3 stagger`}>
@@ -191,6 +204,22 @@ export function QuickStats({
           }
           subtext={retirementSubtext}
           color="blue"
+        />
+      )}
+      {hasBankDeposits && (
+        <StatCard
+          icon={Building2}
+          label="Bank Deposits"
+          value={formatCurrency(bankDepositSummary.totalDeposits)}
+          altValue={
+            allBankDepositSummary ? formatCurrency(allBankDepositSummary.totalDeposits) : undefined
+          }
+          subtext={
+            bankDepositSummary.depositCount > 0
+              ? `${bankDepositSummary.depositCount} deposits, ${bankDepositSummary.statementCount} statements`
+              : `${bankDepositSummary.statementCount} statements`
+          }
+          color="green"
         />
       )}
       <StatCard

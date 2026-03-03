@@ -20,6 +20,7 @@ import type {
   ExpenseSummary as ExpenseSummaryType,
   InvoiceSummaryData,
   RetirementSummary,
+  BankDepositSummary,
   ExpenseCategory,
 } from '../../types';
 
@@ -716,6 +717,86 @@ export function TaxYearView() {
     };
   }, [scannedDocuments, hasHiddenDocs]);
 
+  // Compute bank deposit summary from tracked documents
+  const bankDepositSummary = useMemo((): BankDepositSummary | null => {
+    const bankDocs = trackedDocuments.filter((d) => d.type === 'bank-statement');
+    if (bankDocs.length === 0) return null;
+
+    let totalDeposits = 0;
+    let depositCount = 0;
+    const accountMap = new Map<
+      string,
+      { institution: string; accountType: string; total: number }
+    >();
+
+    for (const doc of bankDocs) {
+      const data = doc.parsedData as Record<string, unknown> | undefined;
+      const deposits = Number(data?.totalDeposits || 0);
+      const count = Number(data?.depositCount || data?.depositsCount || 0);
+      totalDeposits += deposits;
+      depositCount += count;
+
+      const institution = (data?.institution || doc.fileName.split('_')[0] || 'Bank') as string;
+      const accountType = (data?.accountType || 'Checking') as string;
+      const key = `${institution}|${accountType}`;
+      const existing = accountMap.get(key);
+      if (existing) {
+        existing.total += deposits;
+      } else {
+        accountMap.set(key, { institution, accountType, total: deposits });
+      }
+    }
+
+    if (totalDeposits === 0) return null;
+
+    return {
+      totalDeposits,
+      depositCount,
+      statementCount: bankDocs.length,
+      byAccount: Array.from(accountMap.values()),
+    };
+  }, [trackedDocuments]);
+
+  const allBankDepositSummary = useMemo((): BankDepositSummary | null => {
+    if (!hasHiddenDocs) return null;
+    const bankDocs = scannedDocuments.filter((d) => d.type === 'bank-statement');
+    if (bankDocs.length === 0) return null;
+
+    let totalDeposits = 0;
+    let depositCount = 0;
+    const accountMap = new Map<
+      string,
+      { institution: string; accountType: string; total: number }
+    >();
+
+    for (const doc of bankDocs) {
+      const data = doc.parsedData as Record<string, unknown> | undefined;
+      const deposits = Number(data?.totalDeposits || 0);
+      const count = Number(data?.depositCount || data?.depositsCount || 0);
+      totalDeposits += deposits;
+      depositCount += count;
+
+      const institution = (data?.institution || doc.fileName.split('_')[0] || 'Bank') as string;
+      const accountType = (data?.accountType || 'Checking') as string;
+      const key = `${institution}|${accountType}`;
+      const existing = accountMap.get(key);
+      if (existing) {
+        existing.total += deposits;
+      } else {
+        accountMap.set(key, { institution, accountType, total: deposits });
+      }
+    }
+
+    if (totalDeposits === 0) return null;
+
+    return {
+      totalDeposits,
+      depositCount,
+      statementCount: bankDocs.length,
+      byAccount: Array.from(accountMap.values()),
+    };
+  }, [scannedDocuments, hasHiddenDocs]);
+
   const tabs: { id: TabType; label: string }[] = [
     { id: 'documents', label: 'Documents' },
     { id: 'income', label: 'Income' },
@@ -747,6 +828,8 @@ export function TaxYearView() {
           allDocumentCount={hasHiddenDocs ? scannedDocuments.length : undefined}
           retirementSummary={retirementSummary}
           allRetirementSummary={allRetirementSummary}
+          bankDepositSummary={bankDepositSummary}
+          allBankDepositSummary={allBankDepositSummary}
         />
       </div>
 

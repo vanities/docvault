@@ -159,6 +159,17 @@ export interface ParsedRetirementStatement {
   accountNumber?: string;
 }
 
+export interface ParsedBankStatement {
+  institution: string; // e.g. "Chase", "Bank of America"
+  accountType: string; // e.g. "Checking", "Savings", "Business Checking"
+  accountNumber?: string; // last 4 digits
+  totalDeposits: number; // sum of all deposits/credits for the period
+  depositCount?: number; // number of deposit transactions (also may be depositsCount)
+  startDate?: string; // statement period start (YYYY-MM-DD)
+  endDate?: string; // statement period end (YYYY-MM-DD)
+  periodLabel?: string; // e.g. "January 2025"
+}
+
 // Main document interface
 export interface TaxDocument {
   id: string;
@@ -235,6 +246,14 @@ export interface RetirementSummary {
   totalContributions: number;
   employerContributions: number;
   employeeContributions: number;
+  statementCount: number;
+  byAccount: { institution: string; accountType: string; total: number }[];
+}
+
+// Bank deposit summary for QuickStats
+export interface BankDepositSummary {
+  totalDeposits: number;
+  depositCount: number;
   statementCount: number;
   byAccount: { institution: string; accountType: string; total: number }[];
 }
