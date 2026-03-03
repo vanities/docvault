@@ -8,6 +8,10 @@ import {
   ChevronDown,
   ChevronRight,
   Layers,
+  CheckSquare,
+  X,
+  Sparkles,
+  Loader2,
 } from 'lucide-react';
 import { DocumentCard } from './DocumentCard';
 import { DocumentViewer } from './DocumentViewer';
@@ -384,6 +388,13 @@ export function DocumentList({
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [selectedDocument, setSelectedDocument] = useState<TaxDocument | null>(null);
 
+  // Multi-select state
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [parseProgress, setParseProgress] = useState<{ current: number; total: number } | null>(
+    null
+  );
+
   const filteredAndSortedDocuments = useMemo(() => {
     let result = [...documents];
 
@@ -458,6 +469,39 @@ export function DocumentList({
       })
       .map(([label, docs]) => ({ label, docs }));
   }, [filteredAndSortedDocuments, groupMode]);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelecting = () => {
+    setIsSelecting(false);
+    setSelectedIds(new Set());
+  };
+
+  const selectUnparsed = () => {
+    const unparsedIds = new Set(
+      filteredAndSortedDocuments.filter((d) => !d.parsedData).map((d) => d.id)
+    );
+    setSelectedIds(unparsedIds);
+  };
+
+  const handleParseSelected = async () => {
+    if (!onParse || selectedIds.size === 0) return;
+    const docs = filteredAndSortedDocuments.filter((d) => selectedIds.has(d.id));
+    setParseProgress({ current: 0, total: docs.length });
+    for (let i = 0; i < docs.length; i++) {
+      setParseProgress({ current: i + 1, total: docs.length });
+      await onParse(docs[i]);
+    }
+    setParseProgress(null);
+    exitSelecting();
+  };
 
   const toggleGroup = (label: string) => {
     setCollapsedGroups((prev) => {
@@ -563,13 +607,79 @@ export function DocumentList({
             <ListIcon className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Select mode toggle */}
+        {onParse && (
+          <button
+            onClick={() => (isSelecting ? exitSelecting() : setIsSelecting(true))}
+            className={`flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium rounded-lg border transition-colors ${
+              isSelecting
+                ? 'bg-accent-500/20 border-accent-400/50 text-accent-400'
+                : 'border-border text-surface-700 hover:text-surface-900 hover:bg-surface-200/40'
+            }`}
+          >
+            <CheckSquare className="w-4 h-4" />
+            {isSelecting ? 'Cancel' : 'Select'}
+          </button>
+        )}
       </div>
 
       {/* Results count */}
       <p className="text-[11px] text-surface-600 mb-4">
         Showing {filteredAndSortedDocuments.length} of {documents.length} documents
         {groupMode !== 'none' && ` in ${groupedDocuments.length} groups`}
+        {isSelecting && selectedIds.size > 0 && (
+          <span className="ml-2 text-accent-400 font-medium">· {selectedIds.size} selected</span>
+        )}
       </p>
+
+      {/* Multi-select action bar */}
+      {isSelecting && (
+        <div className="flex flex-wrap items-center gap-2 mb-4 p-3 glass-card rounded-xl border border-accent-400/30">
+          <button
+            onClick={selectUnparsed}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-surface-700 hover:text-surface-900 bg-surface-200/50 hover:bg-surface-200 border border-border rounded-lg transition-colors"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            Select Unparsed ({filteredAndSortedDocuments.filter((d) => !d.parsedData).length})
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set(filteredAndSortedDocuments.map((d) => d.id)))}
+            className="px-3 py-1.5 text-[12px] font-medium text-surface-700 hover:text-surface-900 bg-surface-200/50 hover:bg-surface-200 border border-border rounded-lg transition-colors"
+          >
+            Select All ({filteredAndSortedDocuments.length})
+          </button>
+          {selectedIds.size > 0 && (
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="flex items-center gap-1 px-3 py-1.5 text-[12px] text-surface-600 hover:text-surface-900 border border-border rounded-lg transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+              Clear
+            </button>
+          )}
+          <div className="flex-1" />
+          {selectedIds.size > 0 && (
+            <button
+              onClick={handleParseSelected}
+              disabled={!!parseProgress}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-medium text-white bg-accent-500 hover:bg-accent-600 disabled:opacity-60 rounded-lg transition-colors"
+            >
+              {parseProgress ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Parsing {parseProgress.current} of {parseProgress.total}...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Parse {selectedIds.size} Document{selectedIds.size !== 1 ? 's' : ''}
+                </>
+              )}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Document groups */}
       {filteredAndSortedDocuments.length === 0 ? (
@@ -619,6 +729,8 @@ export function DocumentList({
                         entities={entities}
                         availableYears={availableYears}
                         onClick={() => setSelectedDocument(doc)}
+                        isSelected={isSelecting ? selectedIds.has(doc.id) : undefined}
+                        onToggleSelect={isSelecting ? toggleSelect : undefined}
                       />
                     ))}
                   </div>
