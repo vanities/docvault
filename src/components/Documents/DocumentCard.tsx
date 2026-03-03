@@ -186,7 +186,7 @@ export function DocumentCard({
 
   return (
     <div
-      className={`glass-card rounded-xl p-4 hover:border-border-strong transition-all duration-200 cursor-pointer group relative ${!isTracked ? 'opacity-50' : ''} ${isSelected ? 'ring-2 ring-accent-400 border-accent-400/50' : ''}`}
+      className={`glass-card rounded-xl p-4 hover:border-border-strong transition-all duration-200 cursor-pointer group ${!isTracked ? 'opacity-50' : ''} ${isSelected ? 'ring-2 ring-accent-400 border-accent-400/50' : ''}`}
       onClick={(e) => {
         if ((e.target as HTMLElement).closest('button, input, select, textarea')) return;
         if (onToggleSelect) {
@@ -196,22 +196,22 @@ export function DocumentCard({
         }
       }}
     >
-      {/* Selection checkbox */}
-      {onToggleSelect && (
-        <div className="absolute top-3 right-3 z-10">
-          <div
-            className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-              isSelected
-                ? 'bg-accent-500 border-accent-500'
-                : 'border-surface-500 bg-surface-200/50'
-            }`}
-          >
-            {isSelected && <Check className="w-3 h-3 text-white" />}
-          </div>
-        </div>
-      )}
-
       <div className="flex items-start gap-3">
+        {/* Checkbox */}
+        {onToggleSelect && (
+          <div className="flex-shrink-0 mt-0.5">
+            <div
+              className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                isSelected
+                  ? 'bg-accent-500 border-accent-500'
+                  : 'border-surface-500 bg-surface-200/50 group-hover:border-surface-400'
+              }`}
+            >
+              {isSelected && <Check className="w-3 h-3 text-white" />}
+            </div>
+          </div>
+        )}
+
         {/* Icon */}
         <div className="relative w-10 h-10 bg-surface-300/40 rounded-lg flex items-center justify-center flex-shrink-0">
           <FileIcon fileType={doc.fileType} className="w-5 h-5 text-surface-700" />

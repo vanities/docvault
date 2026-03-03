@@ -8,7 +8,6 @@ import {
   ChevronDown,
   ChevronRight,
   Layers,
-  CheckSquare,
   X,
   Sparkles,
   Loader2,
@@ -389,7 +388,6 @@ export function DocumentList({
   const [selectedDocument, setSelectedDocument] = useState<TaxDocument | null>(null);
 
   // Multi-select state
-  const [isSelecting, setIsSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [parseProgress, setParseProgress] = useState<{ current: number; total: number } | null>(
     null
@@ -479,11 +477,6 @@ export function DocumentList({
     });
   };
 
-  const exitSelecting = () => {
-    setIsSelecting(false);
-    setSelectedIds(new Set());
-  };
-
   const selectUnparsed = () => {
     const unparsedIds = new Set(
       filteredAndSortedDocuments.filter((d) => !d.parsedData).map((d) => d.id)
@@ -500,7 +493,21 @@ export function DocumentList({
       await onParse(docs[i]);
     }
     setParseProgress(null);
-    exitSelecting();
+    setSelectedIds(new Set());
+  };
+
+  const selectGroup = (docs: TaxDocument[]) => {
+    const groupIds = new Set(docs.map((d) => d.id));
+    const allSelected = docs.every((d) => selectedIds.has(d.id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        groupIds.forEach((id) => next.delete(id));
+      } else {
+        groupIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
   };
 
   const toggleGroup = (label: string) => {
@@ -607,79 +614,64 @@ export function DocumentList({
             <ListIcon className="w-4 h-4" />
           </button>
         </div>
-
-        {/* Select mode toggle */}
-        {onParse && (
-          <button
-            onClick={() => (isSelecting ? exitSelecting() : setIsSelecting(true))}
-            className={`flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium rounded-lg border transition-colors ${
-              isSelecting
-                ? 'bg-accent-500/20 border-accent-400/50 text-accent-400'
-                : 'border-border text-surface-700 hover:text-surface-900 hover:bg-surface-200/40'
-            }`}
-          >
-            <CheckSquare className="w-4 h-4" />
-            {isSelecting ? 'Cancel' : 'Select'}
-          </button>
-        )}
       </div>
 
-      {/* Results count */}
-      <p className="text-[11px] text-surface-600 mb-4">
-        Showing {filteredAndSortedDocuments.length} of {documents.length} documents
-        {groupMode !== 'none' && ` in ${groupedDocuments.length} groups`}
-        {isSelecting && selectedIds.size > 0 && (
-          <span className="ml-2 text-accent-400 font-medium">· {selectedIds.size} selected</span>
-        )}
-      </p>
+      {/* Results count + action bar */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <p className="text-[11px] text-surface-600 mr-1">
+          Showing {filteredAndSortedDocuments.length} of {documents.length} documents
+          {groupMode !== 'none' && ` in ${groupedDocuments.length} groups`}
+          {selectedIds.size > 0 && (
+            <span className="ml-2 text-accent-400 font-medium">· {selectedIds.size} selected</span>
+          )}
+        </p>
 
-      {/* Multi-select action bar */}
-      {isSelecting && (
-        <div className="flex flex-wrap items-center gap-2 mb-4 p-3 glass-card rounded-xl border border-accent-400/30">
-          <button
-            onClick={selectUnparsed}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-surface-700 hover:text-surface-900 bg-surface-200/50 hover:bg-surface-200 border border-border rounded-lg transition-colors"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            Select Unparsed ({filteredAndSortedDocuments.filter((d) => !d.parsedData).length})
-          </button>
-          <button
-            onClick={() => setSelectedIds(new Set(filteredAndSortedDocuments.map((d) => d.id)))}
-            className="px-3 py-1.5 text-[12px] font-medium text-surface-700 hover:text-surface-900 bg-surface-200/50 hover:bg-surface-200 border border-border rounded-lg transition-colors"
-          >
-            Select All ({filteredAndSortedDocuments.length})
-          </button>
-          {selectedIds.size > 0 && (
+        {onParse && (
+          <>
             <button
-              onClick={() => setSelectedIds(new Set())}
-              className="flex items-center gap-1 px-3 py-1.5 text-[12px] text-surface-600 hover:text-surface-900 border border-border rounded-lg transition-colors"
+              onClick={selectUnparsed}
+              className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-surface-700 hover:text-surface-900 bg-surface-200/50 hover:bg-surface-200 border border-border rounded-lg transition-colors"
             >
-              <X className="w-3.5 h-3.5" />
-              Clear
+              <Sparkles className="w-3 h-3" />
+              Unparsed ({filteredAndSortedDocuments.filter((d) => !d.parsedData).length})
             </button>
-          )}
-          <div className="flex-1" />
-          {selectedIds.size > 0 && (
             <button
-              onClick={handleParseSelected}
-              disabled={!!parseProgress}
-              className="flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-medium text-white bg-accent-500 hover:bg-accent-600 disabled:opacity-60 rounded-lg transition-colors"
+              onClick={() => setSelectedIds(new Set(filteredAndSortedDocuments.map((d) => d.id)))}
+              className="px-2.5 py-1 text-[11px] font-medium text-surface-700 hover:text-surface-900 bg-surface-200/50 hover:bg-surface-200 border border-border rounded-lg transition-colors"
             >
-              {parseProgress ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  Parsing {parseProgress.current} of {parseProgress.total}...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Parse {selectedIds.size} Document{selectedIds.size !== 1 ? 's' : ''}
-                </>
-              )}
+              All ({filteredAndSortedDocuments.length})
             </button>
-          )}
-        </div>
-      )}
+            {selectedIds.size > 0 && (
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                className="flex items-center gap-1 px-2.5 py-1 text-[11px] text-surface-600 hover:text-surface-900 border border-border rounded-lg transition-colors"
+              >
+                <X className="w-3 h-3" />
+                Clear
+              </button>
+            )}
+            {selectedIds.size > 0 && (
+              <button
+                onClick={handleParseSelected}
+                disabled={!!parseProgress}
+                className="flex items-center gap-1.5 px-3 py-1 text-[12px] font-medium text-white bg-accent-500 hover:bg-accent-600 disabled:opacity-60 rounded-lg transition-colors"
+              >
+                {parseProgress ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Parsing {parseProgress.current} of {parseProgress.total}...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3 h-3" />
+                    Parse {selectedIds.size}
+                  </>
+                )}
+              </button>
+            )}
+          </>
+        )}
+      </div>
 
       {/* Document groups */}
       {filteredAndSortedDocuments.length === 0 ? (
@@ -695,20 +687,32 @@ export function DocumentList({
             return (
               <div key={label || '__ungrouped'}>
                 {showHeader && (
-                  <button
-                    onClick={() => toggleGroup(label)}
-                    className="flex items-center gap-2 mb-3 group/header w-full text-left"
-                  >
-                    {isCollapsed ? (
-                      <ChevronRight className="w-4 h-4 text-surface-600" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4 text-surface-600" />
+                  <div className="flex items-center gap-2 mb-3">
+                    <button
+                      onClick={() => toggleGroup(label)}
+                      className="flex items-center gap-2 group/header text-left"
+                    >
+                      {isCollapsed ? (
+                        <ChevronRight className="w-4 h-4 text-surface-600" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-surface-600" />
+                      )}
+                      <h3 className="text-[12px] font-semibold text-surface-700 uppercase tracking-wider group-hover/header:text-surface-900 transition-colors">
+                        {label}
+                      </h3>
+                      <span className="text-[11px] text-surface-500 font-normal">
+                        {docs.length}
+                      </span>
+                    </button>
+                    {onParse && (
+                      <button
+                        onClick={() => selectGroup(docs)}
+                        className="text-[10px] text-surface-500 hover:text-accent-400 transition-colors px-1.5 py-0.5 rounded border border-transparent hover:border-accent-400/30"
+                      >
+                        {docs.every((d) => selectedIds.has(d.id)) ? 'deselect all' : 'select all'}
+                      </button>
                     )}
-                    <h3 className="text-[12px] font-semibold text-surface-700 uppercase tracking-wider group-hover/header:text-surface-900 transition-colors">
-                      {label}
-                    </h3>
-                    <span className="text-[11px] text-surface-500 font-normal">{docs.length}</span>
-                  </button>
+                  </div>
                 )}
 
                 {!isCollapsed && (
@@ -729,8 +733,8 @@ export function DocumentList({
                         entities={entities}
                         availableYears={availableYears}
                         onClick={() => setSelectedDocument(doc)}
-                        isSelected={isSelecting ? selectedIds.has(doc.id) : undefined}
-                        onToggleSelect={isSelecting ? toggleSelect : undefined}
+                        isSelected={onParse ? selectedIds.has(doc.id) : undefined}
+                        onToggleSelect={onParse ? toggleSelect : undefined}
                       />
                     ))}
                   </div>
