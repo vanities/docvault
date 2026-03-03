@@ -189,17 +189,19 @@ export function DocumentCard({
       className={`glass-card rounded-xl p-4 hover:border-border-strong transition-all duration-200 cursor-pointer group ${!isTracked ? 'opacity-50' : ''} ${isSelected ? 'ring-2 ring-accent-400 border-accent-400/50' : ''}`}
       onClick={(e) => {
         if ((e.target as HTMLElement).closest('button, input, select, textarea')) return;
-        if (onToggleSelect) {
-          onToggleSelect(doc.id);
-        } else {
-          onClick?.();
-        }
+        onClick?.();
       }}
     >
       <div className="flex items-start gap-3">
         {/* Checkbox */}
         {onToggleSelect && (
-          <div className="flex-shrink-0 mt-0.5">
+          <div
+            className="flex-shrink-0 mt-0.5 cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSelect(doc.id);
+            }}
+          >
             <div
               className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
                 isSelected
