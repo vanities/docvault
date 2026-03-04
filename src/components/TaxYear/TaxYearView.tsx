@@ -798,31 +798,6 @@ export function TaxYearView() {
     };
   }, [scannedDocuments, hasHiddenDocs]);
 
-  // December ending balances for Solo 401k / TN franchise tax net worth calc
-  const decemberBalances = useMemo(() => {
-    const decMonth = `${selectedYear}-12`;
-    let bankBalance = 0;
-    let ccBalance = 0;
-
-    scannedDocuments.forEach((doc) => {
-      const data = doc.parsedData as Record<string, unknown> | undefined;
-      if (!data) return;
-      const endDate = (data.endDate as string) || '';
-      const periodLabel = ((data.periodLabel as string) || '').toLowerCase();
-      const isDecember = endDate.startsWith(decMonth) || periodLabel.includes('december');
-      if (!isDecember) return;
-
-      const ending = Number(data.endingBalance || 0);
-      if (doc.type === 'bank-statement') {
-        bankBalance += ending;
-      } else if (doc.type === 'credit-card-statement') {
-        ccBalance += ending;
-      }
-    });
-
-    return { bankBalance, ccBalance };
-  }, [scannedDocuments, selectedYear]);
-
   const tabs: { id: TabType; label: string }[] = [
     { id: 'documents', label: 'Documents' },
     { id: 'income', label: 'Income' },
@@ -874,8 +849,6 @@ export function TaxYearView() {
               defaultExpenses={expenseSummary.totalDeductible}
               taxYear={selectedYear}
               entity={selectedEntity}
-              defaultBankBalance={decemberBalances.bankBalance}
-              defaultCcBalance={decemberBalances.ccBalance}
             />
           </div>
         )}
