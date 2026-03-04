@@ -165,6 +165,7 @@ export interface ParsedBankStatement {
   accountNumber?: string; // last 4 digits
   totalDeposits: number; // sum of all deposits/credits for the period
   depositCount?: number; // number of deposit transactions (also may be depositsCount)
+  endingBalance?: number; // closing balance at end of statement period
   startDate?: string; // statement period start (YYYY-MM-DD)
   endDate?: string; // statement period end (YYYY-MM-DD)
   periodLabel?: string; // e.g. "January 2025"

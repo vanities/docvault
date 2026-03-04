@@ -6,6 +6,14 @@ interface Solo401kCalculatorProps {
   defaultExpenses: number;
   taxYear: number;
   entity: string;
+  defaultBankBalance?: number; // from December bank statement ending balance
+  defaultCcBalance?: number; // from December credit card statement ending balance
+}
+
+interface BusinessAsset {
+  id: string;
+  name: string;
+  value: number;
 }
 
 interface Contribution {
@@ -135,11 +143,14 @@ export function Solo401kCalculator({
   defaultExpenses,
   taxYear,
   entity,
+  defaultBankBalance = 0,
+  defaultCcBalance = 0,
 }: Solo401kCalculatorProps) {
   const [expanded, setExpanded] = useState(true);
   const [grossInput, setGrossInput] = useState(defaultGross.toFixed(0));
   const [expensesInput, setExpensesInput] = useState(defaultExpenses.toFixed(0));
-  const [netWorthInput, setNetWorthInput] = useState('0');
+  const [bankBalanceInput, setBankBalanceInput] = useState(defaultBankBalance.toFixed(0));
+  const [ccBalanceInput, setCcBalanceInput] = useState(defaultCcBalance.toFixed(0));
 
   const storageKey = `docvault-401k-contributions-${entity}-${taxYear}`;
 
@@ -151,6 +162,23 @@ export function Solo401kCalculator({
       return [];
     }
   });
+
+  // Business assets (for TN franchise tax net worth)
+  const assetsKey = `docvault-biz-assets-${entity}-${taxYear}`;
+  const [bizAssets, setBizAssets] = useState<BusinessAsset[]>(() => {
+    try {
+      const stored = localStorage.getItem(assetsKey);
+      return stored ? (JSON.parse(stored) as BusinessAsset[]) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [addAssetName, setAddAssetName] = useState('');
+  const [addAssetValue, setAddAssetValue] = useState('');
+
+  useEffect(() => {
+    localStorage.setItem(assetsKey, JSON.stringify(bizAssets));
+  }, [bizAssets, assetsKey]);
 
   // Contribution entry form state
   const [addDate, setAddDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -169,7 +197,11 @@ export function Solo401kCalculator({
     const gross = parseCurrencyInput(grossInput);
     const expenses = parseCurrencyInput(expensesInput);
     const netProfit = Math.max(0, gross - expenses);
-    const netWorth = parseCurrencyInput(netWorthInput);
+    const bankBalance = parseCurrencyInput(bankBalanceInput);
+    const ccBalance = parseCurrencyInput(ccBalanceInput);
+    const totalAssets = bizAssets.reduce((s, a) => s + a.value, 0);
+    const netWorth = Math.max(0, bankBalance - ccBalance + totalAssets);
+    const tangibleProperty = totalAssets; // for TN franchise tax alternative base
 
     // Self-employment tax: 15.3% on 92.35% of net profit
     const seTaxBase = netProfit * 0.9235;
@@ -193,9 +225,11 @@ export function Solo401kCalculator({
     const exciseTaxBase = Math.max(0, netProfit - TN_EXCISE_DEDUCTION);
     const tnExciseTax = exciseTaxBase * TN_EXCISE_RATE;
 
-    // TN Franchise Tax: 0.25% on (net worth − $500k base exemption), min $100
-    // Based on year-end net worth (assets − liabilities from books/records)
-    const franchiseTaxBase = Math.max(0, netWorth - TN_FRANCHISE_EXEMPTION);
+    // TN Franchise Tax: 0.25% on greater of (net worth OR tangible property) − $500k exemption, min $100
+    const franchiseTaxBase = Math.max(
+      0,
+      Math.max(netWorth, tangibleProperty) - TN_FRANCHISE_EXEMPTION
+    );
     const tnFranchiseTax = Math.max(TN_FRANCHISE_MIN, franchiseTaxBase * TN_FRANCHISE_RATE);
 
     const tnTotal = tnExciseTax + tnFranchiseTax + TN_SOS_ANNUAL_REPORT;
@@ -207,6 +241,10 @@ export function Solo401kCalculator({
       seTax,
       halfSeTax,
       planComp,
+      bankBalance,
+      ccBalance,
+      totalAssets,
+      netWorth,
       employerContrib: actualEmployer,
       employeeLimit,
       totalContrib,
@@ -215,7 +253,15 @@ export function Solo401kCalculator({
       tnFranchiseTax,
       tnTotal,
     };
-  }, [grossInput, expensesInput, netWorthInput, employeeLimit, combinedCap]);
+  }, [
+    grossInput,
+    expensesInput,
+    bankBalanceInput,
+    ccBalanceInput,
+    bizAssets,
+    employeeLimit,
+    combinedCap,
+  ]);
 
   // Contribution totals
   const totalEmployeeContrib = contributions
@@ -285,7 +331,7 @@ export function Solo401kCalculator({
       {expanded && (
         <div className="px-5 pb-5 space-y-5">
           {/* Inputs */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <CurrencyInput
               label="Gross Revenue"
               value={grossInput}
@@ -301,11 +347,20 @@ export function Solo401kCalculator({
               hint="Schedule C deductible expenses"
             />
             <CurrencyInput
-              label="Dec. Year-End Net Worth"
-              value={netWorthInput}
-              onChange={setNetWorthInput}
-              onBlur={setNetWorthInput}
-              hint="Assets − liabilities at 12/31 (franchise tax basis)"
+              label="Bank Balance (Dec 31)"
+              value={bankBalanceInput}
+              onChange={setBankBalanceInput}
+              onBlur={setBankBalanceInput}
+              hint={
+                defaultBankBalance > 0 ? '↑ from Dec statement' : 'From December bank statement'
+              }
+            />
+            <CurrencyInput
+              label="CC Balance Owed (Dec 31)"
+              value={ccBalanceInput}
+              onChange={setCcBalanceInput}
+              onBlur={setCcBalanceInput}
+              hint={defaultCcBalance > 0 ? '↑ from Dec statement' : 'From December CC statement'}
             />
           </div>
 
@@ -394,23 +449,39 @@ export function Solo401kCalculator({
                 color="text-amber-400"
               />
               <div className="border-t border-border/50 my-2" />
+              <Row label="Bank Balance (Dec 31)" value={formatCurrency(calc.bankBalance)} />
               <Row
-                label="Franchise: Year-End Net Worth"
-                value={formatCurrency(parseCurrencyInput(netWorthInput))}
-                tooltip="Assets minus liabilities from your books at December 31. For a cash-basis LLC with no debt, this is typically your business bank balance."
+                label="CC Balance Owed"
+                value={`− ${formatCurrency(calc.ccBalance)}`}
+                indent
+                color="text-red-400"
+              />
+              {calc.totalAssets > 0 && (
+                <Row
+                  label="Business Assets"
+                  value={`+ ${formatCurrency(calc.totalAssets)}`}
+                  indent
+                  color="text-emerald-400"
+                />
+              )}
+              <Row
+                label="Net Worth (Dec 31)"
+                value={formatCurrency(calc.netWorth)}
+                bold
+                tooltip="Assets − liabilities. For TN franchise tax, the base is the greater of net worth or tangible property."
               />
               <Row
                 label="Base Exemption (TY2024+)"
                 value={`− ${formatCurrency(TN_FRANCHISE_EXEMPTION)}`}
                 indent
                 color="text-emerald-400"
-                tooltip="TN Works Tax Act: $500,000 exemption against the franchise tax base (net worth)"
+                tooltip="TN Works Tax Act: $500,000 exemption against franchise tax base"
               />
               <Row
                 label="Franchise Tax (0.25%, min $100)"
                 value={formatCurrency(calc.tnFranchiseTax)}
                 color="text-amber-400"
-                tooltip="0.25% of taxable net worth after exemption. $100 minimum regardless of net worth."
+                tooltip="0.25% of taxable base after exemption, min $100. Base = greater of net worth or tangible property."
               />
               <div className="border-t border-border/50 my-2" />
               <Row
@@ -425,6 +496,100 @@ export function Solo401kCalculator({
                 bold
                 color="text-amber-400"
               />
+            </div>
+          </div>
+
+          <div className="border-t border-border" />
+
+          {/* Business assets tracker (for TN franchise tax net worth) */}
+          <div>
+            <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-wider mb-2">
+              Business Assets
+            </p>
+            {bizAssets.length > 0 && (
+              <div className="mb-2 space-y-1">
+                {bizAssets.map((a) => (
+                  <div
+                    key={a.id}
+                    className="flex items-center justify-between py-1 px-2 rounded-lg hover:bg-surface-300/20 group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-[13px] text-surface-700">{a.name}</span>
+                      <span className="text-[13px] font-mono text-surface-900">
+                        {formatCurrency(a.value)}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setBizAssets((prev) => prev.filter((x) => x.id !== a.id))}
+                      className="opacity-0 group-hover:opacity-100 text-surface-500 hover:text-red-400 transition-all"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2 items-end">
+              <div className="flex-1">
+                <label className="block text-[10px] text-surface-500 mb-1">Asset Name</label>
+                <input
+                  type="text"
+                  value={addAssetName}
+                  onChange={(e) => setAddAssetName(e.target.value)}
+                  placeholder="e.g. MacBook Pro, Test Phone"
+                  className="w-full px-2.5 py-1.5 text-[12px] bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
+                />
+              </div>
+              <div className="w-28 flex-shrink-0">
+                <label className="block text-[10px] text-surface-500 mb-1">FMV</label>
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-surface-500 text-sm">
+                    $
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={addAssetValue}
+                    onChange={(e) => setAddAssetValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && addAssetName && addAssetValue) {
+                        setBizAssets((prev) => [
+                          ...prev,
+                          {
+                            id: crypto.randomUUID(),
+                            name: addAssetName,
+                            value: parseCurrencyInput(addAssetValue),
+                          },
+                        ]);
+                        setAddAssetName('');
+                        setAddAssetValue('');
+                      }
+                    }}
+                    placeholder="0"
+                    className="w-full pl-6 pr-2 py-1.5 text-[12px] font-mono bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
+                  />
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  if (!addAssetName || !addAssetValue) return;
+                  setBizAssets((prev) => [
+                    ...prev,
+                    {
+                      id: crypto.randomUUID(),
+                      name: addAssetName,
+                      value: parseCurrencyInput(addAssetValue),
+                    },
+                  ]);
+                  setAddAssetName('');
+                  setAddAssetValue('');
+                }}
+                disabled={!addAssetName || !addAssetValue}
+                className="flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium bg-accent-500 hover:bg-accent-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex-shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add
+              </button>
             </div>
           </div>
 

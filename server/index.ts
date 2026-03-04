@@ -1715,7 +1715,8 @@ IMPORTANT: If a document is a PAYMENT RECEIPT or CONFIRMATION for a filing fee (
 - For 1098: { lender, loanNumber, borrowerName, mortgageInterest, outstandingPrincipal, mortgageInsurancePremiums, pointsPaid, propertyAddress, propertyTax, taxYear }
 - For invoices: { vendor, amount, date, invoiceNumber, items, etc }
 - For retirement statements: { institution, accountType, accountNumber, employerContributions, employeeContributions, totalContributions, taxYear }
-- For bank statements: { institution, accountType, accountNumber (last 4), totalDeposits (sum of all credits/deposits for the period), depositCount (number of deposit transactions), startDate (YYYY-MM-DD), endDate (YYYY-MM-DD), periodLabel (e.g. "January 2025") }
+- For bank statements: { institution, accountType, accountNumber (last 4), totalDeposits (sum of all credits/deposits for the period), depositCount (number of deposit transactions), endingBalance (closing balance at end of statement period), startDate (YYYY-MM-DD), endDate (YYYY-MM-DD), periodLabel (e.g. "January 2025") }
+- For credit card statements: { institution, accountType (e.g. "Business Credit Card"), accountNumber (last 4), endingBalance (statement closing balance / amount owed), startDate (YYYY-MM-DD), endDate (YYYY-MM-DD), periodLabel (e.g. "December 2025") }
 - Include ALL visible fields. All monetary values as numbers.
 
 Return: { "naming": {...}, "parsedData": {...} }`,
