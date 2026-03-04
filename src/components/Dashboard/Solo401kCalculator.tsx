@@ -176,6 +176,10 @@ export function Solo401kCalculator({
   const [addAssetName, setAddAssetName] = useState('');
   const [addAssetValue, setAddAssetValue] = useState('');
 
+  // Schedule F1 Line 2: indebtedness to/guaranteed by parent or affiliated entity
+  // For a standalone LLC with no parent, this is $0
+  const [affiliatedDebtInput, setAffiliatedDebtInput] = useState('0');
+
   useEffect(() => {
     localStorage.setItem(assetsKey, JSON.stringify(bizAssets));
   }, [bizAssets, assetsKey]);
@@ -201,7 +205,6 @@ export function Solo401kCalculator({
     const ccBalance = parseCurrencyInput(ccBalanceInput);
     const totalAssets = bizAssets.reduce((s, a) => s + a.value, 0);
     const netWorth = Math.max(0, bankBalance - ccBalance + totalAssets);
-    const tangibleProperty = totalAssets; // for TN franchise tax alternative base
 
     // Self-employment tax: 15.3% on 92.35% of net profit
     const seTaxBase = netProfit * 0.9235;
@@ -225,11 +228,19 @@ export function Solo401kCalculator({
     const exciseTaxBase = Math.max(0, netProfit - TN_EXCISE_DEDUCTION);
     const tnExciseTax = exciseTaxBase * TN_EXCISE_RATE;
 
-    // TN Franchise Tax: 0.25% on greater of (net worth OR tangible property) − $500k exemption, min $100
-    const franchiseTaxBase = Math.max(
-      0,
-      Math.max(netWorth, tangibleProperty) - TN_FRANCHISE_EXEMPTION
-    );
+    // TN Franchise Tax — Schedule F1 (Non-consolidated Net Worth)
+    // Line 1: Net Worth (assets − liabilities)
+    const f1Line1 = netWorth;
+    // Line 2: Indebtedness to or guaranteed by parent/affiliated (addback, $0 for standalone LLC)
+    const f1Line2 = parseCurrencyInput(affiliatedDebtInput);
+    // Line 3: Total (Line 1 + Line 2)
+    const f1Line3 = f1Line1 + f1Line2;
+    // Line 4: Apportionment ratio (100% = 1.0 for TN-only business)
+    const f1Line4 = 1.0;
+    // Line 5: Taxable franchise base → Schedule A, Line 1
+    const f1Line5 = f1Line3 * f1Line4;
+    // Apply $500k exemption (TN Works Tax Act TY2024+), min $100 franchise tax
+    const franchiseTaxBase = Math.max(0, f1Line5 - TN_FRANCHISE_EXEMPTION);
     const tnFranchiseTax = Math.max(TN_FRANCHISE_MIN, franchiseTaxBase * TN_FRANCHISE_RATE);
 
     const tnTotal = tnExciseTax + tnFranchiseTax + TN_SOS_ANNUAL_REPORT;
@@ -245,6 +256,10 @@ export function Solo401kCalculator({
       ccBalance,
       totalAssets,
       netWorth,
+      f1Line1,
+      f1Line2,
+      f1Line3,
+      f1Line5,
       employerContrib: actualEmployer,
       employeeLimit,
       totalContrib,
@@ -259,6 +274,7 @@ export function Solo401kCalculator({
     bankBalanceInput,
     ccBalanceInput,
     bizAssets,
+    affiliatedDebtInput,
     employeeLimit,
     combinedCap,
   ]);
@@ -432,10 +448,11 @@ export function Solo401kCalculator({
 
             {/* Right: TN F&E taxes */}
             <div>
+              {/* Excise Tax */}
               <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-wider mb-1">
-                TN Franchise &amp; Excise Tax
+                TN Excise Tax (Schedule J)
               </p>
-              <Row label="Excise: Net Earnings" value={formatCurrency(calc.netProfit)} />
+              <Row label="Net Earnings" value={formatCurrency(calc.netProfit)} />
               <Row
                 label="Standard Deduction (TY2024+)"
                 value={`− ${formatCurrency(TN_EXCISE_DEDUCTION)}`}
@@ -446,10 +463,18 @@ export function Solo401kCalculator({
               <Row
                 label="Excise Tax (6.5%)"
                 value={formatCurrency(calc.tnExciseTax)}
+                bold
                 color="text-amber-400"
               />
-              <div className="border-t border-border/50 my-2" />
-              <Row label="Bank Balance (Dec 31)" value={formatCurrency(calc.bankBalance)} />
+
+              {/* Franchise Tax — Schedule F1 */}
+              <div className="border-t border-border/50 mt-3 mb-2" />
+              <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-wider mb-1">
+                TN Franchise Tax — Schedule F1
+              </p>
+              {/* Build-up to net worth */}
+              <div className="text-[10px] text-surface-500 pl-1 mb-0.5">Net Worth components</div>
+              <Row label="Bank Balance (Dec 31)" value={formatCurrency(calc.bankBalance)} indent />
               <Row
                 label="CC Balance Owed"
                 value={`− ${formatCurrency(calc.ccBalance)}`}
@@ -464,26 +489,68 @@ export function Solo401kCalculator({
                   color="text-emerald-400"
                 />
               )}
+              {/* Schedule F1 lines matching TNTAP */}
               <Row
-                label="Net Worth (Dec 31)"
-                value={formatCurrency(calc.netWorth)}
+                label="Line 1 — Net Worth"
+                value={formatCurrency(calc.f1Line1)}
                 bold
-                tooltip="Assets − liabilities. For TN franchise tax, the base is the greater of net worth or tangible property."
+                tooltip="Total assets less total liabilities (Schedule F1, Line 1)"
+              />
+              <div className="flex items-center justify-between py-1.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[13px] text-surface-700">Line 2 — Affiliated Debt</span>
+                  <div className="relative group">
+                    <Info className="w-3 h-3 text-surface-500" />
+                    <div className="absolute left-0 bottom-5 z-10 w-64 p-2 text-[11px] text-surface-800 bg-surface-100 border border-border rounded-lg shadow-lg hidden group-hover:block">
+                      Indebtedness to or guaranteed by parent/affiliated corporation. $0 for a
+                      standalone LLC with no parent entity.
+                    </div>
+                  </div>
+                </div>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={affiliatedDebtInput}
+                  onChange={(e) => setAffiliatedDebtInput(e.target.value)}
+                  onBlur={(e) =>
+                    setAffiliatedDebtInput(parseCurrencyInput(e.target.value).toFixed(0))
+                  }
+                  className="w-24 px-2 py-0.5 text-[12px] font-mono text-right bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
+                />
+              </div>
+              <Row
+                label="Line 3 — Total (L1 + L2)"
+                value={formatCurrency(calc.f1Line3)}
+                tooltip="Schedule F1, Line 3"
               />
               <Row
-                label="Base Exemption (TY2024+)"
+                label="Line 4 — Ratio"
+                value="100%"
+                indent
+                color="text-surface-500"
+                tooltip="Apportionment ratio. 100% for a business operating entirely in Tennessee."
+              />
+              <Row
+                label="Line 5 — Taxable Base (→ Sched. A)"
+                value={formatCurrency(calc.f1Line5)}
+                bold
+                tooltip="Schedule F1, Line 5. Enter on Schedule A, Line 1."
+              />
+              <Row
+                label="$500k Exemption (TY2024+)"
                 value={`− ${formatCurrency(TN_FRANCHISE_EXEMPTION)}`}
                 indent
                 color="text-emerald-400"
-                tooltip="TN Works Tax Act: $500,000 exemption against franchise tax base"
+                tooltip="TN Works Tax Act: $500,000 exemption against taxable franchise base"
               />
               <Row
                 label="Franchise Tax (0.25%, min $100)"
                 value={formatCurrency(calc.tnFranchiseTax)}
+                bold
                 color="text-amber-400"
-                tooltip="0.25% of taxable base after exemption, min $100. Base = greater of net worth or tangible property."
               />
-              <div className="border-t border-border/50 my-2" />
+
+              <div className="border-t border-border/50 mt-3 mb-2" />
               <Row
                 label="SOS Annual Report Fee"
                 value={formatCurrency(TN_SOS_ANNUAL_REPORT)}
