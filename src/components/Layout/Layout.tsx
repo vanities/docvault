@@ -7,6 +7,7 @@ import { TaxYearView } from '../TaxYear/TaxYearView';
 import { BusinessDocsView } from '../BusinessDocs/BusinessDocsView';
 import { AllFilesView } from '../AllFiles/AllFilesView';
 import { SettingsView } from '../Settings/SettingsView';
+import { TnTaxView } from '../TnTax/TnTaxView';
 import { AddEntityModal } from '../Settings/AddEntityModal';
 import { SearchResultsView } from '../Search/SearchResultsView';
 
@@ -71,6 +72,8 @@ export function Layout() {
         return <AllFilesView />;
       case 'settings':
         return <SettingsView />;
+      case 'tn-tax':
+        return <TnTaxView />;
       default:
         return <TaxYearView />;
     }
