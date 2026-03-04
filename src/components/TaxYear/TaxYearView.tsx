@@ -848,6 +848,7 @@ export function TaxYearView() {
               }
               defaultExpenses={expenseSummary.totalDeductible}
               taxYear={selectedYear}
+              entity={selectedEntity}
             />
           </div>
         )}

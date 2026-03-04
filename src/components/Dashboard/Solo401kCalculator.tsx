@@ -1,10 +1,18 @@
-import { useState, useMemo } from 'react';
-import { Landmark, ChevronDown, ChevronUp, Info } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Landmark, ChevronDown, ChevronUp, Info, Plus, Trash2 } from 'lucide-react';
 
 interface Solo401kCalculatorProps {
-  defaultGross: number; // Bank deposits (most accurate) or invoice total
-  defaultExpenses: number; // Deductible expenses from receipts
+  defaultGross: number;
+  defaultExpenses: number;
   taxYear: number;
+  entity: string;
+}
+
+interface Contribution {
+  id: string;
+  date: string; // YYYY-MM-DD
+  amount: number;
+  type: 'employee' | 'employer';
 }
 
 function formatCurrency(amount: number): string {
@@ -20,7 +28,7 @@ function parseCurrencyInput(raw: string): number {
   return parseFloat(raw.replace(/[^0-9.]/g, '')) || 0;
 }
 
-// Employee deferral limits by year
+// IRS limits by year
 const EMPLOYEE_LIMIT: Record<number, number> = {
   2024: 23000,
   2025: 23500,
@@ -31,6 +39,14 @@ const COMBINED_CAP: Record<number, number> = {
   2025: 70000,
   2026: 70000,
 };
+
+// TN F&E constants (TY2024+)
+const TN_EXCISE_RATE = 0.065;
+const TN_EXCISE_DEDUCTION = 50000; // Standard deduction from net earnings (TN Works Tax Act)
+const TN_FRANCHISE_RATE = 0.0025;
+const TN_FRANCHISE_EXEMPTION = 500000; // Base exemption against net worth
+const TN_FRANCHISE_MIN = 100;
+const TN_SOS_ANNUAL_REPORT = 300; // TN SOS annual report fee (domestic LLC)
 
 interface RowProps {
   label: string;
@@ -61,7 +77,7 @@ function Row({ label, value, indent, bold, color, tooltip }: RowProps) {
               <Info className="w-3 h-3" />
             </button>
             {showTip && (
-              <div className="absolute left-0 bottom-5 z-10 w-56 p-2 text-[11px] text-surface-800 bg-surface-100 border border-border rounded-lg shadow-lg">
+              <div className="absolute left-0 bottom-5 z-10 w-64 p-2 text-[11px] text-surface-800 bg-surface-100 border border-border rounded-lg shadow-lg">
                 {tooltip}
               </div>
             )}
@@ -77,14 +93,74 @@ function Row({ label, value, indent, bold, color, tooltip }: RowProps) {
   );
 }
 
+function CurrencyInput({
+  label,
+  value,
+  onChange,
+  onBlur,
+  hint,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  onBlur: (v: string) => void;
+  hint?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-[11px] font-medium text-surface-600 uppercase tracking-wider mb-1.5">
+        {label}
+      </label>
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-500 text-sm">$</span>
+        <input
+          type="text"
+          inputMode="numeric"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={(e) => {
+            const val = parseCurrencyInput(e.target.value);
+            onBlur(val.toFixed(0));
+          }}
+          className="w-full pl-7 pr-3 py-2 text-sm font-mono bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
+        />
+      </div>
+      {hint && <p className="text-[10px] text-surface-500 mt-1">{hint}</p>}
+    </div>
+  );
+}
+
 export function Solo401kCalculator({
   defaultGross,
   defaultExpenses,
   taxYear,
+  entity,
 }: Solo401kCalculatorProps) {
   const [expanded, setExpanded] = useState(true);
   const [grossInput, setGrossInput] = useState(defaultGross.toFixed(0));
   const [expensesInput, setExpensesInput] = useState(defaultExpenses.toFixed(0));
+  const [netWorthInput, setNetWorthInput] = useState('0');
+
+  const storageKey = `docvault-401k-contributions-${entity}-${taxYear}`;
+
+  const [contributions, setContributions] = useState<Contribution[]>(() => {
+    try {
+      const stored = localStorage.getItem(storageKey);
+      return stored ? (JSON.parse(stored) as Contribution[]) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Contribution entry form state
+  const [addDate, setAddDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [addAmount, setAddAmount] = useState('');
+  const [addType, setAddType] = useState<'employee' | 'employer'>('employee');
+
+  // Persist contributions to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem(storageKey, JSON.stringify(contributions));
+  }, [contributions, storageKey]);
 
   const employeeLimit = EMPLOYEE_LIMIT[taxYear] ?? 23500;
   const combinedCap = COMBINED_CAP[taxYear] ?? 70000;
@@ -93,6 +169,7 @@ export function Solo401kCalculator({
     const gross = parseCurrencyInput(grossInput);
     const expenses = parseCurrencyInput(expensesInput);
     const netProfit = Math.max(0, gross - expenses);
+    const netWorth = parseCurrencyInput(netWorthInput);
 
     // Self-employment tax: 15.3% on 92.35% of net profit
     const seTaxBase = netProfit * 0.9235;
@@ -102,20 +179,26 @@ export function Solo401kCalculator({
     // Plan compensation = net profit − half SE tax deduction
     const planComp = Math.max(0, netProfit - halfSeTax);
 
-    // Employer contribution: IRS reduced rate = 25% ÷ (1 + 25%) = 20% of plan comp
-    // The contribution itself reduces plan compensation (circular), so the IRS-approved
-    // effective rate for a 25% profit-sharing plan is 20%. (Publication 560, Worksheet 1)
+    // Employer contribution: IRS reduced rate = 25% ÷ 125% = 20%
+    // (Publication 560, Worksheet 1 — accounts for circular deduction)
     const employerContrib = planComp * 0.2;
 
-    // Total before cap
     const rawTotal = employerContrib + employeeLimit;
     const totalContrib = Math.min(rawTotal, combinedCap);
     const actualEmployer = Math.min(employerContrib, combinedCap - employeeLimit);
     const remainingCapacity = Math.max(0, combinedCap - totalContrib);
 
-    // TN excise tax (6.5% on net earnings, $100 min, + $300 annual report)
-    const tnExciseTax = Math.max(100, netProfit * 0.065);
-    const tnTotal = tnExciseTax + 300;
+    // TN Excise Tax: 6.5% on (net earnings − $50k standard deduction), min $0
+    // Standard deduction added by TN Works Tax Act starting TY2024
+    const exciseTaxBase = Math.max(0, netProfit - TN_EXCISE_DEDUCTION);
+    const tnExciseTax = exciseTaxBase * TN_EXCISE_RATE;
+
+    // TN Franchise Tax: 0.25% on (net worth − $500k base exemption), min $100
+    // Based on year-end net worth (assets − liabilities from books/records)
+    const franchiseTaxBase = Math.max(0, netWorth - TN_FRANCHISE_EXEMPTION);
+    const tnFranchiseTax = Math.max(TN_FRANCHISE_MIN, franchiseTaxBase * TN_FRANCHISE_RATE);
+
+    const tnTotal = tnExciseTax + tnFranchiseTax + TN_SOS_ANNUAL_REPORT;
 
     return {
       gross,
@@ -129,9 +212,41 @@ export function Solo401kCalculator({
       totalContrib,
       remainingCapacity,
       tnExciseTax,
+      tnFranchiseTax,
       tnTotal,
     };
-  }, [grossInput, expensesInput, employeeLimit, combinedCap]);
+  }, [grossInput, expensesInput, netWorthInput, employeeLimit, combinedCap]);
+
+  // Contribution totals
+  const totalEmployeeContrib = contributions
+    .filter((c) => c.type === 'employee')
+    .reduce((s, c) => s + c.amount, 0);
+  const totalEmployerContrib = contributions
+    .filter((c) => c.type === 'employer')
+    .reduce((s, c) => s + c.amount, 0);
+  const totalContributed = totalEmployeeContrib + totalEmployerContrib;
+  const remaining401k = Math.max(0, calc.totalContrib - totalContributed);
+
+  const contrib401kPct = calc.totalContrib > 0 ? (totalContributed / calc.totalContrib) * 100 : 0;
+  const barColor =
+    contrib401kPct >= 100 ? 'bg-red-400' : contrib401kPct >= 80 ? 'bg-amber-400' : 'bg-blue-400';
+
+  function addContribution() {
+    const amount = parseCurrencyInput(addAmount);
+    if (!amount || !addDate) return;
+    const newContrib: Contribution = {
+      id: crypto.randomUUID(),
+      date: addDate,
+      amount,
+      type: addType,
+    };
+    setContributions((prev) => [...prev, newContrib].sort((a, b) => a.date.localeCompare(b.date)));
+    setAddAmount('');
+  }
+
+  function removeContribution(id: string) {
+    setContributions((prev) => prev.filter((c) => c.id !== id));
+  }
 
   return (
     <div className="glass-card rounded-xl overflow-hidden">
@@ -145,7 +260,9 @@ export function Solo401kCalculator({
             <Landmark className="w-4 h-4 text-blue-400" />
           </div>
           <div className="text-left">
-            <p className="text-[13px] font-semibold text-surface-900">Solo 401(k) Calculator</p>
+            <p className="text-[13px] font-semibold text-surface-900">
+              Solo 401(k) & TN Tax Calculator
+            </p>
             <p className="text-[11px] text-surface-600">
               {taxYear} · Self-employment income only · not W-2 or other LLCs
             </p>
@@ -154,7 +271,7 @@ export function Solo401kCalculator({
         <div className="flex items-center gap-3">
           {!expanded && (
             <span className="text-sm font-mono font-bold text-blue-400">
-              {formatCurrency(calc.totalContrib)} max contribution
+              {formatCurrency(calc.totalContrib)} max · {formatCurrency(remaining401k)} left
             </span>
           )}
           {expanded ? (
@@ -166,64 +283,40 @@ export function Solo401kCalculator({
       </button>
 
       {expanded && (
-        <div className="px-5 pb-5">
+        <div className="px-5 pb-5 space-y-5">
           {/* Inputs */}
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <div>
-              <label className="block text-[11px] font-medium text-surface-600 uppercase tracking-wider mb-1.5">
-                Gross Revenue
-              </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-500 text-sm">
-                  $
-                </span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={grossInput}
-                  onChange={(e) => setGrossInput(e.target.value)}
-                  onBlur={(e) => {
-                    const val = parseCurrencyInput(e.target.value);
-                    setGrossInput(val.toFixed(0));
-                  }}
-                  className="w-full pl-7 pr-3 py-2 text-sm font-mono bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
-                />
-              </div>
-              <p className="text-[10px] text-surface-500 mt-1">From bank deposits or invoices</p>
-            </div>
-            <div>
-              <label className="block text-[11px] font-medium text-surface-600 uppercase tracking-wider mb-1.5">
-                Business Expenses
-              </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-500 text-sm">
-                  $
-                </span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={expensesInput}
-                  onChange={(e) => setExpensesInput(e.target.value)}
-                  onBlur={(e) => {
-                    const val = parseCurrencyInput(e.target.value);
-                    setExpensesInput(val.toFixed(0));
-                  }}
-                  className="w-full pl-7 pr-3 py-2 text-sm font-mono bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
-                />
-              </div>
-              <p className="text-[10px] text-surface-500 mt-1">Schedule C deductible expenses</p>
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <CurrencyInput
+              label="Gross Revenue"
+              value={grossInput}
+              onChange={setGrossInput}
+              onBlur={setGrossInput}
+              hint="From bank deposits or invoices"
+            />
+            <CurrencyInput
+              label="Business Expenses"
+              value={expensesInput}
+              onChange={setExpensesInput}
+              onBlur={setExpensesInput}
+              hint="Schedule C deductible expenses"
+            />
+            <CurrencyInput
+              label="Dec. Year-End Net Worth"
+              value={netWorthInput}
+              onChange={setNetWorthInput}
+              onBlur={setNetWorthInput}
+              hint="Assets − liabilities at 12/31 (franchise tax basis)"
+            />
           </div>
 
-          {/* Divider */}
-          <div className="border-t border-border mb-3" />
+          <div className="border-t border-border" />
 
           {/* Calculation breakdown */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8">
-            {/* Left: SE tax chain */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10">
+            {/* Left: SE tax + 401k limits */}
             <div>
               <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-wider mb-1">
-                Net Profit Calculation
+                Net Profit
               </p>
               <Row label="Gross Revenue" value={formatCurrency(calc.gross)} />
               <Row
@@ -236,35 +329,33 @@ export function Solo401kCalculator({
               <div className="border-t border-border/50 my-2" />
               <Row
                 label="SE Tax (15.3% × 92.35%)"
-                value={formatCurrency(calc.seTax)}
+                value={`− ${formatCurrency(calc.seTax)}`}
                 indent
                 color="text-red-400"
-                tooltip="Self-employment tax: 12.4% Social Security + 2.9% Medicare, applied to 92.35% of net profit"
+                tooltip="Self-employment tax: 12.4% SS + 2.9% Medicare on 92.35% of net profit"
               />
               <Row
                 label="½ SE Tax Deduction"
                 value={`− ${formatCurrency(calc.halfSeTax)}`}
                 indent
                 color="text-emerald-400"
-                tooltip="IRS allows deducting half of SE tax from gross income before calculating plan compensation"
+                tooltip="IRS allows deducting half of SE tax before calculating plan compensation"
               />
               <Row label="Plan Compensation" value={formatCurrency(calc.planComp)} bold />
-            </div>
 
-            {/* Right: 401k limits */}
-            <div>
+              <div className="border-t border-border/50 mt-3 mb-2" />
               <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-wider mb-1">
-                Solo 401(k) Contribution Limit
+                Solo 401(k) Limit
               </p>
               <Row
                 label="Employee Deferral"
                 value={formatCurrency(calc.employeeLimit)}
-                tooltip={`${taxYear} IRS elective deferral limit. You can contribute up to this as the "employee" of your own business.`}
+                tooltip={`${taxYear} IRS elective deferral limit.`}
               />
               <Row
                 label="Employer Profit-Sharing (20%)"
                 value={formatCurrency(calc.employerContrib)}
-                tooltip="IRS reduced rate: 25% ÷ 125% = 20% of plan compensation. Because your own contribution reduces your plan compensation (circular), Publication 560 specifies 20% as the effective rate for a 25% profit-sharing plan."
+                tooltip="IRS reduced rate: 25% ÷ 125% = 20% of plan compensation (Publication 560, Worksheet 1). Accounts for the circular self-deduction."
               />
               <div className="border-t border-border/50 my-2" />
               <Row
@@ -275,30 +366,58 @@ export function Solo401kCalculator({
               />
               {calc.remainingCapacity > 0 && (
                 <Row
-                  label={`Remaining to $${(combinedCap / 1000).toFixed(0)}K cap`}
+                  label={`Headroom to $${(combinedCap / 1000).toFixed(0)}K cap`}
                   value={formatCurrency(calc.remainingCapacity)}
                   indent
                   color="text-surface-500"
                   tooltip={`IRS combined limit for ${taxYear} is $${combinedCap.toLocaleString()}`}
                 />
               )}
+            </div>
 
-              {/* TN Excise Tax */}
-              <div className="border-t border-border/50 mt-3 mb-2" />
+            {/* Right: TN F&E taxes */}
+            <div>
               <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-wider mb-1">
-                TN Business Tax (AM2 LLC)
+                TN Franchise &amp; Excise Tax
               </p>
+              <Row label="Excise: Net Earnings" value={formatCurrency(calc.netProfit)} />
               <Row
-                label="TN Excise Tax (6.5%)"
-                value={formatCurrency(calc.tnExciseTax)}
-                color="text-amber-400"
-                tooltip="Tennessee excise tax: 6.5% on net earnings, $100 minimum"
+                label="Standard Deduction (TY2024+)"
+                value={`− ${formatCurrency(TN_EXCISE_DEDUCTION)}`}
+                indent
+                color="text-emerald-400"
+                tooltip="TN Works Tax Act: $50,000 standard deduction from net earnings before applying 6.5% excise rate"
               />
               <Row
-                label="Annual Report Fee"
-                value={formatCurrency(300)}
-                indent
+                label="Excise Tax (6.5%)"
+                value={formatCurrency(calc.tnExciseTax)}
                 color="text-amber-400"
+              />
+              <div className="border-t border-border/50 my-2" />
+              <Row
+                label="Franchise: Year-End Net Worth"
+                value={formatCurrency(parseCurrencyInput(netWorthInput))}
+                tooltip="Assets minus liabilities from your books at December 31. For a cash-basis LLC with no debt, this is typically your business bank balance."
+              />
+              <Row
+                label="Base Exemption (TY2024+)"
+                value={`− ${formatCurrency(TN_FRANCHISE_EXEMPTION)}`}
+                indent
+                color="text-emerald-400"
+                tooltip="TN Works Tax Act: $500,000 exemption against the franchise tax base (net worth)"
+              />
+              <Row
+                label="Franchise Tax (0.25%, min $100)"
+                value={formatCurrency(calc.tnFranchiseTax)}
+                color="text-amber-400"
+                tooltip="0.25% of taxable net worth after exemption. $100 minimum regardless of net worth."
+              />
+              <div className="border-t border-border/50 my-2" />
+              <Row
+                label="SOS Annual Report Fee"
+                value={formatCurrency(TN_SOS_ANNUAL_REPORT)}
+                indent
+                tooltip="Tennessee Secretary of State annual report filing fee for domestic LLCs"
               />
               <Row
                 label="TN Total Owed"
@@ -306,6 +425,136 @@ export function Solo401kCalculator({
                 bold
                 color="text-amber-400"
               />
+            </div>
+          </div>
+
+          <div className="border-t border-border" />
+
+          {/* Contributions tracker */}
+          <div>
+            <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-wider mb-3">
+              Contributions Made
+            </p>
+
+            {/* Progress bar */}
+            <div className="mb-3">
+              <div className="flex justify-between text-[11px] text-surface-600 mb-1">
+                <span>{formatCurrency(totalContributed)} contributed</span>
+                <span>
+                  {formatCurrency(remaining401k)} remaining of {formatCurrency(calc.totalContrib)}{' '}
+                  max
+                </span>
+              </div>
+              <div className="h-2 bg-surface-300/50 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-300 ${barColor}`}
+                  style={{ width: `${Math.min(100, contrib401kPct).toFixed(1)}%` }}
+                />
+              </div>
+              <div className="flex gap-4 mt-1.5 text-[11px]">
+                <span className="text-surface-600">
+                  Employee:{' '}
+                  <span className="font-mono text-surface-800">
+                    {formatCurrency(totalEmployeeContrib)}
+                  </span>
+                  <span className="text-surface-500"> / {formatCurrency(employeeLimit)}</span>
+                </span>
+                <span className="text-surface-600">
+                  Employer:{' '}
+                  <span className="font-mono text-surface-800">
+                    {formatCurrency(totalEmployerContrib)}
+                  </span>
+                  <span className="text-surface-500">
+                    {' '}
+                    / {formatCurrency(calc.employerContrib)}
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            {/* Contribution list */}
+            {contributions.length > 0 && (
+              <div className="mb-3 space-y-1">
+                {contributions.map((c) => (
+                  <div
+                    key={c.id}
+                    className="flex items-center justify-between py-1 px-2 rounded-lg hover:bg-surface-300/20 group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-[11px] text-surface-500 font-mono">{c.date}</span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                          c.type === 'employee'
+                            ? 'bg-blue-500/10 text-blue-400'
+                            : 'bg-emerald-500/10 text-emerald-400'
+                        }`}
+                      >
+                        {c.type}
+                      </span>
+                      <span className="text-[13px] font-mono text-surface-900">
+                        {formatCurrency(c.amount)}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => removeContribution(c.id)}
+                      className="opacity-0 group-hover:opacity-100 text-surface-500 hover:text-red-400 transition-all"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add contribution form */}
+            <div className="flex gap-2 items-end">
+              <div className="flex-shrink-0">
+                <label className="block text-[10px] text-surface-500 mb-1">Date</label>
+                <input
+                  type="date"
+                  value={addDate}
+                  onChange={(e) => setAddDate(e.target.value)}
+                  className="px-2 py-1.5 text-[12px] font-mono bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
+                />
+              </div>
+              <div className="flex-shrink-0">
+                <label className="block text-[10px] text-surface-500 mb-1">Type</label>
+                <select
+                  value={addType}
+                  onChange={(e) => setAddType(e.target.value as 'employee' | 'employer')}
+                  className="px-2 py-1.5 text-[12px] bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
+                >
+                  <option value="employee">Employee</option>
+                  <option value="employer">Employer</option>
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="block text-[10px] text-surface-500 mb-1">Amount</label>
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-surface-500 text-sm">
+                    $
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={addAmount}
+                    onChange={(e) => setAddAmount(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') addContribution();
+                    }}
+                    placeholder="0"
+                    className="w-full pl-6 pr-2 py-1.5 text-[12px] font-mono bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
+                  />
+                </div>
+              </div>
+              <button
+                onClick={addContribution}
+                disabled={!addAmount || !addDate}
+                className="flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium bg-accent-500 hover:bg-accent-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex-shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add
+              </button>
             </div>
           </div>
         </div>
