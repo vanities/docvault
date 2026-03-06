@@ -60,24 +60,24 @@ function StatCard({ icon: Icon, label, value, altValue, subtext, color }: StatCa
   const c = colorConfig[color];
 
   return (
-    <div className={`glass-card rounded-xl p-5 hover:${c.glow} transition-all duration-200`}>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-[11px] text-surface-700 font-medium uppercase tracking-wider">
-            {label}
-          </p>
-          <p className="text-2xl font-bold text-surface-950 mt-1.5 font-mono tracking-tight">
-            {value}
-          </p>
-          {altValue && altValue !== value && (
-            <p className="text-xs text-surface-500 mt-0.5 font-mono">{altValue} w/ hidden</p>
-          )}
-          {subtext && <p className="text-[11px] text-surface-600 mt-1">{subtext}</p>}
+    <div className={`glass-card rounded-xl p-4 hover:${c.glow} transition-all duration-200`}>
+      <div className="flex items-center gap-2 mb-2">
+        <div className={`p-1.5 rounded-lg ${c.bg} flex-shrink-0`}>
+          <Icon className={`w-4 h-4 ${c.icon}`} />
         </div>
-        <div className={`p-2.5 rounded-xl ${c.bg}`}>
-          <Icon className={`w-5 h-5 ${c.icon}`} />
-        </div>
+        <p className="text-[11px] text-surface-700 font-medium uppercase tracking-wider truncate">
+          {label}
+        </p>
       </div>
+      <p className="text-xl font-bold text-surface-950 font-mono tracking-tight truncate">
+        {value}
+      </p>
+      {altValue && altValue !== value && (
+        <p className="text-[10px] text-surface-500 mt-0.5 font-mono truncate">
+          {altValue} w/ hidden
+        </p>
+      )}
+      {subtext && <p className="text-[10px] text-surface-600 mt-1 truncate">{subtext}</p>}
     </div>
   );
 }
