@@ -220,9 +220,15 @@ export function TnTaxView() {
       if (!data) return;
       const endDate = (data.endDate as string) || '';
       const periodLabel = ((data.periodLabel as string) || '').toLowerCase();
-      const isDec = endDate.startsWith(decMonth) || periodLabel.includes('december');
+      const fileName = (doc.fileName || '').toLowerCase();
+      const isDec =
+        endDate.startsWith(decMonth) ||
+        periodLabel.includes('december') ||
+        fileName.includes(`${selectedYear}-12`);
       if (!isDec) return;
-      const ending = Number(data.endingBalance || 0);
+      const ending = Number(
+        data.endingBalance || data.newBalance || data.balanceDue || data.statementBalance || 0
+      );
       if (doc.type === 'bank-statement') decBankBalance += ending;
       else if (doc.type === 'credit-card-statement') decCcBalance += ending;
     });
