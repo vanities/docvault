@@ -144,6 +144,7 @@ Configured in `server/config.json`. Two types:
 
 ## Development Notes
 
+- **NEVER use local data files** — always SSH to NAS (`ssh nas`) and read from `/mnt/user/appdata/docvault/data/` for parsed data, metadata, etc. The local `data/` directory uses symlinks that may be stale or incomplete.
 - Server uses Bun's native `Bun.serve()` (not Express)
 - Hot-reload enabled via `bun --watch`
 - Files stored in Dropbox via symlinks in `data/` directory (local dev), or direct volume mount (Docker)
