@@ -312,7 +312,7 @@ export function TnTaxView() {
     const j2L5 = parseNum(j2Line5);
     const j2L6 = parseNum(j2Line6);
     const j2L7 = j2L1 + j2L2 + j2L3 + j2L4 + j2L5 + j2L6;
-    const j2L8 = j2Line8Override !== null ? parseNum(j2Line8Override) : Math.max(0, j2L7 * 0.9235);
+    const j2L8 = j2Line8Override !== null ? parseNum(j2Line8Override) : Math.max(0, j2L7);
     const j2L9 = Math.max(0, j2L7 - j2L8);
 
     // ── Schedule J (full 39-line) ──────────────────────────────────────────────
@@ -709,8 +709,8 @@ export function TnTaxView() {
               <Info className="w-3 h-3 text-surface-400" />
               <div className="absolute left-0 bottom-5 z-20 w-72 p-2 text-[11px] text-surface-800 bg-surface-100 border border-border rounded-lg shadow-lg hidden group-hover:block">
                 Amount subject to self-employment taxes distributable or paid to the single member.
-                If negative, enter zero. Default is 92.35% of Line 7 (the SE tax base per IRS
-                rules). Also include on Schedule K, Line 3.
+                If negative, enter zero. Default is Line 7 (full pass-through for SMLLC). Also
+                include on Schedule K, Line 3.
               </div>
             </div>
           </div>
@@ -725,7 +725,7 @@ export function TnTaxView() {
               onChange={(e) => setJ2Line8Override(e.target.value)}
               onBlur={(e) => {
                 const v = parseNum(e.target.value);
-                if (Math.abs(v - calc.j2L7 * 0.9235) < 0.01) {
+                if (Math.abs(v - calc.j2L7) < 0.01) {
                   setJ2Line8Override(null); // reset to auto
                 } else {
                   setJ2Line8Override(v.toFixed(2));
