@@ -349,6 +349,35 @@ async function saveAssets(assets: AssetsData): Promise<void> {
 }
 
 // ============================================================================
+// 401k Contributions Storage
+// ============================================================================
+
+const CONTRIBUTIONS_FILE = path.join(DATA_DIR, '.docvault-contributions.json');
+
+interface Contribution401k {
+  id: string;
+  date: string;
+  amount: number;
+  type: 'employee' | 'employer';
+}
+
+// Keyed by "entity/year" e.g. "am2-llc/2025"
+type ContributionsData = Record<string, Contribution401k[]>;
+
+async function loadContributions(): Promise<ContributionsData> {
+  try {
+    const content = await fs.readFile(CONTRIBUTIONS_FILE, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return {};
+  }
+}
+
+async function saveContributions(data: ContributionsData): Promise<void> {
+  await fs.writeFile(CONTRIBUTIONS_FILE, JSON.stringify(data, null, 2));
+}
+
+// ============================================================================
 // Todos Storage
 // ============================================================================
 
@@ -1469,6 +1498,33 @@ async function handleRequest(req: Request): Promise<Response> {
     allAssets[toEntity] = copied;
     await saveAssets(allAssets);
     return jsonResponse({ ok: true, assets: copied });
+  }
+
+  // ========================================================================
+  // 401k Contributions API
+  // ========================================================================
+
+  // GET /api/contributions/:entity/:year
+  const contribGetMatch = pathname.match(/^\/api\/contributions\/([^/]+)\/(\d{4})$/);
+  if (contribGetMatch && req.method === 'GET') {
+    const key = `${contribGetMatch[1]}/${contribGetMatch[2]}`;
+    const allData = await loadContributions();
+    return jsonResponse({ contributions: allData[key] || [] });
+  }
+
+  // PUT /api/contributions/:entity/:year
+  const contribPutMatch = pathname.match(/^\/api\/contributions\/([^/]+)\/(\d{4})$/);
+  if (contribPutMatch && req.method === 'PUT') {
+    const key = `${contribPutMatch[1]}/${contribPutMatch[2]}`;
+    const body = await req.json();
+    const { contributions } = body;
+    if (!Array.isArray(contributions)) {
+      return jsonResponse({ error: 'contributions must be an array' }, 400);
+    }
+    const allData = await loadContributions();
+    allData[key] = contributions;
+    await saveContributions(allData);
+    return jsonResponse({ ok: true, contributions });
   }
 
   // ========================================================================

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Landmark, ChevronDown, ChevronUp, Info, Plus, Trash2, Calculator } from 'lucide-react';
 import { useAppContext } from '../../contexts/AppContext';
 
@@ -14,6 +14,10 @@ interface Contribution {
   date: string; // YYYY-MM-DD
   amount: number;
   type: 'employee' | 'employer';
+}
+
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function formatCurrency(amount: number): string {
@@ -134,26 +138,37 @@ export function Solo401kCalculator({
   const [grossInput, setGrossInput] = useState(defaultGross.toFixed(0));
   const [expensesInput, setExpensesInput] = useState(defaultExpenses.toFixed(0));
 
-  const storageKey = `docvault-401k-contributions-${entity}-${taxYear}`;
-
-  const [contributions, setContributions] = useState<Contribution[]>(() => {
-    try {
-      const stored = localStorage.getItem(storageKey);
-      return stored ? (JSON.parse(stored) as Contribution[]) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [contributions, setContributions] = useState<Contribution[]>([]);
+  const contribLoadedRef = useRef(false);
 
   // Contribution entry form state
   const [addDate, setAddDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [addAmount, setAddAmount] = useState('');
   const [addType, setAddType] = useState<'employee' | 'employer'>('employee');
 
-  // Persist contributions to localStorage whenever they change
+  // Load contributions from server
   useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify(contributions));
-  }, [contributions, storageKey]);
+    contribLoadedRef.current = false;
+    fetch(`/api/contributions/${entity}/${taxYear}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setContributions(data.contributions || []);
+        contribLoadedRef.current = true;
+      })
+      .catch(() => {
+        contribLoadedRef.current = true;
+      });
+  }, [entity, taxYear]);
+
+  // Save contributions to server when they change (skip initial load)
+  useEffect(() => {
+    if (!contribLoadedRef.current) return;
+    fetch(`/api/contributions/${entity}/${taxYear}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contributions }),
+    }).catch(() => {});
+  }, [contributions, entity, taxYear]);
 
   const employeeLimit = EMPLOYEE_LIMIT[taxYear] ?? 23500;
   const combinedCap = COMBINED_CAP[taxYear] ?? 70000;
@@ -212,7 +227,7 @@ export function Solo401kCalculator({
     const amount = parseCurrencyInput(addAmount);
     if (!amount || !addDate) return;
     const newContrib: Contribution = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       date: addDate,
       amount,
       type: addType,

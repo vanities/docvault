@@ -102,6 +102,8 @@ All endpoints are entity-aware:
 | GET    | `/api/assets/:entity`                    | Get business assets for entity                   |
 | PUT    | `/api/assets/:entity`                    | Replace business assets for entity               |
 | POST   | `/api/assets/:entity/copy/:from`         | Copy assets from another entity                  |
+| GET    | `/api/contributions/:entity/:year`       | Get 401k contributions for entity/year           |
+| PUT    | `/api/contributions/:entity/:year`       | Replace 401k contributions for entity/year       |
 | GET    | `/api/sync-status`                       | Dropbox sync status (from NAS cron job)          |
 
 ## Entities
