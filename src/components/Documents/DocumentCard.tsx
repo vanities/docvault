@@ -193,38 +193,38 @@ export function DocumentCard({
       }}
     >
       <div className="flex items-start gap-3">
-        {/* Checkbox */}
-        {onToggleSelect && (
-          <div
-            className="flex-shrink-0 mt-0.5 cursor-pointer"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleSelect(doc.id);
-            }}
-          >
+        {/* Checkbox + Icon stacked */}
+        <div className="flex-shrink-0 flex flex-col items-center gap-1.5">
+          {onToggleSelect && (
             <div
-              className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                isSelected
-                  ? 'bg-accent-500 border-accent-500'
-                  : 'border-surface-500 bg-surface-200/50 group-hover:border-surface-400'
-              }`}
+              className="cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleSelect(doc.id);
+              }}
             >
-              {isSelected && <Check className="w-3 h-3 text-white" />}
-            </div>
-          </div>
-        )}
-
-        {/* Icon */}
-        <div className="relative w-10 h-10 bg-surface-300/40 rounded-lg flex items-center justify-center flex-shrink-0">
-          <FileIcon fileType={doc.fileType} className="w-5 h-5 text-surface-700" />
-          {doc.parsedData && (
-            <div
-              className="absolute -top-1 -right-1 w-4 h-4 bg-accent-500 rounded-full flex items-center justify-center"
-              title="Parsed"
-            >
-              <Sparkles className="w-2.5 h-2.5 text-surface-0" />
+              <div
+                className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                  isSelected
+                    ? 'bg-accent-500 border-accent-500'
+                    : 'border-surface-500 bg-surface-200/50 group-hover:border-surface-400'
+                }`}
+              >
+                {isSelected && <Check className="w-3 h-3 text-white" />}
+              </div>
             </div>
           )}
+          <div className="relative w-10 h-10 bg-surface-300/40 rounded-lg flex items-center justify-center">
+            <FileIcon fileType={doc.fileType} className="w-5 h-5 text-surface-700" />
+            {doc.parsedData && (
+              <div
+                className="absolute -top-1 -right-1 w-4 h-4 bg-accent-500 rounded-full flex items-center justify-center"
+                title="Parsed"
+              >
+                <Sparkles className="w-2.5 h-2.5 text-surface-0" />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Content */}
