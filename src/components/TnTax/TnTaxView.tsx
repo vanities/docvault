@@ -25,7 +25,11 @@ function fmt(n: number) {
 }
 
 function parseNum(raw: string) {
-  return parseFloat(raw.replace(/[^0-9.]/g, '')) || 0;
+  return parseFloat(raw.replace(/[^0-9.-]/g, '')) || 0;
+}
+
+function fmtInput(n: number) {
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 interface BusinessAsset {
@@ -269,12 +273,12 @@ export function TnTaxView() {
   const eVal = (line: string) => schEPay[line] ?? '0.00';
   const setEVal = (line: string) => (v: string) => setSchEPay((p) => ({ ...p, [line]: v }));
 
-  const grossInput = userEdits.gross ?? derived.gross.toFixed(2);
-  const expensesInput = userEdits.expenses ?? derived.totalDeductible.toFixed(2);
+  const grossInput = userEdits.gross ?? fmtInput(derived.gross);
+  const expensesInput = userEdits.expenses ?? fmtInput(derived.totalDeductible);
   const bankInput =
-    userEdits.bank ?? (derived.decBankBalance > 0 ? derived.decBankBalance.toFixed(2) : '0.00');
+    userEdits.bank ?? (derived.decBankBalance > 0 ? fmtInput(derived.decBankBalance) : '0.00');
   const ccInput =
-    userEdits.cc ?? (derived.decCcBalance > 0 ? derived.decCcBalance.toFixed(2) : '0.00');
+    userEdits.cc ?? (derived.decCcBalance > 0 ? fmtInput(derived.decCcBalance) : '0.00');
 
   const setGrossInput = (v: string) => setUserEdits((p) => ({ ...p, gross: v }));
   const setExpensesInput = (v: string) => setUserEdits((p) => ({ ...p, expenses: v }));
@@ -548,7 +552,7 @@ export function TnTaxView() {
     );
   }
 
-  const blurFmt = (setter: (v: string) => void) => (v: string) => setter(parseNum(v).toFixed(2));
+  const blurFmt = (setter: (v: string) => void) => (v: string) => setter(fmtInput(parseNum(v)));
 
   function addAsset() {
     if (!addAssetName || !addAssetValue) return;
@@ -709,7 +713,7 @@ export function TnTaxView() {
               inputMode="numeric"
               value={j2Line6}
               onChange={(e) => setJ2Line6(e.target.value)}
-              onBlur={(e) => setJ2Line6(parseNum(e.target.value).toFixed(2))}
+              onBlur={(e) => setJ2Line6(fmtInput(parseNum(e.target.value)))}
               className="w-full pl-6 pr-2 py-1 text-[13px] font-mono text-right bg-surface-200/60 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
             />
           </div>
@@ -745,14 +749,14 @@ export function TnTaxView() {
             <input
               type="text"
               inputMode="numeric"
-              value={j2Line8Override ?? calc.j2L8.toFixed(2)}
+              value={j2Line8Override ?? fmtInput(calc.j2L8)}
               onChange={(e) => setJ2Line8Override(e.target.value)}
               onBlur={(e) => {
                 const v = parseNum(e.target.value);
                 if (Math.abs(v - calc.j2L7) < 0.01) {
                   setJ2Line8Override(null); // reset to auto
                 } else {
-                  setJ2Line8Override(v.toFixed(2));
+                  setJ2Line8Override(fmtInput(v));
                 }
               }}
               className="w-full pl-6 pr-2 py-1 text-[13px] font-mono text-right bg-surface-200/60 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
@@ -1149,7 +1153,7 @@ export function TnTaxView() {
                   inputMode="numeric"
                   value={bankInput}
                   onChange={(e) => setBankInput(e.target.value)}
-                  onBlur={(e) => setBankInput(parseNum(e.target.value).toFixed(2))}
+                  onBlur={(e) => setBankInput(fmtInput(parseNum(e.target.value)))}
                   className="w-full pl-6 pr-2 py-1.5 text-[13px] font-mono bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
                 />
               </div>
@@ -1167,7 +1171,7 @@ export function TnTaxView() {
                   inputMode="numeric"
                   value={ccInput}
                   onChange={(e) => setCcInput(e.target.value)}
-                  onBlur={(e) => setCcInput(parseNum(e.target.value).toFixed(2))}
+                  onBlur={(e) => setCcInput(fmtInput(parseNum(e.target.value)))}
                   className="w-full pl-6 pr-2 py-1.5 text-[13px] font-mono bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
                 />
               </div>
@@ -1263,7 +1267,7 @@ export function TnTaxView() {
               inputMode="numeric"
               value={affiliatedDebtInput}
               onChange={(e) => setAffiliatedDebtInput(e.target.value)}
-              onBlur={(e) => setAffiliatedDebtInput(parseNum(e.target.value).toFixed(2))}
+              onBlur={(e) => setAffiliatedDebtInput(fmtInput(parseNum(e.target.value)))}
               className="w-full pl-6 pr-2 py-1 text-[13px] font-mono text-right bg-surface-200/60 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
             />
           </div>
