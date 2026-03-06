@@ -302,7 +302,7 @@ export function AppProvider({ children }: AppProviderProps) {
 
   // Scan files when entity or year changes (only for tax-year view)
   useEffect(() => {
-    if (isConnected && activeView === 'tax-year') {
+    if (isConnected && (activeView === 'tax-year' || activeView === 'tn-tax')) {
       scanTaxYear(selectedEntity, selectedYear).then(setScannedDocuments);
     }
   }, [isConnected, selectedEntity, selectedYear, scanTaxYear, activeView]);
