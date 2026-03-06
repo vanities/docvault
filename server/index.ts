@@ -322,6 +322,33 @@ async function saveReminders(reminders: Reminder[]): Promise<void> {
 }
 
 // ============================================================================
+// Business Assets Storage
+// ============================================================================
+
+const ASSETS_FILE = path.join(DATA_DIR, '.docvault-assets.json');
+
+interface BusinessAsset {
+  id: string;
+  name: string;
+  value: number;
+}
+
+type AssetsData = Record<string, BusinessAsset[]>; // keyed by entity
+
+async function loadAssets(): Promise<AssetsData> {
+  try {
+    const content = await fs.readFile(ASSETS_FILE, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return {};
+  }
+}
+
+async function saveAssets(assets: AssetsData): Promise<void> {
+  await fs.writeFile(ASSETS_FILE, JSON.stringify(assets, null, 2));
+}
+
+// ============================================================================
 // Todos Storage
 // ============================================================================
 
@@ -1399,6 +1426,49 @@ async function handleRequest(req: Request): Promise<Response> {
     }
     await saveReminders(filtered);
     return jsonResponse({ ok: true });
+  }
+
+  // ========================================================================
+  // Business Assets API
+  // ========================================================================
+
+  // GET /api/assets/:entity - Get assets for an entity
+  const assetsGetMatch = pathname.match(/^\/api\/assets\/([^/]+)$/);
+  if (assetsGetMatch && req.method === 'GET') {
+    const entity = assetsGetMatch[1];
+    const allAssets = await loadAssets();
+    return jsonResponse({ assets: allAssets[entity] || [] });
+  }
+
+  // PUT /api/assets/:entity - Replace assets for an entity
+  const assetsPutMatch = pathname.match(/^\/api\/assets\/([^/]+)$/);
+  if (assetsPutMatch && req.method === 'PUT') {
+    const entity = assetsPutMatch[1];
+    const body = await req.json();
+    const { assets } = body;
+    if (!Array.isArray(assets)) {
+      return jsonResponse({ error: 'assets must be an array' }, 400);
+    }
+    const allAssets = await loadAssets();
+    allAssets[entity] = assets;
+    await saveAssets(allAssets);
+    return jsonResponse({ ok: true, assets });
+  }
+
+  // POST /api/assets/:entity/copy/:fromEntity - Copy assets from another entity
+  const assetsCopyMatch = pathname.match(/^\/api\/assets\/([^/]+)\/copy\/([^/]+)$/);
+  if (assetsCopyMatch && req.method === 'POST') {
+    const toEntity = assetsCopyMatch[1];
+    const fromEntity = assetsCopyMatch[2];
+    const allAssets = await loadAssets();
+    const source = allAssets[fromEntity] || [];
+    const copied = source.map((a) => ({
+      ...a,
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    }));
+    allAssets[toEntity] = copied;
+    await saveAssets(allAssets);
+    return jsonResponse({ ok: true, assets: copied });
   }
 
   // ========================================================================

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { Info, Plus, Trash2, ExternalLink } from 'lucide-react';
 import { useAppContext } from '../../contexts/AppContext';
 import { EXPENSE_CATEGORIES } from '../../config';
@@ -275,23 +275,37 @@ export function TnTaxView() {
   const setBankInput = (v: string) => setUserEdits((p) => ({ ...p, bank: v }));
   const setCcInput = (v: string) => setUserEdits((p) => ({ ...p, cc: v }));
 
-  // ── Business assets ────────────────────────────────────────────────────────
+  // ── Business assets (server-persisted, entity-scoped) ─────────────────────
 
-  const assetsKey = `docvault-biz-assets-${selectedEntity}-${selectedYear}`;
-  const [bizAssets, setBizAssets] = useState<BusinessAsset[]>(() => {
-    try {
-      const s = localStorage.getItem(assetsKey);
-      return s ? (JSON.parse(s) as BusinessAsset[]) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [bizAssets, setBizAssets] = useState<BusinessAsset[]>([]);
+  const assetsLoadedRef = useRef(false);
   const [addAssetName, setAddAssetName] = useState('');
   const [addAssetValue, setAddAssetValue] = useState('');
 
+  // Load assets from server when entity changes
   useEffect(() => {
-    localStorage.setItem(assetsKey, JSON.stringify(bizAssets));
-  }, [bizAssets, assetsKey]);
+    if (selectedEntity === 'all' || selectedEntity === 'personal') return;
+    assetsLoadedRef.current = false;
+    fetch(`/api/assets/${selectedEntity}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setBizAssets(data.assets || []);
+        assetsLoadedRef.current = true;
+      })
+      .catch(() => {
+        assetsLoadedRef.current = true;
+      });
+  }, [selectedEntity]);
+
+  // Save assets to server when they change (skip initial load)
+  useEffect(() => {
+    if (!assetsLoadedRef.current) return;
+    fetch(`/api/assets/${selectedEntity}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assets: bizAssets }),
+    }).catch(() => {});
+  }, [bizAssets, selectedEntity]);
 
   // ── Calculations ───────────────────────────────────────────────────────────
 

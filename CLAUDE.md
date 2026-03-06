@@ -99,6 +99,9 @@ All endpoints are entity-aware:
 | POST   | `/api/reminders`                         | Create reminder                                  |
 | PUT    | `/api/reminders/:id`                     | Update reminder (auto-creates next if recurring) |
 | DELETE | `/api/reminders/:id`                     | Delete reminder                                  |
+| GET    | `/api/assets/:entity`                    | Get business assets for entity                   |
+| PUT    | `/api/assets/:entity`                    | Replace business assets for entity               |
+| POST   | `/api/assets/:entity/copy/:from`         | Copy assets from another entity                  |
 | GET    | `/api/sync-status`                       | Dropbox sync status (from NAS cron job)          |
 
 ## Entities
