@@ -534,7 +534,11 @@ export function TnTaxView() {
     if (!addAssetName || !addAssetValue) return;
     setBizAssets((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), name: addAssetName, value: parseNum(addAssetValue) },
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        name: addAssetName,
+        value: parseNum(addAssetValue),
+      },
     ]);
     setAddAssetName('');
     setAddAssetValue('');
