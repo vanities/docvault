@@ -12,6 +12,7 @@ import { DocumentList } from '../Documents/DocumentList';
 import { IncomeSummary } from '../Summary/IncomeSummary';
 import { ExpenseSummary } from '../Summary/ExpenseSummary';
 import { InvoiceSummary } from '../Summary/InvoiceSummary';
+import { StatementSummary } from '../Summary/StatementSummary';
 import { EXPENSE_CATEGORIES } from '../../config';
 import type {
   Entity,
@@ -803,6 +804,7 @@ export function TaxYearView() {
     { id: 'income', label: 'Income' },
     { id: 'expenses', label: 'Expenses' },
     { id: 'invoices', label: 'Invoices' },
+    { id: 'statements', label: 'Statements' },
   ];
 
   return (
@@ -967,6 +969,13 @@ export function TaxYearView() {
               ? () => downloadZip(selectedEntity, selectedYear, 'invoices')
               : undefined
           }
+        />
+      )}
+      {activeTab === 'statements' && (
+        <StatementSummary
+          bankDocs={trackedDocuments.filter((d) => d.type === 'bank-statement')}
+          ccDocs={trackedDocuments.filter((d) => d.type === 'credit-card-statement')}
+          incomeSummary={incomeSummary}
         />
       )}
     </div>

@@ -421,7 +421,16 @@ export function IncomeSummary({ summary, documents, onDownload }: IncomeSummaryP
                       <div>
                         <p className="text-[11px] text-surface-600">Amount</p>
                         <p className="font-medium text-surface-950 font-mono text-[13px]">
-                          {formatCurrency(data.amount)}
+                          {formatCurrency(
+                            ((data as unknown as Record<string, unknown>)
+                              .nonemployeeCompensation as number) ??
+                              ((data as unknown as Record<string, unknown>)
+                                .ordinaryDividends as number) ??
+                              ((data as unknown as Record<string, unknown>)
+                                .interestIncome as number) ??
+                              data.amount ??
+                              0
+                          )}
                         </p>
                       </div>
                       {data.federalWithheld !== undefined && data.federalWithheld > 0 && (

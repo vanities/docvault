@@ -165,10 +165,25 @@ export interface ParsedBankStatement {
   accountNumber?: string; // last 4 digits
   totalDeposits: number; // sum of all deposits/credits for the period
   depositCount?: number; // number of deposit transactions (also may be depositsCount)
+  totalWithdrawals?: number; // sum of all withdrawals for the period
+  beginningBalance?: number; // opening balance at start of statement period
   endingBalance?: number; // closing balance at end of statement period
   startDate?: string; // statement period start (YYYY-MM-DD)
   endDate?: string; // statement period end (YYYY-MM-DD)
   periodLabel?: string; // e.g. "January 2025"
+}
+
+export interface ParsedCreditCardStatement {
+  institution: string; // e.g. "Chase", "Capital One"
+  accountNumber?: string; // masked card number
+  newBalance: number; // statement balance
+  previousBalance?: number;
+  payments?: number; // payments made during period
+  purchases?: number; // total purchases during period
+  creditLimit?: number;
+  paymentDueDate?: string; // YYYY-MM-DD
+  statementDate?: string; // YYYY-MM-DD
+  statementPeriod?: string; // e.g. "11/22/25 - 12/21/25"
 }
 
 // Main document interface
@@ -191,7 +206,9 @@ export interface TaxDocument {
     | ParsedComposite1099
     | ParsedReceipt
     | ParsedCrypto
-    | ParsedRetirementStatement;
+    | ParsedRetirementStatement
+    | ParsedBankStatement
+    | ParsedCreditCardStatement;
   createdAt: string; // ISO date string
   updatedAt: string; // ISO date string
 }

@@ -16,7 +16,7 @@ import type { Entity, TaxDocument, DocumentType, ExpenseCategory, Reminder, Todo
 export type NavView = 'tax-year' | 'business-docs' | 'all-files' | 'settings' | 'tn-tax';
 
 // Tab types for tax year view
-export type TabType = 'documents' | 'income' | 'expenses' | 'invoices';
+export type TabType = 'documents' | 'income' | 'expenses' | 'invoices' | 'statements';
 
 // Search result from server
 export interface SearchResult {
