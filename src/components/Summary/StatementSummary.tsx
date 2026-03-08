@@ -1,11 +1,29 @@
-import { useState } from 'react';
-import { Landmark, CreditCard, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import {
+  Landmark,
+  CreditCard,
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+  Users,
+  Check,
+  X,
+} from 'lucide-react';
 import type { TaxDocument, IncomeSummary as IncomeSummaryType } from '../../types';
 
 interface StatementSummaryProps {
   bankDocs: TaxDocument[];
   ccDocs: TaxDocument[];
+  incomeDocs: TaxDocument[];
   incomeSummary?: IncomeSummaryType;
+}
+
+interface PayerGroup {
+  payer: string;
+  depositTotal: number;
+  depositCount: number;
+  form1099Amount: number | null;
+  form1099Payer: string | null;
 }
 
 interface DepositTransaction {
@@ -22,22 +40,38 @@ function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
+/** Extract just the payer/company name from an ACH description */
+function extractPayerName(desc: string): string {
+  const origMatch = desc.match(/Orig CO Name:([^O]+?)(?:\s*Orig\s|$)/i);
+  if (origMatch) return origMatch[1].trim();
+  // Fallback: first meaningful chunk
+  if (desc.length > 40) return desc.substring(0, 37) + '...';
+  return desc;
+}
+
 /** Clean up ACH deposit descriptions to extract a readable source name */
 function cleanDepositDescription(desc: string): string {
-  // Extract "Orig CO Name:" value — the company that sent the deposit
-  const origMatch = desc.match(/Orig CO Name:([^O]+?)(?:\s*Orig\s|$)/i);
-  if (origMatch) {
-    let name = origMatch[1].trim();
-    // Also try to extract invoice/reference info
-    const invoiceMatch = desc.match(/(?:For\s+)?Invoice\s*(?:Number:?\s*)?(\S+)/i);
-    if (invoiceMatch) {
-      name += ` (Inv ${invoiceMatch[1]})`;
-    }
-    return name;
+  const name = extractPayerName(desc);
+  // Also try to extract invoice/reference info
+  const invoiceMatch = desc.match(/(?:For\s+)?Invoice\s*(?:Number:?\s*)?(\S+)/i);
+  if (invoiceMatch && name !== desc) {
+    return `${name} (Inv ${invoiceMatch[1]})`;
   }
-  // Truncate long descriptions
-  if (desc.length > 60) return desc.substring(0, 57) + '...';
-  return desc;
+  return name;
+}
+
+/** Fuzzy match a deposit payer name against a 1099 payer name */
+function payerMatches(depositPayer: string, form1099Payer: string): boolean {
+  const normalize = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .replace(/\s+(inc|llc|corp|ltd|company|co)\s*$/i, '')
+      .trim();
+  const dp = normalize(depositPayer);
+  const fp = normalize(form1099Payer);
+  // Either one contains the other, or they share a common prefix
+  return dp.includes(fp) || fp.includes(dp);
 }
 
 /** Extract deposit transactions from parsed data (handles both formats) */
@@ -244,7 +278,12 @@ function CreditCardStatementRow({ doc }: { doc: TaxDocument }) {
   );
 }
 
-export function StatementSummary({ bankDocs, ccDocs, incomeSummary }: StatementSummaryProps) {
+export function StatementSummary({
+  bankDocs,
+  ccDocs,
+  incomeDocs,
+  incomeSummary,
+}: StatementSummaryProps) {
   const sortedBank = [...bankDocs].sort((a, b) => getSortDate(a).localeCompare(getSortDate(b)));
   const sortedCC = [...ccDocs].sort((a, b) => getSortDate(a).localeCompare(getSortDate(b)));
 
@@ -269,6 +308,86 @@ export function StatementSummary({ bankDocs, ccDocs, incomeSummary }: StatementS
   // Reconciliation
   const income1099Total = incomeSummary?.income1099Total ?? 0;
   const difference = totalDeposits - income1099Total;
+
+  // Group deposits by payer, match against 1099s
+  const payerGroups = useMemo((): PayerGroup[] => {
+    // Collect all deposit transactions across all bank statements
+    const byPayer = new Map<string, { total: number; count: number }>();
+    for (const doc of bankDocs) {
+      const data = doc.parsedData as Record<string, unknown> | undefined;
+      const txns = getDepositTransactions(data);
+      for (const txn of txns) {
+        const payer = extractPayerName(txn.description);
+        const existing = byPayer.get(payer);
+        if (existing) {
+          existing.total += txn.amount;
+          existing.count++;
+        } else {
+          byPayer.set(payer, { total: txn.amount, count: 1 });
+        }
+      }
+    }
+
+    // Build 1099 lookup from incomeDocs
+    const form1099s: { payer: string; amount: number }[] = [];
+    for (const doc of incomeDocs) {
+      if (!doc.type.startsWith('1099')) continue;
+      const data = doc.parsedData as Record<string, unknown> | undefined;
+      if (!data) continue;
+      const payer =
+        (data.payer as string) || (data.payerName as string) || doc.fileName.split('_')[0];
+      const amount = Number(
+        data.nonemployeeCompensation ??
+          data.ordinaryDividends ??
+          data.interestIncome ??
+          data.amount ??
+          0
+      );
+      if (amount > 0) {
+        form1099s.push({ payer, amount });
+      }
+    }
+
+    // Match each deposit payer to a 1099
+    const groups: PayerGroup[] = [];
+    const matched1099s = new Set<number>();
+
+    for (const [payer, { total, count }] of byPayer) {
+      let matchedAmount: number | null = null;
+      let matchedPayer: string | null = null;
+      for (let i = 0; i < form1099s.length; i++) {
+        if (matched1099s.has(i)) continue;
+        if (payerMatches(payer, form1099s[i].payer)) {
+          matchedAmount = form1099s[i].amount;
+          matchedPayer = form1099s[i].payer;
+          matched1099s.add(i);
+          break;
+        }
+      }
+      groups.push({
+        payer,
+        depositTotal: total,
+        depositCount: count,
+        form1099Amount: matchedAmount,
+        form1099Payer: matchedPayer,
+      });
+    }
+
+    // Add any unmatched 1099s (payer sent 1099 but no matching bank deposits found)
+    for (let i = 0; i < form1099s.length; i++) {
+      if (matched1099s.has(i)) continue;
+      groups.push({
+        payer: form1099s[i].payer,
+        depositTotal: 0,
+        depositCount: 0,
+        form1099Amount: form1099s[i].amount,
+        form1099Payer: form1099s[i].payer,
+      });
+    }
+
+    // Sort by deposit total descending
+    return groups.sort((a, b) => b.depositTotal - a.depositTotal);
+  }, [bankDocs, incomeDocs]);
 
   return (
     <div className="space-y-6">
@@ -328,6 +447,85 @@ export function StatementSummary({ bankDocs, ccDocs, incomeSummary }: StatementS
           </div>
         )}
       </div>
+
+      {/* Deposits by Payer — reconciliation against 1099s */}
+      {payerGroups.length > 0 && (
+        <div className="glass-card rounded-xl p-5">
+          <h3 className="font-semibold text-surface-950 mb-4 text-[14px] flex items-center gap-2">
+            <Users className="w-4 h-4 text-surface-600" />
+            Deposits by Payer
+          </h3>
+
+          <div className="space-y-0.5">
+            {/* Header */}
+            <div className="grid grid-cols-4 gap-3 px-4 pb-2 border-b border-border">
+              <p className="text-[11px] font-semibold text-surface-600 uppercase tracking-wider">
+                Payer
+              </p>
+              <p className="text-[11px] font-semibold text-surface-600 uppercase tracking-wider text-right">
+                Bank Deposits
+              </p>
+              <p className="text-[11px] font-semibold text-surface-600 uppercase tracking-wider text-right">
+                1099 Amount
+              </p>
+              <p className="text-[11px] font-semibold text-surface-600 uppercase tracking-wider text-right">
+                Difference
+              </p>
+            </div>
+
+            {payerGroups.map((group) => {
+              const diff =
+                group.form1099Amount !== null ? group.depositTotal - group.form1099Amount : null;
+              const isMatched = diff !== null && Math.abs(diff) < 1;
+              const hasWarning = diff !== null && Math.abs(diff) >= 1;
+
+              return (
+                <div
+                  key={group.payer}
+                  className="grid grid-cols-4 gap-3 px-4 py-2.5 hover:bg-surface-200/30 rounded-lg transition-colors"
+                >
+                  <div>
+                    <p className="text-[13px] text-surface-950 font-medium">{group.payer}</p>
+                    <p className="text-[11px] text-surface-500">
+                      {group.depositCount} deposit{group.depositCount !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                  <p className="text-[13px] text-emerald-500 font-mono text-right self-center">
+                    {group.depositTotal > 0 ? formatCurrency(group.depositTotal) : '—'}
+                  </p>
+                  <p className="text-[13px] text-surface-950 font-mono text-right self-center">
+                    {group.form1099Amount !== null ? (
+                      formatCurrency(group.form1099Amount)
+                    ) : (
+                      <span className="text-surface-400 text-[11px]">No 1099</span>
+                    )}
+                  </p>
+                  <div className="text-right self-center flex items-center justify-end gap-1.5">
+                    {isMatched && (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-[12px] text-emerald-400 font-medium">Match</span>
+                      </>
+                    )}
+                    {hasWarning && (
+                      <>
+                        <X className="w-3.5 h-3.5 text-amber-400" />
+                        <span className="text-[13px] text-amber-400 font-mono">
+                          {diff! >= 0 ? '+' : ''}
+                          {formatCurrency(diff!)}
+                        </span>
+                      </>
+                    )}
+                    {diff === null && group.depositTotal > 0 && (
+                      <span className="text-[11px] text-surface-400">—</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Bank Statements */}
       {sortedBank.length > 0 && (

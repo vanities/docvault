@@ -975,6 +975,7 @@ export function TaxYearView() {
         <StatementSummary
           bankDocs={trackedDocuments.filter((d) => d.type === 'bank-statement')}
           ccDocs={trackedDocuments.filter((d) => d.type === 'credit-card-statement')}
+          incomeDocs={trackedDocuments.filter((d) => d.type === 'w2' || d.type.startsWith('1099'))}
           incomeSummary={incomeSummary}
         />
       )}
