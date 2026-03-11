@@ -56,6 +56,7 @@ function getTypeLabel(docType: DocumentType): string {
     '1099-int': '1099-int',
     '1099-b': '1099-b',
     '1099-composite': '1099-composite',
+    'k-1': 'K-1',
     receipt: '', // Will use category instead
     invoice: 'Invoice',
     crypto: 'Crypto',
@@ -135,6 +136,11 @@ export function generateStandardFilename(params: FilenameParams): string {
   if (docType.startsWith('1099')) {
     const typeLabel = getTypeLabel(docType);
     return `${sourcePart}_${typeLabel}_${year}${ext}`;
+  }
+
+  // K-1: {Entity}_K-1_{Year}.pdf
+  if (docType === 'k-1') {
+    return `${sourcePart}_K-1_${year}${ext}`;
   }
 
   // Invoice: {Client}_Invoice_{Year}-{MM}.pdf

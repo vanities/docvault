@@ -17,6 +17,7 @@ export type DocumentType =
   | '1099-b'
   | '1099-composite'
   | '1098'
+  | 'k-1'
   | 'retirement-statement'
   | 'receipt'
   | 'invoice'
@@ -149,6 +150,30 @@ export interface ParsedCrypto {
   transactions?: number;
 }
 
+export interface ParsedK1 {
+  entityName: string; // Partnership/S-Corp/Trust name
+  entityEin: string; // Entity EIN
+  formType: 'partnership' | 's-corp' | 'trust'; // 1065, 1120-S, or 1041
+  partnerName?: string;
+  partnerTin?: string;
+  ordinaryIncome?: number; // Box 1
+  rentalIncome?: number; // Box 2
+  otherRentalIncome?: number; // Box 3
+  guaranteedPayments?: number; // Box 4
+  interestIncome?: number; // Box 5
+  dividends?: number; // Box 6
+  royalties?: number; // Box 7
+  shortTermCapitalGain?: number; // Box 8
+  longTermCapitalGain?: number; // Box 9
+  section1231Gain?: number; // Box 10
+  otherIncome?: number; // Box 11
+  section179Deduction?: number; // Box 12
+  otherDeductions?: number; // Box 13
+  selfEmploymentEarnings?: number; // Box 14
+  distributions?: number; // Box 19
+  taxYear?: number;
+}
+
 export interface ParsedRetirementStatement {
   institution: string;
   accountType: string; // e.g. "Solo 401(k)", "SEP-IRA", "Traditional IRA"
@@ -206,6 +231,7 @@ export interface TaxDocument {
     | ParsedComposite1099
     | ParsedReceipt
     | ParsedCrypto
+    | ParsedK1
     | ParsedRetirementStatement
     | ParsedBankStatement
     | ParsedCreditCardStatement;
@@ -221,6 +247,8 @@ export interface IncomeSummary {
   w2Count: number;
   income1099Total: number;
   income1099Count: number;
+  k1Total: number;
+  k1Count: number;
   totalIncome: number;
   federalWithheld: number;
   stateWithheld: number;

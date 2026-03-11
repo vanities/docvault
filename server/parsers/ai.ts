@@ -184,6 +184,35 @@ For COMPOSITE/CONSOLIDATED 1099 statements (year-end brokerage statements from V
 - totalFederalWithheld: total federal tax withheld across all sub-forms
 - taxYear: The tax year
 
+For Schedule K-1 forms (from partnerships Form 1065, S-corps Form 1120-S, or trusts/estates Form 1041), extract:
+- entityName: Partnership/S-Corp/Trust name
+- entityEin: Entity EIN (XX-XXXXXXX format)
+- formType: "partnership" (1065), "s-corp" (1120-S), or "trust" (1041)
+- partnerName: Partner/shareholder/beneficiary name
+- partnerTin: Partner's TIN (may be partially masked)
+- partnerAddress: Partner's address
+- ordinaryIncome: Box 1 - Ordinary business income (loss)
+- rentalIncome: Box 2 - Net rental real estate income (loss)
+- otherRentalIncome: Box 3 - Other net rental income (loss)
+- guaranteedPayments: Box 4 - Guaranteed payments (for services + capital)
+- interestIncome: Box 5 - Interest income
+- dividends: Box 6 - Ordinary dividends (Box 6a) and qualified dividends (Box 6b)
+- royalties: Box 7 - Royalties
+- shortTermCapitalGain: Box 8 - Net short-term capital gain (loss)
+- longTermCapitalGain: Box 9a - Net long-term capital gain (loss)
+- section1231Gain: Box 10 - Net section 1231 gain (loss)
+- otherIncome: Box 11 - Other income (loss)
+- section179Deduction: Box 12 - Section 179 deduction
+- otherDeductions: Box 13 - Other deductions
+- selfEmploymentEarnings: Box 14 - Self-employment earnings (loss)
+- credits: Box 15 - Credits
+- foreignTransactions: Box 16 - Foreign transactions
+- altMinTaxItems: Box 17 - Alternative minimum tax (AMT) items
+- taxExemptIncome: Box 18 - Tax-exempt income and nondeductible expenses
+- distributions: Box 19 - Distributions
+- otherInfo: Box 20 - Other information
+- taxYear: The tax year
+
 For receipts/expenses, extract:
 - vendor: Store/business name
 - vendorAddress: Full address if shown
@@ -286,7 +315,7 @@ For appraisals/assessments (property, tax assessments), extract:
 IMPORTANT:
 - Extract ALL data visible on the document. Include every field that has a value.
 - For documents with multiple payments/transactions, ALWAYS calculate the totalAmount by summing all amounts.
-- Include a "documentType" field in your response with one of: w2, 1099-nec, 1099-misc, 1099-div, 1099-int, 1099-b, 1099-composite, 1098, retirement-statement, receipt, invoice, crypto, return, contract, operating-agreement, insurance-policy, bank-statement, credit-card-statement, statement, letter, certificate, medical-record, appraisal, other
+- Include a "documentType" field in your response with one of: w2, 1099-nec, 1099-misc, 1099-div, 1099-int, 1099-b, 1099-composite, 1098, k-1, retirement-statement, receipt, invoice, crypto, return, contract, operating-agreement, insurance-policy, bank-statement, credit-card-statement, statement, letter, certificate, medical-record, appraisal, other
 - Respond ONLY with a valid JSON object.
 - All monetary values should be numbers (not strings).
 - If a field is empty or not found, omit it.`;
@@ -313,6 +342,7 @@ function detectDocumentType(filename: string): string {
   if (/1099-?div/i.test(lower)) return '1099-DIV';
   if (/1099-?int/i.test(lower)) return '1099-INT';
   if (/1098/i.test(lower)) return '1098';
+  if (/k-?1\b|schedule.?k/i.test(lower)) return 'K-1';
   if (/w-?2/i.test(lower)) return 'W-2';
   if (/receipt|expense|purchase/i.test(lower)) return 'receipt';
   if (/operating.?agreement/i.test(lower)) return 'operating-agreement';
@@ -444,6 +474,8 @@ export async function parseWithAI(
       documentType = '1099-b';
     } else if (docTypeHint === '1098') {
       documentType = '1098';
+    } else if (docTypeHint === 'K-1') {
+      documentType = 'k-1';
     } else if (docTypeHint === 'retirement-statement') {
       documentType = 'retirement-statement';
     } else if (docTypeHint === 'receipt') {
@@ -470,6 +502,14 @@ export async function parseWithAI(
         documentType = 'operating-agreement';
       } else if (parsed.policyNumber !== undefined || parsed.premium !== undefined) {
         documentType = 'insurance-policy';
+      } else if (
+        parsed.guaranteedPayments !== undefined ||
+        parsed.selfEmploymentEarnings !== undefined ||
+        parsed.formType === 'partnership' ||
+        parsed.formType === 's-corp' ||
+        parsed.formType === 'trust'
+      ) {
+        documentType = 'k-1';
       } else if (
         parsed.mortgageInterest !== undefined ||
         parsed.outstandingPrincipal !== undefined

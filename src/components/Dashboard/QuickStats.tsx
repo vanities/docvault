@@ -117,6 +117,7 @@ export function QuickStats({
   const incomeParts: string[] = [];
   if (incomeSummary.w2Count > 0) incomeParts.push(`${incomeSummary.w2Count} W-2s`);
   if (incomeSummary.income1099Count > 0) incomeParts.push(`${incomeSummary.income1099Count} 1099s`);
+  if (incomeSummary.k1Count > 0) incomeParts.push(`${incomeSummary.k1Count} K-1s`);
 
   const hasRetirement = retirementSummary && retirementSummary.totalContributions > 0;
   const hasCapitalGains = incomeSummary.capitalGainsTotal !== 0;

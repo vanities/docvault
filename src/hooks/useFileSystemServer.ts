@@ -303,6 +303,8 @@ export function useFileSystemServer() {
             destPath += '/expenses/1098';
           } else if (docType === 'retirement-statement') {
             destPath += '/retirement';
+          } else if (docType === 'k-1') {
+            destPath += '/income/k-1';
           } else if (docType.startsWith('1099')) {
             destPath += '/income/1099';
           } else if (docType === 'receipt' && expenseCategory) {
@@ -389,6 +391,8 @@ export function useFileSystemServer() {
       destPath += '/expenses/1098';
     } else if (docType === 'retirement-statement') {
       destPath += '/retirement';
+    } else if (docType === 'k-1') {
+      destPath += '/income/k-1';
     } else if (docType.startsWith('1099')) {
       destPath += '/income/1099';
     } else if (docType === 'receipt' && expenseCategory) {
@@ -491,6 +495,7 @@ export function useFileSystemServer() {
       const folders = [
         `${year}/income/w2`,
         `${year}/income/1099`,
+        `${year}/income/k-1`,
         `${year}/expenses/1098`,
         `${year}/income/other`,
         `${year}/expenses/business`,

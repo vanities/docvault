@@ -1322,6 +1322,24 @@ async function handleRequest(req: Request): Promise<Response> {
               });
             }
 
+            // Extract K-1 income
+            if (
+              parsed.documentType === 'k-1' ||
+              parsed.ordinaryIncome ||
+              parsed.guaranteedPayments
+            ) {
+              const k1Amount =
+                ((parsed.ordinaryIncome as number) || 0) +
+                ((parsed.guaranteedPayments as number) || 0);
+              if (k1Amount > 0) {
+                entitySummary.income.push({
+                  source: (parsed.entityName || file.name) as string,
+                  amount: k1Amount,
+                  type: 'K-1',
+                });
+              }
+            }
+
             // Extract expenses
             if (parsed.amount && (parsed.vendor || parsed.category)) {
               entitySummary.expenses.push({

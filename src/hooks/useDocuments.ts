@@ -139,6 +139,17 @@ export function useDocuments() {
         }
       });
 
+      const k1Docs = docs.filter((d) => d.type === 'k-1');
+      let k1Total = 0;
+      k1Docs.forEach((doc) => {
+        const data = doc.parsedData as
+          | { ordinaryIncome?: number; guaranteedPayments?: number }
+          | undefined;
+        if (data) {
+          k1Total += (data.ordinaryIncome || 0) + (data.guaranteedPayments || 0);
+        }
+      });
+
       return {
         entity,
         taxYear,
@@ -146,7 +157,9 @@ export function useDocuments() {
         w2Count: w2Docs.length,
         income1099Total,
         income1099Count: income1099Docs.length,
-        totalIncome: w2Total + income1099Total,
+        k1Total,
+        k1Count: k1Docs.length,
+        totalIncome: w2Total + income1099Total + k1Total,
         federalWithheld,
         stateWithheld,
       };

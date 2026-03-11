@@ -5,6 +5,7 @@ import type {
   TaxDocument,
   ParsedW2,
   Parsed1099,
+  ParsedK1,
   ParsedComposite1099,
 } from '../../types';
 import { DOCUMENT_TYPES } from '../../config';
@@ -26,6 +27,7 @@ function formatCurrency(amount: number): string {
 export function IncomeSummary({ summary, documents, onDownload }: IncomeSummaryProps) {
   const w2Docs = documents.filter((d) => d.type === 'w2');
   const income1099Docs = documents.filter((d) => d.type.startsWith('1099'));
+  const k1Docs = documents.filter((d) => d.type === 'k-1');
 
   // Group 1099s by type
   const income1099ByType = income1099Docs.reduce(
@@ -92,6 +94,7 @@ export function IncomeSummary({ summary, documents, onDownload }: IncomeSummaryP
           </p>
           <p className="text-[11px] text-surface-600 mt-1">
             {summary.w2Count} W-2s, {summary.income1099Count} 1099s
+            {summary.k1Count > 0 ? `, ${summary.k1Count} K-1s` : ''}
           </p>
         </div>
       </div>
@@ -114,6 +117,13 @@ export function IncomeSummary({ summary, documents, onDownload }: IncomeSummaryP
             value={summary.income1099Total}
             sublabel="All 1099 forms combined"
           />
+          {summary.k1Total > 0 && (
+            <CopyableField
+              label="Total K-1 Income"
+              value={summary.k1Total}
+              sublabel="Ordinary income + guaranteed payments from K-1s"
+            />
+          )}
           <CopyableField
             label="Federal Tax Withheld"
             value={summary.federalWithheld}
@@ -461,6 +471,90 @@ export function IncomeSummary({ summary, documents, onDownload }: IncomeSummaryP
           </div>
         </div>
       ))}
+
+      {/* K-1 Details */}
+      {k1Docs.length > 0 && (
+        <div className="glass-card rounded-xl p-5">
+          <h3 className="font-semibold text-surface-950 mb-4 text-[14px]">
+            Schedule K-1 Forms ({k1Docs.length})
+          </h3>
+
+          <div className="space-y-4">
+            {k1Docs.map((doc) => {
+              const data = doc.parsedData as ParsedK1 | undefined;
+
+              return (
+                <div key={doc.id} className="border border-border rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="font-medium text-surface-950 text-[13px]">
+                        {data?.entityName || doc.fileName}
+                      </p>
+                      {data?.entityEin && (
+                        <p className="text-[11px] text-surface-600">EIN: {data.entityEin}</p>
+                      )}
+                      {data?.formType && (
+                        <p className="text-[11px] text-surface-600 capitalize">
+                          {data.formType === 'partnership'
+                            ? 'Partnership (1065)'
+                            : data.formType === 's-corp'
+                              ? 'S-Corp (1120-S)'
+                              : 'Trust/Estate (1041)'}
+                        </p>
+                      )}
+                    </div>
+                    <span className="px-2 py-1 bg-amber-500/15 text-amber-400 text-[11px] font-medium rounded-md">
+                      K-1
+                    </span>
+                  </div>
+
+                  {data ? (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {data.ordinaryIncome !== undefined && (
+                        <div>
+                          <p className="text-[11px] text-surface-600">Box 1: Ordinary Income</p>
+                          <p className="font-medium text-surface-950 font-mono text-[13px]">
+                            {formatCurrency(data.ordinaryIncome)}
+                          </p>
+                        </div>
+                      )}
+                      {data.guaranteedPayments !== undefined && data.guaranteedPayments > 0 && (
+                        <div>
+                          <p className="text-[11px] text-surface-600">Box 4: Guaranteed Payments</p>
+                          <p className="font-medium text-surface-950 font-mono text-[13px]">
+                            {formatCurrency(data.guaranteedPayments)}
+                          </p>
+                        </div>
+                      )}
+                      {data.selfEmploymentEarnings !== undefined &&
+                        data.selfEmploymentEarnings > 0 && (
+                          <div>
+                            <p className="text-[11px] text-surface-600">Box 14: SE Earnings</p>
+                            <p className="font-medium text-surface-950 font-mono text-[13px]">
+                              {formatCurrency(data.selfEmploymentEarnings)}
+                            </p>
+                          </div>
+                        )}
+                      {data.distributions !== undefined && data.distributions > 0 && (
+                        <div>
+                          <p className="text-[11px] text-surface-600">Box 19: Distributions</p>
+                          <p className="font-medium text-surface-950 font-mono text-[13px]">
+                            {formatCurrency(data.distributions)}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-[13px] text-surface-600 italic">
+                      No parsed data - click Edit to add details
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Empty State */}
       {documents.length === 0 && (

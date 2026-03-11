@@ -29,6 +29,7 @@ export function detectDocumentType(filename: string, filePath?: string): Documen
   if (/1099-?int/i.test(lower)) return '1099-int';
   if (/1099-?b/i.test(lower)) return '1099-b';
   if (/1099/i.test(lower)) return '1099-nec';
+  if (/k-?1\b|schedule.?k/i.test(lower)) return 'k-1';
   if (/receipt|expense|purchase/i.test(lower)) return 'receipt';
   if (/invoice/i.test(lower)) return 'invoice';
   if (/koinly|coinbase|kraken|crypto|8949/i.test(lower)) return 'crypto';
