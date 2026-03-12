@@ -275,6 +275,7 @@ export function TnTaxView() {
 
   const grossInput = userEdits.gross ?? fmtInput(derived.gross);
   const expensesInput = userEdits.expenses ?? fmtInput(derived.totalDeductible);
+  const homeOfficeInput = userEdits.homeOffice ?? '1,500.00';
   const bankInput =
     userEdits.bank ?? (derived.decBankBalance > 0 ? fmtInput(derived.decBankBalance) : '0.00');
   const ccInput =
@@ -282,6 +283,7 @@ export function TnTaxView() {
 
   const setGrossInput = (v: string) => setUserEdits((p) => ({ ...p, gross: v }));
   const setExpensesInput = (v: string) => setUserEdits((p) => ({ ...p, expenses: v }));
+  const setHomeOfficeInput = (v: string) => setUserEdits((p) => ({ ...p, homeOffice: v }));
   const setBankInput = (v: string) => setUserEdits((p) => ({ ...p, bank: v }));
   const setCcInput = (v: string) => setUserEdits((p) => ({ ...p, cc: v }));
 
@@ -322,7 +324,8 @@ export function TnTaxView() {
   const calc = useMemo(() => {
     const gross = parseNum(grossInput);
     const expenses = parseNum(expensesInput);
-    const netProfit = Math.max(0, gross - expenses);
+    const homeOffice = parseNum(homeOfficeInput);
+    const netProfit = Math.max(0, gross - expenses - homeOffice);
     const p = (line: string, src: Record<string, string>) => parseNum(src[line] ?? '0');
 
     // Schedule H
@@ -438,6 +441,7 @@ export function TnTaxView() {
     return {
       gross,
       expenses,
+      homeOffice,
       netProfit,
       schH1,
       j2L1,
@@ -525,6 +529,7 @@ export function TnTaxView() {
   }, [
     grossInput,
     expensesInput,
+    homeOfficeInput,
     bankInput,
     ccInput,
     affiliatedDebtInput,
@@ -620,12 +625,20 @@ export function TnTaxView() {
       >
         <Field label="Gross receipts (Schedule H)" value={fmt(calc.gross)} />
         <Field
-          label="Total expenses"
+          label="Total expenses (Line 28)"
           editable
           inputValue={expensesInput}
           onInputChange={setExpensesInput}
           onInputBlur={blurFmt(setExpensesInput)}
           tooltip="Business expenses (Schedule C deductions). Includes all deductible business expenses."
+        />
+        <Field
+          label="Business use of home (Line 30)"
+          editable
+          inputValue={homeOfficeInput}
+          onInputChange={setHomeOfficeInput}
+          onInputBlur={blurFmt(setHomeOfficeInput)}
+          tooltip="Business use of home deduction (Form 8829 or simplified method). Simplified method: $5/sq ft, max 300 sq ft = $1,500."
         />
         <Field label="Net profit (Line 31)" value={fmt(calc.netProfit)} highlight="blue" />
       </ScheduleCard>
