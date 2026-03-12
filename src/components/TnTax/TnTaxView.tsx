@@ -336,7 +336,7 @@ export function TnTaxView() {
     const j2L5 = parseNum(j2Line5);
     const j2L6 = parseNum(j2Line6);
     const j2L7 = j2L1 + j2L2 + j2L3 + j2L4 + j2L5 + j2L6;
-    const j2L8 = j2Line8Override !== null ? parseNum(j2Line8Override) : 0;
+    const j2L8 = j2Line8Override !== null ? parseNum(j2Line8Override) : Math.max(0, j2L7);
     const j2L9 = Math.max(0, j2L7 - j2L8);
 
     // ── Schedule J (full 39-line) ──────────────────────────────────────────────
