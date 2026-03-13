@@ -25,6 +25,7 @@ export const TAX_YEAR_STRUCTURE = {
   'expenses/business': ['receipt'],
   'expenses/childcare': ['receipt'],
   'expenses/medical': ['receipt'],
+  'expenses/home-improvement': ['receipt'],
   'statements/bank': ['bank-statement'],
   'statements/credit-card': ['credit-card-statement'],
   crypto: ['crypto'],
@@ -213,6 +214,12 @@ export const EXPENSE_CATEGORIES: {
   { id: 'childcare', label: 'Childcare', deductionRate: 1, folder: 'childcare' },
   { id: 'medical', label: 'Medical', deductionRate: 1, folder: 'medical' },
   { id: 'education', label: 'Education', deductionRate: 1, folder: 'business' },
+  {
+    id: 'home-improvement',
+    label: 'Home Improvement',
+    deductionRate: 0,
+    folder: 'home-improvement',
+  },
   { id: 'other', label: 'Other', deductionRate: 1, scheduleC: 'Line 27a', folder: 'business' },
 ];
 
@@ -235,5 +242,6 @@ export const EXPENSE_FOLDER_MAP: Record<ExpenseCategory, string> = {
   insurance: 'expenses/business',
   education: 'expenses/business',
   'taxes-licenses': 'expenses/business',
+  'home-improvement': 'expenses/home-improvement',
   other: 'expenses/business',
 };

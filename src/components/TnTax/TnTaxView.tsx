@@ -205,6 +205,7 @@ export function TnTaxView() {
         else if (lp.includes('/childcare/')) cat = 'childcare';
         else if (lp.includes('/medical/')) cat = 'medical';
         else if (lp.includes('/travel/')) cat = 'travel';
+        else if (lp.includes('/home-improvement/')) cat = 'home-improvement';
       }
       const catConfig = EXPENSE_CATEGORIES.find((c) => c.id === cat);
       if (!catConfig) return;

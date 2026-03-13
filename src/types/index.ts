@@ -55,6 +55,7 @@ export type ExpenseCategory =
   | 'childcare'
   | 'medical'
   | 'education'
+  | 'home-improvement'
   | 'other';
 
 // Parsed data structures
