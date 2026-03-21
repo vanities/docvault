@@ -11,8 +11,11 @@ import {
   Trash2,
   Cloud,
   RefreshCw,
+  Bitcoin,
+  Plus,
+  Wallet,
 } from 'lucide-react';
-import type { SyncStatus } from '../../types';
+import type { SyncStatus, CryptoExchangeId, CryptoChain } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
@@ -83,10 +86,29 @@ export function SettingsView() {
   const [editDescription, setEditDescription] = useState('');
   const [isEntitySaving, setIsEntitySaving] = useState(false);
 
+  // Crypto settings state
+  const [cryptoExchanges, setCryptoExchanges] = useState<
+    { id: CryptoExchangeId; enabled: boolean; hasKey: boolean; keyHint?: string }[]
+  >([]);
+  const [cryptoWallets, setCryptoWallets] = useState<
+    { id: string; address: string; chain: CryptoChain; label: string }[]
+  >([]);
+  const [showAddExchange, setShowAddExchange] = useState(false);
+  const [newExchangeId, setNewExchangeId] = useState<CryptoExchangeId>('coinbase');
+  const [newExchangeKey, setNewExchangeKey] = useState('');
+  const [newExchangeSecret, setNewExchangeSecret] = useState('');
+  const [newExchangePassphrase, setNewExchangePassphrase] = useState('');
+  const [showAddWallet, setShowAddWallet] = useState(false);
+  const [newWalletChain, setNewWalletChain] = useState<CryptoChain>('btc');
+  const [newWalletAddress, setNewWalletAddress] = useState('');
+  const [newWalletLabel, setNewWalletLabel] = useState('');
+  const [isCryptoSaving, setIsCryptoSaving] = useState(false);
+
   // Load settings and sync status on mount
   useEffect(() => {
     loadSettings();
     loadSyncStatus();
+    loadCryptoSettings();
     const interval = setInterval(loadSyncStatus, 30000); // Poll every 30s
     return () => clearInterval(interval);
   }, []);
@@ -200,6 +222,118 @@ export function SettingsView() {
       setEditingEntity(null);
     } else {
       addToast('Failed to update entity', 'error');
+    }
+  };
+
+  // Crypto settings functions
+  const loadCryptoSettings = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/crypto/settings`);
+      const data = await res.json();
+      setCryptoExchanges(data.exchanges || []);
+      setCryptoWallets(data.wallets || []);
+    } catch {
+      // Silently fail — crypto is optional
+    }
+  };
+
+  const handleAddExchange = async () => {
+    if (!newExchangeKey || !newExchangeSecret) return;
+    setIsCryptoSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/crypto/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          addExchange: {
+            id: newExchangeId,
+            apiKey: newExchangeKey,
+            apiSecret: newExchangeSecret,
+            passphrase: newExchangePassphrase || undefined,
+          },
+        }),
+      });
+      if ((await res.json()).ok) {
+        addToast(`${newExchangeId} added`, 'success');
+        setShowAddExchange(false);
+        setNewExchangeKey('');
+        setNewExchangeSecret('');
+        setNewExchangePassphrase('');
+        loadCryptoSettings();
+      }
+    } catch {
+      addToast('Failed to add exchange', 'error');
+    } finally {
+      setIsCryptoSaving(false);
+    }
+  };
+
+  const handleRemoveExchange = async (exchangeId: string) => {
+    if (!confirm(`Remove ${exchangeId} API keys?`)) return;
+    setIsCryptoSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/crypto/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ removeExchange: exchangeId }),
+      });
+      if ((await res.json()).ok) {
+        addToast(`${exchangeId} removed`, 'success');
+        loadCryptoSettings();
+      }
+    } catch {
+      addToast('Failed to remove exchange', 'error');
+    } finally {
+      setIsCryptoSaving(false);
+    }
+  };
+
+  const handleAddWallet = async () => {
+    if (!newWalletAddress) return;
+    setIsCryptoSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/crypto/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          addWallet: {
+            address: newWalletAddress,
+            chain: newWalletChain,
+            label: newWalletLabel || undefined,
+          },
+        }),
+      });
+      if ((await res.json()).ok) {
+        addToast('Wallet added', 'success');
+        setShowAddWallet(false);
+        setNewWalletAddress('');
+        setNewWalletLabel('');
+        loadCryptoSettings();
+      }
+    } catch {
+      addToast('Failed to add wallet', 'error');
+    } finally {
+      setIsCryptoSaving(false);
+    }
+  };
+
+  const handleRemoveWallet = async (walletId: string) => {
+    if (!confirm('Remove this wallet?')) return;
+    setIsCryptoSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/crypto/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ removeWallet: walletId }),
+      });
+      if ((await res.json()).ok) {
+        addToast('Wallet removed', 'success');
+        loadCryptoSettings();
+      }
+    } catch {
+      addToast('Failed to remove wallet', 'error');
+    } finally {
+      setIsCryptoSaving(false);
     }
   };
 
@@ -454,6 +588,249 @@ export function SettingsView() {
             </div>
           </div>
         )}
+      </section>
+
+      {/* Crypto Settings Section */}
+      <section className="glass-card rounded-xl p-6 mb-8">
+        <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
+          <Bitcoin className="w-5 h-5" />
+          Crypto Tracking
+        </h3>
+        <p className="text-[13px] text-surface-600 mb-4">
+          Connect exchanges and wallets to track balances in the Crypto view.
+        </p>
+
+        {/* Exchanges */}
+        <div className="mb-6">
+          <h4 className="text-[13px] font-semibold text-surface-800 mb-3 flex items-center gap-2">
+            <Key className="w-3.5 h-3.5" />
+            Exchange API Keys
+          </h4>
+
+          {cryptoExchanges.length > 0 && (
+            <div className="space-y-2 mb-3">
+              {cryptoExchanges.map((ex) => (
+                <div
+                  key={ex.id}
+                  className="flex items-center justify-between p-3 bg-surface-200/30 border border-surface-400/20 rounded-xl"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className={`w-2 h-2 rounded-full ${ex.enabled ? 'bg-emerald-400' : 'bg-surface-500'}`}
+                    />
+                    <span className="text-[13px] font-medium text-surface-900 capitalize">
+                      {ex.id}
+                    </span>
+                    {ex.keyHint && (
+                      <span className="text-[11px] text-surface-500 font-mono">
+                        ****{ex.keyHint}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handleRemoveExchange(ex.id)}
+                    disabled={isCryptoSaving}
+                    className="p-1.5 text-surface-600 hover:text-danger-400 hover:bg-danger-500/10 rounded-lg transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {showAddExchange ? (
+            <div className="p-4 bg-surface-200/20 border border-border rounded-xl space-y-3">
+              <div>
+                <label className="block text-[11px] font-medium text-surface-600 mb-1">
+                  Exchange
+                </label>
+                <select
+                  value={newExchangeId}
+                  onChange={(e) => setNewExchangeId(e.target.value as CryptoExchangeId)}
+                  className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900"
+                >
+                  <option value="coinbase">Coinbase</option>
+                  <option value="gemini">Gemini</option>
+                  <option value="kraken">Kraken</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-surface-600 mb-1">
+                  API Key
+                </label>
+                <input
+                  type="password"
+                  value={newExchangeKey}
+                  onChange={(e) => setNewExchangeKey(e.target.value)}
+                  placeholder="API key..."
+                  className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 font-mono placeholder:text-surface-500"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-surface-600 mb-1">
+                  API Secret
+                </label>
+                <input
+                  type="password"
+                  value={newExchangeSecret}
+                  onChange={(e) => setNewExchangeSecret(e.target.value)}
+                  placeholder="API secret..."
+                  className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 font-mono placeholder:text-surface-500"
+                />
+              </div>
+              {newExchangeId === 'coinbase' && (
+                <div>
+                  <label className="block text-[11px] font-medium text-surface-600 mb-1">
+                    Passphrase <span className="text-surface-500 font-normal">(if required)</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={newExchangePassphrase}
+                    onChange={(e) => setNewExchangePassphrase(e.target.value)}
+                    placeholder="Optional passphrase..."
+                    className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 font-mono placeholder:text-surface-500"
+                  />
+                </div>
+              )}
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={() => {
+                    setShowAddExchange(false);
+                    setNewExchangeKey('');
+                    setNewExchangeSecret('');
+                    setNewExchangePassphrase('');
+                  }}
+                  className="px-3 py-2 text-[13px] text-surface-700 hover:bg-surface-300/30 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddExchange}
+                  disabled={isCryptoSaving || !newExchangeKey || !newExchangeSecret}
+                  className="px-3 py-2 text-[13px] text-surface-0 bg-accent-500 hover:bg-accent-400 rounded-xl transition-colors disabled:opacity-50 font-medium"
+                >
+                  {isCryptoSaving ? 'Saving...' : 'Add Exchange'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowAddExchange(true)}
+              className="flex items-center gap-2 px-3 py-2 text-[13px] text-surface-700 hover:text-surface-900 hover:bg-surface-200/50 rounded-xl transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Exchange
+            </button>
+          )}
+        </div>
+
+        {/* Wallets */}
+        <div>
+          <h4 className="text-[13px] font-semibold text-surface-800 mb-3 flex items-center gap-2">
+            <Wallet className="w-3.5 h-3.5" />
+            Wallet Addresses
+          </h4>
+
+          {cryptoWallets.length > 0 && (
+            <div className="space-y-2 mb-3">
+              {cryptoWallets.map((w) => (
+                <div
+                  key={w.id}
+                  className="flex items-center justify-between p-3 bg-surface-200/30 border border-surface-400/20 rounded-xl"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-mono font-bold text-surface-700 uppercase">
+                        {w.chain}
+                      </span>
+                      <span className="text-[13px] font-medium text-surface-900">{w.label}</span>
+                    </div>
+                    <p className="text-[11px] text-surface-500 font-mono truncate">{w.address}</p>
+                  </div>
+                  <button
+                    onClick={() => handleRemoveWallet(w.id)}
+                    disabled={isCryptoSaving}
+                    className="p-1.5 text-surface-600 hover:text-danger-400 hover:bg-danger-500/10 rounded-lg transition-colors flex-shrink-0 ml-2"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {showAddWallet ? (
+            <div className="p-4 bg-surface-200/20 border border-border rounded-xl space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-medium text-surface-600 mb-1">
+                    Chain
+                  </label>
+                  <select
+                    value={newWalletChain}
+                    onChange={(e) => setNewWalletChain(e.target.value as CryptoChain)}
+                    className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900"
+                  >
+                    <option value="btc">Bitcoin (BTC)</option>
+                    <option value="eth">Ethereum (ETH)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-surface-600 mb-1">
+                    Label
+                  </label>
+                  <input
+                    type="text"
+                    value={newWalletLabel}
+                    onChange={(e) => setNewWalletLabel(e.target.value)}
+                    placeholder="e.g. Cold storage"
+                    className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 placeholder:text-surface-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-surface-600 mb-1">
+                  Address
+                </label>
+                <input
+                  type="text"
+                  value={newWalletAddress}
+                  onChange={(e) => setNewWalletAddress(e.target.value)}
+                  placeholder={newWalletChain === 'btc' ? 'bc1q... or 1A1zP1...' : '0x...'}
+                  className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 font-mono placeholder:text-surface-500"
+                />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={() => {
+                    setShowAddWallet(false);
+                    setNewWalletAddress('');
+                    setNewWalletLabel('');
+                  }}
+                  className="px-3 py-2 text-[13px] text-surface-700 hover:bg-surface-300/30 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddWallet}
+                  disabled={isCryptoSaving || !newWalletAddress}
+                  className="px-3 py-2 text-[13px] text-surface-0 bg-accent-500 hover:bg-accent-400 rounded-xl transition-colors disabled:opacity-50 font-medium"
+                >
+                  {isCryptoSaving ? 'Saving...' : 'Add Wallet'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowAddWallet(true)}
+              className="flex items-center gap-2 px-3 py-2 text-[13px] text-surface-700 hover:text-surface-900 hover:bg-surface-200/50 rounded-xl transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Wallet
+            </button>
+          )}
+        </div>
       </section>
 
       {/* Entity Management Section */}

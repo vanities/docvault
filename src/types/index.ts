@@ -327,6 +327,53 @@ export interface Todo {
   updatedAt: string;
 }
 
+// Crypto tracking types
+export type CryptoExchangeId = 'coinbase' | 'gemini' | 'kraken';
+export type CryptoChain = 'btc' | 'eth';
+
+export interface CryptoExchangeConfig {
+  id: CryptoExchangeId;
+  apiKey: string;
+  apiSecret: string;
+  passphrase?: string; // Coinbase Advanced requires this
+  enabled: boolean;
+}
+
+export interface CryptoWalletConfig {
+  id: string; // user-chosen unique id
+  address: string;
+  chain: CryptoChain;
+  label: string; // e.g. "Cold storage", "Hardware wallet"
+}
+
+export interface CryptoBalance {
+  asset: string; // e.g. "BTC", "ETH", "USDC"
+  amount: number;
+  usdValue?: number;
+}
+
+export interface CryptoSourceBalance {
+  sourceId: string; // exchange id or wallet id
+  sourceType: 'exchange' | 'wallet';
+  label: string; // e.g. "Coinbase", "Cold storage"
+  balances: CryptoBalance[];
+  totalUsdValue: number;
+  error?: string;
+  lastUpdated: string; // ISO date
+}
+
+export interface CryptoPortfolio {
+  sources: CryptoSourceBalance[];
+  totalUsdValue: number;
+  byAsset: CryptoBalance[];
+  lastUpdated: string;
+}
+
+export interface CryptoSettings {
+  exchanges: CryptoExchangeConfig[];
+  wallets: CryptoWalletConfig[];
+}
+
 // Sync status (Dropbox)
 export interface SyncStatus {
   status: 'ok' | 'error' | 'syncing' | 'unknown';

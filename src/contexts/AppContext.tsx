@@ -13,7 +13,7 @@ import { useFileSystemServer, type EntityConfig } from '../hooks/useFileSystemSe
 import type { Entity, TaxDocument, DocumentType, ExpenseCategory, Reminder, Todo } from '../types';
 
 // Navigation views
-export type NavView = 'tax-year' | 'business-docs' | 'all-files' | 'settings' | 'tn-tax';
+export type NavView = 'tax-year' | 'business-docs' | 'all-files' | 'settings' | 'tn-tax' | 'crypto';
 
 // Tab types for tax year view
 export type TabType = 'documents' | 'income' | 'expenses' | 'invoices' | 'statements';

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { parseWithAI } from './parsers/ai.js';
 import { zipSync } from 'fflate';
 import { withAILimit } from './aiLimiter.js';
+import { fetchAllBalances } from './crypto.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 3005;
@@ -33,8 +34,27 @@ interface Config {
   entities: EntityConfig[];
 }
 
+interface CryptoExchangeConfig {
+  id: 'coinbase' | 'gemini' | 'kraken';
+  apiKey: string;
+  apiSecret: string;
+  passphrase?: string;
+  enabled: boolean;
+}
+
+interface CryptoWalletConfig {
+  id: string;
+  address: string;
+  chain: 'btc' | 'eth';
+  label: string;
+}
+
 interface Settings {
   anthropicKey?: string;
+  crypto?: {
+    exchanges: CryptoExchangeConfig[];
+    wallets: CryptoWalletConfig[];
+  };
 }
 
 interface FileInfo {
@@ -472,6 +492,99 @@ async function handleRequest(req: Request): Promise<Response> {
 
     await saveSettings(settings);
     return jsonResponse({ ok: true });
+  }
+
+  // GET /api/crypto/settings — get configured exchanges and wallets (keys masked)
+  if (pathname === '/api/crypto/settings' && req.method === 'GET') {
+    const settings = await loadSettings();
+    const cryptoConfig = settings.crypto || { exchanges: [], wallets: [] };
+    return jsonResponse({
+      exchanges: cryptoConfig.exchanges.map((e) => ({
+        id: e.id,
+        enabled: e.enabled,
+        hasKey: !!e.apiKey,
+        keyHint: e.apiKey ? e.apiKey.slice(-4) : undefined,
+      })),
+      wallets: cryptoConfig.wallets.map((w) => ({
+        id: w.id,
+        address: w.address,
+        chain: w.chain,
+        label: w.label,
+      })),
+    });
+  }
+
+  // POST /api/crypto/settings — save exchange keys and wallet addresses
+  if (pathname === '/api/crypto/settings' && req.method === 'POST') {
+    const body = await req.json();
+    const settings = await loadSettings();
+
+    if (!settings.crypto) {
+      settings.crypto = { exchanges: [], wallets: [] };
+    }
+
+    // Handle exchange operations
+    if (body.addExchange) {
+      const { id, apiKey, apiSecret, passphrase } = body.addExchange;
+      if (!id || !apiKey || !apiSecret) {
+        return jsonResponse({ error: 'Missing exchange id, apiKey, or apiSecret' }, 400);
+      }
+      // Remove existing if updating
+      settings.crypto.exchanges = settings.crypto.exchanges.filter((e) => e.id !== id);
+      settings.crypto.exchanges.push({ id, apiKey, apiSecret, passphrase, enabled: true });
+    }
+
+    if (body.removeExchange) {
+      settings.crypto.exchanges = settings.crypto.exchanges.filter(
+        (e) => e.id !== body.removeExchange
+      );
+    }
+
+    if (body.toggleExchange) {
+      const exchange = settings.crypto.exchanges.find((e) => e.id === body.toggleExchange);
+      if (exchange) exchange.enabled = !exchange.enabled;
+    }
+
+    // Handle wallet operations
+    if (body.addWallet) {
+      const { address, chain, label } = body.addWallet;
+      if (!address || !chain) {
+        return jsonResponse({ error: 'Missing wallet address or chain' }, 400);
+      }
+      const id = `${chain}-${Date.now()}`;
+      settings.crypto.wallets.push({
+        id,
+        address,
+        chain,
+        label: label || `${chain.toUpperCase()} Wallet`,
+      });
+    }
+
+    if (body.removeWallet) {
+      settings.crypto.wallets = settings.crypto.wallets.filter((w) => w.id !== body.removeWallet);
+    }
+
+    await saveSettings(settings);
+    return jsonResponse({ ok: true });
+  }
+
+  // GET /api/crypto/balances — fetch live balances from all configured sources
+  if (pathname === '/api/crypto/balances' && req.method === 'GET') {
+    const settings = await loadSettings();
+    const cryptoConfig = settings.crypto || { exchanges: [], wallets: [] };
+
+    if (cryptoConfig.exchanges.length === 0 && cryptoConfig.wallets.length === 0) {
+      return jsonResponse({
+        sources: [],
+        totalUsdValue: 0,
+        byAsset: [],
+        lastUpdated: new Date().toISOString(),
+        message: 'No exchanges or wallets configured. Add them in Settings.',
+      });
+    }
+
+    const portfolio = await fetchAllBalances(cryptoConfig.exchanges, cryptoConfig.wallets);
+    return jsonResponse(portfolio);
   }
 
   // GET /api/status
