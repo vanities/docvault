@@ -14,6 +14,9 @@ import {
   Bitcoin,
   Plus,
   Wallet,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
 } from 'lucide-react';
 import type { SyncStatus, CryptoExchangeId, CryptoChain } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
@@ -103,6 +106,8 @@ export function SettingsView() {
   const [newWalletAddress, setNewWalletAddress] = useState('');
   const [newWalletLabel, setNewWalletLabel] = useState('');
   const [isCryptoSaving, setIsCryptoSaving] = useState(false);
+  const [showExchangeHelp, setShowExchangeHelp] = useState(false);
+  const [showWalletHelp, setShowWalletHelp] = useState(false);
 
   // Load settings and sync status on mount
   useEffect(() => {
@@ -607,6 +612,76 @@ export function SettingsView() {
             Exchange API Keys
           </h4>
 
+          <button
+            onClick={() => setShowExchangeHelp(!showExchangeHelp)}
+            className="flex items-center gap-1.5 text-[12px] text-accent-400 hover:text-accent-300 mb-3 transition-colors"
+          >
+            {showExchangeHelp ? (
+              <ChevronDown className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5" />
+            )}
+            Where to get API keys
+          </button>
+          {showExchangeHelp && (
+            <div className="p-3 bg-surface-200/20 border border-border rounded-xl mb-3 space-y-2.5">
+              <div className="flex items-start gap-2">
+                <span className="text-[12px] font-medium text-surface-800 min-w-[70px]">
+                  Coinbase
+                </span>
+                <a
+                  href="https://www.coinbase.com/settings/api"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[12px] text-accent-400 hover:underline flex items-center gap-1"
+                >
+                  coinbase.com/settings/api
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+              <p className="text-[11px] text-surface-500 ml-[78px] -mt-1">
+                Create a new API key with <span className="font-medium">view</span> permissions
+                only. No trade/transfer access needed.
+              </p>
+              <div className="flex items-start gap-2">
+                <span className="text-[12px] font-medium text-surface-800 min-w-[70px]">
+                  Gemini
+                </span>
+                <a
+                  href="https://exchange.gemini.com/settings/api"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[12px] text-accent-400 hover:underline flex items-center gap-1"
+                >
+                  exchange.gemini.com/settings/api
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+              <p className="text-[11px] text-surface-500 ml-[78px] -mt-1">
+                Create a new API key. Select <span className="font-medium">Auditor</span> role for
+                read-only access.
+              </p>
+              <div className="flex items-start gap-2">
+                <span className="text-[12px] font-medium text-surface-800 min-w-[70px]">
+                  Kraken
+                </span>
+                <a
+                  href="https://www.kraken.com/u/security/api"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[12px] text-accent-400 hover:underline flex items-center gap-1"
+                >
+                  kraken.com/u/security/api
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+              <p className="text-[11px] text-surface-500 ml-[78px] -mt-1">
+                Generate a new key with only <span className="font-medium">Query Funds</span>{' '}
+                permission. No trading needed.
+              </p>
+            </div>
+          )}
+
           {cryptoExchanges.length > 0 && (
             <div className="space-y-2 mb-3">
               {cryptoExchanges.map((ex) => (
@@ -731,6 +806,59 @@ export function SettingsView() {
             <Wallet className="w-3.5 h-3.5" />
             Wallet Addresses
           </h4>
+
+          <button
+            onClick={() => setShowWalletHelp(!showWalletHelp)}
+            className="flex items-center gap-1.5 text-[12px] text-accent-400 hover:text-accent-300 mb-3 transition-colors"
+          >
+            {showWalletHelp ? (
+              <ChevronDown className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5" />
+            )}
+            How to find your wallet address
+          </button>
+          {showWalletHelp && (
+            <div className="p-3 bg-surface-200/20 border border-border rounded-xl mb-3 space-y-2.5">
+              <div>
+                <p className="text-[12px] font-medium text-surface-800 mb-1">Bitcoin (BTC)</p>
+                <p className="text-[11px] text-surface-600">
+                  Your BTC address starts with <span className="font-mono">bc1q...</span>,{' '}
+                  <span className="font-mono">1...</span>, or{' '}
+                  <span className="font-mono">3...</span>. Find it in your wallet app under
+                  &quot;Receive&quot;. You can verify it on{' '}
+                  <a
+                    href="https://blockstream.info/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent-400 hover:underline inline-flex items-center gap-0.5"
+                  >
+                    blockstream.info
+                    <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                </p>
+              </div>
+              <div>
+                <p className="text-[12px] font-medium text-surface-800 mb-1">Ethereum (ETH)</p>
+                <p className="text-[11px] text-surface-600">
+                  Your ETH address starts with <span className="font-mono">0x...</span> (42
+                  characters). Find it in MetaMask, Ledger, or any Ethereum wallet. Verify on{' '}
+                  <a
+                    href="https://etherscan.io/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent-400 hover:underline inline-flex items-center gap-0.5"
+                  >
+                    etherscan.io
+                    <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                </p>
+              </div>
+              <p className="text-[11px] text-surface-500 italic">
+                Wallet queries are read-only — no private keys needed. Blockchain data is public.
+              </p>
+            </div>
+          )}
 
           {cryptoWallets.length > 0 && (
             <div className="space-y-2 mb-3">
