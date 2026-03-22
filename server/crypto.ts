@@ -1,9 +1,10 @@
 // =============================================================================
-// Crypto Balance Queries
+// Crypto Balance Queries & Trade History
 // =============================================================================
 // Fetches balances from exchanges (Coinbase, Gemini, Kraken) and on-chain
 // wallets (BTC via Blockstream, ETH via Etherscan/public RPC).
 // Prices from CoinGecko free API (no key required).
+// Trade history from exchange APIs for cost basis / gains tracking.
 
 import crypto from 'crypto';
 
@@ -40,6 +41,45 @@ interface SourceBalance {
   totalUsdValue: number;
   error?: string;
   lastUpdated: string;
+}
+
+// Trade history types for cost basis tracking
+export interface CryptoTrade {
+  asset: string; // Normalized symbol (BTC, ETH, etc.)
+  side: 'buy' | 'sell';
+  amount: number;
+  priceUsd: number; // Price per unit in USD at time of trade
+  totalCost: number; // amount * priceUsd + fee
+  fee: number;
+  timestamp: string; // ISO date string
+  source: string; // Exchange ID
+}
+
+export interface CryptoAssetGains {
+  asset: string;
+  totalAmount: number;
+  totalCostBasis: number;
+  currentValue: number;
+  unrealizedGain: number;
+  shortTermGain: number; // Gains on lots held < 1 year
+  longTermGain: number; // Gains on lots held >= 1 year
+  lots: {
+    amount: number;
+    costPerUnit: number;
+    date: string;
+    gainType: 'short-term' | 'long-term';
+  }[];
+}
+
+export interface CryptoGainsSummary {
+  assets: CryptoAssetGains[];
+  totalCostBasis: number;
+  totalCurrentValue: number;
+  totalUnrealizedGain: number;
+  totalShortTermGain: number;
+  totalLongTermGain: number;
+  lastUpdated: string;
+  tradeCount: number;
 }
 
 // -----------------------------------------------------------------------------
@@ -305,20 +345,108 @@ async function fetchGeminiBalances(config: ExchangeConfig): Promise<Balance[]> {
 // Exchange: Kraken
 // -----------------------------------------------------------------------------
 
+// Kraken uses weird asset names: XXBT=BTC, XETH=ETH, ZUSD=USD, etc.
+// Staked assets have suffixes: ETH2.S (staked), ETH2 (rewards), DOT.S, SOL.S, etc.
+const KRAKEN_ASSET_MAP: Record<string, string> = {
+  XXBT: 'BTC',
+  XETH: 'ETH',
+  ZUSD: 'USD',
+  XXRP: 'XRP',
+  XLTC: 'LTC',
+  XXDG: 'DOGE',
+  XSOL: 'SOL',
+  XXLM: 'XLM',
+  DOT: 'DOT',
+  ADA: 'ADA',
+  USDC: 'USDC',
+  USDT: 'USDT',
+  // Staked asset variants → map to base asset
+  'ETH2.S': 'ETH',
+  ETH2: 'ETH',
+  'XBT.M': 'BTC',
+  'DOT.S': 'DOT',
+  'DOT28.S': 'DOT',
+  'SOL.S': 'SOL',
+  'ADA.S': 'ADA',
+  'ATOM.S': 'ATOM',
+  'MATIC.S': 'MATIC',
+  'FLOW.S': 'FLOW',
+  'ALGO.S': 'ALGO',
+  'MINA.S': 'MINA',
+  'KAVA.S': 'KAVA',
+  'TRX.S': 'TRX',
+  'SCRT.S': 'SCRT',
+  'XTZ.S': 'XTZ',
+  'KSM.S': 'KSM',
+};
+
+// Kraken pair map — trade pairs use different prefixes than balance assets
+const KRAKEN_PAIR_MAP: Record<string, string> = {
+  XXBT: 'BTC',
+  XBT: 'BTC',
+  XETH: 'ETH',
+  XXRP: 'XRP',
+  XLTC: 'LTC',
+  XXDG: 'DOGE',
+  XXLM: 'XLM',
+  ZUSD: 'USD',
+  ZEUR: 'EUR',
+  ZGBP: 'GBP',
+  ZJPY: 'JPY',
+};
+
+function normalizeKrakenAsset(asset: string): string {
+  const mapped = KRAKEN_ASSET_MAP[asset] || KRAKEN_PAIR_MAP[asset];
+  if (mapped) return mapped;
+  const stripped = asset.replace(/\.\w+$/, '');
+  return (
+    KRAKEN_ASSET_MAP[stripped] ||
+    KRAKEN_PAIR_MAP[stripped] ||
+    stripped.replace(/^[XZ]/, '').toUpperCase()
+  );
+}
+
+// Parse a Kraken pair string like "XXBTZUSD" or "ETHUSDT" into [base, quote]
+function parseKrakenPair(pair: string): [string, string] | null {
+  // Try known 4-char prefixes first (XXBT, XETH, etc.)
+  for (const prefix of Object.keys(KRAKEN_PAIR_MAP).sort((a, b) => b.length - a.length)) {
+    if (pair.startsWith(prefix)) {
+      const rest = pair.slice(prefix.length);
+      return [normalizeKrakenAsset(prefix), normalizeKrakenAsset(rest)];
+    }
+  }
+  // Fallback: try splitting at common quote currencies
+  for (const quote of ['ZUSD', 'ZEUR', 'USD', 'USDT', 'USDC', 'EUR']) {
+    if (pair.endsWith(quote)) {
+      const base = pair.slice(0, pair.length - quote.length);
+      return [normalizeKrakenAsset(base), normalizeKrakenAsset(quote)];
+    }
+  }
+  return null;
+}
+
+function krakenSignRequest(
+  apiSecret: string,
+  urlPath: string,
+  nonce: string,
+  postData: string
+): string {
+  const hash = crypto
+    .createHash('sha256')
+    .update(nonce + postData)
+    .digest();
+  return crypto
+    .createHmac('sha512', Buffer.from(apiSecret, 'base64'))
+    .update(Buffer.concat([Buffer.from(urlPath), hash]))
+    .digest('base64');
+}
+
 async function fetchKrakenBalances(config: ExchangeConfig): Promise<Balance[]> {
   const nonce = Date.now().toString();
   const urlPath = '/0/private/Balance';
   const postData = `nonce=${nonce}`;
 
-  // Kraken signature: HMAC-SHA512(urlPath + SHA256(nonce + postData), base64decode(secret))
-  const hash = crypto
-    .createHash('sha256')
-    .update(nonce + postData)
-    .digest();
-  const hmac = crypto
-    .createHmac('sha512', Buffer.from(config.apiSecret, 'base64'))
-    .update(Buffer.concat([Buffer.from(urlPath), hash]))
-    .digest('base64');
+  const hmac = krakenSignRequest(config.apiSecret, urlPath, nonce, postData);
 
   const res = await fetch(`https://api.kraken.com${urlPath}`, {
     method: 'POST',
@@ -340,52 +468,17 @@ async function fetchKrakenBalances(config: ExchangeConfig): Promise<Balance[]> {
     throw new Error(`Kraken: ${data.error.join(', ')}`);
   }
 
-  // Kraken uses weird asset names: XXBT=BTC, XETH=ETH, ZUSD=USD, etc.
-  // Staked assets have suffixes: ETH2.S (staked), ETH2 (rewards), DOT.S, SOL.S, etc.
-  const KRAKEN_MAP: Record<string, string> = {
-    XXBT: 'BTC',
-    XETH: 'ETH',
-    ZUSD: 'USD',
-    XXRP: 'XRP',
-    XLTC: 'LTC',
-    XXDG: 'DOGE',
-    XSOL: 'SOL',
-    XXLM: 'XLM',
-    DOT: 'DOT',
-    ADA: 'ADA',
-    USDC: 'USDC',
-    USDT: 'USDT',
-    // Staked asset variants → map to base asset
-    'ETH2.S': 'ETH',
-    ETH2: 'ETH',
-    'XBT.M': 'BTC',
-    'DOT.S': 'DOT',
-    'DOT28.S': 'DOT',
-    'SOL.S': 'SOL',
-    'ADA.S': 'ADA',
-    'ATOM.S': 'ATOM',
-    'MATIC.S': 'MATIC',
-    'FLOW.S': 'FLOW',
-    'ALGO.S': 'ALGO',
-    'MINA.S': 'MINA',
-    'KAVA.S': 'KAVA',
-    'TRX.S': 'TRX',
-    'SCRT.S': 'SCRT',
-    'XTZ.S': 'XTZ',
-    'KSM.S': 'KSM',
-  };
-
   // Aggregate by normalized symbol so staked + spot are combined
   const assetTotals = new Map<string, number>();
   for (const [asset, value] of Object.entries(data.result || {})) {
     const amount = parseFloat(value as string);
     if (amount > 0.000001) {
       // Check explicit map first, then strip staking suffix, then strip X/Z prefix
-      let symbol = KRAKEN_MAP[asset];
+      let symbol = KRAKEN_ASSET_MAP[asset];
       if (!symbol) {
         // Handle unknown staking variants: strip .S / .M / .P suffixes
         const stripped = asset.replace(/\.\w+$/, '');
-        symbol = KRAKEN_MAP[stripped] || stripped.replace(/^[XZ]/, '');
+        symbol = KRAKEN_ASSET_MAP[stripped] || stripped.replace(/^[XZ]/, '');
       }
       symbol = symbol.toUpperCase();
       assetTotals.set(symbol, (assetTotals.get(symbol) || 0) + amount);
@@ -500,8 +593,360 @@ async function fetchEthBalance(address: string): Promise<Balance[]> {
   return balances;
 }
 
+// =============================================================================
+// Trade History Fetchers (for cost basis / gains tracking)
+// =============================================================================
+
+// --- Coinbase: GET /api/v3/brokerage/orders/historical/fills ---
+async function fetchCoinbaseTrades(config: ExchangeConfig): Promise<CryptoTrade[]> {
+  const trades: CryptoTrade[] = [];
+  let cursor: string | undefined;
+
+  // Paginate through all fills
+  for (let page = 0; page < 50; page++) {
+    const params = new URLSearchParams({ limit: '100' });
+    if (cursor) params.set('cursor', cursor);
+
+    const requestPath = '/api/v3/brokerage/orders/historical/fills';
+    const uri = `GET api.coinbase.com${requestPath}`;
+    const jwt = buildCoinbaseJwt(config.apiKey, config.apiSecret, uri);
+
+    const res = await fetch(`https://api.coinbase.com${requestPath}?${params}`, {
+      headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+    });
+
+    if (!res.ok) break;
+    const data = await res.json();
+
+    for (const fill of data.fills || []) {
+      const productId = fill.product_id || ''; // e.g. "BTC-USD"
+      const [base, quote] = productId.split('-');
+      if (!base || !quote) continue;
+
+      // Only track USD-denominated trades for cost basis
+      if (quote !== 'USD' && quote !== 'USDC' && quote !== 'USDT') continue;
+
+      const price = parseFloat(fill.price || '0');
+      const size = parseFloat(fill.size || '0');
+      const commission = parseFloat(fill.commission || '0');
+      const side = fill.side === 'BUY' ? 'buy' : 'sell';
+
+      if (size > 0 && price > 0) {
+        trades.push({
+          asset: base.toUpperCase(),
+          side: side as 'buy' | 'sell',
+          amount: size,
+          priceUsd: price,
+          totalCost: price * size + (side === 'buy' ? commission : -commission),
+          fee: commission,
+          timestamp: fill.trade_time || new Date().toISOString(),
+          source: 'coinbase',
+        });
+      }
+    }
+
+    cursor = data.cursor;
+    if (!cursor || (data.fills || []).length < 100) break;
+  }
+
+  return trades;
+}
+
+// --- Gemini: POST /v1/mytrades ---
+async function fetchGeminiTrades(config: ExchangeConfig): Promise<CryptoTrade[]> {
+  const trades: CryptoTrade[] = [];
+
+  // Fetch trades for common USD pairs
+  const symbols = [
+    'btcusd',
+    'ethusd',
+    'solusd',
+    'dogeusd',
+    'adausd',
+    'dotusd',
+    'linkusd',
+    'ltcusd',
+    'xrpusd',
+    'uniusd',
+    'avaxusd',
+    'atomusd',
+    'maticusd',
+  ];
+
+  for (const symbol of symbols) {
+    try {
+      const nonce = Date.now().toString();
+      const payload = JSON.stringify({
+        request: '/v1/mytrades',
+        nonce,
+        symbol,
+        limit_trades: 500,
+      });
+      const encodedPayload = Buffer.from(payload).toString('base64');
+      const signature = crypto
+        .createHmac('sha384', config.apiSecret)
+        .update(encodedPayload)
+        .digest('hex');
+
+      const res = await fetch('https://api.gemini.com/v1/mytrades', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain',
+          'X-GEMINI-APIKEY': config.apiKey,
+          'X-GEMINI-PAYLOAD': encodedPayload,
+          'X-GEMINI-SIGNATURE': signature,
+          'Cache-Control': 'no-cache',
+        },
+      });
+
+      if (!res.ok) continue;
+      const data = await res.json();
+
+      // Extract base asset from symbol (e.g. "btcusd" -> "BTC")
+      const base = symbol.replace(/usd$/, '').toUpperCase();
+
+      for (const trade of data) {
+        const price = parseFloat(trade.price || '0');
+        const amount = parseFloat(trade.amount || '0');
+        const fee = parseFloat(trade.fee_amount || '0');
+        const side = trade.type === 'Buy' ? 'buy' : 'sell';
+
+        if (amount > 0 && price > 0) {
+          trades.push({
+            asset: base,
+            side,
+            amount,
+            priceUsd: price,
+            totalCost: price * amount + (side === 'buy' ? fee : -fee),
+            fee,
+            timestamp: new Date(trade.timestampms || trade.timestamp * 1000).toISOString(),
+            source: 'gemini',
+          });
+        }
+      }
+
+      // Small delay between symbols for rate limiting
+      await new Promise((r) => setTimeout(r, 120));
+    } catch {
+      // Skip failed symbol lookups
+    }
+  }
+
+  return trades;
+}
+
+// --- Kraken: POST /0/private/TradesHistory ---
+async function fetchKrakenTrades(config: ExchangeConfig): Promise<CryptoTrade[]> {
+  const trades: CryptoTrade[] = [];
+
+  // Paginate through all trades (50 per page)
+  for (let offset = 0; offset < 5000; offset += 50) {
+    const nonce = Date.now().toString();
+    const urlPath = '/0/private/TradesHistory';
+    const postData = `nonce=${nonce}&ofs=${offset}`;
+
+    const hmac = krakenSignRequest(config.apiSecret, urlPath, nonce, postData);
+
+    const res = await fetch(`https://api.kraken.com${urlPath}`, {
+      method: 'POST',
+      headers: {
+        'API-Key': config.apiKey,
+        'API-Sign': hmac,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: postData,
+    });
+
+    if (!res.ok) break;
+    const data = await res.json();
+    if (data.error?.length > 0) break;
+
+    const tradeEntries = Object.values(data.result?.trades || {}) as any[];
+    if (tradeEntries.length === 0) break;
+
+    for (const trade of tradeEntries) {
+      const pair = trade.pair || '';
+      const parsed = parseKrakenPair(pair);
+      if (!parsed) continue;
+      const [base, quote] = parsed;
+
+      // Only track USD-denominated trades
+      if (quote !== 'USD' && quote !== 'USDT' && quote !== 'USDC') continue;
+
+      const price = parseFloat(trade.price || '0');
+      const vol = parseFloat(trade.vol || '0');
+      const cost = parseFloat(trade.cost || '0');
+      const fee = parseFloat(trade.fee || '0');
+      const side = trade.type === 'buy' ? 'buy' : 'sell';
+
+      if (vol > 0 && price > 0) {
+        trades.push({
+          asset: base,
+          side,
+          amount: vol,
+          priceUsd: price,
+          totalCost: cost + (side === 'buy' ? fee : -fee),
+          fee,
+          timestamp: new Date(trade.time * 1000).toISOString(),
+          source: 'kraken',
+        });
+      }
+    }
+
+    if (tradeEntries.length < 50) break;
+    // Small delay between pages
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  return trades;
+}
+
+const TRADE_FETCHERS: Record<string, (config: ExchangeConfig) => Promise<CryptoTrade[]>> = {
+  coinbase: fetchCoinbaseTrades,
+  gemini: fetchGeminiTrades,
+  kraken: fetchKrakenTrades,
+};
+
+// =============================================================================
+// FIFO Cost Basis Calculator
+// =============================================================================
+
+const ONE_YEAR_MS = 365.25 * 24 * 60 * 60 * 1000;
+
+function computeGains(
+  trades: CryptoTrade[],
+  currentPrices: Record<string, number>
+): CryptoGainsSummary {
+  // Group trades by asset, sorted by time
+  const byAsset = new Map<string, CryptoTrade[]>();
+  for (const trade of trades) {
+    const existing = byAsset.get(trade.asset) || [];
+    existing.push(trade);
+    byAsset.set(trade.asset, existing);
+  }
+
+  const assets: CryptoAssetGains[] = [];
+
+  for (const [asset, assetTrades] of byAsset) {
+    // Sort by time ascending
+    assetTrades.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    // FIFO lot tracking
+    const lots: { amount: number; costPerUnit: number; date: string }[] = [];
+
+    for (const trade of assetTrades) {
+      if (trade.side === 'buy') {
+        lots.push({
+          amount: trade.amount,
+          costPerUnit: trade.totalCost / trade.amount,
+          date: trade.timestamp,
+        });
+      } else {
+        // Sell: consume lots FIFO
+        let remaining = trade.amount;
+        while (remaining > 0 && lots.length > 0) {
+          const lot = lots[0];
+          const consumed = Math.min(remaining, lot.amount);
+          lot.amount -= consumed;
+          remaining -= consumed;
+          if (lot.amount <= 0.000001) lots.shift();
+        }
+      }
+    }
+
+    // Remaining lots are our current holdings
+    const now = Date.now();
+    const currentPrice = currentPrices[asset] || currentPrices[asset.toUpperCase()] || 0;
+    const totalAmount = lots.reduce((s, l) => s + l.amount, 0);
+    const totalCostBasis = lots.reduce((s, l) => s + l.amount * l.costPerUnit, 0);
+    const currentValue = totalAmount * currentPrice;
+
+    let shortTermGain = 0;
+    let longTermGain = 0;
+    const enrichedLots = lots
+      .filter((l) => l.amount > 0.000001)
+      .map((lot) => {
+        const held = now - new Date(lot.date).getTime();
+        const gainType: 'short-term' | 'long-term' =
+          held >= ONE_YEAR_MS ? 'long-term' : 'short-term';
+        const lotValue = lot.amount * currentPrice;
+        const lotCost = lot.amount * lot.costPerUnit;
+        const gain = lotValue - lotCost;
+
+        if (gainType === 'short-term') shortTermGain += gain;
+        else longTermGain += gain;
+
+        return { amount: lot.amount, costPerUnit: lot.costPerUnit, date: lot.date, gainType };
+      });
+
+    if (totalAmount > 0.000001) {
+      assets.push({
+        asset,
+        totalAmount,
+        totalCostBasis,
+        currentValue,
+        unrealizedGain: currentValue - totalCostBasis,
+        shortTermGain,
+        longTermGain,
+        lots: enrichedLots,
+      });
+    }
+  }
+
+  // Sort by current value descending
+  assets.sort((a, b) => b.currentValue - a.currentValue);
+
+  return {
+    assets,
+    totalCostBasis: assets.reduce((s, a) => s + a.totalCostBasis, 0),
+    totalCurrentValue: assets.reduce((s, a) => s + a.currentValue, 0),
+    totalUnrealizedGain: assets.reduce((s, a) => s + a.unrealizedGain, 0),
+    totalShortTermGain: assets.reduce((s, a) => s + a.shortTermGain, 0),
+    totalLongTermGain: assets.reduce((s, a) => s + a.longTermGain, 0),
+    lastUpdated: new Date().toISOString(),
+    tradeCount: trades.length,
+  };
+}
+
+// =============================================================================
+// Public API: Trade History & Gains
+// =============================================================================
+
+export async function fetchAllTrades(
+  exchanges: ExchangeConfig[],
+  onProgress?: (current: number, total: number, label: string) => void
+): Promise<CryptoTrade[]> {
+  const enabledExchanges = exchanges.filter((e) => e.enabled && TRADE_FETCHERS[e.id]);
+  const allTrades: CryptoTrade[] = [];
+
+  for (let i = 0; i < enabledExchanges.length; i++) {
+    const exchange = enabledExchanges[i];
+    onProgress?.(i, enabledExchanges.length, `Fetching ${EXCHANGE_LABELS[exchange.id]} trades`);
+    try {
+      const trades = await TRADE_FETCHERS[exchange.id](exchange);
+      allTrades.push(...trades);
+      console.log(`[crypto] ${exchange.id}: ${trades.length} trades fetched`);
+    } catch (err) {
+      console.error(`[crypto] ${exchange.id} trades error:`, err);
+    }
+  }
+
+  onProgress?.(enabledExchanges.length, enabledExchanges.length, 'Done');
+  return allTrades;
+}
+
+export async function fetchCryptoGains(
+  exchanges: ExchangeConfig[],
+  onProgress?: (current: number, total: number, label: string) => void
+): Promise<CryptoGainsSummary> {
+  const trades = await fetchAllTrades(exchanges, onProgress);
+  const assets = [...new Set(trades.map((t) => t.asset))];
+  const prices = await fetchPrices(assets);
+  return computeGains(trades, prices);
+}
+
 // -----------------------------------------------------------------------------
-// Public API
+// Public API: Balances
 // -----------------------------------------------------------------------------
 
 const EXCHANGE_LABELS: Record<string, string> = {

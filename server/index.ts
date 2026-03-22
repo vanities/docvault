@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import { parseWithAI } from './parsers/ai.js';
 import { zipSync } from 'fflate';
 import { withAILimit } from './aiLimiter.js';
-import { fetchAllBalances, fetchSourceBalance } from './crypto.js';
+import { fetchAllBalances, fetchSourceBalance, fetchCryptoGains } from './crypto.js';
 import {
   buildPortfolio,
   registerSnapTradeUser,
@@ -752,6 +752,69 @@ async function handleRequest(req: Request): Promise<Response> {
   // =========================================================================
   // Broker Portfolio Endpoints
   // =========================================================================
+
+  // GET /api/crypto/gains — compute cost basis and gains from trade history
+  if (pathname === '/api/crypto/gains' && req.method === 'GET') {
+    const settings = await loadSettings();
+    const exchanges = settings.crypto?.exchanges || [];
+    const enabledExchanges = exchanges.filter((e) => e.enabled);
+
+    if (enabledExchanges.length === 0) {
+      return jsonResponse({ error: 'No exchanges configured' }, 400);
+    }
+
+    const cached = searchParams.get('cached');
+    const GAINS_CACHE_FILE = path.join(DATA_DIR, '.docvault-crypto-gains.json');
+
+    // Return cached if available and requested
+    if (cached === '1') {
+      try {
+        const data = await fs.readFile(GAINS_CACHE_FILE, 'utf-8');
+        return jsonResponse(JSON.parse(data));
+      } catch {
+        // No cache, fall through to compute
+      }
+    }
+
+    // Stream progress or compute directly
+    const stream = searchParams.get('stream') === '1';
+    if (stream) {
+      return new Response(
+        new ReadableStream({
+          async start(controller) {
+            const encoder = new TextEncoder();
+            const send = (data: unknown) => {
+              controller.enqueue(encoder.encode(JSON.stringify(data) + '\n'));
+            };
+
+            try {
+              const gains = await fetchCryptoGains(exchanges, (current, total, label) => {
+                send({ type: 'progress', current, total, label });
+              });
+              await fs.writeFile(GAINS_CACHE_FILE, JSON.stringify(gains, null, 2));
+              send({ type: 'result', data: gains });
+            } catch (err) {
+              send({ type: 'error', message: err instanceof Error ? err.message : 'Failed' });
+            }
+            controller.close();
+          },
+        }),
+        { headers: { 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-cache' } }
+      );
+    }
+
+    // Non-streaming
+    try {
+      const gains = await fetchCryptoGains(exchanges);
+      await fs.writeFile(GAINS_CACHE_FILE, JSON.stringify(gains, null, 2));
+      return jsonResponse(gains);
+    } catch (err) {
+      return jsonResponse(
+        { error: err instanceof Error ? err.message : 'Failed to fetch gains' },
+        500
+      );
+    }
+  }
 
   // GET /api/brokers/accounts — list all broker accounts (no secrets to mask)
   if (pathname === '/api/brokers/accounts' && req.method === 'GET') {

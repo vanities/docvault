@@ -12,7 +12,12 @@ import {
   Camera,
   Calendar,
 } from 'lucide-react';
-import type { CryptoPortfolio, BrokerPortfolio, PortfolioSnapshot } from '../../types';
+import type {
+  CryptoPortfolio,
+  BrokerPortfolio,
+  PortfolioSnapshot,
+  CryptoGainsSummary,
+} from '../../types';
 import { API_BASE } from '../../constants';
 import { useAppContext } from '../../contexts/AppContext';
 import { Sparkline } from './Sparkline';
@@ -62,6 +67,7 @@ export function PortfolioView() {
   const { setActiveView } = useAppContext();
   const [crypto, setCrypto] = useState<CryptoPortfolio | null>(null);
   const [brokers, setBrokers] = useState<BrokerPortfolio | null>(null);
+  const [cryptoGains, setCryptoGains] = useState<CryptoGainsSummary | null>(null);
   const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -73,10 +79,11 @@ export function PortfolioView() {
     else setIsLoading(true);
 
     try {
-      const [cryptoRes, brokerRes, snapshotRes] = await Promise.all([
+      const [cryptoRes, brokerRes, snapshotRes, gainsRes] = await Promise.all([
         fetch(`${API_BASE}/crypto/balances?cached=1`),
         fetch(`${API_BASE}/brokers/portfolio`),
         fetch(`${API_BASE}/portfolio/snapshots`),
+        fetch(`${API_BASE}/crypto/gains?cached=1`),
       ]);
 
       if (cryptoRes.ok) {
@@ -90,6 +97,10 @@ export function PortfolioView() {
       if (snapshotRes.ok) {
         const data = await snapshotRes.json();
         if (Array.isArray(data)) setSnapshots(data);
+      }
+      if (gainsRes.ok) {
+        const data = await gainsRes.json();
+        if (data.assets?.length > 0) setCryptoGains(data);
       }
     } catch {
       // Non-critical
@@ -170,11 +181,15 @@ export function PortfolioView() {
     donutSlices.push({ label: 'Other', value: otherValue, color: '#94a3b8' });
   }
 
-  // Gains summary
-  const shortTermGains = brokers?.shortTermGains || 0;
-  const longTermGains = brokers?.longTermGains || 0;
-  const totalGainLoss = brokers?.totalGainLoss || 0;
-  const hasGains = totalGainLoss !== 0 || shortTermGains > 0 || longTermGains > 0;
+  // Gains summary (combine broker + crypto)
+  const brokerST = brokers?.shortTermGains || 0;
+  const brokerLT = brokers?.longTermGains || 0;
+  const cryptoST = cryptoGains?.totalShortTermGain || 0;
+  const cryptoLT = cryptoGains?.totalLongTermGain || 0;
+  const shortTermGains = brokerST + cryptoST;
+  const longTermGains = brokerLT + cryptoLT;
+  const totalGainLoss = (brokers?.totalGainLoss || 0) + (cryptoGains?.totalUnrealizedGain || 0);
+  const hasGains = totalGainLoss !== 0 || shortTermGains !== 0 || longTermGains !== 0;
 
   const lastUpdated =
     crypto?.lastUpdated && brokers?.lastUpdated

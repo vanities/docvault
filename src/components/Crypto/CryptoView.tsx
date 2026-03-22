@@ -3,13 +3,20 @@ import {
   RefreshCw,
   Wallet,
   TrendingUp,
+  TrendingDown,
   AlertCircle,
   Bitcoin,
   Clock,
   ChevronDown,
   ChevronUp,
+  BarChart3,
 } from 'lucide-react';
-import type { CryptoPortfolio, CryptoSourceBalance, CryptoBalance } from '../../types';
+import type {
+  CryptoPortfolio,
+  CryptoSourceBalance,
+  CryptoBalance,
+  CryptoGainsSummary,
+} from '../../types';
 import { API_BASE } from '../../constants';
 
 const TOP_N = 5;
@@ -205,9 +212,7 @@ function AssetRow({
   return (
     <div className="flex items-center gap-3 py-3 border-b border-border/30 last:border-0">
       {/* Asset icon */}
-      <div
-        className={`w-9 h-9 rounded-full flex items-center justify-center ${barColor}/15`}
-      >
+      <div className={`w-9 h-9 rounded-full flex items-center justify-center ${barColor}/15`}>
         <span className={`text-[11px] font-mono font-bold ${textColor}`}>
           {balance.asset.slice(0, 3)}
         </span>
@@ -255,6 +260,72 @@ export function CryptoView() {
     total: number;
     label: string;
   } | null>(null);
+
+  // Gains state
+  const [gains, setGains] = useState<CryptoGainsSummary | null>(null);
+  const [gainsLoading, setGainsLoading] = useState(false);
+  const [gainsError, setGainsError] = useState<string | null>(null);
+  const [gainsProgress, setGainsProgress] = useState<string | null>(null);
+
+  const loadGains = useCallback(async (forceRefresh = false) => {
+    setGainsLoading(true);
+    setGainsError(null);
+    setGainsProgress(null);
+
+    try {
+      // Try cached first unless force refresh
+      if (!forceRefresh) {
+        const cachedRes = await fetch(`${API_BASE}/crypto/gains?cached=1`);
+        if (cachedRes.ok) {
+          const data = await cachedRes.json();
+          if (data.assets?.length > 0) {
+            setGains(data);
+            setGainsLoading(false);
+            return;
+          }
+        }
+      }
+
+      // Stream fresh gains
+      const res = await fetch(`${API_BASE}/crypto/gains?stream=1`);
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No response body');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const msg = JSON.parse(line);
+            if (msg.type === 'progress') {
+              setGainsProgress(msg.label);
+            } else if (msg.type === 'result') {
+              setGains(msg.data);
+            } else if (msg.type === 'error') {
+              setGainsError(msg.message);
+            }
+          } catch {
+            // skip
+          }
+        }
+      }
+    } catch (err) {
+      setGainsError(err instanceof Error ? err.message : 'Failed to load gains');
+    } finally {
+      setGainsLoading(false);
+      setGainsProgress(null);
+    }
+  }, []);
 
   const loadBalances = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) setIsRefreshing(true);
@@ -538,6 +609,152 @@ export function CryptoView() {
               )}
             </div>
           )}
+
+          {/* Capital Gains */}
+          <div className="glass-card rounded-xl p-5 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[14px] font-semibold text-surface-950 flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-amber-500" />
+                Capital Gains (Cost Basis)
+              </h3>
+              <button
+                onClick={() => loadGains(!!gains)}
+                disabled={gainsLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-surface-700 hover:bg-surface-200/50 rounded-lg transition-colors disabled:opacity-50 border border-border"
+              >
+                <RefreshCw className={`w-3 h-3 ${gainsLoading ? 'animate-spin' : ''}`} />
+                {gainsLoading
+                  ? gainsProgress || 'Loading trades...'
+                  : gains
+                    ? 'Refresh Gains'
+                    : 'Load Gains'}
+              </button>
+            </div>
+
+            {gainsError && (
+              <div className="flex items-center gap-2 p-3 bg-danger-500/10 border border-danger-500/20 rounded-lg mb-3">
+                <AlertCircle className="w-4 h-4 text-danger-400 flex-shrink-0" />
+                <p className="text-[12px] text-danger-400">{gainsError}</p>
+              </div>
+            )}
+
+            {!gains && !gainsLoading && !gainsError && (
+              <p className="text-[12px] text-surface-500">
+                Fetches trade history from your exchanges to calculate cost basis and unrealized
+                gains. Uses FIFO (first-in, first-out) accounting.
+              </p>
+            )}
+
+            {gains && (
+              <div>
+                {/* Summary row */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+                  <div className="p-3 bg-surface-200/30 rounded-lg">
+                    <p className="text-[11px] text-surface-600 uppercase tracking-wider mb-0.5">
+                      Cost Basis
+                    </p>
+                    <p className="text-[16px] font-bold text-surface-950">
+                      {formatUsd(gains.totalCostBasis)}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-surface-200/30 rounded-lg">
+                    <p className="text-[11px] text-surface-600 uppercase tracking-wider mb-0.5">
+                      Unrealized P&L
+                    </p>
+                    <p
+                      className={`text-[16px] font-bold flex items-center gap-1 ${gains.totalUnrealizedGain >= 0 ? 'text-green-500' : 'text-red-500'}`}
+                    >
+                      {gains.totalUnrealizedGain >= 0 ? (
+                        <TrendingUp className="w-3.5 h-3.5" />
+                      ) : (
+                        <TrendingDown className="w-3.5 h-3.5" />
+                      )}
+                      {formatUsd(Math.abs(gains.totalUnrealizedGain))}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-surface-200/30 rounded-lg">
+                    <p className="text-[11px] text-surface-600 uppercase tracking-wider mb-0.5">
+                      Short-Term
+                    </p>
+                    <p className="text-[16px] font-bold text-amber-500">
+                      {formatUsd(gains.totalShortTermGain)}
+                    </p>
+                    <p className="text-[9px] text-surface-500">Held &lt; 1yr</p>
+                  </div>
+                  <div className="p-3 bg-surface-200/30 rounded-lg">
+                    <p className="text-[11px] text-surface-600 uppercase tracking-wider mb-0.5">
+                      Long-Term
+                    </p>
+                    <p className="text-[16px] font-bold text-green-500">
+                      {formatUsd(gains.totalLongTermGain)}
+                    </p>
+                    <p className="text-[9px] text-surface-500">Held &gt; 1yr</p>
+                  </div>
+                </div>
+
+                {/* Per-asset breakdown */}
+                <div className="border-t border-border/30 pt-3">
+                  <div className="grid grid-cols-12 gap-2 pb-2 text-[10px] font-medium text-surface-500 uppercase tracking-wider">
+                    <div className="col-span-2">Asset</div>
+                    <div className="col-span-2 text-right">Amount</div>
+                    <div className="col-span-2 text-right">Cost Basis</div>
+                    <div className="col-span-2 text-right">Current</div>
+                    <div className="col-span-2 text-right">P&L</div>
+                    <div className="col-span-2 text-right">Type</div>
+                  </div>
+                  {gains.assets.slice(0, 10).map((a) => (
+                    <div
+                      key={a.asset}
+                      className="grid grid-cols-12 gap-2 py-2.5 border-b border-border/20 last:border-0 items-center"
+                    >
+                      <div className="col-span-2">
+                        <span className="text-[13px] font-mono font-bold text-surface-950">
+                          {a.asset}
+                        </span>
+                      </div>
+                      <div className="col-span-2 text-right text-[12px] text-surface-700 font-mono">
+                        {formatAmount(a.totalAmount, a.asset)}
+                      </div>
+                      <div className="col-span-2 text-right text-[12px] text-surface-700">
+                        {formatUsd(a.totalCostBasis)}
+                      </div>
+                      <div className="col-span-2 text-right text-[12px] text-surface-950 font-medium">
+                        {formatUsd(a.currentValue)}
+                      </div>
+                      <div className="col-span-2 text-right">
+                        <span
+                          className={`text-[12px] font-medium ${a.unrealizedGain >= 0 ? 'text-green-500' : 'text-red-500'}`}
+                        >
+                          {a.unrealizedGain >= 0 ? '+' : ''}
+                          {formatUsd(a.unrealizedGain)}
+                        </span>
+                      </div>
+                      <div className="col-span-2 text-right">
+                        {a.lots.length > 0 && (
+                          <div className="flex items-center justify-end gap-1">
+                            {a.shortTermGain !== 0 && (
+                              <span className="text-[9px] px-1 py-0.5 rounded bg-amber-500/10 text-amber-600 font-medium">
+                                ST
+                              </span>
+                            )}
+                            {a.longTermGain !== 0 && (
+                              <span className="text-[9px] px-1 py-0.5 rounded bg-green-500/10 text-green-600 font-medium">
+                                LT
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-surface-500 mt-2">
+                  {gains.tradeCount} trades analyzed &middot; FIFO accounting &middot; Updated{' '}
+                  {timeAgo(gains.lastUpdated)}
+                </p>
+              </div>
+            )}
+          </div>
 
           {/* Source Cards */}
           <h3 className="text-[14px] font-semibold text-surface-950 mb-3">By Source</h3>

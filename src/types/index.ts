@@ -374,6 +374,34 @@ export interface CryptoSettings {
   wallets: CryptoWalletConfig[];
 }
 
+// Crypto gains tracking
+export interface CryptoAssetGains {
+  asset: string;
+  totalAmount: number;
+  totalCostBasis: number;
+  currentValue: number;
+  unrealizedGain: number;
+  shortTermGain: number;
+  longTermGain: number;
+  lots: {
+    amount: number;
+    costPerUnit: number;
+    date: string;
+    gainType: 'short-term' | 'long-term';
+  }[];
+}
+
+export interface CryptoGainsSummary {
+  assets: CryptoAssetGains[];
+  totalCostBasis: number;
+  totalCurrentValue: number;
+  totalUnrealizedGain: number;
+  totalShortTermGain: number;
+  totalLongTermGain: number;
+  lastUpdated: string;
+  tradeCount: number;
+}
+
 // Brokerage tracking types
 export type BrokerId = 'vanguard' | 'fidelity' | 'robinhood' | 'navy-federal' | 'chase';
 
