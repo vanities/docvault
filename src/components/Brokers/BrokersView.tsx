@@ -82,12 +82,18 @@ function AddHoldingModal({
   onAdd,
   onClose,
 }: {
-  onAdd: (holding: { ticker: string; shares: number; costBasis?: number }) => void;
+  onAdd: (holding: {
+    ticker: string;
+    shares: number;
+    costBasis?: number;
+    purchaseDate?: string;
+  }) => void;
   onClose: () => void;
 }) {
   const [ticker, setTicker] = useState('');
   const [shares, setShares] = useState('');
   const [costBasis, setCostBasis] = useState('');
+  const [purchaseDate, setPurchaseDate] = useState('');
 
   const handleSubmit = () => {
     if (!ticker || !shares) return;
@@ -95,6 +101,7 @@ function AddHoldingModal({
       ticker: ticker.toUpperCase().trim(),
       shares: parseFloat(shares),
       costBasis: costBasis ? parseFloat(costBasis) : undefined,
+      purchaseDate: purchaseDate || undefined,
     });
   };
 
@@ -142,6 +149,17 @@ function AddHoldingModal({
               value={costBasis}
               onChange={(e) => setCostBasis(e.target.value)}
               placeholder="e.g. 25000"
+              className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-500/30"
+            />
+          </div>
+          <div>
+            <label className="text-[12px] font-medium text-surface-700 mb-1 block">
+              Purchase Date (optional, for gain type)
+            </label>
+            <input
+              type="date"
+              value={purchaseDate}
+              onChange={(e) => setPurchaseDate(e.target.value)}
               className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-500/30"
             />
           </div>
@@ -351,11 +369,20 @@ function AccountCard({
                   </div>
                   <div className="col-span-2 text-right flex items-center justify-end gap-1">
                     {h.costBasis && h.gainLoss !== undefined ? (
-                      <span
-                        className={`text-[12px] font-medium ${h.gainLoss >= 0 ? 'text-green-500' : 'text-red-500'}`}
-                      >
-                        {formatUsd(h.gainLoss)}
-                      </span>
+                      <div className="text-right">
+                        <span
+                          className={`text-[12px] font-medium ${h.gainLoss >= 0 ? 'text-green-500' : 'text-red-500'}`}
+                        >
+                          {formatUsd(h.gainLoss)}
+                        </span>
+                        {h.gainType && h.gainType !== 'unknown' && (
+                          <span
+                            className={`ml-1 text-[9px] px-1 py-0.5 rounded font-medium ${h.gainType === 'long-term' ? 'text-green-600 bg-green-500/10' : 'text-amber-600 bg-amber-500/10'}`}
+                          >
+                            {h.gainType === 'short-term' ? 'ST' : 'LT'}
+                          </span>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-[12px] text-surface-500">--</span>
                     )}

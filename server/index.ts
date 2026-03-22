@@ -419,6 +419,40 @@ async function saveContributions(data: ContributionsData): Promise<void> {
 const TODOS_FILE = path.join(DATA_DIR, '.docvault-todos.json');
 const CRYPTO_CACHE_FILE = path.join(DATA_DIR, '.docvault-crypto-cache.json');
 const BROKER_CACHE_FILE = path.join(DATA_DIR, '.docvault-broker-cache.json');
+const SNAPSHOTS_FILE = path.join(DATA_DIR, '.docvault-portfolio-snapshots.json');
+
+interface PortfolioSnapshot {
+  date: string;
+  totalValue: number;
+  cryptoValue: number;
+  brokerValue: number;
+  shortTermGains: number;
+  longTermGains: number;
+}
+
+async function loadSnapshots(): Promise<PortfolioSnapshot[]> {
+  try {
+    const data = await fs.readFile(SNAPSHOTS_FILE, 'utf-8');
+    return JSON.parse(data);
+  } catch {
+    return [];
+  }
+}
+
+async function saveSnapshot(snapshot: PortfolioSnapshot): Promise<void> {
+  const snapshots = await loadSnapshots();
+  // Replace today's snapshot if it exists, otherwise append
+  const today = snapshot.date;
+  const idx = snapshots.findIndex((s) => s.date === today);
+  if (idx >= 0) {
+    snapshots[idx] = snapshot;
+  } else {
+    snapshots.push(snapshot);
+  }
+  // Keep last 365 days
+  const cutoff = snapshots.length > 365 ? snapshots.length - 365 : 0;
+  await fs.writeFile(SNAPSHOTS_FILE, JSON.stringify(snapshots.slice(cutoff), null, 2));
+}
 
 interface Todo {
   id: string;
@@ -830,6 +864,55 @@ async function handleRequest(req: Request): Promise<Response> {
     const portfolio = await buildPortfolio(accounts);
     await saveBrokerCache(portfolio);
     return jsonResponse(portfolio);
+  }
+
+  // =========================================================================
+  // Portfolio Snapshots
+  // =========================================================================
+
+  // GET /api/portfolio/snapshots — get historical snapshots
+  if (pathname === '/api/portfolio/snapshots' && req.method === 'GET') {
+    const snapshots = await loadSnapshots();
+    return jsonResponse(snapshots);
+  }
+
+  // POST /api/portfolio/snapshot — take a snapshot now (also callable via cron)
+  // Usage from cron: curl -X POST http://localhost:3005/api/portfolio/snapshot
+  if (pathname === '/api/portfolio/snapshot' && req.method === 'POST') {
+    try {
+      const settings = await loadSettings();
+      const accounts: BrokerAccount[] = settings.brokers?.accounts || [];
+
+      // Build broker portfolio
+      const brokerPortfolio = accounts.length > 0 ? await buildPortfolio(accounts) : null;
+
+      // Load cached crypto portfolio
+      let cryptoValue = 0;
+      try {
+        const cryptoData = await fs.readFile(CRYPTO_CACHE_FILE, 'utf-8');
+        const cryptoPortfolio = JSON.parse(cryptoData);
+        cryptoValue = cryptoPortfolio.totalUsdValue || 0;
+      } catch {
+        // No crypto cache
+      }
+
+      const brokerValue = brokerPortfolio?.totalValue || 0;
+      const today = new Date().toISOString().split('T')[0];
+
+      const snapshot: PortfolioSnapshot = {
+        date: today,
+        totalValue: cryptoValue + brokerValue,
+        cryptoValue,
+        brokerValue,
+        shortTermGains: brokerPortfolio?.shortTermGains || 0,
+        longTermGains: brokerPortfolio?.longTermGains || 0,
+      };
+
+      await saveSnapshot(snapshot);
+      return jsonResponse({ ok: true, snapshot });
+    } catch (err) {
+      return jsonResponse({ error: err instanceof Error ? err.message : 'Snapshot failed' }, 500);
+    }
   }
 
   // =========================================================================

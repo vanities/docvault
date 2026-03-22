@@ -381,11 +381,13 @@ export interface BrokerHolding {
   ticker: string;
   shares: number;
   costBasis?: number;
+  purchaseDate?: string; // ISO date string for short/long-term gain classification
   label?: string;
   price?: number;
   marketValue?: number;
   gainLoss?: number;
   gainLossPercent?: number;
+  gainType?: 'short-term' | 'long-term' | 'unknown';
 }
 
 export interface BrokerAccount {
@@ -403,7 +405,19 @@ export interface BrokerPortfolio {
   totalValue: number;
   totalCostBasis: number;
   totalGainLoss: number;
+  shortTermGains?: number;
+  longTermGains?: number;
   lastUpdated: string;
+}
+
+// Portfolio snapshot types
+export interface PortfolioSnapshot {
+  date: string; // ISO date (YYYY-MM-DD)
+  totalValue: number;
+  cryptoValue: number;
+  brokerValue: number;
+  shortTermGains: number;
+  longTermGains: number;
 }
 
 // Sync status (Dropbox)

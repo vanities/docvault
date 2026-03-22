@@ -9,10 +9,15 @@ import {
   TrendingDown,
   ChevronDown,
   ChevronUp,
+  Camera,
+  Calendar,
 } from 'lucide-react';
-import type { CryptoPortfolio, BrokerPortfolio } from '../../types';
+import type { CryptoPortfolio, BrokerPortfolio, PortfolioSnapshot } from '../../types';
 import { API_BASE } from '../../constants';
 import { useAppContext } from '../../contexts/AppContext';
+import { Sparkline } from './Sparkline';
+import { DonutChart } from './DonutChart';
+import { getDonutColor } from './donutColors';
 
 function formatUsd(value: number): string {
   return value.toLocaleString('en-US', {
@@ -49,14 +54,18 @@ interface PortfolioSlice {
   value: number;
   type: 'crypto' | 'broker';
   detail?: string;
+  gainType?: 'short-term' | 'long-term' | 'unknown';
+  gainLoss?: number;
 }
 
 export function PortfolioView() {
   const { setActiveView } = useAppContext();
   const [crypto, setCrypto] = useState<CryptoPortfolio | null>(null);
   const [brokers, setBrokers] = useState<BrokerPortfolio | null>(null);
+  const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isTakingSnapshot, setIsTakingSnapshot] = useState(false);
   const [showAllSlices, setShowAllSlices] = useState(false);
 
   const loadAll = useCallback(async (refresh = false) => {
@@ -64,9 +73,10 @@ export function PortfolioView() {
     else setIsLoading(true);
 
     try {
-      const [cryptoRes, brokerRes] = await Promise.all([
+      const [cryptoRes, brokerRes, snapshotRes] = await Promise.all([
         fetch(`${API_BASE}/crypto/balances?cached=1`),
         fetch(`${API_BASE}/brokers/portfolio`),
+        fetch(`${API_BASE}/portfolio/snapshots`),
       ]);
 
       if (cryptoRes.ok) {
@@ -76,6 +86,10 @@ export function PortfolioView() {
       if (brokerRes.ok) {
         const data = await brokerRes.json();
         if (data.accounts?.length > 0) setBrokers(data);
+      }
+      if (snapshotRes.ok) {
+        const data = await snapshotRes.json();
+        if (Array.isArray(data)) setSnapshots(data);
       }
     } catch {
       // Non-critical
@@ -89,6 +103,26 @@ export function PortfolioView() {
     void loadAll();
   }, [loadAll]);
 
+  const takeSnapshot = async () => {
+    setIsTakingSnapshot(true);
+    try {
+      const res = await fetch(`${API_BASE}/portfolio/snapshot`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.snapshot) {
+          setSnapshots((prev) => {
+            const filtered = prev.filter((s) => s.date !== data.snapshot.date);
+            return [...filtered, data.snapshot];
+          });
+        }
+      }
+    } catch {
+      // Non-critical
+    } finally {
+      setIsTakingSnapshot(false);
+    }
+  };
+
   const cryptoTotal = crypto?.totalUsdValue || 0;
   const brokerTotal = brokers?.totalValue || 0;
   const grandTotal = cryptoTotal + brokerTotal;
@@ -96,7 +130,6 @@ export function PortfolioView() {
   // Build slices for the allocation breakdown
   const slices: PortfolioSlice[] = [];
 
-  // Crypto top assets
   if (crypto?.byAsset) {
     for (const asset of crypto.byAsset.filter((a) => (a.usdValue || 0) > 0.01)) {
       slices.push({
@@ -107,7 +140,6 @@ export function PortfolioView() {
     }
   }
 
-  // Broker accounts
   if (brokers?.accounts) {
     for (const account of brokers.accounts) {
       for (const holding of account.holdings) {
@@ -115,16 +147,34 @@ export function PortfolioView() {
           label: holding.ticker,
           value: holding.marketValue || 0,
           type: 'broker',
-          detail: `${account.name}`,
+          detail: account.name,
+          gainType: holding.gainType,
+          gainLoss: holding.gainLoss,
         });
       }
     }
   }
 
-  // Sort by value descending
   slices.sort((a, b) => b.value - a.value);
   const topSlices = showAllSlices ? slices : slices.slice(0, 10);
   const hiddenCount = slices.length - 10;
+
+  // Donut chart slices (top 8 + "Other")
+  const donutSlices = slices.slice(0, 8).map((s, i) => ({
+    label: s.label,
+    value: s.value,
+    color: getDonutColor(i),
+  }));
+  const otherValue = slices.slice(8).reduce((sum, s) => sum + s.value, 0);
+  if (otherValue > 0) {
+    donutSlices.push({ label: 'Other', value: otherValue, color: '#94a3b8' });
+  }
+
+  // Gains summary
+  const shortTermGains = brokers?.shortTermGains || 0;
+  const longTermGains = brokers?.longTermGains || 0;
+  const totalGainLoss = brokers?.totalGainLoss || 0;
+  const hasGains = totalGainLoss !== 0 || shortTermGains > 0 || longTermGains > 0;
 
   const lastUpdated =
     crypto?.lastUpdated && brokers?.lastUpdated
@@ -157,14 +207,25 @@ export function PortfolioView() {
             </p>
           )}
         </div>
-        <button
-          onClick={() => loadAll(true)}
-          disabled={isRefreshing}
-          className="flex items-center gap-2 px-5 py-2.5 bg-violet-500 text-surface-0 rounded-xl hover:bg-violet-400 transition-colors disabled:opacity-50 text-[14px] font-medium shadow-sm"
-        >
-          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          {isRefreshing ? 'Refreshing...' : 'Refresh All'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={takeSnapshot}
+            disabled={isTakingSnapshot || !hasAnything}
+            className="flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium text-surface-700 hover:bg-surface-200/50 rounded-xl transition-colors disabled:opacity-50 border border-border"
+            title="Save today's portfolio value as a snapshot"
+          >
+            <Camera className={`w-4 h-4 ${isTakingSnapshot ? 'animate-pulse' : ''}`} />
+            Snapshot
+          </button>
+          <button
+            onClick={() => loadAll(true)}
+            disabled={isRefreshing}
+            className="flex items-center gap-2 px-5 py-2.5 bg-violet-500 text-surface-0 rounded-xl hover:bg-violet-400 transition-colors disabled:opacity-50 text-[14px] font-medium shadow-sm"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            {isRefreshing ? 'Refreshing...' : 'Refresh All'}
+          </button>
+        </div>
       </div>
 
       {!hasAnything ? (
@@ -219,6 +280,82 @@ export function PortfolioView() {
             )}
           </div>
 
+          {/* Charts Row: Donut + Sparkline */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            {/* Donut Chart */}
+            {donutSlices.length > 0 && (
+              <div className="glass-card rounded-xl p-5">
+                <h3 className="text-[14px] font-semibold text-surface-950 mb-4 flex items-center gap-2">
+                  <PieChart className="w-4 h-4 text-violet-500" />
+                  Asset Allocation
+                </h3>
+                <DonutChart slices={donutSlices} />
+              </div>
+            )}
+
+            {/* Portfolio History */}
+            <div className="glass-card rounded-xl p-5">
+              <h3 className="text-[14px] font-semibold text-surface-950 mb-4 flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-violet-500" />
+                Portfolio History
+              </h3>
+              <Sparkline snapshots={snapshots} />
+              {snapshots.length === 0 && (
+                <p className="text-[11px] text-surface-500 mt-2">
+                  Click "Snapshot" to start tracking. Set up a daily cron for automatic tracking.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Gains Summary */}
+          {hasGains && (
+            <div className="glass-card rounded-xl p-5 mb-6">
+              <h3 className="text-[14px] font-semibold text-surface-950 mb-4">
+                Capital Gains Summary
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-3 bg-surface-200/30 rounded-lg">
+                  <p className="text-[11px] text-surface-600 uppercase tracking-wider mb-1">
+                    Total Gain/Loss
+                  </p>
+                  <p
+                    className={`text-xl font-bold ${
+                      totalGainLoss >= 0 ? 'text-green-500' : 'text-red-500'
+                    }`}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {totalGainLoss >= 0 ? (
+                        <TrendingUp className="w-4 h-4" />
+                      ) : (
+                        <TrendingDown className="w-4 h-4" />
+                      )}
+                      {formatUsd(Math.abs(totalGainLoss))}
+                    </span>
+                  </p>
+                </div>
+                <div className="p-3 bg-surface-200/30 rounded-lg">
+                  <p className="text-[11px] text-surface-600 uppercase tracking-wider mb-1">
+                    Short-Term Gains
+                  </p>
+                  <p className="text-xl font-bold text-amber-500">{formatUsd(shortTermGains)}</p>
+                  <p className="text-[10px] text-surface-500 mt-0.5">
+                    Held &lt; 1 year &middot; taxed as income
+                  </p>
+                </div>
+                <div className="p-3 bg-surface-200/30 rounded-lg">
+                  <p className="text-[11px] text-surface-600 uppercase tracking-wider mb-1">
+                    Long-Term Gains
+                  </p>
+                  <p className="text-xl font-bold text-green-500">{formatUsd(longTermGains)}</p>
+                  <p className="text-[10px] text-surface-500 mt-0.5">
+                    Held &gt; 1 year &middot; lower tax rate
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Category Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             {/* Crypto Card */}
@@ -234,7 +371,8 @@ export function PortfolioView() {
                   <div>
                     <p className="font-semibold text-surface-950 text-[15px]">Crypto</p>
                     <p className="text-[11px] text-surface-600">
-                      {crypto?.sources.length || 0} source{(crypto?.sources.length || 0) !== 1 ? 's' : ''} &middot;{' '}
+                      {crypto?.sources.length || 0} source
+                      {(crypto?.sources.length || 0) !== 1 ? 's' : ''} &middot;{' '}
                       {crypto?.byAsset.filter((a) => (a.usdValue || 0) > 0.01).length || 0} assets
                     </p>
                   </div>
@@ -264,7 +402,8 @@ export function PortfolioView() {
                   <div>
                     <p className="font-semibold text-surface-950 text-[15px]">Brokerages</p>
                     <p className="text-[11px] text-surface-600">
-                      {brokers?.accounts.length || 0} account{(brokers?.accounts.length || 0) !== 1 ? 's' : ''}
+                      {brokers?.accounts.length || 0} account
+                      {(brokers?.accounts.length || 0) !== 1 ? 's' : ''}
                     </p>
                   </div>
                 </div>
@@ -291,9 +430,10 @@ export function PortfolioView() {
               {/* Table header */}
               <div className="px-5">
                 <div className="grid grid-cols-12 gap-2 py-2 text-[11px] font-medium text-surface-500 uppercase tracking-wider border-b border-border/50">
-                  <div className="col-span-5">Asset</div>
+                  <div className="col-span-4">Asset</div>
                   <div className="col-span-2 text-right">Value</div>
-                  <div className="col-span-3 text-right">Allocation</div>
+                  <div className="col-span-2 text-right">Gain/Loss</div>
+                  <div className="col-span-2 text-right">Allocation</div>
                   <div className="col-span-2 text-right">Type</div>
                 </div>
 
@@ -305,8 +445,10 @@ export function PortfolioView() {
                       key={`${slice.label}-${slice.detail || i}`}
                       className="grid grid-cols-12 gap-2 py-3 border-b border-border/30 last:border-0 items-center"
                     >
-                      <div className="col-span-5">
-                        <p className="text-[13px] font-mono font-bold text-surface-950">{slice.label}</p>
+                      <div className="col-span-4">
+                        <p className="text-[13px] font-mono font-bold text-surface-950">
+                          {slice.label}
+                        </p>
                         {slice.detail && (
                           <p className="text-[11px] text-surface-500">{slice.detail}</p>
                         )}
@@ -316,7 +458,28 @@ export function PortfolioView() {
                           {formatUsd(slice.value)}
                         </span>
                       </div>
-                      <div className="col-span-3">
+                      <div className="col-span-2 text-right">
+                        {slice.gainLoss != null && slice.gainLoss !== 0 ? (
+                          <div>
+                            <span
+                              className={`text-[12px] font-medium ${
+                                slice.gainLoss >= 0 ? 'text-green-500' : 'text-red-500'
+                              }`}
+                            >
+                              {slice.gainLoss >= 0 ? '+' : ''}
+                              {formatUsd(slice.gainLoss)}
+                            </span>
+                            {slice.gainType && slice.gainType !== 'unknown' && (
+                              <p className="text-[9px] text-surface-500 uppercase">
+                                {slice.gainType === 'short-term' ? 'ST' : 'LT'}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-surface-500">—</span>
+                        )}
+                      </div>
+                      <div className="col-span-2">
                         <div className="flex items-center gap-2 justify-end">
                           <div className="w-16 h-1.5 bg-surface-200/50 rounded-full overflow-hidden">
                             <div

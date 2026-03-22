@@ -18,6 +18,7 @@ export interface BrokerHolding {
   ticker: string;
   shares: number;
   costBasis?: number;
+  purchaseDate?: string; // ISO date for short/long-term gain classification
   label?: string;
 }
 
@@ -35,10 +36,13 @@ export interface BrokerAccountWithValues extends BrokerAccount {
     marketValue?: number;
     gainLoss?: number;
     gainLossPercent?: number;
+    gainType?: 'short-term' | 'long-term' | 'unknown';
   })[];
   totalValue: number;
   totalCostBasis: number;
   totalGainLoss: number;
+  shortTermGains: number;
+  longTermGains: number;
 }
 
 export interface BrokerPortfolio {
@@ -46,6 +50,8 @@ export interface BrokerPortfolio {
   totalValue: number;
   totalCostBasis: number;
   totalGainLoss: number;
+  shortTermGains: number;
+  longTermGains: number;
   lastUpdated: string;
 }
 
@@ -313,6 +319,18 @@ async function fetchPricesIndividually(tickers: string[]): Promise<Record<string
 }
 
 // -----------------------------------------------------------------------------
+// Gain Type Classification
+// -----------------------------------------------------------------------------
+
+const ONE_YEAR_MS = 365.25 * 24 * 60 * 60 * 1000;
+
+function classifyGainType(purchaseDate?: string): 'short-term' | 'long-term' | 'unknown' {
+  if (!purchaseDate) return 'unknown';
+  const held = Date.now() - new Date(purchaseDate).getTime();
+  return held >= ONE_YEAR_MS ? 'long-term' : 'short-term';
+}
+
+// -----------------------------------------------------------------------------
 // Portfolio Builder (works for both manual and SnapTrade accounts)
 // -----------------------------------------------------------------------------
 
@@ -343,6 +361,7 @@ export async function buildPortfolio(
       const costBasis = h.costBasis || 0;
       const gainLoss = costBasis > 0 ? marketValue - costBasis : 0;
       const gainLossPercent = costBasis > 0 ? (gainLoss / costBasis) * 100 : 0;
+      const gainType = classifyGainType(h.purchaseDate);
       return {
         ...h,
         label: h.label || getTickerName(h.ticker),
@@ -350,11 +369,18 @@ export async function buildPortfolio(
         marketValue,
         gainLoss,
         gainLossPercent,
+        gainType,
       };
     });
 
     const totalValue = enrichedHoldings.reduce((sum, h) => sum + (h.marketValue || 0), 0);
     const totalCostBasis = enrichedHoldings.reduce((sum, h) => sum + (h.costBasis || 0), 0);
+    const shortTermGains = enrichedHoldings
+      .filter((h) => h.gainType === 'short-term' && h.gainLoss > 0)
+      .reduce((sum, h) => sum + h.gainLoss, 0);
+    const longTermGains = enrichedHoldings
+      .filter((h) => h.gainType === 'long-term' && h.gainLoss > 0)
+      .reduce((sum, h) => sum + h.gainLoss, 0);
 
     return {
       ...account,
@@ -362,17 +388,23 @@ export async function buildPortfolio(
       totalValue,
       totalCostBasis,
       totalGainLoss: totalCostBasis > 0 ? totalValue - totalCostBasis : 0,
+      shortTermGains,
+      longTermGains,
     };
   });
 
   const totalValue = enrichedAccounts.reduce((sum, a) => sum + a.totalValue, 0);
   const totalCostBasis = enrichedAccounts.reduce((sum, a) => sum + a.totalCostBasis, 0);
+  const shortTermGains = enrichedAccounts.reduce((sum, a) => sum + a.shortTermGains, 0);
+  const longTermGains = enrichedAccounts.reduce((sum, a) => sum + a.longTermGains, 0);
 
   return {
     accounts: enrichedAccounts,
     totalValue,
     totalCostBasis,
     totalGainLoss: totalCostBasis > 0 ? totalValue - totalCostBasis : 0,
+    shortTermGains,
+    longTermGains,
     lastUpdated: new Date().toISOString(),
   };
 }
