@@ -50,7 +50,8 @@ let priceCache: Record<string, number> = {};
 let priceCacheTime = 0;
 const PRICE_CACHE_TTL = 60_000; // 1 minute
 
-// Map common asset symbols to CoinGecko IDs
+// Map asset symbols (UPPERCASE) to CoinGecko IDs
+// All keys must be uppercase — lookups use .toUpperCase()
 const COINGECKO_IDS: Record<string, string> = {
   BTC: 'bitcoin',
   ETH: 'ethereum',
@@ -68,11 +69,11 @@ const COINGECKO_IDS: Record<string, string> = {
   XRP: 'ripple',
   LTC: 'litecoin',
   // Liquid staking
-  stETH: 'staked-ether',
-  rETH: 'rocket-pool-eth',
+  STETH: 'staked-ether',
+  RETH: 'rocket-pool-eth',
   RPL: 'rocket-pool',
-  cbETH: 'coinbase-wrapped-staked-eth',
-  sfrxETH: 'staked-frax-ether',
+  CBETH: 'coinbase-wrapped-staked-eth',
+  SFRXETH: 'staked-frax-ether',
   // Wrapped
   WBTC: 'wrapped-bitcoin',
   WETH: 'weth',
@@ -87,6 +88,9 @@ const COINGECKO_IDS: Record<string, string> = {
   GRT: 'the-graph',
   BCH: 'bitcoin-cash',
   BNB: 'binancecoin',
+  EIGEN: 'eigenlayer',
+  COMP: 'compound-governance-token',
+  CRO: 'crypto-com-chain',
 };
 
 async function fetchPrices(assets: string[]): Promise<Record<string, number>> {
@@ -95,8 +99,9 @@ async function fetchPrices(assets: string[]): Promise<Record<string, number>> {
     return priceCache;
   }
 
-  // Map assets to CoinGecko IDs
-  const ids = assets.map((a) => COINGECKO_IDS[a.toUpperCase()]).filter(Boolean);
+  // Map assets to CoinGecko IDs (lookup is case-insensitive)
+  const uniqueUpper = [...new Set(assets.map((a) => a.toUpperCase()))];
+  const ids = uniqueUpper.map((a) => COINGECKO_IDS[a]).filter(Boolean);
 
   if (ids.length === 0) return priceCache;
 
@@ -107,11 +112,19 @@ async function fetchPrices(assets: string[]): Promise<Record<string, number>> {
 
     const data = await res.json();
 
-    // Build reverse map: symbol -> price
+    // Build reverse map: UPPERCASE symbol -> price
+    // Then also map original-case symbols so lookups work either way
     const prices: Record<string, number> = {};
-    for (const [symbol, cgId] of Object.entries(COINGECKO_IDS)) {
+    for (const [upperSymbol, cgId] of Object.entries(COINGECKO_IDS)) {
       if (data[cgId]?.usd) {
-        prices[symbol] = data[cgId].usd;
+        prices[upperSymbol] = data[cgId].usd;
+      }
+    }
+    // Also store prices keyed by original asset casing
+    for (const asset of assets) {
+      const upper = asset.toUpperCase();
+      if (prices[upper] && !prices[asset]) {
+        prices[asset] = prices[upper];
       }
     }
     // Stablecoins fallback
@@ -503,6 +516,80 @@ const EXCHANGE_FETCHERS: Record<string, (config: ExchangeConfig) => Promise<Bala
   kraken: fetchKrakenBalances,
 };
 
+export async function fetchSourceBalance(
+  sourceId: string,
+  exchanges: ExchangeConfig[],
+  wallets: WalletConfig[],
+  etherscanKey_?: string
+): Promise<SourceBalance> {
+  etherscanApiKey = etherscanKey_;
+
+  // Check if it's an exchange
+  const exchange = exchanges.find((e) => e.id === sourceId);
+  if (exchange) {
+    const fetcher = EXCHANGE_FETCHERS[exchange.id];
+    if (!fetcher) throw new Error(`Unknown exchange: ${sourceId}`);
+    try {
+      const balances = await fetcher(exchange);
+      const prices = await fetchPrices(balances.map((b) => b.asset));
+      for (const b of balances) {
+        b.usdValue = b.amount * (prices[b.asset] || prices[b.asset.toUpperCase()] || 0);
+      }
+      return {
+        sourceId: exchange.id,
+        sourceType: 'exchange',
+        label: EXCHANGE_LABELS[exchange.id] || exchange.id,
+        balances,
+        totalUsdValue: balances.reduce((sum, b) => sum + (b.usdValue || 0), 0),
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (err) {
+      return {
+        sourceId: exchange.id,
+        sourceType: 'exchange',
+        label: EXCHANGE_LABELS[exchange.id] || exchange.id,
+        balances: [],
+        totalUsdValue: 0,
+        error: err instanceof Error ? err.message : 'Unknown error',
+        lastUpdated: new Date().toISOString(),
+      };
+    }
+  }
+
+  // Check if it's a wallet
+  const wallet = wallets.find((w) => w.id === sourceId);
+  if (wallet) {
+    const fetcher = wallet.chain === 'btc' ? fetchBtcBalance : fetchEthBalance;
+    try {
+      const balances = await fetcher(wallet.address);
+      const prices = await fetchPrices(balances.map((b) => b.asset));
+      for (const b of balances) {
+        b.usdValue = b.amount * (prices[b.asset] || prices[b.asset.toUpperCase()] || 0);
+      }
+      return {
+        sourceId: wallet.id,
+        sourceType: 'wallet',
+        label: wallet.label || `${wallet.chain.toUpperCase()} Wallet`,
+        balances,
+        totalUsdValue: balances.reduce((sum, b) => sum + (b.usdValue || 0), 0),
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (err) {
+      return {
+        sourceId: wallet.id,
+        sourceType: 'wallet',
+        label: wallet.label || `${wallet.chain.toUpperCase()} Wallet`,
+        balances: [],
+        totalUsdValue: 0,
+        error: err instanceof Error ? err.message : 'Unknown error',
+        lastUpdated: new Date().toISOString(),
+      };
+    }
+  }
+
+  throw new Error(`Source not found: ${sourceId}`);
+}
+
 export async function fetchAllBalances(
   exchanges: ExchangeConfig[],
   wallets: WalletConfig[],
@@ -636,7 +723,7 @@ export async function fetchAllBalances(
 
   for (const source of sources) {
     for (const balance of source.balances) {
-      const price = prices[balance.asset] || 0;
+      const price = prices[balance.asset] || prices[balance.asset.toUpperCase()] || 0;
       balance.usdValue = balance.amount * price;
     }
     source.totalUsdValue = source.balances.reduce((sum, b) => sum + (b.usdValue || 0), 0);
@@ -654,7 +741,7 @@ export async function fetchAllBalances(
     .map(([asset, amount]) => ({
       asset,
       amount,
-      usdValue: amount * (prices[asset] || 0),
+      usdValue: amount * (prices[asset] || prices[asset.toUpperCase()] || 0),
     }))
     .sort((a, b) => (b.usdValue || 0) - (a.usdValue || 0));
 

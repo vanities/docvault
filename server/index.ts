@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import { parseWithAI } from './parsers/ai.js';
 import { zipSync } from 'fflate';
 import { withAILimit } from './aiLimiter.js';
-import { fetchAllBalances } from './crypto.js';
+import { fetchAllBalances, fetchSourceBalance } from './crypto.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 3005;
@@ -634,6 +634,25 @@ async function handleRequest(req: Request): Promise<Response> {
       cryptoConfig.etherscanKey
     );
     return jsonResponse(portfolio);
+  }
+
+  // GET /api/crypto/balances/:sourceId — refresh a single source
+  if (pathname.startsWith('/api/crypto/balances/') && req.method === 'GET') {
+    const sourceId = decodeURIComponent(pathname.split('/api/crypto/balances/')[1]);
+    const settings = await loadSettings();
+    const cryptoConfig = settings.crypto || { exchanges: [], wallets: [] };
+
+    try {
+      const source = await fetchSourceBalance(
+        sourceId,
+        cryptoConfig.exchanges,
+        cryptoConfig.wallets,
+        cryptoConfig.etherscanKey
+      );
+      return jsonResponse(source);
+    } catch (err) {
+      return jsonResponse({ error: err instanceof Error ? err.message : 'Unknown error' }, 404);
+    }
   }
 
   // GET /api/status

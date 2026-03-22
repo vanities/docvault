@@ -31,18 +31,29 @@ function formatAmount(amount: number, asset: string): string {
   });
 }
 
-function SourceCard({ source }: { source: CryptoSourceBalance }) {
+function SourceCard({
+  source,
+  onRefresh,
+}: {
+  source: CryptoSourceBalance;
+  onRefresh: (sourceId: string) => void;
+}) {
   const isExchange = source.sourceType === 'exchange';
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await onRefresh(source.sourceId);
+    setRefreshing(false);
+  };
 
   return (
     <div className="glass-card rounded-xl p-5">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2.5">
           <div className={`p-2 rounded-lg ${isExchange ? 'bg-accent-500/10' : 'bg-amber-500/10'}`}>
             {isExchange ? (
-              <TrendingUp
-                className={`w-4 h-4 ${isExchange ? 'text-accent-400' : 'text-amber-500'}`}
-              />
+              <TrendingUp className="w-4 h-4 text-accent-400" />
             ) : (
               <Wallet className="w-4 h-4 text-amber-500" />
             )}
@@ -52,9 +63,26 @@ function SourceCard({ source }: { source: CryptoSourceBalance }) {
             <p className="text-[11px] text-surface-600">{isExchange ? 'Exchange' : 'Wallet'}</p>
           </div>
         </div>
-        <p className="font-semibold text-surface-950 text-[16px]">
-          {formatUsd(source.totalUsdValue)}
+        <div className="text-right">
+          <p className="font-semibold text-surface-950 text-[16px]">
+            {formatUsd(source.totalUsdValue)}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[11px] text-surface-500 flex items-center gap-1">
+          <Clock className="w-3 h-3" />
+          {timeAgo(source.lastUpdated)}
         </p>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="flex items-center gap-1 px-2 py-1 text-[11px] text-surface-600 hover:text-surface-900 hover:bg-surface-200/50 rounded-lg transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Syncing' : 'Refresh'}
+        </button>
       </div>
 
       {source.error && (
@@ -182,6 +210,39 @@ export function CryptoView() {
     }
   }, []);
 
+  const refreshSource = useCallback(async (sourceId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/crypto/balances/${encodeURIComponent(sourceId)}`);
+      if (!res.ok) return;
+      const updatedSource = await res.json();
+
+      setPortfolio((prev) => {
+        if (!prev) return prev;
+        const newSources = prev.sources.map((s) => (s.sourceId === sourceId ? updatedSource : s));
+        // Recalculate totals
+        const totalUsdValue = newSources.reduce((sum, s) => sum + s.totalUsdValue, 0);
+        const assetMap = new Map<string, { amount: number; usdValue: number }>();
+        for (const s of newSources) {
+          for (const b of s.balances) {
+            const existing = assetMap.get(b.asset) || { amount: 0, usdValue: 0 };
+            existing.amount += b.amount;
+            existing.usdValue += b.usdValue || 0;
+            assetMap.set(b.asset, existing);
+          }
+        }
+        const byAsset = Array.from(assetMap.entries())
+          .map(([asset, { amount, usdValue }]) => ({ asset, amount, usdValue }))
+          .sort((a, b) => (b.usdValue || 0) - (a.usdValue || 0));
+
+        const updated = { ...prev, sources: newSources, totalUsdValue, byAsset };
+        cachedPortfolio = updated;
+        return updated;
+      });
+    } catch {
+      // Silently fail — the source card shows its own error
+    }
+  }, []);
+
   useEffect(() => {
     if (!cachedPortfolio) {
       loadBalances();
@@ -301,7 +362,7 @@ export function CryptoView() {
           <h3 className="text-[14px] font-semibold text-surface-950 mb-3">By Source</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {portfolio?.sources.map((source) => (
-              <SourceCard key={source.sourceId} source={source} />
+              <SourceCard key={source.sourceId} source={source} onRefresh={refreshSource} />
             ))}
           </div>
         </>
