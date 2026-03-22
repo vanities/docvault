@@ -126,11 +126,11 @@ function buildCoinbaseJwt(apiKeyName: string, privateKeyPem: string, uri: string
   const now = Math.floor(Date.now() / 1000);
   const payload = {
     sub: apiKeyName,
-    iss: 'coinbase-cloud',
+    iss: 'cdp',
     aud: ['cdp_service'],
     nbf: now,
     exp: now + 120, // 2 minute expiry
-    uris: [uri],
+    uri,
   };
 
   const encode = (obj: unknown) => Buffer.from(JSON.stringify(obj)).toString('base64url');
