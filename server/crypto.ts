@@ -108,15 +108,24 @@ async function fetchPrices(assets: string[]): Promise<Record<string, number>> {
 }
 
 // -----------------------------------------------------------------------------
-// Exchange: Coinbase (CDP API Keys — JWT ES256 auth)
+// Exchange: Coinbase (CDP API Keys — JWT auth)
 // -----------------------------------------------------------------------------
-// Coinbase now issues CDP keys: an "API Key Name" (the kid/subject) and
-// an EC private key in PEM format. Auth uses a short-lived JWT signed with ES256.
+// Coinbase CDP keys come in two flavors:
+//   - Ed25519 (new default): private key is a raw base64 string (no PEM headers)
+//   - ECDSA (legacy): private key is a PEM-encoded EC key
+// We auto-detect based on whether the key has PEM headers.
 
-function buildCoinbaseJwt(apiKeyName: string, privateKeyPem: string, uri: string): string {
+function isEd25519Key(key: string): boolean {
+  const cleaned = key.replace(/\\n/g, '\n').trim();
+  return !cleaned.includes('-----BEGIN');
+}
+
+function buildCoinbaseJwt(apiKeyName: string, privateKey: string, uri: string): string {
+  const isEd25519 = isEd25519Key(privateKey);
+
   // Header
   const header = {
-    alg: 'ES256',
+    alg: isEd25519 ? 'EdDSA' : 'ES256',
     kid: apiKeyName,
     nonce: crypto.randomBytes(16).toString('hex'),
     typ: 'JWT',
@@ -139,26 +148,50 @@ function buildCoinbaseJwt(apiKeyName: string, privateKeyPem: string, uri: string
   const payloadB64 = encode(payload);
   const signingInput = `${headerB64}.${payloadB64}`;
 
-  // Clean up PEM — handle escaped newlines from JSON storage
-  const cleanPem = privateKeyPem.replace(/\\n/g, '\n');
+  let sigB64: string;
 
-  const sign = crypto.createSign('SHA256');
-  sign.update(signingInput);
-  // EC signature in DER format — convert to raw r||s for JWT
-  const derSig = sign.sign({ key: cleanPem, dsaEncoding: 'ieee-p1363' });
-  const sigB64 = derSig.toString('base64url');
+  if (isEd25519) {
+    // Ed25519: key is base64-encoded 64 bytes (32-byte seed + 32-byte pubkey)
+    // Node's crypto.sign('Ed25519') needs a PKCS8-wrapped key or raw seed
+    const keyBytes = Buffer.from(privateKey.replace(/\\n/g, '').replace(/\s/g, ''), 'base64');
+    const seed = keyBytes.subarray(0, 32); // First 32 bytes = private seed
+
+    // Wrap raw Ed25519 seed in PKCS8 DER format for Node's crypto API
+    // PKCS8 prefix for Ed25519: 302e020100300506032b657004220420 + 32 bytes seed
+    const pkcs8Prefix = Buffer.from('302e020100300506032b657004220420', 'hex');
+    const pkcs8Der = Buffer.concat([pkcs8Prefix, seed]);
+
+    const keyObject = crypto.createPrivateKey({
+      key: pkcs8Der,
+      format: 'der',
+      type: 'pkcs8',
+    });
+    const sig = crypto.sign(null, Buffer.from(signingInput), keyObject);
+    sigB64 = sig.toString('base64url');
+  } else {
+    // ECDSA (ES256): key is PEM-encoded EC private key
+    const cleanPem = privateKey.replace(/\\n/g, '\n');
+    const sign = crypto.createSign('SHA256');
+    sign.update(signingInput);
+    const derSig = sign.sign({ key: cleanPem, dsaEncoding: 'ieee-p1363' });
+    sigB64 = derSig.toString('base64url');
+  }
 
   return `${signingInput}.${sigB64}`;
 }
 
 async function fetchCoinbaseBalances(config: ExchangeConfig): Promise<Balance[]> {
   const method = 'GET';
-  const requestPath = '/api/v3/brokerage/accounts?limit=250';
+  const requestPath = '/api/v3/brokerage/accounts';
+  // URI in JWT should NOT include query params
   const uri = `${method} api.coinbase.com${requestPath}`;
 
   const jwt = buildCoinbaseJwt(config.apiKey, config.apiSecret, uri);
+  console.log('[Coinbase] Key type:', isEd25519Key(config.apiSecret) ? 'Ed25519' : 'ECDSA');
+  console.log('[Coinbase] URI:', uri);
+  console.log('[Coinbase] Key name:', config.apiKey.substring(0, 30) + '...');
 
-  const res = await fetch(`https://api.coinbase.com${requestPath}`, {
+  const res = await fetch(`https://api.coinbase.com${requestPath}?limit=250`, {
     headers: {
       Authorization: `Bearer ${jwt}`,
       'Content-Type': 'application/json',
@@ -167,6 +200,7 @@ async function fetchCoinbaseBalances(config: ExchangeConfig): Promise<Balance[]>
 
   if (!res.ok) {
     const text = await res.text();
+    console.error('[Coinbase] Error response:', res.status, text);
     throw new Error(`Coinbase API error ${res.status}: ${text}`);
   }
 
