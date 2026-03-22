@@ -374,6 +374,38 @@ export interface CryptoSettings {
   wallets: CryptoWalletConfig[];
 }
 
+// Brokerage tracking types
+export type BrokerId = 'vanguard' | 'fidelity' | 'robinhood';
+
+export interface BrokerHolding {
+  ticker: string;
+  shares: number;
+  costBasis?: number;
+  label?: string;
+  price?: number;
+  marketValue?: number;
+  gainLoss?: number;
+  gainLossPercent?: number;
+}
+
+export interface BrokerAccount {
+  id: string;
+  broker: BrokerId;
+  name: string;
+  holdings: BrokerHolding[];
+  totalValue: number;
+  totalCostBasis: number;
+  totalGainLoss: number;
+}
+
+export interface BrokerPortfolio {
+  accounts: BrokerAccount[];
+  totalValue: number;
+  totalCostBasis: number;
+  totalGainLoss: number;
+  lastUpdated: string;
+}
+
 // Sync status (Dropbox)
 export interface SyncStatus {
   status: 'ok' | 'error' | 'syncing' | 'unknown';

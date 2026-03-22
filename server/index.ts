@@ -5,6 +5,7 @@ import { parseWithAI } from './parsers/ai.js';
 import { zipSync } from 'fflate';
 import { withAILimit } from './aiLimiter.js';
 import { fetchAllBalances, fetchSourceBalance } from './crypto.js';
+import { buildPortfolio, type BrokerAccount } from './brokers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 3005;
@@ -55,6 +56,9 @@ interface Settings {
     exchanges: CryptoExchangeConfig[];
     wallets: CryptoWalletConfig[];
     etherscanKey?: string;
+  };
+  brokers?: {
+    accounts: BrokerAccount[];
   };
 }
 
@@ -692,6 +696,73 @@ async function handleRequest(req: Request): Promise<Response> {
     } catch (err) {
       return jsonResponse({ error: err instanceof Error ? err.message : 'Unknown error' }, 404);
     }
+  }
+
+  // =========================================================================
+  // Broker Portfolio Endpoints
+  // =========================================================================
+
+  // GET /api/brokers/accounts — list all broker accounts (no secrets to mask)
+  if (pathname === '/api/brokers/accounts' && req.method === 'GET') {
+    const settings = await loadSettings();
+    return jsonResponse({ accounts: settings.brokers?.accounts || [] });
+  }
+
+  // POST /api/brokers/accounts — add a new broker account
+  if (pathname === '/api/brokers/accounts' && req.method === 'POST') {
+    const body = await req.json();
+    const { broker, name } = body;
+    if (!broker || !name) {
+      return jsonResponse({ error: 'Missing broker or name' }, 400);
+    }
+    const settings = await loadSettings();
+    if (!settings.brokers) settings.brokers = { accounts: [] };
+    const id = `${broker}-${Date.now()}`;
+    const account: BrokerAccount = { id, broker, name, holdings: [] };
+    settings.brokers.accounts.push(account);
+    await saveSettings(settings);
+    return jsonResponse({ ok: true, account });
+  }
+
+  // PUT /api/brokers/accounts/:id — update account (name, holdings)
+  if (pathname.startsWith('/api/brokers/accounts/') && req.method === 'PUT') {
+    const accountId = decodeURIComponent(pathname.split('/api/brokers/accounts/')[1]);
+    const body = await req.json();
+    const settings = await loadSettings();
+    if (!settings.brokers) return jsonResponse({ error: 'No accounts' }, 404);
+    const account = settings.brokers.accounts.find((a) => a.id === accountId);
+    if (!account) return jsonResponse({ error: 'Account not found' }, 404);
+    if (body.name !== undefined) account.name = body.name;
+    if (body.holdings !== undefined) account.holdings = body.holdings;
+    await saveSettings(settings);
+    return jsonResponse({ ok: true, account });
+  }
+
+  // DELETE /api/brokers/accounts/:id — remove an account
+  if (pathname.startsWith('/api/brokers/accounts/') && req.method === 'DELETE') {
+    const accountId = decodeURIComponent(pathname.split('/api/brokers/accounts/')[1]);
+    const settings = await loadSettings();
+    if (!settings.brokers) return jsonResponse({ error: 'No accounts' }, 404);
+    settings.brokers.accounts = settings.brokers.accounts.filter((a) => a.id !== accountId);
+    await saveSettings(settings);
+    return jsonResponse({ ok: true });
+  }
+
+  // GET /api/brokers/portfolio — get all accounts with live prices
+  if (pathname === '/api/brokers/portfolio' && req.method === 'GET') {
+    const settings = await loadSettings();
+    const accounts = settings.brokers?.accounts || [];
+    if (accounts.length === 0) {
+      return jsonResponse({
+        accounts: [],
+        totalValue: 0,
+        totalCostBasis: 0,
+        totalGainLoss: 0,
+        lastUpdated: new Date().toISOString(),
+      });
+    }
+    const portfolio = await buildPortfolio(accounts);
+    return jsonResponse(portfolio);
   }
 
   // GET /api/status

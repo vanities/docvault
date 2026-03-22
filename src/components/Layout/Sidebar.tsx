@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Calculator,
   Bitcoin,
+  Landmark,
 } from 'lucide-react';
 import { useAppContext, type NavView } from '../../contexts/AppContext';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
@@ -388,6 +389,26 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
                 className={`w-4 h-4 flex-shrink-0 ${activeView === 'crypto' ? 'text-amber-500' : 'text-surface-600'}`}
               />
               <span className="font-medium text-[13px]">Crypto</span>
+            </button>
+
+            {/* Brokers view button */}
+            <button
+              onClick={() => handleViewClick('brokers')}
+              disabled={isProcessing}
+              className={`
+                w-full flex items-center gap-2.5 px-2.5 py-3 md:py-2 rounded-lg transition-all duration-150 text-left
+                disabled:opacity-40 disabled:cursor-not-allowed
+                ${
+                  activeView === 'brokers'
+                    ? 'bg-accent-500/10 text-accent-400'
+                    : 'text-surface-800 hover:text-surface-950 hover:bg-surface-200/50'
+                }
+              `}
+            >
+              <Landmark
+                className={`w-4 h-4 flex-shrink-0 ${activeView === 'brokers' ? 'text-accent-400' : 'text-surface-600'}`}
+              />
+              <span className="font-medium text-[13px]">Brokers</span>
             </button>
           </div>
         </div>

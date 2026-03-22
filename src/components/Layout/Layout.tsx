@@ -9,6 +9,7 @@ import { AllFilesView } from '../AllFiles/AllFilesView';
 import { SettingsView } from '../Settings/SettingsView';
 import { TnTaxView } from '../TnTax/TnTaxView';
 import { CryptoView } from '../Crypto/CryptoView';
+import { BrokersView } from '../Brokers/BrokersView';
 import { AddEntityModal } from '../Settings/AddEntityModal';
 import { SearchResultsView } from '../Search/SearchResultsView';
 
@@ -77,6 +78,8 @@ export function Layout() {
         return <TnTaxView />;
       case 'crypto':
         return <CryptoView />;
+      case 'brokers':
+        return <BrokersView />;
       default:
         return <TaxYearView />;
     }
