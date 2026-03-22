@@ -12,6 +12,10 @@ import {
   Landmark,
   PiggyBank,
   X,
+  Link,
+  ExternalLink,
+  Unlink,
+  Key,
 } from 'lucide-react';
 import type { BrokerAccount, BrokerPortfolio, BrokerId } from '../../types';
 import { API_BASE } from '../../constants';
@@ -61,10 +65,14 @@ function GainLossBadge({ value, percent }: { value: number; percent?: number }) 
   const Icon = isPositive ? TrendingUp : TrendingDown;
   const colorClass = isPositive ? 'text-green-500 bg-green-500/10' : 'text-red-500 bg-red-500/10';
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] font-medium ${colorClass}`}>
+    <span
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] font-medium ${colorClass}`}
+    >
       <Icon className="w-3 h-3" />
       {formatUsd(Math.abs(value))}
-      {percent !== undefined && <span className="text-[11px] opacity-80">({formatPercent(percent)})</span>}
+      {percent !== undefined && (
+        <span className="text-[11px] opacity-80">({formatPercent(percent)})</span>
+      )}
     </span>
   );
 }
@@ -102,7 +110,9 @@ function AddHoldingModal({
         </div>
         <div className="space-y-3">
           <div>
-            <label className="text-[12px] font-medium text-surface-700 mb-1 block">Ticker Symbol</label>
+            <label className="text-[12px] font-medium text-surface-700 mb-1 block">
+              Ticker Symbol
+            </label>
             <input
               value={ticker}
               onChange={(e) => setTicker(e.target.value)}
@@ -193,7 +203,9 @@ function AddAccountModal({
             </select>
           </div>
           <div>
-            <label className="text-[12px] font-medium text-surface-700 mb-1 block">Account Name</label>
+            <label className="text-[12px] font-medium text-surface-700 mb-1 block">
+              Account Name
+            </label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -211,7 +223,9 @@ function AddAccountModal({
             Cancel
           </button>
           <button
-            onClick={() => { if (name.trim()) onAdd(broker, name.trim()); }}
+            onClick={() => {
+              if (name.trim()) onAdd(broker, name.trim());
+            }}
             disabled={!name.trim()}
             className="flex-1 px-4 py-2.5 text-[13px] font-medium bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 transition-colors disabled:opacity-50"
           >
@@ -231,7 +245,10 @@ function AccountCard({
   onDeleteAccount,
 }: {
   account: BrokerAccount;
-  onAddHolding: (accountId: string, holding: { ticker: string; shares: number; costBasis?: number }) => void;
+  onAddHolding: (
+    accountId: string,
+    holding: { ticker: string; shares: number; costBasis?: number }
+  ) => void;
   onRemoveHolding: (accountId: string, ticker: string) => void;
   onDeleteAccount: (accountId: string) => void;
 }) {
@@ -273,7 +290,11 @@ function AccountCard({
             {account.totalCostBasis > 0 && (
               <GainLossBadge
                 value={account.totalGainLoss}
-                percent={account.totalCostBasis > 0 ? (account.totalGainLoss / account.totalCostBasis) * 100 : 0}
+                percent={
+                  account.totalCostBasis > 0
+                    ? (account.totalGainLoss / account.totalCostBasis) * 100
+                    : 0
+                }
               />
             )}
           </div>
@@ -389,6 +410,170 @@ function AccountCard({
   );
 }
 
+// SnapTrade Setup Modal
+function SnapTradeSetupModal({
+  onSetup,
+  onClose,
+}: {
+  onSetup: (clientId: string, consumerKey: string) => void;
+  onClose: () => void;
+}) {
+  const [clientId, setClientId] = useState('');
+  const [consumerKey, setConsumerKey] = useState('');
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative glass-card rounded-2xl p-6 w-full max-w-md animate-scale-in">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-[16px] font-semibold text-surface-950">Connect SnapTrade</h3>
+          <button onClick={onClose} className="p-1 hover:bg-surface-200/50 rounded-lg">
+            <X className="w-4 h-4 text-surface-600" />
+          </button>
+        </div>
+        <p className="text-[12px] text-surface-600 mb-4">
+          SnapTrade connects your real brokerage accounts (Vanguard, Fidelity, Robinhood, Chase,
+          etc.) to automatically sync holdings. Free tier supports 5 connections.
+        </p>
+        <div className="space-y-3">
+          <div>
+            <label className="text-[12px] font-medium text-surface-700 mb-1 block">Client ID</label>
+            <input
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              placeholder="Your SnapTrade Client ID"
+              className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-500/30"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="text-[12px] font-medium text-surface-700 mb-1 block">
+              Consumer Key
+            </label>
+            <input
+              type="password"
+              value={consumerKey}
+              onChange={(e) => setConsumerKey(e.target.value)}
+              placeholder="Your SnapTrade Consumer Key"
+              className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-500/30"
+            />
+          </div>
+        </div>
+        <a
+          href="https://dashboard.snaptrade.com/signup"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1 text-[12px] text-accent-400 hover:underline mt-3"
+        >
+          Get free API keys at dashboard.snaptrade.com
+          <ExternalLink className="w-3 h-3" />
+        </a>
+        <div className="flex gap-2 mt-5">
+          <button
+            onClick={onClose}
+            className="flex-1 px-4 py-2.5 text-[13px] font-medium text-surface-700 hover:bg-surface-200/50 rounded-xl transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => {
+              if (clientId && consumerKey) onSetup(clientId, consumerKey);
+            }}
+            disabled={!clientId || !consumerKey}
+            className="flex-1 px-4 py-2.5 text-[13px] font-medium bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 transition-colors disabled:opacity-50"
+          >
+            Connect
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// SnapTrade Banner
+function SnapTradeBanner({
+  onConnect,
+  onSync,
+  onDisconnect,
+  onSetup,
+  status,
+  isSyncing,
+}: {
+  onConnect: () => void;
+  onSync: () => void;
+  onDisconnect: () => void;
+  onSetup: () => void;
+  status: { configured: boolean; registered: boolean } | null;
+  isSyncing: boolean;
+}) {
+  if (!status) return null;
+
+  if (!status.configured) {
+    return (
+      <div className="glass-card rounded-xl p-4 mb-6 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-violet-500/10">
+            <Link className="w-4 h-4 text-violet-500" />
+          </div>
+          <div>
+            <p className="text-[13px] font-medium text-surface-950">Auto-sync with SnapTrade</p>
+            <p className="text-[11px] text-surface-600">
+              Connect Vanguard, Fidelity, Robinhood, Chase &amp; more. Free for 5 accounts.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={onSetup}
+          className="flex items-center gap-1.5 px-4 py-2 text-[13px] font-medium bg-violet-500 text-surface-0 rounded-xl hover:bg-violet-400 transition-colors"
+        >
+          <Key className="w-3.5 h-3.5" />
+          Set Up
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="glass-card rounded-xl p-4 mb-6 flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <div className="p-2 rounded-lg bg-green-500/10">
+          <Link className="w-4 h-4 text-green-500" />
+        </div>
+        <div>
+          <p className="text-[13px] font-medium text-surface-950">SnapTrade Connected</p>
+          <p className="text-[11px] text-surface-600">
+            Auto-sync enabled. Connect additional brokerages or sync now.
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onConnect}
+          className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-violet-500 hover:bg-violet-500/10 rounded-lg transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Link Brokerage
+        </button>
+        <button
+          onClick={onSync}
+          disabled={isSyncing}
+          className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-accent-500 hover:bg-accent-500/10 rounded-lg transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+          {isSyncing ? 'Syncing...' : 'Sync'}
+        </button>
+        <button
+          onClick={onDisconnect}
+          className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-surface-500 hover:text-danger-400 hover:bg-danger-500/10 rounded-lg transition-colors"
+          title="Disconnect SnapTrade"
+        >
+          <Unlink className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Module-level cache
 let cachedPortfolio: BrokerPortfolio | null = null;
 
@@ -398,6 +583,12 @@ export function BrokersView() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAddAccount, setShowAddAccount] = useState(false);
+  const [showSnapTradeSetup, setShowSnapTradeSetup] = useState(false);
+  const [snapTradeStatus, setSnapTradeStatus] = useState<{
+    configured: boolean;
+    registered: boolean;
+  } | null>(null);
+  const [isSnapSyncing, setIsSnapSyncing] = useState(false);
   const [progress, setProgress] = useState<{
     current: number;
     total: number;
@@ -474,6 +665,73 @@ export function BrokersView() {
     })();
   }, [loadPortfolio]);
 
+  // Load SnapTrade status on mount
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/snaptrade/status`);
+        if (res.ok) setSnapTradeStatus(await res.json());
+      } catch {
+        // SnapTrade status check is non-critical
+      }
+    })();
+  }, []);
+
+  const handleSnapTradeSetup = async (clientId: string, consumerKey: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/snaptrade/setup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId, consumerKey }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Setup failed');
+      setShowSnapTradeSetup(false);
+      setSnapTradeStatus({ configured: true, registered: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'SnapTrade setup failed');
+    }
+  };
+
+  const handleSnapTradeConnect = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/snaptrade/connect`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to get connect URL');
+      // Open SnapTrade connection portal in new window
+      window.open(data.redirectUrl, 'snaptrade-connect', 'width=500,height=700');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to connect');
+    }
+  };
+
+  const handleSnapTradeSync = async () => {
+    setIsSnapSyncing(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/snaptrade/sync`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Sync failed');
+      // Refresh portfolio to show new data
+      void loadPortfolio(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'SnapTrade sync failed');
+    } finally {
+      setIsSnapSyncing(false);
+    }
+  };
+
+  const handleSnapTradeDisconnect = async () => {
+    if (!confirm('Disconnect SnapTrade? This will remove all synced accounts.')) return;
+    try {
+      await fetch(`${API_BASE}/snaptrade`, { method: 'DELETE' });
+      setSnapTradeStatus({ configured: false, registered: false });
+      void loadPortfolio(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to disconnect');
+    }
+  };
+
   const handleAddAccount = async (broker: BrokerId, name: string) => {
     try {
       const res = await fetch(`${API_BASE}/brokers/accounts`, {
@@ -496,12 +754,15 @@ export function BrokersView() {
     // Get current holdings and add the new one
     const account = portfolio?.accounts.find((a) => a.id === accountId);
     if (!account) return;
-    const updatedHoldings = [...account.holdings.map((h) => ({
-      ticker: h.ticker,
-      shares: h.shares,
-      costBasis: h.costBasis,
-      label: h.label,
-    })), holding];
+    const updatedHoldings = [
+      ...account.holdings.map((h) => ({
+        ticker: h.ticker,
+        shares: h.shares,
+        costBasis: h.costBasis,
+        label: h.label,
+      })),
+      holding,
+    ];
 
     try {
       const res = await fetch(`${API_BASE}/brokers/accounts/${encodeURIComponent(accountId)}`, {
@@ -619,6 +880,16 @@ export function BrokersView() {
         </div>
       </div>
 
+      {/* SnapTrade Banner */}
+      <SnapTradeBanner
+        status={snapTradeStatus}
+        onSetup={() => setShowSnapTradeSetup(true)}
+        onConnect={handleSnapTradeConnect}
+        onSync={handleSnapTradeSync}
+        onDisconnect={handleSnapTradeDisconnect}
+        isSyncing={isSnapSyncing}
+      />
+
       {isRefreshing && progressBar}
 
       {error && (
@@ -635,10 +906,12 @@ export function BrokersView() {
           </div>
           <h3 className="text-lg font-semibold text-surface-950 mb-2">No Brokerage Accounts</h3>
           <p className="text-[13px] text-surface-600 max-w-sm mx-auto mb-5">
-            Add your Vanguard, Fidelity, Robinhood, Navy Federal, or Chase accounts to track your investment holdings with live prices.
+            Add your Vanguard, Fidelity, Robinhood, Navy Federal, or Chase accounts to track your
+            investment holdings with live prices.
           </p>
           <p className="text-[11px] text-surface-500 max-w-sm mx-auto mb-5">
-            Note: These brokerages don't offer public APIs for retail investors, so holdings are entered manually. Prices are fetched automatically.
+            Note: These brokerages don't offer public APIs for retail investors, so holdings are
+            entered manually. Prices are fetched automatically.
           </p>
           <button
             onClick={() => setShowAddAccount(true)}
@@ -695,9 +968,13 @@ export function BrokersView() {
       )}
 
       {showAddAccount && (
-        <AddAccountModal
-          onAdd={handleAddAccount}
-          onClose={() => setShowAddAccount(false)}
+        <AddAccountModal onAdd={handleAddAccount} onClose={() => setShowAddAccount(false)} />
+      )}
+
+      {showSnapTradeSetup && (
+        <SnapTradeSetupModal
+          onSetup={handleSnapTradeSetup}
+          onClose={() => setShowSnapTradeSetup(false)}
         />
       )}
     </div>

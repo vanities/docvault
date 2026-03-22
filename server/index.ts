@@ -5,7 +5,16 @@ import { parseWithAI } from './parsers/ai.js';
 import { zipSync } from 'fflate';
 import { withAILimit } from './aiLimiter.js';
 import { fetchAllBalances, fetchSourceBalance } from './crypto.js';
-import { buildPortfolio, type BrokerAccount } from './brokers.js';
+import {
+  buildPortfolio,
+  registerSnapTradeUser,
+  getSnapTradeConnectUrl,
+  fetchAllSnapTradeHoldings,
+  deleteSnapTradeUser,
+  initSnapTrade,
+  type BrokerAccount,
+  type SnapTradeConfig,
+} from './brokers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 3005;
@@ -60,6 +69,7 @@ interface Settings {
   brokers?: {
     accounts: BrokerAccount[];
   };
+  snaptrade?: SnapTradeConfig;
 }
 
 interface FileInfo {
@@ -770,7 +780,10 @@ async function handleRequest(req: Request): Promise<Response> {
         const content = await fs.readFile(BROKER_CACHE_FILE, 'utf-8');
         return jsonResponse(JSON.parse(content));
       } catch {
-        return jsonResponse({ accounts: [], totalValue: 0, totalCostBasis: 0, totalGainLoss: 0, lastUpdated: '' }, 200);
+        return jsonResponse(
+          { accounts: [], totalValue: 0, totalCostBasis: 0, totalGainLoss: 0, lastUpdated: '' },
+          200
+        );
       }
     }
 
@@ -789,14 +802,11 @@ async function handleRequest(req: Request): Promise<Response> {
       const encoder = new TextEncoder();
       const readable = new ReadableStream({
         async start(controller) {
-          const portfolio = await buildPortfolio(
-            accounts,
-            (current, total, label) => {
-              controller.enqueue(
-                encoder.encode(JSON.stringify({ type: 'progress', current, total, label }) + '\n')
-              );
-            }
-          );
+          const portfolio = await buildPortfolio(accounts, (current, total, label) => {
+            controller.enqueue(
+              encoder.encode(JSON.stringify({ type: 'progress', current, total, label }) + '\n')
+            );
+          });
           await saveBrokerCache(portfolio);
           controller.enqueue(
             encoder.encode(JSON.stringify({ type: 'result', ...portfolio }) + '\n')
@@ -820,6 +830,108 @@ async function handleRequest(req: Request): Promise<Response> {
     const portfolio = await buildPortfolio(accounts);
     await saveBrokerCache(portfolio);
     return jsonResponse(portfolio);
+  }
+
+  // =========================================================================
+  // SnapTrade Endpoints
+  // =========================================================================
+
+  // GET /api/snaptrade/status — check if SnapTrade is configured
+  if (pathname === '/api/snaptrade/status' && req.method === 'GET') {
+    const settings = await loadSettings();
+    const st = settings.snaptrade;
+    return jsonResponse({
+      configured: !!(st?.clientId && st?.consumerKey),
+      registered: !!(st?.userId && st?.userSecret),
+      clientId: st?.clientId ? st.clientId.slice(0, 8) + '...' : undefined,
+    });
+  }
+
+  // POST /api/snaptrade/setup — save SnapTrade credentials and register user
+  if (pathname === '/api/snaptrade/setup' && req.method === 'POST') {
+    const body = await req.json();
+    const { clientId, consumerKey } = body;
+    if (!clientId || !consumerKey) {
+      return jsonResponse({ error: 'Missing clientId or consumerKey' }, 400);
+    }
+
+    const settings = await loadSettings();
+    settings.snaptrade = { clientId, consumerKey };
+
+    try {
+      const { userId, userSecret } = await registerSnapTradeUser(settings.snaptrade);
+      settings.snaptrade.userId = userId;
+      settings.snaptrade.userSecret = userSecret;
+      await saveSettings(settings);
+      return jsonResponse({ ok: true, userId });
+    } catch (err) {
+      await saveSettings(settings);
+      return jsonResponse(
+        { error: err instanceof Error ? err.message : 'Registration failed' },
+        500
+      );
+    }
+  }
+
+  // GET /api/snaptrade/connect — get connection portal URL
+  if (pathname === '/api/snaptrade/connect' && req.method === 'GET') {
+    const settings = await loadSettings();
+    if (!settings.snaptrade?.clientId) {
+      return jsonResponse({ error: 'SnapTrade not configured' }, 400);
+    }
+
+    try {
+      const redirectUrl = await getSnapTradeConnectUrl(settings.snaptrade);
+      return jsonResponse({ redirectUrl });
+    } catch (err) {
+      return jsonResponse(
+        { error: err instanceof Error ? err.message : 'Failed to get connect URL' },
+        500
+      );
+    }
+  }
+
+  // POST /api/snaptrade/sync — fetch holdings from all SnapTrade-connected accounts
+  if (pathname === '/api/snaptrade/sync' && req.method === 'POST') {
+    const settings = await loadSettings();
+    if (!settings.snaptrade?.userId) {
+      return jsonResponse({ error: 'SnapTrade not registered' }, 400);
+    }
+
+    try {
+      const snapAccounts = await fetchAllSnapTradeHoldings(settings.snaptrade);
+
+      // Merge with existing manual accounts (replace snap- accounts, keep manual)
+      if (!settings.brokers) settings.brokers = { accounts: [] };
+      const manualAccounts = settings.brokers.accounts.filter((a) => !a.id.startsWith('snap-'));
+      settings.brokers.accounts = [...manualAccounts, ...snapAccounts];
+      await saveSettings(settings);
+
+      return jsonResponse({ ok: true, synced: snapAccounts.length });
+    } catch (err) {
+      return jsonResponse({ error: err instanceof Error ? err.message : 'Sync failed' }, 500);
+    }
+  }
+
+  // DELETE /api/snaptrade — remove SnapTrade config and user
+  if (pathname === '/api/snaptrade' && req.method === 'DELETE') {
+    const settings = await loadSettings();
+    if (settings.snaptrade?.clientId) {
+      try {
+        await deleteSnapTradeUser(settings.snaptrade);
+      } catch {
+        // Best effort cleanup
+      }
+    }
+    delete settings.snaptrade;
+    // Also remove snap- accounts
+    if (settings.brokers) {
+      settings.brokers.accounts = settings.brokers.accounts.filter(
+        (a) => !a.id.startsWith('snap-')
+      );
+    }
+    await saveSettings(settings);
+    return jsonResponse({ ok: true });
   }
 
   // GET /api/status
