@@ -9,7 +9,7 @@
 // Types
 // -----------------------------------------------------------------------------
 
-export type BrokerId = 'vanguard' | 'fidelity' | 'robinhood' | 'navy-federal';
+export type BrokerId = 'vanguard' | 'fidelity' | 'robinhood' | 'navy-federal' | 'chase';
 
 export interface BrokerHolding {
   ticker: string; // e.g. "VTI", "AAPL"
@@ -214,4 +214,5 @@ export const BROKER_LABELS: Record<BrokerId, string> = {
   fidelity: 'Fidelity',
   robinhood: 'Robinhood',
   'navy-federal': 'Navy Federal',
+  chase: 'Chase',
 };

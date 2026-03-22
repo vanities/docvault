@@ -375,7 +375,7 @@ export interface CryptoSettings {
 }
 
 // Brokerage tracking types
-export type BrokerId = 'vanguard' | 'fidelity' | 'robinhood' | 'navy-federal';
+export type BrokerId = 'vanguard' | 'fidelity' | 'robinhood' | 'navy-federal' | 'chase';
 
 export interface BrokerHolding {
   ticker: string;
