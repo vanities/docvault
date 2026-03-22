@@ -1,0 +1,372 @@
+import { useState, useEffect, useCallback } from 'react';
+import {
+  RefreshCw,
+  Clock,
+  Bitcoin,
+  Landmark,
+  PieChart,
+  TrendingUp,
+  TrendingDown,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
+import type { CryptoPortfolio, BrokerPortfolio } from '../../types';
+import { API_BASE } from '../../constants';
+import { useAppContext } from '../../contexts/AppContext';
+
+function formatUsd(value: number): string {
+  return value.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+  });
+}
+
+function timeAgo(isoStr: string): string {
+  const diffSec = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
+  if (diffSec < 5) return 'just now';
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const min = Math.floor(diffSec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  return new Date(isoStr).toLocaleDateString();
+}
+
+const SLICE_COLORS = [
+  'bg-amber-500',
+  'bg-accent-500',
+  'bg-emerald-500',
+  'bg-violet-500',
+  'bg-rose-500',
+  'bg-cyan-500',
+  'bg-orange-500',
+  'bg-indigo-500',
+];
+
+interface PortfolioSlice {
+  label: string;
+  value: number;
+  type: 'crypto' | 'broker';
+  detail?: string;
+}
+
+export function PortfolioView() {
+  const { setActiveView } = useAppContext();
+  const [crypto, setCrypto] = useState<CryptoPortfolio | null>(null);
+  const [brokers, setBrokers] = useState<BrokerPortfolio | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showAllSlices, setShowAllSlices] = useState(false);
+
+  const loadAll = useCallback(async (refresh = false) => {
+    if (refresh) setIsRefreshing(true);
+    else setIsLoading(true);
+
+    try {
+      const [cryptoRes, brokerRes] = await Promise.all([
+        fetch(`${API_BASE}/crypto/balances?cached=1`),
+        fetch(`${API_BASE}/brokers/portfolio`),
+      ]);
+
+      if (cryptoRes.ok) {
+        const data = await cryptoRes.json();
+        if (data.sources?.length > 0) setCrypto(data);
+      }
+      if (brokerRes.ok) {
+        const data = await brokerRes.json();
+        if (data.accounts?.length > 0) setBrokers(data);
+      }
+    } catch {
+      // Non-critical
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadAll();
+  }, [loadAll]);
+
+  const cryptoTotal = crypto?.totalUsdValue || 0;
+  const brokerTotal = brokers?.totalValue || 0;
+  const grandTotal = cryptoTotal + brokerTotal;
+
+  // Build slices for the allocation breakdown
+  const slices: PortfolioSlice[] = [];
+
+  // Crypto top assets
+  if (crypto?.byAsset) {
+    for (const asset of crypto.byAsset.filter((a) => (a.usdValue || 0) > 0.01)) {
+      slices.push({
+        label: asset.asset,
+        value: asset.usdValue || 0,
+        type: 'crypto',
+      });
+    }
+  }
+
+  // Broker accounts
+  if (brokers?.accounts) {
+    for (const account of brokers.accounts) {
+      for (const holding of account.holdings) {
+        slices.push({
+          label: holding.ticker,
+          value: holding.marketValue || 0,
+          type: 'broker',
+          detail: `${account.name}`,
+        });
+      }
+    }
+  }
+
+  // Sort by value descending
+  slices.sort((a, b) => b.value - a.value);
+  const topSlices = showAllSlices ? slices : slices.slice(0, 10);
+  const hiddenCount = slices.length - 10;
+
+  const lastUpdated =
+    crypto?.lastUpdated && brokers?.lastUpdated
+      ? new Date(crypto.lastUpdated) > new Date(brokers.lastUpdated)
+        ? crypto.lastUpdated
+        : brokers.lastUpdated
+      : crypto?.lastUpdated || brokers?.lastUpdated;
+
+  if (isLoading) {
+    return (
+      <div className="max-w-5xl mx-auto px-4 md:px-6 py-8">
+        <h2 className="text-2xl font-bold text-surface-950 mb-6">Portfolio Overview</h2>
+        <div className="text-center py-20 text-surface-600">Loading portfolio data...</div>
+      </div>
+    );
+  }
+
+  const hasAnything = cryptoTotal > 0 || brokerTotal > 0;
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 md:px-6 py-8">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h2 className="text-2xl font-bold text-surface-950">Portfolio Overview</h2>
+          {lastUpdated && (
+            <p className="text-[12px] text-surface-600 mt-1 flex items-center gap-1.5">
+              <Clock className="w-3 h-3" />
+              Updated {timeAgo(lastUpdated)}
+            </p>
+          )}
+        </div>
+        <button
+          onClick={() => loadAll(true)}
+          disabled={isRefreshing}
+          className="flex items-center gap-2 px-5 py-2.5 bg-violet-500 text-surface-0 rounded-xl hover:bg-violet-400 transition-colors disabled:opacity-50 text-[14px] font-medium shadow-sm"
+        >
+          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          {isRefreshing ? 'Refreshing...' : 'Refresh All'}
+        </button>
+      </div>
+
+      {!hasAnything ? (
+        <div className="glass-card rounded-xl p-10 text-center">
+          <div className="p-4 bg-violet-500/10 rounded-2xl w-fit mx-auto mb-5">
+            <PieChart className="w-8 h-8 text-violet-500" />
+          </div>
+          <h3 className="text-lg font-semibold text-surface-950 mb-2">No Portfolio Data</h3>
+          <p className="text-[13px] text-surface-600 max-w-sm mx-auto">
+            Add crypto exchanges/wallets or brokerage accounts to see your combined portfolio.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Grand Total */}
+          <div className="glass-card rounded-xl p-6 mb-6">
+            <p className="text-[12px] text-surface-600 uppercase tracking-wider mb-1">
+              Total Net Worth
+            </p>
+            <p className="text-4xl font-bold text-surface-950">{formatUsd(grandTotal)}</p>
+
+            {/* Allocation bar */}
+            {cryptoTotal > 0 && brokerTotal > 0 && (
+              <div className="mt-4">
+                <div className="flex h-3 rounded-full overflow-hidden">
+                  <div
+                    className="bg-amber-500 transition-all duration-500"
+                    style={{ width: `${(cryptoTotal / grandTotal) * 100}%` }}
+                    title={`Crypto: ${((cryptoTotal / grandTotal) * 100).toFixed(1)}%`}
+                  />
+                  <div
+                    className="bg-accent-500 transition-all duration-500"
+                    style={{ width: `${(brokerTotal / grandTotal) * 100}%` }}
+                    title={`TradFi: ${((brokerTotal / grandTotal) * 100).toFixed(1)}%`}
+                  />
+                </div>
+                <div className="flex items-center gap-4 mt-2">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                    <span className="text-[11px] text-surface-600">
+                      Crypto {((cryptoTotal / grandTotal) * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full bg-accent-500" />
+                    <span className="text-[11px] text-surface-600">
+                      TradFi {((brokerTotal / grandTotal) * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Category Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            {/* Crypto Card */}
+            <button
+              onClick={() => setActiveView('crypto')}
+              className="glass-card rounded-xl p-5 text-left hover:ring-2 hover:ring-amber-500/30 transition-all group"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-amber-500/10">
+                    <Bitcoin className="w-5 h-5 text-amber-500" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-surface-950 text-[15px]">Crypto</p>
+                    <p className="text-[11px] text-surface-600">
+                      {crypto?.sources.length || 0} source{(crypto?.sources.length || 0) !== 1 ? 's' : ''} &middot;{' '}
+                      {crypto?.byAsset.filter((a) => (a.usdValue || 0) > 0.01).length || 0} assets
+                    </p>
+                  </div>
+                </div>
+                <p className="text-xl font-bold text-surface-950">{formatUsd(cryptoTotal)}</p>
+              </div>
+              {grandTotal > 0 && (
+                <div className="w-full h-1.5 bg-surface-200/50 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-amber-500 rounded-full transition-all duration-500"
+                    style={{ width: `${(cryptoTotal / grandTotal) * 100}%` }}
+                  />
+                </div>
+              )}
+            </button>
+
+            {/* Brokers Card */}
+            <button
+              onClick={() => setActiveView('brokers')}
+              className="glass-card rounded-xl p-5 text-left hover:ring-2 hover:ring-accent-500/30 transition-all group"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-accent-500/10">
+                    <Landmark className="w-5 h-5 text-accent-400" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-surface-950 text-[15px]">Brokerages</p>
+                    <p className="text-[11px] text-surface-600">
+                      {brokers?.accounts.length || 0} account{(brokers?.accounts.length || 0) !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-xl font-bold text-surface-950">{formatUsd(brokerTotal)}</p>
+              </div>
+              {grandTotal > 0 && (
+                <div className="w-full h-1.5 bg-surface-200/50 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-accent-500 rounded-full transition-all duration-500"
+                    style={{ width: `${(brokerTotal / grandTotal) * 100}%` }}
+                  />
+                </div>
+              )}
+            </button>
+          </div>
+
+          {/* Combined Holdings */}
+          {slices.length > 0 && (
+            <div className="glass-card rounded-xl overflow-hidden">
+              <div className="px-5 pt-5 pb-2">
+                <h3 className="text-[14px] font-semibold text-surface-950">All Holdings</h3>
+              </div>
+
+              {/* Table header */}
+              <div className="px-5">
+                <div className="grid grid-cols-12 gap-2 py-2 text-[11px] font-medium text-surface-500 uppercase tracking-wider border-b border-border/50">
+                  <div className="col-span-5">Asset</div>
+                  <div className="col-span-2 text-right">Value</div>
+                  <div className="col-span-3 text-right">Allocation</div>
+                  <div className="col-span-2 text-right">Type</div>
+                </div>
+
+                {topSlices.map((slice, i) => {
+                  const pct = grandTotal > 0 ? (slice.value / grandTotal) * 100 : 0;
+                  const barColor = SLICE_COLORS[i % SLICE_COLORS.length];
+                  return (
+                    <div
+                      key={`${slice.label}-${slice.detail || i}`}
+                      className="grid grid-cols-12 gap-2 py-3 border-b border-border/30 last:border-0 items-center"
+                    >
+                      <div className="col-span-5">
+                        <p className="text-[13px] font-mono font-bold text-surface-950">{slice.label}</p>
+                        {slice.detail && (
+                          <p className="text-[11px] text-surface-500">{slice.detail}</p>
+                        )}
+                      </div>
+                      <div className="col-span-2 text-right">
+                        <span className="text-[13px] font-medium text-surface-950">
+                          {formatUsd(slice.value)}
+                        </span>
+                      </div>
+                      <div className="col-span-3">
+                        <div className="flex items-center gap-2 justify-end">
+                          <div className="w-16 h-1.5 bg-surface-200/50 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full ${barColor} rounded-full`}
+                              style={{ width: `${Math.max(pct, 0.5)}%` }}
+                            />
+                          </div>
+                          <span className="text-[11px] text-surface-500 tabular-nums w-10 text-right">
+                            {pct.toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+                      <div className="col-span-2 text-right">
+                        <span
+                          className={`text-[11px] px-1.5 py-0.5 rounded-full font-medium ${
+                            slice.type === 'crypto'
+                              ? 'text-amber-500 bg-amber-500/10'
+                              : 'text-accent-400 bg-accent-500/10'
+                          }`}
+                        >
+                          {slice.type === 'crypto' ? 'Crypto' : 'Stock'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {hiddenCount > 0 && (
+                <button
+                  onClick={() => setShowAllSlices(!showAllSlices)}
+                  className="w-full flex items-center justify-center gap-1.5 py-3 text-[12px] font-medium text-violet-500 hover:bg-violet-500/5 transition-colors border-t border-border/30"
+                >
+                  {showAllSlices ? (
+                    <>
+                      <ChevronUp className="w-3.5 h-3.5" />
+                      Show top 10 only
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-3.5 h-3.5" />
+                      Show all {slices.length} holdings ({hiddenCount} more)
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

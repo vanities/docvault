@@ -20,12 +20,14 @@ const BROKER_LABELS: Record<BrokerId, string> = {
   vanguard: 'Vanguard',
   fidelity: 'Fidelity',
   robinhood: 'Robinhood',
+  'navy-federal': 'Navy Federal',
 };
 
 const BROKER_COLORS: Record<BrokerId, string> = {
   vanguard: 'text-red-500 bg-red-500/10',
   fidelity: 'text-green-500 bg-green-500/10',
   robinhood: 'text-emerald-400 bg-emerald-400/10',
+  'navy-federal': 'text-blue-600 bg-blue-600/10',
 };
 
 function formatUsd(value: number): string {
@@ -184,6 +186,7 @@ function AddAccountModal({
               <option value="vanguard">Vanguard</option>
               <option value="fidelity">Fidelity</option>
               <option value="robinhood">Robinhood</option>
+              <option value="navy-federal">Navy Federal</option>
             </select>
           </div>
           <div>
@@ -554,7 +557,7 @@ export function BrokersView() {
           </div>
           <h3 className="text-lg font-semibold text-surface-950 mb-2">No Brokerage Accounts</h3>
           <p className="text-[13px] text-surface-600 max-w-sm mx-auto mb-5">
-            Add your Vanguard, Fidelity, or Robinhood accounts to track your investment holdings with live prices.
+            Add your Vanguard, Fidelity, Robinhood, or Navy Federal accounts to track your investment holdings with live prices.
           </p>
           <p className="text-[11px] text-surface-500 max-w-sm mx-auto mb-5">
             Note: These brokerages don't offer public APIs for retail investors, so holdings are entered manually. Prices are fetched automatically.

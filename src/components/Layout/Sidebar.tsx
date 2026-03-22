@@ -11,11 +11,94 @@ import {
   Calculator,
   Bitcoin,
   Landmark,
+  PieChart,
+  ChevronDown as ChevronDownIcon,
 } from 'lucide-react';
 import { useAppContext, type NavView } from '../../contexts/AppContext';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import type { SyncStatus } from '../../types';
 import { SIDEBAR_COLOR_MAP as COLOR_MAP, renderEntityIcon } from '../../utils/entityDisplay';
+
+function PortfolioGroup({
+  activeView,
+  isProcessing,
+  onViewClick,
+}: {
+  activeView: NavView;
+  isProcessing: boolean;
+  onViewClick: (view: NavView) => void;
+}) {
+  const isPortfolioView = activeView === 'portfolio' || activeView === 'crypto' || activeView === 'brokers';
+  const [expanded, setExpanded] = useState(isPortfolioView);
+
+  // Auto-expand when a portfolio view is active
+  useEffect(() => {
+    if (isPortfolioView) setExpanded(true);
+  }, [isPortfolioView]);
+
+  const navButton = (
+    view: NavView,
+    label: string,
+    Icon: React.ComponentType<{ className?: string }>,
+    activeColor: string,
+    activeTextColor: string
+  ) => (
+    <button
+      onClick={() => onViewClick(view)}
+      disabled={isProcessing}
+      className={`
+        w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg transition-all duration-150 text-left
+        disabled:opacity-40 disabled:cursor-not-allowed
+        ${
+          activeView === view
+            ? `${activeColor} ${activeTextColor}`
+            : 'text-surface-800 hover:text-surface-950 hover:bg-surface-200/50'
+        }
+      `}
+    >
+      <Icon
+        className={`w-3.5 h-3.5 flex-shrink-0 ${activeView === view ? activeTextColor : 'text-surface-600'}`}
+      />
+      <span className="font-medium text-[12px]">{label}</span>
+    </button>
+  );
+
+  return (
+    <div>
+      {/* Group header */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className={`
+          w-full flex items-center justify-between px-2.5 py-3 md:py-2 rounded-lg transition-all duration-150 text-left
+          ${
+            isPortfolioView && !expanded
+              ? 'bg-violet-500/10 text-violet-500'
+              : 'text-surface-800 hover:text-surface-950 hover:bg-surface-200/50'
+          }
+        `}
+      >
+        <div className="flex items-center gap-2.5">
+          <PieChart
+            className={`w-4 h-4 flex-shrink-0 ${isPortfolioView ? 'text-violet-500' : 'text-surface-600'}`}
+          />
+          <span className="font-medium text-[13px]">Portfolio</span>
+        </div>
+        <ChevronDownIcon
+          className={`w-3.5 h-3.5 text-surface-500 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {/* Sub-items */}
+      {expanded && (
+        <div className="ml-3 mt-0.5 pl-3 border-l border-border/50 space-y-0.5">
+          {navButton('portfolio', 'Overview', PieChart, 'bg-violet-500/10', 'text-violet-500')}
+          {navButton('crypto', 'Crypto', Bitcoin, 'bg-amber-500/10', 'text-amber-500')}
+          {navButton('brokers', 'Brokers', Landmark, 'bg-accent-500/10', 'text-accent-400')}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function EntityButton({
   entity,
@@ -371,45 +454,8 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               <span className="font-medium text-[13px]">All Files</span>
             </button>
 
-            {/* Crypto view button */}
-            <button
-              onClick={() => handleViewClick('crypto')}
-              disabled={isProcessing}
-              className={`
-                w-full flex items-center gap-2.5 px-2.5 py-3 md:py-2 rounded-lg transition-all duration-150 text-left
-                disabled:opacity-40 disabled:cursor-not-allowed
-                ${
-                  activeView === 'crypto'
-                    ? 'bg-amber-500/10 text-amber-500'
-                    : 'text-surface-800 hover:text-surface-950 hover:bg-surface-200/50'
-                }
-              `}
-            >
-              <Bitcoin
-                className={`w-4 h-4 flex-shrink-0 ${activeView === 'crypto' ? 'text-amber-500' : 'text-surface-600'}`}
-              />
-              <span className="font-medium text-[13px]">Crypto</span>
-            </button>
-
-            {/* Brokers view button */}
-            <button
-              onClick={() => handleViewClick('brokers')}
-              disabled={isProcessing}
-              className={`
-                w-full flex items-center gap-2.5 px-2.5 py-3 md:py-2 rounded-lg transition-all duration-150 text-left
-                disabled:opacity-40 disabled:cursor-not-allowed
-                ${
-                  activeView === 'brokers'
-                    ? 'bg-accent-500/10 text-accent-400'
-                    : 'text-surface-800 hover:text-surface-950 hover:bg-surface-200/50'
-                }
-              `}
-            >
-              <Landmark
-                className={`w-4 h-4 flex-shrink-0 ${activeView === 'brokers' ? 'text-accent-400' : 'text-surface-600'}`}
-              />
-              <span className="font-medium text-[13px]">Brokers</span>
-            </button>
+            {/* Portfolio group */}
+            <PortfolioGroup activeView={activeView} isProcessing={isProcessing} onViewClick={handleViewClick} />
           </div>
         </div>
       </div>
