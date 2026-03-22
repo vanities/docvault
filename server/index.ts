@@ -591,6 +591,43 @@ async function handleRequest(req: Request): Promise<Response> {
       });
     }
 
+    // Check if client wants streaming progress
+    const stream = url.searchParams.get('stream') === '1';
+
+    if (stream) {
+      // Stream NDJSON progress lines, then final result
+      const encoder = new TextEncoder();
+      const readable = new ReadableStream({
+        async start(controller) {
+          const portfolio = await fetchAllBalances(
+            cryptoConfig.exchanges,
+            cryptoConfig.wallets,
+            cryptoConfig.etherscanKey,
+            (current, total, label) => {
+              controller.enqueue(
+                encoder.encode(JSON.stringify({ type: 'progress', current, total, label }) + '\n')
+              );
+            }
+          );
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ type: 'result', ...portfolio }) + '\n')
+          );
+          controller.close();
+        },
+      });
+
+      return new Response(readable, {
+        headers: {
+          'Content-Type': 'application/x-ndjson',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+          'Cache-Control': 'no-cache',
+        },
+      });
+    }
+
+    // Non-streaming (backwards compatible)
     const portfolio = await fetchAllBalances(
       cryptoConfig.exchanges,
       cryptoConfig.wallets,

@@ -67,6 +67,26 @@ const COINGECKO_IDS: Record<string, string> = {
   ATOM: 'cosmos',
   XRP: 'ripple',
   LTC: 'litecoin',
+  // Liquid staking
+  stETH: 'staked-ether',
+  rETH: 'rocket-pool-eth',
+  RPL: 'rocket-pool',
+  cbETH: 'coinbase-wrapped-staked-eth',
+  sfrxETH: 'staked-frax-ether',
+  // Wrapped
+  WBTC: 'wrapped-bitcoin',
+  WETH: 'weth',
+  // Other
+  AAVE: 'aave',
+  SHIB: 'shiba-inu',
+  DAI: 'dai',
+  ARB: 'arbitrum',
+  NEAR: 'near',
+  RNDR: 'render-token',
+  FET: 'fetch-ai',
+  GRT: 'the-graph',
+  BCH: 'bitcoin-cash',
+  BNB: 'binancecoin',
 };
 
 async function fetchPrices(assets: string[]): Promise<Record<string, number>> {
@@ -395,18 +415,27 @@ async function fetchBtcBalance(address: string): Promise<Balance[]> {
 const ETHERSCAN_BASE = 'https://api.etherscan.io/v2/api?chainid=1';
 let etherscanApiKey: string | undefined;
 
-// Well-known ERC-20 token contracts → symbol mapping
+// Well-known ERC-20 token contracts on Ethereum mainnet
 const ERC20_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
+  // Stablecoins
   { contract: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', symbol: 'USDC', decimals: 6 },
   { contract: '0xdAC17F958D2ee523a2206206994597C13D831ec7', symbol: 'USDT', decimals: 6 },
   { contract: '0x6B175474E89094C44Da98b954EedeAC495271d0F', symbol: 'DAI', decimals: 18 },
+  // Liquid staking
+  { contract: '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84', symbol: 'stETH', decimals: 18 }, // Lido
+  { contract: '0xae78736Cd615f374D3085123A210448E74Fc6393', symbol: 'rETH', decimals: 18 }, // Rocket Pool ETH
+  { contract: '0xD33526068D116cE69F19A9ee46F0bd304F21A51f', symbol: 'RPL', decimals: 18 }, // Rocket Pool token
+  { contract: '0xFe2e637202056d30016725477c5da089Ab0A043A', symbol: 'sfrxETH', decimals: 18 }, // Frax staked ETH
+  { contract: '0xBe9895146f7AF43049ca1c1AE358B0541Ea49704', symbol: 'cbETH', decimals: 18 }, // Coinbase staked ETH
+  // Wrapped
+  { contract: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', symbol: 'WBTC', decimals: 8 },
+  { contract: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', symbol: 'WETH', decimals: 18 },
+  // DeFi / blue chips
   { contract: '0x514910771AF9Ca656af840dff83E8264EcF986CA', symbol: 'LINK', decimals: 18 },
   { contract: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984', symbol: 'UNI', decimals: 18 },
   { contract: '0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9', symbol: 'AAVE', decimals: 18 },
-  { contract: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', symbol: 'WBTC', decimals: 8 },
-  { contract: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', symbol: 'WETH', decimals: 18 },
-  { contract: '0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE', symbol: 'SHIB', decimals: 18 },
   { contract: '0x7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0', symbol: 'MATIC', decimals: 18 },
+  { contract: '0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE', symbol: 'SHIB', decimals: 18 },
 ];
 
 async function fetchEthBalance(address: string): Promise<Balance[]> {
@@ -474,15 +503,11 @@ const EXCHANGE_FETCHERS: Record<string, (config: ExchangeConfig) => Promise<Bala
   kraken: fetchKrakenBalances,
 };
 
-const WALLET_FETCHERS: Record<string, (address: string) => Promise<Balance[]>> = {
-  btc: fetchBtcBalance,
-  eth: fetchEthBalance,
-};
-
 export async function fetchAllBalances(
   exchanges: ExchangeConfig[],
   wallets: WalletConfig[],
-  etherscanKey_?: string
+  etherscanKey_?: string,
+  onProgress?: (current: number, total: number, label: string) => void
 ): Promise<{
   sources: SourceBalance[];
   totalUsdValue: number;
@@ -495,57 +520,106 @@ export async function fetchAllBalances(
   const sources: SourceBalance[] = [];
   const allAssets = new Set<string>();
 
-  // Fetch exchange balances
-  for (const exchange of exchanges) {
-    if (!exchange.enabled) continue;
-    const fetcher = EXCHANGE_FETCHERS[exchange.id];
-    if (!fetcher) continue;
+  const enabledExchanges = exchanges.filter((e) => e.enabled && EXCHANGE_FETCHERS[e.id]);
+  const totalSteps = enabledExchanges.length + wallets.length + 1; // +1 for prices
+  let completed = 0;
 
-    try {
-      const balances = await fetcher(exchange);
-      balances.forEach((b) => allAssets.add(b.asset));
-      sources.push({
-        sourceId: exchange.id,
-        sourceType: 'exchange',
-        label: EXCHANGE_LABELS[exchange.id] || exchange.id,
-        balances,
-        totalUsdValue: 0,
-        lastUpdated: new Date().toISOString(),
-      });
-    } catch (err) {
-      sources.push({
-        sourceId: exchange.id,
-        sourceType: 'exchange',
-        label: EXCHANGE_LABELS[exchange.id] || exchange.id,
-        balances: [],
-        totalUsdValue: 0,
-        error: err instanceof Error ? err.message : 'Unknown error',
-        lastUpdated: new Date().toISOString(),
-      });
-    }
+  // Fetch all exchange balances in parallel
+  const exchangeResults = await Promise.allSettled(
+    enabledExchanges.map(async (exchange) => {
+      const fetcher = EXCHANGE_FETCHERS[exchange.id]!;
+      try {
+        const balances = await fetcher(exchange);
+        return { exchange, balances, error: undefined };
+      } catch (err) {
+        return {
+          exchange,
+          balances: [] as Balance[],
+          error: err instanceof Error ? err.message : 'Unknown error',
+        };
+      }
+    })
+  );
+
+  for (const result of exchangeResults) {
+    const { exchange, balances, error } =
+      result.status === 'fulfilled'
+        ? result.value
+        : { exchange: enabledExchanges[0], balances: [] as Balance[], error: 'Fetch failed' };
+    balances.forEach((b) => allAssets.add(b.asset));
+    completed++;
+    onProgress?.(completed, totalSteps, EXCHANGE_LABELS[exchange.id] || exchange.id);
+    sources.push({
+      sourceId: exchange.id,
+      sourceType: 'exchange',
+      label: EXCHANGE_LABELS[exchange.id] || exchange.id,
+      balances,
+      totalUsdValue: 0,
+      error,
+      lastUpdated: new Date().toISOString(),
+    });
   }
 
-  // Fetch wallet balances
-  for (const wallet of wallets) {
-    const fetcher = WALLET_FETCHERS[wallet.chain];
-    if (!fetcher) continue;
+  // Fetch BTC wallets in parallel (Blockstream has no rate limit)
+  const btcWallets = wallets.filter((w) => w.chain === 'btc');
+  const ethWallets = wallets.filter((w) => w.chain === 'eth');
 
+  const btcResults = await Promise.allSettled(
+    btcWallets.map(async (wallet) => {
+      try {
+        const balances = await fetchBtcBalance(wallet.address);
+        return { wallet, balances, error: undefined };
+      } catch (err) {
+        return {
+          wallet,
+          balances: [] as Balance[],
+          error: err instanceof Error ? err.message : 'Unknown error',
+        };
+      }
+    })
+  );
+
+  for (const result of btcResults) {
+    const { wallet, balances, error } =
+      result.status === 'fulfilled'
+        ? result.value
+        : { wallet: btcWallets[0], balances: [] as Balance[], error: 'Fetch failed' };
+    balances.forEach((b) => allAssets.add(b.asset));
+    completed++;
+    onProgress?.(completed, totalSteps, wallet.label || 'BTC Wallet');
+    sources.push({
+      sourceId: wallet.id,
+      sourceType: 'wallet',
+      label: wallet.label || 'BTC Wallet',
+      balances,
+      totalUsdValue: 0,
+      error,
+      lastUpdated: new Date().toISOString(),
+    });
+  }
+
+  // Fetch ETH wallets sequentially (Etherscan rate limit shared across calls)
+  for (const wallet of ethWallets) {
     try {
-      const balances = await fetcher(wallet.address);
+      const balances = await fetchEthBalance(wallet.address);
       balances.forEach((b) => allAssets.add(b.asset));
+      completed++;
+      onProgress?.(completed, totalSteps, wallet.label || 'ETH Wallet');
       sources.push({
         sourceId: wallet.id,
         sourceType: 'wallet',
-        label: wallet.label || `${wallet.chain.toUpperCase()} Wallet`,
+        label: wallet.label || `ETH Wallet`,
         balances,
         totalUsdValue: 0,
         lastUpdated: new Date().toISOString(),
       });
     } catch (err) {
+      completed++;
+      onProgress?.(completed, totalSteps, wallet.label || 'ETH Wallet');
       sources.push({
         sourceId: wallet.id,
         sourceType: 'wallet',
-        label: wallet.label || `${wallet.chain.toUpperCase()} Wallet`,
+        label: wallet.label || `ETH Wallet`,
         balances: [],
         totalUsdValue: 0,
         error: err instanceof Error ? err.message : 'Unknown error',
@@ -555,7 +629,10 @@ export async function fetchAllBalances(
   }
 
   // Fetch prices and calculate USD values
+  onProgress?.(completed, totalSteps, 'Fetching prices');
   const prices = await fetchPrices(Array.from(allAssets));
+  completed++;
+  onProgress?.(completed, totalSteps, 'Done');
 
   for (const source of sources) {
     for (const balance of source.balances) {
