@@ -274,6 +274,7 @@ async function fetchKrakenBalances(config: ExchangeConfig): Promise<Balance[]> {
   }
 
   // Kraken uses weird asset names: XXBT=BTC, XETH=ETH, ZUSD=USD, etc.
+  // Staked assets have suffixes: ETH2.S (staked), ETH2 (rewards), DOT.S, SOL.S, etc.
   const KRAKEN_MAP: Record<string, string> = {
     XXBT: 'BTC',
     XETH: 'ETH',
@@ -287,15 +288,46 @@ async function fetchKrakenBalances(config: ExchangeConfig): Promise<Balance[]> {
     ADA: 'ADA',
     USDC: 'USDC',
     USDT: 'USDT',
+    // Staked asset variants → map to base asset
+    'ETH2.S': 'ETH',
+    ETH2: 'ETH',
+    'XBT.M': 'BTC',
+    'DOT.S': 'DOT',
+    'DOT28.S': 'DOT',
+    'SOL.S': 'SOL',
+    'ADA.S': 'ADA',
+    'ATOM.S': 'ATOM',
+    'MATIC.S': 'MATIC',
+    'FLOW.S': 'FLOW',
+    'ALGO.S': 'ALGO',
+    'MINA.S': 'MINA',
+    'KAVA.S': 'KAVA',
+    'TRX.S': 'TRX',
+    'SCRT.S': 'SCRT',
+    'XTZ.S': 'XTZ',
+    'KSM.S': 'KSM',
   };
 
-  const balances: Balance[] = [];
+  // Aggregate by normalized symbol so staked + spot are combined
+  const assetTotals = new Map<string, number>();
   for (const [asset, value] of Object.entries(data.result || {})) {
     const amount = parseFloat(value as string);
     if (amount > 0.000001) {
-      const symbol = KRAKEN_MAP[asset] || asset.replace(/^[XZ]/, '');
-      balances.push({ asset: symbol.toUpperCase(), amount });
+      // Check explicit map first, then strip staking suffix, then strip X/Z prefix
+      let symbol = KRAKEN_MAP[asset];
+      if (!symbol) {
+        // Handle unknown staking variants: strip .S / .M / .P suffixes
+        const stripped = asset.replace(/\.\w+$/, '');
+        symbol = KRAKEN_MAP[stripped] || stripped.replace(/^[XZ]/, '');
+      }
+      symbol = symbol.toUpperCase();
+      assetTotals.set(symbol, (assetTotals.get(symbol) || 0) + amount);
     }
+  }
+
+  const balances: Balance[] = [];
+  for (const [asset, amount] of assetTotals) {
+    balances.push({ asset, amount });
   }
 
   return balances;
