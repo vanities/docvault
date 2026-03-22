@@ -14,7 +14,7 @@ WORKDIR /app
 # Copy production deps, then install dev deps on top
 COPY package.json bun.lock ./
 COPY --from=deps /app/node_modules ./node_modules
-RUN bun install --frozen-lockfile
+RUN bun install --frozen-lockfile --ignore-scripts
 
 # Copy source and build frontend
 COPY tsconfig.json tsconfig.app.json tsconfig.node.json ./
