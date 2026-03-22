@@ -640,8 +640,10 @@ export function SettingsView() {
                 </a>
               </div>
               <p className="text-[11px] text-surface-500 ml-[78px] -mt-1">
-                Create a new API key with <span className="font-medium">view</span> permissions
-                only. No trade/transfer access needed.
+                Create a CDP API key. You&apos;ll get an{' '}
+                <span className="font-medium">API Key Name</span> and{' '}
+                <span className="font-medium">Private Key</span> (PEM). Select view permissions
+                only.
               </p>
               <div className="flex items-start gap-2">
                 <span className="text-[12px] font-medium text-surface-800 min-w-[70px]">
@@ -666,12 +668,12 @@ export function SettingsView() {
                   Kraken
                 </span>
                 <a
-                  href="https://www.kraken.com/u/security/api"
+                  href="https://pro.kraken.com/app/settings/api"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[12px] text-accent-400 hover:underline flex items-center gap-1"
                 >
-                  kraken.com/u/security/api
+                  pro.kraken.com/app/settings/api
                   <ExternalLink className="w-3 h-3" />
                 </a>
               </div>
@@ -732,42 +734,34 @@ export function SettingsView() {
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-surface-600 mb-1">
-                  API Key
+                  {newExchangeId === 'coinbase' ? 'API Key Name' : 'API Key'}
                 </label>
                 <input
                   type="password"
                   value={newExchangeKey}
                   onChange={(e) => setNewExchangeKey(e.target.value)}
-                  placeholder="API key..."
+                  placeholder={
+                    newExchangeId === 'coinbase' ? 'organizations/…/apiKeys/…' : 'API key...'
+                  }
                   className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 font-mono placeholder:text-surface-500"
                 />
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-surface-600 mb-1">
-                  API Secret
+                  {newExchangeId === 'coinbase' ? 'Private Key' : 'API Secret'}
                 </label>
-                <input
-                  type="password"
+                <textarea
                   value={newExchangeSecret}
                   onChange={(e) => setNewExchangeSecret(e.target.value)}
-                  placeholder="API secret..."
-                  className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 font-mono placeholder:text-surface-500"
+                  placeholder={
+                    newExchangeId === 'coinbase'
+                      ? '-----BEGIN EC PRIVATE KEY-----\n...'
+                      : 'API secret...'
+                  }
+                  rows={newExchangeId === 'coinbase' ? 4 : 1}
+                  className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 font-mono placeholder:text-surface-500 resize-none"
                 />
               </div>
-              {newExchangeId === 'coinbase' && (
-                <div>
-                  <label className="block text-[11px] font-medium text-surface-600 mb-1">
-                    Passphrase <span className="text-surface-500 font-normal">(if required)</span>
-                  </label>
-                  <input
-                    type="password"
-                    value={newExchangePassphrase}
-                    onChange={(e) => setNewExchangePassphrase(e.target.value)}
-                    placeholder="Optional passphrase..."
-                    className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 font-mono placeholder:text-surface-500"
-                  />
-                </div>
-              )}
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={() => {

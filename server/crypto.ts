@@ -108,23 +108,59 @@ async function fetchPrices(assets: string[]): Promise<Record<string, number>> {
 }
 
 // -----------------------------------------------------------------------------
-// Exchange: Coinbase (Advanced Trade API v3)
+// Exchange: Coinbase (CDP API Keys — JWT ES256 auth)
 // -----------------------------------------------------------------------------
+// Coinbase now issues CDP keys: an "API Key Name" (the kid/subject) and
+// an EC private key in PEM format. Auth uses a short-lived JWT signed with ES256.
+
+function buildCoinbaseJwt(apiKeyName: string, privateKeyPem: string, uri: string): string {
+  // Header
+  const header = {
+    alg: 'ES256',
+    kid: apiKeyName,
+    nonce: crypto.randomBytes(16).toString('hex'),
+    typ: 'JWT',
+  };
+
+  // Payload
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    sub: apiKeyName,
+    iss: 'coinbase-cloud',
+    aud: ['cdp_service'],
+    nbf: now,
+    exp: now + 120, // 2 minute expiry
+    uris: [uri],
+  };
+
+  const encode = (obj: unknown) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+
+  const headerB64 = encode(header);
+  const payloadB64 = encode(payload);
+  const signingInput = `${headerB64}.${payloadB64}`;
+
+  // Clean up PEM — handle escaped newlines from JSON storage
+  const cleanPem = privateKeyPem.replace(/\\n/g, '\n');
+
+  const sign = crypto.createSign('SHA256');
+  sign.update(signingInput);
+  // EC signature in DER format — convert to raw r||s for JWT
+  const derSig = sign.sign({ key: cleanPem, dsaEncoding: 'ieee-p1363' });
+  const sigB64 = derSig.toString('base64url');
+
+  return `${signingInput}.${sigB64}`;
+}
 
 async function fetchCoinbaseBalances(config: ExchangeConfig): Promise<Balance[]> {
-  const timestamp = Math.floor(Date.now() / 1000).toString();
   const method = 'GET';
   const requestPath = '/api/v3/brokerage/accounts?limit=250';
+  const uri = `${method} api.coinbase.com${requestPath}`;
 
-  // CB-ACCESS-SIGN = HMAC-SHA256(timestamp + method + requestPath + body)
-  const message = timestamp + method + requestPath;
-  const signature = crypto.createHmac('sha256', config.apiSecret).update(message).digest('hex');
+  const jwt = buildCoinbaseJwt(config.apiKey, config.apiSecret, uri);
 
   const res = await fetch(`https://api.coinbase.com${requestPath}`, {
     headers: {
-      'CB-ACCESS-KEY': config.apiKey,
-      'CB-ACCESS-SIGN': signature,
-      'CB-ACCESS-TIMESTAMP': timestamp,
+      Authorization: `Bearer ${jwt}`,
       'Content-Type': 'application/json',
     },
   });
