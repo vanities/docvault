@@ -108,21 +108,25 @@ function AssetRow({ balance }: { balance: CryptoBalance }) {
   );
 }
 
+// Module-level cache so data survives tab switches
+let cachedPortfolio: CryptoPortfolio | null = null;
+
 export function CryptoView() {
-  const [portfolio, setPortfolio] = useState<CryptoPortfolio | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [portfolio, setPortfolio] = useState<CryptoPortfolio | null>(cachedPortfolio);
+  const [isLoading, setIsLoading] = useState(!cachedPortfolio);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadBalances = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) setIsRefreshing(true);
-    else setIsLoading(true);
+    else if (!cachedPortfolio) setIsLoading(true);
     setError(null);
 
     try {
       const res = await fetch(`${API_BASE}/crypto/balances`);
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data = await res.json();
+      cachedPortfolio = data;
       setPortfolio(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load balances');
@@ -133,7 +137,10 @@ export function CryptoView() {
   }, []);
 
   useEffect(() => {
-    loadBalances();
+    // Only fetch on mount if no cached data
+    if (!cachedPortfolio) {
+      loadBalances();
+    }
   }, [loadBalances]);
 
   if (isLoading) {
