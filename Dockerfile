@@ -23,7 +23,7 @@ COPY index.html ./
 COPY public/ ./public/
 COPY src/ ./src/
 
-RUN bunx vite build
+RUN ./node_modules/vite-plus/bin/vp build
 
 # Stage 3: Production runtime
 FROM oven/bun:1-slim
