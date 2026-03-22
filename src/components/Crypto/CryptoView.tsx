@@ -1,7 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Wallet, TrendingUp, AlertCircle, Bitcoin } from 'lucide-react';
+import { RefreshCw, Wallet, TrendingUp, AlertCircle, Bitcoin, Clock } from 'lucide-react';
 import type { CryptoPortfolio, CryptoSourceBalance, CryptoBalance } from '../../types';
 import { API_BASE } from '../../constants';
+
+function timeAgo(isoStr: string): string {
+  const diffSec = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
+  if (diffSec < 5) return 'just now';
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const min = Math.floor(diffSec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  return new Date(isoStr).toLocaleDateString();
+}
 
 function formatUsd(value: number): string {
   return value.toLocaleString('en-US', {
@@ -161,18 +172,19 @@ export function CryptoView() {
         <div>
           <h2 className="text-2xl font-bold text-surface-950">Crypto Portfolio</h2>
           {portfolio?.lastUpdated && (
-            <p className="text-[12px] text-surface-600 mt-1">
-              Last updated: {new Date(portfolio.lastUpdated).toLocaleTimeString()}
+            <p className="text-[12px] text-surface-600 mt-1 flex items-center gap-1.5">
+              <Clock className="w-3 h-3" />
+              Synced {timeAgo(portfolio.lastUpdated)}
             </p>
           )}
         </div>
         <button
           onClick={() => loadBalances(true)}
           disabled={isRefreshing}
-          className="flex items-center gap-2 px-4 py-2.5 bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 transition-colors disabled:opacity-50 text-[13px] font-medium"
+          className="flex items-center gap-2 px-5 py-2.5 bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 transition-colors disabled:opacity-50 text-[14px] font-medium shadow-sm"
         >
           <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          {isRefreshing ? 'Refreshing...' : 'Refresh'}
+          {isRefreshing ? 'Syncing...' : 'Sync Balances'}
         </button>
       </div>
 
@@ -212,14 +224,16 @@ export function CryptoView() {
             </p>
           </div>
 
-          {/* By Asset (aggregated) */}
+          {/* By Asset (aggregated, hide dust) */}
           {portfolio && portfolio.byAsset.length > 0 && (
             <div className="glass-card rounded-xl p-5 mb-6">
               <h3 className="text-[14px] font-semibold text-surface-950 mb-3">By Asset</h3>
               <div>
-                {portfolio.byAsset.map((balance) => (
-                  <AssetRow key={balance.asset} balance={balance} />
-                ))}
+                {portfolio.byAsset
+                  .filter((b) => (b.usdValue || 0) > 0.01)
+                  .map((balance) => (
+                    <AssetRow key={balance.asset} balance={balance} />
+                  ))}
               </div>
             </div>
           )}

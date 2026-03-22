@@ -391,8 +391,8 @@ async function fetchBtcBalance(address: string): Promise<Balance[]> {
 // Wallet: Ethereum (native ETH + ERC-20 tokens via Etherscan free API)
 // -----------------------------------------------------------------------------
 
-// Etherscan: with API key = 5 calls/sec, without = 1 call/5sec (very slow)
-const ETHERSCAN_BASE = 'https://api.etherscan.io/api';
+// Etherscan V2 API (V1 deprecated). chainid=1 for Ethereum mainnet.
+const ETHERSCAN_BASE = 'https://api.etherscan.io/v2/api?chainid=1';
 let etherscanApiKey: string | undefined;
 
 // Well-known ERC-20 token contracts → symbol mapping
@@ -419,7 +419,7 @@ async function fetchEthBalance(address: string): Promise<Balance[]> {
   // 1. Fetch native ETH balance via Etherscan
   try {
     const ethRes = await fetch(
-      `${ETHERSCAN_BASE}?module=account&action=balance&address=${address}&tag=latest${apiKeyParam}`
+      `${ETHERSCAN_BASE}&module=account&action=balance&address=${address}&tag=latest${apiKeyParam}`
     );
     if (ethRes.ok) {
       const ethData = await ethRes.json();
@@ -439,7 +439,7 @@ async function fetchEthBalance(address: string): Promise<Balance[]> {
     try {
       await new Promise((r) => setTimeout(r, rateDelay));
       const tokenRes = await fetch(
-        `${ETHERSCAN_BASE}?module=account&action=tokenbalance&contractaddress=${token.contract}&address=${address}&tag=latest${apiKeyParam}`
+        `${ETHERSCAN_BASE}&module=account&action=tokenbalance&contractaddress=${token.contract}&address=${address}&tag=latest${apiKeyParam}`
       );
       if (tokenRes.ok) {
         const tokenData = await tokenRes.json();
