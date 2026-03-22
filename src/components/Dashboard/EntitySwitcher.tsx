@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, X, Settings, LayoutGrid, Pencil, FileText, Upload } from 'lucide-react';
+import { Plus, X, Settings, LayoutGrid, Pencil, FileText, Upload, Building2 } from 'lucide-react';
 import type { Entity, TaxDocument, DocumentType } from '../../types';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import { DOCUMENT_TYPES } from '../../config';
@@ -72,7 +72,7 @@ export function EntitySwitcher({
   useEffect(() => {
     if (showEntityDetailModal && onScanBusinessDocs) {
       setIsLoadingDocs(true);
-      onScanBusinessDocs(showEntityDetailModal.id as Entity).then((docs) => {
+      void onScanBusinessDocs(showEntityDetailModal.id as Entity).then((docs) => {
         setEntityBusinessDocs(docs);
         setIsLoadingDocs(false);
       });
@@ -579,7 +579,7 @@ export function EntitySwitcher({
                   <h3 className="text-sm font-medium text-red-600 mb-2">Danger Zone</h3>
                   <button
                     onClick={() => {
-                      handleRemoveEntity(showEntityDetailModal.id);
+                      void handleRemoveEntity(showEntityDetailModal.id);
                       setShowEntityDetailModal(null);
                     }}
                     className="text-sm text-red-600 hover:text-red-700 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors"

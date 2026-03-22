@@ -56,6 +56,7 @@ function getTypeLabel(docType: DocumentType): string {
     '1099-int': '1099-int',
     '1099-b': '1099-b',
     '1099-composite': '1099-composite',
+    '1098': '1098',
     'k-1': 'K-1',
     receipt: '', // Will use category instead
     invoice: 'Invoice',
@@ -98,6 +99,7 @@ function getCategoryLabel(category: ExpenseCategory): string {
     utilities: 'utilities',
     insurance: 'insurance',
     education: 'education',
+    'home-improvement': 'home-improvement',
     'taxes-licenses': 'taxes',
     other: 'expense',
   };

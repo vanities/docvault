@@ -330,11 +330,12 @@ export function UploadZone({
       const existing = next.get(fileName) || {
         source: '',
         description: '',
+        year: 0,
         month: 0,
         day: 0,
         customFilename: '',
       };
-      next.set(fileName, { ...existing, [field]: value });
+      next.set(fileName, { ...existing, [field]: value } as FileMetadata);
       return next;
     });
   };
@@ -386,7 +387,7 @@ export function UploadZone({
 
       // Ensure category is set on parsed data for receipts
       if (parsedData && type === 'receipt' && category) {
-        (parsedData as Record<string, unknown>).category = category;
+        (parsedData as unknown as Record<string, unknown>).category = category;
       }
 
       // Use the custom filename if source was provided
@@ -468,6 +469,7 @@ export function UploadZone({
                 const metadata = fileMetadata.get(file.name) || {
                   source: '',
                   description: '',
+                  year: 0,
                   month: 0,
                   day: 0,
                   customFilename: '',

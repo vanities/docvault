@@ -106,10 +106,9 @@ function ReminderRow({
             {reminder.title}
           </span>
           {reminder.recurrence && (
-            <Repeat
-              className="w-3 h-3 text-surface-600 flex-shrink-0"
-              title={`Repeats ${reminder.recurrence}`}
-            />
+            <span title={`Repeats ${reminder.recurrence}`}>
+              <Repeat className="w-3 h-3 text-surface-600 flex-shrink-0" />
+            </span>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">

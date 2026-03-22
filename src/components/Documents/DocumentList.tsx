@@ -402,7 +402,7 @@ export function DocumentList({
       result = result.filter(
         (doc) =>
           doc.fileName.toLowerCase().includes(query) ||
-          doc.filePath.toLowerCase().includes(query) ||
+          (doc.filePath ?? '').toLowerCase().includes(query) ||
           doc.tags.some((tag) => tag.toLowerCase().includes(query)) ||
           doc.notes?.toLowerCase().includes(query)
       );
@@ -444,11 +444,11 @@ export function DocumentList({
     for (const doc of filteredAndSortedDocuments) {
       let label: string;
       if (groupMode === 'folder') {
-        label = getGroupFromPath(doc.filePath);
+        label = getGroupFromPath(doc.filePath ?? '');
       } else if (groupMode === 'type') {
         label = getGroupFromType(doc.type);
       } else {
-        label = getGroupFromClient(doc.filePath, doc.type);
+        label = getGroupFromClient(doc.filePath ?? '', doc.type);
       }
 
       if (!groups.has(label)) {

@@ -56,7 +56,7 @@ export function useFileSystemServer() {
 
   // Check server connection on mount
   useEffect(() => {
-    (async () => {
+    void (async () => {
       try {
         const response = await fetch(`${API_BASE}/status`);
         const data = await response.json();

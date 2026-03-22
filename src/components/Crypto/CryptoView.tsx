@@ -41,10 +41,9 @@ function SourceCard({
   const isExchange = source.sourceType === 'exchange';
   const [refreshing, setRefreshing] = useState(false);
 
-  const handleRefresh = async () => {
+  const handleRefresh = () => {
     setRefreshing(true);
-    await onRefresh(source.sourceId);
-    setRefreshing(false);
+    void Promise.resolve(onRefresh(source.sourceId)).finally(() => setRefreshing(false));
   };
 
   return (
@@ -246,7 +245,7 @@ export function CryptoView() {
   // On mount: load from server cache (instant), don't refetch live
   useEffect(() => {
     if (cachedPortfolio) return; // Already have module-level cache
-    (async () => {
+    void (async () => {
       try {
         // Load cached data from server (no live API calls)
         const res = await fetch(`${API_BASE}/crypto/balances?cached=1`);
@@ -258,11 +257,11 @@ export function CryptoView() {
           setIsLoading(false);
         } else {
           // No cache — do a full sync
-          loadBalances();
+          void loadBalances();
         }
       } catch {
         // No cache — do a full sync
-        loadBalances();
+        void loadBalances();
       }
     })();
   }, [loadBalances]);

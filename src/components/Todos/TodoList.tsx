@@ -19,7 +19,7 @@ export function TodoList() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleAdd();
+    if (e.key === 'Enter') void handleAdd();
     if (e.key === 'Escape') {
       setNewTitle('');
       setShowAddForm(false);

@@ -48,7 +48,7 @@ export function Header() {
   // Count unparsed income/expense files
   const unparsedCount = useMemo(() => {
     return scannedDocuments.filter((doc) => {
-      const pathLower = doc.filePath.toLowerCase();
+      const pathLower = (doc.filePath ?? '').toLowerCase();
       const isIncomeOrExpense = pathLower.includes('/income/') || pathLower.includes('/expenses/');
       return isIncomeOrExpense && !doc.parsedData;
     }).length;

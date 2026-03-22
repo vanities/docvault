@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components */
+/* oxlint-disable react-refresh/only-export-components */
 import {
   createContext,
   useContext,
@@ -212,7 +212,7 @@ export function AppProvider({ children }: AppProviderProps) {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const searchActive = searchQuery.length >= 2;
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const setSearchQuery = useCallback((query: string) => {
     setSearchQueryState(query);
@@ -296,14 +296,14 @@ export function AppProvider({ children }: AppProviderProps) {
   // Fetch available years when entity changes
   useEffect(() => {
     if (isConnected) {
-      getYearsForEntity(selectedEntity).then(setEntityYears);
+      void getYearsForEntity(selectedEntity).then(setEntityYears);
     }
   }, [isConnected, selectedEntity, getYearsForEntity]);
 
   // Scan files when entity or year changes (only for tax-year view)
   useEffect(() => {
     if (isConnected && (activeView === 'tax-year' || activeView === 'tn-tax')) {
-      scanTaxYear(selectedEntity, selectedYear).then(setScannedDocuments);
+      void scanTaxYear(selectedEntity, selectedYear).then(setScannedDocuments);
     }
   }, [isConnected, selectedEntity, selectedYear, scanTaxYear, activeView]);
 

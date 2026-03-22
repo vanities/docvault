@@ -149,7 +149,7 @@ export function DocumentCard({
   // Extract dollar amount from parsed data
   const dollarAmount = (() => {
     if (!doc.parsedData) return null;
-    const data = doc.parsedData as Record<string, unknown>;
+    const data = doc.parsedData as unknown as Record<string, unknown>;
     // Expenses: amount or totalAmount
     if (typeof data.totalAmount === 'number') return data.totalAmount;
     if (typeof data.amount === 'number') return data.amount;

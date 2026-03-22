@@ -26,7 +26,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   // Load current settings on mount
   useEffect(() => {
     if (isOpen) {
-      loadSettings();
+      void loadSettings();
     }
   }, [isOpen]);
 

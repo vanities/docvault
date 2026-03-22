@@ -1,0 +1,2 @@
+export PATH="$HOME/.vite-plus/bin:$PATH"
+bun run typecheck && vp staged

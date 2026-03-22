@@ -75,7 +75,7 @@ function DownloadDropdown({
             <button
               key={opt.filter}
               onClick={() => {
-                onDownload(entity, year, opt.filter);
+                void onDownload(entity, year, opt.filter);
                 setOpen(false);
               }}
               className="w-full px-3 py-2 text-left text-[13px] text-surface-800 hover:bg-surface-300/30 flex items-center gap-2"
@@ -144,7 +144,7 @@ export function TaxYearView() {
       const doc = scannedDocuments.find((d) => d.id === id);
       if (doc?.filePath) {
         const merged = { ...doc, ...updates };
-        updateDocMetadata(doc.entity, doc.filePath, {
+        void updateDocMetadata(doc.entity, doc.filePath, {
           tags: merged.tags,
           notes: merged.notes || '',
           ...('tracked' in updates ? { tracked: updates.tracked } : {}),
@@ -180,7 +180,7 @@ export function TaxYearView() {
     if (parsedData) {
       addToast('Document parsed successfully', 'success');
       // Update the document in our local state
-      const updatedDoc = { ...doc, parsedData: parsedData as TaxDocument['parsedData'] };
+      const updatedDoc = { ...doc, parsedData: parsedData as unknown as TaxDocument['parsedData'] };
       setScannedDocuments((prev) => prev.map((d) => (d.id === doc.id ? updatedDoc : d)));
       return updatedDoc;
     } else {
@@ -343,6 +343,8 @@ export function TaxYearView() {
       w2Count: w2Docs.length,
       income1099Total,
       income1099Count: income1099Docs.length,
+      k1Total: 0,
+      k1Count: 0,
       totalIncome: w2Total + income1099Total,
       federalWithheld,
       stateWithheld,
@@ -356,7 +358,7 @@ export function TaxYearView() {
   const expenseSummary = useMemo((): ExpenseSummaryType => {
     // Include receipts and any doc in an expenses folder
     const expenseDocs = trackedDocuments.filter(
-      (d) => d.type === 'receipt' || d.filePath.toLowerCase().includes('/expenses/')
+      (d) => d.type === 'receipt' || (d.filePath ?? '').toLowerCase().includes('/expenses/')
     );
     const categoryTotals = new Map<ExpenseCategory, { total: number; count: number }>();
 
@@ -535,6 +537,8 @@ export function TaxYearView() {
       w2Count: w2Docs.length,
       income1099Total,
       income1099Count: income1099Docs.length,
+      k1Total: 0,
+      k1Count: 0,
       totalIncome: w2Total + income1099Total,
       federalWithheld,
       stateWithheld,
@@ -547,7 +551,7 @@ export function TaxYearView() {
   const allExpenseSummary = useMemo((): ExpenseSummaryType | undefined => {
     if (!hasHiddenDocs) return undefined;
     const expenseDocs = scannedDocuments.filter(
-      (d) => d.type === 'receipt' || d.filePath.toLowerCase().includes('/expenses/')
+      (d) => d.type === 'receipt' || (d.filePath ?? '').toLowerCase().includes('/expenses/')
     );
     const categoryTotals = new Map<ExpenseCategory, { total: number; count: number }>();
     expenseDocs.forEach((doc) => {

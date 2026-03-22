@@ -17,6 +17,7 @@ import type {
   TaxDocument,
   IncomeSummary as IncomeSummaryType,
   ExpenseSummary as ExpenseSummaryType,
+  InvoiceSummaryData,
   ExpenseCategory,
 } from '../../types';
 
@@ -77,14 +78,14 @@ export function Dashboard() {
   // Fetch available years when entity changes
   useEffect(() => {
     if (isConnected) {
-      getYearsForEntity(selectedEntity).then(setEntityYears);
+      void getYearsForEntity(selectedEntity).then(setEntityYears);
     }
   }, [isConnected, selectedEntity, getYearsForEntity]);
 
   // Scan files when entity or year changes
   useEffect(() => {
     if (isConnected) {
-      scanTaxYear(selectedEntity, selectedYear).then(setScannedDocuments);
+      void scanTaxYear(selectedEntity, selectedYear).then(setScannedDocuments);
     }
   }, [isConnected, selectedEntity, selectedYear, scanTaxYear]);
 
@@ -128,7 +129,7 @@ export function Dashboard() {
     if (parsedData) {
       addToast('Document parsed successfully', 'success');
       // Update the document in our local state
-      const updatedDoc = { ...doc, parsedData: parsedData as TaxDocument['parsedData'] };
+      const updatedDoc = { ...doc, parsedData: parsedData as unknown as TaxDocument['parsedData'] };
       setScannedDocuments((prev) => prev.map((d) => (d.id === doc.id ? updatedDoc : d)));
       return updatedDoc;
     } else {
@@ -170,11 +171,12 @@ export function Dashboard() {
 
   // Move document to different entity/year
   const handleMoveDocument = async (
+    fromEntity: Entity,
     fromPath: string,
     toEntity: Entity,
     toYear: number
   ): Promise<boolean> => {
-    const success = await moveFile(selectedEntity, fromPath, toEntity, toYear);
+    const success = await moveFile(fromEntity, fromPath, toEntity, toYear);
     if (success) {
       addToast(`Document moved to ${toEntity} / ${toYear}`, 'success');
       // Rescan to update the list
@@ -219,6 +221,37 @@ export function Dashboard() {
       }
     });
 
+    // K-1 totals
+    const k1Docs = scannedDocuments.filter((d) => d.type === 'k-1');
+    let k1Total = 0;
+    k1Docs.forEach((doc) => {
+      const data = doc.parsedData as
+        | { ordinaryIncome?: number; guaranteedPayments?: number }
+        | undefined;
+      if (data) {
+        k1Total += (data.ordinaryIncome || 0) + (data.guaranteedPayments || 0);
+      }
+    });
+
+    // Capital gains from 1099-B and composite 1099s
+    let capitalGainsShortTerm = 0;
+    let capitalGainsLongTerm = 0;
+    scannedDocuments
+      .filter((d) => d.type === '1099-b' || d.type === '1099-composite')
+      .forEach((doc) => {
+        const data = doc.parsedData as
+          | {
+              b?: { shortTermGainLoss?: number; longTermGainLoss?: number };
+              shortTermGainLoss?: number;
+              longTermGainLoss?: number;
+            }
+          | undefined;
+        if (data) {
+          capitalGainsShortTerm += data.b?.shortTermGainLoss || data.shortTermGainLoss || 0;
+          capitalGainsLongTerm += data.b?.longTermGainLoss || data.longTermGainLoss || 0;
+        }
+      });
+
     return {
       entity: selectedEntity,
       taxYear: selectedYear,
@@ -226,9 +259,14 @@ export function Dashboard() {
       w2Count: w2Docs.length,
       income1099Total,
       income1099Count: income1099Docs.length,
-      totalIncome: w2Total + income1099Total,
+      k1Total,
+      k1Count: k1Docs.length,
+      totalIncome: w2Total + income1099Total + k1Total,
       federalWithheld,
       stateWithheld,
+      capitalGainsTotal: capitalGainsShortTerm + capitalGainsLongTerm,
+      capitalGainsShortTerm,
+      capitalGainsLongTerm,
     };
   }, [scannedDocuments, selectedEntity, selectedYear]);
 
@@ -267,6 +305,44 @@ export function Dashboard() {
       items,
       totalExpenses,
       totalDeductible,
+    };
+  }, [scannedDocuments, selectedEntity, selectedYear]);
+
+  // Compute invoice summary from scanned documents
+  const invoiceSummary = useMemo((): InvoiceSummaryData => {
+    const invoiceDocs = scannedDocuments.filter((d) => d.type === 'invoice');
+    const customerMap = new Map<string, { total: number; count: number }>();
+
+    for (const doc of invoiceDocs) {
+      const data = doc.parsedData as Record<string, unknown> | undefined;
+      const customer = (data?.vendor as string) || (data?.customer as string) || 'Unknown';
+      const amount = data
+        ? typeof data.totalAmount === 'number'
+          ? data.totalAmount
+          : typeof data.amount === 'number'
+            ? data.amount
+            : typeof data.total === 'number'
+              ? data.total
+              : 0
+        : 0;
+
+      const existing = customerMap.get(customer) || { total: 0, count: 0 };
+      customerMap.set(customer, {
+        total: existing.total + amount,
+        count: existing.count + 1,
+      });
+    }
+
+    const byCustomer = Array.from(customerMap.entries())
+      .map(([customer, { total, count }]) => ({ customer, total, count }))
+      .sort((a, b) => b.total - a.total);
+
+    return {
+      entity: selectedEntity,
+      taxYear: selectedYear,
+      invoiceTotal: byCustomer.reduce((sum, g) => sum + g.total, 0),
+      invoiceCount: invoiceDocs.length,
+      byCustomer,
     };
   }, [scannedDocuments, selectedEntity, selectedYear]);
 
@@ -390,6 +466,7 @@ export function Dashboard() {
           <QuickStats
             incomeSummary={incomeSummary}
             expenseSummary={expenseSummary}
+            invoiceSummary={invoiceSummary}
             documentCount={filteredDocuments.length}
           />
         </div>

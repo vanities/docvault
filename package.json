@@ -4,57 +4,47 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vp dev",
     "server": "bun --watch run server/index.ts",
     "start": "concurrently \"bun run server\" \"bun run dev\"",
-    "build": "tsc -b && vite build",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "build": "tsc -b && vp build",
+    "lint": "vp lint .",
+    "lint:fix": "vp lint . --fix",
     "typecheck": "tsc --noEmit",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format": "vp fmt .",
+    "format:check": "vp fmt --check .",
     "check": "bun run typecheck && bun run lint && bun run format:check",
-    "preview": "vite preview",
-    "prepare": "husky"
+    "preview": "vp preview",
+    "prepare": "vp config"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.73.0",
     "fflate": "^0.8.2",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.1",
-    "@tailwindcss/vite": "^4.1.18",
+    "@tailwindcss/vite": "^4.2.2",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
-    "@types/node": "^24.10.1",
-    "@types/react": "^19.2.5",
+    "@types/node": "^24.12.0",
+    "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.1.1",
-    "autoprefixer": "^10.4.24",
+    "@vitejs/plugin-react": "^5.2.0",
+    "autoprefixer": "^10.4.27",
     "concurrently": "^9.2.1",
-    "eslint": "^9.39.1",
-    "eslint-plugin-react-hooks": "^7.0.1",
-    "eslint-plugin-react-refresh": "^0.4.24",
-    "globals": "^16.5.0",
-    "husky": "^9.1.7",
-    "lint-staged": "^16.2.7",
     "lucide-react": "^0.563.0",
-    "postcss": "^8.5.6",
-    "prettier": "^3.8.1",
-    "tailwindcss": "^4.1.18",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.2.2",
     "typescript": "~5.9.3",
-    "typescript-eslint": "^8.46.4",
-    "vite": "^7.2.4"
+    "vite": "npm:@voidzero-dev/vite-plus-core@^0.1.13",
+    "vite-plus": "latest"
   },
-  "lint-staged": {
-    "*.{ts,tsx}": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "*.{json,md,css}": [
-      "prettier --write"
-    ]
+  "packageManager": "pnpm@10.32.1",
+  "pnpm": {
+    "overrides": {
+      "vite": "npm:@voidzero-dev/vite-plus-core@latest",
+      "vitest": "npm:@voidzero-dev/vite-plus-test@latest"
+    }
   }
 }

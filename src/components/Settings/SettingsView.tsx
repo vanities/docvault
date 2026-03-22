@@ -114,10 +114,10 @@ export function SettingsView() {
 
   // Load settings and sync status on mount
   useEffect(() => {
-    loadSettings();
-    loadSyncStatus();
-    loadCryptoSettings();
-    const interval = setInterval(loadSyncStatus, 30000); // Poll every 30s
+    void loadSettings();
+    void loadSyncStatus();
+    void loadCryptoSettings();
+    const interval = setInterval(() => void loadSyncStatus(), 30000); // Poll every 30s
     return () => clearInterval(interval);
   }, []);
 
@@ -269,7 +269,7 @@ export function SettingsView() {
         setNewExchangeKey('');
         setNewExchangeSecret('');
         setNewExchangePassphrase('');
-        loadCryptoSettings();
+        void loadCryptoSettings();
       }
     } catch {
       addToast('Failed to add exchange', 'error');
@@ -289,7 +289,7 @@ export function SettingsView() {
       });
       if ((await res.json()).ok) {
         addToast(`${exchangeId} removed`, 'success');
-        loadCryptoSettings();
+        void loadCryptoSettings();
       }
     } catch {
       addToast('Failed to remove exchange', 'error');
@@ -318,7 +318,7 @@ export function SettingsView() {
         setShowAddWallet(false);
         setNewWalletAddress('');
         setNewWalletLabel('');
-        loadCryptoSettings();
+        void loadCryptoSettings();
       }
     } catch {
       addToast('Failed to add wallet', 'error');
@@ -338,7 +338,7 @@ export function SettingsView() {
       });
       if ((await res.json()).ok) {
         addToast('Wallet removed', 'success');
-        loadCryptoSettings();
+        void loadCryptoSettings();
       }
     } catch {
       addToast('Failed to remove wallet', 'error');
@@ -359,7 +359,7 @@ export function SettingsView() {
       if ((await res.json()).ok) {
         addToast('Etherscan key saved', 'success');
         setNewEtherscanKey('');
-        loadCryptoSettings();
+        void loadCryptoSettings();
       }
     } catch {
       addToast('Failed to save Etherscan key', 'error');
@@ -378,7 +378,7 @@ export function SettingsView() {
       });
       if ((await res.json()).ok) {
         addToast('Etherscan key removed', 'success');
-        loadCryptoSettings();
+        void loadCryptoSettings();
       }
     } catch {
       addToast('Failed to remove Etherscan key', 'error');

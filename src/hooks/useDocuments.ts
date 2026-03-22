@@ -72,6 +72,7 @@ export function useDocuments() {
         entity,
         taxYear,
         tags: [],
+        tracked: true,
         parsedData,
         createdAt: now,
         updatedAt: now,
@@ -162,6 +163,9 @@ export function useDocuments() {
         totalIncome: w2Total + income1099Total + k1Total,
         federalWithheld,
         stateWithheld,
+        capitalGainsTotal: 0,
+        capitalGainsShortTerm: 0,
+        capitalGainsLongTerm: 0,
       };
     },
     [documents]

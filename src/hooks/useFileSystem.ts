@@ -204,6 +204,7 @@ export function useFileSystem() {
               entity,
               taxYear,
               tags: [],
+              tracked: true,
               createdAt: new Date(file.lastModified).toISOString(),
               updatedAt: new Date(file.lastModified).toISOString(),
             };
@@ -305,7 +306,9 @@ export function useFileSystem() {
             travel: 'expenses/business',
             utilities: 'expenses/business',
             insurance: 'expenses/business',
+            'taxes-licenses': 'expenses/business',
             education: 'expenses/business',
+            'home-improvement': 'expenses/business',
             other: 'expenses/business',
           };
           destPath += '/' + folderMap[expenseCategory];

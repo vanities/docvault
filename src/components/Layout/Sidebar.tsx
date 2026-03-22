@@ -69,8 +69,8 @@ function SyncIndicator() {
         .then((r) => r.json())
         .then(setSync)
         .catch(() => setSync(null));
-    load();
-    const id = setInterval(load, 30000);
+    void load();
+    const id = setInterval(() => void load(), 30000);
     return () => clearInterval(id);
   }, []);
 

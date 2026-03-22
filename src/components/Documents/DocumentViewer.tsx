@@ -118,7 +118,7 @@ export function DocumentViewer({
     const newFilename = trimmed + fileExtension;
     setIsRenameSaving(true);
     try {
-      const newPath = await renameFile(document.entity, document.filePath, newFilename);
+      const newPath = await renameFile(document.entity, document.filePath ?? '', newFilename);
       if (newPath) {
         addToast(`Renamed to ${newFilename}`, 'success');
         // Update the document in the scanned list so UI reflects the change
@@ -249,7 +249,7 @@ export function DocumentViewer({
     [addToast]
   );
 
-  const fileUrl = getFileUrl(document.entity, document.filePath);
+  const fileUrl = getFileUrl(document.entity, document.filePath ?? '');
   const isImage = document.fileType.includes('image');
   const isPdf = document.fileType.includes('pdf');
   const canPreview = isImage || isPdf;
@@ -257,7 +257,9 @@ export function DocumentViewer({
   const docTypeInfo = DOCUMENT_TYPES.find((t) => t.id === document.type);
   const expenseInfo =
     document.parsedData && 'category' in document.parsedData
-      ? EXPENSE_CATEGORIES.find((c) => c.id === document.parsedData?.category)
+      ? EXPENSE_CATEGORIES.find(
+          (c) => c.id === (document.parsedData as unknown as Record<string, unknown>)?.category
+        )
       : null;
 
   const handleDownload = () => {
@@ -271,13 +273,13 @@ export function DocumentViewer({
     window.open(fileUrl, '_blank');
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!onDelete) return;
     if (!confirm(`Delete "${document.fileName}"?`)) return;
 
     setIsDeleting(true);
     try {
-      await onDelete(document.id);
+      onDelete(document.id);
       onClose();
     } finally {
       setIsDeleting(false);
@@ -333,7 +335,7 @@ export function DocumentViewer({
                     value={renameValue}
                     onChange={(e) => setRenameValue(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') saveRename();
+                      if (e.key === 'Enter') void saveRename();
                       if (e.key === 'Escape') cancelRename();
                     }}
                     onBlur={cancelRename}
@@ -346,7 +348,7 @@ export function DocumentViewer({
                   <button
                     onMouseDown={(e) => {
                       e.preventDefault();
-                      saveRename();
+                      void saveRename();
                     }}
                     disabled={isRenameSaving}
                     className="p-1 text-success-500 hover:bg-success-500/10 rounded transition-all shrink-0"
@@ -427,9 +429,9 @@ export function DocumentViewer({
                 onClick={() => {
                   const entityConfig = entities?.find((e) => e.id === document.entity);
                   const fullPath = entityConfig
-                    ? `${entityConfig.path}/${document.filePath}`
-                    : document.filePath;
-                  copyToClipboard(fullPath);
+                    ? `${entityConfig.path}/${document.filePath ?? ''}`
+                    : (document.filePath ?? '');
+                  void copyToClipboard(fullPath);
                 }}
                 className="truncate hover:text-accent-400 cursor-pointer text-left font-mono text-[12px]"
                 title="Click to copy full path"

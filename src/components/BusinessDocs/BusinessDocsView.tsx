@@ -43,7 +43,7 @@ export function BusinessDocsView() {
   }, [selectedEntity, scanBusinessDocs]);
 
   useEffect(() => {
-    loadBusinessDocs();
+    void loadBusinessDocs();
   }, [loadBusinessDocs]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -81,7 +81,7 @@ export function BusinessDocsView() {
       const doc = businessDocs.find((d) => d.id === id);
       if (doc?.filePath) {
         const merged = { ...doc, ...updates };
-        updateDocMetadata(doc.entity, doc.filePath, {
+        void updateDocMetadata(doc.entity, doc.filePath, {
           tags: merged.tags,
           notes: merged.notes || '',
         });
@@ -110,7 +110,7 @@ export function BusinessDocsView() {
     try {
       const parsedData = await parseFile(doc.entity, doc.filePath);
       if (parsedData) {
-        const updated = { ...doc, parsedData: parsedData as TaxDocument['parsedData'] };
+        const updated = { ...doc, parsedData: parsedData as unknown as TaxDocument['parsedData'] };
         setBusinessDocs((prev) => prev.map((d) => (d.id === doc.id ? updated : d)));
         addToast('Document parsed successfully', 'success');
         return updated;

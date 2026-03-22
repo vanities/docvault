@@ -42,7 +42,7 @@ function ResultCard({ result }: { result: SearchResult }) {
   const year = yearMatch ? parseInt(yearMatch[1], 10) : null;
 
   const handleClick = () => {
-    openFile(result.entity, result.path);
+    void openFile(result.entity, result.path);
   };
 
   const handleNavigate = () => {
