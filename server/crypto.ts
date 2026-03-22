@@ -388,36 +388,70 @@ async function fetchBtcBalance(address: string): Promise<Balance[]> {
 }
 
 // -----------------------------------------------------------------------------
-// Wallet: Ethereum (public RPC, no key needed)
+// Wallet: Ethereum (native ETH + ERC-20 tokens via Etherscan free API)
 // -----------------------------------------------------------------------------
 
+// Etherscan free tier: 5 calls/sec, no key required (uses rate-limited community endpoint)
+const ETHERSCAN_BASE = 'https://api.etherscan.io/api';
+
+// Well-known ERC-20 token contracts → symbol mapping
+const ERC20_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
+  { contract: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', symbol: 'USDC', decimals: 6 },
+  { contract: '0xdAC17F958D2ee523a2206206994597C13D831ec7', symbol: 'USDT', decimals: 6 },
+  { contract: '0x6B175474E89094C44Da98b954EedeAC495271d0F', symbol: 'DAI', decimals: 18 },
+  { contract: '0x514910771AF9Ca656af840dff83E8264EcF986CA', symbol: 'LINK', decimals: 18 },
+  { contract: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984', symbol: 'UNI', decimals: 18 },
+  { contract: '0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9', symbol: 'AAVE', decimals: 18 },
+  { contract: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', symbol: 'WBTC', decimals: 8 },
+  { contract: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', symbol: 'WETH', decimals: 18 },
+  { contract: '0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE', symbol: 'SHIB', decimals: 18 },
+  { contract: '0x7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0', symbol: 'MATIC', decimals: 18 },
+];
+
 async function fetchEthBalance(address: string): Promise<Balance[]> {
-  // Use Cloudflare's public Ethereum RPC
-  const res = await fetch('https://cloudflare-eth.com', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'eth_getBalance',
-      params: [address, 'latest'],
-    }),
-  });
+  const balances: Balance[] = [];
 
-  if (!res.ok) {
-    throw new Error(`Ethereum RPC error ${res.status}`);
+  // 1. Fetch native ETH balance via Etherscan (more reliable than Cloudflare RPC)
+  try {
+    const ethRes = await fetch(
+      `${ETHERSCAN_BASE}?module=account&action=balance&address=${address}&tag=latest`
+    );
+    if (ethRes.ok) {
+      const ethData = await ethRes.json();
+      if (ethData.status === '1' && ethData.result) {
+        const ethAmount = parseInt(ethData.result, 10) / 1e18;
+        if (ethAmount > 0) {
+          balances.push({ asset: 'ETH', amount: ethAmount });
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[ETH] Native balance error:', err);
   }
 
-  const data = await res.json();
-  if (data.error) {
-    throw new Error(`Ethereum RPC: ${data.error.message}`);
+  // 2. Fetch ERC-20 token balances (batch with small delays to respect rate limit)
+  for (const token of ERC20_TOKENS) {
+    try {
+      const tokenRes = await fetch(
+        `${ETHERSCAN_BASE}?module=account&action=tokenbalance&contractaddress=${token.contract}&address=${address}&tag=latest`
+      );
+      if (tokenRes.ok) {
+        const tokenData = await tokenRes.json();
+        if (tokenData.status === '1' && tokenData.result && tokenData.result !== '0') {
+          const amount = parseInt(tokenData.result, 10) / Math.pow(10, token.decimals);
+          if (amount > 0.001) {
+            balances.push({ asset: token.symbol, amount });
+          }
+        }
+      }
+      // Small delay to respect Etherscan's 5 calls/sec free tier
+      await new Promise((r) => setTimeout(r, 220));
+    } catch {
+      // Skip failed token lookups silently
+    }
   }
 
-  const weiHex = data.result || '0x0';
-  const ethAmount = parseInt(weiHex, 16) / 1e18;
-
-  if (ethAmount <= 0) return [];
-  return [{ asset: 'ETH', amount: ethAmount }];
+  return balances;
 }
 
 // -----------------------------------------------------------------------------
