@@ -425,7 +425,7 @@ const ERC20_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
   { contract: '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84', symbol: 'stETH', decimals: 18 }, // Lido
   { contract: '0xae78736Cd615f374D3085123A210448E74Fc6393', symbol: 'rETH', decimals: 18 }, // Rocket Pool ETH
   { contract: '0xD33526068D116cE69F19A9ee46F0bd304F21A51f', symbol: 'RPL', decimals: 18 }, // Rocket Pool token
-  { contract: '0xFe2e637202056d30016725477c5da089Ab0A043A', symbol: 'sfrxETH', decimals: 18 }, // Frax staked ETH
+  { contract: '0xac3E018457B222d93114458476f3E3416Abbe38F', symbol: 'sfrxETH', decimals: 18 }, // Frax staked ETH
   { contract: '0xBe9895146f7AF43049ca1c1AE358B0541Ea49704', symbol: 'cbETH', decimals: 18 }, // Coinbase staked ETH
   // Wrapped
   { contract: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', symbol: 'WBTC', decimals: 8 },
