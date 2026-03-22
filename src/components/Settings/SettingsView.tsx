@@ -17,6 +17,9 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
+  Download,
+  Upload,
+  Shield,
 } from 'lucide-react';
 import type { SyncStatus, CryptoExchangeId, CryptoChain } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
@@ -435,6 +438,72 @@ export function SettingsView() {
       addToast('Failed to save schedules', 'error');
     } finally {
       setIsScheduleSaving(false);
+    }
+  };
+
+  // Backup / Restore state
+  const [backupPassword, setBackupPassword] = useState('');
+  const [restorePassword, setRestorePassword] = useState('');
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+
+  const handleBackup = async () => {
+    if (!backupPassword || backupPassword.length < 4) {
+      addToast('Password must be at least 4 characters', 'error');
+      return;
+    }
+    setIsBackingUp(true);
+    try {
+      const res = await fetch(`${API_BASE}/backup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: backupPassword }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Backup failed');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `docvault-backup-${new Date().toISOString().split('T')[0]}.enc`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setBackupPassword('');
+      addToast('Backup downloaded', 'success');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Backup failed', 'error');
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!restoreFile || !restorePassword) {
+      addToast('Select a backup file and enter the password', 'error');
+      return;
+    }
+    if (!confirm('This will overwrite all current settings and data. Continue?')) return;
+    setIsRestoring(true);
+    try {
+      const form = new FormData();
+      form.append('password', restorePassword);
+      form.append('file', restoreFile);
+      const res = await fetch(`${API_BASE}/restore`, {
+        method: 'POST',
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Restore failed');
+      setRestorePassword('');
+      setRestoreFile(null);
+      addToast(`Restored ${data.restored?.length || 0} files. Reload to apply.`, 'success');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Restore failed', 'error');
+    } finally {
+      setIsRestoring(false);
     }
   };
 
@@ -1370,6 +1439,76 @@ export function SettingsView() {
               </div>
             );
           })}
+        </div>
+      </section>
+
+      {/* Backup & Restore */}
+      <section className="glass-card rounded-xl p-6 mb-8">
+        <h3 className="text-lg font-semibold text-surface-950 mb-2 flex items-center gap-2">
+          <Shield className="w-5 h-5" />
+          Encrypted Backup
+        </h3>
+        <p className="text-[13px] text-surface-600 mb-5">
+          Download an AES-256 encrypted backup of all settings, API keys, cached data, and portfolio
+          snapshots. The backup is password-protected — keep the password safe.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Backup */}
+          <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30">
+            <h4 className="text-[13px] font-semibold text-surface-900 mb-3 flex items-center gap-1.5">
+              <Download className="w-4 h-4" />
+              Create Backup
+            </h4>
+            <div className="space-y-2">
+              <input
+                type="password"
+                value={backupPassword}
+                onChange={(e) => setBackupPassword(e.target.value)}
+                placeholder="Encryption password (min 4 chars)"
+                className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+              />
+              <button
+                onClick={handleBackup}
+                disabled={isBackingUp || backupPassword.length < 4}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-violet-500 text-surface-0 rounded-xl hover:bg-violet-400 transition-colors disabled:opacity-50 text-[13px] font-medium"
+              >
+                <Download className="w-4 h-4" />
+                {isBackingUp ? 'Encrypting...' : 'Download Backup'}
+              </button>
+            </div>
+          </div>
+
+          {/* Restore */}
+          <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30">
+            <h4 className="text-[13px] font-semibold text-surface-900 mb-3 flex items-center gap-1.5">
+              <Upload className="w-4 h-4" />
+              Restore Backup
+            </h4>
+            <div className="space-y-2">
+              <input
+                type="file"
+                accept=".enc"
+                onChange={(e) => setRestoreFile(e.target.files?.[0] || null)}
+                className="w-full text-[12px] text-surface-700 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[12px] file:font-medium file:bg-surface-200/50 file:text-surface-700 hover:file:bg-surface-300/50"
+              />
+              <input
+                type="password"
+                value={restorePassword}
+                onChange={(e) => setRestorePassword(e.target.value)}
+                placeholder="Backup password"
+                className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+              />
+              <button
+                onClick={handleRestore}
+                disabled={isRestoring || !restoreFile || !restorePassword}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-500 text-surface-0 rounded-xl hover:bg-amber-400 transition-colors disabled:opacity-50 text-[13px] font-medium"
+              >
+                <Upload className="w-4 h-4" />
+                {isRestoring ? 'Restoring...' : 'Restore from Backup'}
+              </button>
+            </div>
+          </div>
         </div>
       </section>
     </div>

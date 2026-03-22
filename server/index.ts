@@ -551,6 +551,148 @@ async function handleRequest(req: Request): Promise<Response> {
     return jsonResponse({ ok: true });
   }
 
+  // =========================================================================
+  // Encrypted Backup / Restore
+  // =========================================================================
+
+  // POST /api/backup — create encrypted backup of all data
+  // Body: { password: "..." }
+  // Returns: binary blob (AES-256-GCM encrypted zip)
+  if (pathname === '/api/backup' && req.method === 'POST') {
+    try {
+      const { password } = await req.json();
+      if (!password || typeof password !== 'string' || password.length < 4) {
+        return jsonResponse({ error: 'Password must be at least 4 characters' }, 400);
+      }
+
+      // Collect all data files
+      const filesToBackup: Record<string, string> = {};
+
+      // Settings (contains API keys, exchange secrets, etc.)
+      try {
+        filesToBackup['settings.json'] = await fs.readFile(SETTINGS_PATH, 'utf-8');
+      } catch {
+        /* skip */
+      }
+
+      // Config (entities)
+      try {
+        filesToBackup['config.json'] = await fs.readFile(CONFIG_PATH, 'utf-8');
+      } catch {
+        /* skip */
+      }
+
+      // Cache files from data dir
+      const cacheFiles = [
+        '.docvault-parsed.json',
+        '.docvault-reminders.json',
+        '.docvault-broker-cache.json',
+        '.docvault-crypto-cache.json',
+        '.docvault-crypto-gains.json',
+        '.docvault-portfolio-snapshots.json',
+        '.docvault-sync-status.json',
+        '.docvault-todos.json',
+      ];
+
+      for (const name of cacheFiles) {
+        try {
+          filesToBackup[`data/${name}`] = await fs.readFile(path.join(DATA_DIR, name), 'utf-8');
+        } catch {
+          /* skip */
+        }
+      }
+
+      // Create zip
+      const zipData: Record<string, Uint8Array> = {};
+      for (const [name, content] of Object.entries(filesToBackup)) {
+        zipData[name] = new TextEncoder().encode(content);
+      }
+      const zipped = zipSync(zipData);
+
+      // Encrypt with AES-256-GCM
+      const { createCipheriv, randomBytes, scryptSync } = await import('crypto');
+      const salt = randomBytes(16);
+      const iv = randomBytes(12);
+      const key = scryptSync(password, salt, 32);
+      const cipher = createCipheriv('aes-256-gcm', key, iv);
+      const encrypted = Buffer.concat([cipher.update(zipped), cipher.final()]);
+      const authTag = cipher.getAuthTag();
+
+      // Pack: salt(16) + iv(12) + authTag(16) + encrypted
+      const packed = Buffer.concat([salt, iv, authTag, encrypted]);
+
+      return new Response(packed, {
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Content-Disposition': `attachment; filename="docvault-backup-${new Date().toISOString().split('T')[0]}.enc"`,
+        },
+      });
+    } catch (err) {
+      return jsonResponse({ error: err instanceof Error ? err.message : 'Backup failed' }, 500);
+    }
+  }
+
+  // POST /api/restore — restore from encrypted backup
+  // Multipart form: password + file
+  if (pathname === '/api/restore' && req.method === 'POST') {
+    try {
+      const formData = await req.formData();
+      const password = formData.get('password') as string;
+      const file = formData.get('file') as File;
+
+      if (!password || !file) {
+        return jsonResponse({ error: 'Missing password or file' }, 400);
+      }
+
+      const packed = Buffer.from(await file.arrayBuffer());
+      if (packed.length < 44) {
+        return jsonResponse({ error: 'Invalid backup file' }, 400);
+      }
+
+      // Unpack: salt(16) + iv(12) + authTag(16) + encrypted
+      const salt = packed.subarray(0, 16);
+      const iv = packed.subarray(16, 28);
+      const authTag = packed.subarray(28, 44);
+      const encrypted = packed.subarray(44);
+
+      const { createDecipheriv, scryptSync } = await import('crypto');
+      const key = scryptSync(password, salt, 32);
+      const decipher = createDecipheriv('aes-256-gcm', key, iv);
+      decipher.setAuthTag(authTag);
+
+      let decrypted: Buffer;
+      try {
+        decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+      } catch {
+        return jsonResponse({ error: 'Wrong password or corrupted backup' }, 400);
+      }
+
+      // Unzip
+      const { unzipSync } = await import('fflate');
+      const unzipped = unzipSync(new Uint8Array(decrypted));
+
+      const restored: string[] = [];
+      for (const [name, data] of Object.entries(unzipped)) {
+        const content = new TextDecoder().decode(data);
+        if (name === 'settings.json') {
+          await fs.writeFile(SETTINGS_PATH, content);
+          restored.push('settings.json');
+        } else if (name === 'config.json') {
+          await fs.writeFile(CONFIG_PATH, content);
+          restored.push('config.json');
+        } else if (name.startsWith('data/')) {
+          const fileName = name.replace('data/', '');
+          await fs.writeFile(path.join(DATA_DIR, fileName), content);
+          restored.push(fileName);
+        }
+      }
+
+      return jsonResponse({ ok: true, restored });
+    } catch (err) {
+      return jsonResponse({ error: err instanceof Error ? err.message : 'Restore failed' }, 500);
+    }
+  }
+
   // GET /api/crypto/settings — get configured exchanges and wallets (keys masked)
   if (pathname === '/api/crypto/settings' && req.method === 'GET') {
     const settings = await loadSettings();
