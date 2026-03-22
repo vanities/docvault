@@ -408,6 +408,7 @@ async function saveContributions(data: ContributionsData): Promise<void> {
 
 const TODOS_FILE = path.join(DATA_DIR, '.docvault-todos.json');
 const CRYPTO_CACHE_FILE = path.join(DATA_DIR, '.docvault-crypto-cache.json');
+const BROKER_CACHE_FILE = path.join(DATA_DIR, '.docvault-broker-cache.json');
 
 interface Todo {
   id: string;
@@ -761,7 +762,63 @@ async function handleRequest(req: Request): Promise<Response> {
         lastUpdated: new Date().toISOString(),
       });
     }
+
+    // Return cached data without refetching (for page loads)
+    const cached = url.searchParams.get('cached') === '1';
+    if (cached) {
+      try {
+        const content = await fs.readFile(BROKER_CACHE_FILE, 'utf-8');
+        return jsonResponse(JSON.parse(content));
+      } catch {
+        return jsonResponse({ accounts: [], totalValue: 0, totalCostBasis: 0, totalGainLoss: 0, lastUpdated: '' }, 200);
+      }
+    }
+
+    const saveBrokerCache = async (portfolio: object) => {
+      try {
+        await fs.writeFile(BROKER_CACHE_FILE, JSON.stringify(portfolio, null, 2));
+      } catch {
+        // Non-critical
+      }
+    };
+
+    // Check if client wants streaming progress
+    const stream = url.searchParams.get('stream') === '1';
+
+    if (stream) {
+      const encoder = new TextEncoder();
+      const readable = new ReadableStream({
+        async start(controller) {
+          const portfolio = await buildPortfolio(
+            accounts,
+            (current, total, label) => {
+              controller.enqueue(
+                encoder.encode(JSON.stringify({ type: 'progress', current, total, label }) + '\n')
+              );
+            }
+          );
+          await saveBrokerCache(portfolio);
+          controller.enqueue(
+            encoder.encode(JSON.stringify({ type: 'result', ...portfolio }) + '\n')
+          );
+          controller.close();
+        },
+      });
+
+      return new Response(readable, {
+        headers: {
+          'Content-Type': 'application/x-ndjson',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+          'Cache-Control': 'no-cache',
+        },
+      });
+    }
+
+    // Non-streaming
     const portfolio = await buildPortfolio(accounts);
+    await saveBrokerCache(portfolio);
     return jsonResponse(portfolio);
   }
 

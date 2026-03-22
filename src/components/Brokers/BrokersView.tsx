@@ -398,28 +398,80 @@ export function BrokersView() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAddAccount, setShowAddAccount] = useState(false);
+  const [progress, setProgress] = useState<{
+    current: number;
+    total: number;
+    label: string;
+  } | null>(null);
 
   const loadPortfolio = useCallback(async (showRefresh = false) => {
     if (showRefresh) setIsRefreshing(true);
     else if (!cachedPortfolio) setIsLoading(true);
     setError(null);
+    setProgress(null);
 
     try {
-      const res = await fetch(`${API_BASE}/brokers/portfolio`);
+      const res = await fetch(`${API_BASE}/brokers/portfolio?stream=1`);
       if (!res.ok) throw new Error(`Server error ${res.status}`);
-      const data = await res.json();
-      cachedPortfolio = data;
-      setPortfolio(data);
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No response body');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const msg = JSON.parse(line);
+            if (msg.type === 'progress') {
+              setProgress({ current: msg.current, total: msg.total, label: msg.label });
+            } else if (msg.type === 'result') {
+              delete msg.type;
+              cachedPortfolio = msg as BrokerPortfolio;
+              setPortfolio(msg as BrokerPortfolio);
+            }
+          } catch {
+            // Skip malformed lines
+          }
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load portfolio');
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
+      setProgress(null);
     }
   }, []);
 
+  // On mount: load from server cache first, then full sync if empty
   useEffect(() => {
-    if (!cachedPortfolio) void loadPortfolio();
+    if (cachedPortfolio) return;
+    void (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/brokers/portfolio?cached=1`);
+        if (!res.ok) throw new Error('No cache');
+        const data = await res.json();
+        if (data.accounts?.length > 0) {
+          cachedPortfolio = data;
+          setPortfolio(data);
+          setIsLoading(false);
+        } else {
+          void loadPortfolio();
+        }
+      } catch {
+        void loadPortfolio();
+      }
+    })();
   }, [loadPortfolio]);
 
   const handleAddAccount = async (broker: BrokerId, name: string) => {
@@ -501,11 +553,32 @@ export function BrokersView() {
     }
   };
 
+  const progressBar = progress && (
+    <div className="mb-6">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-[12px] text-surface-600">
+          Fetching prices: <span className="font-medium text-surface-800">{progress.label}</span>
+        </p>
+        <p className="text-[12px] text-surface-600 tabular-nums">
+          {progress.current}/{progress.total}
+        </p>
+      </div>
+      <div className="w-full h-2 bg-surface-200/50 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-accent-500 rounded-full transition-all duration-300 ease-out"
+          style={{ width: `${Math.round((progress.current / progress.total) * 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+
   if (isLoading) {
     return (
       <div className="max-w-5xl mx-auto px-4 md:px-6 py-8">
         <h2 className="text-2xl font-bold text-surface-950 mb-6">Brokerage Portfolio</h2>
-        <div className="text-center py-20 text-surface-600">Loading portfolio...</div>
+        {progressBar || (
+          <div className="text-center py-20 text-surface-600">Loading portfolio...</div>
+        )}
       </div>
     );
   }
@@ -545,6 +618,8 @@ export function BrokersView() {
           )}
         </div>
       </div>
+
+      {isRefreshing && progressBar}
 
       {error && (
         <div className="flex items-center gap-2 p-4 bg-danger-500/10 border border-danger-500/20 rounded-xl mb-6">

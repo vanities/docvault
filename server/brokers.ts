@@ -155,7 +155,10 @@ async function fetchPricesIndividually(tickers: string[]): Promise<Record<string
 // Portfolio Builder
 // -----------------------------------------------------------------------------
 
-export async function buildPortfolio(accounts: BrokerAccount[]): Promise<BrokerPortfolio> {
+export async function buildPortfolio(
+  accounts: BrokerAccount[],
+  onProgress?: (current: number, total: number, label: string) => void
+): Promise<BrokerPortfolio> {
   // Collect all unique tickers
   const allTickers = new Set<string>();
   for (const account of accounts) {
@@ -164,11 +167,18 @@ export async function buildPortfolio(accounts: BrokerAccount[]): Promise<BrokerP
     }
   }
 
+  const totalSteps = accounts.length + 1; // +1 for price fetching
+  onProgress?.(0, totalSteps, 'Fetching prices');
+
   // Fetch all prices
   const prices = allTickers.size > 0 ? await fetchStockPrices(Array.from(allTickers)) : {};
+  onProgress?.(1, totalSteps, 'Prices loaded');
 
   // Build enriched accounts
+  let completed = 1;
   const enrichedAccounts: BrokerAccountWithValues[] = accounts.map((account) => {
+    completed++;
+    onProgress?.(completed, totalSteps, account.name);
     const enrichedHoldings = account.holdings.map((h) => {
       const price = prices[h.ticker.toUpperCase()] || 0;
       const marketValue = h.shares * price;
