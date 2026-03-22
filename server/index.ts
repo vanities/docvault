@@ -403,6 +403,7 @@ async function saveContributions(data: ContributionsData): Promise<void> {
 // ============================================================================
 
 const TODOS_FILE = path.join(DATA_DIR, '.docvault-todos.json');
+const CRYPTO_CACHE_FILE = path.join(DATA_DIR, '.docvault-crypto-cache.json');
 
 interface Todo {
   id: string;
@@ -591,6 +592,26 @@ async function handleRequest(req: Request): Promise<Response> {
       });
     }
 
+    // Return cached data without refetching (for page loads)
+    const cached = url.searchParams.get('cached') === '1';
+    if (cached) {
+      try {
+        const content = await fs.readFile(CRYPTO_CACHE_FILE, 'utf-8');
+        return jsonResponse(JSON.parse(content));
+      } catch {
+        return jsonResponse({ sources: [], totalUsdValue: 0, byAsset: [], lastUpdated: '' }, 200);
+      }
+    }
+
+    // Helper to save results to cache file
+    const saveCryptoCache = async (portfolio: object) => {
+      try {
+        await fs.writeFile(CRYPTO_CACHE_FILE, JSON.stringify(portfolio, null, 2));
+      } catch {
+        // Non-critical — cache write failure doesn't block response
+      }
+    };
+
     // Check if client wants streaming progress
     const stream = url.searchParams.get('stream') === '1';
 
@@ -609,6 +630,7 @@ async function handleRequest(req: Request): Promise<Response> {
               );
             }
           );
+          await saveCryptoCache(portfolio);
           controller.enqueue(
             encoder.encode(JSON.stringify({ type: 'result', ...portfolio }) + '\n')
           );
@@ -633,6 +655,7 @@ async function handleRequest(req: Request): Promise<Response> {
       cryptoConfig.wallets,
       cryptoConfig.etherscanKey
     );
+    await saveCryptoCache(portfolio);
     return jsonResponse(portfolio);
   }
 
@@ -649,6 +672,22 @@ async function handleRequest(req: Request): Promise<Response> {
         cryptoConfig.wallets,
         cryptoConfig.etherscanKey
       );
+      // Update the source in the cache file
+      try {
+        const cacheRaw = await fs.readFile(CRYPTO_CACHE_FILE, 'utf-8');
+        const cache = JSON.parse(cacheRaw);
+        cache.sources = (cache.sources || []).map((s: { sourceId: string }) =>
+          s.sourceId === sourceId ? source : s
+        );
+        cache.totalUsdValue = cache.sources.reduce(
+          (sum: number, s: { totalUsdValue: number }) => sum + s.totalUsdValue,
+          0
+        );
+        cache.lastUpdated = new Date().toISOString();
+        await fs.writeFile(CRYPTO_CACHE_FILE, JSON.stringify(cache, null, 2));
+      } catch {
+        // Cache update is non-critical
+      }
       return jsonResponse(source);
     } catch (err) {
       return jsonResponse({ error: err instanceof Error ? err.message : 'Unknown error' }, 404);

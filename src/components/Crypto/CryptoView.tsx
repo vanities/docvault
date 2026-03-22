@@ -147,7 +147,7 @@ function AssetRow({ balance }: { balance: CryptoBalance }) {
   );
 }
 
-// Module-level cache so data survives tab switches
+// Module-level cache for tab switches (server-side cache handles page refreshes)
 let cachedPortfolio: CryptoPortfolio | null = null;
 
 export function CryptoView() {
@@ -243,10 +243,28 @@ export function CryptoView() {
     }
   }, []);
 
+  // On mount: load from server cache (instant), don't refetch live
   useEffect(() => {
-    if (!cachedPortfolio) {
-      loadBalances();
-    }
+    if (cachedPortfolio) return; // Already have module-level cache
+    (async () => {
+      try {
+        // Load cached data from server (no live API calls)
+        const res = await fetch(`${API_BASE}/crypto/balances?cached=1`);
+        if (!res.ok) throw new Error('No cache');
+        const data = await res.json();
+        if (data.sources?.length > 0) {
+          cachedPortfolio = data;
+          setPortfolio(data);
+          setIsLoading(false);
+        } else {
+          // No cache — do a full sync
+          loadBalances();
+        }
+      } catch {
+        // No cache — do a full sync
+        loadBalances();
+      }
+    })();
   }, [loadBalances]);
 
   // Progress bar component
