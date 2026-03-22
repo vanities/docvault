@@ -112,11 +112,20 @@ export function SettingsView() {
   const [etherscanKeyHint, setEtherscanKeyHint] = useState<string | undefined>();
   const [newEtherscanKey, setNewEtherscanKey] = useState('');
 
+  // Schedule settings state
+  const [snapshotEnabled, setSnapshotEnabled] = useState(true);
+  const [snapshotInterval, setSnapshotInterval] = useState(1440);
+  const [dropboxSyncEnabled, setDropboxSyncEnabled] = useState(true);
+  const [dropboxSyncInterval, setDropboxSyncInterval] = useState(15);
+  const [isScheduleSaving, setIsScheduleSaving] = useState(false);
+  const [scheduleSaved, setScheduleSaved] = useState(false);
+
   // Load settings and sync status on mount
   useEffect(() => {
     void loadSettings();
     void loadSyncStatus();
     void loadCryptoSettings();
+    void loadSchedules();
     const interval = setInterval(() => void loadSyncStatus(), 30000); // Poll every 30s
     return () => clearInterval(interval);
   }, []);
@@ -387,6 +396,48 @@ export function SettingsView() {
     }
   };
 
+  const loadSchedules = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/schedules`);
+      if (res.ok) {
+        const data = await res.json();
+        setSnapshotEnabled(data.snapshotEnabled);
+        setSnapshotInterval(data.snapshotIntervalMinutes);
+        setDropboxSyncEnabled(data.dropboxSyncEnabled);
+        setDropboxSyncInterval(data.dropboxSyncIntervalMinutes);
+      }
+    } catch {
+      // Use defaults
+    }
+  };
+
+  const handleSaveSchedules = async () => {
+    setIsScheduleSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/schedules`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          snapshotEnabled,
+          snapshotIntervalMinutes: snapshotInterval,
+          dropboxSyncEnabled,
+          dropboxSyncIntervalMinutes: dropboxSyncInterval,
+        }),
+      });
+      if (res.ok) {
+        addToast('Schedules updated', 'success');
+        setScheduleSaved(true);
+        setTimeout(() => setScheduleSaved(false), 2000);
+      } else {
+        addToast('Failed to save schedules', 'error');
+      }
+    } catch {
+      addToast('Failed to save schedules', 'error');
+    } finally {
+      setIsScheduleSaving(false);
+    }
+  };
+
   const handleRemoveEntity = async (entity: EntityConfig) => {
     if (!confirm(`Remove "${entity.name}"? This won't delete files.`)) {
       return;
@@ -638,6 +689,108 @@ export function SettingsView() {
             </div>
           </div>
         )}
+      </section>
+
+      {/* Schedules Section */}
+      <section className="glass-card rounded-xl p-6 mb-8">
+        <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
+          <RefreshCw className="w-5 h-5" />
+          Scheduled Tasks
+        </h3>
+        <p className="text-[13px] text-surface-600 mb-4">
+          Configure automatic portfolio snapshots and Dropbox sync intervals. Changes take effect
+          immediately.
+        </p>
+
+        <div className="space-y-4">
+          {/* Portfolio Snapshots */}
+          <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-[13px] font-medium text-surface-900">Portfolio Snapshots</p>
+                <p className="text-[11px] text-surface-500">
+                  Saves daily portfolio value for the history chart
+                </p>
+              </div>
+              <button
+                onClick={() => setSnapshotEnabled(!snapshotEnabled)}
+                className={`relative w-10 h-5 rounded-full transition-colors ${snapshotEnabled ? 'bg-violet-500' : 'bg-surface-400'}`}
+              >
+                <span
+                  className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${snapshotEnabled ? 'left-5.5 translate-x-0' : 'left-0.5'}`}
+                  style={{ left: snapshotEnabled ? 22 : 2 }}
+                />
+              </button>
+            </div>
+            {snapshotEnabled && (
+              <div className="flex items-center gap-2">
+                <label className="text-[12px] text-surface-600">Every</label>
+                <select
+                  value={snapshotInterval}
+                  onChange={(e) => setSnapshotInterval(Number(e.target.value))}
+                  className="px-2 py-1.5 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                >
+                  <option value={60}>1 hour</option>
+                  <option value={360}>6 hours</option>
+                  <option value={720}>12 hours</option>
+                  <option value={1440}>24 hours</option>
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* Dropbox Sync */}
+          <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-[13px] font-medium text-surface-900">Dropbox Sync</p>
+                <p className="text-[11px] text-surface-500">Runs sync-to-dropbox.sh via rclone</p>
+              </div>
+              <button
+                onClick={() => setDropboxSyncEnabled(!dropboxSyncEnabled)}
+                className={`relative w-10 h-5 rounded-full transition-colors ${dropboxSyncEnabled ? 'bg-violet-500' : 'bg-surface-400'}`}
+              >
+                <span
+                  className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
+                  style={{ left: dropboxSyncEnabled ? 22 : 2 }}
+                />
+              </button>
+            </div>
+            {dropboxSyncEnabled && (
+              <div className="flex items-center gap-2">
+                <label className="text-[12px] text-surface-600">Every</label>
+                <select
+                  value={dropboxSyncInterval}
+                  onChange={(e) => setDropboxSyncInterval(Number(e.target.value))}
+                  className="px-2 py-1.5 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                >
+                  <option value={5}>5 minutes</option>
+                  <option value={15}>15 minutes</option>
+                  <option value={30}>30 minutes</option>
+                  <option value={60}>1 hour</option>
+                </select>
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={handleSaveSchedules}
+            disabled={isScheduleSaving}
+            className="flex items-center gap-2 px-4 py-2.5 bg-violet-500 text-surface-0 rounded-xl hover:bg-violet-400 transition-colors disabled:opacity-50 text-[13px] font-medium"
+          >
+            {scheduleSaved ? (
+              <>
+                <CheckCircle className="w-4 h-4" />
+                Saved
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                {isScheduleSaving ? 'Saving...' : 'Save Schedules'}
+              </>
+            )}
+          </button>
+        </div>
       </section>
 
       {/* Crypto Settings Section */}

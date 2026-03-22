@@ -70,6 +70,12 @@ interface Settings {
     accounts: BrokerAccount[];
   };
   snaptrade?: SnapTradeConfig;
+  schedules?: {
+    snapshotIntervalMinutes?: number; // default 1440 (24h)
+    dropboxSyncIntervalMinutes?: number; // default 15
+    dropboxSyncEnabled?: boolean;
+    snapshotEnabled?: boolean;
+  };
 }
 
 interface FileInfo {
@@ -876,39 +882,12 @@ async function handleRequest(req: Request): Promise<Response> {
     return jsonResponse(snapshots);
   }
 
-  // POST /api/portfolio/snapshot — take a snapshot now (also callable via cron)
-  // Usage from cron: curl -X POST http://localhost:3005/api/portfolio/snapshot
+  // POST /api/portfolio/snapshot — take a snapshot now (also runs on schedule)
   if (pathname === '/api/portfolio/snapshot' && req.method === 'POST') {
     try {
-      const settings = await loadSettings();
-      const accounts: BrokerAccount[] = settings.brokers?.accounts || [];
-
-      // Build broker portfolio
-      const brokerPortfolio = accounts.length > 0 ? await buildPortfolio(accounts) : null;
-
-      // Load cached crypto portfolio
-      let cryptoValue = 0;
-      try {
-        const cryptoData = await fs.readFile(CRYPTO_CACHE_FILE, 'utf-8');
-        const cryptoPortfolio = JSON.parse(cryptoData);
-        cryptoValue = cryptoPortfolio.totalUsdValue || 0;
-      } catch {
-        // No crypto cache
-      }
-
-      const brokerValue = brokerPortfolio?.totalValue || 0;
-      const today = new Date().toISOString().split('T')[0];
-
-      const snapshot: PortfolioSnapshot = {
-        date: today,
-        totalValue: cryptoValue + brokerValue,
-        cryptoValue,
-        brokerValue,
-        shortTermGains: brokerPortfolio?.shortTermGains || 0,
-        longTermGains: brokerPortfolio?.longTermGains || 0,
-      };
-
-      await saveSnapshot(snapshot);
+      await takePortfolioSnapshot();
+      const snapshots = await loadSnapshots();
+      const snapshot = snapshots[snapshots.length - 1];
       return jsonResponse({ ok: true, snapshot });
     } catch (err) {
       return jsonResponse({ error: err instanceof Error ? err.message : 'Snapshot failed' }, 500);
@@ -2262,6 +2241,42 @@ async function handleRequest(req: Request): Promise<Response> {
     }
   }
 
+  // GET /api/schedules - Get current schedule config and status
+  if (pathname === '/api/schedules' && req.method === 'GET') {
+    const settings = await loadSettings();
+    const schedules = settings.schedules || {};
+    return jsonResponse({
+      snapshotEnabled: schedules.snapshotEnabled !== false,
+      snapshotIntervalMinutes: schedules.snapshotIntervalMinutes || DEFAULT_SNAPSHOT_INTERVAL,
+      dropboxSyncEnabled: schedules.dropboxSyncEnabled !== false,
+      dropboxSyncIntervalMinutes:
+        schedules.dropboxSyncIntervalMinutes || DEFAULT_DROPBOX_SYNC_INTERVAL,
+    });
+  }
+
+  // PUT /api/schedules - Update schedule config and restart timers
+  if (pathname === '/api/schedules' && req.method === 'PUT') {
+    try {
+      const body = await req.json();
+      const settings = await loadSettings();
+      settings.schedules = {
+        snapshotEnabled: body.snapshotEnabled ?? true,
+        snapshotIntervalMinutes: body.snapshotIntervalMinutes || DEFAULT_SNAPSHOT_INTERVAL,
+        dropboxSyncEnabled: body.dropboxSyncEnabled ?? true,
+        dropboxSyncIntervalMinutes:
+          body.dropboxSyncIntervalMinutes || DEFAULT_DROPBOX_SYNC_INTERVAL,
+      };
+      await saveSettings(settings);
+      startScheduler(settings.schedules);
+      return jsonResponse({ ok: true, schedules: settings.schedules });
+    } catch (err) {
+      return jsonResponse(
+        { error: err instanceof Error ? err.message : 'Failed to update schedules' },
+        500
+      );
+    }
+  }
+
   // POST /api/save-parsed - Save parsed data for a file
   if (pathname === '/api/save-parsed' && req.method === 'POST') {
     try {
@@ -2940,6 +2955,118 @@ Return: { "naming": {...}, "parsedData": {...} }`,
   // 404 for unmatched routes
   return jsonResponse({ error: 'Not found' }, 404);
 }
+
+// ============================================================================
+// Scheduler — built-in cron-like recurring tasks
+// ============================================================================
+
+const DEFAULT_SNAPSHOT_INTERVAL = 1440; // 24 hours in minutes
+const DEFAULT_DROPBOX_SYNC_INTERVAL = 15; // 15 minutes
+const SYNC_SCRIPT_PATH = path.join(__dirname, '..', 'scripts', 'sync-to-dropbox.sh');
+
+let snapshotTimer: ReturnType<typeof setInterval> | null = null;
+let dropboxSyncTimer: ReturnType<typeof setInterval> | null = null;
+
+async function takePortfolioSnapshot(): Promise<void> {
+  try {
+    const settings = await loadSettings();
+    const accounts: BrokerAccount[] = settings.brokers?.accounts || [];
+    const brokerPortfolio = accounts.length > 0 ? await buildPortfolio(accounts) : null;
+
+    let cryptoValue = 0;
+    try {
+      const cryptoData = await fs.readFile(CRYPTO_CACHE_FILE, 'utf-8');
+      const cryptoPortfolio = JSON.parse(cryptoData);
+      cryptoValue = cryptoPortfolio.totalUsdValue || 0;
+    } catch {
+      // No crypto cache
+    }
+
+    const brokerValue = brokerPortfolio?.totalValue || 0;
+    const today = new Date().toISOString().split('T')[0];
+
+    await saveSnapshot({
+      date: today,
+      totalValue: cryptoValue + brokerValue,
+      cryptoValue,
+      brokerValue,
+      shortTermGains: brokerPortfolio?.shortTermGains || 0,
+      longTermGains: brokerPortfolio?.longTermGains || 0,
+    });
+    console.log(`[scheduler] Portfolio snapshot saved for ${today}`);
+  } catch (err) {
+    console.error('[scheduler] Snapshot failed:', err);
+  }
+}
+
+async function runDropboxSync(): Promise<void> {
+  try {
+    // Try the scripts directory first, then check if rclone is available
+    const scriptExists = await fs
+      .access(SYNC_SCRIPT_PATH)
+      .then(() => true)
+      .catch(() => false);
+
+    if (scriptExists) {
+      const proc = Bun.spawn(['bash', SYNC_SCRIPT_PATH], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      await proc.exited;
+      console.log(`[scheduler] Dropbox sync completed (exit: ${proc.exitCode})`);
+    } else {
+      // If no script, check for rclone directly (Docker/NAS environment)
+      const proc = Bun.spawn(['which', 'rclone'], { stdout: 'pipe', stderr: 'pipe' });
+      await proc.exited;
+      if (proc.exitCode === 0) {
+        console.log(
+          '[scheduler] No sync script found but rclone is available. Skipping — configure sync-to-dropbox.sh'
+        );
+      } else {
+        console.log('[scheduler] Dropbox sync skipped — no sync script or rclone found');
+      }
+    }
+  } catch (err) {
+    console.error('[scheduler] Dropbox sync failed:', err);
+  }
+}
+
+function startScheduler(schedules: Settings['schedules'] = {}): void {
+  // Clear existing timers
+  if (snapshotTimer) clearInterval(snapshotTimer);
+  if (dropboxSyncTimer) clearInterval(dropboxSyncTimer);
+  snapshotTimer = null;
+  dropboxSyncTimer = null;
+
+  const snapshotEnabled = schedules?.snapshotEnabled !== false; // default on
+  const snapshotMinutes = schedules?.snapshotIntervalMinutes || DEFAULT_SNAPSHOT_INTERVAL;
+
+  const dropboxEnabled = schedules?.dropboxSyncEnabled !== false; // default on
+  const dropboxMinutes = schedules?.dropboxSyncIntervalMinutes || DEFAULT_DROPBOX_SYNC_INTERVAL;
+
+  if (snapshotEnabled) {
+    snapshotTimer = setInterval(takePortfolioSnapshot, snapshotMinutes * 60 * 1000);
+    console.log(`[scheduler] Portfolio snapshot: every ${snapshotMinutes}m`);
+  } else {
+    console.log('[scheduler] Portfolio snapshot: disabled');
+  }
+
+  if (dropboxEnabled) {
+    dropboxSyncTimer = setInterval(runDropboxSync, dropboxMinutes * 60 * 1000);
+    console.log(`[scheduler] Dropbox sync: every ${dropboxMinutes}m`);
+  } else {
+    console.log('[scheduler] Dropbox sync: disabled');
+  }
+}
+
+// Initialize scheduler on startup
+loadSettings()
+  .then((settings) => {
+    startScheduler(settings.schedules);
+  })
+  .catch(() => {
+    startScheduler();
+  });
 
 // ============================================================================
 // Start server using Bun's native server
