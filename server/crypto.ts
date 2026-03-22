@@ -391,8 +391,9 @@ async function fetchBtcBalance(address: string): Promise<Balance[]> {
 // Wallet: Ethereum (native ETH + ERC-20 tokens via Etherscan free API)
 // -----------------------------------------------------------------------------
 
-// Etherscan free tier: 5 calls/sec, no key required (uses rate-limited community endpoint)
+// Etherscan: with API key = 5 calls/sec, without = 1 call/5sec (very slow)
 const ETHERSCAN_BASE = 'https://api.etherscan.io/api';
+let etherscanApiKey: string | undefined;
 
 // Well-known ERC-20 token contracts → symbol mapping
 const ERC20_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
@@ -411,10 +412,14 @@ const ERC20_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
 async function fetchEthBalance(address: string): Promise<Balance[]> {
   const balances: Balance[] = [];
 
-  // 1. Fetch native ETH balance via Etherscan (more reliable than Cloudflare RPC)
+  const apiKeyParam = etherscanApiKey ? `&apikey=${etherscanApiKey}` : '';
+  // With API key: 5 calls/sec → 210ms delay. Without: 1 call/5sec → 5100ms delay
+  const rateDelay = etherscanApiKey ? 210 : 5100;
+
+  // 1. Fetch native ETH balance via Etherscan
   try {
     const ethRes = await fetch(
-      `${ETHERSCAN_BASE}?module=account&action=balance&address=${address}&tag=latest`
+      `${ETHERSCAN_BASE}?module=account&action=balance&address=${address}&tag=latest${apiKeyParam}`
     );
     if (ethRes.ok) {
       const ethData = await ethRes.json();
@@ -429,11 +434,12 @@ async function fetchEthBalance(address: string): Promise<Balance[]> {
     console.error('[ETH] Native balance error:', err);
   }
 
-  // 2. Fetch ERC-20 token balances (batch with small delays to respect rate limit)
+  // 2. Fetch ERC-20 token balances
   for (const token of ERC20_TOKENS) {
     try {
+      await new Promise((r) => setTimeout(r, rateDelay));
       const tokenRes = await fetch(
-        `${ETHERSCAN_BASE}?module=account&action=tokenbalance&contractaddress=${token.contract}&address=${address}&tag=latest`
+        `${ETHERSCAN_BASE}?module=account&action=tokenbalance&contractaddress=${token.contract}&address=${address}&tag=latest${apiKeyParam}`
       );
       if (tokenRes.ok) {
         const tokenData = await tokenRes.json();
@@ -444,8 +450,6 @@ async function fetchEthBalance(address: string): Promise<Balance[]> {
           }
         }
       }
-      // Small delay to respect Etherscan's 5 calls/sec free tier
-      await new Promise((r) => setTimeout(r, 220));
     } catch {
       // Skip failed token lookups silently
     }
@@ -477,13 +481,17 @@ const WALLET_FETCHERS: Record<string, (address: string) => Promise<Balance[]>> =
 
 export async function fetchAllBalances(
   exchanges: ExchangeConfig[],
-  wallets: WalletConfig[]
+  wallets: WalletConfig[],
+  etherscanKey_?: string
 ): Promise<{
   sources: SourceBalance[];
   totalUsdValue: number;
   byAsset: Balance[];
   lastUpdated: string;
 }> {
+  // Set Etherscan API key for wallet queries
+  etherscanApiKey = etherscanKey_;
+
   const sources: SourceBalance[] = [];
   const allAssets = new Set<string>();
 

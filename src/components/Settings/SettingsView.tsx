@@ -108,6 +108,9 @@ export function SettingsView() {
   const [isCryptoSaving, setIsCryptoSaving] = useState(false);
   const [showExchangeHelp, setShowExchangeHelp] = useState(false);
   const [showWalletHelp, setShowWalletHelp] = useState(false);
+  const [hasEtherscanKey, setHasEtherscanKey] = useState(false);
+  const [etherscanKeyHint, setEtherscanKeyHint] = useState<string | undefined>();
+  const [newEtherscanKey, setNewEtherscanKey] = useState('');
 
   // Load settings and sync status on mount
   useEffect(() => {
@@ -237,6 +240,8 @@ export function SettingsView() {
       const data = await res.json();
       setCryptoExchanges(data.exchanges || []);
       setCryptoWallets(data.wallets || []);
+      setHasEtherscanKey(data.hasEtherscanKey || false);
+      setEtherscanKeyHint(data.etherscanKeyHint);
     } catch {
       // Silently fail — crypto is optional
     }
@@ -337,6 +342,46 @@ export function SettingsView() {
       }
     } catch {
       addToast('Failed to remove wallet', 'error');
+    } finally {
+      setIsCryptoSaving(false);
+    }
+  };
+
+  const handleSaveEtherscanKey = async () => {
+    if (!newEtherscanKey) return;
+    setIsCryptoSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/crypto/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ etherscanKey: newEtherscanKey }),
+      });
+      if ((await res.json()).ok) {
+        addToast('Etherscan key saved', 'success');
+        setNewEtherscanKey('');
+        loadCryptoSettings();
+      }
+    } catch {
+      addToast('Failed to save Etherscan key', 'error');
+    } finally {
+      setIsCryptoSaving(false);
+    }
+  };
+
+  const handleRemoveEtherscanKey = async () => {
+    setIsCryptoSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/crypto/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ etherscanKey: '' }),
+      });
+      if ((await res.json()).ok) {
+        addToast('Etherscan key removed', 'success');
+        loadCryptoSettings();
+      }
+    } catch {
+      addToast('Failed to remove Etherscan key', 'error');
     } finally {
       setIsCryptoSaving(false);
     }
@@ -952,6 +997,62 @@ export function SettingsView() {
               Add Wallet
             </button>
           )}
+
+          {/* Etherscan API Key */}
+          <div className="mt-4 pt-4 border-t border-border">
+            <label className="block text-[11px] font-medium text-surface-600 mb-2">
+              Etherscan API Key{' '}
+              <span className="text-surface-500 font-normal">
+                (for ERC-20 token balances &mdash;{' '}
+                <a
+                  href="https://etherscan.io/myapikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent-400 hover:underline"
+                >
+                  get one free
+                </a>
+                )
+              </span>
+            </label>
+            {hasEtherscanKey ? (
+              <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                <CheckCircle className="w-4 h-4 text-emerald-400" />
+                <span className="text-[13px] text-emerald-400 font-medium flex-1">
+                  Key set
+                  {etherscanKeyHint && (
+                    <span className="text-emerald-400/70 ml-2 font-mono">
+                      ****{etherscanKeyHint}
+                    </span>
+                  )}
+                </span>
+                <button
+                  onClick={handleRemoveEtherscanKey}
+                  disabled={isCryptoSaving}
+                  className="text-[13px] text-danger-400 hover:text-danger-300"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  value={newEtherscanKey}
+                  onChange={(e) => setNewEtherscanKey(e.target.value)}
+                  placeholder="Etherscan API key..."
+                  className="flex-1 px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 font-mono placeholder:text-surface-500"
+                />
+                <button
+                  onClick={handleSaveEtherscanKey}
+                  disabled={isCryptoSaving || !newEtherscanKey}
+                  className="px-3 py-2 text-[13px] text-surface-0 bg-accent-500 hover:bg-accent-400 rounded-xl transition-colors disabled:opacity-50 font-medium"
+                >
+                  Save
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </section>
 

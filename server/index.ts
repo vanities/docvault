@@ -54,6 +54,7 @@ interface Settings {
   crypto?: {
     exchanges: CryptoExchangeConfig[];
     wallets: CryptoWalletConfig[];
+    etherscanKey?: string;
   };
 }
 
@@ -511,6 +512,8 @@ async function handleRequest(req: Request): Promise<Response> {
         chain: w.chain,
         label: w.label,
       })),
+      hasEtherscanKey: !!cryptoConfig.etherscanKey,
+      etherscanKeyHint: cryptoConfig.etherscanKey ? cryptoConfig.etherscanKey.slice(-4) : undefined,
     });
   }
 
@@ -564,6 +567,11 @@ async function handleRequest(req: Request): Promise<Response> {
       settings.crypto.wallets = settings.crypto.wallets.filter((w) => w.id !== body.removeWallet);
     }
 
+    // Handle Etherscan key
+    if (body.etherscanKey !== undefined) {
+      settings.crypto.etherscanKey = body.etherscanKey || undefined;
+    }
+
     await saveSettings(settings);
     return jsonResponse({ ok: true });
   }
@@ -583,7 +591,11 @@ async function handleRequest(req: Request): Promise<Response> {
       });
     }
 
-    const portfolio = await fetchAllBalances(cryptoConfig.exchanges, cryptoConfig.wallets);
+    const portfolio = await fetchAllBalances(
+      cryptoConfig.exchanges,
+      cryptoConfig.wallets,
+      cryptoConfig.etherscanKey
+    );
     return jsonResponse(portfolio);
   }
 
