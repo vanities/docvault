@@ -86,6 +86,7 @@ interface Settings {
     dropboxSyncIntervalMinutes?: number; // default 15
     dropboxSyncEnabled?: boolean;
     snapshotEnabled?: boolean;
+    backupPassword?: string; // if set, encrypted config backup is pushed to Dropbox on sync
   };
 }
 
@@ -443,6 +444,7 @@ async function saveContributions(data: ContributionsData): Promise<void> {
 // ============================================================================
 
 const TODOS_FILE = path.join(DATA_DIR, '.docvault-todos.json');
+const SALES_FILE = path.join(DATA_DIR, '.docvault-sales.json');
 const CRYPTO_CACHE_FILE = path.join(DATA_DIR, '.docvault-crypto-cache.json');
 const BROKER_CACHE_FILE = path.join(DATA_DIR, '.docvault-broker-cache.json');
 const SIMPLEFIN_CACHE_FILE = path.join(DATA_DIR, '.docvault-simplefin-cache.json');
@@ -540,6 +542,48 @@ async function saveTodos(todos: Todo[]): Promise<void> {
   await fs.writeFile(TODOS_FILE, JSON.stringify(todos, null, 2));
 }
 
+// ============================================================================
+// Sales Storage
+// ============================================================================
+
+interface SaleProduct {
+  id: string;
+  name: string;
+  price: number;
+}
+
+interface Sale {
+  id: string;
+  person: string;
+  productId: string;
+  quantity: number;
+  total: number;
+  date: string;
+  createdAt: string;
+}
+
+interface SalesData {
+  products: SaleProduct[];
+  sales: Sale[];
+}
+
+async function loadSalesData(): Promise<SalesData> {
+  try {
+    const content = await fs.readFile(SALES_FILE, 'utf-8');
+    const data = JSON.parse(content);
+    return {
+      products: data.products || [],
+      sales: data.sales || [],
+    };
+  } catch {
+    return { products: [], sales: [] };
+  }
+}
+
+async function saveSalesData(data: SalesData): Promise<void> {
+  await fs.writeFile(SALES_FILE, JSON.stringify(data, null, 2));
+}
+
 // Queue to serialize writes to parsed data file
 let parsedDataWriteQueue: Promise<void> = Promise.resolve();
 
@@ -622,6 +666,24 @@ async function handleRequest(req: Request): Promise<Response> {
   // =========================================================================
   // Encrypted Backup / Restore
   // =========================================================================
+
+  // GET /api/backup/latest — download the latest auto-generated encrypted backup
+  if (pathname === '/api/backup/latest' && req.method === 'GET') {
+    const backupPath = path.join(DATA_DIR, '.docvault-config-backup.enc');
+    try {
+      const data = await fs.readFile(backupPath);
+      const stat = await fs.stat(backupPath);
+      const dateStr = new Date(stat.mtime).toISOString().split('T')[0];
+      return new Response(data, {
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Content-Disposition': `attachment; filename="docvault-backup-${dateStr}.enc"`,
+        },
+      });
+    } catch {
+      return jsonResponse({ error: 'No auto-backup found. Set a backup password in Schedules and wait for the next sync cycle.' }, 404);
+    }
+  }
 
   // POST /api/backup — create encrypted backup of all data
   // Body: { password: "..." }
@@ -2483,6 +2545,96 @@ async function handleRequest(req: Request): Promise<Response> {
     return jsonResponse({ ok: true });
   }
 
+  // ========================================================================
+  // Sales API
+  // ========================================================================
+
+  // GET /api/sales - Get all sales data (products + sales)
+  if (pathname === '/api/sales' && req.method === 'GET') {
+    const data = await loadSalesData();
+    return jsonResponse(data);
+  }
+
+  // POST /api/sales - Create a new sale
+  if (pathname === '/api/sales' && req.method === 'POST') {
+    const body = await req.json();
+    const { person, productId, quantity, date } = body;
+
+    if (!person || !productId) {
+      return jsonResponse({ error: 'Missing person or productId' }, 400);
+    }
+
+    const data = await loadSalesData();
+    const product = data.products.find((p: SaleProduct) => p.id === productId);
+    if (!product) {
+      return jsonResponse({ error: 'Product not found' }, 404);
+    }
+
+    const qty = quantity || 1;
+    const sale: Sale = {
+      id: crypto.randomUUID(),
+      person: person.trim(),
+      productId,
+      quantity: qty,
+      total: product.price * qty,
+      date: date || new Date().toISOString().split('T')[0],
+      createdAt: new Date().toISOString(),
+    };
+
+    data.sales.push(sale);
+    await saveSalesData(data);
+    return jsonResponse({ ok: true, sale });
+  }
+
+  // DELETE /api/sales/:id - Delete a sale
+  const saleDeleteMatch = pathname.match(/^\/api\/sales\/([^/]+)$/);
+  if (saleDeleteMatch && req.method === 'DELETE') {
+    const saleId = saleDeleteMatch[1];
+    const data = await loadSalesData();
+    const filtered = data.sales.filter((s: Sale) => s.id !== saleId);
+    if (filtered.length === data.sales.length) {
+      return jsonResponse({ error: 'Sale not found' }, 404);
+    }
+    data.sales = filtered;
+    await saveSalesData(data);
+    return jsonResponse({ ok: true });
+  }
+
+  // POST /api/sales/products - Add a new product
+  if (pathname === '/api/sales/products' && req.method === 'POST') {
+    const body = await req.json();
+    const { name, price } = body;
+
+    if (!name || price === undefined) {
+      return jsonResponse({ error: 'Missing name or price' }, 400);
+    }
+
+    const data = await loadSalesData();
+    const product: SaleProduct = {
+      id: crypto.randomUUID(),
+      name: name.trim(),
+      price: Number(price),
+    };
+
+    data.products.push(product);
+    await saveSalesData(data);
+    return jsonResponse({ ok: true, product });
+  }
+
+  // DELETE /api/sales/products/:id - Delete a product
+  const productDeleteMatch = pathname.match(/^\/api\/sales\/products\/([^/]+)$/);
+  if (productDeleteMatch && req.method === 'DELETE') {
+    const productId = productDeleteMatch[1];
+    const data = await loadSalesData();
+    const filtered = data.products.filter((p: SaleProduct) => p.id !== productId);
+    if (filtered.length === data.products.length) {
+      return jsonResponse({ error: 'Product not found' }, 404);
+    }
+    data.products = filtered;
+    await saveSalesData(data);
+    return jsonResponse({ ok: true });
+  }
+
   // GET /api/search?q=query - Search all files across all entities and years
   if (pathname === '/api/search' && req.method === 'GET') {
     const query = url.searchParams.get('q')?.toLowerCase();
@@ -2617,6 +2769,7 @@ async function handleRequest(req: Request): Promise<Response> {
       dropboxSyncEnabled: schedules.dropboxSyncEnabled !== false,
       dropboxSyncIntervalMinutes:
         schedules.dropboxSyncIntervalMinutes || DEFAULT_DROPBOX_SYNC_INTERVAL,
+      backupPasswordSet: !!schedules.backupPassword,
     });
   }
 
@@ -2631,6 +2784,7 @@ async function handleRequest(req: Request): Promise<Response> {
         dropboxSyncEnabled: body.dropboxSyncEnabled ?? true,
         dropboxSyncIntervalMinutes:
           body.dropboxSyncIntervalMinutes || DEFAULT_DROPBOX_SYNC_INTERVAL,
+        backupPassword: body.backupPassword || settings.schedules?.backupPassword,
       };
       await saveSettings(settings);
       startScheduler(settings.schedules);
@@ -3336,7 +3490,22 @@ let dropboxSyncTimer: ReturnType<typeof setInterval> | null = null;
 
 async function takePortfolioSnapshot(): Promise<void> {
   try {
-    const settings = await loadSettings();
+    let settings = await loadSettings();
+
+    // Refresh SnapTrade holdings before pricing (keeps positions current)
+    if (settings.snaptrade?.userId) {
+      try {
+        const snapAccounts = await fetchAllSnapTradeHoldings(settings.snaptrade);
+        if (!settings.brokers) settings.brokers = { accounts: [] };
+        const manualAccounts = settings.brokers.accounts.filter((a) => !a.id.startsWith('snap-'));
+        settings.brokers.accounts = [...manualAccounts, ...snapAccounts];
+        await saveSettings(settings);
+        settings = await loadSettings(); // re-read after save
+        console.log(`[scheduler] SnapTrade holdings refreshed (${snapAccounts.length} accounts)`);
+      } catch (err) {
+        console.warn('[scheduler] SnapTrade refresh failed, using existing holdings:', err);
+      }
+    }
 
     // Fetch live broker prices (Yahoo Finance) and update cache
     const accounts: BrokerAccount[] = settings.brokers?.accounts || [];
@@ -3437,8 +3606,61 @@ async function takePortfolioSnapshot(): Promise<void> {
   }
 }
 
+async function createEncryptedConfigBackup(password: string): Promise<string | null> {
+  try {
+    // Collect all .docvault-*.json config files
+    const filesToBackup: Record<string, string> = {};
+    const files = await fs.readdir(DATA_DIR);
+    for (const name of files) {
+      if (name.startsWith('.docvault-') && name.endsWith('.json')) {
+        try {
+          filesToBackup[name] = await fs.readFile(path.join(DATA_DIR, name), 'utf-8');
+        } catch { /* skip unreadable */ }
+      }
+    }
+
+    if (Object.keys(filesToBackup).length === 0) return null;
+
+    // Zip
+    const zipData: Record<string, Uint8Array> = {};
+    for (const [name, content] of Object.entries(filesToBackup)) {
+      zipData[name] = new TextEncoder().encode(content);
+    }
+    const zipped = zipSync(zipData);
+
+    // Encrypt with AES-256-GCM (same format as /api/backup)
+    const { createCipheriv, randomBytes, scryptSync } = await import('crypto');
+    const salt = randomBytes(16);
+    const iv = randomBytes(12);
+    const key = scryptSync(password, salt, 32);
+    const cipher = createCipheriv('aes-256-gcm', key, iv);
+    const encrypted = Buffer.concat([cipher.update(zipped), cipher.final()]);
+    const authTag = cipher.getAuthTag();
+
+    // Pack: salt(16) + iv(12) + authTag(16) + encrypted
+    const packed = Buffer.concat([salt, iv, authTag, encrypted]);
+
+    // Write to data dir as .docvault-config-backup.enc
+    const backupPath = path.join(DATA_DIR, '.docvault-config-backup.enc');
+    await fs.writeFile(backupPath, packed);
+    console.log(`[scheduler] Encrypted config backup written (${Object.keys(filesToBackup).length} files, ${packed.length} bytes)`);
+    return backupPath;
+  } catch (err) {
+    console.error('[scheduler] Encrypted config backup failed:', err);
+    return null;
+  }
+}
+
 async function runDropboxSync(): Promise<void> {
   try {
+    // Create encrypted config backup before syncing (if password is configured)
+    // The .enc file is written to DATA_DIR so the NAS cron script can rclone it
+    const settings = await loadSettings();
+    const backupPw = settings.schedules?.backupPassword;
+    if (backupPw) {
+      await createEncryptedConfigBackup(backupPw);
+    }
+
     // Try the scripts directory first, then check if rclone is available
     const scriptExists = await fs
       .access(SYNC_SCRIPT_PATH)
@@ -3497,10 +3719,13 @@ function startScheduler(schedules: Settings['schedules'] = {}): void {
   }
 }
 
-// Initialize scheduler on startup
+// Initialize scheduler on startup — take an immediate snapshot then start intervals
 loadSettings()
-  .then((settings) => {
+  .then(async (settings) => {
     startScheduler(settings.schedules);
+    // Run first snapshot immediately so we don't wait 24h after container start
+    console.log('[scheduler] Taking initial snapshot on startup...');
+    await takePortfolioSnapshot();
   })
   .catch(() => {
     startScheduler();

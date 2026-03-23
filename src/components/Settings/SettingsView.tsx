@@ -131,6 +131,8 @@ export function SettingsView() {
   const [snapshotInterval, setSnapshotInterval] = useState(1440);
   const [dropboxSyncEnabled, setDropboxSyncEnabled] = useState(true);
   const [dropboxSyncInterval, setDropboxSyncInterval] = useState(15);
+  const [autoBackupPasswordSet, setAutoBackupPasswordSet] = useState(false);
+  const [autoBackupPassword, setAutoBackupPassword] = useState('');
   const [isScheduleSaving, setIsScheduleSaving] = useState(false);
   const [scheduleSaved, setScheduleSaved] = useState(false);
 
@@ -451,6 +453,7 @@ export function SettingsView() {
         setSnapshotInterval(data.snapshotIntervalMinutes);
         setDropboxSyncEnabled(data.dropboxSyncEnabled);
         setDropboxSyncInterval(data.dropboxSyncIntervalMinutes);
+        setAutoBackupPasswordSet(data.backupPasswordSet ?? false);
       }
     } catch {
       // Use defaults
@@ -468,11 +471,16 @@ export function SettingsView() {
           snapshotIntervalMinutes: snapshotInterval,
           dropboxSyncEnabled,
           dropboxSyncIntervalMinutes: dropboxSyncInterval,
+          ...(autoBackupPassword ? { backupPassword: autoBackupPassword } : {}),
         }),
       });
       if (res.ok) {
         addToast('Schedules updated', 'success');
         setScheduleSaved(true);
+        if (autoBackupPassword) {
+          setAutoBackupPasswordSet(true);
+          setAutoBackupPassword('');
+        }
         setTimeout(() => setScheduleSaved(false), 2000);
       } else {
         addToast('Failed to save schedules', 'error');
@@ -536,6 +544,7 @@ export function SettingsView() {
   const [backupPassword, setBackupPassword] = useState('');
   const [restorePassword, setRestorePassword] = useState('');
   const [isBackingUp, setIsBackingUp] = useState(false);
+  const [isDownloadingLatest, setIsDownloadingLatest] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
 
@@ -568,6 +577,32 @@ export function SettingsView() {
       addToast(err instanceof Error ? err.message : 'Backup failed', 'error');
     } finally {
       setIsBackingUp(false);
+    }
+  };
+
+  const handleDownloadLatestBackup = async () => {
+    setIsDownloadingLatest(true);
+    try {
+      const res = await fetch(`${API_BASE}/backup/latest`);
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Download failed');
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="(.+)"/);
+      const filename = match?.[1] || `docvault-backup-latest.enc`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      addToast('Backup downloaded', 'success');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Download failed', 'error');
+    } finally {
+      setIsDownloadingLatest(false);
     }
   };
 
@@ -1057,6 +1092,24 @@ export function SettingsView() {
                 </select>
               </div>
             )}
+          </div>
+
+          {/* Encrypted Config Backup to Dropbox */}
+          <div className="border-t border-border pt-4">
+            <p className="text-[13px] font-medium text-surface-900 mb-1">Encrypted Config Backup</p>
+            <p className="text-[11px] text-surface-500 mb-3">
+              Encrypts all config files and pushes to Dropbox on each sync.
+              {autoBackupPasswordSet && !autoBackupPassword && (
+                <span className="text-green-500 ml-1">Password configured.</span>
+              )}
+            </p>
+            <input
+              type="password"
+              placeholder={autoBackupPasswordSet ? '••••••••  (leave blank to keep)' : 'Set backup password...'}
+              value={autoBackupPassword}
+              onChange={(e) => setAutoBackupPassword(e.target.value)}
+              className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+            />
           </div>
 
           <button

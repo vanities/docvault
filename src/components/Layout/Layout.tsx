@@ -12,6 +12,7 @@ import { CryptoView } from '../Crypto/CryptoView';
 import { BrokersView } from '../Brokers/BrokersView';
 import { BanksView } from '../Banks/BanksView';
 import { PortfolioView } from '../Portfolio/PortfolioView';
+import { SalesView } from '../Sales/SalesView';
 import { AddEntityModal } from '../Settings/AddEntityModal';
 import { SearchResultsView } from '../Search/SearchResultsView';
 
@@ -86,6 +87,8 @@ export function Layout() {
         return <BanksView />;
       case 'portfolio':
         return <PortfolioView />;
+      case 'sales':
+        return <SalesView />;
       default:
         return <TaxYearView />;
     }
