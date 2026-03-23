@@ -14,6 +14,7 @@ import {
   PieChart,
   Building2,
   Egg,
+  Fuel,
   ChevronDown as ChevronDownIcon,
 } from 'lucide-react';
 import { useAppContext, type NavView } from '../../contexts/AppContext';
@@ -479,6 +480,26 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
                 className={`w-4 h-4 flex-shrink-0 ${activeView === 'sales' ? 'text-amber-500' : 'text-surface-600'}`}
               />
               <span className="font-medium text-[13px]">Sales</span>
+            </button>
+
+            {/* Mileage */}
+            <button
+              onClick={() => handleViewClick('mileage')}
+              disabled={isProcessing}
+              className={`
+                w-full flex items-center gap-2.5 px-2.5 py-3 md:py-2 rounded-lg transition-all duration-150 text-left
+                disabled:opacity-40 disabled:cursor-not-allowed
+                ${
+                  activeView === 'mileage'
+                    ? 'bg-teal-500/10 text-teal-500'
+                    : 'text-surface-800 hover:text-surface-950 hover:bg-surface-200/50'
+                }
+              `}
+            >
+              <Fuel
+                className={`w-4 h-4 flex-shrink-0 ${activeView === 'mileage' ? 'text-teal-500' : 'text-surface-600'}`}
+              />
+              <span className="font-medium text-[13px]">Mileage</span>
             </button>
 
             {/* Portfolio group */}

@@ -23,7 +23,8 @@ export type NavView =
   | 'brokers'
   | 'banks'
   | 'portfolio'
-  | 'sales';
+  | 'sales'
+  | 'mileage';
 
 // Tab types for tax year view
 export type TabType = 'documents' | 'income' | 'expenses' | 'invoices' | 'statements';

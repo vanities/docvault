@@ -445,6 +445,7 @@ async function saveContributions(data: ContributionsData): Promise<void> {
 
 const TODOS_FILE = path.join(DATA_DIR, '.docvault-todos.json');
 const SALES_FILE = path.join(DATA_DIR, '.docvault-sales.json');
+const MILEAGE_FILE = path.join(DATA_DIR, '.docvault-mileage.json');
 const CRYPTO_CACHE_FILE = path.join(DATA_DIR, '.docvault-crypto-cache.json');
 const BROKER_CACHE_FILE = path.join(DATA_DIR, '.docvault-broker-cache.json');
 const SIMPLEFIN_CACHE_FILE = path.join(DATA_DIR, '.docvault-simplefin-cache.json');
@@ -582,6 +583,56 @@ async function loadSalesData(): Promise<SalesData> {
 
 async function saveSalesData(data: SalesData): Promise<void> {
   await fs.writeFile(SALES_FILE, JSON.stringify(data, null, 2));
+}
+
+// ============================================================================
+// Mileage Storage
+// ============================================================================
+
+interface Vehicle {
+  id: string;
+  name: string;
+  year?: number;
+  make?: string;
+  model?: string;
+}
+
+interface MileageEntry {
+  id: string;
+  date: string;
+  vehicleId: string;
+  odometerStart?: number;
+  odometerEnd?: number;
+  tripMiles?: number;
+  gallons?: number;
+  totalCost?: number;
+  purpose?: string;
+  entity?: string;
+  createdAt: string;
+}
+
+interface MileageData {
+  vehicles: Vehicle[];
+  entries: MileageEntry[];
+  irsRate: number;
+}
+
+async function loadMileageData(): Promise<MileageData> {
+  try {
+    const content = await fs.readFile(MILEAGE_FILE, 'utf-8');
+    const data = JSON.parse(content);
+    return {
+      vehicles: data.vehicles || [],
+      entries: data.entries || [],
+      irsRate: data.irsRate ?? 0.70,
+    };
+  } catch {
+    return { vehicles: [], entries: [], irsRate: 0.70 };
+  }
+}
+
+async function saveMileageData(data: MileageData): Promise<void> {
+  await fs.writeFile(MILEAGE_FILE, JSON.stringify(data, null, 2));
 }
 
 // Queue to serialize writes to parsed data file
@@ -2632,6 +2683,118 @@ async function handleRequest(req: Request): Promise<Response> {
     }
     data.products = filtered;
     await saveSalesData(data);
+    return jsonResponse({ ok: true });
+  }
+
+  // ========================================================================
+  // Mileage API
+  // ========================================================================
+
+  // GET /api/mileage - Get all mileage data (vehicles + entries + irsRate)
+  if (pathname === '/api/mileage' && req.method === 'GET') {
+    const data = await loadMileageData();
+    return jsonResponse(data);
+  }
+
+  // POST /api/mileage - Create a new mileage entry
+  if (pathname === '/api/mileage' && req.method === 'POST') {
+    const body = await req.json();
+    const { date, vehicleId, odometerStart, odometerEnd, tripMiles, gallons, totalCost, purpose, entity } = body;
+
+    if (!vehicleId) {
+      return jsonResponse({ error: 'Missing vehicleId' }, 400);
+    }
+
+    const data = await loadMileageData();
+    const vehicle = data.vehicles.find((v: Vehicle) => v.id === vehicleId);
+    if (!vehicle) {
+      return jsonResponse({ error: 'Vehicle not found' }, 404);
+    }
+
+    // Auto-calculate tripMiles from odometer if both provided and tripMiles not given
+    let computedTripMiles = tripMiles;
+    if (computedTripMiles === undefined && odometerStart !== undefined && odometerEnd !== undefined) {
+      computedTripMiles = odometerEnd - odometerStart;
+    }
+
+    const entry: MileageEntry = {
+      id: crypto.randomUUID(),
+      date: date || new Date().toISOString().split('T')[0],
+      vehicleId,
+      odometerStart: odometerStart !== undefined ? Number(odometerStart) : undefined,
+      odometerEnd: odometerEnd !== undefined ? Number(odometerEnd) : undefined,
+      tripMiles: computedTripMiles !== undefined ? Number(computedTripMiles) : undefined,
+      gallons: gallons !== undefined ? Number(gallons) : undefined,
+      totalCost: totalCost !== undefined ? Number(totalCost) : undefined,
+      purpose: purpose?.trim() || undefined,
+      entity: entity || undefined,
+      createdAt: new Date().toISOString(),
+    };
+
+    data.entries.push(entry);
+    await saveMileageData(data);
+    return jsonResponse({ ok: true, entry });
+  }
+
+  // DELETE /api/mileage/:id - Delete a mileage entry
+  const mileageDeleteMatch = pathname.match(/^\/api\/mileage\/([^/]+)$/);
+  if (mileageDeleteMatch && req.method === 'DELETE') {
+    const entryId = mileageDeleteMatch[1];
+    const data = await loadMileageData();
+    const filtered = data.entries.filter((e: MileageEntry) => e.id !== entryId);
+    if (filtered.length === data.entries.length) {
+      return jsonResponse({ error: 'Entry not found' }, 404);
+    }
+    data.entries = filtered;
+    await saveMileageData(data);
+    return jsonResponse({ ok: true });
+  }
+
+  // POST /api/mileage/vehicles - Add a new vehicle
+  if (pathname === '/api/mileage/vehicles' && req.method === 'POST') {
+    const body = await req.json();
+    const { name, year, make, model } = body;
+
+    if (!name) {
+      return jsonResponse({ error: 'Missing vehicle name' }, 400);
+    }
+
+    const data = await loadMileageData();
+    const vehicle: Vehicle = {
+      id: crypto.randomUUID(),
+      name: name.trim(),
+      year: year !== undefined ? Number(year) : undefined,
+      make: make?.trim() || undefined,
+      model: model?.trim() || undefined,
+    };
+
+    data.vehicles.push(vehicle);
+    await saveMileageData(data);
+    return jsonResponse({ ok: true, vehicle });
+  }
+
+  // DELETE /api/mileage/vehicles/:id - Delete a vehicle
+  const vehicleDeleteMatch = pathname.match(/^\/api\/mileage\/vehicles\/([^/]+)$/);
+  if (vehicleDeleteMatch && req.method === 'DELETE') {
+    const vehicleId = vehicleDeleteMatch[1];
+    const data = await loadMileageData();
+    const filtered = data.vehicles.filter((v: Vehicle) => v.id !== vehicleId);
+    if (filtered.length === data.vehicles.length) {
+      return jsonResponse({ error: 'Vehicle not found' }, 404);
+    }
+    data.vehicles = filtered;
+    await saveMileageData(data);
+    return jsonResponse({ ok: true });
+  }
+
+  // PUT /api/mileage/settings - Update IRS rate
+  if (pathname === '/api/mileage/settings' && req.method === 'PUT') {
+    const body = await req.json();
+    const data = await loadMileageData();
+    if (body.irsRate !== undefined) {
+      data.irsRate = Number(body.irsRate);
+    }
+    await saveMileageData(data);
     return jsonResponse({ ok: true });
   }
 
