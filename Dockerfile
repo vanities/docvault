@@ -28,6 +28,9 @@ RUN ./node_modules/vite-plus/bin/vp build
 # Stage 3: Production runtime
 FROM oven/bun:1-slim
 
+# Install rclone for Dropbox sync
+RUN apt-get update && apt-get install -y --no-install-recommends rclone ca-certificates && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy production deps from stage 1
@@ -44,6 +47,7 @@ COPY --from=build /app/dist ./dist
 RUN mkdir -p /data
 
 ENV DOCVAULT_DATA_DIR=/data
+ENV RCLONE_CONFIG=/data/.rclone.conf
 
 EXPOSE 3005
 

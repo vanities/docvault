@@ -70,6 +70,195 @@ function formatRelativeTime(isoStr: string): string {
   });
 }
 
+interface DropboxStatus {
+  configured: boolean;
+  rcloneInstalled: boolean;
+  syncScript?: boolean;
+  connected?: boolean;
+  error?: string;
+  usage?: { total?: number; used?: number; free?: number };
+}
+
+function DropboxConnectionSection() {
+  const { addToast } = useToast();
+  const [status, setStatus] = useState<DropboxStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [tokenInput, setTokenInput] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [showTokenForm, setShowTokenForm] = useState(false);
+
+  const fetchStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/dropbox/status`);
+      setStatus(await res.json());
+    } catch {
+      setStatus(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void fetchStatus();
+  }, []);
+
+  const handleSaveToken = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tokenInput.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/dropbox/authorize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: tokenInput.trim() }),
+      });
+      if (res.ok) {
+        addToast('Dropbox token saved', 'success');
+        setTokenInput('');
+        setShowTokenForm(false);
+        setLoading(true);
+        await fetchStatus();
+      } else {
+        addToast('Failed to save token', 'error');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSyncNow = async () => {
+    setSyncing(true);
+    try {
+      await fetch(`${API_BASE}/dropbox/sync`, { method: 'POST' });
+      addToast('Dropbox sync started', 'success');
+    } catch {
+      addToast('Failed to start sync', 'error');
+    } finally {
+      setTimeout(() => setSyncing(false), 3000);
+    }
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(0)} MB`;
+    return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  };
+
+  if (loading) {
+    return (
+      <section className="glass-card rounded-xl p-6 mb-8">
+        <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
+          <Cloud className="w-5 h-5" />
+          Dropbox Connection
+        </h3>
+        <div className="flex items-center gap-2 text-surface-600 text-sm">
+          <RefreshCw className="w-4 h-4 animate-spin" />
+          Checking...
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="glass-card rounded-xl p-6 mb-8">
+      <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
+        <Cloud className="w-5 h-5" />
+        Dropbox Connection
+      </h3>
+
+      {!status?.rcloneInstalled && (
+        <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+          <p className="text-[13px] text-amber-500">
+            rclone is not installed in the container. Rebuild with the latest Docker image.
+          </p>
+        </div>
+      )}
+
+      {status?.rcloneInstalled && !status.configured && (
+        <div className="space-y-3">
+          <div className="p-4 bg-surface-200/30 border border-surface-400/20 rounded-xl">
+            <p className="text-[13px] text-surface-700 mb-2">
+              Dropbox is not connected. To set up:
+            </p>
+            <ol className="text-[12px] text-surface-600 list-decimal ml-4 space-y-1">
+              <li>
+                Run <code className="bg-surface-200 px-1.5 py-0.5 rounded text-accent-400 text-[11px]">rclone authorize &quot;dropbox&quot;</code> on a machine with a browser
+              </li>
+              <li>Authorize in the browser when prompted</li>
+              <li>Paste the JSON token below</li>
+            </ol>
+          </div>
+          <button
+            onClick={() => setShowTokenForm(!showTokenForm)}
+            className="text-[12px] text-accent-400 hover:text-accent-300 transition-colors"
+          >
+            {showTokenForm ? 'Cancel' : 'I have a token — paste it'}
+          </button>
+        </div>
+      )}
+
+      {status?.rcloneInstalled && status.configured && (
+        <div className="space-y-3">
+          <div className={`flex items-center gap-3 p-4 rounded-xl border ${
+            status.connected
+              ? 'bg-emerald-500/8 border-emerald-500/20'
+              : 'bg-red-500/10 border-red-500/25'
+          }`}>
+            <div className={`w-2.5 h-2.5 rounded-full ${status.connected ? 'bg-emerald-400' : 'bg-red-400'}`} />
+            <div className="flex-1 min-w-0">
+              <p className={`text-[13px] font-medium ${status.connected ? 'text-emerald-400' : 'text-red-400'}`}>
+                {status.connected ? 'Connected' : 'Connection Failed'}
+              </p>
+              {status.connected && status.usage && (
+                <p className="text-[11px] text-surface-600">
+                  {formatBytes(status.usage.used || 0)} used of {formatBytes(status.usage.total || 0)}
+                </p>
+              )}
+              {!status.connected && status.error && (
+                <p className="text-[11px] text-red-400/80 truncate">{status.error}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={handleSyncNow}
+                disabled={syncing || !status.connected}
+                className="px-3 py-1.5 text-[11px] bg-accent-500/10 text-accent-400 rounded-lg hover:bg-accent-500/20 transition-colors disabled:opacity-40"
+              >
+                {syncing ? 'Syncing...' : 'Sync Now'}
+              </button>
+              <button
+                onClick={() => setShowTokenForm(!showTokenForm)}
+                className="px-3 py-1.5 text-[11px] text-surface-600 hover:text-surface-800 bg-surface-200/50 rounded-lg hover:bg-surface-200 transition-colors"
+              >
+                Reauth
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTokenForm && (
+        <form onSubmit={handleSaveToken} className="mt-3 space-y-2">
+          <textarea
+            value={tokenInput}
+            onChange={(e) => setTokenInput(e.target.value)}
+            placeholder='Paste the JSON token from rclone authorize "dropbox"'
+            rows={3}
+            className="w-full px-3 py-2 bg-surface-100 border border-border rounded-lg text-[12px] font-mono text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-400/30 resize-none"
+          />
+          <button
+            type="submit"
+            disabled={saving || !tokenInput.trim()}
+            className="px-4 py-2 bg-accent-500 text-white text-[12px] font-medium rounded-lg hover:bg-accent-400 active:scale-[0.98] transition-all disabled:opacity-40"
+          >
+            {saving ? 'Saving...' : 'Save Token'}
+          </button>
+        </form>
+      )}
+    </section>
+  );
+}
+
 export function SettingsView() {
   const { entities, updateEntity, removeEntity, selectedEntity, setSelectedEntity } =
     useAppContext();
@@ -1051,6 +1240,9 @@ export function SettingsView() {
           </div>
         </div>
       </section>
+
+      {/* Dropbox Connection */}
+      <DropboxConnectionSection />
 
       {/* SimpleFIN Bank Accounts */}
       <section className="glass-card rounded-xl p-6 mb-8">

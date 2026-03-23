@@ -3013,6 +3013,58 @@ async function handleRequest(req: Request): Promise<Response> {
     }
   }
 
+  // ========================================================================
+  // Dropbox / rclone API
+  // ========================================================================
+
+  // GET /api/dropbox/status - Check rclone config and Dropbox connection
+  if (pathname === '/api/dropbox/status' && req.method === 'GET') {
+    const configExists = await fs.access(RCLONE_CONFIG_PATH).then(() => true).catch(() => false);
+    const rcloneInstalled = await Bun.spawn(['which', 'rclone'], { stdout: 'pipe', stderr: 'pipe' }).exited.then((code) => code === 0);
+    const syncScriptExists = await fs.access(SYNC_SCRIPT_DATA_PATH).then(() => true).catch(() => false)
+      || await fs.access(SYNC_SCRIPT_PATH).then(() => true).catch(() => false);
+
+    if (!rcloneInstalled) {
+      return jsonResponse({ configured: false, rcloneInstalled: false, message: 'rclone not installed in container' });
+    }
+    if (!configExists) {
+      return jsonResponse({ configured: false, rcloneInstalled: true, syncScript: syncScriptExists, message: 'No rclone config found. Set up Dropbox token in Settings.' });
+    }
+
+    // Test the connection
+    const proc = Bun.spawn(['rclone', 'about', 'dropbox:', '--json'], {
+      stdout: 'pipe', stderr: 'pipe',
+      env: { ...process.env, RCLONE_CONFIG: RCLONE_CONFIG_PATH },
+    });
+    await proc.exited;
+    if (proc.exitCode === 0) {
+      const about = JSON.parse(await new Response(proc.stdout).text());
+      return jsonResponse({ configured: true, rcloneInstalled: true, syncScript: syncScriptExists, connected: true, usage: about });
+    }
+    const stderr = await new Response(proc.stderr).text();
+    return jsonResponse({ configured: true, rcloneInstalled: true, syncScript: syncScriptExists, connected: false, error: stderr.trim() });
+  }
+
+  // POST /api/dropbox/authorize - Save rclone token from `rclone authorize "dropbox"` output
+  if (pathname === '/api/dropbox/authorize' && req.method === 'POST') {
+    const body = await req.json();
+    const { token } = body;
+    if (!token) {
+      return jsonResponse({ error: 'Missing token' }, 400);
+    }
+
+    // Write rclone config
+    const config = `[dropbox]\ntype = dropbox\ntoken = ${typeof token === 'string' ? token : JSON.stringify(token)}\n`;
+    await fs.writeFile(RCLONE_CONFIG_PATH, config);
+    return jsonResponse({ ok: true, message: 'Dropbox configured' });
+  }
+
+  // POST /api/dropbox/sync - Trigger a manual sync now
+  if (pathname === '/api/dropbox/sync' && req.method === 'POST') {
+    void runDropboxSync();
+    return jsonResponse({ ok: true, message: 'Sync started' });
+  }
+
   // GET /api/search?q=query - Search all files across all entities and years
   if (pathname === '/api/search' && req.method === 'GET') {
     const query = url.searchParams.get('q')?.toLowerCase();
@@ -3862,6 +3914,8 @@ Return: { "naming": {...}, "parsedData": {...} }`,
 const DEFAULT_SNAPSHOT_INTERVAL = 1440; // 24 hours in minutes
 const DEFAULT_DROPBOX_SYNC_INTERVAL = 15; // 15 minutes
 const SYNC_SCRIPT_PATH = path.join(__dirname, '..', 'scripts', 'sync-to-dropbox.sh');
+const SYNC_SCRIPT_DATA_PATH = path.join(DATA_DIR, 'sync-to-dropbox.sh');
+const RCLONE_CONFIG_PATH = path.join(DATA_DIR, '.rclone.conf');
 
 let snapshotTimer: ReturnType<typeof setInterval> | null = null;
 let dropboxSyncTimer: ReturnType<typeof setInterval> | null = null;
@@ -4039,30 +4093,28 @@ async function runDropboxSync(): Promise<void> {
       await createEncryptedConfigBackup(backupPw);
     }
 
-    // Try the scripts directory first, then check if rclone is available
-    const scriptExists = await fs
-      .access(SYNC_SCRIPT_PATH)
-      .then(() => true)
-      .catch(() => false);
+    // Find the sync script: scripts/ dir first, then data dir
+    let syncScript: string | null = null;
+    for (const candidate of [SYNC_SCRIPT_PATH, SYNC_SCRIPT_DATA_PATH]) {
+      const exists = await fs.access(candidate).then(() => true).catch(() => false);
+      if (exists) { syncScript = candidate; break; }
+    }
 
-    if (scriptExists) {
-      const proc = Bun.spawn(['bash', SYNC_SCRIPT_PATH], {
+    if (syncScript) {
+      const proc = Bun.spawn(['bash', syncScript], {
         stdout: 'pipe',
         stderr: 'pipe',
+        env: { ...process.env, RCLONE_CONFIG: RCLONE_CONFIG_PATH },
       });
       await proc.exited;
-      console.log(`[scheduler] Dropbox sync completed (exit: ${proc.exitCode})`);
-    } else {
-      // If no script, check for rclone directly (Docker/NAS environment)
-      const proc = Bun.spawn(['which', 'rclone'], { stdout: 'pipe', stderr: 'pipe' });
-      await proc.exited;
-      if (proc.exitCode === 0) {
-        console.log(
-          '[scheduler] No sync script found but rclone is available. Skipping — configure sync-to-dropbox.sh'
-        );
+      const stderr = await new Response(proc.stderr).text();
+      if (proc.exitCode !== 0) {
+        console.error(`[scheduler] Dropbox sync failed (exit: ${proc.exitCode}):`, stderr);
       } else {
-        console.log('[scheduler] Dropbox sync skipped — no sync script or rclone found');
+        console.log(`[scheduler] Dropbox sync completed`);
       }
+    } else {
+      console.log('[scheduler] Dropbox sync skipped — no sync script found');
     }
   } catch (err) {
     console.error('[scheduler] Dropbox sync failed:', err);
