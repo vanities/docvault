@@ -480,6 +480,35 @@ export interface SalesData {
   sales: Sale[];
 }
 
+// Mileage tracking
+export interface Vehicle {
+  id: string;
+  name: string;
+  year?: number;
+  make?: string;
+  model?: string;
+}
+
+export interface MileageEntry {
+  id: string;
+  date: string;
+  vehicleId: string;
+  odometerStart?: number;
+  odometerEnd?: number;
+  tripMiles?: number;
+  gallons?: number;
+  totalCost?: number;
+  purpose?: string;
+  entity?: string;
+  createdAt: string;
+}
+
+export interface MileageData {
+  vehicles: Vehicle[];
+  entries: MileageEntry[];
+  irsRate: number;
+}
+
 // App state
 export interface AppState {
   selectedEntity: Entity;

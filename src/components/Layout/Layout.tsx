@@ -13,6 +13,7 @@ import { BrokersView } from '../Brokers/BrokersView';
 import { BanksView } from '../Banks/BanksView';
 import { PortfolioView } from '../Portfolio/PortfolioView';
 import { SalesView } from '../Sales/SalesView';
+import { MileageView } from '../Mileage/MileageView';
 import { AddEntityModal } from '../Settings/AddEntityModal';
 import { SearchResultsView } from '../Search/SearchResultsView';
 
@@ -89,6 +90,8 @@ export function Layout() {
         return <PortfolioView />;
       case 'sales':
         return <SalesView />;
+      case 'mileage':
+        return <MileageView />;
       default:
         return <TaxYearView />;
     }
