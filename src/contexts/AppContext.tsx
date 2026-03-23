@@ -48,6 +48,10 @@ interface AppContextValue {
   checkConnection: () => Promise<void>;
   fsError: string | null;
 
+  // Auth state
+  authRequired: boolean;
+  authenticated: boolean;
+
   // Entity state
   selectedEntity: Entity;
   setSelectedEntity: (entity: Entity) => void;
@@ -259,6 +263,8 @@ export function AppProvider({ children }: AppProviderProps) {
     isScanning,
     error: fsError,
     entities,
+    authRequired,
+    authenticated,
     checkConnection,
     getYearsForEntity,
     scanTaxYear,
@@ -334,6 +340,10 @@ export function AppProvider({ children }: AppProviderProps) {
     dataDir,
     checkConnection,
     fsError,
+
+    // Auth
+    authRequired,
+    authenticated,
 
     // Entity
     selectedEntity,

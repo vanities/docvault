@@ -250,6 +250,8 @@ export interface IncomeSummary {
   income1099Count: number;
   k1Total: number;
   k1Count: number;
+  salesTotal: number;
+  salesCount: number;
   totalIncome: number;
   federalWithheld: number;
   stateWithheld: number;
@@ -271,6 +273,9 @@ export interface ExpenseSummary {
   items: ExpenseSummaryItem[];
   totalExpenses: number;
   totalDeductible: number;
+  mileageTotal: number; // total miles
+  mileageDeduction: number; // miles * IRS rate
+  mileageCount: number; // number of trips
 }
 
 // Invoice summary types for CPA prep

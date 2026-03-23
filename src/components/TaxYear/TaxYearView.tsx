@@ -24,6 +24,8 @@ import type {
   RetirementSummary,
   BankDepositSummary,
   ExpenseCategory,
+  Sale,
+  MileageEntry,
 } from '../../types';
 
 /** Download dropdown for zip exports */
@@ -130,9 +132,33 @@ export function TaxYearView() {
     updateDocMetadata,
     downloadZip,
     downloadCpaPackage,
+    setActiveView,
   } = useAppContext();
 
   const { addToast } = useToast();
+
+  // Sales and mileage data for integration into tax year summaries
+  const [salesData, setSalesData] = useState<Sale[]>([]);
+  const [mileageData, setMileageData] = useState<{ entries: MileageEntry[]; irsRate: number }>({
+    entries: [],
+    irsRate: 0.7,
+  });
+
+  useEffect(() => {
+    fetch('/api/sales')
+      .then((r) => r.json())
+      .then((data: { sales?: Sale[] }) => setSalesData(data.sales || []))
+      .catch(() => setSalesData([]));
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/mileage')
+      .then((r) => r.json())
+      .then((data: { entries?: MileageEntry[]; irsRate?: number }) =>
+        setMileageData({ entries: data.entries || [], irsRate: data.irsRate || 0.7 })
+      )
+      .catch(() => setMileageData({ entries: [], irsRate: 0.7 }));
+  }, []);
 
   // Update document in the scanned documents list and persist metadata
   const handleUpdateDoc = (id: string, updates: Partial<TaxDocument>) => {
@@ -267,6 +293,23 @@ export function TaxYearView() {
     [scannedDocuments]
   );
 
+  // Filter sales by year; include when viewing farm-llc or 'all'
+  const yearSales = useMemo(() => {
+    const byYear = salesData.filter((s) => s.date.startsWith(String(selectedYear)));
+    // Sales are Manna LLC income — include for farm-llc or 'all'
+    if (selectedEntity === 'farm-llc' || selectedEntity === 'all') return byYear;
+    return [];
+  }, [salesData, selectedYear, selectedEntity]);
+
+  // Filter mileage by year and entity
+  const yearMileage = useMemo(() => {
+    return mileageData.entries.filter((e) => {
+      if (!e.date.startsWith(String(selectedYear))) return false;
+      if (selectedEntity === 'all') return true;
+      return e.entity === selectedEntity;
+    });
+  }, [mileageData.entries, selectedYear, selectedEntity]);
+
   // Compute income summary from tracked documents
   const incomeSummary = useMemo((): IncomeSummaryType => {
     const w2Docs = trackedDocuments.filter((d) => d.type === 'w2');
@@ -336,6 +379,8 @@ export function TaxYearView() {
       }
     });
 
+    const salesTotal = yearSales.reduce((sum, s) => sum + s.total, 0);
+
     return {
       entity: selectedEntity,
       taxYear: selectedYear,
@@ -345,14 +390,16 @@ export function TaxYearView() {
       income1099Count: income1099Docs.length,
       k1Total: 0,
       k1Count: 0,
-      totalIncome: w2Total + income1099Total,
+      salesTotal,
+      salesCount: yearSales.length,
+      totalIncome: w2Total + income1099Total + salesTotal,
       federalWithheld,
       stateWithheld,
       capitalGainsTotal,
       capitalGainsShortTerm,
       capitalGainsLongTerm,
     };
-  }, [trackedDocuments, selectedEntity, selectedYear]);
+  }, [trackedDocuments, selectedEntity, selectedYear, yearSales]);
 
   // Compute expense summary from tracked documents
   const expenseSummary = useMemo((): ExpenseSummaryType => {
@@ -414,14 +461,23 @@ export function TaxYearView() {
     const totalExpenses = items.reduce((sum, item) => sum + item.total, 0);
     const totalDeductible = items.reduce((sum, item) => sum + item.deductibleAmount, 0);
 
+    const mileageTotal = yearMileage.reduce((sum, e) => sum + (e.tripMiles || 0), 0);
+    const mileageDeduction = yearMileage.reduce(
+      (sum, e) => sum + (e.tripMiles || 0) * mileageData.irsRate,
+      0
+    );
+
     return {
       entity: selectedEntity,
       taxYear: selectedYear,
       items,
       totalExpenses,
-      totalDeductible,
+      totalDeductible: totalDeductible + mileageDeduction,
+      mileageTotal,
+      mileageDeduction,
+      mileageCount: yearMileage.length,
     };
-  }, [trackedDocuments, selectedEntity, selectedYear]);
+  }, [trackedDocuments, selectedEntity, selectedYear, yearMileage, mileageData.irsRate]);
 
   // Compute invoice summary from tracked documents
   const invoiceSummary = useMemo((): InvoiceSummaryData => {
@@ -530,6 +586,8 @@ export function TaxYearView() {
       }
     });
 
+    const allSalesTotal = yearSales.reduce((sum, s) => sum + s.total, 0);
+
     return {
       entity: selectedEntity,
       taxYear: selectedYear,
@@ -539,14 +597,16 @@ export function TaxYearView() {
       income1099Count: income1099Docs.length,
       k1Total: 0,
       k1Count: 0,
-      totalIncome: w2Total + income1099Total,
+      salesTotal: allSalesTotal,
+      salesCount: yearSales.length,
+      totalIncome: w2Total + income1099Total + allSalesTotal,
       federalWithheld,
       stateWithheld,
       capitalGainsTotal,
       capitalGainsShortTerm,
       capitalGainsLongTerm,
     };
-  }, [scannedDocuments, hasHiddenDocs, selectedEntity, selectedYear]);
+  }, [scannedDocuments, hasHiddenDocs, selectedEntity, selectedYear, yearSales]);
 
   const allExpenseSummary = useMemo((): ExpenseSummaryType | undefined => {
     if (!hasHiddenDocs) return undefined;
@@ -593,14 +653,22 @@ export function TaxYearView() {
         count: totals.count,
       };
     }).filter((item) => item.total > 0);
+    const allMileageTotal = yearMileage.reduce((sum, e) => sum + (e.tripMiles || 0), 0);
+    const allMileageDeduction = yearMileage.reduce(
+      (sum, e) => sum + (e.tripMiles || 0) * mileageData.irsRate,
+      0
+    );
     return {
       entity: selectedEntity,
       taxYear: selectedYear,
       items,
       totalExpenses: items.reduce((sum, item) => sum + item.total, 0),
-      totalDeductible: items.reduce((sum, item) => sum + item.deductibleAmount, 0),
+      totalDeductible: items.reduce((sum, item) => sum + item.deductibleAmount, 0) + allMileageDeduction,
+      mileageTotal: allMileageTotal,
+      mileageDeduction: allMileageDeduction,
+      mileageCount: yearMileage.length,
     };
-  }, [scannedDocuments, hasHiddenDocs, selectedEntity, selectedYear]);
+  }, [scannedDocuments, hasHiddenDocs, selectedEntity, selectedYear, yearMileage, mileageData.irsRate]);
 
   const allInvoiceSummary = useMemo((): InvoiceSummaryData | undefined => {
     if (!hasHiddenDocs) return undefined;
@@ -949,6 +1017,7 @@ export function TaxYearView() {
               ? () => downloadZip(selectedEntity, selectedYear, 'income')
               : undefined
           }
+          onNavigateToSales={() => setActiveView('sales')}
         />
       )}
       {activeTab === 'expenses' && (
@@ -962,6 +1031,7 @@ export function TaxYearView() {
               ? () => downloadZip(selectedEntity, selectedYear, 'expenses')
               : undefined
           }
+          onNavigateToMileage={() => setActiveView('mileage')}
         />
       )}
       {activeTab === 'invoices' && (

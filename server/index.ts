@@ -648,6 +648,61 @@ async function setParsedDataForFile(filePath: string, data: ParsedData): Promise
 }
 
 // ============================================================================
+// Authentication
+// ============================================================================
+
+const AUTH_USERNAME = process.env.DOCVAULT_USERNAME;
+const AUTH_PASSWORD = process.env.DOCVAULT_PASSWORD;
+const AUTH_ENABLED = !!(AUTH_USERNAME && AUTH_PASSWORD);
+
+// In-memory session store: token -> expiry timestamp
+const sessions = new Map<string, number>();
+const SESSION_MAX_AGE = 30 * 24 * 60 * 60; // 30 days in seconds
+const SESSION_COOKIE = 'docvault_session';
+
+function createSession(): string {
+  const token = crypto.randomUUID();
+  sessions.set(token, Date.now() + SESSION_MAX_AGE * 1000);
+  return token;
+}
+
+function isValidSession(token: string): boolean {
+  const expiry = sessions.get(token);
+  if (!expiry) return false;
+  if (Date.now() > expiry) {
+    sessions.delete(token);
+    return false;
+  }
+  return true;
+}
+
+function getSessionToken(req: Request): string | null {
+  const cookie = req.headers.get('cookie');
+  if (!cookie) return null;
+  const match = cookie.match(new RegExp(`${SESSION_COOKIE}=([^;]+)`));
+  return match ? match[1] : null;
+}
+
+function sessionCookie(token: string, maxAge = SESSION_MAX_AGE): string {
+  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
+}
+
+function isAuthenticated(req: Request): boolean {
+  if (!AUTH_ENABLED) return true;
+  const token = getSessionToken(req);
+  return token !== null && isValidSession(token);
+}
+
+// Routes that don't require auth (status must be open so frontend can check auth state)
+const PUBLIC_ROUTES = new Set(['/api/login', '/api/status']);
+
+if (AUTH_ENABLED) {
+  console.log(`[auth] Authentication enabled for user "${AUTH_USERNAME}"`);
+} else {
+  console.log('[auth] Authentication disabled (DOCVAULT_USERNAME/DOCVAULT_PASSWORD not set)');
+}
+
+// ============================================================================
 // Request Handler
 // ============================================================================
 
@@ -658,6 +713,38 @@ async function handleRequest(req: Request): Promise<Response> {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders() });
+  }
+
+  // --- Auth: login endpoint ---
+  if (pathname === '/api/login' && req.method === 'POST') {
+    if (!AUTH_ENABLED) {
+      return jsonResponse({ ok: true, message: 'Auth not enabled' });
+    }
+    const body = await req.json();
+    const { username, password } = body;
+    if (username === AUTH_USERNAME && password === AUTH_PASSWORD) {
+      const token = createSession();
+      const res = jsonResponse({ ok: true });
+      res.headers.set('Set-Cookie', sessionCookie(token));
+      return res;
+    }
+    return jsonResponse({ error: 'Invalid credentials' }, 401);
+  }
+
+  // --- Auth: logout endpoint ---
+  if (pathname === '/api/logout' && req.method === 'POST') {
+    const token = getSessionToken(req);
+    if (token) sessions.delete(token);
+    const res = jsonResponse({ ok: true });
+    res.headers.set('Set-Cookie', sessionCookie('deleted', 0));
+    return res;
+  }
+
+  // --- Auth: gate API routes ---
+  if (AUTH_ENABLED && pathname.startsWith('/api/') && !PUBLIC_ROUTES.has(pathname)) {
+    if (!isAuthenticated(req)) {
+      return jsonResponse({ error: 'Unauthorized' }, 401);
+    }
   }
 
   // GET /api/config
@@ -1467,12 +1554,16 @@ async function handleRequest(req: Request): Promise<Response> {
         dataDir: DATA_DIR,
         isDirectory: stats.isDirectory(),
         entities: config.entities,
+        authRequired: AUTH_ENABLED,
+        authenticated: isAuthenticated(req),
       });
     } catch {
       return jsonResponse({
         ok: false,
         dataDir: DATA_DIR,
         error: 'Data directory not accessible',
+        authRequired: AUTH_ENABLED,
+        authenticated: isAuthenticated(req),
       });
     }
   }
