@@ -40,6 +40,9 @@ COPY --from=deps /app/node_modules ./node_modules
 # Copy server source (Bun runs TypeScript directly)
 COPY server/ ./server/
 
+# Copy scripts (sync-to-dropbox.sh, etc.)
+COPY scripts/ ./scripts/
+
 # Copy built frontend from stage 2
 COPY --from=build /app/dist ./dist
 
