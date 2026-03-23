@@ -189,10 +189,20 @@ interface AppProviderProps {
 export function AppProvider({ children }: AppProviderProps) {
   const currentYear = new Date().getFullYear();
 
-  // View state with localStorage persistence
+  // Valid views for hash routing
+  const validViews = new Set<string>([
+    'tax-year', 'business-docs', 'all-files', 'settings', 'tn-tax',
+    'crypto', 'brokers', 'banks', 'portfolio', 'sales', 'mileage',
+  ]);
+
+  const viewFromHash = (): NavView | null => {
+    const hash = window.location.hash.replace('#', '');
+    return validViews.has(hash) ? (hash as NavView) : null;
+  };
+
+  // View state: hash > localStorage > default
   const [activeView, setActiveViewState] = useState<NavView>(() => {
-    const saved = localStorage.getItem('docvault-view');
-    return (saved as NavView) || 'tax-year';
+    return viewFromHash() || (localStorage.getItem('docvault-view') as NavView) || 'tax-year';
   });
   const [activeTab, setActiveTab] = useState<TabType>('documents');
 
@@ -202,7 +212,24 @@ export function AppProvider({ children }: AppProviderProps) {
   const setActiveView = useCallback((view: NavView) => {
     setActiveViewState(view);
     localStorage.setItem('docvault-view', view);
+    window.location.hash = view === 'tax-year' ? '' : view;
     setSidebarOpen(false);
+  }, []);
+
+  // Listen for browser back/forward navigation
+  useEffect(() => {
+    const onHashChange = () => {
+      const view = viewFromHash();
+      if (view) {
+        setActiveViewState(view);
+        localStorage.setItem('docvault-view', view);
+      } else {
+        setActiveViewState('tax-year');
+        localStorage.setItem('docvault-view', 'tax-year');
+      }
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
   // Entity state with localStorage persistence
