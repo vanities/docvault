@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#16181e"/>
+      <stop offset="100%" stop-color="#0c0e12"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="doc" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#d8dde9"/>
+      <stop offset="100%" stop-color="#b4bccf"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Rounded square background -->
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="url(#bg)"
+        stroke="url(#accent)" stroke-width="12"/>
+
+  <!-- Vault keyhole / shield shape (subtle, behind document) -->
+  <path d="M256 100 C180 100 120 155 120 230 L120 340 C120 390 183 420 256 440
+           C329 420 392 390 392 340 L392 230 C392 155 332 100 256 100Z"
+        fill="none" stroke="#1c1f26" stroke-width="20" opacity="0.5"/>
+
+  <!-- Document body with folded corner -->
+  <path d="M185 145 L330 145 L355 175 L355 390 L185 390 Z"
+        fill="url(#doc)" opacity="0.95"/>
+
+  <!-- Folded corner triangle -->
+  <path d="M330 145 L355 175 L330 175 Z" fill="#8891a5"/>
+
+  <!-- Text lines on document -->
+  <rect x="210" y="200" width="120" height="8" rx="4" fill="#3a3f4b"/>
+  <rect x="210" y="225" width="95" height="8" rx="4" fill="#3a3f4b"/>
+  <rect x="210" y="250" width="110" height="8" rx="4" fill="#3a3f4b"/>
+
+  <!-- Checkmark / verified badge -->
+  <circle cx="330" cy="350" r="38" fill="url(#accent)" filter="url(#glow)"/>
+  <polyline points="310,350 325,365 352,335" stroke="#0c0e12"
+            stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

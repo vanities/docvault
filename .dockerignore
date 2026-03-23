@@ -1,0 +1,11 @@
+node_modules/
+dist/
+data/
+tax-plan/
+.git/
+.claude/
+.github/
+*.md
+.env*
+.DS_Store
+scripts/
