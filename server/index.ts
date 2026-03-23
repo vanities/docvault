@@ -81,6 +81,7 @@ interface Settings {
   };
   snaptrade?: SnapTradeConfig;
   simplefin?: SimplefinConfig;
+  geoapifyApiKey?: string;
   schedules?: {
     snapshotIntervalMinutes?: number; // default 1440 (24h)
     dropboxSyncIntervalMinutes?: number; // default 15
@@ -776,6 +777,8 @@ async function handleRequest(req: Request): Promise<Response> {
       keySource,
       keyHint,
       claudeModel: settings.claudeModel || DEFAULT_MODEL,
+      hasGeoapifyKey: !!settings.geoapifyApiKey,
+      geoapifyKeyHint: settings.geoapifyApiKey ? settings.geoapifyApiKey.slice(-4) : undefined,
     });
   }
 
@@ -795,6 +798,14 @@ async function handleRequest(req: Request): Promise<Response> {
         settings.claudeModel = body.claudeModel;
       } else {
         delete settings.claudeModel;
+      }
+    }
+
+    if (body.geoapifyApiKey !== undefined) {
+      if (body.geoapifyApiKey) {
+        settings.geoapifyApiKey = body.geoapifyApiKey;
+      } else {
+        delete settings.geoapifyApiKey;
       }
     }
 
@@ -2889,6 +2900,71 @@ async function handleRequest(req: Request): Promise<Response> {
     }
     await saveMileageData(data);
     return jsonResponse({ ok: true });
+  }
+
+  // ========================================================================
+  // Geocode API (Geoapify proxy)
+  // ========================================================================
+
+  // GET /api/geocode/enabled - Check if Geoapify API key is configured
+  if (pathname === '/api/geocode/enabled' && req.method === 'GET') {
+    const settings = await loadSettings();
+    return jsonResponse({ enabled: !!settings.geoapifyApiKey });
+  }
+
+  // GET /api/geocode/autocomplete?text=... - Proxy to Geoapify autocomplete
+  if (pathname === '/api/geocode/autocomplete' && req.method === 'GET') {
+    const text = url.searchParams.get('text');
+    if (!text || text.length < 2) {
+      return jsonResponse({ results: [] });
+    }
+
+    const settings = await loadSettings();
+    if (!settings.geoapifyApiKey) {
+      return jsonResponse({ error: 'Geoapify API key not configured' }, 400);
+    }
+
+    try {
+      const apiUrl = `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(text)}&format=json&apiKey=${encodeURIComponent(settings.geoapifyApiKey)}`;
+      const res = await fetch(apiUrl);
+      const data = await res.json();
+      return jsonResponse(data);
+    } catch (err) {
+      console.error('Geoapify autocomplete error:', err);
+      return jsonResponse({ error: 'Failed to fetch autocomplete results' }, 500);
+    }
+  }
+
+  // GET /api/geocode/route?from_lat=...&from_lon=...&to_lat=...&to_lon=... - Proxy to Geoapify routing
+  if (pathname === '/api/geocode/route' && req.method === 'GET') {
+    const fromLat = url.searchParams.get('from_lat');
+    const fromLon = url.searchParams.get('from_lon');
+    const toLat = url.searchParams.get('to_lat');
+    const toLon = url.searchParams.get('to_lon');
+
+    if (!fromLat || !fromLon || !toLat || !toLon) {
+      return jsonResponse({ error: 'Missing coordinates' }, 400);
+    }
+
+    const settings = await loadSettings();
+    if (!settings.geoapifyApiKey) {
+      return jsonResponse({ error: 'Geoapify API key not configured' }, 400);
+    }
+
+    try {
+      const apiUrl = `https://api.geoapify.com/v1/routing?waypoints=${encodeURIComponent(`${fromLat},${fromLon}|${toLat},${toLon}`)}&mode=drive&apiKey=${encodeURIComponent(settings.geoapifyApiKey)}`;
+      const res = await fetch(apiUrl);
+      const data = await res.json() as { features?: { properties?: { distance?: number } }[] };
+      const distanceMeters = data.features?.[0]?.properties?.distance;
+      if (distanceMeters == null) {
+        return jsonResponse({ error: 'No route found' }, 404);
+      }
+      const distanceMiles = Math.round((distanceMeters / 1609.34) * 10) / 10;
+      return jsonResponse({ miles: distanceMiles, meters: distanceMeters });
+    } catch (err) {
+      console.error('Geoapify routing error:', err);
+      return jsonResponse({ error: 'Failed to calculate route' }, 500);
+    }
   }
 
   // GET /api/search?q=query - Search all files across all entities and years
