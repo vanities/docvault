@@ -613,10 +613,19 @@ interface MileageEntry {
   createdAt: string;
 }
 
+interface SavedAddress {
+  id: string;
+  label: string; // e.g., "Home", "Office"
+  formatted: string;
+  lat: number;
+  lon: number;
+}
+
 interface MileageData {
   vehicles: Vehicle[];
   entries: MileageEntry[];
   irsRate: number;
+  savedAddresses?: SavedAddress[];
 }
 
 async function loadMileageData(): Promise<MileageData> {
@@ -627,9 +636,10 @@ async function loadMileageData(): Promise<MileageData> {
       vehicles: data.vehicles || [],
       entries: data.entries || [],
       irsRate: data.irsRate ?? 0.70,
+      savedAddresses: data.savedAddresses || [],
     };
   } catch {
-    return { vehicles: [], entries: [], irsRate: 0.70 };
+    return { vehicles: [], entries: [], irsRate: 0.70, savedAddresses: [] };
   }
 }
 
@@ -2898,6 +2908,42 @@ async function handleRequest(req: Request): Promise<Response> {
     if (body.irsRate !== undefined) {
       data.irsRate = Number(body.irsRate);
     }
+    await saveMileageData(data);
+    return jsonResponse({ ok: true });
+  }
+
+  // POST /api/mileage/addresses - Add a saved address
+  if (pathname === '/api/mileage/addresses' && req.method === 'POST') {
+    const body = await req.json();
+    const { label, formatted, lat, lon } = body;
+    if (!label || !formatted || lat == null || lon == null) {
+      return jsonResponse({ error: 'Missing label, formatted, lat, or lon' }, 400);
+    }
+    const data = await loadMileageData();
+    if (!data.savedAddresses) data.savedAddresses = [];
+    const addr: SavedAddress = {
+      id: crypto.randomUUID(),
+      label: label.trim(),
+      formatted: formatted.trim(),
+      lat: Number(lat),
+      lon: Number(lon),
+    };
+    data.savedAddresses.push(addr);
+    await saveMileageData(data);
+    return jsonResponse({ ok: true, address: addr });
+  }
+
+  // DELETE /api/mileage/addresses/:id - Delete a saved address
+  const addrDeleteMatch = pathname.match(/^\/api\/mileage\/addresses\/([^/]+)$/);
+  if (addrDeleteMatch && req.method === 'DELETE') {
+    const addrId = addrDeleteMatch[1];
+    const data = await loadMileageData();
+    if (!data.savedAddresses) data.savedAddresses = [];
+    const filtered = data.savedAddresses.filter((a) => a.id !== addrId);
+    if (filtered.length === (data.savedAddresses?.length || 0)) {
+      return jsonResponse({ error: 'Address not found' }, 404);
+    }
+    data.savedAddresses = filtered;
     await saveMileageData(data);
     return jsonResponse({ ok: true });
   }

@@ -509,10 +509,19 @@ export interface MileageEntry {
   createdAt: string;
 }
 
+export interface SavedAddress {
+  id: string;
+  label: string;
+  formatted: string;
+  lat: number;
+  lon: number;
+}
+
 export interface MileageData {
   vehicles: Vehicle[];
   entries: MileageEntry[];
   irsRate: number;
+  savedAddresses?: SavedAddress[];
 }
 
 // App state
