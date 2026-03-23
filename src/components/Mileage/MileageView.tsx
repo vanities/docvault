@@ -7,9 +7,12 @@ import {
   ChevronUp,
   Car,
   MapPin,
+  Loader2,
 } from 'lucide-react';
 import type { Vehicle, MileageEntry, MileageData } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
+import { AddressAutocomplete } from './AddressAutocomplete';
+import type { SelectedAddress } from './AddressAutocomplete';
 
 const API = '/api/mileage';
 
@@ -33,6 +36,13 @@ export function MileageView() {
   const [purpose, setPurpose] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+
+  // Address autocomplete state
+  const [geocodeEnabled, setGeocodeEnabled] = useState(false);
+  const [fromAddress, setFromAddress] = useState<SelectedAddress | null>(null);
+  const [toAddress, setToAddress] = useState<SelectedAddress | null>(null);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [routeMiles, setRouteMiles] = useState<number | null>(null);
 
   // UI state
   const [showVehicleForm, setShowVehicleForm] = useState(false);
@@ -72,6 +82,51 @@ export function MileageView() {
     }
   }, [odometerStart, odometerEnd]);
 
+  // Check if geocode (Geoapify) is enabled
+  useEffect(() => {
+    const checkGeocode = async () => {
+      try {
+        const res = await fetch('/api/geocode/enabled');
+        const data = await res.json();
+        setGeocodeEnabled(data.enabled === true);
+      } catch {
+        setGeocodeEnabled(false);
+      }
+    };
+    void checkGeocode();
+  }, []);
+
+  // Auto-calculate driving distance when both addresses are selected
+  useEffect(() => {
+    if (!fromAddress || !toAddress) {
+      setRouteMiles(null);
+      return;
+    }
+
+    const fetchRoute = async () => {
+      setRouteLoading(true);
+      try {
+        const params = new URLSearchParams({
+          from_lat: String(fromAddress.lat),
+          from_lon: String(fromAddress.lon),
+          to_lat: String(toAddress.lat),
+          to_lon: String(toAddress.lon),
+        });
+        const res = await fetch(`/api/geocode/route?${params}`);
+        const data = await res.json();
+        if (data.miles != null) {
+          setRouteMiles(data.miles);
+          setTripMiles(String(data.miles));
+        }
+      } catch (err) {
+        console.error('Route calculation error:', err);
+      } finally {
+        setRouteLoading(false);
+      }
+    };
+    void fetchRoute();
+  }, [fromAddress, toAddress]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!vehicleId) return;
@@ -102,6 +157,9 @@ export function MileageView() {
         setGallons('');
         setTotalCost('');
         setPurpose('');
+        setFromAddress(null);
+        setToAddress(null);
+        setRouteMiles(null);
         setDate(new Date().toISOString().split('T')[0]);
         await fetchData();
       }
@@ -282,10 +340,45 @@ export function MileageView() {
           </select>
         </div>
 
+        {/* Address Autocomplete (only if Geoapify API key is set) */}
+        {geocodeEnabled && (
+          <div className="space-y-2">
+            <AddressAutocomplete
+              label="From"
+              placeholder="Start address..."
+              value={fromAddress}
+              onChange={setFromAddress}
+            />
+            <AddressAutocomplete
+              label="To"
+              placeholder="Destination address..."
+              value={toAddress}
+              onChange={setToAddress}
+            />
+            {routeLoading && (
+              <div className="flex items-center gap-2 text-[12px] text-surface-500">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Calculating distance...
+              </div>
+            )}
+            {routeMiles != null && !routeLoading && (
+              <div className="flex items-center gap-2 text-[12px] text-teal-500">
+                <MapPin className="w-3.5 h-3.5" />
+                Driving distance: {routeMiles} miles
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Trip Miles (always visible) */}
         <div>
           <label className="text-[11px] text-surface-600 uppercase tracking-wider block mb-1">
             Trip Miles
+            {geocodeEnabled && (
+              <span className="text-surface-500 font-normal ml-1">
+                {routeMiles != null ? '(auto-calculated, editable)' : 'or enter miles manually'}
+              </span>
+            )}
           </label>
           <input
             type="number"

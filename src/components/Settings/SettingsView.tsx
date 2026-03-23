@@ -40,6 +40,8 @@ interface SettingsData {
   keySource?: 'settings' | 'env';
   keyHint?: string;
   claudeModel?: string;
+  hasGeoapifyKey?: boolean;
+  geoapifyKeyHint?: string;
 }
 
 function formatRelativeTime(isoStr: string): string {
@@ -83,6 +85,11 @@ export function SettingsView() {
   const [keySource, setKeySource] = useState<'settings' | 'env' | undefined>();
   const [claudeModel, setClaudeModel] = useState('claude-sonnet-4-6');
   const [keyHint, setKeyHint] = useState<string | undefined>();
+
+  // Geoapify API Key state
+  const [hasGeoapifyKey, setHasGeoapifyKey] = useState(false);
+  const [geoapifyKeyHint, setGeoapifyKeyHint] = useState<string | undefined>();
+  const [newGeoapifyKey, setNewGeoapifyKey] = useState('');
 
   // Sync status state
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
@@ -183,6 +190,8 @@ export function SettingsView() {
       setKeyHint(data.keyHint);
       if (data.claudeModel) setClaudeModel(data.claudeModel);
       setAnthropicKey('');
+      setHasGeoapifyKey(data.hasGeoapifyKey || false);
+      setGeoapifyKeyHint(data.geoapifyKeyHint);
     } catch (err) {
       console.error('Failed to load settings:', err);
     } finally {
@@ -235,6 +244,46 @@ export function SettingsView() {
       }
     } catch (err) {
       console.error('Failed to clear key:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveGeoapifyKey = async () => {
+    if (!newGeoapifyKey) return;
+    setIsSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ geoapifyApiKey: newGeoapifyKey }),
+      });
+      if ((await res.json()).ok) {
+        addToast('Geoapify key saved', 'success');
+        setNewGeoapifyKey('');
+        void loadSettings();
+      }
+    } catch {
+      addToast('Failed to save Geoapify key', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRemoveGeoapifyKey = async () => {
+    setIsSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ geoapifyApiKey: '' }),
+      });
+      if ((await res.json()).ok) {
+        addToast('Geoapify key removed', 'success');
+        void loadSettings();
+      }
+    } catch {
+      addToast('Failed to remove Geoapify key', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -802,6 +851,62 @@ export function SettingsView() {
               <p className="text-[11px] text-surface-500 mt-1">
                 Used for document parsing and filename suggestions. Saves on blur or Enter.
               </p>
+            </div>
+
+            {/* Geoapify API Key */}
+            <div className="pt-2 border-t border-border/30">
+              <label className="block text-[13px] font-medium text-surface-800 mb-2">
+                Geoapify API Key{' '}
+                <span className="text-surface-500 font-normal">
+                  (for mileage address autocomplete &mdash;{' '}
+                  <a
+                    href="https://myprojects.geoapify.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent-400 hover:underline"
+                  >
+                    get one free
+                  </a>
+                  )
+                </span>
+              </label>
+              {hasGeoapifyKey ? (
+                <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                  <CheckCircle className="w-4 h-4 text-emerald-400" />
+                  <span className="text-[13px] text-emerald-400 font-medium flex-1">
+                    Key set
+                    {geoapifyKeyHint && (
+                      <span className="text-emerald-400/70 ml-2 font-mono">
+                        ****{geoapifyKeyHint}
+                      </span>
+                    )}
+                  </span>
+                  <button
+                    onClick={handleRemoveGeoapifyKey}
+                    disabled={isSaving}
+                    className="text-[13px] text-danger-400 hover:text-danger-300"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={newGeoapifyKey}
+                    onChange={(e) => setNewGeoapifyKey(e.target.value)}
+                    placeholder="Geoapify API key..."
+                    className="flex-1 px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 font-mono placeholder:text-surface-500"
+                  />
+                  <button
+                    onClick={handleSaveGeoapifyKey}
+                    disabled={isSaving || !newGeoapifyKey}
+                    className="px-3 py-2 text-[13px] text-surface-0 bg-accent-500 hover:bg-accent-400 rounded-xl transition-colors disabled:opacity-50 font-medium"
+                  >
+                    Save
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
