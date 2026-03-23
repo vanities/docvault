@@ -293,12 +293,11 @@ export function TaxYearView() {
     [scannedDocuments]
   );
 
-  // Filter sales by year; include when viewing farm-llc or 'all'
+  // Filter sales by year and entity
   const yearSales = useMemo(() => {
     const byYear = salesData.filter((s) => s.date.startsWith(String(selectedYear)));
-    // Sales are Manna LLC income — include for farm-llc or 'all'
-    if (selectedEntity === 'farm-llc' || selectedEntity === 'all') return byYear;
-    return [];
+    if (selectedEntity === 'all') return byYear;
+    return byYear.filter((s) => s.entity === selectedEntity);
   }, [salesData, selectedYear, selectedEntity]);
 
   // Filter mileage by year and entity

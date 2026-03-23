@@ -10,10 +10,17 @@ import {
 } from 'lucide-react';
 import type { Sale, SaleProduct, SalesData } from '../../types';
 
+interface EntityConfig {
+  id: string;
+  name: string;
+  type?: string;
+}
+
 const API = '/api/sales';
 
 export function SalesView() {
   const [data, setData] = useState<SalesData>({ products: [], sales: [] });
+  const [entities, setEntities] = useState<EntityConfig[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Form state
@@ -21,6 +28,7 @@ export function SalesView() {
   const [productId, setProductId] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [entity, setEntity] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   // UI state
@@ -40,15 +48,27 @@ export function SalesView() {
       if (!productId && json.products.length > 0) {
         setProductId(json.products[0].id);
       }
+      // Default entity to most recently used
+      if (!entity && json.sales?.length > 0) {
+        const lastEntity = [...json.sales].sort((a: Sale, b: Sale) =>
+          b.createdAt.localeCompare(a.createdAt)
+        )[0]?.entity;
+        if (lastEntity) setEntity(lastEntity);
+      }
     } catch (err) {
       console.error('Failed to load sales:', err);
     } finally {
       setLoading(false);
     }
-  }, [productId]);
+  }, [productId, entity]);
 
   useEffect(() => {
     void fetchData();
+    // Fetch entities for dropdown
+    fetch('/api/entities')
+      .then((r) => r.json())
+      .then((data: EntityConfig[]) => setEntities(data))
+      .catch(() => setEntities([]));
   }, [fetchData]);
 
   const selectedProduct = data.products.find((p) => p.id === productId);
@@ -68,6 +88,7 @@ export function SalesView() {
           productId,
           quantity,
           date,
+          entity: entity || undefined,
         }),
       });
       if (res.ok) {
@@ -149,10 +170,8 @@ export function SalesView() {
           <Egg className="w-6 h-6 text-amber-500" />
         </div>
         <div>
-          <h1 className="font-display text-xl text-surface-950 italic">
-            Manna of the Valley
-          </h1>
-          <p className="text-[12px] text-surface-600">Sales Tracker</p>
+          <h1 className="font-display text-xl text-surface-950">Sales Tracker</h1>
+          <p className="text-[12px] text-surface-600">Track sales by entity</p>
         </div>
       </div>
 
@@ -237,17 +256,38 @@ export function SalesView() {
           </div>
         </div>
 
-        {/* Date */}
-        <div>
-          <label className="text-[11px] text-surface-600 uppercase tracking-wider block mb-1">
-            Date
-          </label>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-accent-400/30 focus:border-accent-400"
-          />
+        {/* Date + Entity row */}
+        <div className="flex gap-2">
+          <div className="flex-1">
+            <label className="text-[11px] text-surface-600 uppercase tracking-wider block mb-1">
+              Date
+            </label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-accent-400/30 focus:border-accent-400"
+            />
+          </div>
+          {entities.length > 0 && (
+            <div className="flex-1">
+              <label className="text-[11px] text-surface-600 uppercase tracking-wider block mb-1">
+                Entity
+              </label>
+              <select
+                value={entity}
+                onChange={(e) => setEntity(e.target.value)}
+                className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-accent-400/30 focus:border-accent-400"
+              >
+                <option value="">None</option>
+                {entities.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Submit */}
