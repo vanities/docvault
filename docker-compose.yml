@@ -1,0 +1,12 @@
+services:
+  docvault:
+    image: ghcr.io/vanities/docvault:latest
+    # build: .  # Uncomment to build locally instead of pulling
+    ports:
+      - '3005:3005'
+    volumes:
+      - /mnt/user/appdata/docvault/data:/data
+    environment:
+      - DOCVAULT_DATA_DIR=/data
+      - ANTHROPIC_API_KEY= # Optional: set here or use settings.json in the UI
+    restart: unless-stopped
