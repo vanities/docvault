@@ -482,39 +482,41 @@ export function IncomeSummary({ summary, documents, onDownload, onNavigateToSale
       ))}
 
       {/* Sales Income */}
-      {summary.salesTotal > 0 && (
+      {onNavigateToSales && (
         <div className="glass-card rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-surface-950 text-[14px]">
-              Sales Revenue ({summary.salesCount} sales)
+              Sales Revenue{summary.salesCount > 0 ? ` (${summary.salesCount} sales)` : ''}
             </h3>
-            {onNavigateToSales && (
-              <button
-                onClick={onNavigateToSales}
-                className="flex items-center gap-1.5 text-[13px] font-medium text-amber-500 hover:text-amber-400 transition-colors"
-              >
-                <Egg className="w-4 h-4" />
-                View Sales
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            )}
+            <button
+              onClick={onNavigateToSales}
+              className="flex items-center gap-1.5 text-[13px] font-medium text-amber-500 hover:text-amber-400 transition-colors"
+            >
+              <Egg className="w-4 h-4" />
+              {summary.salesCount > 0 ? 'View Sales' : 'Add Sales'}
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           </div>
-          <div className="border border-border rounded-lg p-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-[11px] text-surface-600">Total Sales Revenue</p>
-                <p className="font-medium text-surface-950 font-mono text-[13px]">
-                  {formatCurrency(summary.salesTotal)}
-                </p>
-              </div>
-              <div>
-                <p className="text-[11px] text-surface-600">Number of Sales</p>
-                <p className="font-medium text-surface-950 font-mono text-[13px]">
-                  {summary.salesCount}
-                </p>
+          {summary.salesTotal > 0 ? (
+            <div className="border border-border rounded-lg p-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[11px] text-surface-600">Total Sales Revenue</p>
+                  <p className="font-medium text-surface-950 font-mono text-[13px]">
+                    {formatCurrency(summary.salesTotal)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-surface-600">Number of Sales</p>
+                  <p className="font-medium text-surface-950 font-mono text-[13px]">
+                    {summary.salesCount}
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <p className="text-[13px] text-surface-500">No sales recorded for this tax year.</p>
+          )}
         </div>
       )}
 
