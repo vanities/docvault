@@ -8,8 +8,9 @@ import {
   Car,
   MapPin,
   Loader2,
+  Home,
 } from 'lucide-react';
-import type { Vehicle, MileageEntry, MileageData } from '../../types';
+import type { Vehicle, MileageEntry, MileageData, SavedAddress } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
 import { AddressAutocomplete } from './AddressAutocomplete';
 import type { SelectedAddress } from './AddressAutocomplete';
@@ -43,6 +44,11 @@ export function MileageView() {
   const [toAddress, setToAddress] = useState<SelectedAddress | null>(null);
   const [routeLoading, setRouteLoading] = useState(false);
   const [routeMiles, setRouteMiles] = useState<number | null>(null);
+
+  // Saved address form state
+  const [showAddressForm, setShowAddressForm] = useState(false);
+  const [newAddrLabel, setNewAddrLabel] = useState('');
+  const [newAddrSelected, setNewAddrSelected] = useState<SelectedAddress | null>(null);
 
   // UI state
   const [showVehicleForm, setShowVehicleForm] = useState(false);
@@ -95,6 +101,9 @@ export function MileageView() {
     };
     void checkGeocode();
   }, []);
+
+  // Saved addresses come from mileage data
+  const savedAddresses: SavedAddress[] = data.savedAddresses || [];
 
   // Auto-calculate driving distance when both addresses are selected
   useEffect(() => {
@@ -199,6 +208,30 @@ export function MileageView() {
 
   const handleDeleteVehicle = async (id: string) => {
     await fetch(`${API}/vehicles/${id}`, { method: 'DELETE' });
+    await fetchData();
+  };
+
+  const handleAddAddress = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAddrLabel.trim() || !newAddrSelected) return;
+    await fetch(`${API}/addresses`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        label: newAddrLabel.trim(),
+        formatted: newAddrSelected.formatted,
+        lat: newAddrSelected.lat,
+        lon: newAddrSelected.lon,
+      }),
+    });
+    setNewAddrLabel('');
+    setNewAddrSelected(null);
+    setShowAddressForm(false);
+    await fetchData();
+  };
+
+  const handleDeleteAddress = async (id: string) => {
+    await fetch(`${API}/addresses/${id}`, { method: 'DELETE' });
     await fetchData();
   };
 
@@ -343,18 +376,54 @@ export function MileageView() {
         {/* Address Autocomplete (only if Geoapify API key is set) */}
         {geocodeEnabled && (
           <div className="space-y-2">
-            <AddressAutocomplete
-              label="From"
-              placeholder="Start address..."
-              value={fromAddress}
-              onChange={setFromAddress}
-            />
-            <AddressAutocomplete
-              label="To"
-              placeholder="Destination address..."
-              value={toAddress}
-              onChange={setToAddress}
-            />
+            <div>
+              <AddressAutocomplete
+                label="From"
+                placeholder="Start address..."
+                value={fromAddress}
+                onChange={setFromAddress}
+              />
+              {savedAddresses.length > 0 && !fromAddress && (
+                <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                  {savedAddresses.map((addr) => (
+                    <button
+                      key={addr.id}
+                      type="button"
+                      onClick={() => setFromAddress({ formatted: addr.formatted, lat: addr.lat, lon: addr.lon })}
+                      className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-surface-600 hover:text-teal-400 bg-surface-100 border border-border rounded-md hover:border-teal-400/30 transition-colors"
+                      title={addr.formatted}
+                    >
+                      <Home className="w-3 h-3" />
+                      {addr.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <AddressAutocomplete
+                label="To"
+                placeholder="Destination address..."
+                value={toAddress}
+                onChange={setToAddress}
+              />
+              {savedAddresses.length > 0 && !toAddress && (
+                <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                  {savedAddresses.map((addr) => (
+                    <button
+                      key={addr.id}
+                      type="button"
+                      onClick={() => setToAddress({ formatted: addr.formatted, lat: addr.lat, lon: addr.lon })}
+                      className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-surface-600 hover:text-teal-400 bg-surface-100 border border-border rounded-md hover:border-teal-400/30 transition-colors"
+                      title={addr.formatted}
+                    >
+                      <Home className="w-3 h-3" />
+                      {addr.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             {routeLoading && (
               <div className="flex items-center gap-2 text-[12px] text-surface-500">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -693,6 +762,79 @@ export function MileageView() {
           ))}
         </div>
       </div>
+
+      {/* Saved Addresses */}
+      {geocodeEnabled && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-surface-900 flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-surface-600" />
+              Saved Addresses
+            </h2>
+            <button
+              onClick={() => setShowAddressForm(!showAddressForm)}
+              className="text-[12px] text-teal-500 hover:text-teal-400 transition-colors"
+            >
+              {showAddressForm ? 'Cancel' : '+ Add'}
+            </button>
+          </div>
+
+          {showAddressForm && (
+            <form
+              onSubmit={handleAddAddress}
+              className="glass-card rounded-xl p-3 space-y-2"
+            >
+              <input
+                type="text"
+                value={newAddrLabel}
+                onChange={(e) => setNewAddrLabel(e.target.value)}
+                placeholder="Label (e.g., Home, Office)"
+                required
+                className="w-full px-3 py-2 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-teal-400/30"
+              />
+              <AddressAutocomplete
+                label="Address"
+                placeholder="Search for address..."
+                value={newAddrSelected}
+                onChange={setNewAddrSelected}
+              />
+              <button
+                type="submit"
+                disabled={!newAddrLabel.trim() || !newAddrSelected}
+                className="w-full py-2 bg-teal-500 text-white font-medium rounded-lg hover:bg-teal-400 active:scale-[0.98] transition-all disabled:opacity-40 text-sm"
+              >
+                Save Address
+              </button>
+            </form>
+          )}
+
+          <div className="glass-card rounded-xl divide-y divide-border/50 overflow-hidden">
+            {savedAddresses.length === 0 && (
+              <p className="text-sm text-surface-600 text-center py-4">
+                No saved addresses yet
+              </p>
+            )}
+            {savedAddresses.map((addr) => (
+              <div
+                key={addr.id}
+                className="flex items-center justify-between px-4 py-2.5 group"
+              >
+                <div className="min-w-0">
+                  <span className="text-sm text-surface-900 font-medium">{addr.label}</span>
+                  <p className="text-[11px] text-surface-500 truncate">{addr.formatted}</p>
+                </div>
+                <button
+                  onClick={() => void handleDeleteAddress(addr.id)}
+                  className="p-1.5 rounded-lg text-surface-400 hover:text-danger-400 hover:bg-danger-500/10 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
+                  title="Delete address"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
