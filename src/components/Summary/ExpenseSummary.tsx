@@ -147,46 +147,48 @@ export function ExpenseSummary({ summary, documents, onDownload, onNavigateToMil
       )}
 
       {/* Mileage Section */}
-      {summary.mileageCount > 0 && (
+      {onNavigateToMileage && (
         <div className="glass-card rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-surface-950 text-[14px]">
-              Mileage Deduction ({summary.mileageCount} trips)
+              Mileage Deduction{summary.mileageCount > 0 ? ` (${summary.mileageCount} trips)` : ''}
             </h3>
-            {onNavigateToMileage && (
-              <button
-                onClick={onNavigateToMileage}
-                className="flex items-center gap-1.5 text-[13px] font-medium text-teal-500 hover:text-teal-400 transition-colors"
-              >
-                <Fuel className="w-4 h-4" />
-                View Mileage Log
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            )}
+            <button
+              onClick={onNavigateToMileage}
+              className="flex items-center gap-1.5 text-[13px] font-medium text-teal-500 hover:text-teal-400 transition-colors"
+            >
+              <Fuel className="w-4 h-4" />
+              {summary.mileageCount > 0 ? 'View Mileage Log' : 'Log Mileage'}
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="border border-border rounded-lg p-4">
-              <p className="text-[11px] text-surface-600 mb-1">Total Miles</p>
-              <p className="text-2xl font-bold text-surface-950 font-mono tracking-tight">
-                {summary.mileageTotal.toLocaleString()}
-              </p>
-              <p className="text-[11px] text-surface-600 mt-1">Business miles driven</p>
+          {summary.mileageCount > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="border border-border rounded-lg p-4">
+                <p className="text-[11px] text-surface-600 mb-1">Total Miles</p>
+                <p className="text-2xl font-bold text-surface-950 font-mono tracking-tight">
+                  {summary.mileageTotal.toLocaleString()}
+                </p>
+                <p className="text-[11px] text-surface-600 mt-1">Business miles driven</p>
+              </div>
+              <div className="border border-border rounded-lg p-4">
+                <p className="text-[11px] text-surface-600 mb-1">IRS Deduction</p>
+                <p className="text-2xl font-bold text-emerald-500 font-mono tracking-tight">
+                  {formatCurrency(summary.mileageDeduction)}
+                </p>
+                <p className="text-[11px] text-surface-600 mt-1">100% deductible (Schedule C)</p>
+              </div>
+              <div className="border border-border rounded-lg p-4">
+                <p className="text-[11px] text-surface-600 mb-1">Trips Logged</p>
+                <p className="text-2xl font-bold text-surface-950 font-mono tracking-tight">
+                  {summary.mileageCount}
+                </p>
+                <p className="text-[11px] text-surface-600 mt-1">For tax year {summary.taxYear}</p>
+              </div>
             </div>
-            <div className="border border-border rounded-lg p-4">
-              <p className="text-[11px] text-surface-600 mb-1">IRS Deduction</p>
-              <p className="text-2xl font-bold text-emerald-500 font-mono tracking-tight">
-                {formatCurrency(summary.mileageDeduction)}
-              </p>
-              <p className="text-[11px] text-surface-600 mt-1">100% deductible (Schedule C)</p>
-            </div>
-            <div className="border border-border rounded-lg p-4">
-              <p className="text-[11px] text-surface-600 mb-1">Trips Logged</p>
-              <p className="text-2xl font-bold text-surface-950 font-mono tracking-tight">
-                {summary.mileageCount}
-              </p>
-              <p className="text-[11px] text-surface-600 mt-1">For tax year {summary.taxYear}</p>
-            </div>
-          </div>
+          ) : (
+            <p className="text-[13px] text-surface-500">No mileage logged for this tax year.</p>
+          )}
         </div>
       )}
 
