@@ -8,4 +8,5 @@ tax-plan/
 *.md
 .env*
 .DS_Store
-scripts/
+scripts/*.ts
+scripts/*.py

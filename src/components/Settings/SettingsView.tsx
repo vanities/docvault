@@ -891,7 +891,9 @@ export function SettingsView() {
     <div className="max-w-3xl mx-auto px-4 md:px-6 py-8">
       <h2 className="text-2xl font-bold text-surface-950 mb-8">Settings</h2>
 
-      {/* API Key Section */}
+      {/* ── AI & API Keys ──────────────────────────────── */}
+      <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">AI & API Keys</p>
+
       <section className="glass-card rounded-xl p-6 mb-8">
         <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
           <Key className="w-5 h-5" />
@@ -1101,6 +1103,9 @@ export function SettingsView() {
         )}
       </section>
 
+      {/* ── Sync & Scheduling ─────────────────────────── */}
+      <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">Sync & Scheduling</p>
+
       {/* Sync Status */}
       <section className="glass-card rounded-xl p-6 mb-8">
         <div className="flex items-center justify-between mb-4">
@@ -1240,6 +1245,9 @@ export function SettingsView() {
           </div>
         </div>
       </section>
+
+      {/* ── Integrations ─────────────────────────────────── */}
+      <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">Integrations</p>
 
       {/* Dropbox Connection */}
       <DropboxConnectionSection />
@@ -1845,8 +1853,11 @@ export function SettingsView() {
         </div>
       </section>
 
+      {/* ── Data Management ──────────────────────────────── */}
+      <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">Data Management</p>
+
       {/* Entity Management Section */}
-      <section className="glass-card rounded-xl p-6">
+      <section className="glass-card rounded-xl p-6 mb-8">
         <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
           <Building2 className="w-5 h-5" />
           Entity Management
