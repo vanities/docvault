@@ -560,6 +560,7 @@ interface Sale {
   quantity: number;
   total: number;
   date: string;
+  entity?: string;
   createdAt: string;
 }
 
@@ -2700,7 +2701,7 @@ async function handleRequest(req: Request): Promise<Response> {
   // POST /api/sales - Create a new sale
   if (pathname === '/api/sales' && req.method === 'POST') {
     const body = await req.json();
-    const { person, productId, quantity, date } = body;
+    const { person, productId, quantity, date, entity } = body;
 
     if (!person || !productId) {
       return jsonResponse({ error: 'Missing person or productId' }, 400);
@@ -2720,6 +2721,7 @@ async function handleRequest(req: Request): Promise<Response> {
       quantity: qty,
       total: product.price * qty,
       date: date || new Date().toISOString().split('T')[0],
+      entity: entity || undefined,
       createdAt: new Date().toISOString(),
     };
 

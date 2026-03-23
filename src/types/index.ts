@@ -477,6 +477,7 @@ export interface Sale {
   quantity: number;
   total: number;
   date: string; // YYYY-MM-DD
+  entity?: string; // business entity (e.g., 'farm-llc')
   createdAt: string; // ISO timestamp
 }
 
