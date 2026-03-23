@@ -261,6 +261,8 @@ export function Dashboard() {
       income1099Count: income1099Docs.length,
       k1Total,
       k1Count: k1Docs.length,
+      salesTotal: 0,
+      salesCount: 0,
       totalIncome: w2Total + income1099Total + k1Total,
       federalWithheld,
       stateWithheld,
@@ -305,6 +307,9 @@ export function Dashboard() {
       items,
       totalExpenses,
       totalDeductible,
+      mileageTotal: 0,
+      mileageDeduction: 0,
+      mileageCount: 0,
     };
   }, [scannedDocuments, selectedEntity, selectedYear]);
 

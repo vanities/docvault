@@ -35,24 +35,32 @@ export function useFileSystemServer() {
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [entities, setEntities] = useState<EntityConfig[]>([]);
+  const [authRequired, setAuthRequired] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
+
+  const applyStatus = useCallback((data: Record<string, unknown>) => {
+    setIsConnected(data.ok as boolean);
+    setDataDir((data.dataDir as string) || '');
+    setEntities((data.entities as EntityConfig[]) || []);
+    setAuthRequired(data.authRequired as boolean ?? false);
+    setAuthenticated(data.authenticated as boolean ?? true);
+    if (!data.ok) {
+      setError((data.error as string) || 'Server not available');
+    } else {
+      setError(null);
+    }
+  }, []);
 
   const checkConnection = useCallback(async () => {
     try {
       const response = await fetch(`${API_BASE}/status`);
       const data = await response.json();
-      setIsConnected(data.ok);
-      setDataDir(data.dataDir || '');
-      setEntities(data.entities || []);
-      if (!data.ok) {
-        setError(data.error || 'Server not available');
-      } else {
-        setError(null);
-      }
+      applyStatus(data);
     } catch {
       setIsConnected(false);
       setError('Cannot connect to server. Make sure the API server is running.');
     }
-  }, []);
+  }, [applyStatus]);
 
   // Check server connection on mount
   useEffect(() => {
@@ -60,20 +68,13 @@ export function useFileSystemServer() {
       try {
         const response = await fetch(`${API_BASE}/status`);
         const data = await response.json();
-        setIsConnected(data.ok);
-        setDataDir(data.dataDir || '');
-        setEntities(data.entities || []);
-        if (!data.ok) {
-          setError(data.error || 'Server not available');
-        } else {
-          setError(null);
-        }
+        applyStatus(data);
       } catch {
         setIsConnected(false);
         setError('Cannot connect to server. Make sure the API server is running.');
       }
     })();
-  }, []);
+  }, [applyStatus]);
 
   // Get available years for an entity (or all entities combined)
   const getYearsForEntity = useCallback(
@@ -1001,6 +1002,8 @@ export function useFileSystemServer() {
     isScanning,
     error,
     entities,
+    authRequired,
+    authenticated,
     reminders,
     checkConnection,
     getYearsForEntity,

@@ -1,4 +1,4 @@
-import { FileText, DollarSign, Building, Download } from 'lucide-react';
+import { FileText, DollarSign, Building, Download, Egg, ArrowRight } from 'lucide-react';
 import { CopyableField } from './CopyableField';
 import type {
   IncomeSummary as IncomeSummaryType,
@@ -14,6 +14,7 @@ interface IncomeSummaryProps {
   summary: IncomeSummaryType;
   documents: TaxDocument[];
   onDownload?: () => void;
+  onNavigateToSales?: () => void;
 }
 
 function formatCurrency(amount: number): string {
@@ -24,7 +25,7 @@ function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
-export function IncomeSummary({ summary, documents, onDownload }: IncomeSummaryProps) {
+export function IncomeSummary({ summary, documents, onDownload, onNavigateToSales }: IncomeSummaryProps) {
   const w2Docs = documents.filter((d) => d.type === 'w2');
   const income1099Docs = documents.filter((d) => d.type.startsWith('1099'));
   const k1Docs = documents.filter((d) => d.type === 'k-1');
@@ -95,6 +96,7 @@ export function IncomeSummary({ summary, documents, onDownload }: IncomeSummaryP
           <p className="text-[11px] text-surface-600 mt-1">
             {summary.w2Count} W-2s, {summary.income1099Count} 1099s
             {summary.k1Count > 0 ? `, ${summary.k1Count} K-1s` : ''}
+            {summary.salesCount > 0 ? `, ${summary.salesCount} sales` : ''}
           </p>
         </div>
       </div>
@@ -122,6 +124,13 @@ export function IncomeSummary({ summary, documents, onDownload }: IncomeSummaryP
               label="Total K-1 Income"
               value={summary.k1Total}
               sublabel="Ordinary income + guaranteed payments from K-1s"
+            />
+          )}
+          {summary.salesTotal > 0 && (
+            <CopyableField
+              label="Sales Revenue"
+              value={summary.salesTotal}
+              sublabel="Business sales income (Schedule C)"
             />
           )}
           <CopyableField
@@ -471,6 +480,43 @@ export function IncomeSummary({ summary, documents, onDownload }: IncomeSummaryP
           </div>
         </div>
       ))}
+
+      {/* Sales Income */}
+      {summary.salesTotal > 0 && (
+        <div className="glass-card rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-surface-950 text-[14px]">
+              Sales Revenue ({summary.salesCount} sales)
+            </h3>
+            {onNavigateToSales && (
+              <button
+                onClick={onNavigateToSales}
+                className="flex items-center gap-1.5 text-[13px] font-medium text-amber-500 hover:text-amber-400 transition-colors"
+              >
+                <Egg className="w-4 h-4" />
+                View Sales
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <div className="border border-border rounded-lg p-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-[11px] text-surface-600">Total Sales Revenue</p>
+                <p className="font-medium text-surface-950 font-mono text-[13px]">
+                  {formatCurrency(summary.salesTotal)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] text-surface-600">Number of Sales</p>
+                <p className="font-medium text-surface-950 font-mono text-[13px]">
+                  {summary.salesCount}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* K-1 Details */}
       {k1Docs.length > 0 && (
