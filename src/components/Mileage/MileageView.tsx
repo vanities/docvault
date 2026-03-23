@@ -9,22 +9,18 @@ import {
   MapPin,
 } from 'lucide-react';
 import type { Vehicle, MileageEntry, MileageData } from '../../types';
-
-interface EntityConfig {
-  id: string;
-  name: string;
-}
+import { useAppContext } from '../../contexts/AppContext';
 
 const API = '/api/mileage';
 
 export function MileageView() {
+  const { selectedEntity, entities } = useAppContext();
   const [data, setData] = useState<MileageData>({
     vehicles: [],
     entries: [],
     irsRate: 0.7,
   });
   const [loading, setLoading] = useState(true);
-  const [entities, setEntities] = useState<EntityConfig[]>([]);
 
   // Form state
   const [vehicleId, setVehicleId] = useState('');
@@ -35,7 +31,6 @@ export function MileageView() {
   const [gallons, setGallons] = useState('');
   const [totalCost, setTotalCost] = useState('');
   const [purpose, setPurpose] = useState('');
-  const [entity, setEntity] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
 
@@ -62,20 +57,9 @@ export function MileageView() {
     }
   }, [vehicleId]);
 
-  const fetchEntities = useCallback(async () => {
-    try {
-      const res = await fetch('/api/entities');
-      const json = await res.json();
-      setEntities(json.entities || []);
-    } catch {
-      // ignore
-    }
-  }, []);
-
   useEffect(() => {
     void fetchData();
-    void fetchEntities();
-  }, [fetchData, fetchEntities]);
+  }, [fetchData]);
 
   // Auto-calculate trip miles from odometer
   useEffect(() => {
@@ -104,7 +88,7 @@ export function MileageView() {
       if (gallons) body.gallons = parseFloat(gallons);
       if (totalCost) body.totalCost = parseFloat(totalCost);
       if (purpose.trim()) body.purpose = purpose.trim();
-      if (entity) body.entity = entity;
+      if (selectedEntity !== 'all') body.entity = selectedEntity;
 
       const res = await fetch(API, {
         method: 'POST',
@@ -118,7 +102,6 @@ export function MileageView() {
         setGallons('');
         setTotalCost('');
         setPurpose('');
-        setEntity('');
         setDate(new Date().toISOString().split('T')[0]);
         await fetchData();
       }
@@ -161,8 +144,15 @@ export function MileageView() {
     await fetchData();
   };
 
+  // Filter entries by selected entity
+  const filteredEntries = selectedEntity === 'all'
+    ? data.entries
+    : data.entries.filter((e) => e.entity === selectedEntity);
+
+  const entityName = entities.find((e) => e.id === selectedEntity)?.name;
+
   // Group entries by month (most recent first)
-  const entriesByMonth = data.entries
+  const entriesByMonth = filteredEntries
     .slice()
     .sort((a, b) => b.date.localeCompare(a.date))
     .reduce<Record<string, MileageEntry[]>>((acc, entry) => {
@@ -187,7 +177,7 @@ export function MileageView() {
   const irsDeduction = currentMonthMiles * data.irsRate;
 
   // Average MPG from all entries that have both gallons and tripMiles
-  const fillUps = data.entries.filter((e) => e.gallons && e.gallons > 0 && e.tripMiles && e.tripMiles > 0);
+  const fillUps = filteredEntries.filter((e) => e.gallons && e.gallons > 0 && e.tripMiles && e.tripMiles > 0);
   const avgMpg =
     fillUps.length > 0
       ? fillUps.reduce((sum, e) => sum + (e.tripMiles! / e.gallons!), 0) / fillUps.length
@@ -212,7 +202,10 @@ export function MileageView() {
           <h1 className="font-display text-xl text-surface-950 italic">
             Mileage Tracker
           </h1>
-          <p className="text-[12px] text-surface-600">IRS Rate: ${data.irsRate.toFixed(2)}/mile</p>
+          <p className="text-[12px] text-surface-600">
+            {entityName || (selectedEntity === 'all' ? 'All Entities' : selectedEntity)}
+            {' · '}IRS Rate: ${data.irsRate.toFixed(2)}/mile
+          </p>
         </div>
       </div>
 
@@ -399,26 +392,6 @@ export function MileageView() {
               />
             </div>
 
-            {/* Entity */}
-            {entities.length > 0 && (
-              <div>
-                <label className="text-[11px] text-surface-600 uppercase tracking-wider block mb-1">
-                  Entity
-                </label>
-                <select
-                  value={entity}
-                  onChange={(e) => setEntity(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-teal-400/30 focus:border-teal-400"
-                >
-                  <option value="">None</option>
-                  {entities.map((ent) => (
-                    <option key={ent.id} value={ent.id}>
-                      {ent.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
           </div>
         )}
 

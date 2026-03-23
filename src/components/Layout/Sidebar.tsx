@@ -228,6 +228,11 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
 
   const handleEntityClick = (entity: EntityConfig) => {
     setSelectedEntity(entity.id);
+    // On sales/mileage views, just switch entity — stay on current view
+    if (activeView === 'sales' || activeView === 'mileage') {
+      onClose?.();
+      return;
+    }
     // Smart view defaulting based on entity type
     if (activeView === 'settings') {
       // Always switch away from settings
