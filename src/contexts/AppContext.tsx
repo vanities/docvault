@@ -22,7 +22,8 @@ export type NavView =
   | 'crypto'
   | 'brokers'
   | 'banks'
-  | 'portfolio';
+  | 'portfolio'
+  | 'sales';
 
 // Tab types for tax year view
 export type TabType = 'documents' | 'income' | 'expenses' | 'invoices' | 'statements';

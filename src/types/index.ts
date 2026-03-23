@@ -458,6 +458,28 @@ export interface SyncStatus {
   nextSync: string | null;
 }
 
+// Sales tracking
+export interface SaleProduct {
+  id: string;
+  name: string;
+  price: number;
+}
+
+export interface Sale {
+  id: string;
+  person: string;
+  productId: string;
+  quantity: number;
+  total: number;
+  date: string; // YYYY-MM-DD
+  createdAt: string; // ISO timestamp
+}
+
+export interface SalesData {
+  products: SaleProduct[];
+  sales: Sale[];
+}
+
 // App state
 export interface AppState {
   selectedEntity: Entity;

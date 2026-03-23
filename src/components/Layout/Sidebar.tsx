@@ -13,6 +13,7 @@ import {
   Landmark,
   PieChart,
   Building2,
+  Egg,
   ChevronDown as ChevronDownIcon,
 } from 'lucide-react';
 import { useAppContext, type NavView } from '../../contexts/AppContext';
@@ -458,6 +459,26 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
                 className={`w-4 h-4 flex-shrink-0 ${activeView === 'all-files' ? 'text-accent-400' : 'text-surface-600'}`}
               />
               <span className="font-medium text-[13px]">All Files</span>
+            </button>
+
+            {/* Sales */}
+            <button
+              onClick={() => handleViewClick('sales')}
+              disabled={isProcessing}
+              className={`
+                w-full flex items-center gap-2.5 px-2.5 py-3 md:py-2 rounded-lg transition-all duration-150 text-left
+                disabled:opacity-40 disabled:cursor-not-allowed
+                ${
+                  activeView === 'sales'
+                    ? 'bg-amber-500/10 text-amber-500'
+                    : 'text-surface-800 hover:text-surface-950 hover:bg-surface-200/50'
+                }
+              `}
+            >
+              <Egg
+                className={`w-4 h-4 flex-shrink-0 ${activeView === 'sales' ? 'text-amber-500' : 'text-surface-600'}`}
+              />
+              <span className="font-medium text-[13px]">Sales</span>
             </button>
 
             {/* Portfolio group */}
