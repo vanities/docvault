@@ -1719,16 +1719,40 @@ export function SettingsView() {
           Encrypted Backup
         </h3>
         <p className="text-[13px] text-surface-600 mb-5">
-          Download an AES-256 encrypted backup of all settings, API keys, cached data, and portfolio
-          snapshots. The backup is password-protected — keep the password safe.
+          AES-256 encrypted backup of all settings, API keys, cached data, and portfolio
+          snapshots.{' '}
+          {autoBackupPasswordSet ? (
+            <span className="text-green-500">Auto-backup is enabled and syncs to Dropbox every cycle.</span>
+          ) : (
+            <span className="text-surface-500">Set a backup password in Schedules above to auto-sync encrypted backups to Dropbox.</span>
+          )}
         </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Backup */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Download Latest Auto-Backup */}
+          <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30">
+            <h4 className="text-[13px] font-semibold text-surface-900 mb-3 flex items-center gap-1.5">
+              <Cloud className="w-4 h-4" />
+              Download Latest
+            </h4>
+            <p className="text-[11px] text-surface-500 mb-3">
+              Download the most recent auto-generated backup. Uses the password set in Schedules.
+            </p>
+            <button
+              onClick={handleDownloadLatestBackup}
+              disabled={isDownloadingLatest}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-violet-500 text-surface-0 rounded-xl hover:bg-violet-400 transition-colors disabled:opacity-50 text-[13px] font-medium"
+            >
+              <Download className="w-4 h-4" />
+              {isDownloadingLatest ? 'Downloading...' : 'Download Latest'}
+            </button>
+          </div>
+
+          {/* Manual Backup */}
           <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30">
             <h4 className="text-[13px] font-semibold text-surface-900 mb-3 flex items-center gap-1.5">
               <Download className="w-4 h-4" />
-              Create Backup
+              Manual Backup
             </h4>
             <div className="space-y-2">
               <input
@@ -1744,7 +1768,7 @@ export function SettingsView() {
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-violet-500 text-surface-0 rounded-xl hover:bg-violet-400 transition-colors disabled:opacity-50 text-[13px] font-medium"
               >
                 <Download className="w-4 h-4" />
-                {isBackingUp ? 'Encrypting...' : 'Download Backup'}
+                {isBackingUp ? 'Encrypting...' : 'Create & Download'}
               </button>
             </div>
           </div>
