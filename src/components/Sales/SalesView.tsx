@@ -67,7 +67,7 @@ export function SalesView() {
     // Fetch entities for dropdown
     fetch('/api/entities')
       .then((r) => r.json())
-      .then((data: EntityConfig[]) => setEntities(data))
+      .then((data: { entities: EntityConfig[] }) => setEntities(data.entities || []))
       .catch(() => setEntities([]));
   }, [fetchData]);
 
