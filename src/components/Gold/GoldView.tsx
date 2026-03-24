@@ -8,6 +8,7 @@ import {
   TrendingDown,
   ChevronDown,
   ChevronUp,
+  Edit3,
 } from 'lucide-react';
 import type { GoldEntry, GoldData, MetalType, CoinSize } from '../../types';
 
@@ -206,6 +207,7 @@ export function GoldView() {
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const selectedProduct = GOLD_PRODUCTS.find((p) => p.id === productId) || GOLD_PRODUCTS[0];
 
@@ -250,6 +252,33 @@ export function GoldView() {
     }
   };
 
+  const resetForm = () => {
+    setProductId('american-eagle');
+    setCustomDescription('');
+    setCoinYear('');
+    setSize('1oz');
+    setPurchasePrice('');
+    setPurchaseDate(new Date().toISOString().split('T')[0]);
+    setDealer('');
+    setQuantity(1);
+    setNotes('');
+    setEditingId(null);
+  };
+
+  const populateForm = (entry: GoldEntry) => {
+    setProductId(entry.productId);
+    setCustomDescription(entry.customDescription || '');
+    setCoinYear(entry.coinYear?.toString() || '');
+    setSize(entry.size);
+    setPurchasePrice(entry.purchasePrice.toString());
+    setPurchaseDate(entry.purchaseDate);
+    setDealer(entry.dealer || '');
+    setQuantity(entry.quantity);
+    setNotes(entry.notes || '');
+    setEditingId(entry.id);
+    setShowForm(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!purchasePrice || !purchaseDate) return;
@@ -257,33 +286,40 @@ export function GoldView() {
     setSubmitting(true);
     try {
       const weightOz = SIZE_WEIGHTS[size];
-      const res = await fetch(API, {
-        method: 'POST',
+      const body = {
+        metal: selectedProduct.metal,
+        productId,
+        customDescription: productId === 'custom' ? customDescription : undefined,
+        coinYear: coinYear ? Number(coinYear) : undefined,
+        size,
+        weightOz,
+        purity: selectedProduct.purity,
+        purchasePrice: Number(purchasePrice),
+        purchaseDate,
+        dealer: dealer || undefined,
+        quantity,
+        notes: notes || undefined,
+      };
+
+      const url = editingId ? `${API}/${editingId}` : API;
+      const method = editingId ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          metal: selectedProduct.metal,
-          productId,
-          customDescription: productId === 'custom' ? customDescription : undefined,
-          coinYear: coinYear ? Number(coinYear) : undefined,
-          size,
-          weightOz,
-          purity: selectedProduct.purity,
-          purchasePrice: Number(purchasePrice),
-          purchaseDate,
-          dealer: dealer || undefined,
-          quantity,
-          notes: notes || undefined,
-        }),
+        body: JSON.stringify(body),
       });
 
       if (res.ok) {
         const json = await res.json();
-        setData((prev) => ({ entries: [...prev.entries, json.entry] }));
-        // Reset form
-        setPurchasePrice('');
-        setCoinYear('');
-        setNotes('');
-        setQuantity(1);
+        if (editingId) {
+          setData((prev) => ({
+            entries: prev.entries.map((e) => (e.id === editingId ? json.entry : e)),
+          }));
+        } else {
+          setData((prev) => ({ entries: [...prev.entries, json.entry] }));
+        }
+        resetForm();
+        setShowForm(false);
       }
     } catch (err) {
       console.error('Failed to add gold entry:', err);
@@ -312,7 +348,8 @@ export function GoldView() {
       {};
 
     for (const entry of data.entries) {
-      const pureOz = entry.weightOz * entry.purity * entry.quantity;
+      // For standard coins/bars, size denomination = pure metal content (e.g. "1 oz Eagle" = 1 oz pure gold)
+      const pureOz = entry.weightOz * entry.quantity;
       const cost = entry.purchasePrice * entry.quantity;
       const spotPrice = spotPrices[entry.metal] || 0;
       const currentValue = pureOz * spotPrice;
@@ -376,7 +413,10 @@ export function GoldView() {
             Spot Prices
           </button>
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => {
+              resetForm();
+              setShowForm(!showForm);
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-surface-0 bg-yellow-600 hover:bg-yellow-500 rounded-lg transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -468,7 +508,7 @@ export function GoldView() {
                       {metal}
                     </span>
                     <span className="text-xs text-surface-500">
-                      {stats.count} pcs &middot; {stats.pureOz.toFixed(4)} pure oz
+                      {stats.count} pcs · {stats.pureOz.toFixed(4)} pure oz
                     </span>
                   </div>
                   <div className="text-right">
@@ -492,7 +532,9 @@ export function GoldView() {
       {/* Add Entry Form */}
       {showForm && (
         <form onSubmit={handleSubmit} className="glass-card rounded-xl p-5 space-y-4">
-          <h3 className="text-sm font-semibold text-surface-950">Add New Entry</h3>
+          <h3 className="text-sm font-semibold text-surface-950">
+            {editingId ? 'Edit Entry' : 'Add New Entry'}
+          </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Product Dropdown */}
@@ -670,18 +712,18 @@ export function GoldView() {
 
           {/* Purity info */}
           <p className="text-xs text-surface-500">
-            Purity: {(selectedProduct.purity * 100).toFixed(2)}% &middot; Weight:{' '}
-            {SIZE_LABELS[size]} &middot; Pure content:{' '}
-            {(SIZE_WEIGHTS[size] * selectedProduct.purity).toFixed(4)} oz per piece
-            {quantity > 1 && (
-              <> &middot; Total: {formatUsd(Number(purchasePrice || 0) * quantity)}</>
-            )}
+            Purity: {(selectedProduct.purity * 100).toFixed(2)}% · Size: {SIZE_LABELS[size]} pure{' '}
+            {selectedProduct.metal}
+            {quantity > 1 && <> · Total: {formatUsd(Number(purchasePrice || 0) * quantity)}</>}
           </p>
 
           <div className="flex justify-end gap-2">
             <button
               type="button"
-              onClick={() => setShowForm(false)}
+              onClick={() => {
+                setShowForm(false);
+                resetForm();
+              }}
               className="px-4 py-2 text-sm text-surface-600 hover:text-surface-900 transition-colors"
             >
               Cancel
@@ -691,7 +733,7 @@ export function GoldView() {
               disabled={submitting || !purchasePrice}
               className="px-4 py-2 text-sm font-medium text-surface-0 bg-yellow-600 hover:bg-yellow-500 rounded-lg transition-colors disabled:opacity-50"
             >
-              {submitting ? 'Adding...' : 'Add Entry'}
+              {submitting ? 'Saving...' : editingId ? 'Update Entry' : 'Add Entry'}
             </button>
           </div>
         </form>
@@ -707,7 +749,12 @@ export function GoldView() {
           </p>
         </div>
       ) : (
-        <EntriesList entries={data.entries} spotPrices={spotPrices} onDelete={handleDelete} />
+        <EntriesList
+          entries={data.entries}
+          spotPrices={spotPrices}
+          onDelete={handleDelete}
+          onEdit={populateForm}
+        />
       )}
     </div>
   );
@@ -721,10 +768,12 @@ function EntriesList({
   entries,
   spotPrices,
   onDelete,
+  onEdit,
 }: {
   entries: GoldEntry[];
   spotPrices: Record<string, number>;
   onDelete: (id: string) => void;
+  onEdit: (entry: GoldEntry) => void;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -745,7 +794,7 @@ function EntriesList({
           entry.productId === 'custom'
             ? entry.customDescription || 'Custom'
             : product?.label || entry.productId;
-        const pureOz = entry.weightOz * entry.purity * entry.quantity;
+        const pureOz = entry.weightOz * entry.quantity;
         const spotPrice = spotPrices[entry.metal] || 0;
         const currentValue = pureOz * spotPrice;
         const totalCost = entry.purchasePrice * entry.quantity;
@@ -770,8 +819,12 @@ function EntriesList({
                     {entry.coinYear && ` (${entry.coinYear})`}
                   </p>
                   <p className="text-xs text-surface-500">
-                    {SIZE_LABELS[entry.size]} &middot; {entry.purchaseDate}
-                    {entry.dealer && ` &middot; ${entry.dealer}`}
+                    {SIZE_LABELS[entry.size]} · Paid {formatUsd(entry.purchasePrice)}
+                    {entry.quantity > 1 &&
+                      `/ea (${formatUsd(entry.purchasePrice * entry.quantity)} total)`}
+                    {' · '}
+                    {entry.purchaseDate}
+                    {entry.dealer && ` · ${entry.dealer}`}
                   </p>
                 </div>
               </div>
@@ -848,7 +901,14 @@ function EntriesList({
                 {entry.notes && (
                   <p className="text-xs text-surface-500 mt-2 italic">{entry.notes}</p>
                 )}
-                <div className="mt-3 flex justify-end">
+                <div className="mt-3 flex justify-end gap-2">
+                  <button
+                    onClick={() => onEdit(entry)}
+                    className="flex items-center gap-1 px-2.5 py-1 text-xs text-surface-600 hover:bg-surface-200/50 rounded-lg transition-colors"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    Edit
+                  </button>
                   <button
                     onClick={() => onDelete(entry.id)}
                     className="flex items-center gap-1 px-2.5 py-1 text-xs text-danger-500 hover:bg-danger-500/10 rounded-lg transition-colors"

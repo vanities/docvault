@@ -124,7 +124,7 @@ export function PortfolioView() {
         let total = 0;
         for (const entry of data.entries || []) {
           const spotPrice = spots[entry.metal] || 0;
-          total += entry.weightOz * entry.purity * entry.quantity * spotPrice;
+          total += entry.weightOz * entry.quantity * spotPrice;
         }
         setGoldTotal(total);
       }
