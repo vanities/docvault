@@ -3737,6 +3737,26 @@ async function handleRequest(req: Request): Promise<Response> {
     }
   }
 
+  // DELETE /api/gold/:id/receipt - Remove a receipt from a gold entry
+  const goldReceiptDeleteMatch = pathname.match(/^\/api\/gold\/([^/]+)\/receipt$/);
+  if (goldReceiptDeleteMatch && req.method === 'DELETE') {
+    const entryId = goldReceiptDeleteMatch[1];
+    const data = await loadGoldData();
+    const entry = data.entries.find((e) => e.id === entryId);
+    if (!entry) return jsonResponse({ error: 'Entry not found' }, 404);
+
+    if (entry.receiptPath) {
+      try {
+        await fs.unlink(path.join(GOLD_RECEIPTS_DIR, entry.receiptPath));
+      } catch {
+        // File may already be gone
+      }
+      delete entry.receiptPath;
+      await saveGoldData(data);
+    }
+    return jsonResponse({ ok: true });
+  }
+
   // POST /api/gold/parse-receipt - AI parse a receipt to extract gold purchase info
   if (pathname === '/api/gold/parse-receipt' && req.method === 'POST') {
     try {
@@ -3818,7 +3838,7 @@ Respond ONLY with valid JSON. No markdown.`,
       "coinYear": 2026 (if visible),
       "quantity": 1,
       "purchasePrice": 2650.00 (price per piece, NOT total),
-      "description": "human-readable description"
+      "description": "full product name as shown on receipt (e.g. '2023 Pirate Gilded 1 oz 999 Silver')"
     }
   ],
   "dealer": "dealer/vendor name",
@@ -3832,7 +3852,9 @@ Respond ONLY with valid JSON. No markdown.`,
 
 IMPORTANT:
 - purchasePrice must be PER PIECE, not total. Divide total by quantity if needed.
-- Match to the closest known productId. Use "custom" only if no match.
+- Match to the closest known productId. Use "custom" for specialty/collectible rounds (e.g. "Pirate Gilded", themed rounds).
+- For "custom" items, include the FULL product name in "description" exactly as it appears on the receipt.
+- For silver/gold rounds from specialty mints, use "silver-round" or "custom" and preserve the full name.
 - If multiple line items, return each separately in the items array.`,
                 },
               ],
