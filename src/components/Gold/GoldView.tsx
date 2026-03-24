@@ -335,34 +335,52 @@ export function GoldView() {
         return;
       }
 
-      // Fill form with first item
-      const item = items[0];
-      const product = GOLD_PRODUCTS.find((p) => p.id === item.productId);
-      if (product) {
-        setProductId(item.productId);
-        setSize(item.size || product.defaultSize);
-      } else {
-        setProductId('custom');
-        setCustomDescription(item.description || '');
-      }
-      if (item.coinYear) setCoinYear(String(item.coinYear));
-      if (item.quantity) setQuantity(item.quantity);
-      if (item.purchasePrice) setPurchasePrice(String(item.purchasePrice));
-      if (result.purchaseDate) setPurchaseDate(result.purchaseDate);
-      if (result.dealer) setDealer(result.dealer);
-      if (result.orderNumber) setNotes(`Order #${result.orderNumber}`);
+      // Auto-create entries for all items
+      let created = 0;
+      for (const item of items) {
+        const product = GOLD_PRODUCTS.find((p) => p.id === item.productId);
+        const weightOz = SIZE_WEIGHTS[item.size as CoinSize] || 1.0;
+        const orderNote = result.orderNumber ? `Order #${result.orderNumber}` : undefined;
+        const descNote = item.description || undefined;
+        const noteParts = [orderNote, descNote].filter(Boolean).join(' — ');
 
-      setEditingId(null);
-      setShowForm(true);
-      setTimeout(
-        () => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
-        50
+        const body = {
+          metal: item.metal || product?.metal || 'gold',
+          productId: item.productId || 'custom',
+          customDescription:
+            !product || item.productId === 'custom' ? item.description || undefined : undefined,
+          coinYear: item.coinYear || undefined,
+          size: item.size || product?.defaultSize || '1oz',
+          weightOz,
+          purity: product?.purity || 0.999,
+          purchasePrice: item.purchasePrice || 0,
+          purchaseDate: result.purchaseDate || new Date().toISOString().split('T')[0],
+          dealer: result.dealer || undefined,
+          quantity: item.quantity || 1,
+          notes: noteParts || undefined,
+        };
+
+        try {
+          const createRes = await fetch(API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          if (createRes.ok) {
+            const json = await createRes.json();
+            setData((prev) => ({ entries: [...prev.entries, json.entry] }));
+            created++;
+          }
+        } catch {
+          // Continue with remaining items
+        }
+      }
+
+      setScanError(
+        created > 0
+          ? `Added ${created} ${created === 1 ? 'entry' : 'entries'} from receipt.`
+          : 'Failed to create entries from receipt.'
       );
-
-      // If multiple items, show a note
-      if (items.length > 1) {
-        setScanError(`Found ${items.length} items — first item loaded. Add remaining manually.`);
-      }
     } catch (err) {
       setScanError(err instanceof Error ? err.message : 'Failed to scan receipt');
     } finally {
@@ -392,6 +410,21 @@ export function GoldView() {
       console.error('Failed to upload receipt:', err);
     } finally {
       setUploadingReceiptId(null);
+    }
+  };
+
+  const handleReceiptRemove = async (entryId: string) => {
+    try {
+      const res = await fetch(`${API}/${entryId}/receipt`, { method: 'DELETE' });
+      if (res.ok) {
+        setData((prev) => ({
+          entries: prev.entries.map((e) =>
+            e.id === entryId ? { ...e, receiptPath: undefined } : e
+          ),
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to remove receipt:', err);
     }
   };
 
@@ -907,6 +940,7 @@ export function GoldView() {
           onDelete={handleDelete}
           onEdit={populateForm}
           onReceiptUpload={handleReceiptUpload}
+          onReceiptRemove={handleReceiptRemove}
           uploadingReceiptId={uploadingReceiptId}
         />
       )}
@@ -924,6 +958,7 @@ function EntriesList({
   onDelete,
   onEdit,
   onReceiptUpload,
+  onReceiptRemove,
   uploadingReceiptId,
 }: {
   entries: GoldEntry[];
@@ -931,6 +966,7 @@ function EntriesList({
   onDelete: (id: string) => void;
   onEdit: (entry: GoldEntry) => void;
   onReceiptUpload: (entryId: string, file: File) => void;
+  onReceiptRemove: (entryId: string) => void;
   uploadingReceiptId: string | null;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -1061,15 +1097,24 @@ function EntriesList({
                 )}
                 <div className="mt-3 flex justify-end gap-2">
                   {entry.receiptPath ? (
-                    <a
-                      href={`${API}/${entry.id}/receipt`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 px-2.5 py-1 text-xs text-accent-500 hover:bg-accent-500/10 rounded-lg transition-colors"
-                    >
-                      <FileText className="w-3.5 h-3.5" />
-                      View Receipt
-                    </a>
+                    <>
+                      <a
+                        href={`${API}/${entry.id}/receipt`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 px-2.5 py-1 text-xs text-accent-500 hover:bg-accent-500/10 rounded-lg transition-colors"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        View Receipt
+                      </a>
+                      <button
+                        onClick={() => onReceiptRemove(entry.id)}
+                        className="flex items-center gap-1 px-2.5 py-1 text-xs text-surface-500 hover:bg-surface-200/50 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Remove Receipt
+                      </button>
+                    </>
                   ) : (
                     <label className="flex items-center gap-1 px-2.5 py-1 text-xs text-surface-600 hover:bg-surface-200/50 rounded-lg transition-colors cursor-pointer">
                       {uploadingReceiptId === entry.id ? (
