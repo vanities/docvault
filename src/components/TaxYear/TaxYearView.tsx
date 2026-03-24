@@ -662,12 +662,20 @@ export function TaxYearView() {
       taxYear: selectedYear,
       items,
       totalExpenses: items.reduce((sum, item) => sum + item.total, 0),
-      totalDeductible: items.reduce((sum, item) => sum + item.deductibleAmount, 0) + allMileageDeduction,
+      totalDeductible:
+        items.reduce((sum, item) => sum + item.deductibleAmount, 0) + allMileageDeduction,
       mileageTotal: allMileageTotal,
       mileageDeduction: allMileageDeduction,
       mileageCount: yearMileage.length,
     };
-  }, [scannedDocuments, hasHiddenDocs, selectedEntity, selectedYear, yearMileage, mileageData.irsRate]);
+  }, [
+    scannedDocuments,
+    hasHiddenDocs,
+    selectedEntity,
+    selectedYear,
+    yearMileage,
+    mileageData.irsRate,
+  ]);
 
   const allInvoiceSummary = useMemo((): InvoiceSummaryData | undefined => {
     if (!hasHiddenDocs) return undefined;

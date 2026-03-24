@@ -25,7 +25,12 @@ function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
-export function IncomeSummary({ summary, documents, onDownload, onNavigateToSales }: IncomeSummaryProps) {
+export function IncomeSummary({
+  summary,
+  documents,
+  onDownload,
+  onNavigateToSales,
+}: IncomeSummaryProps) {
   const w2Docs = documents.filter((d) => d.type === 'w2');
   const income1099Docs = documents.filter((d) => d.type.startsWith('1099'));
   const k1Docs = documents.filter((d) => d.type === 'k-1');

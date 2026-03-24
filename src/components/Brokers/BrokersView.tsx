@@ -15,7 +15,6 @@ import {
   Link,
   ExternalLink,
   Unlink,
-  Key,
 } from 'lucide-react';
 import type { BrokerAccount, BrokerPortfolio, BrokerId, PortfolioSnapshot } from '../../types';
 import { API_BASE } from '../../constants';
@@ -27,6 +26,7 @@ const BROKER_LABELS: Record<BrokerId, string> = {
   robinhood: 'Robinhood',
   'navy-federal': 'Navy Federal',
   chase: 'Chase',
+  altoira: 'Alto IRA',
 };
 
 const BROKER_COLORS: Record<BrokerId, string> = {
@@ -35,6 +35,7 @@ const BROKER_COLORS: Record<BrokerId, string> = {
   robinhood: 'text-emerald-400 bg-emerald-400/10',
   'navy-federal': 'text-blue-600 bg-blue-600/10',
   chase: 'text-sky-500 bg-sky-500/10',
+  altoira: 'text-orange-500 bg-orange-500/10',
 };
 
 function formatUsd(value: number): string {
@@ -190,11 +191,12 @@ function AddAccountModal({
   onAdd,
   onClose,
 }: {
-  onAdd: (broker: BrokerId, name: string) => void;
+  onAdd: (broker: BrokerId, name: string, url?: string) => void;
   onClose: () => void;
 }) {
   const [broker, setBroker] = useState<BrokerId>('vanguard');
   const [name, setName] = useState('');
+  const [url, setUrl] = useState('');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -219,6 +221,7 @@ function AddAccountModal({
               <option value="robinhood">Robinhood</option>
               <option value="navy-federal">Navy Federal</option>
               <option value="chase">Chase</option>
+              <option value="altoira">Alto IRA</option>
             </select>
           </div>
           <div>
@@ -233,6 +236,17 @@ function AddAccountModal({
               autoFocus
             />
           </div>
+          <div>
+            <label className="text-[12px] font-medium text-surface-700 mb-1 block">
+              Website URL (optional)
+            </label>
+            <input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="e.g. https://app.altoira.com"
+              className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-500/30"
+            />
+          </div>
         </div>
         <div className="flex gap-2 mt-5">
           <button
@@ -243,7 +257,7 @@ function AddAccountModal({
           </button>
           <button
             onClick={() => {
-              if (name.trim()) onAdd(broker, name.trim());
+              if (name.trim()) onAdd(broker, name.trim(), url.trim() || undefined);
             }}
             disabled={!name.trim()}
             className="flex-1 px-4 py-2.5 text-[13px] font-medium bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 transition-colors disabled:opacity-50"
@@ -292,6 +306,18 @@ function AccountCard({
           <div>
             <div className="flex items-center gap-2">
               <p className="font-semibold text-surface-950 text-[14px]">{account.name}</p>
+              {account.url && (
+                <a
+                  href={account.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="p-0.5 text-surface-400 hover:text-accent-500 transition-colors"
+                  title={account.url}
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              )}
               <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-medium ${brokerColor}`}>
                 {BROKER_LABELS[account.broker]}
               </span>
@@ -438,99 +464,17 @@ function AccountCard({
   );
 }
 
-// SnapTrade Setup Modal
-function SnapTradeSetupModal({
-  onSetup,
-  onClose,
-}: {
-  onSetup: (clientId: string, consumerKey: string) => void;
-  onClose: () => void;
-}) {
-  const [clientId, setClientId] = useState('');
-  const [consumerKey, setConsumerKey] = useState('');
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative glass-card rounded-2xl p-6 w-full max-w-md animate-scale-in">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-[16px] font-semibold text-surface-950">Connect SnapTrade</h3>
-          <button onClick={onClose} className="p-1 hover:bg-surface-200/50 rounded-lg">
-            <X className="w-4 h-4 text-surface-600" />
-          </button>
-        </div>
-        <p className="text-[12px] text-surface-600 mb-4">
-          SnapTrade connects your real brokerage accounts (Vanguard, Fidelity, Robinhood, Chase,
-          etc.) to automatically sync holdings. Free tier supports 5 connections.
-        </p>
-        <div className="space-y-3">
-          <div>
-            <label className="text-[12px] font-medium text-surface-700 mb-1 block">Client ID</label>
-            <input
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              placeholder="Your SnapTrade Client ID"
-              className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-500/30"
-              autoFocus
-            />
-          </div>
-          <div>
-            <label className="text-[12px] font-medium text-surface-700 mb-1 block">
-              Consumer Key
-            </label>
-            <input
-              type="password"
-              value={consumerKey}
-              onChange={(e) => setConsumerKey(e.target.value)}
-              placeholder="Your SnapTrade Consumer Key"
-              className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-500/30"
-            />
-          </div>
-        </div>
-        <a
-          href="https://dashboard.snaptrade.com/signup"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1 text-[12px] text-accent-400 hover:underline mt-3"
-        >
-          Get free API keys at dashboard.snaptrade.com
-          <ExternalLink className="w-3 h-3" />
-        </a>
-        <div className="flex gap-2 mt-5">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2.5 text-[13px] font-medium text-surface-700 hover:bg-surface-200/50 rounded-xl transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => {
-              if (clientId && consumerKey) onSetup(clientId, consumerKey);
-            }}
-            disabled={!clientId || !consumerKey}
-            className="flex-1 px-4 py-2.5 text-[13px] font-medium bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 transition-colors disabled:opacity-50"
-          >
-            Connect
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // SnapTrade Banner
 function SnapTradeBanner({
   onConnect,
   onSync,
   onDisconnect,
-  onSetup,
   status,
   isSyncing,
 }: {
   onConnect: () => void;
   onSync: () => void;
   onDisconnect: () => void;
-  onSetup: () => void;
   status: { configured: boolean; registered: boolean } | null;
   isSyncing: boolean;
 }) {
@@ -551,11 +495,11 @@ function SnapTradeBanner({
           </div>
         </div>
         <button
-          onClick={onSetup}
+          onClick={() => window.dispatchEvent(new CustomEvent('navigate-to-settings'))}
           className="flex items-center gap-1.5 px-4 py-2 text-[13px] font-medium bg-violet-500 text-surface-0 rounded-xl hover:bg-violet-400 transition-colors"
         >
-          <Key className="w-3.5 h-3.5" />
-          Set Up
+          <ExternalLink className="w-3.5 h-3.5" />
+          Set Up in Settings
         </button>
       </div>
     );
@@ -612,7 +556,6 @@ export function BrokersView() {
   const [error, setError] = useState<string | null>(null);
   const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>([]);
   const [showAddAccount, setShowAddAccount] = useState(false);
-  const [showSnapTradeSetup, setShowSnapTradeSetup] = useState(false);
   const [snapTradeStatus, setSnapTradeStatus] = useState<{
     configured: boolean;
     registered: boolean;
@@ -714,22 +657,6 @@ export function BrokersView() {
     })();
   }, []);
 
-  const handleSnapTradeSetup = async (clientId: string, consumerKey: string) => {
-    try {
-      const res = await fetch(`${API_BASE}/snaptrade/setup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId, consumerKey }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Setup failed');
-      setShowSnapTradeSetup(false);
-      setSnapTradeStatus({ configured: true, registered: true });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'SnapTrade setup failed');
-    }
-  };
-
   const handleSnapTradeConnect = async () => {
     try {
       const res = await fetch(`${API_BASE}/snaptrade/connect`);
@@ -769,12 +696,12 @@ export function BrokersView() {
     }
   };
 
-  const handleAddAccount = async (broker: BrokerId, name: string) => {
+  const handleAddAccount = async (broker: BrokerId, name: string, url?: string) => {
     try {
       const res = await fetch(`${API_BASE}/brokers/accounts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ broker, name }),
+        body: JSON.stringify({ broker, name, ...(url ? { url } : {}) }),
       });
       if (!res.ok) throw new Error('Failed to add account');
       setShowAddAccount(false);
@@ -920,7 +847,6 @@ export function BrokersView() {
       {/* SnapTrade Banner */}
       <SnapTradeBanner
         status={snapTradeStatus}
-        onSetup={() => setShowSnapTradeSetup(true)}
         onConnect={handleSnapTradeConnect}
         onSync={handleSnapTradeSync}
         onDisconnect={handleSnapTradeDisconnect}
@@ -1021,13 +947,6 @@ export function BrokersView() {
 
       {showAddAccount && (
         <AddAccountModal onAdd={handleAddAccount} onClose={() => setShowAddAccount(false)} />
-      )}
-
-      {showSnapTradeSetup && (
-        <SnapTradeSetupModal
-          onSetup={handleSnapTradeSetup}
-          onClose={() => setShowSnapTradeSetup(false)}
-        />
       )}
     </div>
   );

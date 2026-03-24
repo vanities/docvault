@@ -408,7 +408,7 @@ export interface CryptoGainsSummary {
 }
 
 // Brokerage tracking types
-export type BrokerId = 'vanguard' | 'fidelity' | 'robinhood' | 'navy-federal' | 'chase';
+export type BrokerId = 'vanguard' | 'fidelity' | 'robinhood' | 'navy-federal' | 'chase' | 'altoira';
 
 export interface BrokerHolding {
   ticker: string;
@@ -427,6 +427,7 @@ export interface BrokerAccount {
   id: string;
   broker: BrokerId;
   name: string;
+  url?: string;
   holdings: BrokerHolding[];
   totalValue: number;
   totalCostBasis: number;

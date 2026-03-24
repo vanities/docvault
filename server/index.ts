@@ -635,11 +635,11 @@ async function loadMileageData(): Promise<MileageData> {
     return {
       vehicles: data.vehicles || [],
       entries: data.entries || [],
-      irsRate: data.irsRate ?? 0.70,
+      irsRate: data.irsRate ?? 0.7,
       savedAddresses: data.savedAddresses || [],
     };
   } catch {
-    return { vehicles: [], entries: [], irsRate: 0.70, savedAddresses: [] };
+    return { vehicles: [], entries: [], irsRate: 0.7, savedAddresses: [] };
   }
 }
 
@@ -841,7 +841,13 @@ async function handleRequest(req: Request): Promise<Response> {
         },
       });
     } catch {
-      return jsonResponse({ error: 'No auto-backup found. Set a backup password in Schedules and wait for the next sync cycle.' }, 404);
+      return jsonResponse(
+        {
+          error:
+            'No auto-backup found. Set a backup password in Schedules and wait for the next sync cycle.',
+        },
+        404
+      );
     }
   }
 
@@ -1244,14 +1250,14 @@ async function handleRequest(req: Request): Promise<Response> {
   // POST /api/brokers/accounts — add a new broker account
   if (pathname === '/api/brokers/accounts' && req.method === 'POST') {
     const body = await req.json();
-    const { broker, name } = body;
+    const { broker, name, url } = body;
     if (!broker || !name) {
       return jsonResponse({ error: 'Missing broker or name' }, 400);
     }
     const settings = await loadSettings();
     if (!settings.brokers) settings.brokers = { accounts: [] };
     const id = `${broker}-${Date.now()}`;
-    const account: BrokerAccount = { id, broker, name, holdings: [] };
+    const account: BrokerAccount = { id, broker, name, holdings: [], ...(url ? { url } : {}) };
     settings.brokers.accounts.push(account);
     await saveSettings(settings);
     return jsonResponse({ ok: true, account });
@@ -1266,6 +1272,7 @@ async function handleRequest(req: Request): Promise<Response> {
     const account = settings.brokers.accounts.find((a) => a.id === accountId);
     if (!account) return jsonResponse({ error: 'Account not found' }, 404);
     if (body.name !== undefined) account.name = body.name;
+    if (body.url !== undefined) account.url = body.url || undefined;
     if (body.holdings !== undefined) account.holdings = body.holdings;
     await saveSettings(settings);
     return jsonResponse({ ok: true, account });
@@ -2813,7 +2820,17 @@ async function handleRequest(req: Request): Promise<Response> {
   // POST /api/mileage - Create a new mileage entry
   if (pathname === '/api/mileage' && req.method === 'POST') {
     const body = await req.json();
-    const { date, vehicleId, odometerStart, odometerEnd, tripMiles, gallons, totalCost, purpose, entity } = body;
+    const {
+      date,
+      vehicleId,
+      odometerStart,
+      odometerEnd,
+      tripMiles,
+      gallons,
+      totalCost,
+      purpose,
+      entity,
+    } = body;
 
     if (!vehicleId) {
       return jsonResponse({ error: 'Missing vehicleId' }, 400);
@@ -2827,7 +2844,11 @@ async function handleRequest(req: Request): Promise<Response> {
 
     // Auto-calculate tripMiles from odometer if both provided and tripMiles not given
     let computedTripMiles = tripMiles;
-    if (computedTripMiles === undefined && odometerStart !== undefined && odometerEnd !== undefined) {
+    if (
+      computedTripMiles === undefined &&
+      odometerStart !== undefined &&
+      odometerEnd !== undefined
+    ) {
       computedTripMiles = odometerEnd - odometerStart;
     }
 
@@ -3000,7 +3021,7 @@ async function handleRequest(req: Request): Promise<Response> {
     try {
       const apiUrl = `https://api.geoapify.com/v1/routing?waypoints=${encodeURIComponent(`${fromLat},${fromLon}|${toLat},${toLon}`)}&mode=drive&apiKey=${encodeURIComponent(settings.geoapifyApiKey)}`;
       const res = await fetch(apiUrl);
-      const data = await res.json() as { features?: { properties?: { distance?: number } }[] };
+      const data = (await res.json()) as { features?: { properties?: { distance?: number } }[] };
       const distanceMeters = data.features?.[0]?.properties?.distance;
       if (distanceMeters == null) {
         return jsonResponse({ error: 'No route found' }, 404);
@@ -3019,30 +3040,65 @@ async function handleRequest(req: Request): Promise<Response> {
 
   // GET /api/dropbox/status - Check rclone config and Dropbox connection
   if (pathname === '/api/dropbox/status' && req.method === 'GET') {
-    const configExists = await fs.access(RCLONE_CONFIG_PATH).then(() => true).catch(() => false);
-    const rcloneInstalled = await Bun.spawn(['which', 'rclone'], { stdout: 'pipe', stderr: 'pipe' }).exited.then((code) => code === 0);
-    const syncScriptExists = await fs.access(SYNC_SCRIPT_DATA_PATH).then(() => true).catch(() => false)
-      || await fs.access(SYNC_SCRIPT_PATH).then(() => true).catch(() => false);
+    const configExists = await fs
+      .access(RCLONE_CONFIG_PATH)
+      .then(() => true)
+      .catch(() => false);
+    const rcloneInstalled = await Bun.spawn(['which', 'rclone'], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    }).exited.then((code) => code === 0);
+    const syncScriptExists =
+      (await fs
+        .access(SYNC_SCRIPT_DATA_PATH)
+        .then(() => true)
+        .catch(() => false)) ||
+      (await fs
+        .access(SYNC_SCRIPT_PATH)
+        .then(() => true)
+        .catch(() => false));
 
     if (!rcloneInstalled) {
-      return jsonResponse({ configured: false, rcloneInstalled: false, message: 'rclone not installed in container' });
+      return jsonResponse({
+        configured: false,
+        rcloneInstalled: false,
+        message: 'rclone not installed in container',
+      });
     }
     if (!configExists) {
-      return jsonResponse({ configured: false, rcloneInstalled: true, syncScript: syncScriptExists, message: 'No rclone config found. Set up Dropbox token in Settings.' });
+      return jsonResponse({
+        configured: false,
+        rcloneInstalled: true,
+        syncScript: syncScriptExists,
+        message: 'No rclone config found. Set up Dropbox token in Settings.',
+      });
     }
 
     // Test the connection
     const proc = Bun.spawn(['rclone', 'about', 'dropbox:', '--json'], {
-      stdout: 'pipe', stderr: 'pipe',
+      stdout: 'pipe',
+      stderr: 'pipe',
       env: { ...process.env, RCLONE_CONFIG: RCLONE_CONFIG_PATH },
     });
     await proc.exited;
     if (proc.exitCode === 0) {
       const about = JSON.parse(await new Response(proc.stdout).text());
-      return jsonResponse({ configured: true, rcloneInstalled: true, syncScript: syncScriptExists, connected: true, usage: about });
+      return jsonResponse({
+        configured: true,
+        rcloneInstalled: true,
+        syncScript: syncScriptExists,
+        connected: true,
+        usage: about,
+      });
     }
     const stderr = await new Response(proc.stderr).text();
-    return jsonResponse({ configured: true, rcloneInstalled: true, syncScript: syncScriptExists, connected: false, error: stderr.trim() });
+    return jsonResponse({
+      configured: true,
+      rcloneInstalled: true,
+      syncScript: syncScriptExists,
+      connected: false,
+      error: stderr.trim(),
+    });
   }
 
   // POST /api/dropbox/authorize - Save rclone token from `rclone authorize "dropbox"` output
@@ -4047,7 +4103,9 @@ async function createEncryptedConfigBackup(password: string): Promise<string | n
       if (name.startsWith('.docvault-') && name.endsWith('.json')) {
         try {
           filesToBackup[name] = await fs.readFile(path.join(DATA_DIR, name), 'utf-8');
-        } catch { /* skip unreadable */ }
+        } catch {
+          /* skip unreadable */
+        }
       }
     }
 
@@ -4075,7 +4133,9 @@ async function createEncryptedConfigBackup(password: string): Promise<string | n
     // Write to data dir as .docvault-config-backup.enc
     const backupPath = path.join(DATA_DIR, '.docvault-config-backup.enc');
     await fs.writeFile(backupPath, packed);
-    console.log(`[scheduler] Encrypted config backup written (${Object.keys(filesToBackup).length} files, ${packed.length} bytes)`);
+    console.log(
+      `[scheduler] Encrypted config backup written (${Object.keys(filesToBackup).length} files, ${packed.length} bytes)`
+    );
     return backupPath;
   } catch (err) {
     console.error('[scheduler] Encrypted config backup failed:', err);
@@ -4096,8 +4156,14 @@ async function runDropboxSync(): Promise<void> {
     // Find the sync script: scripts/ dir first, then data dir
     let syncScript: string | null = null;
     for (const candidate of [SYNC_SCRIPT_PATH, SYNC_SCRIPT_DATA_PATH]) {
-      const exists = await fs.access(candidate).then(() => true).catch(() => false);
-      if (exists) { syncScript = candidate; break; }
+      const exists = await fs
+        .access(candidate)
+        .then(() => true)
+        .catch(() => false);
+      if (exists) {
+        syncScript = candidate;
+        break;
+      }
     }
 
     if (syncScript) {

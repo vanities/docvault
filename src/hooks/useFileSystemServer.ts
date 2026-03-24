@@ -42,8 +42,8 @@ export function useFileSystemServer() {
     setIsConnected(data.ok as boolean);
     setDataDir((data.dataDir as string) || '');
     setEntities((data.entities as EntityConfig[]) || []);
-    setAuthRequired(data.authRequired as boolean ?? false);
-    setAuthenticated(data.authenticated as boolean ?? true);
+    setAuthRequired((data.authRequired as boolean) ?? false);
+    setAuthenticated((data.authenticated as boolean) ?? true);
     if (!data.ok) {
       setError((data.error as string) || 'Server not available');
     } else {
