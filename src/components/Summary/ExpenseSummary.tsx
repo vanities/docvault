@@ -25,7 +25,12 @@ function formatDate(dateString: string): string {
   });
 }
 
-export function ExpenseSummary({ summary, documents, onDownload, onNavigateToMileage }: ExpenseSummaryProps) {
+export function ExpenseSummary({
+  summary,
+  documents,
+  onDownload,
+  onNavigateToMileage,
+}: ExpenseSummaryProps) {
   // Group documents by category
   const docsByCategory = documents.reduce(
     (acc, doc) => {

@@ -236,9 +236,10 @@ export function MileageView() {
   };
 
   // Filter entries by selected entity
-  const filteredEntries = selectedEntity === 'all'
-    ? data.entries
-    : data.entries.filter((e) => e.entity === selectedEntity);
+  const filteredEntries =
+    selectedEntity === 'all'
+      ? data.entries
+      : data.entries.filter((e) => e.entity === selectedEntity);
 
   const entityName = entities.find((e) => e.id === selectedEntity)?.name;
 
@@ -261,17 +262,16 @@ export function MileageView() {
 
   // Stats
   const currentMonthEntries = entriesByMonth[currentMonth] || [];
-  const currentMonthMiles = currentMonthEntries.reduce(
-    (sum, e) => sum + (e.tripMiles || 0),
-    0,
-  );
+  const currentMonthMiles = currentMonthEntries.reduce((sum, e) => sum + (e.tripMiles || 0), 0);
   const irsDeduction = currentMonthMiles * data.irsRate;
 
   // Average MPG from all entries that have both gallons and tripMiles
-  const fillUps = filteredEntries.filter((e) => e.gallons && e.gallons > 0 && e.tripMiles && e.tripMiles > 0);
+  const fillUps = filteredEntries.filter(
+    (e) => e.gallons && e.gallons > 0 && e.tripMiles && e.tripMiles > 0
+  );
   const avgMpg =
     fillUps.length > 0
-      ? fillUps.reduce((sum, e) => sum + (e.tripMiles! / e.gallons!), 0) / fillUps.length
+      ? fillUps.reduce((sum, e) => sum + e.tripMiles! / e.gallons!, 0) / fillUps.length
       : 0;
 
   if (loading) {
@@ -290,9 +290,7 @@ export function MileageView() {
           <Fuel className="w-6 h-6 text-teal-500" />
         </div>
         <div>
-          <h1 className="font-display text-xl text-surface-950 italic">
-            Mileage Tracker
-          </h1>
+          <h1 className="font-display text-xl text-surface-950 italic">Mileage Tracker</h1>
           <p className="text-[12px] text-surface-600">
             {entityName || (selectedEntity === 'all' ? 'All Entities' : selectedEntity)}
             {' · '}IRS Rate: ${data.irsRate.toFixed(2)}/mile
@@ -303,27 +301,21 @@ export function MileageView() {
       {/* Quick Stats */}
       <div className="grid grid-cols-3 gap-3">
         <div className="glass-card rounded-xl p-3">
-          <p className="text-[11px] text-surface-600 uppercase tracking-wider">
-            This Month
-          </p>
+          <p className="text-[11px] text-surface-600 uppercase tracking-wider">This Month</p>
           <p className="text-xl font-semibold text-surface-950 tabular-nums">
             {currentMonthMiles.toFixed(0)}
           </p>
           <p className="text-[10px] text-surface-500">miles</p>
         </div>
         <div className="glass-card rounded-xl p-3">
-          <p className="text-[11px] text-surface-600 uppercase tracking-wider">
-            IRS Deduction
-          </p>
+          <p className="text-[11px] text-surface-600 uppercase tracking-wider">IRS Deduction</p>
           <p className="text-xl font-semibold text-teal-500 tabular-nums">
             ${irsDeduction.toFixed(2)}
           </p>
           <p className="text-[10px] text-surface-500">this month</p>
         </div>
         <div className="glass-card rounded-xl p-3">
-          <p className="text-[11px] text-surface-600 uppercase tracking-wider">
-            Avg MPG
-          </p>
+          <p className="text-[11px] text-surface-600 uppercase tracking-wider">Avg MPG</p>
           <p className="text-xl font-semibold text-surface-950 tabular-nums">
             {avgMpg > 0 ? avgMpg.toFixed(1) : '—'}
           </p>
@@ -361,9 +353,7 @@ export function MileageView() {
             onChange={(e) => setVehicleId(e.target.value)}
             className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-teal-400/30 focus:border-teal-400"
           >
-            {data.vehicles.length === 0 && (
-              <option value="">Add a vehicle first</option>
-            )}
+            {data.vehicles.length === 0 && <option value="">Add a vehicle first</option>}
             {data.vehicles.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.name}
@@ -389,7 +379,9 @@ export function MileageView() {
                     <button
                       key={addr.id}
                       type="button"
-                      onClick={() => setFromAddress({ formatted: addr.formatted, lat: addr.lat, lon: addr.lon })}
+                      onClick={() =>
+                        setFromAddress({ formatted: addr.formatted, lat: addr.lat, lon: addr.lon })
+                      }
                       className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-surface-600 hover:text-teal-400 bg-surface-100 border border-border rounded-md hover:border-teal-400/30 transition-colors"
                       title={addr.formatted}
                     >
@@ -413,7 +405,9 @@ export function MileageView() {
                     <button
                       key={addr.id}
                       type="button"
-                      onClick={() => setToAddress({ formatted: addr.formatted, lat: addr.lat, lon: addr.lon })}
+                      onClick={() =>
+                        setToAddress({ formatted: addr.formatted, lat: addr.lat, lon: addr.lon })
+                      }
                       className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-surface-600 hover:text-teal-400 bg-surface-100 border border-border rounded-md hover:border-teal-400/30 transition-colors"
                       title={addr.formatted}
                     >
@@ -553,7 +547,6 @@ export function MileageView() {
                 className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-teal-400/30 focus:border-teal-400"
               />
             </div>
-
           </div>
         )}
 
@@ -574,9 +567,7 @@ export function MileageView() {
         <h2 className="text-sm font-semibold text-surface-900">Trip History</h2>
 
         {months.length === 0 && (
-          <p className="text-sm text-surface-600 text-center py-6">
-            No trips recorded yet
-          </p>
+          <p className="text-sm text-surface-600 text-center py-6">No trips recorded yet</p>
         )}
 
         {months.map((month) => {
@@ -594,16 +585,12 @@ export function MileageView() {
                 onClick={() => setExpandedMonth(isExpanded ? null : month)}
                 className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-surface-100/50 transition-colors"
               >
-                <span className="text-sm font-medium text-surface-900">
-                  {monthLabel}
-                </span>
+                <span className="text-sm font-medium text-surface-900">{monthLabel}</span>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-teal-500 tabular-nums">
                     {monthMiles.toFixed(0)} mi
                   </span>
-                  <span className="text-[11px] text-surface-500">
-                    ({entries.length})
-                  </span>
+                  <span className="text-[11px] text-surface-500">({entries.length})</span>
                   {isExpanded ? (
                     <ChevronUp className="w-4 h-4 text-surface-500" />
                   ) : (
@@ -615,9 +602,7 @@ export function MileageView() {
               {isExpanded && (
                 <div className="border-t border-border divide-y divide-border/50">
                   {entries.map((entry) => {
-                    const vehicle = data.vehicles.find(
-                      (v) => v.id === entry.vehicleId,
-                    );
+                    const vehicle = data.vehicles.find((v) => v.id === entry.vehicleId);
                     const mpg =
                       entry.gallons && entry.gallons > 0 && entry.tripMiles
                         ? (entry.tripMiles / entry.gallons).toFixed(1)
@@ -640,10 +625,10 @@ export function MileageView() {
                             {entry.totalCost ? ` · $${entry.totalCost.toFixed(2)}` : ''}
                             {mpg ? ` · ${mpg} MPG` : ''}
                             {' · '}
-                            {new Date(entry.date + 'T00:00:00').toLocaleDateString(
-                              'en-US',
-                              { month: 'short', day: 'numeric' },
-                            )}
+                            {new Date(entry.date + 'T00:00:00').toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                            })}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -684,10 +669,7 @@ export function MileageView() {
         </div>
 
         {showVehicleForm && (
-          <form
-            onSubmit={handleAddVehicle}
-            className="glass-card rounded-xl p-3 space-y-2"
-          >
+          <form onSubmit={handleAddVehicle} className="glass-card rounded-xl p-3 space-y-2">
             <div className="flex gap-2">
               <input
                 type="text"
@@ -732,22 +714,15 @@ export function MileageView() {
 
         <div className="glass-card rounded-xl divide-y divide-border/50 overflow-hidden">
           {data.vehicles.length === 0 && (
-            <p className="text-sm text-surface-600 text-center py-4">
-              No vehicles added yet
-            </p>
+            <p className="text-sm text-surface-600 text-center py-4">No vehicles added yet</p>
           )}
           {data.vehicles.map((vehicle) => (
-            <div
-              key={vehicle.id}
-              className="flex items-center justify-between px-4 py-2.5 group"
-            >
+            <div key={vehicle.id} className="flex items-center justify-between px-4 py-2.5 group">
               <div>
                 <span className="text-sm text-surface-900">{vehicle.name}</span>
                 {(vehicle.year || vehicle.make || vehicle.model) && (
                   <span className="text-[11px] text-surface-600 ml-2">
-                    {[vehicle.year, vehicle.make, vehicle.model]
-                      .filter(Boolean)
-                      .join(' ')}
+                    {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ')}
                   </span>
                 )}
               </div>
@@ -780,10 +755,7 @@ export function MileageView() {
           </div>
 
           {showAddressForm && (
-            <form
-              onSubmit={handleAddAddress}
-              className="glass-card rounded-xl p-3 space-y-2"
-            >
+            <form onSubmit={handleAddAddress} className="glass-card rounded-xl p-3 space-y-2">
               <input
                 type="text"
                 value={newAddrLabel}
@@ -810,15 +782,10 @@ export function MileageView() {
 
           <div className="glass-card rounded-xl divide-y divide-border/50 overflow-hidden">
             {savedAddresses.length === 0 && (
-              <p className="text-sm text-surface-600 text-center py-4">
-                No saved addresses yet
-              </p>
+              <p className="text-sm text-surface-600 text-center py-4">No saved addresses yet</p>
             )}
             {savedAddresses.map((addr) => (
-              <div
-                key={addr.id}
-                className="flex items-center justify-between px-4 py-2.5 group"
-              >
+              <div key={addr.id} className="flex items-center justify-between px-4 py-2.5 group">
                 <div className="min-w-0">
                   <span className="text-sm text-surface-900 font-medium">{addr.label}</span>
                   <p className="text-[11px] text-surface-500 truncate">{addr.formatted}</p>

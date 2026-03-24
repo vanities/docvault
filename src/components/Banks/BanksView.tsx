@@ -13,6 +13,9 @@ import {
   Car,
   DollarSign,
   BarChart3,
+  Link,
+  Unlink,
+  ExternalLink,
 } from 'lucide-react';
 import type { PortfolioSnapshot } from '../../types';
 import { API_BASE } from '../../constants';
@@ -246,6 +249,84 @@ function InstitutionCard({
   );
 }
 
+// SimpleFIN Connection Banner
+function SimplefinBanner({
+  configured,
+  onRefresh,
+  onDisconnect,
+  isRefreshing,
+}: {
+  configured: boolean | null;
+  onRefresh: () => void;
+  onDisconnect: () => void;
+  isRefreshing: boolean;
+}) {
+  if (configured === null) return null;
+
+  if (!configured) {
+    return (
+      <div className="glass-card rounded-xl p-4 mb-6 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-blue-500/10">
+            <Link className="w-4 h-4 text-blue-500" />
+          </div>
+          <div>
+            <p className="text-[13px] font-medium text-surface-950">Connect with SimpleFIN</p>
+            <p className="text-[11px] text-surface-600">
+              Link 16,000+ US bank accounts. $15/year via SimpleFIN Bridge.
+            </p>
+          </div>
+        </div>
+        <a
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            // Navigate to settings - dispatch a custom event
+            window.dispatchEvent(new CustomEvent('navigate-to-settings'));
+          }}
+          className="flex items-center gap-1.5 px-4 py-2 text-[13px] font-medium bg-blue-500 text-surface-0 rounded-xl hover:bg-blue-400 transition-colors"
+        >
+          <ExternalLink className="w-3.5 h-3.5" />
+          Set Up in Settings
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <div className="glass-card rounded-xl p-4 mb-6 flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <div className="p-2 rounded-lg bg-green-500/10">
+          <Link className="w-4 h-4 text-green-500" />
+        </div>
+        <div>
+          <p className="text-[13px] font-medium text-surface-950">SimpleFIN Connected</p>
+          <p className="text-[11px] text-surface-600">
+            Bank accounts synced via SimpleFIN Bridge. Refresh to fetch latest balances.
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onRefresh}
+          disabled={isRefreshing}
+          className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-accent-500 hover:bg-accent-500/10 rounded-lg transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+          {isRefreshing ? 'Syncing...' : 'Sync'}
+        </button>
+        <button
+          onClick={onDisconnect}
+          className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-surface-500 hover:text-danger-400 hover:bg-danger-500/10 rounded-lg transition-colors"
+          title="Disconnect SimpleFIN"
+        >
+          <Unlink className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Main Component
 
 export function BanksView() {
@@ -297,6 +378,18 @@ export function BanksView() {
       setIsRefreshing(false);
     }
   }, []);
+
+  const handleDisconnect = async () => {
+    if (!confirm('Disconnect SimpleFIN? This will remove your bank account connection.')) return;
+    try {
+      await fetch(`${API_BASE}/simplefin`, { method: 'DELETE' });
+      setConfigured(false);
+      setData(null);
+      cachedData = null;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to disconnect');
+    }
+  };
 
   useEffect(() => {
     void loadStatus();
@@ -397,6 +490,14 @@ export function BanksView() {
           </button>
         )}
       </div>
+
+      {/* SimpleFIN Banner */}
+      <SimplefinBanner
+        configured={configured}
+        onRefresh={() => loadBalances(true)}
+        onDisconnect={handleDisconnect}
+        isRefreshing={isRefreshing}
+      />
 
       {/* Error */}
       {error && (

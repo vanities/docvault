@@ -15,6 +15,7 @@ import {
   Plus,
   Wallet,
   ChevronDown,
+  ChevronUp,
   ChevronRight,
   ExternalLink,
   Download,
@@ -182,7 +183,11 @@ function DropboxConnectionSection() {
             </p>
             <ol className="text-[12px] text-surface-600 list-decimal ml-4 space-y-1">
               <li>
-                Run <code className="bg-surface-200 px-1.5 py-0.5 rounded text-accent-400 text-[11px]">rclone authorize &quot;dropbox&quot;</code> on a machine with a browser
+                Run{' '}
+                <code className="bg-surface-200 px-1.5 py-0.5 rounded text-accent-400 text-[11px]">
+                  rclone authorize &quot;dropbox&quot;
+                </code>{' '}
+                on a machine with a browser
               </li>
               <li>Authorize in the browser when prompted</li>
               <li>Paste the JSON token below</li>
@@ -199,19 +204,26 @@ function DropboxConnectionSection() {
 
       {status?.rcloneInstalled && status.configured && (
         <div className="space-y-3">
-          <div className={`flex items-center gap-3 p-4 rounded-xl border ${
-            status.connected
-              ? 'bg-emerald-500/8 border-emerald-500/20'
-              : 'bg-red-500/10 border-red-500/25'
-          }`}>
-            <div className={`w-2.5 h-2.5 rounded-full ${status.connected ? 'bg-emerald-400' : 'bg-red-400'}`} />
+          <div
+            className={`flex items-center gap-3 p-4 rounded-xl border ${
+              status.connected
+                ? 'bg-emerald-500/8 border-emerald-500/20'
+                : 'bg-red-500/10 border-red-500/25'
+            }`}
+          >
+            <div
+              className={`w-2.5 h-2.5 rounded-full ${status.connected ? 'bg-emerald-400' : 'bg-red-400'}`}
+            />
             <div className="flex-1 min-w-0">
-              <p className={`text-[13px] font-medium ${status.connected ? 'text-emerald-400' : 'text-red-400'}`}>
+              <p
+                className={`text-[13px] font-medium ${status.connected ? 'text-emerald-400' : 'text-red-400'}`}
+              >
                 {status.connected ? 'Connected' : 'Connection Failed'}
               </p>
               {status.connected && status.usage && (
                 <p className="text-[11px] text-surface-600">
-                  {formatBytes(status.usage.used || 0)} used of {formatBytes(status.usage.total || 0)}
+                  {formatBytes(status.usage.used || 0)} used of{' '}
+                  {formatBytes(status.usage.total || 0)}
                 </p>
               )}
               {!status.connected && status.error && (
@@ -317,10 +329,24 @@ export function SettingsView() {
   const [etherscanKeyHint, setEtherscanKeyHint] = useState<string | undefined>();
   const [newEtherscanKey, setNewEtherscanKey] = useState('');
 
+  // Show/hide toggles for collapsible lists
+  const [showAllExchanges, setShowAllExchanges] = useState(false);
+  const [showAllWallets, setShowAllWallets] = useState(false);
+  const [showAllEntities, setShowAllEntities] = useState(false);
+
   // SimpleFIN settings state
   const [simplefinToken, setSimplefinToken] = useState('');
   const [simplefinConfigured, setSimplefinConfigured] = useState(false);
   const [isSimplefinSaving, setIsSimplefinSaving] = useState(false);
+
+  // SnapTrade settings state
+  const [snapTradeStatus, setSnapTradeStatus] = useState<{
+    configured: boolean;
+    registered: boolean;
+  } | null>(null);
+  const [snapTradeClientId, setSnapTradeClientId] = useState('');
+  const [snapTradeConsumerKey, setSnapTradeConsumerKey] = useState('');
+  const [isSnapTradeSaving, setIsSnapTradeSaving] = useState(false);
 
   // Schedule settings state
   const [snapshotEnabled, setSnapshotEnabled] = useState(true);
@@ -339,6 +365,7 @@ export function SettingsView() {
     void loadCacheStatus();
     void loadCryptoSettings();
     void loadSimplefinStatus();
+    void loadSnapTradeStatus();
     void loadSchedules();
     const interval = setInterval(() => {
       void loadSyncStatus();
@@ -778,6 +805,49 @@ export function SettingsView() {
     }
   };
 
+  // SnapTrade functions
+  const loadSnapTradeStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/snaptrade/status`);
+      if (res.ok) setSnapTradeStatus(await res.json());
+    } catch {
+      // Non-critical
+    }
+  };
+
+  const handleSnapTradeSetup = async () => {
+    if (!snapTradeClientId || !snapTradeConsumerKey) return;
+    setIsSnapTradeSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/snaptrade/setup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId: snapTradeClientId, consumerKey: snapTradeConsumerKey }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Setup failed');
+      addToast('SnapTrade connected', 'success');
+      setSnapTradeStatus({ configured: true, registered: true });
+      setSnapTradeClientId('');
+      setSnapTradeConsumerKey('');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'SnapTrade setup failed', 'error');
+    } finally {
+      setIsSnapTradeSaving(false);
+    }
+  };
+
+  const handleRemoveSnapTrade = async () => {
+    if (!confirm('Disconnect SnapTrade? This will remove all synced brokerage accounts.')) return;
+    try {
+      await fetch(`${API_BASE}/snaptrade`, { method: 'DELETE' });
+      addToast('SnapTrade disconnected', 'success');
+      setSnapTradeStatus({ configured: false, registered: false });
+    } catch {
+      addToast('Failed to disconnect SnapTrade', 'error');
+    }
+  };
+
   // Backup / Restore state
   const [backupPassword, setBackupPassword] = useState('');
   const [restorePassword, setRestorePassword] = useState('');
@@ -892,7 +962,9 @@ export function SettingsView() {
       <h2 className="text-2xl font-bold text-surface-950 mb-8">Settings</h2>
 
       {/* ── AI & API Keys ──────────────────────────────── */}
-      <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">AI & API Keys</p>
+      <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
+        AI & API Keys
+      </p>
 
       <section className="glass-card rounded-xl p-6 mb-8">
         <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
@@ -1104,7 +1176,9 @@ export function SettingsView() {
       </section>
 
       {/* ── Sync & Scheduling ─────────────────────────── */}
-      <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">Sync & Scheduling</p>
+      <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
+        Sync & Scheduling
+      </p>
 
       {/* Sync Status */}
       <section className="glass-card rounded-xl p-6 mb-8">
@@ -1339,7 +1413,9 @@ export function SettingsView() {
             </p>
             <input
               type="password"
-              placeholder={autoBackupPasswordSet ? '••••••••  (leave blank to keep)' : 'Set backup password...'}
+              placeholder={
+                autoBackupPasswordSet ? '••••••••  (leave blank to keep)' : 'Set backup password...'
+              }
               value={autoBackupPassword}
               onChange={(e) => setAutoBackupPassword(e.target.value)}
               className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
@@ -1367,7 +1443,9 @@ export function SettingsView() {
       </section>
 
       {/* ── Integrations ─────────────────────────────────── */}
-      <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">Integrations</p>
+      <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
+        Integrations
+      </p>
 
       {/* Dropbox Connection */}
       <DropboxConnectionSection />
@@ -1432,6 +1510,77 @@ export function SettingsView() {
               className="w-full px-4 py-2.5 text-[13px] font-medium bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 transition-colors disabled:opacity-50"
             >
               {isSimplefinSaving ? 'Connecting...' : 'Connect SimpleFIN'}
+            </button>
+          </div>
+        )}
+      </section>
+
+      {/* SnapTrade Brokerage Connection */}
+      <section className="glass-card rounded-xl p-6 mb-8">
+        <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
+          <Key className="w-5 h-5" />
+          Brokerage Sync (SnapTrade)
+        </h3>
+        <p className="text-[13px] text-surface-600 mb-4">
+          Connect brokerage accounts (Vanguard, Fidelity, Robinhood, Chase, etc.) via SnapTrade to
+          auto-sync holdings. Free tier supports 5 connections. Get API keys at{' '}
+          <a
+            href="https://dashboard.snaptrade.com/signup"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-accent-400 hover:underline inline-flex items-center gap-1"
+          >
+            dashboard.snaptrade.com
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        </p>
+
+        {snapTradeStatus?.configured ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 p-4 bg-emerald-500/8 border border-emerald-500/20 rounded-xl">
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+              <div className="flex-1">
+                <p className="text-[13px] font-medium text-emerald-400">Connected</p>
+                <p className="text-[11px] text-surface-600">
+                  SnapTrade is active. Manage linked brokerages in the Brokers tab.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleRemoveSnapTrade}
+              className="text-[11px] text-red-400 hover:text-red-300 transition-colors"
+            >
+              Disconnect SnapTrade
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <label className="text-[12px] font-medium text-surface-700">Client ID</label>
+              <input
+                type="text"
+                value={snapTradeClientId}
+                onChange={(e) => setSnapTradeClientId(e.target.value)}
+                placeholder="Your SnapTrade Client ID"
+                className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-xl text-[13px] text-surface-900 placeholder-surface-500 outline-none focus:ring-2 focus:ring-accent-500/30 font-mono"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[12px] font-medium text-surface-700">Consumer Key</label>
+              <input
+                type="password"
+                value={snapTradeConsumerKey}
+                onChange={(e) => setSnapTradeConsumerKey(e.target.value)}
+                placeholder="Your SnapTrade Consumer Key"
+                className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-xl text-[13px] text-surface-900 placeholder-surface-500 outline-none focus:ring-2 focus:ring-accent-500/30 font-mono"
+              />
+            </div>
+            <button
+              onClick={handleSnapTradeSetup}
+              disabled={isSnapTradeSaving || !snapTradeClientId || !snapTradeConsumerKey}
+              className="w-full px-4 py-2.5 text-[13px] font-medium bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 transition-colors disabled:opacity-50"
+            >
+              {isSnapTradeSaving ? 'Connecting...' : 'Connect SnapTrade'}
             </button>
           </div>
         )}
@@ -1528,7 +1677,7 @@ export function SettingsView() {
 
           {cryptoExchanges.length > 0 && (
             <div className="space-y-2 mb-3">
-              {cryptoExchanges.map((ex) => (
+              {(showAllExchanges ? cryptoExchanges : cryptoExchanges.slice(0, 3)).map((ex) => (
                 <div
                   key={ex.id}
                   className="flex items-center justify-between p-3 bg-surface-200/30 border border-surface-400/20 rounded-xl"
@@ -1555,6 +1704,19 @@ export function SettingsView() {
                   </button>
                 </div>
               ))}
+              {cryptoExchanges.length > 3 && (
+                <button
+                  onClick={() => setShowAllExchanges(!showAllExchanges)}
+                  className="flex items-center gap-1.5 text-[12px] text-accent-400 hover:text-accent-300 transition-colors"
+                >
+                  {showAllExchanges ? (
+                    <ChevronUp className="w-3.5 h-3.5" />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  )}
+                  {showAllExchanges ? 'Show less' : `Show ${cryptoExchanges.length - 3} more`}
+                </button>
+              )}
             </div>
           )}
 
@@ -1698,7 +1860,7 @@ export function SettingsView() {
 
           {cryptoWallets.length > 0 && (
             <div className="space-y-2 mb-3">
-              {cryptoWallets.map((w) => (
+              {(showAllWallets ? cryptoWallets : cryptoWallets.slice(0, 3)).map((w) => (
                 <div
                   key={w.id}
                   className="flex items-center justify-between p-3 bg-surface-200/30 border border-surface-400/20 rounded-xl"
@@ -1721,6 +1883,19 @@ export function SettingsView() {
                   </button>
                 </div>
               ))}
+              {cryptoWallets.length > 3 && (
+                <button
+                  onClick={() => setShowAllWallets(!showAllWallets)}
+                  className="flex items-center gap-1.5 text-[12px] text-accent-400 hover:text-accent-300 transition-colors"
+                >
+                  {showAllWallets ? (
+                    <ChevronUp className="w-3.5 h-3.5" />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  )}
+                  {showAllWallets ? 'Show less' : `Show ${cryptoWallets.length - 3} more`}
+                </button>
+              )}
             </div>
           )}
 
@@ -1854,7 +2029,9 @@ export function SettingsView() {
       </section>
 
       {/* ── Data Management ──────────────────────────────── */}
-      <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">Data Management</p>
+      <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
+        Data Management
+      </p>
 
       {/* Entity Management Section */}
       <section className="glass-card rounded-xl p-6 mb-8">
@@ -1867,7 +2044,7 @@ export function SettingsView() {
         </p>
 
         <div className="space-y-3">
-          {entities.map((entity) => {
+          {(showAllEntities ? entities : entities.slice(0, 3)).map((entity) => {
             const Icon = getEntityIcon(entity);
             const colors = COLOR_MAP[entity.color] || COLOR_MAP.blue;
             const isEditing = editingEntity?.id === entity.id;
@@ -2017,6 +2194,19 @@ export function SettingsView() {
               </div>
             );
           })}
+          {entities.length > 3 && (
+            <button
+              onClick={() => setShowAllEntities(!showAllEntities)}
+              className="flex items-center gap-1.5 text-[12px] text-accent-400 hover:text-accent-300 transition-colors mt-2"
+            >
+              {showAllEntities ? (
+                <ChevronUp className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5" />
+              )}
+              {showAllEntities ? 'Show less' : `Show ${entities.length - 3} more`}
+            </button>
+          )}
         </div>
       </section>
 
@@ -2027,12 +2217,15 @@ export function SettingsView() {
           Encrypted Backup
         </h3>
         <p className="text-[13px] text-surface-600 mb-5">
-          AES-256 encrypted backup of all settings, API keys, cached data, and portfolio
-          snapshots.{' '}
+          AES-256 encrypted backup of all settings, API keys, cached data, and portfolio snapshots.{' '}
           {autoBackupPasswordSet ? (
-            <span className="text-green-500">Auto-backup is enabled and syncs to Dropbox every cycle.</span>
+            <span className="text-green-500">
+              Auto-backup is enabled and syncs to Dropbox every cycle.
+            </span>
           ) : (
-            <span className="text-surface-500">Set a backup password in Schedules above to auto-sync encrypted backups to Dropbox.</span>
+            <span className="text-surface-500">
+              Set a backup password in Schedules above to auto-sync encrypted backups to Dropbox.
+            </span>
           )}
         </p>
 

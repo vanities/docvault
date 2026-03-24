@@ -1,13 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  Egg,
-  Plus,
-  Trash2,
-  DollarSign,
-  ChevronDown,
-  ChevronUp,
-  Package,
-} from 'lucide-react';
+import { Egg, Plus, Trash2, DollarSign, ChevronDown, ChevronUp, Package } from 'lucide-react';
 import type { Sale, SaleProduct, SalesData } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
 
@@ -113,9 +105,8 @@ export function SalesView() {
   };
 
   // Filter sales by selected entity
-  const filteredSales = selectedEntity === 'all'
-    ? data.sales
-    : data.sales.filter((s) => s.entity === selectedEntity);
+  const filteredSales =
+    selectedEntity === 'all' ? data.sales : data.sales.filter((s) => s.entity === selectedEntity);
 
   // Group sales by month (most recent first)
   const salesByMonth = filteredSales
@@ -136,10 +127,7 @@ export function SalesView() {
 
   // Totals
   const allTimeSales = filteredSales.reduce((sum, s) => sum + s.total, 0);
-  const currentMonthSales = (salesByMonth[currentMonth] || []).reduce(
-    (sum, s) => sum + s.total,
-    0
-  );
+  const currentMonthSales = (salesByMonth[currentMonth] || []).reduce((sum, s) => sum + s.total, 0);
 
   const entityName = entities.find((e) => e.id === selectedEntity)?.name;
 
@@ -169,17 +157,13 @@ export function SalesView() {
       {/* Quick Stats */}
       <div className="grid grid-cols-2 gap-3">
         <div className="glass-card rounded-xl p-3">
-          <p className="text-[11px] text-surface-600 uppercase tracking-wider">
-            This Month
-          </p>
+          <p className="text-[11px] text-surface-600 uppercase tracking-wider">This Month</p>
           <p className="text-xl font-semibold text-surface-950 tabular-nums">
             ${currentMonthSales.toFixed(2)}
           </p>
         </div>
         <div className="glass-card rounded-xl p-3">
-          <p className="text-[11px] text-surface-600 uppercase tracking-wider">
-            All Time
-          </p>
+          <p className="text-[11px] text-surface-600 uppercase tracking-wider">All Time</p>
           <p className="text-xl font-semibold text-surface-950 tabular-nums">
             ${allTimeSales.toFixed(2)}
           </p>
@@ -276,9 +260,7 @@ export function SalesView() {
         <h2 className="text-sm font-semibold text-surface-900">Sales History</h2>
 
         {months.length === 0 && (
-          <p className="text-sm text-surface-600 text-center py-6">
-            No sales recorded yet
-          </p>
+          <p className="text-sm text-surface-600 text-center py-6">No sales recorded yet</p>
         )}
 
         {months.map((month) => {
@@ -296,16 +278,12 @@ export function SalesView() {
                 onClick={() => setExpandedMonth(isExpanded ? null : month)}
                 className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-surface-100/50 transition-colors"
               >
-                <span className="text-sm font-medium text-surface-900">
-                  {monthLabel}
-                </span>
+                <span className="text-sm font-medium text-surface-900">{monthLabel}</span>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-accent-400 tabular-nums">
                     ${monthTotal.toFixed(2)}
                   </span>
-                  <span className="text-[11px] text-surface-500">
-                    ({sales.length})
-                  </span>
+                  <span className="text-[11px] text-surface-500">({sales.length})</span>
                   {isExpanded ? (
                     <ChevronUp className="w-4 h-4 text-surface-500" />
                   ) : (
@@ -317,26 +295,22 @@ export function SalesView() {
               {isExpanded && (
                 <div className="border-t border-border divide-y divide-border/50">
                   {sales.map((sale) => {
-                    const product = data.products.find(
-                      (p) => p.id === sale.productId
-                    );
+                    const product = data.products.find((p) => p.id === sale.productId);
                     return (
                       <div
                         key={sale.id}
                         className="flex items-center justify-between px-4 py-2.5 group"
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm text-surface-900 truncate">
-                            {sale.person}
-                          </p>
+                          <p className="text-sm text-surface-900 truncate">{sale.person}</p>
                           <p className="text-[11px] text-surface-600">
                             {product?.name || sale.productId}
                             {sale.quantity > 1 && ` x${sale.quantity}`}
                             {' · '}
-                            {new Date(sale.date + 'T00:00:00').toLocaleDateString(
-                              'en-US',
-                              { month: 'short', day: 'numeric' }
-                            )}
+                            {new Date(sale.date + 'T00:00:00').toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                            })}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -377,10 +351,7 @@ export function SalesView() {
         </div>
 
         {showProductForm && (
-          <form
-            onSubmit={handleAddProduct}
-            className="glass-card rounded-xl p-3 flex gap-2"
-          >
+          <form onSubmit={handleAddProduct} className="glass-card rounded-xl p-3 flex gap-2">
             <input
               type="text"
               value={newProductName}
@@ -410,10 +381,7 @@ export function SalesView() {
 
         <div className="glass-card rounded-xl divide-y divide-border/50 overflow-hidden">
           {data.products.map((product) => (
-            <div
-              key={product.id}
-              className="flex items-center justify-between px-4 py-2.5 group"
-            >
+            <div key={product.id} className="flex items-center justify-between px-4 py-2.5 group">
               <span className="text-sm text-surface-900">{product.name}</span>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-surface-950 tabular-nums">

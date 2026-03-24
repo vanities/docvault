@@ -12,7 +12,7 @@ import { Snaptrade } from 'snaptrade-typescript-sdk';
 // Types
 // -----------------------------------------------------------------------------
 
-export type BrokerId = 'vanguard' | 'fidelity' | 'robinhood' | 'navy-federal' | 'chase';
+export type BrokerId = 'vanguard' | 'fidelity' | 'robinhood' | 'navy-federal' | 'chase' | 'altoira';
 
 export interface BrokerHolding {
   ticker: string;
@@ -26,6 +26,7 @@ export interface BrokerAccount {
   id: string;
   broker: BrokerId;
   name: string;
+  url?: string;
   holdings: BrokerHolding[];
   snaptradeAccountId?: string; // If linked via SnapTrade
 }
@@ -389,7 +390,8 @@ export async function buildPortfolio(
   const allTickers = new Set<string>();
   for (const account of accounts) {
     for (const holding of account.holdings) {
-      allTickers.add(holding.ticker.toUpperCase());
+      const upper = holding.ticker.toUpperCase();
+      if (upper !== 'USD') allTickers.add(upper);
     }
   }
 
@@ -404,7 +406,8 @@ export async function buildPortfolio(
     completed++;
     onProgress?.(completed, totalSteps, account.name);
     const enrichedHoldings = account.holdings.map((h) => {
-      const price = prices[h.ticker.toUpperCase()] || 0;
+      const upperTicker = h.ticker.toUpperCase();
+      const price = upperTicker === 'USD' ? 1 : prices[upperTicker] || 0;
       const marketValue = h.shares * price;
       const costBasis = h.costBasis || 0;
       const gainLoss = costBasis > 0 ? marketValue - costBasis : 0;
@@ -463,4 +466,5 @@ export const BROKER_LABELS: Record<BrokerId, string> = {
   robinhood: 'Robinhood',
   'navy-federal': 'Navy Federal',
   chase: 'Chase',
+  altoira: 'Alto IRA',
 };

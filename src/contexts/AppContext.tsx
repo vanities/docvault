@@ -191,8 +191,17 @@ export function AppProvider({ children }: AppProviderProps) {
 
   // Valid views for hash routing
   const validViews = new Set<string>([
-    'tax-year', 'business-docs', 'all-files', 'settings', 'tn-tax',
-    'crypto', 'brokers', 'banks', 'portfolio', 'sales', 'mileage',
+    'tax-year',
+    'business-docs',
+    'all-files',
+    'settings',
+    'tn-tax',
+    'crypto',
+    'brokers',
+    'banks',
+    'portfolio',
+    'sales',
+    'mileage',
   ]);
 
   const viewFromHash = (): NavView | null => {
@@ -231,6 +240,13 @@ export function AppProvider({ children }: AppProviderProps) {
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
+
+  // Listen for cross-component navigation requests
+  useEffect(() => {
+    const onNavigate = () => setActiveView('settings');
+    window.addEventListener('navigate-to-settings', onNavigate);
+    return () => window.removeEventListener('navigate-to-settings', onNavigate);
+  }, [setActiveView]);
 
   // Entity state with localStorage persistence
   const [selectedEntity, setSelectedEntityState] = useState<Entity>(() => {
