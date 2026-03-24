@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Plus,
   Calendar,
@@ -14,132 +14,263 @@ import {
   PieChart,
   Building2,
   ChevronDown as ChevronDownIcon,
+  DollarSign,
+  Car,
+  Check,
 } from 'lucide-react';
 import { useAppContext, type NavView } from '../../contexts/AppContext';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import type { SyncStatus } from '../../types';
 import { SIDEBAR_COLOR_MAP as COLOR_MAP, renderEntityIcon } from '../../utils/entityDisplay';
 
-function PortfolioGroup({
-  activeView,
+// ---------------------------------------------------------------------------
+// Entity Dropdown Switcher
+// ---------------------------------------------------------------------------
+function EntitySwitcher({
+  entities,
+  selectedEntity,
   isProcessing,
-  onViewClick,
+  onSelect,
+  onAddEntity,
 }: {
-  activeView: NavView;
+  entities: EntityConfig[];
+  selectedEntity: string;
   isProcessing: boolean;
-  onViewClick: (view: NavView) => void;
+  onSelect: (entity: EntityConfig) => void;
+  onAddEntity?: () => void;
 }) {
-  const isPortfolioView =
-    activeView === 'portfolio' ||
-    activeView === 'crypto' ||
-    activeView === 'brokers' ||
-    activeView === 'banks';
-  const [expanded, setExpanded] = useState(isPortfolioView);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
-  // Auto-expand when a portfolio view is active
+  // "All" pseudo-entity
+  const allEntity: EntityConfig = { id: 'all', name: 'All Entities', color: 'gray', path: '' };
+  const allEntities = [allEntity, ...entities];
+  const current = allEntities.find((e) => e.id === selectedEntity) ?? allEntity;
+  const colors = COLOR_MAP[current.color] || COLOR_MAP.gray;
+
+  // Close on outside click
   useEffect(() => {
-    if (isPortfolioView) setExpanded(true);
-  }, [isPortfolioView]);
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
 
-  const navButton = (
-    view: NavView,
-    label: string,
-    Icon: React.ComponentType<{ className?: string }>,
-    activeColor: string,
-    activeTextColor: string
-  ) => (
-    <button
-      onClick={() => onViewClick(view)}
-      disabled={isProcessing}
-      className={`
-        w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg transition-all duration-150 text-left
-        disabled:opacity-40 disabled:cursor-not-allowed
-        ${
-          activeView === view
-            ? `${activeColor} ${activeTextColor}`
-            : 'text-surface-800 hover:text-surface-950 hover:bg-surface-200/50'
-        }
-      `}
-    >
-      <Icon
-        className={`w-3.5 h-3.5 flex-shrink-0 ${activeView === view ? activeTextColor : 'text-surface-600'}`}
-      />
-      <span className="font-medium text-[12px]">{label}</span>
-    </button>
-  );
+  // Group entities
+  const taxEntities = entities.filter((e) => e.type === 'tax' || !e.type);
+  const docEntities = entities.filter((e) => e.type === 'docs');
 
   return (
-    <div>
-      {/* Group header */}
+    <div ref={ref} className="relative">
       <button
-        onClick={() => setExpanded(!expanded)}
+        onClick={() => setOpen(!open)}
+        disabled={isProcessing}
         className={`
-          w-full flex items-center justify-between px-2.5 py-3 md:py-2 rounded-lg transition-all duration-150 text-left
-          ${
-            isPortfolioView && !expanded
-              ? 'bg-violet-500/10 text-violet-500'
-              : 'text-surface-800 hover:text-surface-950 hover:bg-surface-200/50'
-          }
+          w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-all duration-150
+          border border-border/60 hover:border-border
+          ${colors.accent} disabled:opacity-40 disabled:cursor-not-allowed
         `}
       >
-        <div className="flex items-center gap-2.5">
-          <PieChart
-            className={`w-4 h-4 flex-shrink-0 ${isPortfolioView ? 'text-violet-500' : 'text-surface-600'}`}
-          />
-          <span className="font-medium text-[13px]">Portfolio</span>
-        </div>
+        {renderEntityIcon(current, `w-4 h-4 flex-shrink-0 ${colors.text}`)}
+        <span className={`font-semibold text-[13px] truncate flex-1 text-left ${colors.text}`}>
+          {current.name}
+        </span>
         <ChevronDownIcon
-          className={`w-3.5 h-3.5 text-surface-500 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+          className={`w-3.5 h-3.5 ${colors.text} opacity-60 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
         />
       </button>
 
-      {/* Sub-items */}
-      {expanded && (
-        <div className="ml-3 mt-0.5 pl-3 border-l border-border/50 space-y-0.5">
-          {navButton('portfolio', 'Overview', PieChart, 'bg-violet-500/10', 'text-violet-500')}
-          {navButton('crypto', 'Crypto', Bitcoin, 'bg-amber-500/10', 'text-amber-500')}
-          {navButton('brokers', 'Brokers', Landmark, 'bg-accent-500/10', 'text-accent-400')}
-          {navButton('banks', 'Banks', Building2, 'bg-blue-500/10', 'text-blue-500')}
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1.5 bg-surface-50 border border-border rounded-xl shadow-xl z-50 py-1.5 max-h-64 overflow-y-auto">
+          {/* All */}
+          <DropdownItem
+            entity={allEntity}
+            isSelected={selectedEntity === 'all'}
+            onClick={() => {
+              onSelect(allEntity);
+              setOpen(false);
+            }}
+          />
+
+          {/* Tax entities */}
+          {taxEntities.length > 0 && (
+            <>
+              <div className="px-3 pt-2.5 pb-1">
+                <span className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em]">
+                  Tax
+                </span>
+              </div>
+              {taxEntities.map((e) => (
+                <DropdownItem
+                  key={e.id}
+                  entity={e}
+                  isSelected={selectedEntity === e.id}
+                  onClick={() => {
+                    onSelect(e);
+                    setOpen(false);
+                  }}
+                />
+              ))}
+            </>
+          )}
+
+          {/* Doc entities */}
+          {docEntities.length > 0 && (
+            <>
+              <div className="px-3 pt-2.5 pb-1">
+                <span className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em]">
+                  Documents
+                </span>
+              </div>
+              {docEntities.map((e) => (
+                <DropdownItem
+                  key={e.id}
+                  entity={e}
+                  isSelected={selectedEntity === e.id}
+                  onClick={() => {
+                    onSelect(e);
+                    setOpen(false);
+                  }}
+                />
+              ))}
+            </>
+          )}
+
+          {/* Add entity */}
+          {onAddEntity && (
+            <>
+              <div className="border-t border-border/50 mt-1.5 pt-1.5">
+                <button
+                  onClick={() => {
+                    onAddEntity();
+                    setOpen(false);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-surface-600 hover:text-surface-800 hover:bg-surface-200/50 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span className="text-[12px] font-medium">Add Entity</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function EntityButton({
+function DropdownItem({
   entity,
   isSelected,
-  isProcessing,
   onClick,
 }: {
   entity: EntityConfig;
   isSelected: boolean;
-  isProcessing: boolean;
   onClick: () => void;
 }) {
   const colors = COLOR_MAP[entity.color] || COLOR_MAP.gray;
-  const iconClassName = `w-4 h-4 flex-shrink-0 ${isSelected ? colors.text : 'text-surface-600'}`;
-
   return (
     <button
       onClick={onClick}
-      disabled={isProcessing}
       className={`
-        w-full flex items-center gap-2.5 px-2.5 py-3 md:py-2 rounded-lg transition-all duration-150 text-left
-        disabled:opacity-40 disabled:cursor-not-allowed
-        ${
-          isSelected
-            ? `${colors.accent} ${colors.text} ${colors.glow}`
-            : `text-surface-800 hover:text-surface-950 hover:bg-surface-200/50`
-        }
+        w-full flex items-center gap-2.5 px-3 py-2 transition-colors text-left
+        ${isSelected ? `${colors.accent} ${colors.text}` : 'text-surface-800 hover:bg-surface-200/50'}
       `}
     >
-      {renderEntityIcon(entity, iconClassName)}
-      <span className="font-medium text-[13px] truncate">{entity.name}</span>
+      {renderEntityIcon(entity, `w-3.5 h-3.5 flex-shrink-0 ${isSelected ? colors.text : 'text-surface-600'}`)}
+      <span className="font-medium text-[12px] truncate flex-1">{entity.name}</span>
+      {isSelected && <Check className="w-3 h-3 flex-shrink-0 opacity-60" />}
     </button>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Nav button helper
+// ---------------------------------------------------------------------------
+function NavButton({
+  view,
+  label,
+  icon: Icon,
+  activeColor,
+  activeTextColor,
+  activeView,
+  isProcessing,
+  onClick,
+  glow,
+}: {
+  view: NavView;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  activeColor: string;
+  activeTextColor: string;
+  activeView: NavView;
+  isProcessing: boolean;
+  onClick: (view: NavView) => void;
+  glow?: string;
+}) {
+  const isActive = activeView === view;
+  return (
+    <button
+      onClick={() => onClick(view)}
+      disabled={isProcessing}
+      className={`
+        w-full flex items-center gap-2.5 px-2.5 py-3 md:py-2 rounded-lg transition-all duration-150 text-left
+        disabled:opacity-40 disabled:cursor-not-allowed
+        ${isActive ? `${activeColor} ${activeTextColor} ${glow ?? ''}` : 'text-surface-800 hover:text-surface-950 hover:bg-surface-200/50'}
+      `}
+    >
+      <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? activeTextColor : 'text-surface-600'}`} />
+      <span className="font-medium text-[13px]">{label}</span>
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Year Picker (standalone row)
+// ---------------------------------------------------------------------------
+function YearPicker({
+  selectedYear,
+  availableYears,
+  isProcessing,
+  onYearChange,
+}: {
+  selectedYear: number;
+  availableYears: number[];
+  isProcessing: boolean;
+  onYearChange: (year: number) => void;
+}) {
+  const idx = availableYears.indexOf(selectedYear);
+  const canGoBack = idx < availableYears.length - 1;
+  const canGoForward = idx > 0;
+
+  return (
+    <div className="flex items-center justify-center gap-1 px-2.5 py-1.5">
+      <button
+        onClick={() => canGoBack && onYearChange(availableYears[idx + 1])}
+        disabled={isProcessing || !canGoBack}
+        className="p-1.5 md:p-1 rounded hover:bg-surface-300/40 transition-all disabled:opacity-30 disabled:cursor-not-allowed text-surface-600"
+      >
+        <ChevronLeft className="w-3.5 h-3.5" />
+      </button>
+      <span className="text-[13px] font-semibold tabular-nums min-w-[40px] text-center text-surface-900">
+        {selectedYear}
+      </span>
+      <button
+        onClick={() => canGoForward && onYearChange(availableYears[idx - 1])}
+        disabled={isProcessing || !canGoForward}
+        className="p-1.5 md:p-1 rounded hover:bg-surface-300/40 transition-all disabled:opacity-30 disabled:cursor-not-allowed text-surface-600"
+      >
+        <ChevronRight className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sync Indicator
+// ---------------------------------------------------------------------------
 function formatShortRelative(isoStr: string): string {
   const diffMin = Math.round((Date.now() - new Date(isoStr).getTime()) / 60000);
   if (diffMin < 0) return `in ${Math.abs(diffMin)}m`;
@@ -199,6 +330,9 @@ function SyncIndicator() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Sidebar
+// ---------------------------------------------------------------------------
 interface SidebarProps {
   onAddEntity?: () => void;
   onClose?: () => void;
@@ -218,29 +352,20 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
   } = useAppContext();
 
   const entityConfig = entities.find((e) => e.id === selectedEntity);
+  const isDocEntity = entityConfig?.type === 'docs';
+  const isTaxEntity = !isDocEntity;
+  const showTnTax =
+    entityConfig?.type === 'tax' && selectedEntity !== 'all' && selectedEntity !== 'personal';
 
-  // Group entities by type
-  const taxEntities = entities.filter((e) => e.type === 'tax' || !e.type);
-  const docEntities = entities.filter((e) => e.type === 'docs');
-
-  // "All" entity config for display
-  const allEntity: EntityConfig = { id: 'all', name: 'All', color: 'gray', path: '' };
-
-  const handleEntityClick = (entity: EntityConfig) => {
+  const handleEntitySelect = (entity: EntityConfig) => {
     setSelectedEntity(entity.id);
-    // On sales/mileage views, just switch entity — stay on current view
+    // Smart view defaulting
     if (activeView === 'sales' || activeView === 'mileage') {
       onClose?.();
       return;
     }
-    // Smart view defaulting based on entity type
     if (activeView === 'settings') {
-      // Always switch away from settings
-      if (entity.type === 'docs') {
-        setActiveView('all-files');
-      } else {
-        setActiveView('tax-year');
-      }
+      setActiveView(entity.type === 'docs' ? 'all-files' : 'tax-year');
     } else if (entity.type === 'docs' && activeView !== 'all-files') {
       setActiveView('all-files');
     } else if (
@@ -258,9 +383,14 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
     onClose?.();
   };
 
+  const handleYearChange = (year: number) => {
+    setSelectedYear(year);
+    if (activeView !== 'tax-year') setActiveView('tax-year');
+  };
+
   return (
     <aside className="w-60 bg-surface-50 border-r border-border flex flex-col h-full">
-      {/* Logo Area */}
+      {/* Logo */}
       <div className="px-5 pt-5 pb-4">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-accent-500/15 flex items-center justify-center">
@@ -272,204 +402,161 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
         </div>
       </div>
 
-      {/* Entity Section */}
-      <div className="flex-1 overflow-y-auto px-3 pb-3">
-        {/* All */}
-        <div className="mb-3">
-          <div className="space-y-0.5">
-            <EntityButton
-              entity={allEntity}
-              isSelected={selectedEntity === 'all'}
-              isProcessing={isProcessing}
-              onClick={() => handleEntityClick(allEntity)}
-            />
-          </div>
-        </div>
+      {/* Entity Switcher */}
+      <div className="px-3 pb-4">
+        <EntitySwitcher
+          entities={entities}
+          selectedEntity={selectedEntity}
+          isProcessing={isProcessing}
+          onSelect={handleEntitySelect}
+          onAddEntity={onAddEntity}
+        />
+      </div>
 
-        {/* Tax Entities */}
-        {taxEntities.length > 0 && (
-          <div className="mb-3">
+      {/* Navigation */}
+      <div className="flex-1 overflow-y-auto px-3 pb-3">
+        {/* Tax section — hidden for docs-type entities */}
+        {isTaxEntity && (
+          <div className="mb-4">
             <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
               Tax
             </h3>
             <div className="space-y-0.5">
-              {taxEntities.map((entity) => (
-                <EntityButton
-                  key={entity.id}
-                  entity={entity}
-                  isSelected={selectedEntity === entity.id}
+              <NavButton
+                view="tax-year"
+                label="Tax Year"
+                icon={Calendar}
+                activeColor="bg-accent-500/10"
+                activeTextColor="text-accent-400"
+                glow="glow-emerald"
+                activeView={activeView}
+                isProcessing={isProcessing}
+                onClick={handleViewClick}
+              />
+
+              {/* Year picker — separate row */}
+              <YearPicker
+                selectedYear={selectedYear}
+                availableYears={availableYears}
+                isProcessing={isProcessing}
+                onYearChange={handleYearChange}
+              />
+
+              <NavButton
+                view="sales"
+                label="Sales"
+                icon={DollarSign}
+                activeColor="bg-emerald-500/10"
+                activeTextColor="text-emerald-400"
+                activeView={activeView}
+                isProcessing={isProcessing}
+                onClick={handleViewClick}
+              />
+              <NavButton
+                view="mileage"
+                label="Mileage"
+                icon={Car}
+                activeColor="bg-sky-500/10"
+                activeTextColor="text-sky-400"
+                activeView={activeView}
+                isProcessing={isProcessing}
+                onClick={handleViewClick}
+              />
+
+              {showTnTax && (
+                <NavButton
+                  view="tn-tax"
+                  label="TN Tax"
+                  icon={Calculator}
+                  activeColor="bg-amber-500/10"
+                  activeTextColor="text-amber-500"
+                  activeView={activeView}
                   isProcessing={isProcessing}
-                  onClick={() => handleEntityClick(entity)}
+                  onClick={handleViewClick}
                 />
-              ))}
+              )}
             </div>
           </div>
         )}
 
-        {/* Document Entities */}
-        {docEntities.length > 0 && (
-          <div className="mb-3">
-            <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
-              Documents
-            </h3>
-            <div className="space-y-0.5">
-              {docEntities.map((entity) => (
-                <EntityButton
-                  key={entity.id}
-                  entity={entity}
-                  isSelected={selectedEntity === entity.id}
-                  isProcessing={isProcessing}
-                  onClick={() => handleEntityClick(entity)}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Add Entity Button */}
-        {onAddEntity && (
-          <div className="mb-5">
-            <button
-              onClick={onAddEntity}
-              disabled={isProcessing}
-              className="w-full flex items-center gap-2.5 px-2.5 py-3 md:py-2 rounded-lg text-surface-600 hover:text-surface-800 hover:bg-surface-200/50 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="font-medium text-[13px]">Add Entity</span>
-            </button>
-          </div>
-        )}
-
-        {/* Views Section */}
-        <div className="mb-5">
+        {/* Files section */}
+        <div className="mb-4">
           <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
-            Views
+            Files
           </h3>
           <div className="space-y-0.5">
-            {/* Tax Year view button with year stepper */}
-            <div
-              className={`
-                w-full flex items-center gap-2.5 px-2.5 py-3 md:py-2 rounded-lg transition-all duration-150
-                ${
-                  activeView === 'tax-year'
-                    ? 'bg-accent-500/10 text-accent-400 glow-emerald'
-                    : 'text-surface-800 hover:text-surface-950 hover:bg-surface-200/50'
-                }
-              `}
-            >
-              <button
-                onClick={() => handleViewClick('tax-year')}
-                disabled={isProcessing}
-                className="flex items-center gap-2.5 flex-1 min-w-0 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <Calendar
-                  className={`w-4 h-4 flex-shrink-0 ${activeView === 'tax-year' ? 'text-accent-400' : 'text-surface-600'}`}
-                />
-                <span className="font-medium text-[13px]">Tax Year</span>
-              </button>
-              <div className="flex items-center gap-0.5 ml-auto">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const idx = availableYears.indexOf(selectedYear);
-                    if (idx < availableYears.length - 1) setSelectedYear(availableYears[idx + 1]);
-                    if (activeView !== 'tax-year') setActiveView('tax-year');
-                  }}
-                  disabled={
-                    isProcessing ||
-                    availableYears.indexOf(selectedYear) >= availableYears.length - 1
-                  }
-                  className="p-1.5 md:p-0.5 rounded hover:bg-surface-300/40 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  <ChevronLeft className="w-3 h-3" />
-                </button>
-                <span className="text-[12px] font-semibold tabular-nums min-w-[32px] text-center">
-                  {selectedYear}
-                </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const idx = availableYears.indexOf(selectedYear);
-                    if (idx > 0) setSelectedYear(availableYears[idx - 1]);
-                    if (activeView !== 'tax-year') setActiveView('tax-year');
-                  }}
-                  disabled={isProcessing || availableYears.indexOf(selectedYear) <= 0}
-                  className="p-1.5 md:p-0.5 rounded hover:bg-surface-300/40 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  <ChevronRight className="w-3 h-3" />
-                </button>
-              </div>
-            </div>
-
-            {/* TN Tax view — only for non-personal tax entities */}
-            {entityConfig?.type === 'tax' &&
-              selectedEntity !== 'all' &&
-              selectedEntity !== 'personal' && (
-                <button
-                  onClick={() => handleViewClick('tn-tax')}
-                  disabled={isProcessing}
-                  className={`
-                    w-full flex items-center gap-2.5 px-2.5 py-3 md:py-2 rounded-lg transition-all duration-150 text-left
-                    disabled:opacity-40 disabled:cursor-not-allowed
-                    ${
-                      activeView === 'tn-tax'
-                        ? 'bg-amber-500/10 text-amber-500'
-                        : 'text-surface-800 hover:text-surface-950 hover:bg-surface-200/50'
-                    }
-                  `}
-                >
-                  <Calculator
-                    className={`w-4 h-4 flex-shrink-0 ${activeView === 'tn-tax' ? 'text-amber-500' : 'text-surface-600'}`}
-                  />
-                  <span className="font-medium text-[13px]">TN Tax</span>
-                </button>
-              )}
-
-            {/* Business Docs view button */}
-            <button
-              onClick={() => handleViewClick('business-docs')}
-              disabled={isProcessing}
-              className={`
-                w-full flex items-center gap-2.5 px-2.5 py-3 md:py-2 rounded-lg transition-all duration-150 text-left
-                disabled:opacity-40 disabled:cursor-not-allowed
-                ${
-                  activeView === 'business-docs'
-                    ? 'bg-accent-500/10 text-accent-400 glow-emerald'
-                    : 'text-surface-800 hover:text-surface-950 hover:bg-surface-200/50'
-                }
-              `}
-            >
-              <FolderOpen
-                className={`w-4 h-4 flex-shrink-0 ${activeView === 'business-docs' ? 'text-accent-400' : 'text-surface-600'}`}
+            {isTaxEntity && (
+              <NavButton
+                view="business-docs"
+                label="Business Docs"
+                icon={FolderOpen}
+                activeColor="bg-accent-500/10"
+                activeTextColor="text-accent-400"
+                glow="glow-emerald"
+                activeView={activeView}
+                isProcessing={isProcessing}
+                onClick={handleViewClick}
               />
-              <span className="font-medium text-[13px]">Business Docs</span>
-            </button>
-
-            {/* All Files view button */}
-            <button
-              onClick={() => handleViewClick('all-files')}
-              disabled={isProcessing}
-              className={`
-                w-full flex items-center gap-2.5 px-2.5 py-3 md:py-2 rounded-lg transition-all duration-150 text-left
-                disabled:opacity-40 disabled:cursor-not-allowed
-                ${
-                  activeView === 'all-files'
-                    ? 'bg-accent-500/10 text-accent-400 glow-emerald'
-                    : 'text-surface-800 hover:text-surface-950 hover:bg-surface-200/50'
-                }
-              `}
-            >
-              <Files
-                className={`w-4 h-4 flex-shrink-0 ${activeView === 'all-files' ? 'text-accent-400' : 'text-surface-600'}`}
-              />
-              <span className="font-medium text-[13px]">All Files</span>
-            </button>
-
-            {/* Portfolio group */}
-            <PortfolioGroup
+            )}
+            <NavButton
+              view="all-files"
+              label="All Files"
+              icon={Files}
+              activeColor="bg-accent-500/10"
+              activeTextColor="text-accent-400"
+              glow="glow-emerald"
               activeView={activeView}
               isProcessing={isProcessing}
-              onViewClick={handleViewClick}
+              onClick={handleViewClick}
+            />
+          </div>
+        </div>
+
+        {/* Finance section */}
+        <div className="mb-4">
+          <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
+            Finance
+          </h3>
+          <div className="space-y-0.5">
+            <NavButton
+              view="portfolio"
+              label="Portfolio"
+              icon={PieChart}
+              activeColor="bg-violet-500/10"
+              activeTextColor="text-violet-500"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
+            <NavButton
+              view="crypto"
+              label="Crypto"
+              icon={Bitcoin}
+              activeColor="bg-amber-500/10"
+              activeTextColor="text-amber-500"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
+            <NavButton
+              view="brokers"
+              label="Brokers"
+              icon={Landmark}
+              activeColor="bg-accent-500/10"
+              activeTextColor="text-accent-400"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
+            <NavButton
+              view="banks"
+              label="Banks"
+              icon={Building2}
+              activeColor="bg-blue-500/10"
+              activeTextColor="text-blue-500"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
             />
           </div>
         </div>
