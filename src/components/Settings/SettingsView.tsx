@@ -1246,78 +1246,7 @@ export function SettingsView() {
         </div>
       </section>
 
-      {/* ── Integrations ─────────────────────────────────── */}
-      <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">Integrations</p>
-
-      {/* Dropbox Connection */}
-      <DropboxConnectionSection />
-
-      {/* SimpleFIN Bank Accounts */}
-      <section className="glass-card rounded-xl p-6 mb-8">
-        <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
-          <Landmark className="w-5 h-5" />
-          Bank Accounts (SimpleFIN)
-        </h3>
-        <p className="text-[13px] text-surface-600 mb-4">
-          Connect bank accounts (checking, savings, credit cards) via SimpleFIN Bridge. $15/year,
-          supports 16,000+ US institutions. Get a setup token at{' '}
-          <a
-            href="https://beta-bridge.simplefin.org/simplefin/create"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-accent-400 hover:underline inline-flex items-center gap-1"
-          >
-            beta-bridge.simplefin.org
-            <ExternalLink className="w-3 h-3" />
-          </a>
-        </p>
-
-        {simplefinConfigured ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-3 p-4 bg-emerald-500/8 border border-emerald-500/20 rounded-xl">
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-              <div className="flex-1">
-                <p className="text-[13px] font-medium text-emerald-400">Connected</p>
-                <p className="text-[11px] text-surface-600">
-                  SimpleFIN Bridge is active. View balances in the Banks tab.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={handleRemoveSimplefin}
-              className="text-[11px] text-red-400 hover:text-red-300 transition-colors"
-            >
-              Remove SimpleFIN
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="space-y-2">
-              <label className="text-[12px] font-medium text-surface-700">Setup Token</label>
-              <input
-                type="text"
-                value={simplefinToken}
-                onChange={(e) => setSimplefinToken(e.target.value)}
-                placeholder="Paste your SimpleFIN setup token"
-                className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-xl text-[13px] text-surface-900 placeholder-surface-500 outline-none focus:ring-2 focus:ring-accent-500/30 font-mono"
-              />
-              <p className="text-[11px] text-surface-500">
-                1. Sign up at beta-bridge.simplefin.org ($15/year) 2. Connect your banks 3. Create a
-                setup token and paste it here
-              </p>
-            </div>
-            <button
-              onClick={handleSaveSimplefin}
-              disabled={isSimplefinSaving || !simplefinToken}
-              className="w-full px-4 py-2.5 text-[13px] font-medium bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 transition-colors disabled:opacity-50"
-            >
-              {isSimplefinSaving ? 'Connecting...' : 'Connect SimpleFIN'}
-            </button>
-          </div>
-        )}
-      </section>
-
-      {/* Schedules Section */}
+      {/* Scheduled Tasks */}
       <section className="glass-card rounded-xl p-6 mb-8">
         <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
           <RefreshCw className="w-5 h-5" />
@@ -1399,7 +1328,7 @@ export function SettingsView() {
             )}
           </div>
 
-          {/* Encrypted Config Backup to Dropbox */}
+          {/* Encrypted Config Backup */}
           <div className="border-t border-border pt-4">
             <p className="text-[13px] font-medium text-surface-900 mb-1">Encrypted Config Backup</p>
             <p className="text-[11px] text-surface-500 mb-3">
@@ -1435,6 +1364,77 @@ export function SettingsView() {
             )}
           </button>
         </div>
+      </section>
+
+      {/* ── Integrations ─────────────────────────────────── */}
+      <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">Integrations</p>
+
+      {/* Dropbox Connection */}
+      <DropboxConnectionSection />
+
+      {/* SimpleFIN Bank Accounts */}
+      <section className="glass-card rounded-xl p-6 mb-8">
+        <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
+          <Landmark className="w-5 h-5" />
+          Bank Accounts (SimpleFIN)
+        </h3>
+        <p className="text-[13px] text-surface-600 mb-4">
+          Connect bank accounts (checking, savings, credit cards) via SimpleFIN Bridge. $15/year,
+          supports 16,000+ US institutions. Get a setup token at{' '}
+          <a
+            href="https://beta-bridge.simplefin.org/simplefin/create"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-accent-400 hover:underline inline-flex items-center gap-1"
+          >
+            beta-bridge.simplefin.org
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        </p>
+
+        {simplefinConfigured ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 p-4 bg-emerald-500/8 border border-emerald-500/20 rounded-xl">
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+              <div className="flex-1">
+                <p className="text-[13px] font-medium text-emerald-400">Connected</p>
+                <p className="text-[11px] text-surface-600">
+                  SimpleFIN Bridge is active. View balances in the Banks tab.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleRemoveSimplefin}
+              className="text-[11px] text-red-400 hover:text-red-300 transition-colors"
+            >
+              Remove SimpleFIN
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <label className="text-[12px] font-medium text-surface-700">Setup Token</label>
+              <input
+                type="text"
+                value={simplefinToken}
+                onChange={(e) => setSimplefinToken(e.target.value)}
+                placeholder="Paste your SimpleFIN setup token"
+                className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-xl text-[13px] text-surface-900 placeholder-surface-500 outline-none focus:ring-2 focus:ring-accent-500/30 font-mono"
+              />
+              <p className="text-[11px] text-surface-500">
+                1. Sign up at beta-bridge.simplefin.org ($15/year) 2. Connect your banks 3. Create a
+                setup token and paste it here
+              </p>
+            </div>
+            <button
+              onClick={handleSaveSimplefin}
+              disabled={isSimplefinSaving || !simplefinToken}
+              className="w-full px-4 py-2.5 text-[13px] font-medium bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 transition-colors disabled:opacity-50"
+            >
+              {isSimplefinSaving ? 'Connecting...' : 'Connect SimpleFIN'}
+            </button>
+          </div>
+        )}
       </section>
 
       {/* Crypto Settings Section */}
