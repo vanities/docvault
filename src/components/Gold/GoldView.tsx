@@ -320,9 +320,12 @@ export function GoldView() {
     setScanning(true);
     setScanError(null);
     try {
+      // Read file once — we'll reuse it for both parsing and receipt upload
+      const fileBuffer = await file.arrayBuffer();
+
       const res = await fetch(`${API}/parse-receipt?filename=${encodeURIComponent(file.name)}`, {
         method: 'POST',
-        body: await file.arrayBuffer(),
+        body: fileBuffer,
       });
       if (!res.ok) {
         const err = await res.json();
@@ -335,7 +338,7 @@ export function GoldView() {
         return;
       }
 
-      // Auto-create entries for all items
+      // Auto-create entries for all items + attach receipt to each
       let created = 0;
       for (const item of items) {
         const product = GOLD_PRODUCTS.find((p) => p.id === item.productId);
@@ -368,7 +371,15 @@ export function GoldView() {
           });
           if (createRes.ok) {
             const json = await createRes.json();
-            setData((prev) => ({ entries: [...prev.entries, json.entry] }));
+            // Attach the receipt file to the newly created entry
+            const receiptRes = await fetch(
+              `${API}/${json.entry.id}/receipt?filename=${encodeURIComponent(file.name)}`,
+              { method: 'POST', body: fileBuffer }
+            );
+            const entryWithReceipt = receiptRes.ok
+              ? { ...json.entry, receiptPath: (await receiptRes.json()).receiptPath }
+              : json.entry;
+            setData((prev) => ({ entries: [...prev.entries, entryWithReceipt] }));
             created++;
           }
         } catch {
