@@ -13,8 +13,11 @@ import {
   Camera,
   FileText,
   Loader2,
+  BarChart3,
 } from 'lucide-react';
-import type { GoldEntry, GoldData, MetalType, CoinSize } from '../../types';
+import type { GoldEntry, GoldData, MetalType, CoinSize, PortfolioSnapshot } from '../../types';
+import { API_BASE } from '../../constants';
+import { HistoryChart } from '../common/HistoryChart';
 
 const API = '/api/gold';
 
@@ -224,6 +227,7 @@ export function GoldView() {
   const [spotPrices, setSpotPrices] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>([]);
 
   // Form state
   const [productId, setProductId] = useState('american-eagle');
@@ -248,10 +252,17 @@ export function GoldView() {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch(API);
-      const json = await res.json();
+      const [goldRes, snapRes] = await Promise.all([
+        fetch(API),
+        fetch(`${API_BASE}/portfolio/snapshots`),
+      ]);
+      const json = await goldRes.json();
       setData({ entries: json.entries || [] });
       if (json.spotPrices) setSpotPrices(json.spotPrices);
+      if (snapRes.ok) {
+        const snaps = await snapRes.json();
+        if (Array.isArray(snaps)) setSnapshots(snaps);
+      }
     } catch (err) {
       console.error('Failed to load gold data:', err);
     } finally {
@@ -722,6 +733,21 @@ export function GoldView() {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Gold History Chart */}
+      {snapshots.filter((s) => s.goldValue && s.goldValue > 0).length >= 2 && (
+        <div className="glass-card rounded-xl p-5">
+          <h3 className="text-[14px] font-semibold text-surface-950 mb-3 flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-yellow-500" />
+            Gold Value History
+          </h3>
+          <HistoryChart
+            snapshots={snapshots}
+            lines={[{ key: 'goldValue', label: 'Gold', color: '#eab308' }]}
+            height={180}
+          />
         </div>
       )}
 

@@ -260,7 +260,7 @@ export function PortfolioView() {
     );
   }
 
-  const hasAnything = cryptoTotal > 0 || brokerTotal > 0;
+  const hasAnything = cryptoTotal > 0 || brokerTotal > 0 || goldTotal > 0 || propertyTotal > 0;
 
   return (
     <div className="max-w-5xl mx-auto px-4 md:px-6 py-8">
@@ -340,8 +340,22 @@ export function PortfolioView() {
                       title={`Banks: ${((bankTotal / grandTotal) * 100).toFixed(1)}%`}
                     />
                   )}
+                  {goldTotal > 0 && (
+                    <div
+                      className="bg-yellow-500 transition-all duration-500"
+                      style={{ width: `${(goldTotal / grandTotal) * 100}%` }}
+                      title={`Gold: ${((goldTotal / grandTotal) * 100).toFixed(1)}%`}
+                    />
+                  )}
+                  {propertyTotal > 0 && (
+                    <div
+                      className="bg-emerald-500 transition-all duration-500"
+                      style={{ width: `${(propertyTotal / grandTotal) * 100}%` }}
+                      title={`Property: ${((propertyTotal / grandTotal) * 100).toFixed(1)}%`}
+                    />
+                  )}
                 </div>
-                <div className="flex items-center gap-4 mt-2">
+                <div className="flex items-center gap-4 mt-2 flex-wrap">
                   {brokerTotal > 0 && (
                     <div className="flex items-center gap-1.5">
                       <div className="w-2.5 h-2.5 rounded-full bg-violet-500" />
@@ -366,6 +380,22 @@ export function PortfolioView() {
                       </span>
                     </div>
                   )}
+                  {goldTotal > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
+                      <span className="text-[11px] text-surface-600">
+                        Gold {((goldTotal / grandTotal) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
+                  {propertyTotal > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                      <span className="text-[11px] text-surface-600">
+                        Property {((propertyTotal / grandTotal) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -384,6 +414,8 @@ export function PortfolioView() {
                   { key: 'brokerValue', label: 'Brokers', color: '#8b5cf6' },
                   { key: 'cryptoValue', label: 'Crypto', color: '#f59e0b' },
                   { key: 'bankValue', label: 'Banks', color: '#3b82f6' },
+                  { key: 'goldValue', label: 'Gold', color: '#eab308' },
+                  { key: 'propertyValue', label: 'Property', color: '#10b981' },
                 ]}
                 stacked
                 height={220}
