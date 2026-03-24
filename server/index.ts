@@ -669,8 +669,11 @@ interface GoldEntry {
   dealer?: string;
   quantity: number;
   notes?: string;
+  receiptPath?: string;
   createdAt: string;
 }
+
+const GOLD_RECEIPTS_DIR = path.join(DATA_DIR, 'gold-receipts');
 
 interface GoldData {
   entries: GoldEntry[];
@@ -3680,6 +3683,172 @@ async function handleRequest(req: Request): Promise<Response> {
     data.entries = filtered;
     await saveGoldData(data);
     return jsonResponse({ ok: true });
+  }
+
+  // POST /api/gold/:id/receipt - Upload a receipt for a gold entry
+  const goldReceiptUploadMatch = pathname.match(/^\/api\/gold\/([^/]+)\/receipt$/);
+  if (goldReceiptUploadMatch && req.method === 'POST') {
+    const entryId = goldReceiptUploadMatch[1];
+    const data = await loadGoldData();
+    const entry = data.entries.find((e) => e.id === entryId);
+    if (!entry) return jsonResponse({ error: 'Entry not found' }, 404);
+
+    const body = await req.arrayBuffer();
+    const filename = url.searchParams.get('filename') || 'receipt.pdf';
+    const ext = filename.split('.').pop()?.toLowerCase() || 'pdf';
+    const receiptFilename = `${entryId}.${ext}`;
+
+    await fs.mkdir(GOLD_RECEIPTS_DIR, { recursive: true });
+    await fs.writeFile(path.join(GOLD_RECEIPTS_DIR, receiptFilename), Buffer.from(body));
+
+    entry.receiptPath = receiptFilename;
+    await saveGoldData(data);
+    return jsonResponse({ ok: true, receiptPath: receiptFilename });
+  }
+
+  // GET /api/gold/:id/receipt - Serve a receipt file
+  const goldReceiptGetMatch = pathname.match(/^\/api\/gold\/([^/]+)\/receipt$/);
+  if (goldReceiptGetMatch && req.method === 'GET') {
+    const entryId = goldReceiptGetMatch[1];
+    const data = await loadGoldData();
+    const entry = data.entries.find((e) => e.id === entryId);
+    if (!entry?.receiptPath) return jsonResponse({ error: 'No receipt' }, 404);
+
+    const filePath = path.join(GOLD_RECEIPTS_DIR, entry.receiptPath);
+    try {
+      const file = Bun.file(filePath);
+      if (!(await file.exists())) return jsonResponse({ error: 'File not found' }, 404);
+      return new Response(file, {
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    } catch {
+      return jsonResponse({ error: 'File not found' }, 404);
+    }
+  }
+
+  // POST /api/gold/parse-receipt - AI parse a receipt to extract gold purchase info
+  if (pathname === '/api/gold/parse-receipt' && req.method === 'POST') {
+    try {
+      const body = await req.arrayBuffer();
+      const filename = url.searchParams.get('filename') || 'receipt.pdf';
+      const ext = filename.split('.').pop()?.toLowerCase();
+
+      let mimeType = 'application/pdf';
+      if (ext === 'png') mimeType = 'image/png';
+      else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+      else if (ext === 'gif') mimeType = 'image/gif';
+      else if (ext === 'webp') mimeType = 'image/webp';
+
+      const base64Data = Buffer.from(body).toString('base64');
+      const apiKey = await getAnthropicKey();
+      if (!apiKey) return jsonResponse({ error: 'Anthropic API key not configured' }, 400);
+
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const anthropic = new Anthropic({ apiKey, maxRetries: 0 });
+      const isPdf = mimeType === 'application/pdf';
+
+      const fileContent = isPdf
+        ? {
+            type: 'document' as const,
+            source: {
+              type: 'base64' as const,
+              media_type: 'application/pdf' as const,
+              data: base64Data,
+            },
+          }
+        : {
+            type: 'image' as const,
+            source: {
+              type: 'base64' as const,
+              media_type: mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+              data: base64Data,
+            },
+          };
+
+      const model = await getClaudeModel();
+      const response = await withAILimit(() =>
+        anthropic.messages.create({
+          model,
+          max_tokens: 2048,
+          system: `You analyze receipts and invoices for precious metals purchases (gold, silver, platinum, palladium coins and bars). Extract purchase details and return structured JSON.
+
+Known products and their properties:
+- American Gold Eagle: 22K (0.9167 purity), sizes: 1oz, 1/2oz, 1/4oz, 1/10oz
+- American Gold Buffalo: 24K (0.9999), 1oz only
+- Canadian Gold Maple Leaf: 24K (0.9999), sizes: 1oz, 1/2oz, 1/4oz, 1/10oz
+- South African Krugerrand: 22K (0.9167), sizes: 1oz, 1/2oz, 1/4oz, 1/10oz
+- Austrian Gold Philharmonic: 24K (0.9999), sizes: 1oz, 1/2oz, 1/4oz, 1/10oz
+- Chinese Gold Panda: 24K (0.999), sizes: 1oz, 1/2oz, 1/4oz, 1/10oz
+- British Gold Britannia: 24K (0.9999), sizes: 1oz, 1/2oz, 1/4oz, 1/10oz
+- American Silver Eagle: 0.999, 1oz
+- American Platinum Eagle: 0.9995, sizes: 1oz, 1/2oz, 1/4oz, 1/10oz
+- Gold/Silver/Platinum Bars: various sizes (1/10oz to 100oz)
+
+Product IDs: american-eagle, american-buffalo, canadian-maple-leaf, south-african-krugerrand, austrian-philharmonic, chinese-panda, british-britannia, gold-bar, american-silver-eagle, silver-bar, silver-round, american-platinum-eagle, platinum-bar, custom
+
+Size values: 1/10oz, 1/4oz, 1/2oz, 1oz, 2oz, 5oz, 10oz, 1kg, 100oz
+
+Respond ONLY with valid JSON. No markdown.`,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                fileContent,
+                {
+                  type: 'text',
+                  text: `Analyze this precious metals receipt/invoice. Extract ALL line items. For each item, return:
+
+{
+  "items": [
+    {
+      "productId": "american-eagle|american-buffalo|...|custom",
+      "metal": "gold|silver|platinum|palladium",
+      "size": "1oz|1/2oz|...",
+      "coinYear": 2026 (if visible),
+      "quantity": 1,
+      "purchasePrice": 2650.00 (price per piece, NOT total),
+      "description": "human-readable description"
+    }
+  ],
+  "dealer": "dealer/vendor name",
+  "purchaseDate": "YYYY-MM-DD",
+  "orderNumber": "order/invoice number if visible",
+  "subtotal": 0.00,
+  "shipping": 0.00,
+  "tax": 0.00,
+  "total": 0.00
+}
+
+IMPORTANT:
+- purchasePrice must be PER PIECE, not total. Divide total by quantity if needed.
+- Match to the closest known productId. Use "custom" only if no match.
+- If multiple line items, return each separately in the items array.`,
+                },
+              ],
+            },
+          ],
+        })
+      );
+
+      const textContent = response.content.find((c) => c.type === 'text');
+      if (!textContent || textContent.type !== 'text') {
+        return jsonResponse({ error: 'No response from AI' }, 500);
+      }
+
+      let jsonStr = textContent.text;
+      const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (jsonMatch) jsonStr = jsonMatch[1];
+
+      const parsed = JSON.parse(jsonStr);
+      console.log('[Gold AI] Parsed receipt:', JSON.stringify(parsed, null, 2));
+      return jsonResponse({ ok: true, ...parsed });
+    } catch (err) {
+      console.error('[Gold AI] Parse error:', err);
+      return jsonResponse({ error: 'Failed to parse receipt', details: String(err) }, 500);
+    }
   }
 
   // ========================================================================

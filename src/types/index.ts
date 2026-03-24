@@ -554,6 +554,7 @@ export interface GoldEntry {
   dealer?: string; // e.g., "APMEX", "JM Bullion", "SD Bullion"
   quantity: number; // number of pieces
   notes?: string;
+  receiptPath?: string; // path to stored receipt file (relative to gold-receipts/)
   createdAt: string;
 }
 
