@@ -85,6 +85,72 @@ function formatUsd(value: number): string {
   });
 }
 
+// Strip commas, $, spaces — parse to number
+function parseCurrency(val: string): number {
+  return Number(val.replace(/[,$\s]/g, '')) || 0;
+}
+
+// Currency input that accepts commas, decimals, and formats on blur
+function CurrencyInput({
+  value,
+  onChange,
+  placeholder,
+  required,
+  className,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  required?: boolean;
+  className?: string;
+}) {
+  const [display, setDisplay] = useState(value);
+
+  // Sync external changes (e.g., populateForm)
+  useEffect(() => {
+    setDisplay(value);
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    // Allow digits, commas, periods, and empty
+    if (/^[0-9,.\s]*$/.test(raw) || raw === '') {
+      setDisplay(raw);
+      onChange(raw);
+    }
+  };
+
+  const handleBlur = () => {
+    const num = parseCurrency(display);
+    if (num > 0) {
+      const formatted = num.toLocaleString('en-US', {
+        maximumFractionDigits: 2,
+      });
+      setDisplay(formatted);
+      onChange(formatted);
+    }
+  };
+
+  return (
+    <div className="relative">
+      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-500">$</span>
+      <input
+        type="text"
+        inputMode="decimal"
+        value={display}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        placeholder={placeholder}
+        required={required}
+        className={
+          className ||
+          'w-full pl-7 pr-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40'
+        }
+      />
+    </div>
+  );
+}
+
 function formatPropertyType(type: PropertyType): string {
   return PROPERTY_TYPES.find((t) => t.id === type)?.label || type;
 }
@@ -204,13 +270,13 @@ export function PropertyView() {
     setAcreage(entry.acreage?.toString() || '');
     setSquareFeet(entry.squareFeet?.toString() || '');
     setPurchaseDate(entry.purchaseDate);
-    setPurchasePrice(entry.purchasePrice.toString());
-    setCurrentValue(entry.currentValue.toString());
-    setAnnualPropertyTax(entry.annualPropertyTax?.toString() || '');
+    setPurchasePrice(entry.purchasePrice.toLocaleString('en-US'));
+    setCurrentValue(entry.currentValue.toLocaleString('en-US'));
+    setAnnualPropertyTax(entry.annualPropertyTax?.toLocaleString('en-US') || '');
     setMortgageLender(entry.mortgage?.lender || '');
-    setMortgageBalance(entry.mortgage?.balance?.toString() || '');
+    setMortgageBalance(entry.mortgage?.balance?.toLocaleString('en-US') || '');
     setMortgageRate(entry.mortgage?.rate ? (entry.mortgage.rate * 100).toString() : '');
-    setMortgagePayment(entry.mortgage?.monthlyPayment?.toString() || '');
+    setMortgagePayment(entry.mortgage?.monthlyPayment?.toLocaleString('en-US') || '');
     setNotes(entry.notes || '');
     setEditingId(entry.id);
     setShowForm(true);
@@ -228,15 +294,15 @@ export function PropertyView() {
       acreage: acreage ? Number(acreage) : undefined,
       squareFeet: squareFeet ? Number(squareFeet) : undefined,
       purchaseDate: purchaseDate || new Date().toISOString().split('T')[0],
-      purchasePrice: Number(purchasePrice),
-      currentValue: Number(currentValue),
-      annualPropertyTax: annualPropertyTax ? Number(annualPropertyTax) : undefined,
+      purchasePrice: parseCurrency(purchasePrice),
+      currentValue: parseCurrency(currentValue),
+      annualPropertyTax: annualPropertyTax ? parseCurrency(annualPropertyTax) : undefined,
       mortgage: mortgageLender
         ? {
             lender: mortgageLender.trim(),
-            balance: Number(mortgageBalance || 0),
+            balance: parseCurrency(mortgageBalance),
             rate: Number(mortgageRate || 0) / 100,
-            monthlyPayment: Number(mortgagePayment || 0),
+            monthlyPayment: parseCurrency(mortgagePayment),
           }
         : undefined,
       notes: notes.trim() || undefined,
@@ -514,59 +580,35 @@ export function PropertyView() {
               <label className="block text-xs font-medium text-surface-600 mb-1">
                 Purchase Price
               </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-500">
-                  $
-                </span>
-                <input
-                  type="number"
-                  value={purchasePrice}
-                  onChange={(e) => setPurchasePrice(e.target.value)}
-                  placeholder="350000"
-                  min="0"
-                  required
-                  className="w-full pl-7 pr-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-                />
-              </div>
+              <CurrencyInput
+                value={purchasePrice}
+                onChange={setPurchasePrice}
+                placeholder="350,000"
+                required
+              />
             </div>
 
             <div>
               <label className="block text-xs font-medium text-surface-600 mb-1">
                 Current Estimated Value
               </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-500">
-                  $
-                </span>
-                <input
-                  type="number"
-                  value={currentValue}
-                  onChange={(e) => setCurrentValue(e.target.value)}
-                  placeholder="425000"
-                  min="0"
-                  required
-                  className="w-full pl-7 pr-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-                />
-              </div>
+              <CurrencyInput
+                value={currentValue}
+                onChange={setCurrentValue}
+                placeholder="425,000"
+                required
+              />
             </div>
 
             <div>
               <label className="block text-xs font-medium text-surface-600 mb-1">
                 Annual Property Tax <span className="text-surface-500">(optional)</span>
               </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-500">
-                  $
-                </span>
-                <input
-                  type="number"
-                  value={annualPropertyTax}
-                  onChange={(e) => setAnnualPropertyTax(e.target.value)}
-                  placeholder="3200"
-                  min="0"
-                  className="w-full pl-7 pr-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-                />
-              </div>
+              <CurrencyInput
+                value={annualPropertyTax}
+                onChange={setAnnualPropertyTax}
+                placeholder="3,200"
+              />
             </div>
           </div>
 
@@ -590,32 +632,26 @@ export function PropertyView() {
                 <label className="block text-xs font-medium text-surface-600 mb-1">
                   Remaining Balance
                 </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-500">
-                    $
-                  </span>
-                  <input
-                    type="number"
-                    value={mortgageBalance}
-                    onChange={(e) => setMortgageBalance(e.target.value)}
-                    placeholder="280000"
-                    min="0"
-                    className="w-full pl-7 pr-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-                  />
-                </div>
+                <CurrencyInput
+                  value={mortgageBalance}
+                  onChange={setMortgageBalance}
+                  placeholder="280,000"
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-surface-600 mb-1">
                   Interest Rate (%)
                 </label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   value={mortgageRate}
-                  onChange={(e) => setMortgageRate(e.target.value)}
+                  onChange={(e) => {
+                    if (/^[0-9.]*$/.test(e.target.value) || e.target.value === '') {
+                      setMortgageRate(e.target.value);
+                    }
+                  }}
                   placeholder="6.5"
-                  step="0.01"
-                  min="0"
-                  max="25"
                   className="w-full px-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                 />
               </div>
@@ -623,19 +659,11 @@ export function PropertyView() {
                 <label className="block text-xs font-medium text-surface-600 mb-1">
                   Monthly Payment
                 </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-500">
-                    $
-                  </span>
-                  <input
-                    type="number"
-                    value={mortgagePayment}
-                    onChange={(e) => setMortgagePayment(e.target.value)}
-                    placeholder="2100"
-                    min="0"
-                    className="w-full pl-7 pr-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-                  />
-                </div>
+                <CurrencyInput
+                  value={mortgagePayment}
+                  onChange={setMortgagePayment}
+                  placeholder="2,100"
+                />
               </div>
             </div>
           </div>
