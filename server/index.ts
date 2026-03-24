@@ -661,7 +661,7 @@ interface GoldEntry {
   productId: string;
   customDescription?: string;
   coinYear?: number;
-  size: '1oz' | '1/2oz' | '1/4oz' | '1/10oz';
+  size: string;
   weightOz: number;
   purity: number;
   purchasePrice: number;

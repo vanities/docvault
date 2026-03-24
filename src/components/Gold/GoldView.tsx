@@ -89,7 +89,7 @@ const GOLD_PRODUCTS: GoldProduct[] = [
     label: 'Gold Bar',
     metal: 'gold',
     purity: 0.9999,
-    availableSizes: ['1oz', '1/2oz', '1/4oz', '1/10oz'],
+    availableSizes: ['1/10oz', '1/4oz', '1/2oz', '1oz', '2oz', '5oz', '10oz', '1kg'],
     defaultSize: '1oz',
   },
   {
@@ -105,7 +105,15 @@ const GOLD_PRODUCTS: GoldProduct[] = [
     label: 'Silver Bar',
     metal: 'silver',
     purity: 0.999,
-    availableSizes: ['1oz'],
+    availableSizes: ['1oz', '2oz', '5oz', '10oz', '1kg', '100oz'],
+    defaultSize: '10oz',
+  },
+  {
+    id: 'silver-round',
+    label: 'Silver Round',
+    metal: 'silver',
+    purity: 0.999,
+    availableSizes: ['1oz', '2oz', '5oz'],
     defaultSize: '1oz',
   },
   {
@@ -113,7 +121,15 @@ const GOLD_PRODUCTS: GoldProduct[] = [
     label: 'American Platinum Eagle',
     metal: 'platinum',
     purity: 0.9995,
-    availableSizes: ['1oz', '1/2oz', '1/4oz', '1/10oz'],
+    availableSizes: ['1/10oz', '1/4oz', '1/2oz', '1oz'],
+    defaultSize: '1oz',
+  },
+  {
+    id: 'platinum-bar',
+    label: 'Platinum Bar',
+    metal: 'platinum',
+    purity: 0.9995,
+    availableSizes: ['1oz', '5oz', '10oz'],
     defaultSize: '1oz',
   },
   {
@@ -121,23 +137,33 @@ const GOLD_PRODUCTS: GoldProduct[] = [
     label: 'Custom / Other',
     metal: 'gold',
     purity: 0.999,
-    availableSizes: ['1oz', '1/2oz', '1/4oz', '1/10oz'],
+    availableSizes: ['1/10oz', '1/4oz', '1/2oz', '1oz', '2oz', '5oz', '10oz', '1kg', '100oz'],
     defaultSize: '1oz',
   },
 ];
 
 const SIZE_WEIGHTS: Record<CoinSize, number> = {
-  '1oz': 1.0,
-  '1/2oz': 0.5,
-  '1/4oz': 0.25,
   '1/10oz': 0.1,
+  '1/4oz': 0.25,
+  '1/2oz': 0.5,
+  '1oz': 1.0,
+  '2oz': 2.0,
+  '5oz': 5.0,
+  '10oz': 10.0,
+  '1kg': 32.1507,
+  '100oz': 100.0,
 };
 
 const SIZE_LABELS: Record<CoinSize, string> = {
-  '1oz': '1 oz',
-  '1/2oz': '1/2 oz',
-  '1/4oz': '1/4 oz',
   '1/10oz': '1/10 oz',
+  '1/4oz': '1/4 oz',
+  '1/2oz': '1/2 oz',
+  '1oz': '1 oz',
+  '2oz': '2 oz',
+  '5oz': '5 oz',
+  '10oz': '10 oz',
+  '1kg': '1 kg (32.15 oz)',
+  '100oz': '100 oz',
 };
 
 const KNOWN_DEALERS = [

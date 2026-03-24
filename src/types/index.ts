@@ -529,7 +529,16 @@ export interface MileageData {
 
 // Precious metals tracking
 export type MetalType = 'gold' | 'silver' | 'platinum' | 'palladium';
-export type CoinSize = '1oz' | '1/2oz' | '1/4oz' | '1/10oz';
+export type CoinSize =
+  | '1/10oz'
+  | '1/4oz'
+  | '1/2oz'
+  | '1oz'
+  | '2oz'
+  | '5oz'
+  | '10oz'
+  | '1kg'
+  | '100oz';
 
 export interface GoldEntry {
   id: string;
