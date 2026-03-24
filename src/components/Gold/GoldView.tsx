@@ -963,6 +963,16 @@ export function GoldView() {
 // Entries List Sub-component
 // =============================================================================
 
+type SortKey =
+  | 'date-desc'
+  | 'date-asc'
+  | 'value-desc'
+  | 'value-asc'
+  | 'gain-desc'
+  | 'gain-asc'
+  | 'name';
+type MetalFilter = 'all' | MetalType;
+
 function EntriesList({
   entries,
   spotPrices,
@@ -981,18 +991,162 @@ function EntriesList({
   uploadingReceiptId: string | null;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<SortKey>('date-desc');
+  const [metalFilter, setMetalFilter] = useState<MetalFilter>('all');
+  const [searchText, setSearchText] = useState('');
 
-  // Sort by purchase date descending
-  const sorted = useMemo(
-    () => [...entries].sort((a, b) => b.purchaseDate.localeCompare(a.purchaseDate)),
-    [entries]
-  );
+  // Determine which metal tabs to show
+  const metalCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const e of entries) {
+      counts[e.metal] = (counts[e.metal] || 0) + 1;
+    }
+    return counts;
+  }, [entries]);
+  const availableMetals = Object.keys(metalCounts) as MetalType[];
+
+  // Filter
+  const filtered = useMemo(() => {
+    let result = entries;
+    if (metalFilter !== 'all') {
+      result = result.filter((e) => e.metal === metalFilter);
+    }
+    if (searchText.trim()) {
+      const q = searchText.toLowerCase();
+      result = result.filter((e) => {
+        const product = GOLD_PRODUCTS.find((p) => p.id === e.productId);
+        const label = e.productId === 'custom' ? e.customDescription || '' : product?.label || '';
+        return (
+          label.toLowerCase().includes(q) ||
+          (e.dealer || '').toLowerCase().includes(q) ||
+          (e.notes || '').toLowerCase().includes(q) ||
+          (e.customDescription || '').toLowerCase().includes(q) ||
+          (e.coinYear?.toString() || '').includes(q)
+        );
+      });
+    }
+    return result;
+  }, [entries, metalFilter, searchText]);
+
+  // Sort
+  const sorted = useMemo(() => {
+    const getVal = (e: GoldEntry) => {
+      const spot = spotPrices[e.metal] || 0;
+      return e.weightOz * e.quantity * spot;
+    };
+    const getGain = (e: GoldEntry) => {
+      return getVal(e) - e.purchasePrice * e.quantity;
+    };
+    const getLabel = (e: GoldEntry) => {
+      const product = GOLD_PRODUCTS.find((p) => p.id === e.productId);
+      return e.productId === 'custom'
+        ? e.customDescription || 'Custom'
+        : product?.label || e.productId;
+    };
+
+    return [...filtered].sort((a, b) => {
+      switch (sortBy) {
+        case 'date-desc':
+          return b.purchaseDate.localeCompare(a.purchaseDate);
+        case 'date-asc':
+          return a.purchaseDate.localeCompare(b.purchaseDate);
+        case 'value-desc':
+          return getVal(b) - getVal(a);
+        case 'value-asc':
+          return getVal(a) - getVal(b);
+        case 'gain-desc':
+          return getGain(b) - getGain(a);
+        case 'gain-asc':
+          return getGain(a) - getGain(b);
+        case 'name':
+          return getLabel(a).localeCompare(getLabel(b));
+        default:
+          return 0;
+      }
+    });
+  }, [filtered, sortBy, spotPrices]);
+
+  // Filtered totals
+  const filteredTotal = useMemo(() => {
+    let cost = 0;
+    let value = 0;
+    for (const e of filtered) {
+      cost += e.purchasePrice * e.quantity;
+      value += e.weightOz * e.quantity * (spotPrices[e.metal] || 0);
+    }
+    return { cost, value, count: filtered.length };
+  }, [filtered, spotPrices]);
 
   return (
-    <div className="space-y-2">
-      <h3 className="text-xs font-semibold text-surface-600 uppercase tracking-wider px-1">
-        Holdings ({entries.length} {entries.length === 1 ? 'entry' : 'entries'})
-      </h3>
+    <div className="space-y-3">
+      {/* Holdings header with filter/sort controls */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold text-surface-600 uppercase tracking-wider px-1">
+            Holdings ({filtered.length}
+            {filtered.length !== entries.length ? ` of ${entries.length}` : ''})
+            {filteredTotal.value > 0 && (
+              <span className="normal-case font-normal ml-2">{formatUsd(filteredTotal.value)}</span>
+            )}
+          </h3>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as SortKey)}
+            className="text-xs px-2 py-1 bg-surface-100 border border-border rounded-lg text-surface-700 focus:outline-none"
+          >
+            <option value="date-desc">Newest first</option>
+            <option value="date-asc">Oldest first</option>
+            <option value="value-desc">Highest value</option>
+            <option value="value-asc">Lowest value</option>
+            <option value="gain-desc">Best gain</option>
+            <option value="gain-asc">Worst gain</option>
+            <option value="name">Name A-Z</option>
+          </select>
+        </div>
+
+        {/* Metal filter tabs + search */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {availableMetals.length > 1 && (
+            <div className="flex gap-1">
+              <button
+                onClick={() => setMetalFilter('all')}
+                className={`px-2.5 py-1 text-xs rounded-lg transition-colors ${
+                  metalFilter === 'all'
+                    ? 'bg-surface-300/60 text-surface-950 font-medium'
+                    : 'text-surface-600 hover:bg-surface-200/50'
+                }`}
+              >
+                All
+              </button>
+              {availableMetals.map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setMetalFilter(m)}
+                  className={`px-2.5 py-1 text-xs rounded-lg transition-colors capitalize ${
+                    metalFilter === m
+                      ? `${getMetalBgColor(m)} ${getMetalColor(m)} font-medium`
+                      : 'text-surface-600 hover:bg-surface-200/50'
+                  }`}
+                >
+                  {m} ({metalCounts[m]})
+                </button>
+              ))}
+            </div>
+          )}
+          <input
+            type="text"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="Search..."
+            className="flex-1 min-w-[120px] px-2.5 py-1 text-xs bg-surface-100 border border-border rounded-lg text-surface-700 placeholder:text-surface-500 focus:outline-none focus:ring-1 focus:ring-yellow-500/40"
+          />
+        </div>
+      </div>
+      {sorted.length === 0 && (
+        <div className="text-center py-6 text-xs text-surface-500">
+          No entries match your filters.
+        </div>
+      )}
       {sorted.map((entry) => {
         const product = GOLD_PRODUCTS.find((p) => p.id === entry.productId);
         const label =
