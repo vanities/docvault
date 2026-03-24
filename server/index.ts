@@ -448,6 +448,7 @@ const TODOS_FILE = path.join(DATA_DIR, '.docvault-todos.json');
 const SALES_FILE = path.join(DATA_DIR, '.docvault-sales.json');
 const MILEAGE_FILE = path.join(DATA_DIR, '.docvault-mileage.json');
 const GOLD_FILE = path.join(DATA_DIR, '.docvault-gold.json');
+const PROPERTY_FILE = path.join(DATA_DIR, '.docvault-property.json');
 const CRYPTO_CACHE_FILE = path.join(DATA_DIR, '.docvault-crypto-cache.json');
 const BROKER_CACHE_FILE = path.join(DATA_DIR, '.docvault-broker-cache.json');
 const SIMPLEFIN_CACHE_FILE = path.join(DATA_DIR, '.docvault-simplefin-cache.json');
@@ -459,6 +460,7 @@ interface PortfolioSnapshot {
   brokerValue: number;
   bankValue?: number;
   goldValue?: number;
+  propertyValue?: number;
   shortTermGains: number;
   longTermGains: number;
 }
@@ -736,6 +738,59 @@ async function fetchMetalSpotPrices(): Promise<Record<string, number>> {
     console.warn('[gold] Spot price fetch failed:', err);
     return metalPriceCache; // return stale cache if available
   }
+}
+
+// ============================================================================
+// Property / Real Estate Storage
+// ============================================================================
+
+interface PropertyAddress {
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+}
+
+interface PropertyMortgage {
+  lender: string;
+  balance: number;
+  rate: number;
+  monthlyPayment: number;
+}
+
+interface PropertyEntry {
+  id: string;
+  name: string;
+  type: string;
+  address: PropertyAddress;
+  acreage?: number;
+  squareFeet?: number;
+  purchaseDate: string;
+  purchasePrice: number;
+  currentValue: number;
+  currentValueDate?: string;
+  annualPropertyTax?: number;
+  mortgage?: PropertyMortgage;
+  notes?: string;
+  createdAt: string;
+}
+
+interface PropertyData {
+  entries: PropertyEntry[];
+}
+
+async function loadPropertyData(): Promise<PropertyData> {
+  try {
+    const content = await fs.readFile(PROPERTY_FILE, 'utf-8');
+    const data = JSON.parse(content);
+    return { entries: data.entries || [] };
+  } catch {
+    return { entries: [] };
+  }
+}
+
+async function savePropertyData(data: PropertyData): Promise<void> {
+  await fs.writeFile(PROPERTY_FILE, JSON.stringify(data, null, 2));
 }
 
 // Queue to serialize writes to parsed data file
@@ -3628,6 +3683,107 @@ async function handleRequest(req: Request): Promise<Response> {
   }
 
   // ========================================================================
+  // Property / Real Estate API
+  // ========================================================================
+
+  // GET /api/property - Get all property entries
+  if (pathname === '/api/property' && req.method === 'GET') {
+    const data = await loadPropertyData();
+    return jsonResponse(data);
+  }
+
+  // POST /api/property - Create a new property entry
+  if (pathname === '/api/property' && req.method === 'POST') {
+    const body = await req.json();
+    const {
+      name,
+      type,
+      address,
+      acreage,
+      squareFeet,
+      purchaseDate,
+      purchasePrice,
+      currentValue,
+      annualPropertyTax,
+      mortgage,
+      notes,
+    } = body;
+
+    if (
+      !name ||
+      !type ||
+      !address ||
+      !purchaseDate ||
+      purchasePrice == null ||
+      currentValue == null
+    ) {
+      return jsonResponse({ error: 'Missing required fields' }, 400);
+    }
+
+    const data = await loadPropertyData();
+    const entry: PropertyEntry = {
+      id: crypto.randomUUID(),
+      name: name.trim(),
+      type,
+      address,
+      acreage: acreage ? Number(acreage) : undefined,
+      squareFeet: squareFeet ? Number(squareFeet) : undefined,
+      purchaseDate,
+      purchasePrice: Number(purchasePrice),
+      currentValue: Number(currentValue),
+      currentValueDate: new Date().toISOString().split('T')[0],
+      annualPropertyTax: annualPropertyTax ? Number(annualPropertyTax) : undefined,
+      mortgage: mortgage?.lender
+        ? {
+            lender: mortgage.lender,
+            balance: Number(mortgage.balance || 0),
+            rate: Number(mortgage.rate || 0),
+            monthlyPayment: Number(mortgage.monthlyPayment || 0),
+          }
+        : undefined,
+      notes: notes?.trim() || undefined,
+      createdAt: new Date().toISOString(),
+    };
+
+    data.entries.push(entry);
+    await savePropertyData(data);
+    return jsonResponse({ ok: true, entry });
+  }
+
+  // PUT /api/property/:id - Update a property entry
+  const propertyUpdateMatch = pathname.match(/^\/api\/property\/([^/]+)$/);
+  if (propertyUpdateMatch && req.method === 'PUT') {
+    const entryId = propertyUpdateMatch[1];
+    const body = await req.json();
+    const data = await loadPropertyData();
+    const idx = data.entries.findIndex((e) => e.id === entryId);
+    if (idx === -1) return jsonResponse({ error: 'Property not found' }, 404);
+
+    // Update currentValueDate if currentValue changed
+    if (body.currentValue !== undefined && body.currentValue !== data.entries[idx].currentValue) {
+      body.currentValueDate = new Date().toISOString().split('T')[0];
+    }
+
+    data.entries[idx] = { ...data.entries[idx], ...body, id: entryId };
+    await savePropertyData(data);
+    return jsonResponse({ ok: true, entry: data.entries[idx] });
+  }
+
+  // DELETE /api/property/:id - Delete a property entry
+  const propertyDeleteMatch = pathname.match(/^\/api\/property\/([^/]+)$/);
+  if (propertyDeleteMatch && req.method === 'DELETE') {
+    const entryId = propertyDeleteMatch[1];
+    const data = await loadPropertyData();
+    const filtered = data.entries.filter((e) => e.id !== entryId);
+    if (filtered.length === data.entries.length) {
+      return jsonResponse({ error: 'Property not found' }, 404);
+    }
+    data.entries = filtered;
+    await savePropertyData(data);
+    return jsonResponse({ ok: true });
+  }
+
+  // ========================================================================
   // Geocode API (Geoapify proxy)
   // ========================================================================
 
@@ -4750,16 +4906,29 @@ async function takePortfolioSnapshot(): Promise<void> {
       console.warn('[scheduler] Gold value calc failed:', err);
     }
 
+    // Compute property value from entries (equity = currentValue - mortgage balance)
+    let propertyValue = 0;
+    try {
+      const propertyData = await loadPropertyData();
+      for (const entry of propertyData.entries) {
+        const equity = entry.currentValue - (entry.mortgage?.balance || 0);
+        propertyValue += equity;
+      }
+    } catch (err) {
+      console.warn('[scheduler] Property value calc failed:', err);
+    }
+
     const brokerValue = brokerPortfolio?.totalValue || 0;
     const today = new Date().toISOString().split('T')[0];
 
     await saveSnapshot({
       date: today,
-      totalValue: cryptoValue + brokerValue + bankValue + goldValue,
+      totalValue: cryptoValue + brokerValue + bankValue + goldValue + propertyValue,
       cryptoValue,
       brokerValue,
       bankValue,
       goldValue,
+      propertyValue,
       shortTermGains: brokerPortfolio?.shortTermGains || 0,
       longTermGains: brokerPortfolio?.longTermGains || 0,
     });

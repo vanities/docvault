@@ -25,7 +25,8 @@ export type NavView =
   | 'portfolio'
   | 'sales'
   | 'mileage'
-  | 'gold';
+  | 'gold'
+  | 'property';
 
 // Tab types for tax year view
 export type TabType = 'documents' | 'income' | 'expenses' | 'invoices' | 'statements';
