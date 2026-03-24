@@ -4898,8 +4898,8 @@ async function takePortfolioSnapshot(): Promise<void> {
         const spotPrices = await fetchMetalSpotPrices();
         for (const entry of goldData.entries) {
           const spotPrice = spotPrices[entry.metal] || 0;
-          const pureOz = entry.weightOz * entry.purity * entry.quantity;
-          goldValue += pureOz * spotPrice;
+          // Size denomination = pure metal content (e.g. "1 oz Eagle" = 1 oz pure gold)
+          goldValue += entry.weightOz * entry.quantity * spotPrice;
         }
       }
     } catch (err) {

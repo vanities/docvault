@@ -738,7 +738,7 @@ function PropertyList({
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-surface-950 truncate">{entry.name}</p>
                   <p className="text-xs text-surface-500 truncate">
-                    {formatPropertyType(pType)} &middot; {formatAddress(entry.address)}
+                    {formatPropertyType(pType)} · {formatAddress(entry.address)}
                   </p>
                 </div>
               </div>
