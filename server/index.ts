@@ -774,12 +774,20 @@ interface PropertyEntry {
   currentValueDate?: string;
   annualPropertyTax?: number;
   mortgage?: PropertyMortgage;
+  lastAmortizationDate?: string; // YYYY-MM — last month amortization was applied
   notes?: string;
   createdAt: string;
 }
 
 interface PropertyData {
   entries: PropertyEntry[];
+}
+
+// Count months between two YYYY-MM strings
+function monthsBetween(from: string, to: string): number {
+  const [fy, fm] = from.split('-').map(Number);
+  const [ty, tm] = to.split('-').map(Number);
+  return (ty - fy) * 12 + (tm - fm);
 }
 
 async function loadPropertyData(): Promise<PropertyData> {
@@ -5075,13 +5083,48 @@ async function takePortfolioSnapshot(): Promise<void> {
       console.warn('[scheduler] Gold value calc failed:', err);
     }
 
-    // Compute property value from entries (equity = currentValue - mortgage balance)
+    // Compute property value + apply monthly mortgage amortization
     let propertyValue = 0;
     try {
       const propertyData = await loadPropertyData();
+      const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+      let propertyChanged = false;
+
       for (const entry of propertyData.entries) {
+        // Apply monthly amortization if mortgage exists and month has changed
+        if (entry.mortgage && entry.mortgage.balance > 0 && entry.mortgage.monthlyPayment > 0) {
+          const lastAmort = entry.lastAmortizationDate || '';
+          if (lastAmort < currentMonth) {
+            // Calculate how many months to apply (catch up if multiple missed)
+            const monthsToApply = lastAmort ? monthsBetween(lastAmort, currentMonth) : 1; // first time: apply 1 month
+
+            for (let i = 0; i < monthsToApply && entry.mortgage.balance > 0; i++) {
+              const monthlyRate = entry.mortgage.rate / 12;
+              const interestPayment = entry.mortgage.balance * monthlyRate;
+              const principalPayment = Math.min(
+                entry.mortgage.monthlyPayment - interestPayment,
+                entry.mortgage.balance
+              );
+              entry.mortgage.balance = Math.max(
+                0,
+                +(entry.mortgage.balance - principalPayment).toFixed(2)
+              );
+            }
+
+            entry.lastAmortizationDate = currentMonth;
+            propertyChanged = true;
+            console.log(
+              `[scheduler] Amortization applied for "${entry.name}": ${monthsToApply} month(s), new balance: $${entry.mortgage.balance}`
+            );
+          }
+        }
+
         const equity = entry.currentValue - (entry.mortgage?.balance || 0);
         propertyValue += equity;
+      }
+
+      if (propertyChanged) {
+        await savePropertyData(propertyData);
       }
     } catch (err) {
       console.warn('[scheduler] Property value calc failed:', err);

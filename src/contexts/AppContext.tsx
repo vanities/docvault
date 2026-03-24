@@ -204,6 +204,8 @@ export function AppProvider({ children }: AppProviderProps) {
     'portfolio',
     'sales',
     'mileage',
+    'gold',
+    'property',
   ]);
 
   const viewFromHash = (): NavView | null => {

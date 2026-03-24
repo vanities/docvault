@@ -606,6 +606,7 @@ export interface PropertyEntry {
   currentValueDate?: string; // when currentValue was last updated
   annualPropertyTax?: number;
   mortgage?: PropertyMortgage;
+  lastAmortizationDate?: string; // YYYY-MM — last month amortization was applied
   notes?: string;
   createdAt: string;
 }
