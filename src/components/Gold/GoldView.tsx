@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Coins,
   Plus,
@@ -9,6 +9,10 @@ import {
   ChevronDown,
   ChevronUp,
   Edit3,
+  Upload,
+  Camera,
+  FileText,
+  Loader2,
 } from 'lucide-react';
 import type { GoldEntry, GoldData, MetalType, CoinSize } from '../../types';
 
@@ -234,6 +238,11 @@ export function GoldView() {
   const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const scanInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingReceiptId, setUploadingReceiptId] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const selectedProduct = GOLD_PRODUCTS.find((p) => p.id === productId) || GOLD_PRODUCTS[0];
 
@@ -303,6 +312,87 @@ export function GoldView() {
     setNotes(entry.notes || '');
     setEditingId(entry.id);
     setShowForm(true);
+    // Scroll to form after React renders it
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+  };
+
+  const handleScanReceipt = async (file: File) => {
+    setScanning(true);
+    setScanError(null);
+    try {
+      const res = await fetch(`${API}/parse-receipt?filename=${encodeURIComponent(file.name)}`, {
+        method: 'POST',
+        body: await file.arrayBuffer(),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Parse failed');
+      }
+      const result = await res.json();
+      const items = result.items || [];
+      if (items.length === 0) {
+        setScanError('No gold purchases found in this receipt.');
+        return;
+      }
+
+      // Fill form with first item
+      const item = items[0];
+      const product = GOLD_PRODUCTS.find((p) => p.id === item.productId);
+      if (product) {
+        setProductId(item.productId);
+        setSize(item.size || product.defaultSize);
+      } else {
+        setProductId('custom');
+        setCustomDescription(item.description || '');
+      }
+      if (item.coinYear) setCoinYear(String(item.coinYear));
+      if (item.quantity) setQuantity(item.quantity);
+      if (item.purchasePrice) setPurchasePrice(String(item.purchasePrice));
+      if (result.purchaseDate) setPurchaseDate(result.purchaseDate);
+      if (result.dealer) setDealer(result.dealer);
+      if (result.orderNumber) setNotes(`Order #${result.orderNumber}`);
+
+      setEditingId(null);
+      setShowForm(true);
+      setTimeout(
+        () => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+        50
+      );
+
+      // If multiple items, show a note
+      if (items.length > 1) {
+        setScanError(`Found ${items.length} items — first item loaded. Add remaining manually.`);
+      }
+    } catch (err) {
+      setScanError(err instanceof Error ? err.message : 'Failed to scan receipt');
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const handleReceiptUpload = async (entryId: string, file: File) => {
+    setUploadingReceiptId(entryId);
+    try {
+      const res = await fetch(
+        `${API}/${entryId}/receipt?filename=${encodeURIComponent(file.name)}`,
+        {
+          method: 'POST',
+          body: await file.arrayBuffer(),
+        }
+      );
+      if (res.ok) {
+        const json = await res.json();
+        setData((prev) => ({
+          entries: prev.entries.map((e) =>
+            e.id === entryId ? { ...e, receiptPath: json.receiptPath } : e
+          ),
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to upload receipt:', err);
+    } finally {
+      setUploadingReceiptId(null);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -439,6 +529,29 @@ export function GoldView() {
             Spot Prices
           </button>
           <button
+            onClick={() => scanInputRef.current?.click()}
+            disabled={scanning}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-surface-700 bg-surface-100 hover:bg-surface-200 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {scanning ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Camera className="w-3.5 h-3.5" />
+            )}
+            {scanning ? 'Scanning...' : 'Scan Receipt'}
+          </button>
+          <input
+            ref={scanInputRef}
+            type="file"
+            accept="image/*,.pdf"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleScanReceipt(file);
+              e.target.value = '';
+            }}
+          />
+          <button
             onClick={() => {
               resetForm();
               setShowForm(!showForm);
@@ -450,6 +563,19 @@ export function GoldView() {
           </button>
         </div>
       </div>
+
+      {/* Scan result message */}
+      {scanError && (
+        <div className="glass-card rounded-xl p-3 flex items-center justify-between text-sm">
+          <span className="text-surface-600">{scanError}</span>
+          <button
+            onClick={() => setScanError(null)}
+            className="text-xs text-surface-500 hover:text-surface-700"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Spot Price Banner */}
       {Object.keys(spotPrices).length > 0 && (
@@ -557,7 +683,7 @@ export function GoldView() {
 
       {/* Add Entry Form */}
       {showForm && (
-        <form onSubmit={handleSubmit} className="glass-card rounded-xl p-5 space-y-4">
+        <form ref={formRef} onSubmit={handleSubmit} className="glass-card rounded-xl p-5 space-y-4">
           <h3 className="text-sm font-semibold text-surface-950">
             {editingId ? 'Edit Entry' : 'Add New Entry'}
           </h3>
@@ -780,6 +906,8 @@ export function GoldView() {
           spotPrices={spotPrices}
           onDelete={handleDelete}
           onEdit={populateForm}
+          onReceiptUpload={handleReceiptUpload}
+          uploadingReceiptId={uploadingReceiptId}
         />
       )}
     </div>
@@ -795,11 +923,15 @@ function EntriesList({
   spotPrices,
   onDelete,
   onEdit,
+  onReceiptUpload,
+  uploadingReceiptId,
 }: {
   entries: GoldEntry[];
   spotPrices: Record<string, number>;
   onDelete: (id: string) => void;
   onEdit: (entry: GoldEntry) => void;
+  onReceiptUpload: (entryId: string, file: File) => void;
+  uploadingReceiptId: string | null;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -928,6 +1060,36 @@ function EntriesList({
                   <p className="text-xs text-surface-500 mt-2 italic">{entry.notes}</p>
                 )}
                 <div className="mt-3 flex justify-end gap-2">
+                  {entry.receiptPath ? (
+                    <a
+                      href={`${API}/${entry.id}/receipt`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 px-2.5 py-1 text-xs text-accent-500 hover:bg-accent-500/10 rounded-lg transition-colors"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      View Receipt
+                    </a>
+                  ) : (
+                    <label className="flex items-center gap-1 px-2.5 py-1 text-xs text-surface-600 hover:bg-surface-200/50 rounded-lg transition-colors cursor-pointer">
+                      {uploadingReceiptId === entry.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Upload className="w-3.5 h-3.5" />
+                      )}
+                      {uploadingReceiptId === entry.id ? 'Uploading...' : 'Add Receipt'}
+                      <input
+                        type="file"
+                        accept="image/*,.pdf"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) onReceiptUpload(entry.id, file);
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                  )}
                   <button
                     onClick={() => onEdit(entry)}
                     className="flex items-center gap-1 px-2.5 py-1 text-xs text-surface-600 hover:bg-surface-200/50 rounded-lg transition-colors"
