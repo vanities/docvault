@@ -17,6 +17,7 @@ import {
   DollarSign,
   Car,
   Check,
+  Coins,
 } from 'lucide-react';
 import { useAppContext, type NavView } from '../../contexts/AppContext';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
@@ -179,7 +180,10 @@ function DropdownItem({
         ${isSelected ? `${colors.accent} ${colors.text}` : 'text-surface-800 hover:bg-surface-200/50'}
       `}
     >
-      {renderEntityIcon(entity, `w-3.5 h-3.5 flex-shrink-0 ${isSelected ? colors.text : 'text-surface-600'}`)}
+      {renderEntityIcon(
+        entity,
+        `w-3.5 h-3.5 flex-shrink-0 ${isSelected ? colors.text : 'text-surface-600'}`
+      )}
       <span className="font-medium text-[12px] truncate flex-1">{entity.name}</span>
       {isSelected && <Check className="w-3 h-3 flex-shrink-0 opacity-60" />}
     </button>
@@ -221,7 +225,9 @@ function NavButton({
         ${isActive ? `${activeColor} ${activeTextColor} ${glow ?? ''}` : 'text-surface-800 hover:text-surface-950 hover:bg-surface-200/50'}
       `}
     >
-      <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? activeTextColor : 'text-surface-600'}`} />
+      <Icon
+        className={`w-4 h-4 flex-shrink-0 ${isActive ? activeTextColor : 'text-surface-600'}`}
+      />
       <span className="font-medium text-[13px]">{label}</span>
     </button>
   );
@@ -554,6 +560,16 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               icon={Building2}
               activeColor="bg-blue-500/10"
               activeTextColor="text-blue-500"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
+            <NavButton
+              view="gold"
+              label="Gold"
+              icon={Coins}
+              activeColor="bg-yellow-500/10"
+              activeTextColor="text-yellow-500"
               activeView={activeView}
               isProcessing={isProcessing}
               onClick={handleViewClick}

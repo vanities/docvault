@@ -451,6 +451,7 @@ export interface PortfolioSnapshot {
   cryptoValue: number;
   brokerValue: number;
   bankValue?: number;
+  goldValue?: number;
   shortTermGains: number;
   longTermGains: number;
 }
@@ -523,6 +524,39 @@ export interface MileageData {
   entries: MileageEntry[];
   irsRate: number;
   savedAddresses?: SavedAddress[];
+}
+
+// Precious metals tracking
+export type MetalType = 'gold' | 'silver' | 'platinum' | 'palladium';
+export type CoinSize = '1oz' | '1/2oz' | '1/4oz' | '1/10oz';
+
+export interface GoldEntry {
+  id: string;
+  metal: MetalType;
+  productId: string; // references a GOLD_PRODUCTS preset, or 'custom'
+  customDescription?: string; // only when productId === 'custom'
+  coinYear?: number; // mint year of the coin
+  size: CoinSize;
+  weightOz: number; // actual troy oz (derived from size)
+  purity: number; // e.g., 0.9999 (Buffalo), 0.9167 (Eagle 22K)
+  purchasePrice: number; // price paid per piece
+  purchaseDate: string; // YYYY-MM-DD
+  dealer?: string; // e.g., "APMEX", "JM Bullion", "SD Bullion"
+  quantity: number; // number of pieces
+  notes?: string;
+  createdAt: string;
+}
+
+export interface GoldData {
+  entries: GoldEntry[];
+}
+
+export interface MetalSpotPrices {
+  gold: number;
+  silver: number;
+  platinum: number;
+  palladium: number;
+  lastUpdated: string;
 }
 
 // App state
