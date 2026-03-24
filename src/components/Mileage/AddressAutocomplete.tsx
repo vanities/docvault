@@ -37,6 +37,16 @@ export function AddressAutocomplete({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Sync input text when value is set externally (e.g., quick-fill buttons)
+  useEffect(() => {
+    if (value && inputValue !== value.formatted) {
+      setInputValue(value.formatted);
+    } else if (!value && inputValue && !isOpen) {
+      setInputValue('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
   // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
