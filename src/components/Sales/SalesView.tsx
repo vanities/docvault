@@ -285,7 +285,7 @@ export function SalesView() {
           const sales = salesByMonth[month];
           const monthTotal = sales.reduce((sum, s) => sum + s.total, 0);
           const isExpanded = activeMonth === month;
-          const monthLabel = new Date(month + '-01').toLocaleDateString('en-US', {
+          const monthLabel = new Date(month + '-01T00:00:00').toLocaleDateString('en-US', {
             month: 'long',
             year: 'numeric',
           });

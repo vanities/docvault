@@ -583,7 +583,7 @@ export function MileageView() {
           const entries = entriesByMonth[month];
           const monthMiles = entries.reduce((sum, e) => sum + (e.tripMiles || 0), 0);
           const isExpanded = activeMonth === month;
-          const monthLabel = new Date(month + '-01').toLocaleDateString('en-US', {
+          const monthLabel = new Date(month + '-01T00:00:00').toLocaleDateString('en-US', {
             month: 'long',
             year: 'numeric',
           });
