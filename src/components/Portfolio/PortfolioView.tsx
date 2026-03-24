@@ -58,7 +58,7 @@ const SLICE_COLORS = [
 interface PortfolioSlice {
   label: string;
   value: number;
-  type: 'crypto' | 'broker';
+  type: 'crypto' | 'broker' | 'gold';
   detail?: string;
   gainType?: 'short-term' | 'long-term' | 'unknown';
   gainLoss?: number;
@@ -69,6 +69,7 @@ export function PortfolioView() {
   const [crypto, setCrypto] = useState<CryptoPortfolio | null>(null);
   const [brokers, setBrokers] = useState<BrokerPortfolio | null>(null);
   const [bankTotal, setBankTotal] = useState(0);
+  const [goldTotal, setGoldTotal] = useState(0);
   const [cryptoGains, setCryptoGains] = useState<CryptoGainsSummary | null>(null);
   const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -81,12 +82,13 @@ export function PortfolioView() {
     else setIsLoading(true);
 
     try {
-      const [cryptoRes, brokerRes, snapshotRes, gainsRes, bankRes] = await Promise.all([
+      const [cryptoRes, brokerRes, snapshotRes, gainsRes, bankRes, goldRes] = await Promise.all([
         fetch(`${API_BASE}/crypto/balances?cached=1`),
         fetch(`${API_BASE}/brokers/portfolio`),
         fetch(`${API_BASE}/portfolio/snapshots`),
         fetch(`${API_BASE}/crypto/gains?cached=1`),
         fetch(`${API_BASE}/simplefin/balances?cached=1`),
+        fetch(`${API_BASE}/gold`),
       ]);
 
       if (cryptoRes.ok) {
@@ -112,6 +114,16 @@ export function PortfolioView() {
           0
         );
         setBankTotal(total);
+      }
+      if (goldRes.ok) {
+        const data = await goldRes.json();
+        const spots = data.spotPrices || {};
+        let total = 0;
+        for (const entry of data.entries || []) {
+          const spotPrice = spots[entry.metal] || 0;
+          total += entry.weightOz * entry.purity * entry.quantity * spotPrice;
+        }
+        setGoldTotal(total);
       }
     } catch {
       // Non-critical
@@ -147,7 +159,7 @@ export function PortfolioView() {
 
   const cryptoTotal = crypto?.totalUsdValue || 0;
   const brokerTotal = brokers?.totalValue || 0;
-  const grandTotal = cryptoTotal + brokerTotal + bankTotal;
+  const grandTotal = cryptoTotal + brokerTotal + bankTotal + goldTotal;
 
   // Build slices for the allocation breakdown
   const slices: PortfolioSlice[] = [];
@@ -175,6 +187,15 @@ export function PortfolioView() {
         });
       }
     }
+  }
+
+  if (goldTotal > 0) {
+    slices.push({
+      label: 'Gold',
+      value: goldTotal,
+      type: 'gold',
+      detail: 'Physical precious metals',
+    });
   }
 
   slices.sort((a, b) => b.value - a.value);

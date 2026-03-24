@@ -447,6 +447,7 @@ async function saveContributions(data: ContributionsData): Promise<void> {
 const TODOS_FILE = path.join(DATA_DIR, '.docvault-todos.json');
 const SALES_FILE = path.join(DATA_DIR, '.docvault-sales.json');
 const MILEAGE_FILE = path.join(DATA_DIR, '.docvault-mileage.json');
+const GOLD_FILE = path.join(DATA_DIR, '.docvault-gold.json');
 const CRYPTO_CACHE_FILE = path.join(DATA_DIR, '.docvault-crypto-cache.json');
 const BROKER_CACHE_FILE = path.join(DATA_DIR, '.docvault-broker-cache.json');
 const SIMPLEFIN_CACHE_FILE = path.join(DATA_DIR, '.docvault-simplefin-cache.json');
@@ -457,6 +458,7 @@ interface PortfolioSnapshot {
   cryptoValue: number;
   brokerValue: number;
   bankValue?: number;
+  goldValue?: number;
   shortTermGains: number;
   longTermGains: number;
 }
@@ -645,6 +647,95 @@ async function loadMileageData(): Promise<MileageData> {
 
 async function saveMileageData(data: MileageData): Promise<void> {
   await fs.writeFile(MILEAGE_FILE, JSON.stringify(data, null, 2));
+}
+
+// ============================================================================
+// Gold / Precious Metals Storage
+// ============================================================================
+
+interface GoldEntry {
+  id: string;
+  metal: 'gold' | 'silver' | 'platinum' | 'palladium';
+  productId: string;
+  customDescription?: string;
+  coinYear?: number;
+  size: '1oz' | '1/2oz' | '1/4oz' | '1/10oz';
+  weightOz: number;
+  purity: number;
+  purchasePrice: number;
+  purchaseDate: string;
+  dealer?: string;
+  quantity: number;
+  notes?: string;
+  createdAt: string;
+}
+
+interface GoldData {
+  entries: GoldEntry[];
+}
+
+async function loadGoldData(): Promise<GoldData> {
+  try {
+    const content = await fs.readFile(GOLD_FILE, 'utf-8');
+    const data = JSON.parse(content);
+    return { entries: data.entries || [] };
+  } catch {
+    return { entries: [] };
+  }
+}
+
+async function saveGoldData(data: GoldData): Promise<void> {
+  await fs.writeFile(GOLD_FILE, JSON.stringify(data, null, 2));
+}
+
+// Spot price cache (Yahoo Finance futures: GC=F, SI=F, PL=F, PA=F)
+let metalPriceCache: Record<string, number> = {};
+let metalPriceCacheTime = 0;
+const METAL_PRICE_CACHE_TTL = 300_000; // 5 minutes
+
+const METAL_FUTURES: Record<string, string> = {
+  gold: 'GC=F',
+  silver: 'SI=F',
+  platinum: 'PL=F',
+  palladium: 'PA=F',
+};
+
+async function fetchMetalSpotPrices(): Promise<Record<string, number>> {
+  const now = Date.now();
+  if (
+    Object.keys(metalPriceCache).length > 0 &&
+    now - metalPriceCacheTime < METAL_PRICE_CACHE_TTL
+  ) {
+    return metalPriceCache;
+  }
+
+  const symbols = Object.values(METAL_FUTURES).join(',');
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/spark?symbols=${symbols}&range=1d&interval=1d`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    if (!res.ok) throw new Error(`Yahoo Finance returned ${res.status}`);
+
+    const data = await res.json();
+    const prices: Record<string, number> = {};
+
+    for (const [metal, ticker] of Object.entries(METAL_FUTURES)) {
+      const flat = data[ticker];
+      if (flat?.close?.length) {
+        prices[metal] = flat.close[flat.close.length - 1];
+        continue;
+      }
+      const spark = data.spark?.result?.find((r: { symbol: string }) => r.symbol === ticker);
+      const close = spark?.response?.[0]?.meta?.regularMarketPrice;
+      if (close) prices[metal] = close;
+    }
+
+    metalPriceCache = prices;
+    metalPriceCacheTime = now;
+    return prices;
+  } catch (err) {
+    console.warn('[gold] Spot price fetch failed:', err);
+    return metalPriceCache; // return stale cache if available
+  }
 }
 
 // Queue to serialize writes to parsed data file
@@ -2462,6 +2553,475 @@ async function handleRequest(req: Request): Promise<Response> {
     }
   }
 
+  // GET /api/financial-snapshot/:year - Consolidated financial snapshot for LLM consumption
+  const snapshotMatch = pathname.match(/^\/api\/financial-snapshot\/(\d{4})$/);
+  if (snapshotMatch && req.method === 'GET') {
+    const year = snapshotMatch[1];
+    const format = url.searchParams.get('format') || 'json';
+
+    try {
+      const [config, parsedDataMap, metadataMap, salesData, mileageData, assets, contributions] =
+        await Promise.all([
+          loadConfig(),
+          loadParsedData(),
+          loadMetadata(),
+          loadSalesData(),
+          loadMileageData(),
+          loadAssets(),
+          loadContributions(),
+        ]);
+
+      // Load cached portfolio data (non-critical — use empty defaults on failure)
+      let brokerCache: {
+        accounts: {
+          id: string;
+          broker: string;
+          name: string;
+          url?: string;
+          holdings: {
+            ticker: string;
+            shares: number;
+            costBasis: number;
+            label: string;
+            price: number;
+            marketValue: number;
+            gainLoss: number;
+            gainLossPercent: number;
+            gainType: string;
+          }[];
+        }[];
+        lastUpdated?: string;
+      } = { accounts: [] };
+      let cryptoCache: {
+        sources: {
+          sourceId: string;
+          sourceType: string;
+          label: string;
+          balances: { asset: string; amount: number; usdValue: number }[];
+          totalUsdValue: number;
+          lastUpdated: string;
+        }[];
+        totalUsdValue?: number;
+      } = { sources: [] };
+      let simplefinCache: {
+        accounts: {
+          id: string;
+          name: string;
+          currency: string;
+          balance: number;
+          availableBalance: number | null;
+          connectionName?: string;
+        }[];
+        lastUpdated: string;
+      } = { accounts: [], lastUpdated: '' };
+
+      try {
+        const raw = await fs.readFile(BROKER_CACHE_FILE, 'utf-8');
+        brokerCache = JSON.parse(raw);
+      } catch {
+        /* no broker data */
+      }
+      try {
+        const raw = await fs.readFile(CRYPTO_CACHE_FILE, 'utf-8');
+        cryptoCache = JSON.parse(raw);
+      } catch {
+        /* no crypto data */
+      }
+      try {
+        const raw = await fs.readFile(SIMPLEFIN_CACHE_FILE, 'utf-8');
+        simplefinCache = JSON.parse(raw);
+      } catch {
+        /* no bank data */
+      }
+
+      // Build tax entity summaries (income + expenses from parsed docs)
+      const taxEntities = config.entities.filter(
+        (e) => (e as Record<string, unknown>).type === 'tax'
+      );
+
+      const entitySummaries: Record<
+        string,
+        {
+          entity: EntityConfig;
+          income: {
+            source: string;
+            amount: number;
+            type: string;
+            details?: Record<string, unknown>;
+          }[];
+          expenses: { vendor: string; amount: number; category: string }[];
+        }
+      > = {};
+
+      for (const entity of taxEntities) {
+        const entityPath = await getEntityPath(entity.id);
+        if (!entityPath) continue;
+
+        const yearPath = path.join(entityPath, year);
+        let files: FileInfo[] = [];
+        try {
+          await fs.access(yearPath);
+          files = await scanDirectory(yearPath, year);
+        } catch {
+          continue;
+        }
+
+        const inc: (typeof entitySummaries)[string]['income'] = [];
+        const exp: (typeof entitySummaries)[string]['expenses'] = [];
+
+        for (const file of files) {
+          const parsedKey = `${entity.id}/${file.path}`;
+          const parsed = parsedDataMap[parsedKey];
+          const meta = metadataMap[parsedKey];
+          if (meta?.tracked === false) continue;
+          if (!parsed) continue;
+
+          // W-2
+          if (parsed.wages) {
+            inc.push({
+              source: (parsed.employerName || file.name) as string,
+              amount: parsed.wages as number,
+              type: 'W-2',
+              details: {
+                federalWithheld: parsed.federalIncomeTaxWithheld,
+                stateWithheld: parsed.stateIncomeTaxWithheld,
+                socialSecurity: parsed.socialSecurityWages,
+                medicare: parsed.medicareWages,
+              },
+            });
+          }
+          // 1099-NEC
+          if (parsed.nonemployeeCompensation) {
+            inc.push({
+              source: (parsed.payerName || file.name) as string,
+              amount: parsed.nonemployeeCompensation as number,
+              type: '1099-NEC',
+            });
+          }
+          // 1099-DIV
+          if (parsed.ordinaryDividends) {
+            inc.push({
+              source: (parsed.payerName || file.name) as string,
+              amount: parsed.ordinaryDividends as number,
+              type: '1099-DIV',
+              details: {
+                qualifiedDividends: parsed.qualifiedDividends,
+                capitalGainDistributions: parsed.capitalGainDistributions,
+                federalWithheld: parsed.federalIncomeTaxWithheld,
+              },
+            });
+          }
+          // 1099-INT
+          if (parsed.interestIncome) {
+            inc.push({
+              source: (parsed.payerName || file.name) as string,
+              amount: parsed.interestIncome as number,
+              type: '1099-INT',
+            });
+          }
+          // 1099-B / Composite
+          if (parsed.documentType === '1099-b' || parsed.documentType === '1099-composite') {
+            const stGain = (parsed.shortTermGainLoss as number) || 0;
+            const ltGain = (parsed.longTermGainLoss as number) || 0;
+            if (stGain || ltGain) {
+              inc.push({
+                source: (parsed.payerName || file.name) as string,
+                amount: stGain + ltGain,
+                type: '1099-B',
+                details: { shortTermGainLoss: stGain, longTermGainLoss: ltGain },
+              });
+            }
+          }
+          // K-1
+          if (parsed.documentType === 'k-1' || parsed.ordinaryIncome || parsed.guaranteedPayments) {
+            const k1Amount =
+              ((parsed.ordinaryIncome as number) || 0) +
+              ((parsed.guaranteedPayments as number) || 0);
+            if (k1Amount > 0) {
+              inc.push({
+                source: (parsed.entityName || file.name) as string,
+                amount: k1Amount,
+                type: 'K-1',
+                details: {
+                  ordinaryIncome: parsed.ordinaryIncome,
+                  guaranteedPayments: parsed.guaranteedPayments,
+                  distributions: parsed.distributions,
+                },
+              });
+            }
+          }
+          // Expenses (receipts)
+          if (parsed.amount && (parsed.vendor || parsed.category)) {
+            exp.push({
+              vendor: (parsed.vendor || 'Unknown') as string,
+              amount: (parsed.totalAmount || parsed.amount) as number,
+              category: (parsed.category || 'other') as string,
+            });
+          }
+        }
+
+        entitySummaries[entity.id] = { entity, income: inc, expenses: exp };
+      }
+
+      // Filter sales and mileage by year
+      const yearSales = salesData.sales.filter((s) => s.date.startsWith(year));
+      const yearMileage = mileageData.entries.filter((e) => e.date.startsWith(year));
+
+      // Filter contributions by year
+      const yearContributions: Record<string, Contribution401k[]> = {};
+      for (const [key, entries] of Object.entries(contributions)) {
+        if (key.endsWith(`/${year}`)) {
+          yearContributions[key] = entries;
+        }
+      }
+
+      // Build the snapshot object
+      const snapshot = {
+        year,
+        generatedAt: new Date().toISOString(),
+        entities: entitySummaries,
+        sales: {
+          products: salesData.products,
+          entries: yearSales,
+          totalRevenue: yearSales.reduce((sum, s) => sum + s.total, 0),
+        },
+        mileage: {
+          vehicles: mileageData.vehicles,
+          entries: yearMileage,
+          irsRate: mileageData.irsRate,
+          totalMiles: yearMileage.reduce((sum, e) => sum + (e.tripMiles || 0), 0),
+          totalDeduction:
+            yearMileage.reduce((sum, e) => sum + (e.tripMiles || 0), 0) * mileageData.irsRate,
+        },
+        assets,
+        retirement: yearContributions,
+        investments: {
+          brokerAccounts: brokerCache.accounts,
+          brokerLastUpdated: brokerCache.lastUpdated,
+        },
+        crypto: {
+          sources: cryptoCache.sources,
+          totalUsdValue: cryptoCache.totalUsdValue,
+        },
+        bankAccounts: {
+          accounts: simplefinCache.accounts.map((a) => ({
+            name: a.name,
+            balance: a.balance,
+            currency: a.currency,
+            connectionName: a.connectionName,
+          })),
+          lastUpdated: simplefinCache.lastUpdated,
+        },
+      };
+
+      if (format === 'md' || format === 'markdown') {
+        // Generate markdown
+        const lines: string[] = [];
+        const fmt = (n: number) =>
+          n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+
+        lines.push(`# ${year} Financial Snapshot`);
+        lines.push(`Generated: ${new Date().toISOString().split('T')[0]}`);
+        lines.push('');
+
+        // Entity overview
+        lines.push('## Entities');
+        for (const [id, data] of Object.entries(entitySummaries)) {
+          const meta = data.entity.metadata || {};
+          const ein = meta.ein ? ` (EIN: ${meta.ein})` : '';
+          lines.push(
+            `- **${data.entity.name}**${ein}${data.entity.description ? ` — ${data.entity.description}` : ''}`
+          );
+          if (meta.address) lines.push(`  - Address: ${meta.address}`);
+        }
+        lines.push('');
+
+        // Income & Expenses per entity
+        for (const [id, data] of Object.entries(entitySummaries)) {
+          if (data.income.length > 0) {
+            lines.push(`## ${data.entity.name} — Income`);
+            lines.push('| Source | Type | Amount |');
+            lines.push('|--------|------|--------|');
+            for (const inc of data.income) {
+              lines.push(`| ${inc.source} | ${inc.type} | ${fmt(inc.amount)} |`);
+              if (inc.details) {
+                for (const [k, v] of Object.entries(inc.details)) {
+                  if (v != null && v !== 0) {
+                    lines.push(`|   ↳ ${k} | | ${fmt(v as number)} |`);
+                  }
+                }
+              }
+            }
+            const totalIncome = data.income.reduce((s, i) => s + i.amount, 0);
+            lines.push(`| **Total** | | **${fmt(totalIncome)}** |`);
+            lines.push('');
+          }
+
+          if (data.expenses.length > 0) {
+            lines.push(`## ${data.entity.name} — Expenses (Schedule C)`);
+            // Group by category
+            const byCategory: Record<string, number> = {};
+            for (const exp of data.expenses) {
+              byCategory[exp.category] = (byCategory[exp.category] || 0) + exp.amount;
+            }
+            lines.push('| Category | Total |');
+            lines.push('|----------|-------|');
+            for (const [cat, total] of Object.entries(byCategory).sort((a, b) => b[1] - a[1])) {
+              lines.push(`| ${cat} | ${fmt(total)} |`);
+            }
+            const totalExp = data.expenses.reduce((s, e) => s + e.amount, 0);
+            lines.push(`| **Total Expenses** | **${fmt(totalExp)}** |`);
+            lines.push('');
+          }
+        }
+
+        // Sales
+        if (yearSales.length > 0) {
+          lines.push('## Sales Revenue');
+          const byCust: Record<string, number> = {};
+          for (const s of yearSales) {
+            byCust[s.person] = (byCust[s.person] || 0) + s.total;
+          }
+          lines.push('| Customer | Total |');
+          lines.push('|----------|-------|');
+          for (const [cust, total] of Object.entries(byCust).sort((a, b) => b[1] - a[1])) {
+            lines.push(`| ${cust} | ${fmt(total)} |`);
+          }
+          lines.push(`| **Total Revenue** | **${fmt(snapshot.sales.totalRevenue)}** |`);
+          lines.push('');
+        }
+
+        // Mileage
+        if (yearMileage.length > 0) {
+          lines.push('## Business Mileage');
+          lines.push(`- Total trips: ${yearMileage.length}`);
+          lines.push(`- Total miles: ${snapshot.mileage.totalMiles.toFixed(1)}`);
+          lines.push(`- IRS rate: $${mileageData.irsRate}/mi`);
+          lines.push(`- **Deduction: ${fmt(snapshot.mileage.totalDeduction)}**`);
+          // By entity
+          const mileByEntity: Record<string, number> = {};
+          for (const e of yearMileage) {
+            const eid = e.entity || 'unknown';
+            mileByEntity[eid] = (mileByEntity[eid] || 0) + (e.tripMiles || 0);
+          }
+          if (Object.keys(mileByEntity).length > 1) {
+            lines.push('');
+            lines.push('| Entity | Miles | Deduction |');
+            lines.push('|--------|-------|-----------|');
+            for (const [eid, miles] of Object.entries(mileByEntity)) {
+              lines.push(`| ${eid} | ${miles.toFixed(1)} | ${fmt(miles * mileageData.irsRate)} |`);
+            }
+          }
+          lines.push('');
+        }
+
+        // Assets
+        const entityAssetKeys = Object.keys(assets).filter((k) => k !== 'all');
+        if (entityAssetKeys.length > 0) {
+          lines.push('## Business Assets');
+          for (const eid of entityAssetKeys) {
+            const list = assets[eid] || [];
+            if (list.length === 0) continue;
+            lines.push(`### ${eid}`);
+            lines.push('| Asset | Value |');
+            lines.push('|-------|-------|');
+            for (const a of list) {
+              lines.push(`| ${a.name} | ${fmt(a.value)} |`);
+            }
+            lines.push(`| **Total** | **${fmt(list.reduce((s, a) => s + a.value, 0))}** |`);
+            lines.push('');
+          }
+        }
+
+        // Retirement contributions
+        if (Object.keys(yearContributions).length > 0) {
+          lines.push('## Retirement Contributions (Solo 401k)');
+          for (const [key, entries] of Object.entries(yearContributions)) {
+            const entityId = key.split('/')[0];
+            const employee = entries
+              .filter((c) => c.type === 'employee')
+              .reduce((s, c) => s + c.amount, 0);
+            const employer = entries
+              .filter((c) => c.type === 'employer')
+              .reduce((s, c) => s + c.amount, 0);
+            lines.push(`### ${entityId}`);
+            lines.push(`- Employee contributions: ${fmt(employee)}`);
+            lines.push(`- Employer contributions: ${fmt(employer)}`);
+            lines.push(`- **Total: ${fmt(employee + employer)}**`);
+            lines.push('');
+          }
+        }
+
+        // Investments
+        if (brokerCache.accounts.length > 0) {
+          lines.push('## Brokerage Accounts');
+          if (brokerCache.lastUpdated) lines.push(`_Last updated: ${brokerCache.lastUpdated}_`);
+          for (const acct of brokerCache.accounts) {
+            const totalValue = acct.holdings.reduce((s, h) => s + h.marketValue, 0);
+            const totalGain = acct.holdings.reduce((s, h) => s + h.gainLoss, 0);
+            lines.push(`### ${acct.name} (${acct.broker})`);
+            lines.push(`Total value: ${fmt(totalValue)} | Unrealized gain/loss: ${fmt(totalGain)}`);
+            lines.push('| Holding | Shares | Market Value | Gain/Loss |');
+            lines.push('|---------|--------|-------------|-----------|');
+            for (const h of acct.holdings) {
+              lines.push(
+                `| ${h.label || h.ticker} | ${h.shares} | ${fmt(h.marketValue)} | ${fmt(h.gainLoss)} |`
+              );
+            }
+            lines.push('');
+          }
+        }
+
+        // Crypto
+        if (cryptoCache.sources.length > 0) {
+          lines.push('## Crypto Holdings');
+          lines.push(`Total value: ${fmt(cryptoCache.totalUsdValue || 0)}`);
+          for (const src of cryptoCache.sources) {
+            lines.push(`### ${src.label} (${fmt(src.totalUsdValue)})`);
+            const nonZero = src.balances.filter((b) => b.usdValue > 0.01);
+            if (nonZero.length > 0) {
+              lines.push('| Asset | Amount | USD Value |');
+              lines.push('|-------|--------|-----------|');
+              for (const b of nonZero) {
+                lines.push(`| ${b.asset} | ${b.amount} | ${fmt(b.usdValue)} |`);
+              }
+            }
+          }
+          lines.push('');
+        }
+
+        // Bank accounts
+        const nonZeroBanks = simplefinCache.accounts.filter((a) => a.balance !== 0);
+        if (nonZeroBanks.length > 0) {
+          lines.push('## Bank Accounts');
+          if (simplefinCache.lastUpdated)
+            lines.push(`_Last updated: ${simplefinCache.lastUpdated}_`);
+          lines.push('| Account | Balance |');
+          lines.push('|---------|---------|');
+          for (const a of nonZeroBanks) {
+            lines.push(
+              `| ${a.name}${a.connectionName ? ` (${a.connectionName})` : ''} | ${fmt(a.balance)} |`
+            );
+          }
+          const totalBank = nonZeroBanks.reduce((s, a) => s + a.balance, 0);
+          lines.push(`| **Total** | **${fmt(totalBank)}** |`);
+          lines.push('');
+        }
+
+        return new Response(lines.join('\n'), {
+          headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
+        });
+      }
+
+      return jsonResponse(snapshot);
+    } catch (err) {
+      return jsonResponse(
+        { error: 'Failed to generate financial snapshot', details: String(err) },
+        500
+      );
+    }
+  }
+
   // ========================================================================
   // Reminders API
   // ========================================================================
@@ -2966,6 +3526,104 @@ async function handleRequest(req: Request): Promise<Response> {
     }
     data.savedAddresses = filtered;
     await saveMileageData(data);
+    return jsonResponse({ ok: true });
+  }
+
+  // ========================================================================
+  // Gold / Precious Metals API
+  // ========================================================================
+
+  // GET /api/gold - Get all gold entries + spot prices
+  if (pathname === '/api/gold' && req.method === 'GET') {
+    const [data, spotPrices] = await Promise.all([loadGoldData(), fetchMetalSpotPrices()]);
+    return jsonResponse({ ...data, spotPrices });
+  }
+
+  // GET /api/gold/spot - Get current spot prices only
+  if (pathname === '/api/gold/spot' && req.method === 'GET') {
+    const spotPrices = await fetchMetalSpotPrices();
+    return jsonResponse({ ...spotPrices, lastUpdated: new Date().toISOString() });
+  }
+
+  // POST /api/gold - Create a new gold entry
+  if (pathname === '/api/gold' && req.method === 'POST') {
+    const body = await req.json();
+    const {
+      metal,
+      productId,
+      customDescription,
+      coinYear,
+      size,
+      weightOz,
+      purity,
+      purchasePrice,
+      purchaseDate,
+      dealer,
+      quantity,
+      notes,
+    } = body;
+
+    if (
+      !metal ||
+      !productId ||
+      !size ||
+      !weightOz ||
+      !purity ||
+      !purchasePrice ||
+      !purchaseDate ||
+      !quantity
+    ) {
+      return jsonResponse({ error: 'Missing required fields' }, 400);
+    }
+
+    const data = await loadGoldData();
+    const entry: GoldEntry = {
+      id: crypto.randomUUID(),
+      metal,
+      productId,
+      customDescription: customDescription?.trim() || undefined,
+      coinYear: coinYear ? Number(coinYear) : undefined,
+      size,
+      weightOz: Number(weightOz),
+      purity: Number(purity),
+      purchasePrice: Number(purchasePrice),
+      purchaseDate,
+      dealer: dealer?.trim() || undefined,
+      quantity: Number(quantity),
+      notes: notes?.trim() || undefined,
+      createdAt: new Date().toISOString(),
+    };
+
+    data.entries.push(entry);
+    await saveGoldData(data);
+    return jsonResponse({ ok: true, entry });
+  }
+
+  // PUT /api/gold/:id - Update a gold entry
+  const goldUpdateMatch = pathname.match(/^\/api\/gold\/([^/]+)$/);
+  if (goldUpdateMatch && req.method === 'PUT') {
+    const entryId = goldUpdateMatch[1];
+    const body = await req.json();
+    const data = await loadGoldData();
+    const idx = data.entries.findIndex((e) => e.id === entryId);
+    if (idx === -1) return jsonResponse({ error: 'Entry not found' }, 404);
+
+    data.entries[idx] = { ...data.entries[idx], ...body, id: entryId };
+    await saveGoldData(data);
+    return jsonResponse({ ok: true, entry: data.entries[idx] });
+  }
+
+  // DELETE /api/gold/:id - Delete a gold entry
+  const goldDeleteMatch = pathname.match(/^\/api\/gold\/([^/]+)$/);
+  if (goldDeleteMatch && req.method === 'DELETE') {
+    const entryId = goldDeleteMatch[1];
+    const data = await loadGoldData();
+    const filtered = data.entries.filter((e) => e.id !== entryId);
+    if (filtered.length === data.entries.length) {
+      return jsonResponse({ error: 'Entry not found' }, 404);
+    }
+    data.entries = filtered;
+    await saveGoldData(data);
     return jsonResponse({ ok: true });
   }
 
@@ -4076,15 +4734,32 @@ async function takePortfolioSnapshot(): Promise<void> {
       }
     }
 
+    // Compute gold/precious metals value from entries + spot prices
+    let goldValue = 0;
+    try {
+      const goldData = await loadGoldData();
+      if (goldData.entries.length > 0) {
+        const spotPrices = await fetchMetalSpotPrices();
+        for (const entry of goldData.entries) {
+          const spotPrice = spotPrices[entry.metal] || 0;
+          const pureOz = entry.weightOz * entry.purity * entry.quantity;
+          goldValue += pureOz * spotPrice;
+        }
+      }
+    } catch (err) {
+      console.warn('[scheduler] Gold value calc failed:', err);
+    }
+
     const brokerValue = brokerPortfolio?.totalValue || 0;
     const today = new Date().toISOString().split('T')[0];
 
     await saveSnapshot({
       date: today,
-      totalValue: cryptoValue + brokerValue + bankValue,
+      totalValue: cryptoValue + brokerValue + bankValue + goldValue,
       cryptoValue,
       brokerValue,
       bankValue,
+      goldValue,
       shortTermGains: brokerPortfolio?.shortTermGains || 0,
       longTermGains: brokerPortfolio?.longTermGains || 0,
     });
