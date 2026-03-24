@@ -452,6 +452,7 @@ export interface PortfolioSnapshot {
   brokerValue: number;
   bankValue?: number;
   goldValue?: number;
+  propertyValue?: number;
   shortTermGains: number;
   longTermGains: number;
 }
@@ -557,6 +558,50 @@ export interface MetalSpotPrices {
   platinum: number;
   palladium: number;
   lastUpdated: string;
+}
+
+// Property / Real Estate tracking
+export type PropertyType =
+  | 'primary-residence'
+  | 'rental'
+  | 'investment-land'
+  | 'vacation'
+  | 'commercial'
+  | 'other';
+
+export interface PropertyAddress {
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+}
+
+export interface PropertyMortgage {
+  lender: string;
+  balance: number;
+  rate: number; // APR as decimal, e.g., 0.065 for 6.5%
+  monthlyPayment: number;
+}
+
+export interface PropertyEntry {
+  id: string;
+  name: string; // e.g., "Springfield House", "Lot on Riverside Rd"
+  type: PropertyType;
+  address: PropertyAddress;
+  acreage?: number;
+  squareFeet?: number;
+  purchaseDate: string; // YYYY-MM-DD
+  purchasePrice: number;
+  currentValue: number; // manually updated estimate
+  currentValueDate?: string; // when currentValue was last updated
+  annualPropertyTax?: number;
+  mortgage?: PropertyMortgage;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface PropertyData {
+  entries: PropertyEntry[];
 }
 
 // App state

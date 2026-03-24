@@ -15,6 +15,7 @@ import { PortfolioView } from '../Portfolio/PortfolioView';
 import { SalesView } from '../Sales/SalesView';
 import { MileageView } from '../Mileage/MileageView';
 import { GoldView } from '../Gold/GoldView';
+import { PropertyView } from '../Property/PropertyView';
 import { AddEntityModal } from '../Settings/AddEntityModal';
 import { SearchResultsView } from '../Search/SearchResultsView';
 
@@ -95,6 +96,8 @@ export function Layout() {
         return <MileageView />;
       case 'gold':
         return <GoldView />;
+      case 'property':
+        return <PropertyView />;
       default:
         return <TaxYearView />;
     }
