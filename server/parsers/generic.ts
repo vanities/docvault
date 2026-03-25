@@ -455,7 +455,9 @@ export function detectDocumentTypeFromFilename(filename: string): string {
   if (/retirement|401k|401\(k\)|sep.?ira|roth.?ira|traditional.?ira/i.test(lower))
     return 'retirement-statement';
   if (/bank.?statement/i.test(lower)) return 'bank-statement';
-  if (/credit.?card.?statement/i.test(lower)) return 'credit-card-statement';
+  if (/credit.?card.?statement|cc.?statement/i.test(lower)) return 'credit-card-statement';
+  if (/koinly.*8949|form.?8949.*koinly/i.test(lower)) return 'koinly-8949';
+  if (/koinly.*schedule/i.test(lower)) return 'koinly-schedule';
   if (/statement/i.test(lower)) return 'statement';
   if (/certificate|cert\b/i.test(lower)) return 'certificate';
   if (/medical.?record/i.test(lower)) return 'medical-record';
