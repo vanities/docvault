@@ -1407,14 +1407,18 @@ async function handleRequest(req: Request): Promise<Response> {
   // POST /api/brokers/accounts — add a new broker account
   if (pathname === '/api/brokers/accounts' && req.method === 'POST') {
     const body = await req.json();
-    const { broker, name, url } = body;
+    const { broker, name, url, overrideValue } = body;
     if (!broker || !name) {
       return jsonResponse({ error: 'Missing broker or name' }, 400);
     }
     const settings = await loadSettings();
     if (!settings.brokers) settings.brokers = { accounts: [] };
     const id = `${broker}-${Date.now()}`;
-    const account: BrokerAccount = { id, broker, name, holdings: [], ...(url ? { url } : {}) };
+    const account: BrokerAccount = {
+      id, broker, name, holdings: [],
+      ...(url ? { url } : {}),
+      ...(overrideValue !== undefined ? { overrideValue: Number(overrideValue) } : {}),
+    };
     settings.brokers.accounts.push(account);
     await saveSettings(settings);
     return jsonResponse({ ok: true, account });
@@ -1431,6 +1435,7 @@ async function handleRequest(req: Request): Promise<Response> {
     if (body.name !== undefined) account.name = body.name;
     if (body.url !== undefined) account.url = body.url || undefined;
     if (body.holdings !== undefined) account.holdings = body.holdings;
+    if (body.overrideValue !== undefined) account.overrideValue = body.overrideValue === null ? undefined : Number(body.overrideValue);
     await saveSettings(settings);
     return jsonResponse({ ok: true, account });
   }

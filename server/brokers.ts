@@ -12,7 +12,7 @@ import { Snaptrade } from 'snaptrade-typescript-sdk';
 // Types
 // -----------------------------------------------------------------------------
 
-export type BrokerId = 'vanguard' | 'fidelity' | 'robinhood' | 'navy-federal' | 'chase' | 'altoira';
+export type BrokerId = 'vanguard' | 'fidelity' | 'robinhood' | 'navy-federal' | 'chase' | 'altoira' | 'other';
 
 export interface BrokerHolding {
   ticker: string;
@@ -28,6 +28,7 @@ export interface BrokerAccount {
   name: string;
   url?: string;
   holdings: BrokerHolding[];
+  overrideValue?: number; // flat dollar value override (skips price lookups)
   snaptradeAccountId?: string; // If linked via SnapTrade
 }
 
@@ -389,6 +390,7 @@ export async function buildPortfolio(
 ): Promise<BrokerPortfolio> {
   const allTickers = new Set<string>();
   for (const account of accounts) {
+    if (account.overrideValue !== undefined) continue; // skip price lookups for override accounts
     for (const holding of account.holdings) {
       const upper = holding.ticker.toUpperCase();
       if (upper !== 'USD') allTickers.add(upper);
@@ -405,6 +407,20 @@ export async function buildPortfolio(
   const enrichedAccounts: BrokerAccountWithValues[] = accounts.map((account) => {
     completed++;
     onProgress?.(completed, totalSteps, account.name);
+
+    // Override accounts: use flat dollar value, no holdings enrichment
+    if (account.overrideValue !== undefined) {
+      return {
+        ...account,
+        holdings: [],
+        totalValue: account.overrideValue,
+        totalCostBasis: 0,
+        totalGainLoss: 0,
+        shortTermGains: 0,
+        longTermGains: 0,
+      };
+    }
+
     const enrichedHoldings = account.holdings.map((h) => {
       const upperTicker = h.ticker.toUpperCase();
       const price = upperTicker === 'USD' ? 1 : prices[upperTicker] || 0;
@@ -467,4 +483,5 @@ export const BROKER_LABELS: Record<BrokerId, string> = {
   'navy-federal': 'Navy Federal',
   chase: 'Chase',
   altoira: 'Alto IRA',
+  other: 'Other',
 };
