@@ -37,6 +37,7 @@ const hintToCanonical: Record<string, string> = {
   '1099-R': '1099-r',
   '1098': '1098',
   'K-1': 'k-1',
+  'invoice': 'invoice',
   'receipt': 'receipt',
   'operating-agreement': 'operating-agreement',
   'insurance-policy': 'insurance-policy',
@@ -139,6 +140,7 @@ import { parser1098 } from './1098.js';
 import { composite1099Parser } from './1099-composite.js';
 import { koinly8949Parser } from './koinly-8949.js';
 import { koinlyScheduleParser } from './koinly-schedule.js';
+import { invoiceParser } from './invoice.js';
 
 registerParser(genericParser);
 registerParser(w2Parser);
@@ -155,3 +157,4 @@ registerParser(parser1098);
 registerParser(composite1099Parser);
 registerParser(koinly8949Parser);
 registerParser(koinlyScheduleParser);
+registerParser(invoiceParser);
