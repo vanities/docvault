@@ -16,6 +16,13 @@ import {
 import type { TaxDocument, DocumentType, Entity } from '../../types';
 import { DOCUMENT_TYPES, EXPENSE_CATEGORIES } from '../../config';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface DocumentCardProps {
   document: TaxDocument;
@@ -84,7 +91,6 @@ export function DocumentCard({
   isSelected,
   onToggleSelect,
 }: DocumentCardProps) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedType, setEditedType] = useState(doc.type);
   const [editedNotes, setEditedNotes] = useState(doc.notes || '');
@@ -248,53 +254,43 @@ export function DocumentCard({
 
             {/* Track toggle & Menu */}
             <div className="flex items-center gap-0.5">
-              <button
-                onClick={() => onUpdate(doc.id, { tracked: !isTracked })}
-                className={`p-2 md:p-1 rounded transition-opacity ${
-                  !isTracked
-                    ? 'text-surface-500 opacity-100'
-                    : 'text-surface-600 hover:text-surface-900 opacity-100 md:opacity-0 md:group-hover:opacity-100'
-                }`}
-                title={isTracked ? 'Exclude from totals' : 'Include in totals'}
-              >
-                {isTracked ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-              </button>
-              <div className="relative">
-                <button
-                  onClick={() => setIsMenuOpen(!isMenuOpen)}
-                  className="p-2 md:p-1 text-surface-600 hover:text-surface-900 rounded opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-                >
-                  <MoreVertical className="w-4 h-4" />
-                </button>
-
-                {isMenuOpen && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setIsMenuOpen(false)} />
-                    <div className="absolute right-0 mt-1 glass-strong rounded-lg shadow-2xl z-20 py-1 min-w-[120px] animate-scale-in">
-                      <button
-                        onClick={() => {
-                          setIsEditing(true);
-                          setIsMenuOpen(false);
-                        }}
-                        className="w-full px-3 py-2 text-left text-[13px] text-surface-800 hover:bg-surface-300/30 flex items-center gap-2"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => {
-                          onDelete(doc.id);
-                          setIsMenuOpen(false);
-                        }}
-                        className="w-full px-3 py-2 text-left text-[13px] text-danger-400 hover:bg-danger-500/10 flex items-center gap-2"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Delete
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => onUpdate(doc.id, { tracked: !isTracked })}
+                    className={`p-2 md:p-1 rounded transition-opacity ${
+                      !isTracked
+                        ? 'text-surface-500 opacity-100'
+                        : 'text-surface-600 hover:text-surface-900 opacity-100 md:opacity-0 md:group-hover:opacity-100'
+                    }`}
+                  >
+                    {isTracked ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>{isTracked ? 'Exclude from totals' : 'Include in totals'}</TooltipContent>
+              </Tooltip>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="p-2 md:p-1 text-surface-600 hover:text-surface-900 rounded opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                  >
+                    <MoreVertical className="w-4 h-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setIsEditing(true)}>
+                    <Edit2 className="w-3.5 h-3.5" />
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={() => onDelete(doc.id)}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
