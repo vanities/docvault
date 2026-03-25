@@ -1,7 +1,15 @@
 import { useState } from 'react';
-import { X } from 'lucide-react';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 const COLOR_MAP: Record<string, { bg: string; border: string; ring: string }> = {
   blue: { bg: 'bg-blue-500/15', border: 'border-blue-500/30', ring: 'ring-blue-500' },
@@ -50,21 +58,13 @@ export function AddEntityModal({ isOpen, onClose }: AddEntityModalProps) {
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative glass-strong rounded-2xl shadow-2xl p-6 w-full max-w-md animate-scale-in">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold text-surface-950">Add Business Entity</h2>
-          <button
-            onClick={onClose}
-            className="p-1.5 text-surface-600 hover:text-surface-900 hover:bg-surface-300/30 rounded-lg transition-all"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Business Entity</DialogTitle>
+          <DialogDescription>Create a new entity to organize your documents.</DialogDescription>
+        </DialogHeader>
 
         <div className="space-y-5">
           <div>
@@ -100,24 +100,20 @@ export function AddEntityModal({ isOpen, onClose }: AddEntityModalProps) {
               })}
             </div>
           </div>
-
-          <div className="flex gap-3 pt-2">
-            <button
-              onClick={onClose}
-              className="flex-1 px-4 py-2.5 text-surface-800 hover:bg-surface-300/30 rounded-xl transition-all text-[13px]"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleAdd}
-              disabled={!name.trim() || isAdding}
-              className="flex-1 px-4 py-2.5 bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 disabled:opacity-40 transition-all text-[13px] font-medium"
-            >
-              {isAdding ? 'Adding...' : 'Add Entity'}
-            </button>
-          </div>
         </div>
-      </div>
-    </div>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleAdd}
+            disabled={!name.trim() || isAdding}
+          >
+            {isAdding ? 'Adding...' : 'Add Entity'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -23,6 +23,8 @@ import { useAppContext } from '../../contexts/AppContext';
 import { generateStandardFilename, getExtension } from '../../utils/filenaming';
 import { API_BASE } from '../../constants';
 import { FileIcon } from '../common/FileIcon';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 interface DocumentViewerProps {
   document: TaxDocument;
@@ -607,14 +609,13 @@ export function DocumentViewer({
       </div>
 
       {/* Move Modal */}
-      {showMoveModal && entities && availableYears && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setShowMoveModal(false)}
-          />
-          <div className="relative glass-strong rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 animate-scale-in">
-            <h3 className="text-lg font-semibold text-surface-950 mb-4">Move Document</h3>
+      {entities && availableYears && (
+        <Dialog open={showMoveModal} onOpenChange={setShowMoveModal}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Move Document</DialogTitle>
+              <DialogDescription>Move this document to a different entity or tax year.</DialogDescription>
+            </DialogHeader>
 
             <div className="space-y-4">
               <div>
@@ -652,26 +653,27 @@ export function DocumentViewer({
               </div>
             </div>
 
-            <div className="flex gap-3 mt-6">
-              <button
+            <div className="flex gap-3 mt-2">
+              <Button
+                variant="ghost"
                 onClick={() => setShowMoveModal(false)}
-                className="flex-1 px-4 py-2.5 text-surface-800 hover:bg-surface-300/30 rounded-xl transition-all text-[13px]"
+                className="flex-1"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={handleMove}
                 disabled={
                   isMoving || (moveToEntity === document.entity && moveToYear === document.taxYear)
                 }
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-warn-500 text-surface-0 rounded-xl hover:bg-warn-400 transition-all disabled:opacity-40 text-[13px] font-medium"
+                className="flex-1 bg-warn-500 hover:bg-warn-400 text-surface-0"
               >
                 <MoveRight className="w-4 h-4" />
                 {isMoving ? 'Moving...' : 'Move'}
-              </button>
+              </Button>
             </div>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

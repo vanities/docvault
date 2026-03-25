@@ -11,6 +11,15 @@ import {
   ENTITY_COLOR_MAP as COLOR_MAP,
   AVAILABLE_COLORS,
 } from '../../utils/entityDisplay';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 interface EntitySwitcherProps {
   selectedEntity: Entity;
@@ -198,7 +207,7 @@ export function EntitySwitcher({
               ${
                 isSelected
                   ? `${colors.bg} ${colors.border} ${colors.text} ring-2 ${colors.ring} ring-offset-1`
-                  : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                  : 'bg-transparent border-border/50 text-surface-600 hover:border-border hover:bg-surface-200/50'
               }
             `}
           >
@@ -213,7 +222,7 @@ export function EntitySwitcher({
         <button
           onClick={() => setShowAddModal(true)}
           disabled={disabled}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-dashed border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-dashed border-border/50 text-surface-500 hover:border-border hover:text-surface-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus className="w-4 h-4" />
           <span className="font-medium text-sm">Add</span>
@@ -225,7 +234,7 @@ export function EntitySwitcher({
         <button
           onClick={() => setShowManageModal(true)}
           disabled={disabled}
-          className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          className="p-2 rounded-lg text-surface-400 hover:text-surface-600 hover:bg-surface-200/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           title="Manage entities"
         >
           <Settings className="w-4 h-4" />
@@ -233,197 +242,173 @@ export function EntitySwitcher({
       )}
 
       {/* Add Entity Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setShowAddModal(false)} />
-          <div className="relative bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Add Business Entity</h2>
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="p-1 text-gray-400 hover:text-gray-600 rounded"
-              >
-                <X className="w-5 h-5" />
-              </button>
+      <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Business Entity</DialogTitle>
+            <DialogDescription>Create a new entity to organize your documents.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-surface-700 mb-1">
+                Entity Name
+              </label>
+              <input
+                type="text"
+                value={newEntityName}
+                onChange={(e) => setNewEntityName(e.target.value)}
+                placeholder="e.g., My New LLC"
+                className="w-full px-3 py-2 border border-border/50 rounded-lg bg-transparent text-surface-950 focus:outline-none focus:ring-2 focus:ring-ring"
+                autoFocus
+              />
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Entity Name</label>
-                <input
-                  type="text"
-                  value={newEntityName}
-                  onChange={(e) => setNewEntityName(e.target.value)}
-                  placeholder="e.g., My New LLC"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  autoFocus
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Color</label>
-                <div className="flex gap-2">
-                  {AVAILABLE_COLORS.map((color) => {
-                    const colors = COLOR_MAP[color];
-                    return (
-                      <button
-                        key={color}
-                        onClick={() => setNewEntityColor(color)}
-                        className={`w-8 h-8 rounded-full ${colors.bg} ${colors.border} border-2 ${
-                          newEntityColor === color ? 'ring-2 ring-offset-2 ' + colors.ring : ''
-                        }`}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setShowAddModal(false)}
-                  className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleAddEntity}
-                  disabled={!newEntityName.trim() || isAdding}
-                  className="flex-1 px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                >
-                  {isAdding ? 'Adding...' : 'Add Entity'}
-                </button>
+            <div>
+              <label className="block text-sm font-medium text-surface-700 mb-2">Color</label>
+              <div className="flex gap-2">
+                {AVAILABLE_COLORS.map((color) => {
+                  const colors = COLOR_MAP[color];
+                  return (
+                    <button
+                      key={color}
+                      onClick={() => setNewEntityColor(color)}
+                      className={`w-8 h-8 rounded-full ${colors.bg} ${colors.border} border-2 ${
+                        newEntityColor === color ? 'ring-2 ring-offset-2 ' + colors.ring : ''
+                      }`}
+                    />
+                  );
+                })}
               </div>
             </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowAddModal(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleAddEntity} disabled={!newEntityName.trim() || isAdding}>
+                {isAdding ? 'Adding...' : 'Add Entity'}
+              </Button>
+            </DialogFooter>
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
 
       {/* Manage Entities Modal */}
-      {showManageModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setShowManageModal(false)} />
-          <div className="relative bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Manage Entities</h2>
-              <button
-                onClick={() => setShowManageModal(false)}
-                className="p-1 text-gray-400 hover:text-gray-600 rounded"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <p className="text-sm text-gray-500 mb-4">
+      <Dialog open={showManageModal} onOpenChange={setShowManageModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Manage Entities</DialogTitle>
+            <DialogDescription>
               Click an entity to view details and business documents.
-            </p>
+            </DialogDescription>
+          </DialogHeader>
 
-            <div className="space-y-2">
-              {entities.map((entity) => {
-                const Icon = getEntityIcon(entity);
-                const colors = COLOR_MAP[entity.color] || COLOR_MAP.gray;
-                const isPersonal = entity.id === 'personal';
+          <div className="space-y-2">
+            {entities.map((entity) => {
+              const Icon = getEntityIcon(entity);
+              const colors = COLOR_MAP[entity.color] || COLOR_MAP.gray;
+              const isPersonal = entity.id === 'personal';
 
-                return (
-                  <div
-                    key={entity.id}
-                    className={`flex items-center justify-between p-3 rounded-lg ${colors.bg} ${colors.border} border cursor-pointer hover:opacity-80 transition-opacity`}
-                    onClick={() => handleOpenEntityDetail(entity)}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Icon className={`w-5 h-5 ${colors.text}`} />
-                      <span className={`font-medium ${colors.text}`}>{entity.name}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {isPersonal && <span className="text-xs text-gray-400 italic">Default</span>}
-                      <Pencil className="w-4 h-4 text-gray-400" />
-                    </div>
+              return (
+                <div
+                  key={entity.id}
+                  className={`flex items-center justify-between p-3 rounded-lg ${colors.bg} ${colors.border} border cursor-pointer hover:opacity-80 transition-opacity`}
+                  onClick={() => handleOpenEntityDetail(entity)}
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon className={`w-5 h-5 ${colors.text}`} />
+                    <span className={`font-medium ${colors.text}`}>{entity.name}</span>
                   </div>
-                );
-              })}
-            </div>
-
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <button
-                onClick={() => {
-                  setShowManageModal(false);
-                  setShowAddModal(true);
-                }}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Add New Entity
-              </button>
-            </div>
+                  <div className="flex items-center gap-2">
+                    {isPersonal && (
+                      <span className="text-xs text-surface-500 italic">Default</span>
+                    )}
+                    <Pencil className="w-4 h-4 text-surface-400" />
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        </div>
-      )}
+
+          <div className="pt-4 border-t border-border/50">
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                setShowManageModal(false);
+                setShowAddModal(true);
+              }}
+            >
+              <Plus className="w-4 h-4" />
+              Add New Entity
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Entity Detail Modal */}
-      {showEntityDetailModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={() => setShowEntityDetailModal(null)}
-          />
-          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <div className="flex items-center gap-3">
-                {(() => {
-                  const iconId = isEditing
-                    ? editIcon
-                    : showEntityDetailModal.icon ||
-                      DEFAULT_ENTITY_ICONS[showEntityDetailModal.id] ||
-                      'building';
-                  const Icon = ICON_MAP[iconId] || Building2;
-                  const colors =
-                    COLOR_MAP[isEditing ? editColor : showEntityDetailModal.color] ||
-                    COLOR_MAP.gray;
-                  return (
-                    <div className={`p-2 rounded-lg ${colors.bg}`}>
-                      <Icon className={`w-6 h-6 ${colors.text}`} />
-                    </div>
-                  );
-                })()}
-                {isEditing ? (
-                  <input
-                    type="text"
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    className="text-lg font-semibold text-gray-900 border border-gray-300 rounded px-2 py-1"
-                    autoFocus
-                  />
-                ) : (
-                  <h2 className="text-lg font-semibold text-gray-900">
-                    {showEntityDetailModal.name}
-                  </h2>
-                )}
-              </div>
-              <button
-                onClick={() => setShowEntityDetailModal(null)}
-                className="p-1 text-gray-400 hover:text-gray-600 rounded"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      <Dialog
+        open={!!showEntityDetailModal}
+        onOpenChange={(open) => {
+          if (!open) setShowEntityDetailModal(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+          {/* Header */}
+          <DialogHeader className="flex-row items-center gap-3">
+            {showEntityDetailModal &&
+              (() => {
+                const iconId = isEditing
+                  ? editIcon
+                  : showEntityDetailModal.icon ||
+                    DEFAULT_ENTITY_ICONS[showEntityDetailModal.id] ||
+                    'building';
+                const Icon = ICON_MAP[iconId] || Building2;
+                const colors =
+                  COLOR_MAP[isEditing ? editColor : showEntityDetailModal.color] || COLOR_MAP.gray;
+                return (
+                  <div className={`p-2 rounded-lg ${colors.bg}`}>
+                    <Icon className={`w-6 h-6 ${colors.text}`} />
+                  </div>
+                );
+              })()}
+            {showEntityDetailModal &&
+              (isEditing ? (
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="text-lg font-semibold text-surface-950 border border-border/50 rounded px-2 py-1 bg-transparent"
+                  autoFocus
+                />
+              ) : (
+                <DialogTitle>{showEntityDetailModal.name}</DialogTitle>
+              ))}
+            {/* Visually hidden title when editing so Dialog always has one */}
+            {isEditing && <DialogTitle className="sr-only">Edit Entity</DialogTitle>}
+            <DialogDescription className="sr-only">
+              View and manage entity settings and business documents.
+            </DialogDescription>
+          </DialogHeader>
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Content */}
+          {showEntityDetailModal && (
+            <div className="flex-1 overflow-y-auto space-y-6">
               {/* Entity Settings */}
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-medium text-gray-700">Entity Settings</h3>
+                  <h3 className="text-sm font-medium text-surface-700">Entity Settings</h3>
                   {!isEditing ? (
-                    <button
-                      onClick={() => setIsEditing(true)}
-                      className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
-                    >
+                    <Button variant="ghost" size="sm" onClick={() => setIsEditing(true)}>
                       <Pencil className="w-3 h-3" />
                       Edit
-                    </button>
+                    </Button>
                   ) : (
                     <div className="flex gap-2">
-                      <button
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => {
                           setIsEditing(false);
                           setEditName(showEntityDetailModal.name);
@@ -434,25 +419,22 @@ export function EntitySwitcher({
                               'building'
                           );
                         }}
-                        className="text-sm text-gray-500 hover:text-gray-700"
                       >
                         Cancel
-                      </button>
-                      <button
-                        onClick={handleSaveEntity}
-                        disabled={isSaving}
-                        className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-                      >
+                      </Button>
+                      <Button size="sm" onClick={handleSaveEntity} disabled={isSaving}>
                         {isSaving ? 'Saving...' : 'Save'}
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </div>
 
                 {isEditing && (
-                  <div className="space-y-4 p-3 bg-gray-50 rounded-lg">
+                  <div className="space-y-4 p-3 bg-surface-100/50 rounded-lg">
                     <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-2">Icon</label>
+                      <label className="block text-xs font-medium text-surface-500 mb-2">
+                        Icon
+                      </label>
                       <div className="flex flex-wrap gap-2">
                         {AVAILABLE_ICONS.map(({ id, icon: IconComp, label }) => {
                           const colors = COLOR_MAP[editColor] || COLOR_MAP.gray;
@@ -464,7 +446,7 @@ export function EntitySwitcher({
                               className={`p-2 rounded-lg border-2 transition-all ${
                                 editIcon === id
                                   ? `${colors.bg} ${colors.border} ${colors.text}`
-                                  : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                                  : 'bg-transparent border-border/50 text-surface-500 hover:border-border'
                               }`}
                             >
                               <IconComp className="w-4 h-4" />
@@ -474,7 +456,9 @@ export function EntitySwitcher({
                       </div>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-2">Color</label>
+                      <label className="block text-xs font-medium text-surface-500 mb-2">
+                        Color
+                      </label>
                       <div className="flex gap-2">
                         {AVAILABLE_COLORS.map((color) => {
                           const colors = COLOR_MAP[color];
@@ -494,14 +478,18 @@ export function EntitySwitcher({
                 )}
 
                 {!isEditing && (
-                  <div className="text-sm text-gray-500">
+                  <div className="text-sm text-surface-500">
                     <p>
                       ID:{' '}
-                      <code className="bg-gray-100 px-1 rounded">{showEntityDetailModal.id}</code>
+                      <code className="bg-surface-100/50 px-1 rounded">
+                        {showEntityDetailModal.id}
+                      </code>
                     </p>
                     <p>
                       Path:{' '}
-                      <code className="bg-gray-100 px-1 rounded">{showEntityDetailModal.path}</code>
+                      <code className="bg-surface-100/50 px-1 rounded">
+                        {showEntityDetailModal.path}
+                      </code>
                     </p>
                   </div>
                 )}
@@ -510,8 +498,8 @@ export function EntitySwitcher({
               {/* Business Documents */}
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-medium text-gray-700">Business Documents</h3>
-                  <label className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer">
+                  <h3 className="text-sm font-medium text-surface-700">Business Documents</h3>
+                  <label className="text-sm text-accent-400 hover:text-accent-300 flex items-center gap-1 cursor-pointer">
                     <Upload className="w-3 h-3" />
                     Upload
                     <input
@@ -523,15 +511,15 @@ export function EntitySwitcher({
                   </label>
                 </div>
 
-                <p className="text-xs text-gray-500 mb-3">
+                <p className="text-xs text-surface-500 mb-3">
                   Formation docs, EIN letters, contracts, licenses, and other documents not tied to
                   a specific tax year.
                 </p>
 
                 {isLoadingDocs ? (
-                  <div className="text-sm text-gray-500 py-4 text-center">Loading...</div>
+                  <div className="text-sm text-surface-500 py-4 text-center">Loading...</div>
                 ) : entityBusinessDocs.length === 0 ? (
-                  <div className="text-sm text-gray-400 py-8 text-center border-2 border-dashed border-gray-200 rounded-lg">
+                  <div className="text-sm text-surface-400 py-8 text-center border-2 border-dashed border-border/50 rounded-lg">
                     No business documents yet
                   </div>
                 ) : (
@@ -541,7 +529,7 @@ export function EntitySwitcher({
                       return (
                         <div
                           key={doc.id}
-                          className="flex items-center justify-between p-3 bg-gray-50 rounded-lg group"
+                          className="flex items-center justify-between p-3 bg-surface-100/50 rounded-lg group"
                         >
                           <div
                             className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
@@ -549,19 +537,19 @@ export function EntitySwitcher({
                               onOpenFile?.(showEntityDetailModal.id as Entity, doc.filePath || '')
                             }
                           >
-                            <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                            <FileText className="w-4 h-4 text-surface-400 flex-shrink-0" />
                             <div className="min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">
+                              <p className="text-sm font-medium text-surface-950 truncate">
                                 {doc.fileName}
                               </p>
-                              <p className="text-xs text-gray-500">
+                              <p className="text-xs text-surface-500">
                                 {docTypeInfo?.label || doc.type}
                               </p>
                             </div>
                           </div>
                           <button
                             onClick={() => handleDeleteDoc(doc)}
-                            className="p-1 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="p-1 text-surface-400 hover:text-danger-500 opacity-0 group-hover:opacity-100 transition-opacity"
                             title="Delete"
                           >
                             <X className="w-4 h-4" />
@@ -575,41 +563,49 @@ export function EntitySwitcher({
 
               {/* Danger Zone */}
               {showEntityDetailModal.id !== 'personal' && onRemoveEntity && (
-                <div className="pt-4 border-t border-gray-200">
-                  <h3 className="text-sm font-medium text-red-600 mb-2">Danger Zone</h3>
-                  <button
+                <div className="pt-4 border-t border-border/50">
+                  <h3 className="text-sm font-medium text-danger-500 mb-2">Danger Zone</h3>
+                  <Button
+                    variant="ghost-danger"
+                    size="sm"
                     onClick={() => {
                       void handleRemoveEntity(showEntityDetailModal.id);
                       setShowEntityDetailModal(null);
                     }}
-                    className="text-sm text-red-600 hover:text-red-700 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors"
                   >
                     Remove this entity
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>
-          </div>
-        </div>
-      )}
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Upload Confirmation Modal */}
-      {pendingUpload && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setPendingUpload(null)} />
-          <div className="relative bg-white rounded-xl shadow-xl p-6 w-full max-w-sm">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload Document</h3>
+      <Dialog
+        open={!!pendingUpload}
+        onOpenChange={(open) => {
+          if (!open) setPendingUpload(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Upload Document</DialogTitle>
+            <DialogDescription>Choose a document type for the uploaded file.</DialogDescription>
+          </DialogHeader>
 
+          {pendingUpload && (
             <div className="space-y-4">
               <div>
-                <p className="text-sm text-gray-600 mb-1">File:</p>
-                <p className="text-sm font-medium text-gray-900 truncate">
+                <p className="text-sm text-surface-600 mb-1">File:</p>
+                <p className="text-sm font-medium text-surface-950 truncate">
                   {pendingUpload.file.name}
                 </p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-surface-700 mb-1">
                   Document Type
                 </label>
                 <select
@@ -617,7 +613,7 @@ export function EntitySwitcher({
                   onChange={(e) =>
                     setPendingUpload({ ...pendingUpload, type: e.target.value as DocumentType })
                   }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-border/50 rounded-lg bg-transparent text-surface-950 focus:outline-none focus:ring-2 focus:ring-ring"
                 >
                   {BUSINESS_DOC_TYPES.map((dt) => (
                     <option key={dt.id} value={dt.id}>
@@ -627,24 +623,16 @@ export function EntitySwitcher({
                 </select>
               </div>
 
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setPendingUpload(null)}
-                  className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-                >
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setPendingUpload(null)}>
                   Cancel
-                </button>
-                <button
-                  onClick={handleConfirmUpload}
-                  className="flex-1 px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Upload
-                </button>
-              </div>
+                </Button>
+                <Button onClick={handleConfirmUpload}>Upload</Button>
+              </DialogFooter>
             </div>
-          </div>
-        </div>
-      )}
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

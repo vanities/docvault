@@ -8,6 +8,8 @@ import { ReminderBanner } from '../Reminders/ReminderBanner';
 import { TodoList } from '../Todos/TodoList';
 import { EntityMetadataBanner } from '../EntityMetadata/EntityMetadataBanner';
 import type { TaxDocument, DocumentType, Entity } from '../../types';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 // Business document types for the upload modal
 const BUSINESS_DOC_TYPES = DOCUMENT_TYPES.filter((dt) => dt.category === 'business');
@@ -220,15 +222,14 @@ export function BusinessDocsView() {
       )}
 
       {/* Upload Confirmation Modal */}
-      {pendingUpload && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setPendingUpload(null)}
-          />
-          <div className="relative glass-strong rounded-2xl shadow-2xl p-6 w-full max-w-sm animate-scale-in">
-            <h3 className="text-lg font-semibold text-surface-950 mb-4">Upload Document</h3>
+      <Dialog open={!!pendingUpload} onOpenChange={(open) => { if (!open) setPendingUpload(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Upload Document</DialogTitle>
+            <DialogDescription>Choose a document type for the selected file.</DialogDescription>
+          </DialogHeader>
 
+          {pendingUpload && (
             <div className="space-y-4">
               <div>
                 <p className="text-[13px] text-surface-600 mb-1">File:</p>
@@ -257,23 +258,24 @@ export function BusinessDocsView() {
               </div>
 
               <div className="flex gap-3 pt-2">
-                <button
+                <Button
+                  variant="ghost"
                   onClick={() => setPendingUpload(null)}
-                  className="flex-1 px-4 py-2.5 text-surface-800 hover:bg-surface-300/30 rounded-xl transition-all text-[13px]"
+                  className="flex-1"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={handleConfirmUpload}
-                  className="flex-1 px-4 py-2.5 bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 transition-all text-[13px] font-medium"
+                  className="flex-1"
                 >
                   Upload
-                </button>
+                </Button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
