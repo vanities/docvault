@@ -260,14 +260,6 @@ export async function handleMiscRoutes(
     await saveTodos(filtered);
     return jsonResponse({ ok: true });
   }
-  // sales routes (extracted to routes/sales.ts)
-  const salesResponse = await handleSalesRoutes(req, url, pathname);
-  if (salesResponse) return salesResponse;
-  // mileage routes (extracted to routes/mileage.ts)
-  const mileageResponse = await handleMileageRoutes(req, url, pathname);
-  if (mileageResponse) return mileageResponse;
-  // gold routes (extracted to routes/gold.ts)
-  const goldResponse = await handleGoldRoutes(req, url, pathname);
-  if (goldResponse) return goldResponse;
+
   return null;
 }
