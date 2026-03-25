@@ -19,6 +19,8 @@ import {
   loadContributions,
   loadReminders,
   loadSnapshots,
+  loadSnapshotsForYear,
+  loadAssets,
   fetchMetalSpotPrices,
   getEntityPath,
   scanDirectory,
@@ -173,7 +175,10 @@ export async function handleFinancialSnapshotRoutes(
       const { getBankDepositSummary } = await import('./analytics/index.js');
 
       // Build bank deposit summaries using centralized analytics module
-      const bankDepositsByEntity: Record<string, ReturnType<typeof getBankDepositSummary>['monthly']> = {};
+      const bankDepositsByEntity: Record<
+        string,
+        ReturnType<typeof getBankDepositSummary>['monthly']
+      > = {};
       const bankDepositSummaries: Record<string, ReturnType<typeof getBankDepositSummary>> = {};
       const taxEntitiesForStatements = config.entities.filter(
         (e) => (e as Record<string, unknown>).type === 'tax'
@@ -235,8 +240,20 @@ export async function handleFinancialSnapshotRoutes(
         }
 
         const analyticsFiles = files.map((f) => ({ name: f.name, path: f.path, type: f.type }));
-        const incomeSummary = getIncomeSummary(entity.id, year, parsedDataMap, metadataMap, analyticsFiles);
-        const expenseSummary = getExpenseSummary(entity.id, year, parsedDataMap, metadataMap, analyticsFiles);
+        const incomeSummary = getIncomeSummary(
+          entity.id,
+          year,
+          parsedDataMap,
+          metadataMap,
+          analyticsFiles
+        );
+        const expenseSummary = getExpenseSummary(
+          entity.id,
+          year,
+          parsedDataMap,
+          metadataMap,
+          analyticsFiles
+        );
 
         entitySummaries[entity.id] = {
           entity,
@@ -521,14 +538,17 @@ export async function handleFinancialSnapshotRoutes(
       const taxSummary = getTaxCalculation(year, entitySummaries, retirementDeduction);
 
       // Form 2210 periods from bank deposit summaries (already computed by analytics module)
-      const form2210Periods: Record<string, {
-        periods: {
-          label: string;
-          cumulativeDeposits: number;
-          cumulativeRevenue: number;
-          cumulativeOwnerContributions: number;
-        }[];
-      }> = {};
+      const form2210Periods: Record<
+        string,
+        {
+          periods: {
+            label: string;
+            cumulativeDeposits: number;
+            cumulativeRevenue: number;
+            cumulativeOwnerContributions: number;
+          }[];
+        }
+      > = {};
       for (const [entityId, summary] of Object.entries(bankDepositSummaries)) {
         form2210Periods[entityId] = { periods: summary.form2210Periods };
       }
@@ -1047,25 +1067,32 @@ export async function handleFinancialSnapshotRoutes(
         lines.push('| Source | Amount |');
         lines.push('|--------|--------|');
         if (taxSummary.wages > 0) lines.push(`| W-2 Wages | ${fmt(taxSummary.wages)} |`);
-        if (taxSummary.scheduleCIncome > 0) lines.push(`| Schedule C (Self-Employment) | ${fmt(taxSummary.scheduleCIncome)} |`);
+        if (taxSummary.scheduleCIncome > 0)
+          lines.push(`| Schedule C (Self-Employment) | ${fmt(taxSummary.scheduleCIncome)} |`);
         if (taxSummary.capitalGains.total !== 0) {
           lines.push(`| Capital Gains (net) | ${fmt(taxSummary.capitalGains.total)} |`);
-          if (taxSummary.capitalGains.shortTerm !== 0) lines.push(`|   ↳ Short-term | ${fmt(taxSummary.capitalGains.shortTerm)} |`);
-          if (taxSummary.capitalGains.longTerm !== 0) lines.push(`|   ↳ Long-term | ${fmt(taxSummary.capitalGains.longTerm)} |`);
+          if (taxSummary.capitalGains.shortTerm !== 0)
+            lines.push(`|   ↳ Short-term | ${fmt(taxSummary.capitalGains.shortTerm)} |`);
+          if (taxSummary.capitalGains.longTerm !== 0)
+            lines.push(`|   ↳ Long-term | ${fmt(taxSummary.capitalGains.longTerm)} |`);
         }
         if (taxSummary.dividends.ordinary > 0) {
           lines.push(`| Dividends (ordinary) | ${fmt(taxSummary.dividends.ordinary)} |`);
-          if (taxSummary.dividends.qualified > 0) lines.push(`|   ↳ Qualified | ${fmt(taxSummary.dividends.qualified)} |`);
+          if (taxSummary.dividends.qualified > 0)
+            lines.push(`|   ↳ Qualified | ${fmt(taxSummary.dividends.qualified)} |`);
         }
-        if (taxSummary.otherIncome !== 0) lines.push(`| Other Income (K-1, staking, etc.) | ${fmt(taxSummary.otherIncome)} |`);
+        if (taxSummary.otherIncome !== 0)
+          lines.push(`| Other Income (K-1, staking, etc.) | ${fmt(taxSummary.otherIncome)} |`);
         lines.push(`| **Estimated Total Income** | **${fmt(taxSummary.estimatedTotalIncome)}** |`);
         lines.push('');
 
         lines.push('### Deductions & Adjustments');
         lines.push('| Adjustment | Amount |');
         lines.push('|------------|--------|');
-        if (taxSummary.seTaxDeduction > 0) lines.push(`| SE Tax Deduction (50%) | ${fmt(taxSummary.seTaxDeduction)} |`);
-        if (taxSummary.retirementDeduction > 0) lines.push(`| Retirement Plan (Solo 401k) | ${fmt(taxSummary.retirementDeduction)} |`);
+        if (taxSummary.seTaxDeduction > 0)
+          lines.push(`| SE Tax Deduction (50%) | ${fmt(taxSummary.seTaxDeduction)} |`);
+        if (taxSummary.retirementDeduction > 0)
+          lines.push(`| Retirement Plan (Solo 401k) | ${fmt(taxSummary.retirementDeduction)} |`);
         lines.push(`| **Total Adjustments** | **${fmt(taxSummary.estimatedAdjustments)}** |`);
         lines.push('');
         lines.push(`**Estimated AGI: ${fmt(taxSummary.estimatedAGI)}**`);
@@ -1100,7 +1127,9 @@ export async function handleFinancialSnapshotRoutes(
         // Form 2210 Annualized Income Periods
         if (Object.keys(form2210Periods).length > 0) {
           lines.push('## Form 2210 — Annualized Income Periods');
-          lines.push('_Cumulative bank deposits through each period cutoff for the annualized income installment method._');
+          lines.push(
+            '_Cumulative bank deposits through each period cutoff for the annualized income installment method._'
+          );
           lines.push('');
           for (const [entityId, data] of Object.entries(form2210Periods)) {
             const entityName = entitySummaries[entityId]?.entity.name || entityId;
