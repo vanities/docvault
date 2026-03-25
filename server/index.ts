@@ -2774,21 +2774,63 @@ async function handleRequest(req: Request): Promise<Response> {
             if (!monthMatch) continue;
             const parsedKey = `${entity.id}/${year}/statements/bank/${file}`;
             const parsed = parsedDataMap[parsedKey];
-            if (parsed?.deposits) {
-              // Use parsed data if available
-              const deposits = parsed.deposits as {
-                date: string;
-                description: string;
-                amount: number;
-              }[];
+            if (parsed) {
+              // AI parser uses inconsistent field names — check all variants
+              let depositTotal = 0;
+              let depositSources: { date: string; description: string; amount: number }[] = [];
+
+              if (Array.isArray(parsed.deposits)) {
+                // Array of deposit transactions
+                depositSources = parsed.deposits as typeof depositSources;
+                depositTotal = depositSources.reduce((s, d) => s + (d.amount || 0), 0);
+              } else if (typeof parsed.totalDeposits === 'number') {
+                // Numeric total (no individual transactions)
+                depositTotal = parsed.totalDeposits as number;
+              } else if (typeof parsed.totalDepositsAndAdditions === 'number') {
+                // Manna-style field name
+                depositTotal = parsed.totalDepositsAndAdditions as number;
+              } else if (Array.isArray(parsed.depositsAndAdditions)) {
+                // Manna-style array of deposits
+                const deps = parsed.depositsAndAdditions as {
+                  date?: string;
+                  description?: string;
+                  amount?: number;
+                }[];
+                depositTotal = deps.reduce((s, d) => s + (d.amount || 0), 0);
+                depositSources = deps.map((d) => ({
+                  date: d.date || '',
+                  description: d.description || '',
+                  amount: d.amount || 0,
+                }));
+              } else if (Array.isArray(parsed.transactions)) {
+                // Transactions array — filter for deposits (positive amounts or type === 'deposit')
+                const txns = parsed.transactions as {
+                  date?: string;
+                  description?: string;
+                  amount?: number;
+                  type?: string;
+                }[];
+                const deps = txns.filter(
+                  (t) =>
+                    t.type === 'deposit' ||
+                    t.type === 'Deposit' ||
+                    (t.amount && t.amount > 0 && !t.type?.toLowerCase().includes('withdraw'))
+                );
+                depositTotal = deps.reduce((s, d) => s + (d.amount || 0), 0);
+                depositSources = deps.map((d) => ({
+                  date: d.date || '',
+                  description: d.description || '',
+                  amount: d.amount || 0,
+                }));
+              }
+
               monthlyDeposits.push({
                 month: `${monthMatch[1]}-${monthMatch[2]}`,
-                deposits: deposits.reduce((s: number, d: { amount: number }) => s + d.amount, 0),
-                sources: deposits,
+                deposits: depositTotal,
+                sources: depositSources,
               });
             } else {
-              // Try to read PDF and extract "Total Deposits and Additions" from text
-              // For now, just mark as unparsed
+              // No parsed data at all
               monthlyDeposits.push({
                 month: `${monthMatch[1]}-${monthMatch[2]}`,
                 deposits: 0,
