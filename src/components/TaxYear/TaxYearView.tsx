@@ -14,6 +14,7 @@ import { ExpenseSummary } from '../Summary/ExpenseSummary';
 import { InvoiceSummary } from '../Summary/InvoiceSummary';
 import { StatementSummary } from '../Summary/StatementSummary';
 import { EXPENSE_CATEGORIES } from '../../config';
+import { useAnalytics } from '../../hooks/useAnalytics';
 import type {
   Entity,
   DocumentType,
@@ -208,6 +209,8 @@ export function TaxYearView() {
       // Update the document in our local state
       const updatedDoc = { ...doc, parsedData: parsedData as unknown as TaxDocument['parsedData'] };
       setScannedDocuments((prev) => prev.map((d) => (d.id === doc.id ? updatedDoc : d)));
+      // Refresh backend analytics to pick up new parsed data
+      analytics.refresh();
       return updatedDoc;
     } else {
       addToast('Failed to parse document', 'error');
@@ -243,6 +246,8 @@ export function TaxYearView() {
       // Rescan to pick up new file
       const docs = await scanTaxYear(selectedEntity, selectedYear);
       setScannedDocuments(docs);
+      // Refresh backend analytics
+      analytics.refresh();
     }
   };
 
@@ -309,8 +314,42 @@ export function TaxYearView() {
     });
   }, [mileageData.entries, selectedYear, selectedEntity]);
 
-  // Compute income summary from tracked documents
+  // --- Backend-driven analytics ---
+  const analytics = useAnalytics(selectedEntity, selectedYear);
+
+  // Merge backend analytics with local sales data
   const incomeSummary = useMemo((): IncomeSummaryType => {
+    const salesTotal = yearSales.reduce((sum, s) => sum + s.total, 0);
+    return {
+      ...analytics.incomeSummary,
+      salesTotal,
+      salesCount: yearSales.length,
+      totalIncome: analytics.incomeSummary.totalIncome + salesTotal,
+    };
+  }, [analytics.incomeSummary, yearSales]);
+
+  const expenseSummary = useMemo((): ExpenseSummaryType => {
+    // Merge in mileage data (not yet in backend analytics)
+    const mileageTotal = yearMileage.reduce((sum, e) => sum + (e.tripMiles || 0), 0);
+    const mileageDeduction = yearMileage.reduce(
+      (sum, e) => sum + (e.tripMiles || 0) * mileageData.irsRate,
+      0
+    );
+    return {
+      ...analytics.expenseSummary,
+      mileageTotal,
+      mileageDeduction,
+      mileageCount: yearMileage.length,
+      totalDeductible: analytics.expenseSummary.totalDeductible + mileageDeduction,
+    };
+  }, [analytics.expenseSummary, yearMileage, mileageData.irsRate]);
+
+  const bankDepositSummary = analytics.bankDepositSummary;
+
+  // --- Remaining local computations (invoice, retirement, hidden docs) ---
+
+  // Compute income summary from tracked documents (LEGACY — kept only for "all" variants)
+  const _legacyIncomeSummary = useMemo((): IncomeSummaryType => {
     const w2Docs = trackedDocuments.filter((d) => d.type === 'w2');
     const income1099Docs = trackedDocuments.filter((d) => d.type.startsWith('1099'));
 
@@ -400,8 +439,8 @@ export function TaxYearView() {
     };
   }, [trackedDocuments, selectedEntity, selectedYear, yearSales]);
 
-  // Compute expense summary from tracked documents
-  const expenseSummary = useMemo((): ExpenseSummaryType => {
+  // Compute expense summary from tracked documents (LEGACY — kept only for "all" variants)
+  const _legacyExpenseSummary = useMemo((): ExpenseSummaryType => {
     // Include receipts and any doc in an expenses folder
     const expenseDocs = trackedDocuments.filter(
       (d) => d.type === 'receipt' || (d.filePath ?? '').toLowerCase().includes('/expenses/')
@@ -817,8 +856,8 @@ export function TaxYearView() {
     return 0;
   };
 
-  // Compute bank deposit summary from tracked documents
-  const bankDepositSummary = useMemo((): BankDepositSummary | null => {
+  // Compute bank deposit summary from tracked documents (LEGACY — kept only for "all" variant)
+  const _legacyBankDepositSummary = useMemo((): BankDepositSummary | null => {
     const bankDocs = trackedDocuments.filter((d) => d.type === 'bank-statement');
     if (bankDocs.length === 0) return null;
 
