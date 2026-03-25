@@ -1,6 +1,5 @@
 import path from 'node:path';
 import { defineConfig } from 'vite-plus';
-import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
 // https://vite.dev/config/
@@ -145,7 +144,7 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-  plugins: [react(), tailwindcss()],
+  plugins: [tailwindcss()],
   server: {
     proxy: {
       '/api': 'http://localhost:3005',
