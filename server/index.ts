@@ -2750,12 +2750,32 @@ async function handleRequest(req: Request): Promise<Response> {
       }
 
       // Parse bank statement deposits by month from entity statement files
+      // Classifies deposits as revenue vs owner contributions based on transaction descriptions
+      const OWNER_TRANSFER_PATTERNS = [
+        /online transfer.*from.*navy federal/i,
+        /online transfer.*from.*chk/i,
+        /online transfer.*from.*checking/i,
+        /online transfer.*from.*savings/i,
+        /transfer from.*personal/i,
+        /zelle.*mischke/i,
+      ];
+      const isOwnerContribution = (description: string): boolean =>
+        OWNER_TRANSFER_PATTERNS.some((p) => p.test(description));
+
       const bankDepositsByEntity: Record<
         string,
         {
           month: string;
           deposits: number;
-          sources: { date: string; description: string; amount: number }[];
+          ownerContributions: number;
+          revenueDeposits: number;
+          sources: {
+            date: string;
+            description: string;
+            amount: number;
+            isOwnerContribution: boolean;
+          }[];
+          notes?: string;
         }[]
       > = {};
       const taxEntitiesForStatements = config.entities.filter(
@@ -2824,16 +2844,34 @@ async function handleRequest(req: Request): Promise<Response> {
                 }));
               }
 
+              // Classify each deposit as revenue or owner contribution
+              const classifiedSources = depositSources.map((d) => ({
+                ...d,
+                isOwnerContribution: isOwnerContribution(d.description),
+              }));
+              const ownerContributions = classifiedSources
+                .filter((d) => d.isOwnerContribution)
+                .reduce((s, d) => s + d.amount, 0);
+
+              // Check for document-level notes from metadata
+              const metaKey = `${entity.id}/${year}/statements/bank/${file}`;
+              const docMeta = metadataMap[metaKey];
+
               monthlyDeposits.push({
                 month: `${monthMatch[1]}-${monthMatch[2]}`,
                 deposits: depositTotal,
-                sources: depositSources,
+                ownerContributions,
+                revenueDeposits: depositTotal - ownerContributions,
+                sources: classifiedSources,
+                notes: docMeta?.notes,
               });
             } else {
               // No parsed data at all
               monthlyDeposits.push({
                 month: `${monthMatch[1]}-${monthMatch[2]}`,
                 deposits: 0,
+                ownerContributions: 0,
+                revenueDeposits: 0,
                 sources: [],
               });
             }
@@ -3003,38 +3041,40 @@ async function handleRequest(req: Request): Promise<Response> {
       }
 
       // Build quarterly bank deposit breakdown per entity
-      const depositsByQuarter: Record<
-        string,
-        { quarter: string; deposits: number; months: { month: string; deposits: number }[] }[]
-      > = {};
+      type MonthDeposit = {
+        month: string;
+        deposits: number;
+        ownerContributions: number;
+        revenueDeposits: number;
+      };
+      type QuarterDeposit = {
+        quarter: string;
+        deposits: number;
+        ownerContributions: number;
+        revenueDeposits: number;
+        months: MonthDeposit[];
+      };
+      const depositsByQuarter: Record<string, QuarterDeposit[]> = {};
       for (const [entityId, months] of Object.entries(bankDepositsByEntity)) {
-        const quarters = [
-          {
-            quarter: quarterLabels[0],
-            deposits: 0,
-            months: [] as { month: string; deposits: number }[],
-          },
-          {
-            quarter: quarterLabels[1],
-            deposits: 0,
-            months: [] as { month: string; deposits: number }[],
-          },
-          {
-            quarter: quarterLabels[2],
-            deposits: 0,
-            months: [] as { month: string; deposits: number }[],
-          },
-          {
-            quarter: quarterLabels[3],
-            deposits: 0,
-            months: [] as { month: string; deposits: number }[],
-          },
-        ];
+        const quarters: QuarterDeposit[] = quarterLabels.map((q) => ({
+          quarter: q,
+          deposits: 0,
+          ownerContributions: 0,
+          revenueDeposits: 0,
+          months: [],
+        }));
         for (const m of months) {
           const monthNum = parseInt(m.month.split('-')[1], 10);
           const qi = monthNum <= 3 ? 0 : monthNum <= 6 ? 1 : monthNum <= 9 ? 2 : 3;
           quarters[qi].deposits += m.deposits;
-          quarters[qi].months.push({ month: m.month, deposits: m.deposits });
+          quarters[qi].ownerContributions += m.ownerContributions;
+          quarters[qi].revenueDeposits += m.revenueDeposits;
+          quarters[qi].months.push({
+            month: m.month,
+            deposits: m.deposits,
+            ownerContributions: m.ownerContributions,
+            revenueDeposits: m.revenueDeposits,
+          });
         }
         depositsByQuarter[entityId] = quarters;
       }
@@ -3494,34 +3534,70 @@ async function handleRequest(req: Request): Promise<Response> {
           lines.push('## Bank Statement Deposits');
           for (const [entityId, quarters] of Object.entries(depositsByQuarter)) {
             const entityName = entitySummaries[entityId]?.entity.name || entityId;
+            const totalOwnerContribs = quarters.reduce((s, q) => s + q.ownerContributions, 0);
+            const hasOwnerContribs = totalOwnerContribs > 0;
+            const monthNames = [
+              '',
+              'Jan',
+              'Feb',
+              'Mar',
+              'Apr',
+              'May',
+              'Jun',
+              'Jul',
+              'Aug',
+              'Sep',
+              'Oct',
+              'Nov',
+              'Dec',
+            ];
+
             lines.push(`### ${entityName}`);
-            lines.push('| Month | Deposits |');
-            lines.push('|-------|----------|');
+            if (hasOwnerContribs) {
+              lines.push(
+                '_Note: Owner contributions (transfers from personal accounts) are separated from revenue deposits._'
+              );
+              lines.push('| Month | Total Deposits | Revenue | Owner Contributions |');
+              lines.push('|-------|---------------|---------|---------------------|');
+            } else {
+              lines.push('| Month | Deposits |');
+              lines.push('|-------|----------|');
+            }
             for (const q of quarters) {
               for (const m of q.months) {
-                const monthNames = [
-                  '',
-                  'Jan',
-                  'Feb',
-                  'Mar',
-                  'Apr',
-                  'May',
-                  'Jun',
-                  'Jul',
-                  'Aug',
-                  'Sep',
-                  'Oct',
-                  'Nov',
-                  'Dec',
-                ];
                 const monthNum = parseInt(m.month.split('-')[1], 10);
                 const label = monthNames[monthNum] || m.month;
-                lines.push(`| ${label} | ${m.deposits > 0 ? fmt(m.deposits) : '_no deposits_'} |`);
+                if (hasOwnerContribs) {
+                  if (m.deposits > 0) {
+                    lines.push(
+                      `| ${label} | ${fmt(m.deposits)} | ${fmt(m.revenueDeposits)} | ${m.ownerContributions > 0 ? fmt(m.ownerContributions) : '—'} |`
+                    );
+                  } else {
+                    lines.push(`| ${label} | _no deposits_ | — | — |`);
+                  }
+                } else {
+                  lines.push(
+                    `| ${label} | ${m.deposits > 0 ? fmt(m.deposits) : '_no deposits_'} |`
+                  );
+                }
               }
-              lines.push(`| **${q.quarter}** | **${fmt(q.deposits)}** |`);
+              if (hasOwnerContribs) {
+                lines.push(
+                  `| **${q.quarter}** | **${fmt(q.deposits)}** | **${fmt(q.revenueDeposits)}** | **${q.ownerContributions > 0 ? fmt(q.ownerContributions) : '—'}** |`
+                );
+              } else {
+                lines.push(`| **${q.quarter}** | **${fmt(q.deposits)}** |`);
+              }
             }
             const totalDeposits = quarters.reduce((s, q) => s + q.deposits, 0);
-            lines.push(`| **Full Year** | **${fmt(totalDeposits)}** |`);
+            const totalRevenue = quarters.reduce((s, q) => s + q.revenueDeposits, 0);
+            if (hasOwnerContribs) {
+              lines.push(
+                `| **Full Year** | **${fmt(totalDeposits)}** | **${fmt(totalRevenue)}** | **${fmt(totalOwnerContribs)}** |`
+              );
+            } else {
+              lines.push(`| **Full Year** | **${fmt(totalDeposits)}** |`);
+            }
             lines.push('');
           }
         }
