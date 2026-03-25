@@ -7,6 +7,8 @@ import type {
   IncomeSummary,
   ExpenseSummary,
   BankDepositSummary,
+  InvoiceSummaryData,
+  RetirementSummary,
   ExpenseCategory,
 } from '../types';
 
@@ -55,6 +57,26 @@ interface BankDepositSummaryResponse {
   }[];
 }
 
+interface InvoiceCustomerGroup {
+  customer: string;
+  total: number;
+  count: number;
+}
+
+interface InvoicesResponse {
+  invoiceTotal: number;
+  invoiceCount: number;
+  byCustomer: InvoiceCustomerGroup[];
+}
+
+interface RetirementResponse {
+  totalContributions: number;
+  employerContributions: number;
+  employeeContributions: number;
+  statementCount: number;
+  byAccount: { institution: string; accountType: string; total: number }[];
+}
+
 interface QuickStatsResponse {
   entityId: string;
   year: string;
@@ -64,12 +86,16 @@ interface QuickStatsResponse {
     expenses: { vendor: string; amount: number; category: string; date?: string; filePath?: string }[];
   };
   bankDeposits: Record<string, BankDepositSummaryResponse>;
+  invoices: InvoicesResponse;
+  retirement: RetirementResponse | null;
   documentCount: number;
 }
 
 interface UseAnalyticsResult {
   incomeSummary: IncomeSummary;
   expenseSummary: ExpenseSummary;
+  invoiceSummary: InvoiceSummaryData;
+  retirementSummary: RetirementSummary | null;
   bankDepositSummary: BankDepositSummary | null;
   bankDepositDetails: Record<string, BankDepositSummaryResponse>;
   incomeItems: AnalyticsIncomeItem[];
@@ -149,10 +175,16 @@ export function useAnalytics(entity: string, year: number): UseAnalyticsResult {
     };
   }, [entity, year, refreshKey]);
 
+  const emptyInvoices: InvoiceSummaryData = {
+    entity, taxYear: year, invoiceTotal: 0, invoiceCount: 0, byCustomer: [],
+  };
+
   if (!data) {
     return {
       incomeSummary: { ...emptyIncome, entity, taxYear: year },
       expenseSummary: { ...emptyExpenses, entity, taxYear: year },
+      invoiceSummary: emptyInvoices,
+      retirementSummary: null,
       bankDepositSummary: null,
       bankDepositDetails: {},
       incomeItems: [],
@@ -223,9 +255,31 @@ export function useAnalytics(entity: string, year: number): UseAnalyticsResult {
         }
       : null;
 
+  // Map invoices response
+  const invoiceSummary: InvoiceSummaryData = {
+    entity,
+    taxYear: year,
+    invoiceTotal: data.invoices?.invoiceTotal || 0,
+    invoiceCount: data.invoices?.invoiceCount || 0,
+    byCustomer: data.invoices?.byCustomer || [],
+  };
+
+  // Map retirement response
+  const retirementSummary: RetirementSummary | null = data.retirement
+    ? {
+        totalContributions: data.retirement.totalContributions,
+        employerContributions: data.retirement.employerContributions,
+        employeeContributions: data.retirement.employeeContributions,
+        statementCount: data.retirement.statementCount,
+        byAccount: data.retirement.byAccount,
+      }
+    : null;
+
   return {
     incomeSummary,
     expenseSummary,
+    invoiceSummary,
+    retirementSummary,
     bankDepositSummary,
     bankDepositDetails: data.bankDeposits,
     incomeItems: data.income.items,
