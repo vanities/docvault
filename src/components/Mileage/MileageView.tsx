@@ -9,6 +9,9 @@ import {
   MapPin,
   Loader2,
   Home,
+  Pencil,
+  Check,
+  X,
 } from 'lucide-react';
 import type { Vehicle, MileageEntry, MileageData, SavedAddress } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
@@ -57,6 +60,17 @@ export function MileageView() {
   const [newVehicleMake, setNewVehicleMake] = useState('');
   const [newVehicleModel, setNewVehicleModel] = useState('');
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
+
+  // Edit state
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [editDate, setEditDate] = useState('');
+  const [editVehicleId, setEditVehicleId] = useState('');
+  const [editTripMiles, setEditTripMiles] = useState('');
+  const [editGallons, setEditGallons] = useState('');
+  const [editTotalCost, setEditTotalCost] = useState('');
+  const [editPurpose, setEditPurpose] = useState('');
+  const [editOdometerStart, setEditOdometerStart] = useState('');
+  const [editOdometerEnd, setEditOdometerEnd] = useState('');
 
   const fetchData = useCallback(async () => {
     try {
@@ -182,6 +196,43 @@ export function MileageView() {
     await fetchData();
   };
 
+  const startEditEntry = (entry: MileageEntry) => {
+    setEditingEntryId(entry.id);
+    setEditDate(entry.date);
+    setEditVehicleId(entry.vehicleId);
+    setEditTripMiles(entry.tripMiles != null ? String(entry.tripMiles) : '');
+    setEditGallons(entry.gallons != null ? String(entry.gallons) : '');
+    setEditTotalCost(entry.totalCost != null ? String(entry.totalCost) : '');
+    setEditPurpose(entry.purpose || '');
+    setEditOdometerStart(entry.odometerStart != null ? String(entry.odometerStart) : '');
+    setEditOdometerEnd(entry.odometerEnd != null ? String(entry.odometerEnd) : '');
+  };
+
+  const cancelEditEntry = () => {
+    setEditingEntryId(null);
+  };
+
+  const handleUpdateEntry = async (entryId: string) => {
+    const body: Record<string, unknown> = {
+      date: editDate,
+      vehicleId: editVehicleId,
+      tripMiles: editTripMiles || '',
+      gallons: editGallons || '',
+      totalCost: editTotalCost || '',
+      purpose: editPurpose,
+      odometerStart: editOdometerStart || '',
+      odometerEnd: editOdometerEnd || '',
+    };
+
+    await fetch(`${API}/${entryId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    setEditingEntryId(null);
+    await fetchData();
+  };
+
   const handleAddVehicle = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newVehicleName.trim()) return;
@@ -248,7 +299,7 @@ export function MileageView() {
     .slice()
     .sort((a, b) => b.date.localeCompare(a.date))
     .reduce<Record<string, MileageEntry[]>>((acc, entry) => {
-      const month = entry.date.substring(0, 7); // YYYY-MM
+      const month = entry.date.substring(0, 7);
       if (!acc[month]) acc[month] = [];
       acc[month].push(entry);
       return acc;
@@ -264,6 +315,10 @@ export function MileageView() {
   const currentMonthEntries = entriesByMonth[currentMonth] || [];
   const currentMonthMiles = currentMonthEntries.reduce((sum, e) => sum + (e.tripMiles || 0), 0);
   const irsDeduction = currentMonthMiles * data.irsRate;
+
+  // All-time miles
+  const allTimeMiles = filteredEntries.reduce((sum, e) => sum + (e.tripMiles || 0), 0);
+  const allTimeDeduction = allTimeMiles * data.irsRate;
 
   // Average MPG from all entries that have both gallons and tripMiles
   const fillUps = filteredEntries.filter(
@@ -283,15 +338,15 @@ export function MileageView() {
   }
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
+    <div className="max-w-lg mx-auto px-4 py-6 space-y-5 overflow-x-hidden">
       {/* Header */}
       <div className="flex items-center gap-3">
         <div className="p-2.5 bg-teal-500/10 rounded-xl">
           <Fuel className="w-6 h-6 text-teal-500" />
         </div>
-        <div>
+        <div className="min-w-0">
           <h1 className="font-display text-xl text-surface-950 italic">Mileage Tracker</h1>
-          <p className="text-[12px] text-surface-600">
+          <p className="text-[12px] text-surface-600 truncate">
             {entityName || (selectedEntity === 'all' ? 'All Entities' : selectedEntity)}
             {' · '}IRS Rate: ${data.irsRate.toFixed(2)}/mile
           </p>
@@ -299,68 +354,89 @@ export function MileageView() {
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-2">
         <div className="glass-card rounded-xl p-3">
-          <p className="text-[11px] text-surface-600 uppercase tracking-wider">This Month</p>
-          <p className="text-xl font-semibold text-surface-950 tabular-nums">
+          <p className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+            This Month
+          </p>
+          <p className="text-lg font-bold text-surface-950 tabular-nums mt-0.5">
             {currentMonthMiles.toFixed(0)}
           </p>
           <p className="text-[10px] text-surface-500">miles</p>
         </div>
         <div className="glass-card rounded-xl p-3">
-          <p className="text-[11px] text-surface-600 uppercase tracking-wider">IRS Deduction</p>
-          <p className="text-xl font-semibold text-teal-500 tabular-nums">
-            ${irsDeduction.toFixed(2)}
+          <p className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+            IRS Deduct
+          </p>
+          <p className="text-lg font-bold text-teal-500 tabular-nums mt-0.5">
+            ${irsDeduction.toFixed(0)}
           </p>
           <p className="text-[10px] text-surface-500">this month</p>
         </div>
         <div className="glass-card rounded-xl p-3">
-          <p className="text-[11px] text-surface-600 uppercase tracking-wider">Avg MPG</p>
-          <p className="text-xl font-semibold text-surface-950 tabular-nums">
+          <p className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+            Avg MPG
+          </p>
+          <p className="text-lg font-bold text-surface-950 tabular-nums mt-0.5">
             {avgMpg > 0 ? avgMpg.toFixed(1) : '—'}
           </p>
-          <p className="text-[10px] text-surface-500">from fill-ups</p>
+          <p className="text-[10px] text-surface-500">{fillUps.length} fill-up{fillUps.length !== 1 ? 's' : ''}</p>
+        </div>
+      </div>
+
+      {/* All-time summary bar */}
+      <div className="glass-card rounded-xl px-4 py-2.5 flex items-center justify-between">
+        <span className="text-[11px] text-surface-500 uppercase tracking-wider font-medium">
+          All Time
+        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-semibold text-surface-900 tabular-nums">
+            {allTimeMiles.toFixed(0)} mi
+          </span>
+          <span className="text-sm font-bold text-teal-500 tabular-nums">
+            ${allTimeDeduction.toFixed(2)}
+          </span>
         </div>
       </div>
 
       {/* Quick Entry Form */}
       <form onSubmit={handleSubmit} className="glass-card rounded-xl p-4 space-y-3">
         <h2 className="text-sm font-semibold text-surface-900 flex items-center gap-2">
-          <Plus className="w-4 h-4 text-teal-400" />
+          <Plus className="w-4 h-4 text-teal-500" />
           New Entry
         </h2>
 
-        {/* Date */}
-        <div>
-          <label className="text-[11px] text-surface-600 uppercase tracking-wider block mb-1">
-            Date
-          </label>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-teal-400/30 focus:border-teal-400"
-          />
-        </div>
-
-        {/* Vehicle */}
-        <div>
-          <label className="text-[11px] text-surface-600 uppercase tracking-wider block mb-1">
-            Vehicle
-          </label>
-          <select
-            value={vehicleId}
-            onChange={(e) => setVehicleId(e.target.value)}
-            className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-teal-400/30 focus:border-teal-400"
-          >
-            {data.vehicles.length === 0 && <option value="">Add a vehicle first</option>}
-            {data.vehicles.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name}
-                {v.year ? ` (${v.year})` : ''}
-              </option>
-            ))}
-          </select>
+        {/* Date + Vehicle row */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[11px] text-surface-500 uppercase tracking-wider font-medium block mb-1">
+              Date
+            </label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-teal-400/30 focus:border-teal-400"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] text-surface-500 uppercase tracking-wider font-medium block mb-1">
+              Vehicle
+            </label>
+            <select
+              value={vehicleId}
+              onChange={(e) => setVehicleId(e.target.value)}
+              className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-teal-400/30 focus:border-teal-400"
+            >
+              {data.vehicles.length === 0 && <option value="">Add a vehicle first</option>}
+              {data.vehicles.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                  {v.year ? ` (${v.year})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Address Autocomplete (only if Geoapify API key is set) */}
@@ -382,7 +458,7 @@ export function MileageView() {
                       onClick={() =>
                         setFromAddress({ formatted: addr.formatted, lat: addr.lat, lon: addr.lon })
                       }
-                      className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-surface-600 hover:text-teal-400 bg-surface-100 border border-border rounded-md hover:border-teal-400/30 transition-colors"
+                      className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-surface-600 hover:text-teal-500 bg-surface-100 border border-border rounded-md hover:border-teal-400/30 transition-colors"
                       title={addr.formatted}
                     >
                       <Home className="w-3 h-3" />
@@ -408,7 +484,7 @@ export function MileageView() {
                       onClick={() =>
                         setToAddress({ formatted: addr.formatted, lat: addr.lat, lon: addr.lon })
                       }
-                      className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-surface-600 hover:text-teal-400 bg-surface-100 border border-border rounded-md hover:border-teal-400/30 transition-colors"
+                      className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-surface-600 hover:text-teal-500 bg-surface-100 border border-border rounded-md hover:border-teal-400/30 transition-colors"
                       title={addr.formatted}
                     >
                       <Home className="w-3 h-3" />
@@ -425,7 +501,7 @@ export function MileageView() {
               </div>
             )}
             {routeMiles != null && !routeLoading && (
-              <div className="flex items-center gap-2 text-[12px] text-teal-500">
+              <div className="flex items-center gap-2 text-[12px] text-teal-500 font-medium">
                 <MapPin className="w-3.5 h-3.5" />
                 Driving distance: {routeMiles} miles
               </div>
@@ -435,11 +511,11 @@ export function MileageView() {
 
         {/* Trip Miles (always visible) */}
         <div>
-          <label className="text-[11px] text-surface-600 uppercase tracking-wider block mb-1">
+          <label className="text-[11px] text-surface-500 uppercase tracking-wider font-medium block mb-1">
             Trip Miles
             {geocodeEnabled && (
-              <span className="text-surface-500 font-normal ml-1">
-                {routeMiles != null ? '(auto-calculated, editable)' : 'or enter miles manually'}
+              <span className="text-surface-400 font-normal normal-case ml-1">
+                {routeMiles != null ? '(auto, editable)' : 'or enter manually'}
               </span>
             )}
           </label>
@@ -458,22 +534,22 @@ export function MileageView() {
         <button
           type="button"
           onClick={() => setShowDetails(!showDetails)}
-          className="flex items-center gap-1.5 text-[12px] text-teal-500 hover:text-teal-400 transition-colors"
+          className="flex items-center gap-1.5 text-[12px] text-teal-500 hover:text-teal-400 font-medium transition-colors"
         >
           {showDetails ? (
             <ChevronUp className="w-3.5 h-3.5" />
           ) : (
             <ChevronDown className="w-3.5 h-3.5" />
           )}
-          Details
+          {showDetails ? 'Hide Details' : 'Gas & Odometer Details'}
         </button>
 
         {showDetails && (
           <div className="space-y-3">
             {/* Odometer Start / End */}
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <label className="text-[11px] text-surface-600 uppercase tracking-wider block mb-1">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] text-surface-500 uppercase tracking-wider font-medium block mb-1">
                   Odo Start
                 </label>
                 <input
@@ -486,8 +562,8 @@ export function MileageView() {
                   className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-teal-400/30 focus:border-teal-400"
                 />
               </div>
-              <div className="flex-1">
-                <label className="text-[11px] text-surface-600 uppercase tracking-wider block mb-1">
+              <div>
+                <label className="text-[11px] text-surface-500 uppercase tracking-wider font-medium block mb-1">
                   Odo End
                 </label>
                 <input
@@ -503,9 +579,9 @@ export function MileageView() {
             </div>
 
             {/* Gallons / Total Cost */}
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <label className="text-[11px] text-surface-600 uppercase tracking-wider block mb-1">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] text-surface-500 uppercase tracking-wider font-medium block mb-1">
                   Gallons
                 </label>
                 <input
@@ -518,8 +594,8 @@ export function MileageView() {
                   className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-teal-400/30 focus:border-teal-400"
                 />
               </div>
-              <div className="flex-1">
-                <label className="text-[11px] text-surface-600 uppercase tracking-wider block mb-1">
+              <div>
+                <label className="text-[11px] text-surface-500 uppercase tracking-wider font-medium block mb-1">
                   Total Cost
                 </label>
                 <input
@@ -536,7 +612,7 @@ export function MileageView() {
 
             {/* Purpose */}
             <div>
-              <label className="text-[11px] text-surface-600 uppercase tracking-wider block mb-1">
+              <label className="text-[11px] text-surface-500 uppercase tracking-wider font-medium block mb-1">
                 Purpose
               </label>
               <input
@@ -554,7 +630,7 @@ export function MileageView() {
         <button
           type="submit"
           disabled={submitting || !vehicleId}
-          className="w-full py-3 bg-teal-500 text-white font-medium rounded-lg hover:bg-teal-400 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full py-3 bg-teal-500 text-white font-semibold rounded-lg hover:bg-teal-400 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm"
         >
           <MapPin className="w-4 h-4" />
           Record Trip
@@ -562,17 +638,21 @@ export function MileageView() {
         </button>
       </form>
 
-      {/* Mileage History */}
+      {/* Trip History */}
       <div className="space-y-2">
         <h2 className="text-sm font-semibold text-surface-900">Trip History</h2>
 
         {months.length === 0 && (
-          <p className="text-sm text-surface-600 text-center py-6">No trips recorded yet</p>
+          <div className="glass-card rounded-xl py-10 text-center">
+            <Car className="w-8 h-8 text-surface-300 mx-auto mb-2" />
+            <p className="text-sm text-surface-500">No trips recorded yet</p>
+          </div>
         )}
 
         {months.map((month) => {
           const entries = entriesByMonth[month];
           const monthMiles = entries.reduce((sum, e) => sum + (e.tripMiles || 0), 0);
+          const monthDeduction = monthMiles * data.irsRate;
           const isExpanded = activeMonth === month;
           const monthLabel = new Date(month + '-01T00:00:00').toLocaleDateString('en-US', {
             month: 'long',
@@ -585,62 +665,219 @@ export function MileageView() {
                 onClick={() => setExpandedMonth(isExpanded ? null : month)}
                 className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-surface-100/50 transition-colors"
               >
-                <span className="text-sm font-medium text-surface-900">{monthLabel}</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-teal-500 tabular-nums">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm font-medium text-surface-900 truncate">
+                    {monthLabel}
+                  </span>
+                  <span className="text-[11px] text-surface-500 shrink-0">
+                    ({entries.length})
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 ml-2">
+                  <span className="text-sm font-bold text-teal-500 tabular-nums">
                     {monthMiles.toFixed(0)} mi
                   </span>
-                  <span className="text-[11px] text-surface-500">({entries.length})</span>
                   {isExpanded ? (
-                    <ChevronUp className="w-4 h-4 text-surface-500" />
+                    <ChevronUp className="w-4 h-4 text-surface-400" />
                   ) : (
-                    <ChevronDown className="w-4 h-4 text-surface-500" />
+                    <ChevronDown className="w-4 h-4 text-surface-400" />
                   )}
                 </div>
               </button>
 
               {isExpanded && (
-                <div className="border-t border-border divide-y divide-border/50">
+                <div className="border-t border-border">
+                  {/* Month deduction summary */}
+                  <div className="px-4 py-2 bg-teal-500/5 flex items-center justify-between">
+                    <span className="text-[11px] text-teal-600 font-medium uppercase tracking-wider">
+                      Month Deduction
+                    </span>
+                    <span className="text-sm font-bold text-teal-500 tabular-nums">
+                      ${monthDeduction.toFixed(2)}
+                    </span>
+                  </div>
+
                   {entries.map((entry) => {
                     const vehicle = data.vehicles.find((v) => v.id === entry.vehicleId);
                     const mpg =
                       entry.gallons && entry.gallons > 0 && entry.tripMiles
                         ? (entry.tripMiles / entry.gallons).toFixed(1)
                         : null;
+                    const isEditing = editingEntryId === entry.id;
+
+                    if (isEditing) {
+                      return (
+                        <div key={entry.id} className="px-4 py-3 space-y-2 bg-surface-50 border-b border-border/50 last:border-b-0">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+                                Date
+                              </label>
+                              <input
+                                type="date"
+                                value={editDate}
+                                onChange={(e) => setEditDate(e.target.value)}
+                                className="w-full px-2.5 py-2 bg-white border border-border rounded-lg text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-teal-400/30 focus:border-teal-400"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+                                Vehicle
+                              </label>
+                              <select
+                                value={editVehicleId}
+                                onChange={(e) => setEditVehicleId(e.target.value)}
+                                className="w-full px-2.5 py-2 bg-white border border-border rounded-lg text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-teal-400/30 focus:border-teal-400"
+                              >
+                                {data.vehicles.map((v) => (
+                                  <option key={v.id} value={v.id}>
+                                    {v.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+                              Trip Miles
+                            </label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              value={editTripMiles}
+                              onChange={(e) => setEditTripMiles(e.target.value)}
+                              placeholder="Miles"
+                              className="w-full px-2.5 py-2 bg-white border border-border rounded-lg text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-teal-400/30 focus:border-teal-400"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+                                Gallons
+                              </label>
+                              <input
+                                type="number"
+                                step="0.001"
+                                min="0"
+                                value={editGallons}
+                                onChange={(e) => setEditGallons(e.target.value)}
+                                placeholder="Gal"
+                                className="w-full px-2.5 py-2 bg-white border border-border rounded-lg text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-teal-400/30 focus:border-teal-400"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+                                Cost
+                              </label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={editTotalCost}
+                                onChange={(e) => setEditTotalCost(e.target.value)}
+                                placeholder="$"
+                                className="w-full px-2.5 py-2 bg-white border border-border rounded-lg text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-teal-400/30 focus:border-teal-400"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+                              Purpose
+                            </label>
+                            <input
+                              type="text"
+                              value={editPurpose}
+                              onChange={(e) => setEditPurpose(e.target.value)}
+                              placeholder="Purpose"
+                              className="w-full px-2.5 py-2 bg-white border border-border rounded-lg text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-teal-400/30 focus:border-teal-400"
+                            />
+                          </div>
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => void handleUpdateEntry(entry.id)}
+                              className="flex-1 py-2 bg-teal-500 text-white text-sm font-medium rounded-lg hover:bg-teal-400 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelEditEntry}
+                              className="flex-1 py-2 bg-surface-200 text-surface-700 text-sm font-medium rounded-lg hover:bg-surface-300 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+
                     return (
                       <div
                         key={entry.id}
-                        className="flex items-center justify-between px-4 py-2.5 group"
+                        className="px-4 py-3 border-b border-border/50 last:border-b-0"
                       >
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm text-surface-900 truncate">
-                            {entry.tripMiles ? `${entry.tripMiles.toFixed(1)} mi` : 'No miles'}
-                            {entry.purpose && (
-                              <span className="text-surface-600"> — {entry.purpose}</span>
-                            )}
-                          </p>
-                          <p className="text-[11px] text-surface-600">
-                            {vehicle?.name || entry.vehicleId}
-                            {entry.gallons ? ` · ${entry.gallons.toFixed(1)} gal` : ''}
-                            {entry.totalCost ? ` · $${entry.totalCost.toFixed(2)}` : ''}
-                            {mpg ? ` · ${mpg} MPG` : ''}
-                            {' · '}
-                            {new Date(entry.date + 'T00:00:00').toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                            })}
-                          </p>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-surface-950">
+                              {entry.tripMiles ? `${entry.tripMiles.toFixed(1)} mi` : 'No miles'}
+                              {entry.purpose && (
+                                <span className="text-surface-600 font-normal">
+                                  {' '}— {entry.purpose}
+                                </span>
+                              )}
+                            </p>
+                            <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-1">
+                              <span className="text-[11px] text-surface-500">
+                                {vehicle?.name || entry.vehicleId}
+                              </span>
+                              {entry.gallons ? (
+                                <span className="text-[11px] text-surface-500">
+                                  {entry.gallons.toFixed(1)} gal
+                                </span>
+                              ) : null}
+                              {entry.totalCost ? (
+                                <span className="text-[11px] text-surface-500">
+                                  ${entry.totalCost.toFixed(2)}
+                                </span>
+                              ) : null}
+                              {mpg ? (
+                                <span className="text-[11px] text-teal-600 font-medium">
+                                  {mpg} MPG
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-sm font-bold text-teal-500 tabular-nums">
+                              ${((entry.tripMiles || 0) * data.irsRate).toFixed(2)}
+                            </p>
+                            <p className="text-[11px] text-surface-500">
+                              {new Date(entry.date + 'T00:00:00').toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                              })}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-teal-500 tabular-nums">
-                            ${((entry.tripMiles || 0) * data.irsRate).toFixed(2)}
-                          </span>
+                        {/* Action buttons */}
+                        <div className="flex gap-1.5 mt-2">
+                          <button
+                            onClick={() => startEditEntry(entry)}
+                            className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-surface-600 bg-surface-100 rounded-lg hover:bg-surface-200 hover:text-surface-800 transition-colors"
+                          >
+                            <Pencil className="w-3 h-3" />
+                            Edit
+                          </button>
                           <button
                             onClick={() => void handleDelete(entry.id)}
-                            className="p-1.5 rounded-lg text-surface-400 hover:text-danger-400 hover:bg-danger-500/10 transition-all md:opacity-0 md:group-hover:opacity-100"
-                            title="Delete entry"
+                            className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-surface-600 bg-surface-100 rounded-lg hover:bg-danger-500/10 hover:text-danger-500 transition-colors"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-3 h-3" />
+                            Delete
                           </button>
                         </div>
                       </div>
@@ -662,7 +899,7 @@ export function MileageView() {
           </h2>
           <button
             onClick={() => setShowVehicleForm(!showVehicleForm)}
-            className="text-[12px] text-teal-500 hover:text-teal-400 transition-colors"
+            className="text-[12px] font-medium text-teal-500 hover:text-teal-400 transition-colors"
           >
             {showVehicleForm ? 'Cancel' : '+ Add'}
           </button>
@@ -670,41 +907,41 @@ export function MileageView() {
 
         {showVehicleForm && (
           <form onSubmit={handleAddVehicle} className="glass-card rounded-xl p-3 space-y-2">
-            <div className="flex gap-2">
+            <div className="grid grid-cols-[1fr,4.5rem] gap-2">
               <input
                 type="text"
                 value={newVehicleName}
                 onChange={(e) => setNewVehicleName(e.target.value)}
                 placeholder="Vehicle name"
                 required
-                className="flex-1 px-3 py-2 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-teal-400/30"
+                className="w-full px-3 py-2 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-teal-400/30"
               />
               <input
                 type="number"
                 value={newVehicleYear}
                 onChange={(e) => setNewVehicleYear(e.target.value)}
                 placeholder="Year"
-                className="w-20 px-3 py-2 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 text-center placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-teal-400/30"
+                className="w-full px-2 py-2 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 text-center placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-teal-400/30"
               />
             </div>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-[1fr,1fr,auto] gap-2">
               <input
                 type="text"
                 value={newVehicleMake}
                 onChange={(e) => setNewVehicleMake(e.target.value)}
                 placeholder="Make"
-                className="flex-1 px-3 py-2 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-teal-400/30"
+                className="w-full px-3 py-2 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-teal-400/30"
               />
               <input
                 type="text"
                 value={newVehicleModel}
                 onChange={(e) => setNewVehicleModel(e.target.value)}
                 placeholder="Model"
-                className="flex-1 px-3 py-2 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-teal-400/30"
+                className="w-full px-3 py-2 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-teal-400/30"
               />
               <button
                 type="submit"
-                className="px-3 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-400 active:scale-[0.98] transition-all text-sm"
+                className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-400 active:scale-[0.98] transition-all text-sm font-medium"
               >
                 Add
               </button>
@@ -712,27 +949,29 @@ export function MileageView() {
           </form>
         )}
 
-        <div className="glass-card rounded-xl divide-y divide-border/50 overflow-hidden">
+        <div className="glass-card rounded-xl overflow-hidden">
           {data.vehicles.length === 0 && (
-            <p className="text-sm text-surface-600 text-center py-4">No vehicles added yet</p>
+            <p className="text-sm text-surface-500 text-center py-6">No vehicles added yet</p>
           )}
           {data.vehicles.map((vehicle) => (
-            <div key={vehicle.id} className="flex items-center justify-between px-4 py-2.5 group">
-              <div>
-                <span className="text-sm text-surface-900">{vehicle.name}</span>
-                {(vehicle.year || vehicle.make || vehicle.model) && (
-                  <span className="text-[11px] text-surface-600 ml-2">
-                    {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ')}
-                  </span>
-                )}
+            <div key={vehicle.id} className="px-4 py-3 border-b border-border/50 last:border-b-0">
+              <div className="flex items-center justify-between">
+                <div className="min-w-0">
+                  <span className="text-sm font-medium text-surface-900">{vehicle.name}</span>
+                  {(vehicle.year || vehicle.make || vehicle.model) && (
+                    <p className="text-[11px] text-surface-500 mt-0.5">
+                      {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ')}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={() => void handleDeleteVehicle(vehicle.id)}
+                  className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-surface-600 bg-surface-100 rounded-md hover:bg-danger-500/10 hover:text-danger-500 transition-colors shrink-0"
+                >
+                  <Trash2 className="w-2.5 h-2.5" />
+                  Delete
+                </button>
               </div>
-              <button
-                onClick={() => void handleDeleteVehicle(vehicle.id)}
-                className="p-1.5 rounded-lg text-surface-400 hover:text-danger-400 hover:bg-danger-500/10 opacity-0 group-hover:opacity-100 transition-all"
-                title="Delete vehicle"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
             </div>
           ))}
         </div>
@@ -748,7 +987,7 @@ export function MileageView() {
             </h2>
             <button
               onClick={() => setShowAddressForm(!showAddressForm)}
-              className="text-[12px] text-teal-500 hover:text-teal-400 transition-colors"
+              className="text-[12px] font-medium text-teal-500 hover:text-teal-400 transition-colors"
             >
               {showAddressForm ? 'Cancel' : '+ Add'}
             </button>
@@ -780,23 +1019,25 @@ export function MileageView() {
             </form>
           )}
 
-          <div className="glass-card rounded-xl divide-y divide-border/50 overflow-hidden">
+          <div className="glass-card rounded-xl overflow-hidden">
             {savedAddresses.length === 0 && (
-              <p className="text-sm text-surface-600 text-center py-4">No saved addresses yet</p>
+              <p className="text-sm text-surface-500 text-center py-6">No saved addresses yet</p>
             )}
             {savedAddresses.map((addr) => (
-              <div key={addr.id} className="flex items-center justify-between px-4 py-2.5 group">
-                <div className="min-w-0">
-                  <span className="text-sm text-surface-900 font-medium">{addr.label}</span>
-                  <p className="text-[11px] text-surface-500 truncate">{addr.formatted}</p>
+              <div key={addr.id} className="px-4 py-3 border-b border-border/50 last:border-b-0">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="text-sm font-medium text-surface-900">{addr.label}</span>
+                    <p className="text-[11px] text-surface-500 truncate">{addr.formatted}</p>
+                  </div>
+                  <button
+                    onClick={() => void handleDeleteAddress(addr.id)}
+                    className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-surface-600 bg-surface-100 rounded-md hover:bg-danger-500/10 hover:text-danger-500 transition-colors shrink-0"
+                  >
+                    <Trash2 className="w-2.5 h-2.5" />
+                    Delete
+                  </button>
                 </div>
-                <button
-                  onClick={() => void handleDeleteAddress(addr.id)}
-                  className="p-1.5 rounded-lg text-surface-400 hover:text-danger-400 hover:bg-danger-500/10 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
-                  title="Delete address"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
               </div>
             ))}
           </div>

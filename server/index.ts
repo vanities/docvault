@@ -2577,7 +2577,7 @@ async function handleRequest(req: Request): Promise<Response> {
       const config = await loadConfig();
       const parsedDataMap = await loadParsedData();
       const metadataMap = includeHidden ? {} : await loadMetadata();
-      const { getIncomeSummary, getExpenseSummary, getBankDepositSummary } =
+      const { getIncomeSummary, getExpenseSummary, getBankDepositSummary, getInvoiceSummary, getRetirementSummary } =
         await import('./analytics/index.js');
 
       // Support "all" entity by iterating all tax entities
@@ -4121,6 +4121,33 @@ async function handleRequest(req: Request): Promise<Response> {
     return jsonResponse({ ok: true, sale });
   }
 
+  // PUT /api/sales/:id - Update a sale
+  const saleUpdateMatch = pathname.match(/^\/api\/sales\/([^/]+)$/);
+  if (saleUpdateMatch && req.method === 'PUT') {
+    const saleId = saleUpdateMatch[1];
+    const body = await req.json();
+    const data = await loadSalesData();
+    const sale = data.sales.find((s: Sale) => s.id === saleId);
+    if (!sale) {
+      return jsonResponse({ error: 'Sale not found' }, 404);
+    }
+    if (body.person !== undefined) sale.person = body.person.trim();
+    if (body.productId !== undefined) {
+      const product = data.products.find((p: SaleProduct) => p.id === body.productId);
+      if (!product) return jsonResponse({ error: 'Product not found' }, 404);
+      sale.productId = body.productId;
+      sale.total = product.price * (body.quantity !== undefined ? body.quantity : sale.quantity);
+    }
+    if (body.quantity !== undefined) {
+      sale.quantity = body.quantity;
+      const product = data.products.find((p: SaleProduct) => p.id === sale.productId);
+      if (product) sale.total = product.price * sale.quantity;
+    }
+    if (body.date !== undefined) sale.date = body.date;
+    await saveSalesData(data);
+    return jsonResponse({ ok: true, sale });
+  }
+
   // DELETE /api/sales/:id - Delete a sale
   const saleDeleteMatch = pathname.match(/^\/api\/sales\/([^/]+)$/);
   if (saleDeleteMatch && req.method === 'DELETE') {
@@ -4152,6 +4179,22 @@ async function handleRequest(req: Request): Promise<Response> {
     };
 
     data.products.push(product);
+    await saveSalesData(data);
+    return jsonResponse({ ok: true, product });
+  }
+
+  // PUT /api/sales/products/:id - Update a product
+  const productUpdateMatch = pathname.match(/^\/api\/sales\/products\/([^/]+)$/);
+  if (productUpdateMatch && req.method === 'PUT') {
+    const productId = productUpdateMatch[1];
+    const body = await req.json();
+    const data = await loadSalesData();
+    const product = data.products.find((p: SaleProduct) => p.id === productId);
+    if (!product) {
+      return jsonResponse({ error: 'Product not found' }, 404);
+    }
+    if (body.name !== undefined) product.name = body.name.trim();
+    if (body.price !== undefined) product.price = Number(body.price);
     await saveSalesData(data);
     return jsonResponse({ ok: true, product });
   }
@@ -4230,6 +4273,32 @@ async function handleRequest(req: Request): Promise<Response> {
     };
 
     data.entries.push(entry);
+    await saveMileageData(data);
+    return jsonResponse({ ok: true, entry });
+  }
+
+  // PUT /api/mileage/:id - Update a mileage entry
+  const mileageUpdateMatch = pathname.match(/^\/api\/mileage\/([^/]+)$/);
+  if (mileageUpdateMatch && req.method === 'PUT') {
+    const entryId = mileageUpdateMatch[1];
+    const body = await req.json();
+    const data = await loadMileageData();
+    const entry = data.entries.find((e: MileageEntry) => e.id === entryId);
+    if (!entry) {
+      return jsonResponse({ error: 'Entry not found' }, 404);
+    }
+    if (body.date !== undefined) entry.date = body.date;
+    if (body.vehicleId !== undefined) {
+      const vehicle = data.vehicles.find((v: Vehicle) => v.id === body.vehicleId);
+      if (!vehicle) return jsonResponse({ error: 'Vehicle not found' }, 404);
+      entry.vehicleId = body.vehicleId;
+    }
+    if (body.odometerStart !== undefined) entry.odometerStart = body.odometerStart === '' ? undefined : Number(body.odometerStart);
+    if (body.odometerEnd !== undefined) entry.odometerEnd = body.odometerEnd === '' ? undefined : Number(body.odometerEnd);
+    if (body.tripMiles !== undefined) entry.tripMiles = body.tripMiles === '' ? undefined : Number(body.tripMiles);
+    if (body.gallons !== undefined) entry.gallons = body.gallons === '' ? undefined : Number(body.gallons);
+    if (body.totalCost !== undefined) entry.totalCost = body.totalCost === '' ? undefined : Number(body.totalCost);
+    if (body.purpose !== undefined) entry.purpose = body.purpose?.trim() || undefined;
     await saveMileageData(data);
     return jsonResponse({ ok: true, entry });
   }
