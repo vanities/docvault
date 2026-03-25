@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { defineConfig } from 'vite-plus';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -138,6 +139,11 @@ export default defineConfig({
     printWidth: 100,
     sortPackageJson: false,
     ignorePatterns: ['dist', 'node_modules', 'bun.lockb'],
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
   },
   plugins: [react(), tailwindcss()],
   server: {
