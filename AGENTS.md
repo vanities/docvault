@@ -101,12 +101,14 @@ bun run dev        # Frontend only
 **NAS data:** Always SSH to NAS (`ssh nas`) and read from `/mnt/user/appdata/docvault/data/` for real data. Local `data/` symlinks may be stale.
 
 **CRITICAL — NAS file edits:** When modifying JSON files on the NAS, **NEVER pipe output back to the same file being read** (e.g., `cat file | jq ... | cat > file` — this truncates the file to 0 bytes before reading finishes). Always:
+
 1. Read the file into a variable or temp file first
 2. Write the modified content to a NEW temp file
 3. Move/copy the temp file over the original
 4. Or use `node -e` on the NAS to read, modify, and write in one process
 
 Example safe pattern:
+
 ```bash
 ssh nas 'node -e "const fs=require(\"fs\"); const d=JSON.parse(fs.readFileSync(\"/path/to/file.json\",\"utf8\")); /* modify d */ fs.writeFileSync(\"/path/to/file.json\",JSON.stringify(d,null,2));"'
 ```
