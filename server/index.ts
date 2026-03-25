@@ -2636,6 +2636,8 @@ async function handleRequest(req: Request): Promise<Response> {
         contributions,
         goldData,
         propertyData,
+        reminders,
+        portfolioSnapshots,
       ] = await Promise.all([
         loadConfig(),
         loadParsedData(),
@@ -2646,6 +2648,8 @@ async function handleRequest(req: Request): Promise<Response> {
         loadContributions(),
         loadGoldData(),
         loadPropertyData(),
+        loadReminders(),
+        loadSnapshotsForYear(parseInt(year)),
       ]);
 
       // Load cached portfolio data (non-critical — use empty defaults on failure)
@@ -2709,6 +2713,32 @@ async function handleRequest(req: Request): Promise<Response> {
         simplefinCache = JSON.parse(raw);
       } catch {
         /* no bank data */
+      }
+
+      // Load crypto gains cache (pre-computed, not fetched live)
+      let cryptoGainsCache: {
+        assets?: {
+          asset: string;
+          totalAmount: number;
+          totalCostBasis: number;
+          currentValue: number;
+          unrealizedGain: number;
+          shortTermGain: number;
+          longTermGain: number;
+        }[];
+        totalCostBasis?: number;
+        totalCurrentValue?: number;
+        totalUnrealizedGain?: number;
+        totalShortTermGain?: number;
+        totalLongTermGain?: number;
+        tradeCount?: number;
+        lastUpdated?: string;
+      } = {};
+      try {
+        const raw = await fs.readFile(path.join(DATA_DIR, '.docvault-crypto-gains.json'), 'utf-8');
+        cryptoGainsCache = JSON.parse(raw);
+      } catch {
+        /* no crypto gains data */
       }
 
       // Fetch metal spot prices (non-blocking)
@@ -3078,6 +3108,63 @@ async function handleRequest(req: Request): Promise<Response> {
         propertySummary.totalAnnualPropertyTax += prop.annualPropertyTax || 0;
       }
 
+      // Filter reminders for the tax year (due dates in the year or the following April for filing)
+      const yearReminders = reminders.filter((r) => {
+        const dueYear = r.dueDate.substring(0, 4);
+        // Include reminders due in the tax year or in the filing season (Jan-Apr of next year)
+        return (
+          dueYear === year ||
+          (dueYear === String(parseInt(year) + 1) && r.dueDate.substring(5, 7) <= '04')
+        );
+      });
+
+      // Portfolio history summary (first and last snapshots, plus quarterly)
+      const portfolioHistory: {
+        snapshotCount: number;
+        firstSnapshot?: { date: string; totalValue: number };
+        lastSnapshot?: { date: string; totalValue: number };
+        yearChange?: number;
+        yearChangePercent?: number;
+        quarterlySnapshots: { quarter: string; date: string; totalValue: number }[];
+      } = {
+        snapshotCount: portfolioSnapshots.length,
+        quarterlySnapshots: [],
+      };
+      if (portfolioSnapshots.length > 0) {
+        const first = portfolioSnapshots[0];
+        const last = portfolioSnapshots[portfolioSnapshots.length - 1];
+        portfolioHistory.firstSnapshot = { date: first.date, totalValue: first.totalValue };
+        portfolioHistory.lastSnapshot = { date: last.date, totalValue: last.totalValue };
+        portfolioHistory.yearChange = last.totalValue - first.totalValue;
+        portfolioHistory.yearChangePercent =
+          first.totalValue > 0
+            ? ((last.totalValue - first.totalValue) / first.totalValue) * 100
+            : 0;
+
+        // Pick one snapshot per quarter end (closest to end of Mar, Jun, Sep, Dec)
+        const quarterEnds = [`${year}-03-31`, `${year}-06-30`, `${year}-09-30`, `${year}-12-31`];
+        for (let qi = 0; qi < quarterEnds.length; qi++) {
+          const target = quarterEnds[qi];
+          let closest = portfolioSnapshots[0];
+          let closestDist = Math.abs(new Date(closest.date).getTime() - new Date(target).getTime());
+          for (const snap of portfolioSnapshots) {
+            const dist = Math.abs(new Date(snap.date).getTime() - new Date(target).getTime());
+            if (dist < closestDist) {
+              closest = snap;
+              closestDist = dist;
+            }
+          }
+          // Only include if within 15 days of quarter end
+          if (closestDist < 15 * 86400000) {
+            portfolioHistory.quarterlySnapshots.push({
+              quarter: quarterLabels[qi],
+              date: closest.date,
+              totalValue: closest.totalValue,
+            });
+          }
+        }
+      }
+
       // Calculate net worth / portfolio totals
       const brokerTotal = brokerCache.accounts.reduce(
         (s, a) => s + a.holdings.reduce((hs, h) => hs + h.marketValue, 0),
@@ -3140,6 +3227,35 @@ async function handleRequest(req: Request): Promise<Response> {
           })),
           lastUpdated: simplefinCache.lastUpdated,
         },
+        cryptoGains: cryptoGainsCache.assets
+          ? {
+              assets: cryptoGainsCache.assets.map((a) => ({
+                asset: a.asset,
+                totalAmount: a.totalAmount,
+                costBasis: a.totalCostBasis,
+                currentValue: a.currentValue,
+                unrealizedGain: a.unrealizedGain,
+                shortTermGain: a.shortTermGain,
+                longTermGain: a.longTermGain,
+              })),
+              totalCostBasis: cryptoGainsCache.totalCostBasis,
+              totalCurrentValue: cryptoGainsCache.totalCurrentValue,
+              totalUnrealizedGain: cryptoGainsCache.totalUnrealizedGain,
+              totalShortTermGain: cryptoGainsCache.totalShortTermGain,
+              totalLongTermGain: cryptoGainsCache.totalLongTermGain,
+              tradeCount: cryptoGainsCache.tradeCount,
+              lastUpdated: cryptoGainsCache.lastUpdated,
+            }
+          : null,
+        reminders: yearReminders.map((r) => ({
+          title: r.title,
+          entityId: r.entityId,
+          dueDate: r.dueDate,
+          status: r.status,
+          recurrence: r.recurrence,
+          notes: r.notes,
+        })),
+        portfolioHistory,
         portfolioSummary,
       };
 
@@ -3442,6 +3558,82 @@ async function handleRequest(req: Request): Promise<Response> {
           }
           const totalBank = nonZeroBanks.reduce((s, a) => s + a.balance, 0);
           lines.push(`| **Total** | **${fmt(totalBank)}** |`);
+          lines.push('');
+        }
+
+        // Crypto Tax Gains (if cached)
+        if (cryptoGainsCache.assets && cryptoGainsCache.assets.length > 0) {
+          lines.push('## Crypto Tax Gains (Cost Basis)');
+          if (cryptoGainsCache.lastUpdated)
+            lines.push(`_Last computed: ${cryptoGainsCache.lastUpdated}_`);
+          if (cryptoGainsCache.tradeCount)
+            lines.push(`_Total trades analyzed: ${cryptoGainsCache.tradeCount.toLocaleString()}_`);
+          lines.push(
+            '| Asset | Amount | Cost Basis | Current Value | Unrealized Gain | ST Gain | LT Gain |'
+          );
+          lines.push(
+            '|-------|--------|------------|---------------|-----------------|---------|---------|'
+          );
+          const significantAssets = cryptoGainsCache.assets.filter(
+            (a) => Math.abs(a.unrealizedGain) > 1 || a.totalCostBasis > 1
+          );
+          for (const a of significantAssets.sort((x, y) => y.currentValue - x.currentValue)) {
+            lines.push(
+              `| ${a.asset} | ${a.totalAmount.toFixed(4)} | ${fmt(a.totalCostBasis)} | ${fmt(a.currentValue)} | ${fmt(a.unrealizedGain)} | ${fmt(a.shortTermGain)} | ${fmt(a.longTermGain)} |`
+            );
+          }
+          lines.push(
+            `| **Total** | | **${fmt(cryptoGainsCache.totalCostBasis || 0)}** | **${fmt(cryptoGainsCache.totalCurrentValue || 0)}** | **${fmt(cryptoGainsCache.totalUnrealizedGain || 0)}** | **${fmt(cryptoGainsCache.totalShortTermGain || 0)}** | **${fmt(cryptoGainsCache.totalLongTermGain || 0)}** |`
+          );
+          lines.push('');
+        }
+
+        // Reminders / Deadlines
+        if (yearReminders.length > 0) {
+          lines.push('## Tax Deadlines & Reminders');
+          lines.push('| Due Date | Entity | Title | Status | Notes |');
+          lines.push('|----------|--------|-------|--------|-------|');
+          for (const r of yearReminders.sort((a, b) => a.dueDate.localeCompare(b.dueDate))) {
+            const entityName = entitySummaries[r.entityId]?.entity.name || r.entityId;
+            const statusIcon =
+              r.status === 'completed'
+                ? 'Done'
+                : r.status === 'dismissed'
+                  ? 'Dismissed'
+                  : '**Pending**';
+            lines.push(
+              `| ${r.dueDate} | ${entityName} | ${r.title} | ${statusIcon} | ${r.notes || ''} |`
+            );
+          }
+          lines.push('');
+        }
+
+        // Portfolio History (net worth over time)
+        if (portfolioHistory.snapshotCount > 0) {
+          lines.push('## Portfolio History');
+          lines.push(`_${portfolioHistory.snapshotCount} snapshots recorded_`);
+          if (portfolioHistory.firstSnapshot && portfolioHistory.lastSnapshot) {
+            lines.push(
+              `- Start of period: ${fmt(portfolioHistory.firstSnapshot.totalValue)} (${portfolioHistory.firstSnapshot.date})`
+            );
+            lines.push(
+              `- End of period: ${fmt(portfolioHistory.lastSnapshot.totalValue)} (${portfolioHistory.lastSnapshot.date})`
+            );
+            if (portfolioHistory.yearChange !== undefined) {
+              const sign = portfolioHistory.yearChange >= 0 ? '+' : '';
+              lines.push(
+                `- **Change: ${sign}${fmt(portfolioHistory.yearChange)} (${sign}${portfolioHistory.yearChangePercent?.toFixed(1)}%)**`
+              );
+            }
+          }
+          if (portfolioHistory.quarterlySnapshots.length > 0) {
+            lines.push('');
+            lines.push('| Quarter | Date | Portfolio Value |');
+            lines.push('|---------|------|----------------|');
+            for (const q of portfolioHistory.quarterlySnapshots) {
+              lines.push(`| ${q.quarter} | ${q.date} | ${fmt(q.totalValue)} |`);
+            }
+          }
           lines.push('');
         }
 
