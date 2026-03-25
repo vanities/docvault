@@ -190,15 +190,25 @@ export function PortfolioView() {
 
   if (brokers?.accounts) {
     for (const account of brokers.accounts) {
-      for (const holding of account.holdings) {
+      if (account.overrideValue !== undefined) {
+        // Fixed-balance accounts show as a single slice
         slices.push({
-          label: holding.ticker,
-          value: holding.marketValue || 0,
+          label: account.name,
+          value: account.overrideValue,
           type: 'broker',
-          detail: account.name,
-          gainType: holding.gainType,
-          gainLoss: holding.gainLoss,
+          detail: 'Fixed balance',
         });
+      } else {
+        for (const holding of account.holdings) {
+          slices.push({
+            label: holding.ticker,
+            value: holding.marketValue || 0,
+            type: 'broker',
+            detail: account.name,
+            gainType: holding.gainType,
+            gainLoss: holding.gainLoss,
+          });
+        }
       }
     }
   }
