@@ -56,6 +56,7 @@ export type ExpenseCategory =
   | 'medical'
   | 'education'
   | 'home-improvement'
+  | 'feed'
   | 'other';
 
 // Parsed data structures
