@@ -135,7 +135,7 @@ const emptyExpenses: ExpenseSummary = {
   mileageCount: 0,
 };
 
-export function useAnalytics(entity: string, year: number): UseAnalyticsResult {
+export function useAnalytics(entity: string, year: number, includeHidden = false): UseAnalyticsResult {
   const [data, setData] = useState<QuickStatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -152,7 +152,8 @@ export function useAnalytics(entity: string, year: number): UseAnalyticsResult {
     setLoading(true);
     setError(null);
 
-    fetch(`${API_BASE}/analytics/quick-stats/${entity}/${year}`)
+    const qs = includeHidden ? '?includeHidden=true' : '';
+    fetch(`${API_BASE}/analytics/quick-stats/${entity}/${year}${qs}`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
