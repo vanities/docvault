@@ -11,7 +11,6 @@ import {
   ChevronUp,
   Landmark,
   PiggyBank,
-  X,
   Link,
   ExternalLink,
   Unlink,
@@ -20,6 +19,8 @@ import type { BrokerAccount, BrokerPortfolio, BrokerId, PortfolioSnapshot } from
 import { API_BASE } from '../../constants';
 import { HistoryChart } from '../common/HistoryChart';
 import { Card } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 const BROKER_LABELS: Record<BrokerId, string> = {
   vanguard: 'Vanguard',
@@ -84,16 +85,18 @@ function GainLossBadge({ value, percent }: { value: number; percent?: number }) 
 
 // Add Manual Holding Modal
 function AddHoldingModal({
+  open,
   onAdd,
-  onClose,
+  onOpenChange,
 }: {
+  open: boolean;
   onAdd: (holding: {
     ticker: string;
     shares: number;
     costBasis?: number;
     purchaseDate?: string;
   }) => void;
-  onClose: () => void;
+  onOpenChange: (open: boolean) => void;
 }) {
   const [ticker, setTicker] = useState('');
   const [shares, setShares] = useState('');
@@ -111,15 +114,12 @@ function AddHoldingModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <Card variant="glass" className="relative rounded-2xl p-6 w-full max-w-sm animate-scale-in">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-[16px] font-semibold text-surface-950">Add Manual Holding</h3>
-          <button onClick={onClose} className="p-1 hover:bg-surface-200/50 rounded-lg">
-            <X className="w-4 h-4 text-surface-600" />
-          </button>
-        </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Add Manual Holding</DialogTitle>
+          <DialogDescription>Add a holding with ticker, shares, and optional cost basis.</DialogDescription>
+        </DialogHeader>
         <div className="space-y-3">
           <div>
             <label className="text-[12px] font-medium text-surface-700 mb-1 block">
@@ -169,33 +169,36 @@ function AddHoldingModal({
             />
           </div>
         </div>
-        <div className="flex gap-2 mt-5">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2.5 text-[13px] font-medium text-surface-700 hover:bg-surface-200/50 rounded-xl transition-colors"
+        <div className="flex gap-2 mt-1">
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            className="flex-1"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={handleSubmit}
             disabled={!ticker || !shares}
-            className="flex-1 px-4 py-2.5 text-[13px] font-medium bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 transition-colors disabled:opacity-50"
+            className="flex-1"
           >
             Add
-          </button>
+          </Button>
         </div>
-      </Card>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 // Add Manual Account Modal
 function AddAccountModal({
+  open,
   onAdd,
-  onClose,
+  onOpenChange,
 }: {
+  open: boolean;
   onAdd: (broker: BrokerId, name: string, url?: string, overrideValue?: number) => void;
-  onClose: () => void;
+  onOpenChange: (open: boolean) => void;
 }) {
   const [broker, setBroker] = useState<BrokerId>('vanguard');
   const [name, setName] = useState('');
@@ -203,15 +206,12 @@ function AddAccountModal({
   const [overrideValue, setOverrideValue] = useState('');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <Card variant="glass" className="relative rounded-2xl p-6 w-full max-w-sm animate-scale-in">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-[16px] font-semibold text-surface-950">Add Manual Account</h3>
-          <button onClick={onClose} className="p-1 hover:bg-surface-200/50 rounded-lg">
-            <X className="w-4 h-4 text-surface-600" />
-          </button>
-        </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Add Manual Account</DialogTitle>
+          <DialogDescription>Add a brokerage account to track holdings and balances.</DialogDescription>
+        </DialogHeader>
         <div className="space-y-3">
           <div>
             <label className="text-[12px] font-medium text-surface-700 mb-1 block">Institution</label>
@@ -271,14 +271,15 @@ function AddAccountModal({
             </p>
           </div>
         </div>
-        <div className="flex gap-2 mt-5">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2.5 text-[13px] font-medium text-surface-700 hover:bg-surface-200/50 rounded-xl transition-colors"
+        <div className="flex gap-2 mt-1">
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            className="flex-1"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => {
               if (name.trim()) {
                 const ov = overrideValue.trim() ? Number(overrideValue) : undefined;
@@ -286,13 +287,13 @@ function AddAccountModal({
               }
             }}
             disabled={!name.trim()}
-            className="flex-1 px-4 py-2.5 text-[13px] font-medium bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 transition-colors disabled:opacity-50"
+            className="flex-1"
           >
             Add Account
-          </button>
+          </Button>
         </div>
-      </Card>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -491,15 +492,14 @@ function AccountCard({
         </div>
       )}
 
-      {showAddHolding && (
-        <AddHoldingModal
-          onAdd={(holding) => {
-            onAddHolding(account.id, holding);
-            setShowAddHolding(false);
-          }}
-          onClose={() => setShowAddHolding(false)}
-        />
-      )}
+      <AddHoldingModal
+        open={showAddHolding}
+        onAdd={(holding) => {
+          onAddHolding(account.id, holding);
+          setShowAddHolding(false);
+        }}
+        onOpenChange={setShowAddHolding}
+      />
     </Card>
   );
 }
@@ -989,9 +989,7 @@ export function BrokersView() {
         </>
       )}
 
-      {showAddAccount && (
-        <AddAccountModal onAdd={handleAddAccount} onClose={() => setShowAddAccount(false)} />
-      )}
+      <AddAccountModal open={showAddAccount} onAdd={handleAddAccount} onOpenChange={setShowAddAccount} />
     </div>
   );
 }
