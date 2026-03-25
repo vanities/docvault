@@ -151,20 +151,8 @@ export function QuickStats({
         .join(', ') || 'Schedule D'
     : undefined;
 
-  // Grid columns: 5 base + optional retirement + optional capital gains + optional bank deposits
-  // Use complete class names so Tailwind can detect them at build time
-  const extraCols = (hasRetirement ? 1 : 0) + (hasCapitalGains ? 1 : 0) + (hasBankDeposits ? 1 : 0);
-  const gridCols =
-    extraCols === 3
-      ? 'lg:grid-cols-8'
-      : extraCols === 2
-        ? 'lg:grid-cols-7'
-        : extraCols === 1
-          ? 'lg:grid-cols-6'
-          : 'lg:grid-cols-5';
-
   return (
-    <div className={`grid grid-cols-1 md:grid-cols-2 ${gridCols} gap-3 stagger`}>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 stagger">
       <StatCard
         icon={TrendingUp}
         label="Total Income"
