@@ -3270,6 +3270,135 @@ async function handleRequest(req: Request): Promise<Response> {
           bankTotal,
       };
 
+      // ── Tax Summary ──────────────────────────────────────────────────
+      // Aggregate tax-relevant data from parsed documents
+      let totalWages = 0;
+      let totalFederalWithheld = 0;
+      let totalScheduleC = 0;
+      let totalCapGainsST = 0;
+      let totalCapGainsLT = 0;
+      let totalOrdinaryDividends = 0;
+      let totalQualifiedDividends = 0;
+      let totalOtherIncome = 0;
+      const w2Details: { employer: string; wages: number; withheld: number }[] = [];
+
+      for (const [, data] of Object.entries(entitySummaries)) {
+        for (const inc of data.income) {
+          if (inc.type === 'W-2') {
+            totalWages += inc.amount;
+            totalFederalWithheld += ((inc.details?.federalWithheld as number) || 0);
+            w2Details.push({
+              employer: inc.source,
+              wages: inc.amount,
+              withheld: (inc.details?.federalWithheld as number) || 0,
+            });
+          } else if (inc.type === '1099-NEC') {
+            totalScheduleC += inc.amount;
+          } else if (inc.type === '1099-B') {
+            totalCapGainsST += ((inc.details?.shortTermGainLoss as number) || 0);
+            totalCapGainsLT += ((inc.details?.longTermGainLoss as number) || 0);
+          } else if (inc.type === '1099-DIV') {
+            totalOrdinaryDividends += inc.amount;
+            totalQualifiedDividends += ((inc.details?.qualifiedDividends as number) || 0);
+          } else if (inc.type === 'K-1') {
+            totalOtherIncome += inc.amount;
+          }
+        }
+      }
+
+      // SE tax estimate (Schedule C × 0.9235 × 15.3%)
+      const netSEEarnings = totalScheduleC * 0.9235;
+      const seTaxEstimate = netSEEarnings * 0.153;
+      const seTaxDeduction = seTaxEstimate / 2;
+
+      // Retirement deduction total
+      let retirementDeduction = 0;
+      for (const [, entries] of Object.entries(yearContributions)) {
+        retirementDeduction += entries.reduce((s, c) => s + c.amount, 0);
+      }
+
+      const totalCapGains = totalCapGainsST + totalCapGainsLT;
+      const estimatedTotalIncome = totalWages + totalScheduleC + totalCapGains + totalOrdinaryDividends + totalOtherIncome;
+      const estimatedAdjustments = seTaxDeduction + retirementDeduction;
+      const estimatedAGI = estimatedTotalIncome - estimatedAdjustments;
+
+      // Estimated quarterly payments (110% safe harbor on prior year)
+      const safeHarborMultiplier = estimatedAGI > 150000 ? 1.10 : 1.00;
+      const nextYear = parseInt(year) + 1;
+
+      const taxSummary = {
+        wages: totalWages,
+        federalWithheld: totalFederalWithheld,
+        w2Details,
+        scheduleCIncome: totalScheduleC,
+        capitalGains: {
+          shortTerm: totalCapGainsST,
+          longTerm: totalCapGainsLT,
+          total: totalCapGains,
+        },
+        dividends: {
+          ordinary: totalOrdinaryDividends,
+          qualified: totalQualifiedDividends,
+        },
+        otherIncome: totalOtherIncome,
+        estimatedTotalIncome,
+        seTax: Math.round(seTaxEstimate),
+        seTaxDeduction: Math.round(seTaxDeduction),
+        retirementDeduction,
+        estimatedAdjustments: Math.round(estimatedAdjustments),
+        estimatedAGI: Math.round(estimatedAGI),
+        estimatedPayments: {
+          note: `110% safe harbor (AGI ${estimatedAGI > 150000 ? '>' : '<='} $150K)`,
+          quarterly: [
+            { label: 'Q1', due: `${nextYear}-04-15` },
+            { label: 'Q2', due: `${nextYear}-06-15` },
+            { label: 'Q3', due: `${nextYear}-09-15` },
+            { label: 'Q4', due: `${nextYear + 1}-01-15` },
+          ],
+        },
+      };
+
+      // ── Form 2210 Annualized Income Periods ──────────────────────────
+      // Cumulative bank deposits through each period cutoff for annualized method
+      const form2210Cutoffs = [
+        { label: '1/1–3/31', endMonth: 3 },
+        { label: '1/1–5/31', endMonth: 5 },
+        { label: '1/1–8/31', endMonth: 8 },
+        { label: '1/1–12/31', endMonth: 12 },
+      ];
+
+      const form2210Periods: Record<string, {
+        periods: {
+          label: string;
+          cumulativeDeposits: number;
+          cumulativeRevenue: number;
+          cumulativeOwnerContributions: number;
+        }[];
+      }> = {};
+
+      for (const [entityId, monthlyData] of Object.entries(bankDepositsByEntity)) {
+        const periods = form2210Cutoffs.map(({ label, endMonth }) => {
+          let cumDeposits = 0;
+          let cumRevenue = 0;
+          let cumOwner = 0;
+          for (const m of monthlyData) {
+            const monthNum = parseInt(m.month.split('-')[1], 10);
+            if (monthNum <= endMonth) {
+              cumDeposits += m.deposits;
+              cumRevenue += m.revenueDeposits;
+              cumOwner += m.ownerContributions;
+            }
+          }
+          return {
+            label,
+            cumulativeDeposits: cumDeposits,
+            cumulativeRevenue: cumRevenue,
+            cumulativeOwnerContributions: cumOwner,
+          };
+        });
+        form2210Periods[entityId] = { periods };
+      }
+
       // Build the snapshot object
       const snapshot = {
         year,
@@ -3341,6 +3470,8 @@ async function handleRequest(req: Request): Promise<Response> {
         })),
         portfolioHistory,
         portfolioSummary,
+        taxSummary,
+        form2210Periods,
       };
 
       if (format === 'md' || format === 'markdown') {
@@ -3474,22 +3605,40 @@ async function handleRequest(req: Request): Promise<Response> {
           }
         }
 
-        // Retirement contributions
+        // Retirement contributions (with timeline)
         if (Object.keys(yearContributions).length > 0) {
           lines.push('## Retirement Contributions (Solo 401k)');
           for (const [key, entries] of Object.entries(yearContributions)) {
             const entityId = key.split('/')[0];
+            const entityName = entitySummaries[entityId]?.entity.name || entityId;
             const employee = entries
               .filter((c) => c.type === 'employee')
               .reduce((s, c) => s + c.amount, 0);
             const employer = entries
               .filter((c) => c.type === 'employer')
               .reduce((s, c) => s + c.amount, 0);
-            lines.push(`### ${entityId}`);
+            lines.push(`### ${entityName}`);
+            lines.push('');
+            lines.push('**Summary**');
             lines.push(`- Employee contributions: ${fmt(employee)}`);
             lines.push(`- Employer contributions: ${fmt(employer)}`);
             lines.push(`- **Total: ${fmt(employee + employer)}**`);
             lines.push('');
+
+            // Timeline of individual contributions
+            const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+            if (sorted.length > 0) {
+              lines.push('**Contribution Timeline**');
+              lines.push('| Date | Type | Amount | Cumulative |');
+              lines.push('|------|------|--------|------------|');
+              let cumulative = 0;
+              for (const c of sorted) {
+                cumulative += c.amount;
+                const typeLabel = c.type === 'employee' ? 'Employee' : 'Employer';
+                lines.push(`| ${c.date} | ${typeLabel} | ${fmt(c.amount)} | ${fmt(cumulative)} |`);
+              }
+              lines.push('');
+            }
           }
         }
 
@@ -3755,6 +3904,82 @@ async function handleRequest(req: Request): Promise<Response> {
             }
           }
           lines.push('');
+        }
+
+        // Tax Summary
+        lines.push('## Tax Summary');
+        lines.push('');
+        lines.push('### Income');
+        lines.push('| Source | Amount |');
+        lines.push('|--------|--------|');
+        if (taxSummary.wages > 0) lines.push(`| W-2 Wages | ${fmt(taxSummary.wages)} |`);
+        if (taxSummary.scheduleCIncome > 0) lines.push(`| Schedule C (Self-Employment) | ${fmt(taxSummary.scheduleCIncome)} |`);
+        if (taxSummary.capitalGains.total !== 0) {
+          lines.push(`| Capital Gains (net) | ${fmt(taxSummary.capitalGains.total)} |`);
+          if (taxSummary.capitalGains.shortTerm !== 0) lines.push(`|   ↳ Short-term | ${fmt(taxSummary.capitalGains.shortTerm)} |`);
+          if (taxSummary.capitalGains.longTerm !== 0) lines.push(`|   ↳ Long-term | ${fmt(taxSummary.capitalGains.longTerm)} |`);
+        }
+        if (taxSummary.dividends.ordinary > 0) {
+          lines.push(`| Dividends (ordinary) | ${fmt(taxSummary.dividends.ordinary)} |`);
+          if (taxSummary.dividends.qualified > 0) lines.push(`|   ↳ Qualified | ${fmt(taxSummary.dividends.qualified)} |`);
+        }
+        if (taxSummary.otherIncome !== 0) lines.push(`| Other Income (K-1, staking, etc.) | ${fmt(taxSummary.otherIncome)} |`);
+        lines.push(`| **Estimated Total Income** | **${fmt(taxSummary.estimatedTotalIncome)}** |`);
+        lines.push('');
+
+        lines.push('### Deductions & Adjustments');
+        lines.push('| Adjustment | Amount |');
+        lines.push('|------------|--------|');
+        if (taxSummary.seTaxDeduction > 0) lines.push(`| SE Tax Deduction (50%) | ${fmt(taxSummary.seTaxDeduction)} |`);
+        if (taxSummary.retirementDeduction > 0) lines.push(`| Retirement Plan (Solo 401k) | ${fmt(taxSummary.retirementDeduction)} |`);
+        lines.push(`| **Total Adjustments** | **${fmt(taxSummary.estimatedAdjustments)}** |`);
+        lines.push('');
+        lines.push(`**Estimated AGI: ${fmt(taxSummary.estimatedAGI)}**`);
+        lines.push('');
+
+        if (taxSummary.seTax > 0) {
+          lines.push('### Self-Employment Tax');
+          lines.push(`- Net SE Earnings: ${fmt(netSEEarnings)}`);
+          lines.push(`- SE Tax (15.3%): ${fmt(taxSummary.seTax)}`);
+          lines.push(`- SE Tax Deduction (50%): ${fmt(taxSummary.seTaxDeduction)}`);
+          lines.push('');
+        }
+
+        if (taxSummary.federalWithheld > 0) {
+          lines.push('### Withholding');
+          for (const w of taxSummary.w2Details) {
+            lines.push(`- ${w.employer}: ${fmt(w.withheld)} withheld on ${fmt(w.wages)} wages`);
+          }
+          lines.push(`- **Total Federal Withholding: ${fmt(taxSummary.federalWithheld)}**`);
+          lines.push('');
+        }
+
+        lines.push('### Estimated Tax Payments (Next Year)');
+        lines.push(`_${taxSummary.estimatedPayments.note}_`);
+        lines.push('| Quarter | Due Date |');
+        lines.push('|---------|----------|');
+        for (const q of taxSummary.estimatedPayments.quarterly) {
+          lines.push(`| ${q.label} | ${q.due} |`);
+        }
+        lines.push('');
+
+        // Form 2210 Annualized Income Periods
+        if (Object.keys(form2210Periods).length > 0) {
+          lines.push('## Form 2210 — Annualized Income Periods');
+          lines.push('_Cumulative bank deposits through each period cutoff for the annualized income installment method._');
+          lines.push('');
+          for (const [entityId, data] of Object.entries(form2210Periods)) {
+            const entityName = entitySummaries[entityId]?.entity.name || entityId;
+            lines.push(`### ${entityName}`);
+            lines.push('| Period | Cumulative Deposits | Revenue | Owner Contributions |');
+            lines.push('|--------|--------------------:|--------:|--------------------:|');
+            for (const p of data.periods) {
+              lines.push(
+                `| ${p.label} | ${fmt(p.cumulativeDeposits)} | ${fmt(p.cumulativeRevenue)} | ${p.cumulativeOwnerContributions > 0 ? fmt(p.cumulativeOwnerContributions) : '—'} |`
+              );
+            }
+            lines.push('');
+          }
         }
 
         // Portfolio Summary / Net Worth
