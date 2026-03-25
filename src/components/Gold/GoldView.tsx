@@ -244,6 +244,7 @@ export function GoldView() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [scanProgress, setScanProgress] = useState<{ current: number; total: number } | null>(null);
   const scanInputRef = useRef<HTMLInputElement>(null);
   const [uploadingReceiptId, setUploadingReceiptId] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -327,87 +328,99 @@ export function GoldView() {
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
   };
 
-  const handleScanReceipt = async (file: File) => {
+  const handleScanReceipts = async (files: File[]) => {
     setScanning(true);
     setScanError(null);
-    try {
-      // Read file once — we'll reuse it for both parsing and receipt upload
-      const fileBuffer = await file.arrayBuffer();
+    if (files.length > 1) setScanProgress({ current: 0, total: files.length });
 
-      const res = await fetch(`${API}/parse-receipt?filename=${encodeURIComponent(file.name)}`, {
-        method: 'POST',
-        body: fileBuffer,
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Parse failed');
-      }
-      const result = await res.json();
-      const items = result.items || [];
-      if (items.length === 0) {
-        setScanError('No gold purchases found in this receipt.');
-        return;
-      }
+    let totalCreated = 0;
+    let totalFailed = 0;
 
-      // Auto-create entries for all items + attach receipt to each
-      let created = 0;
-      for (const item of items) {
-        const product = GOLD_PRODUCTS.find((p) => p.id === item.productId);
-        const weightOz = SIZE_WEIGHTS[item.size as CoinSize] || 1.0;
-        const orderNote = result.orderNumber ? `Order #${result.orderNumber}` : undefined;
-        const descNote = item.description || undefined;
-        const noteParts = [orderNote, descNote].filter(Boolean).join(' — ');
+    for (let fi = 0; fi < files.length; fi++) {
+      const file = files[fi];
+      if (files.length > 1) setScanProgress({ current: fi + 1, total: files.length });
 
-        const body = {
-          metal: item.metal || product?.metal || 'gold',
-          productId: item.productId || 'custom',
-          customDescription:
-            !product || item.productId === 'custom' ? item.description || undefined : undefined,
-          coinYear: item.coinYear || undefined,
-          size: item.size || product?.defaultSize || '1oz',
-          weightOz,
-          purity: product?.purity || 0.999,
-          purchasePrice: item.purchasePrice || 0,
-          purchaseDate: result.purchaseDate || new Date().toISOString().split('T')[0],
-          dealer: result.dealer || undefined,
-          quantity: item.quantity || 1,
-          notes: noteParts || undefined,
-        };
+      try {
+        const fileBuffer = await file.arrayBuffer();
 
-        try {
-          const createRes = await fetch(API, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          });
-          if (createRes.ok) {
-            const json = await createRes.json();
-            // Attach the receipt file to the newly created entry
-            const receiptRes = await fetch(
-              `${API}/${json.entry.id}/receipt?filename=${encodeURIComponent(file.name)}`,
-              { method: 'POST', body: fileBuffer }
-            );
-            const entryWithReceipt = receiptRes.ok
-              ? { ...json.entry, receiptPath: (await receiptRes.json()).receiptPath }
-              : json.entry;
-            setData((prev) => ({ entries: [...prev.entries, entryWithReceipt] }));
-            created++;
-          }
-        } catch {
-          // Continue with remaining items
+        const res = await fetch(`${API}/parse-receipt?filename=${encodeURIComponent(file.name)}`, {
+          method: 'POST',
+          body: fileBuffer,
+        });
+        if (!res.ok) {
+          totalFailed++;
+          continue;
         }
-      }
+        const result = await res.json();
+        const items = result.items || [];
+        if (items.length === 0) {
+          totalFailed++;
+          continue;
+        }
 
-      setScanError(
-        created > 0
-          ? `Added ${created} ${created === 1 ? 'entry' : 'entries'} from receipt.`
-          : 'Failed to create entries from receipt.'
-      );
-    } catch (err) {
-      setScanError(err instanceof Error ? err.message : 'Failed to scan receipt');
-    } finally {
-      setScanning(false);
+        for (const item of items) {
+          const product = GOLD_PRODUCTS.find((p) => p.id === item.productId);
+          const weightOz = SIZE_WEIGHTS[item.size as CoinSize] || 1.0;
+          const orderNote = result.orderNumber ? `Order #${result.orderNumber}` : undefined;
+          const descNote = item.description || undefined;
+          const noteParts = [orderNote, descNote].filter(Boolean).join(' — ');
+
+          const body = {
+            metal: item.metal || product?.metal || 'gold',
+            productId: item.productId || 'custom',
+            customDescription:
+              !product || item.productId === 'custom' ? item.description || undefined : undefined,
+            coinYear: item.coinYear || undefined,
+            size: item.size || product?.defaultSize || '1oz',
+            weightOz,
+            purity: product?.purity || 0.999,
+            purchasePrice: item.purchasePrice || 0,
+            purchaseDate: result.purchaseDate || new Date().toISOString().split('T')[0],
+            dealer: result.dealer || undefined,
+            quantity: item.quantity || 1,
+            notes: noteParts || undefined,
+          };
+
+          try {
+            const createRes = await fetch(API, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            });
+            if (createRes.ok) {
+              const json = await createRes.json();
+              const receiptRes = await fetch(
+                `${API}/${json.entry.id}/receipt?filename=${encodeURIComponent(file.name)}`,
+                { method: 'POST', body: fileBuffer }
+              );
+              const entryWithReceipt = receiptRes.ok
+                ? { ...json.entry, receiptPath: (await receiptRes.json()).receiptPath }
+                : json.entry;
+              setData((prev) => ({ entries: [...prev.entries, entryWithReceipt] }));
+              totalCreated++;
+            }
+          } catch {
+            // Continue with remaining items
+          }
+        }
+      } catch {
+        totalFailed++;
+      }
     }
+
+    setScanProgress(null);
+    if (totalCreated > 0) {
+      setScanError(
+        `Added ${totalCreated} ${totalCreated === 1 ? 'entry' : 'entries'} from ${files.length} ${files.length === 1 ? 'receipt' : 'receipts'}.${totalFailed > 0 ? ` ${totalFailed} receipt(s) failed.` : ''}`
+      );
+    } else {
+      setScanError(
+        files.length === 1
+          ? 'No gold purchases found in this receipt.'
+          : `No gold purchases found in ${files.length} receipts.`
+      );
+    }
+    setScanning(false);
   };
 
   const handleReceiptUpload = async (entryId: string, file: File) => {
@@ -593,16 +606,21 @@ export function GoldView() {
             ) : (
               <Camera className="w-3.5 h-3.5" />
             )}
-            {scanning ? 'Scanning...' : 'Scan Receipt'}
+            {scanning
+              ? scanProgress
+                ? `Scanning ${scanProgress.current}/${scanProgress.total}...`
+                : 'Scanning...'
+              : 'Scan Receipts'}
           </button>
           <input
             ref={scanInputRef}
             type="file"
+            multiple
             accept="image/*,.pdf"
             className="hidden"
             onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void handleScanReceipt(file);
+              const files = e.target.files;
+              if (files && files.length > 0) void handleScanReceipts(Array.from(files));
               e.target.value = '';
             }}
           />
