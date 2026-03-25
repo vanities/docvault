@@ -798,6 +798,25 @@ export function TaxYearView() {
     };
   }, [scannedDocuments, hasHiddenDocs]);
 
+  // Helper: extract deposit total from parsed data (AI parser uses inconsistent field names)
+  const getDepositTotal = (data: Record<string, unknown> | undefined): number => {
+    if (!data) return 0;
+    if (typeof data.totalDeposits === 'number') return data.totalDeposits;
+    if (typeof data.totalDepositsAndAdditions === 'number') return data.totalDepositsAndAdditions;
+    if (Array.isArray(data.deposits))
+      return (data.deposits as { amount: number }[]).reduce((s, d) => s + (d.amount || 0), 0);
+    if (Array.isArray(data.depositsAndAdditions))
+      return (data.depositsAndAdditions as { amount: number }[]).reduce(
+        (s, d) => s + (d.amount || 0),
+        0
+      );
+    if (Array.isArray(data.transactions))
+      return (data.transactions as { amount: number; type?: string }[])
+        .filter((t) => t.type === 'deposit' || (t.amount > 0 && t.type !== 'withdrawal'))
+        .reduce((s, t) => s + (t.amount || 0), 0);
+    return 0;
+  };
+
   // Compute bank deposit summary from tracked documents
   const bankDepositSummary = useMemo((): BankDepositSummary | null => {
     const bankDocs = trackedDocuments.filter((d) => d.type === 'bank-statement');
@@ -812,7 +831,7 @@ export function TaxYearView() {
 
     for (const doc of bankDocs) {
       const data = doc.parsedData as Record<string, unknown> | undefined;
-      const deposits = Number(data?.totalDeposits || 0);
+      const deposits = getDepositTotal(data);
       const count = Number(data?.depositCount || data?.depositsCount || 0);
       totalDeposits += deposits;
       depositCount += count;
@@ -852,7 +871,7 @@ export function TaxYearView() {
 
     for (const doc of bankDocs) {
       const data = doc.parsedData as Record<string, unknown> | undefined;
-      const deposits = Number(data?.totalDeposits || 0);
+      const deposits = getDepositTotal(data);
       const count = Number(data?.depositCount || data?.depositsCount || 0);
       totalDeposits += deposits;
       depositCount += count;

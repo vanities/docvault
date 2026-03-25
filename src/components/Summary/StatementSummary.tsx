@@ -74,7 +74,17 @@ function payerMatches(depositPayer: string, form1099Payer: string): boolean {
   return dp.includes(fp) || fp.includes(dp);
 }
 
-/** Extract deposit transactions from parsed data (handles both formats) */
+/** Get the total deposits number from parsed data (handles inconsistent AI field names) */
+function getDepositTotal(data: Record<string, unknown> | undefined): number {
+  if (!data) return 0;
+  if (typeof data.totalDeposits === 'number') return data.totalDeposits;
+  if (typeof data.totalDepositsAndAdditions === 'number') return data.totalDepositsAndAdditions;
+  // Fall back to summing individual deposit transactions
+  const txns = getDepositTransactions(data);
+  return txns.reduce((s, t) => s + t.amount, 0);
+}
+
+/** Extract deposit transactions from parsed data (handles all AI parser formats) */
 function getDepositTransactions(data: Record<string, unknown> | undefined): DepositTransaction[] {
   if (!data) return [];
 
@@ -92,7 +102,21 @@ function getDepositTransactions(data: Record<string, unknown> | undefined): Depo
     }
   }
 
-  // Format 2: "transactions" array with type: 'deposit' (e.g., January)
+  // Format 2: "depositsAndAdditions" array (Manna-style)
+  if (result.length === 0) {
+    const depsAddArr = data.depositsAndAdditions as
+      | Array<{ date: string; description: string; amount: number }>
+      | undefined;
+    if (Array.isArray(depsAddArr)) {
+      for (const t of depsAddArr) {
+        if (t.amount > 0) {
+          result.push({ date: t.date, description: t.description || '', amount: t.amount });
+        }
+      }
+    }
+  }
+
+  // Format 3: "transactions" array with type: 'deposit' (e.g., January)
   if (result.length === 0) {
     const txnsArr = data.transactions as
       | Array<{ date: string; description: string; amount: number; type?: string }>
@@ -141,7 +165,7 @@ function getSortDate(doc: TaxDocument): string {
 function BankStatementRow({ doc }: { doc: TaxDocument }) {
   const [expanded, setExpanded] = useState(false);
   const data = doc.parsedData as Record<string, unknown> | undefined;
-  const deposits = Number(data?.totalDeposits || 0);
+  const deposits = getDepositTotal(data);
   const withdrawals = Number(data?.totalWithdrawals || 0);
   const ending = Number(data?.endingBalance || 0);
   const count = Number(data?.depositCount || data?.depositsCount || 0);
@@ -292,7 +316,7 @@ export function StatementSummary({
   let totalWithdrawals = 0;
   for (const doc of sortedBank) {
     const data = doc.parsedData as Record<string, unknown> | undefined;
-    totalDeposits += Number(data?.totalDeposits || 0);
+    totalDeposits += getDepositTotal(data);
     totalWithdrawals += Number(data?.totalWithdrawals || 0);
   }
 
