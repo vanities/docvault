@@ -438,11 +438,29 @@ export async function handleDownloadRoutes(
 
       const manifest = lines.join('\n');
 
-      // Build zip with all tracked files + manifest
+      // Build zip with CPA-relevant files + manifest
+      // Exclude individual receipt/expense files — the parsed summary in
+      // TAX_SUMMARY.txt is sufficient. CPAs need tax forms, statements,
+      // invoices, and retirement docs — not receipt screenshots.
       const zipData: Record<string, Uint8Array> = {};
       zipData['TAX_SUMMARY.txt'] = new TextEncoder().encode(manifest);
 
+      const isReceiptFile = (filePath: string): boolean => {
+        const lower = filePath.toLowerCase();
+        // Expense files in business/ subfolder are receipts
+        if (lower.includes('/expenses/business/')) return true;
+        // Expense files that are receipts (not 1098s or equipment contracts)
+        if (
+          lower.includes('/expenses/') &&
+          !lower.includes('/1098/') &&
+          !lower.includes('/equipment/')
+        )
+          return true;
+        return false;
+      };
+
       for (const file of files) {
+        if (isReceiptFile(file.path)) continue; // Skip receipt files
         const fullPath = path.join(entityPath, file.path);
         try {
           const content = await fs.readFile(fullPath);
