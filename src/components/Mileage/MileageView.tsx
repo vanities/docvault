@@ -41,7 +41,7 @@ const BTN = {
 const INPUT =
   'w-full px-3 py-2.5 bg-surface-100 border border-border rounded-xl text-sm text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-teal-400/30 focus:border-teal-400';
 const INPUT_EDIT =
-  'w-full px-2.5 py-2 bg-white border border-border rounded-xl text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-teal-400/30 focus:border-teal-400';
+  'w-full px-2.5 py-2 bg-surface-50 border border-border rounded-xl text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-teal-400/30 focus:border-teal-400';
 const LABEL = 'text-[11px] text-surface-500 uppercase tracking-wider font-medium block mb-1';
 const LABEL_SM = 'text-[10px] text-surface-500 uppercase tracking-wider font-medium';
 
@@ -376,7 +376,7 @@ export function MileageView() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><label className={LABEL}>Gallons</label><input type="number" step="0.001" min="0" value={gallons} onChange={(e) => setGallons(e.target.value)} placeholder="Gal" className={INPUT} /></div>
-              <div><label className={LABEL}>Total Cost</label><input type="number" step="0.01" min="0" value={totalCost} onChange={(e) => setTotalCost(e.target.value)} placeholder="$" className={INPUT} /></div>
+              <div><label className={LABEL}>Total Cost</label><input type="number" step="0.01" min="0" value={totalCost} onChange={(e) => setTotalCost(e.target.value)} placeholder="0.00" className={INPUT} /></div>
             </div>
             <div><label className={LABEL}>Purpose</label><input type="text" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="e.g. Client meeting, Office commute" className={INPUT} /></div>
           </div>
@@ -445,7 +445,7 @@ export function MileageView() {
                           <div><label className={LABEL_SM}>Trip Miles</label><input type="number" step="0.1" min="0" value={editTripMiles} onChange={(e) => setEditTripMiles(e.target.value)} placeholder="Miles" className={INPUT_EDIT} /></div>
                           <div className="grid grid-cols-2 gap-2">
                             <div><label className={LABEL_SM}>Gallons</label><input type="number" step="0.001" min="0" value={editGallons} onChange={(e) => setEditGallons(e.target.value)} placeholder="Gal" className={INPUT_EDIT} /></div>
-                            <div><label className={LABEL_SM}>Cost</label><input type="number" step="0.01" min="0" value={editTotalCost} onChange={(e) => setEditTotalCost(e.target.value)} placeholder="$" className={INPUT_EDIT} /></div>
+                            <div><label className={LABEL_SM}>Cost</label><input type="number" step="0.01" min="0" value={editTotalCost} onChange={(e) => setEditTotalCost(e.target.value)} placeholder="0.00" className={INPUT_EDIT} /></div>
                           </div>
                           <div><label className={LABEL_SM}>Purpose</label><input type="text" value={editPurpose} onChange={(e) => setEditPurpose(e.target.value)} placeholder="Purpose" className={INPUT_EDIT} /></div>
                           <div className="flex gap-2 pt-1">
@@ -501,11 +501,11 @@ export function MileageView() {
 
         {showVehicleForm && (
           <form onSubmit={handleAddVehicle} className="glass-card rounded-xl p-3 space-y-2">
-            <div className="grid grid-cols-[1fr,4.5rem] gap-2">
+            <div className="grid grid-cols-[1fr_4.5rem] gap-2">
               <input type="text" value={newVehicleName} onChange={(e) => setNewVehicleName(e.target.value)} placeholder="Vehicle name" required className={INPUT} />
               <input type="number" value={newVehicleYear} onChange={(e) => setNewVehicleYear(e.target.value)} placeholder="Year" className={`${INPUT} text-center`} />
             </div>
-            <div className="grid grid-cols-[1fr,1fr] gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <input type="text" value={newVehicleMake} onChange={(e) => setNewVehicleMake(e.target.value)} placeholder="Make" className={INPUT} />
               <input type="text" value={newVehicleModel} onChange={(e) => setNewVehicleModel(e.target.value)} placeholder="Model" className={INPUT} />
             </div>
@@ -521,7 +521,7 @@ export function MileageView() {
             if (isEditing) {
               return (
                 <div key={vehicle.id} className="px-4 py-3 bg-surface-50 border-b border-border/50 last:border-b-0 space-y-2">
-                  <div className="grid grid-cols-[1fr,4.5rem] gap-2">
+                  <div className="grid grid-cols-[1fr_4.5rem] gap-2">
                     <input type="text" value={editVehicleName} onChange={(e) => setEditVehicleName(e.target.value)} className={INPUT_EDIT} placeholder="Name" />
                     <input type="number" value={editVehicleYear} onChange={(e) => setEditVehicleYear(e.target.value)} className={`${INPUT_EDIT} text-center`} placeholder="Year" />
                   </div>
