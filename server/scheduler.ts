@@ -37,7 +37,7 @@ const RCLONE_CONFIG_PATH = path.join(DATA_DIR, '.rclone.conf');
 let snapshotTimer: ReturnType<typeof setInterval> | null = null;
 let dropboxSyncTimer: ReturnType<typeof setInterval> | null = null;
 
-async function takePortfolioSnapshot(): Promise<void> {
+export async function takePortfolioSnapshot(): Promise<void> {
   try {
     let settings = await loadSettings();
 
@@ -269,7 +269,7 @@ async function createEncryptedConfigBackup(password: string): Promise<string | n
   }
 }
 
-async function runDropboxSync(): Promise<void> {
+export async function runDropboxSync(): Promise<void> {
   try {
     // Create encrypted config backup before syncing (if password is configured)
     // The .enc file is written to DATA_DIR so the NAS cron script can rclone it
@@ -313,7 +313,7 @@ async function runDropboxSync(): Promise<void> {
   }
 }
 
-function startScheduler(schedules: Settings['schedules'] = {}): void {
+export function startScheduler(schedules: Settings['schedules'] = {}): void {
   // Clear existing timers
   if (snapshotTimer) clearInterval(snapshotTimer);
   if (dropboxSyncTimer) clearInterval(dropboxSyncTimer);

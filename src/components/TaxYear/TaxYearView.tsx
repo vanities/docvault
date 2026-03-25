@@ -333,40 +333,16 @@ export function TaxYearView() {
   const invoiceSummary = analytics.invoiceSummary;
   const retirementSummary = analytics.retirementSummary;
 
-  // --- "All" variants for hidden/untracked docs (fetched with includeHidden) ---
-  const allAnalytics = useAnalytics(
-    selectedEntity,
-    selectedYear,
-  );
-
+  // --- "All" variants for hidden/untracked docs ---
   const hasHiddenDocs = scannedDocuments.some((d) => d.tracked === false);
+  const allAnalytics = useAnalytics(selectedEntity, selectedYear, true); // includeHidden
 
-  const allIncomeSummary = useMemo((): IncomeSummaryType | undefined => {
-    if (!hasHiddenDocs) return undefined;
-    // For "all with hidden", just return the same analytics since backend metadata
-    // filtering handles tracked status. TODO: add ?includeHidden=true support
-    return undefined;
-  }, [hasHiddenDocs]);
+  const allIncomeSummary = hasHiddenDocs ? allAnalytics.incomeSummary : undefined;
+  const allExpenseSummary = hasHiddenDocs ? allAnalytics.expenseSummary : undefined;
+  const allInvoiceSummary = hasHiddenDocs ? allAnalytics.invoiceSummary : undefined;
 
-  const allExpenseSummary = useMemo((): ExpenseSummaryType | undefined => {
-    if (!hasHiddenDocs) return undefined;
-    return undefined;
-  }, [hasHiddenDocs]);
-
-  const allInvoiceSummary = useMemo((): InvoiceSummaryData | undefined => {
-    if (!hasHiddenDocs) return undefined;
-    return undefined;
-  }, [hasHiddenDocs]);
-
-  const allRetirementSummary = useMemo((): RetirementSummary | null => {
-    if (!hasHiddenDocs) return null;
-    return null;
-  }, [hasHiddenDocs]);
-
-  const allBankDepositSummary = useMemo((): BankDepositSummary | null => {
-    if (!hasHiddenDocs) return null;
-    return null;
-  }, [hasHiddenDocs]);
+  const allRetirementSummary = hasHiddenDocs ? allAnalytics.retirementSummary : null;
+  const allBankDepositSummary = hasHiddenDocs ? allAnalytics.bankDepositSummary : null;
 
   const tabs: { id: TabType; label: string }[] = [
     { id: 'documents', label: 'Documents' },

@@ -2205,7 +2205,7 @@ Return: { "naming": {...}, "parsedData": {...} }`,
 
 // ============================================================================
 // Scheduler (extracted to scheduler.ts)
-import { startScheduler } from './scheduler.js';
+import { startScheduler, takePortfolioSnapshot, runDropboxSync } from './scheduler.js';
 
 
 // ============================================================================
