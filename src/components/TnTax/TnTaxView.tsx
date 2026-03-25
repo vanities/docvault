@@ -3,6 +3,7 @@ import { Info, Plus, Trash2, ExternalLink } from 'lucide-react';
 import { useAppContext } from '../../contexts/AppContext';
 import { EXPENSE_CATEGORIES } from '../../config';
 import type { ExpenseCategory } from '../../types';
+import { Card } from '@/components/ui/card';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -150,13 +151,13 @@ function ScheduleCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="glass-card rounded-xl overflow-hidden">
+    <Card variant="glass" className="overflow-hidden">
       <div className="px-5 py-3.5 border-b border-border/50 bg-surface-100/30">
         <p className="text-[13px] font-semibold text-surface-900">{title}</p>
         {subtitle && <p className="text-[11px] text-surface-500 mt-0.5">{subtitle}</p>}
       </div>
       <div className="px-5 py-3">{children}</div>
-    </div>
+    </Card>
   );
 }
 

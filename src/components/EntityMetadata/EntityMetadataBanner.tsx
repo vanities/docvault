@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { Building2, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { useToast } from '../../hooks/useToast';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
+import { Card } from '@/components/ui/card';
 
 const LABEL_MAP: Record<string, string> = {
   ein: 'EIN',
@@ -107,7 +108,7 @@ export function EntityMetadataBanner({ entityConfig }: EntityMetadataBannerProps
   };
 
   return (
-    <div className="glass-card rounded-xl mb-6 overflow-hidden">
+    <Card variant="glass" className="mb-6 overflow-hidden">
       <button
         onClick={toggleExpanded}
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-200/20 transition-colors"
@@ -135,6 +136,6 @@ export function EntityMetadataBanner({ entityConfig }: EntityMetadataBannerProps
           </div>
         </div>
       )}
-    </div>
+    </Card>
   );
 }

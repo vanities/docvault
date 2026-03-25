@@ -11,6 +11,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import type { PropertyEntry, PropertyData, PropertyType, PropertyAddress } from '../../types';
+import { Card } from '@/components/ui/card';
 
 const API = '/api/property';
 
@@ -409,19 +410,19 @@ export function PropertyView() {
       {/* Summary Cards */}
       {data.entries.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="glass-card rounded-xl p-4">
+          <Card variant="glass" className="p-4">
             <span className="text-xs text-surface-600">Total Value</span>
             <p className="text-lg font-semibold text-surface-950">
               {formatUsd(summary.totalCurrentValue)}
             </p>
-          </div>
-          <div className="glass-card rounded-xl p-4">
+          </Card>
+          <Card variant="glass" className="p-4">
             <span className="text-xs text-surface-600">Total Equity</span>
             <p className="text-lg font-semibold text-surface-950">
               {formatUsd(summary.totalEquity)}
             </p>
-          </div>
-          <div className="glass-card rounded-xl p-4">
+          </Card>
+          <Card variant="glass" className="p-4">
             <span className="text-xs text-surface-600">Appreciation</span>
             <p
               className={`text-lg font-semibold flex items-center gap-1 ${isGain ? 'text-accent-500' : 'text-danger-500'}`}
@@ -430,13 +431,13 @@ export function PropertyView() {
               {formatUsd(Math.abs(appreciation))}
               <span className="text-xs font-normal">({appreciationPct}%)</span>
             </p>
-          </div>
-          <div className="glass-card rounded-xl p-4">
+          </Card>
+          <Card variant="glass" className="p-4">
             <span className="text-xs text-surface-600">Mortgage Balance</span>
             <p className="text-lg font-semibold text-surface-950">
               {formatUsd(summary.totalMortgage)}
             </p>
-          </div>
+          </Card>
         </div>
       )}
 
@@ -706,13 +707,13 @@ export function PropertyView() {
 
       {/* Entries List */}
       {data.entries.length === 0 ? (
-        <div className="glass-card rounded-xl p-10 text-center">
+        <Card variant="glass" className="p-10 text-center">
           <MapPin className="w-10 h-10 text-emerald-500/40 mx-auto mb-3" />
           <p className="text-surface-600 text-sm">No properties tracked yet.</p>
           <p className="text-surface-500 text-xs mt-1">
             Click "Add Property" to start tracking your real estate.
           </p>
-        </div>
+        </Card>
       ) : (
         <PropertyList entries={data.entries} onDelete={handleDelete} onEdit={populateForm} />
       )}
@@ -754,7 +755,7 @@ function PropertyList({
         const pType = entry.type as PropertyType;
 
         return (
-          <div key={entry.id} className="glass-card rounded-xl overflow-hidden">
+          <Card variant="glass" key={entry.id} className="overflow-hidden">
             <button
               onClick={() => setExpanded(isExpanded ? null : entry.id)}
               className="w-full flex items-center justify-between p-4 text-left hover:bg-surface-100/50 transition-colors"
@@ -902,7 +903,7 @@ function PropertyList({
                 </div>
               </div>
             )}
-          </div>
+          </Card>
         );
       })}
     </div>

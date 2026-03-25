@@ -9,6 +9,7 @@ import type {
   ParsedComposite1099,
 } from '../../types';
 import { DOCUMENT_TYPES } from '../../config';
+import { Card } from '@/components/ui/card';
 
 interface IncomeSummaryProps {
   summary: IncomeSummaryType;
@@ -62,7 +63,7 @@ export function IncomeSummary({
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <div className="flex items-center gap-3 mb-3">
             <div className="p-2 bg-emerald-500/10 rounded-lg">
               <DollarSign className="w-5 h-5 text-emerald-400" />
@@ -73,9 +74,9 @@ export function IncomeSummary({
             {formatCurrency(summary.totalIncome)}
           </p>
           <p className="text-[11px] text-surface-600 mt-1">For Tax Year {summary.taxYear}</p>
-        </div>
+        </Card>
 
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <div className="flex items-center gap-3 mb-3">
             <div className="p-2 bg-info-500/10 rounded-lg">
               <Building className="w-5 h-5 text-info-400" />
@@ -86,9 +87,9 @@ export function IncomeSummary({
             {formatCurrency(summary.federalWithheld)}
           </p>
           <p className="text-[11px] text-surface-600 mt-1">From all sources</p>
-        </div>
+        </Card>
 
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <div className="flex items-center gap-3 mb-3">
             <div className="p-2 bg-purple-500/10 rounded-lg">
               <FileText className="w-5 h-5 text-purple-400" />
@@ -103,11 +104,11 @@ export function IncomeSummary({
             {summary.k1Count > 0 ? `, ${summary.k1Count} K-1s` : ''}
             {summary.salesCount > 0 ? `, ${summary.salesCount} sales` : ''}
           </p>
-        </div>
+        </Card>
       </div>
 
       {/* Copyable Summary Fields */}
-      <div className="glass-card rounded-xl p-5">
+      <Card variant="glass" className="p-5">
         <h3 className="font-semibold text-surface-950 mb-4 text-[14px]">TurboTax Entry Values</h3>
         <p className="text-[13px] text-surface-600 mb-4">
           Click any value to copy for easy pasting into TurboTax.
@@ -178,11 +179,11 @@ export function IncomeSummary({
             </>
           )}
         </div>
-      </div>
+      </Card>
 
       {/* W-2 Details */}
       {w2Docs.length > 0 && (
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <h3 className="font-semibold text-surface-950 mb-4 text-[14px]">
             W-2 Forms ({w2Docs.length})
           </h3>
@@ -241,12 +242,12 @@ export function IncomeSummary({
               );
             })}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* 1099 Details */}
       {Object.entries(income1099ByType).map(([type, docs]) => (
-        <div key={type} className="glass-card rounded-xl p-5">
+        <Card variant="glass" key={type} className="p-5">
           <h3 className="font-semibold text-surface-950 mb-4 text-[14px]">
             {DOCUMENT_TYPES.find((dt) => dt.id === type)?.label || type} Forms ({docs.length})
           </h3>
@@ -483,12 +484,12 @@ export function IncomeSummary({
               );
             })}
           </div>
-        </div>
+        </Card>
       ))}
 
       {/* Sales Income */}
       {onNavigateToSales && (
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-surface-950 text-[14px]">
               Sales Revenue{summary.salesCount > 0 ? ` (${summary.salesCount} sales)` : ''}
@@ -522,12 +523,12 @@ export function IncomeSummary({
           ) : (
             <p className="text-[13px] text-surface-500">No sales recorded for this tax year.</p>
           )}
-        </div>
+        </Card>
       )}
 
       {/* K-1 Details */}
       {k1Docs.length > 0 && (
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <h3 className="font-semibold text-surface-950 mb-4 text-[14px]">
             Schedule K-1 Forms ({k1Docs.length})
           </h3>
@@ -606,18 +607,18 @@ export function IncomeSummary({
               );
             })}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Empty State */}
       {documents.length === 0 && (
-        <div className="glass-card rounded-xl p-8 text-center">
+        <Card variant="glass" className="p-8 text-center">
           <FileText className="w-12 h-12 text-surface-500 mx-auto mb-4" />
           <h3 className="font-medium text-surface-900 mb-1">No income documents</h3>
           <p className="text-[13px] text-surface-600">
             Upload your W-2s and 1099s to see your income summary.
           </p>
-        </div>
+        </Card>
       )}
     </div>
   );

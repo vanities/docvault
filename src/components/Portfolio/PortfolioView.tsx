@@ -26,6 +26,7 @@ import { useAppContext } from '../../contexts/AppContext';
 import { DonutChart } from './DonutChart';
 import { HistoryChart } from '../common/HistoryChart';
 import { getDonutColor } from './donutColors';
+import { Card } from '@/components/ui/card';
 
 function formatUsd(value: number): string {
   return value.toLocaleString('en-US', {
@@ -309,7 +310,7 @@ export function PortfolioView() {
       </div>
 
       {!hasAnything ? (
-        <div className="glass-card rounded-xl p-10 text-center">
+        <Card variant="glass" className="p-10 text-center">
           <div className="p-4 bg-violet-500/10 rounded-2xl w-fit mx-auto mb-5">
             <PieChart className="w-8 h-8 text-violet-500" />
           </div>
@@ -317,11 +318,11 @@ export function PortfolioView() {
           <p className="text-[13px] text-surface-600 max-w-sm mx-auto">
             Add crypto exchanges/wallets or brokerage accounts to see your combined portfolio.
           </p>
-        </div>
+        </Card>
       ) : (
         <>
           {/* Grand Total */}
-          <div className="glass-card rounded-xl p-6 mb-6">
+          <Card variant="glass" className="p-6 mb-6">
             <p className="text-[12px] text-surface-600 uppercase tracking-wider mb-1">
               Total Net Worth
             </p>
@@ -411,10 +412,10 @@ export function PortfolioView() {
                 </div>
               </div>
             )}
-          </div>
+          </Card>
 
           {/* Portfolio History — full width */}
-          <div className="glass-card rounded-xl p-5 mb-6">
+          <Card variant="glass" className="p-5 mb-6">
             <h3 className="text-[14px] font-semibold text-surface-950 mb-3 flex items-center gap-2">
               <Calendar className="w-4 h-4 text-violet-500" />
               Portfolio History
@@ -437,24 +438,24 @@ export function PortfolioView() {
                 Need at least 2 snapshots. Click &ldquo;Snapshot&rdquo; to start tracking.
               </p>
             )}
-          </div>
+          </Card>
 
           {/* Category charts + Donut */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             {/* Donut Chart */}
             {donutSlices.length > 0 && (
-              <div className="glass-card rounded-xl p-5">
+              <Card variant="glass" className="p-5">
                 <h3 className="text-[14px] font-semibold text-surface-950 mb-4 flex items-center gap-2">
                   <PieChart className="w-4 h-4 text-violet-500" />
                   Asset Allocation
                 </h3>
                 <DonutChart slices={donutSlices} />
-              </div>
+              </Card>
             )}
 
             {/* Category breakdown — individual lines */}
             {snapshots.length >= 2 && (
-              <div className="glass-card rounded-xl p-5">
+              <Card variant="glass" className="p-5">
                 <h3 className="text-[14px] font-semibold text-surface-950 mb-3 flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-violet-500" />
                   By Category
@@ -473,13 +474,13 @@ export function PortfolioView() {
                   showModeToggle={false}
                   defaultRange="3M"
                 />
-              </div>
+              </Card>
             )}
           </div>
 
           {/* Gains Summary */}
           {hasGains && (
-            <div className="glass-card rounded-xl p-5 mb-6">
+            <Card variant="glass" className="p-5 mb-6">
               <h3 className="text-[14px] font-semibold text-surface-950 mb-4">
                 Capital Gains Summary
               </h3>
@@ -522,15 +523,16 @@ export function PortfolioView() {
                   </p>
                 </div>
               </div>
-            </div>
+            </Card>
           )}
 
           {/* Category Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
             {/* Crypto Card */}
-            <button
+            <Card
+              variant="glass"
               onClick={() => setActiveView('crypto')}
-              className="glass-card rounded-xl p-5 text-left hover:ring-2 hover:ring-amber-500/30 transition-all group"
+              className="p-5 text-left hover:ring-2 hover:ring-amber-500/30 transition-all group cursor-pointer"
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2.5">
@@ -556,12 +558,13 @@ export function PortfolioView() {
                   />
                 </div>
               )}
-            </button>
+            </Card>
 
             {/* Brokers Card */}
-            <button
+            <Card
+              variant="glass"
               onClick={() => setActiveView('brokers')}
-              className="glass-card rounded-xl p-5 text-left hover:ring-2 hover:ring-accent-500/30 transition-all group"
+              className="p-5 text-left hover:ring-2 hover:ring-accent-500/30 transition-all group cursor-pointer"
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2.5">
@@ -586,12 +589,13 @@ export function PortfolioView() {
                   />
                 </div>
               )}
-            </button>
+            </Card>
 
             {/* Banks Card */}
-            <button
+            <Card
+              variant="glass"
               onClick={() => setActiveView('banks')}
-              className="glass-card rounded-xl p-5 text-left hover:ring-2 hover:ring-blue-500/30 transition-all group"
+              className="p-5 text-left hover:ring-2 hover:ring-blue-500/30 transition-all group cursor-pointer"
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2.5">
@@ -617,13 +621,14 @@ export function PortfolioView() {
                   />
                 </div>
               )}
-            </button>
+            </Card>
 
             {/* Gold Card */}
             {goldTotal > 0 && (
-              <button
+              <Card
+                variant="glass"
                 onClick={() => setActiveView('gold')}
-                className="glass-card rounded-xl p-5 text-left hover:ring-2 hover:ring-yellow-500/30 transition-all group"
+                className="p-5 text-left hover:ring-2 hover:ring-yellow-500/30 transition-all group cursor-pointer"
               >
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2.5">
@@ -645,14 +650,15 @@ export function PortfolioView() {
                     />
                   </div>
                 )}
-              </button>
+              </Card>
             )}
 
             {/* Property Card */}
             {propertyTotal > 0 && (
-              <button
+              <Card
+                variant="glass"
                 onClick={() => setActiveView('property')}
-                className="glass-card rounded-xl p-5 text-left hover:ring-2 hover:ring-emerald-500/30 transition-all group"
+                className="p-5 text-left hover:ring-2 hover:ring-emerald-500/30 transition-all group cursor-pointer"
               >
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2.5">
@@ -674,13 +680,13 @@ export function PortfolioView() {
                     />
                   </div>
                 )}
-              </button>
+              </Card>
             )}
           </div>
 
           {/* Combined Holdings */}
           {slices.length > 0 && (
-            <div className="glass-card rounded-xl overflow-hidden">
+            <Card variant="glass" className="overflow-hidden">
               <div className="px-5 pt-5 pb-2">
                 <h3 className="text-[14px] font-semibold text-surface-950">All Holdings</h3>
               </div>
@@ -784,7 +790,7 @@ export function PortfolioView() {
                   )}
                 </button>
               )}
-            </div>
+            </Card>
           )}
         </>
       )}

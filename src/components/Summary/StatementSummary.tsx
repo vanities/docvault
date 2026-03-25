@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-react';
 import type { TaxDocument, IncomeSummary as IncomeSummaryType } from '../../types';
+import { Card } from '@/components/ui/card';
 
 interface StatementSummaryProps {
   bankDocs: TaxDocument[];
@@ -417,7 +418,7 @@ export function StatementSummary({
     <div className="space-y-6">
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <div className="flex items-center gap-3 mb-3">
             <div className="p-2 bg-blue-500/10 rounded-lg">
               <Landmark className="w-5 h-5 text-blue-400" />
@@ -430,9 +431,9 @@ export function StatementSummary({
           <p className="text-[11px] text-surface-600 mt-1">
             {sortedBank.length} statement{sortedBank.length !== 1 ? 's' : ''}
           </p>
-        </div>
+        </Card>
 
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <div className="flex items-center gap-3 mb-3">
             <div className="p-2 bg-purple-500/10 rounded-lg">
               <CreditCard className="w-5 h-5 text-purple-400" />
@@ -445,10 +446,10 @@ export function StatementSummary({
           <p className="text-[11px] text-surface-600 mt-1">
             {sortedCC.length} statement{sortedCC.length !== 1 ? 's' : ''}
           </p>
-        </div>
+        </Card>
 
         {income1099Total > 0 && (
-          <div className="glass-card rounded-xl p-5">
+          <Card variant="glass" className="p-5">
             <div className="flex items-center gap-3 mb-3">
               <div
                 className={`p-2 rounded-lg ${Math.abs(difference) > 100 ? 'bg-amber-500/10' : 'bg-emerald-500/10'}`}
@@ -468,13 +469,13 @@ export function StatementSummary({
             <p className="text-[11px] text-surface-600 mt-1">
               {formatCurrency(totalDeposits)} deposits − {formatCurrency(income1099Total)} 1099s
             </p>
-          </div>
+          </Card>
         )}
       </div>
 
       {/* Deposits by Payer — reconciliation against 1099s */}
       {payerGroups.length > 0 && (
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <h3 className="font-semibold text-surface-950 mb-4 text-[14px] flex items-center gap-2">
             <Users className="w-4 h-4 text-surface-600" />
             Deposits by Payer
@@ -548,12 +549,12 @@ export function StatementSummary({
               );
             })}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Bank Statements */}
       {sortedBank.length > 0 && (
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <h3 className="font-semibold text-surface-950 mb-4 text-[14px]">
             Bank Statements ({sortedBank.length})
           </h3>
@@ -595,12 +596,12 @@ export function StatementSummary({
               <p className="text-[13px] text-surface-600 text-right">—</p>
             </div>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Credit Card Statements */}
       {sortedCC.length > 0 && (
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <h3 className="font-semibold text-surface-950 mb-4 text-[14px]">
             Credit Card Statements ({sortedCC.length})
           </h3>
@@ -642,18 +643,18 @@ export function StatementSummary({
               <p className="text-[13px] text-surface-600 text-right">—</p>
             </div>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Empty State */}
       {sortedBank.length === 0 && sortedCC.length === 0 && (
-        <div className="glass-card rounded-xl p-8 text-center">
+        <Card variant="glass" className="p-8 text-center">
           <Landmark className="w-12 h-12 text-surface-500 mx-auto mb-4" />
           <h3 className="font-medium text-surface-900 mb-1">No statements found</h3>
           <p className="text-[13px] text-surface-600">
             Upload bank or credit card statements to track deposits and reconcile against 1099s.
           </p>
-        </div>
+        </Card>
       )}
     </div>
   );

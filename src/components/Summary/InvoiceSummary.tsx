@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { FileText, DollarSign, Users, ChevronDown, ChevronRight, Download } from 'lucide-react';
 import { CopyableField } from './CopyableField';
 import type { InvoiceSummaryData, TaxDocument } from '../../types';
+import { Card } from '@/components/ui/card';
 
 interface InvoiceSummaryProps {
   summary: InvoiceSummaryData;
@@ -198,7 +199,7 @@ export function InvoiceSummary({ summary, documents, onDownload }: InvoiceSummar
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <div className="flex items-center gap-3 mb-3">
             <div className="p-2 bg-emerald-500/10 rounded-lg">
               <DollarSign className="w-5 h-5 text-emerald-400" />
@@ -209,9 +210,9 @@ export function InvoiceSummary({ summary, documents, onDownload }: InvoiceSummar
             {formatCurrency(summary.invoiceTotal)}
           </p>
           <p className="text-[11px] text-surface-600 mt-1">For Tax Year {summary.taxYear}</p>
-        </div>
+        </Card>
 
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <div className="flex items-center gap-3 mb-3">
             <div className="p-2 bg-info-500/10 rounded-lg">
               <Users className="w-5 h-5 text-info-400" />
@@ -222,9 +223,9 @@ export function InvoiceSummary({ summary, documents, onDownload }: InvoiceSummar
             {summary.byCustomer.length}
           </p>
           <p className="text-[11px] text-surface-600 mt-1">Unique billing customers</p>
-        </div>
+        </Card>
 
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <div className="flex items-center gap-3 mb-3">
             <div className="p-2 bg-purple-500/10 rounded-lg">
               <FileText className="w-5 h-5 text-purple-400" />
@@ -235,12 +236,12 @@ export function InvoiceSummary({ summary, documents, onDownload }: InvoiceSummar
             {summary.invoiceCount}
           </p>
           <p className="text-[11px] text-surface-600 mt-1">Total invoice documents</p>
-        </div>
+        </Card>
       </div>
 
       {/* Copyable Total */}
       {summary.invoiceTotal > 0 && (
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <h3 className="font-semibold text-surface-950 mb-4 text-[14px]">
             Invoice Total for TurboTax
           </h3>
@@ -259,30 +260,30 @@ export function InvoiceSummary({ summary, documents, onDownload }: InvoiceSummar
               />
             ))}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Customer Breakdown */}
       {sortedCustomers.length > 0 && (
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <h3 className="font-semibold text-surface-950 mb-4 text-[14px]">By Customer</h3>
           <div className="space-y-3">
             {sortedCustomers.map(([customer, docs]) => (
               <CustomerSection key={customer} customer={customer} docs={docs} />
             ))}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Empty State */}
       {documents.length === 0 && (
-        <div className="glass-card rounded-xl p-8 text-center">
+        <Card variant="glass" className="p-8 text-center">
           <FileText className="w-12 h-12 text-surface-500 mx-auto mb-4" />
           <h3 className="font-medium text-surface-900 mb-1">No invoices</h3>
           <p className="text-[13px] text-surface-600">
             Upload your invoices to see revenue grouped by customer.
           </p>
-        </div>
+        </Card>
       )}
     </div>
   );

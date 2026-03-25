@@ -9,6 +9,7 @@ import {
 } from '../../utils/filenaming';
 import { detectDocumentType } from '../../utils/documentDetection';
 import { FileIcon } from '../common/FileIcon';
+import { Card } from '@/components/ui/card';
 
 interface UploadZoneProps {
   entity: Entity;
@@ -422,7 +423,7 @@ export function UploadZone({
   const needsDescription = (docType: DocumentType) => docType === 'receipt';
 
   return (
-    <div className="glass-card rounded-xl overflow-hidden">
+    <Card variant="glass" className="overflow-hidden">
       {/* Drop Zone */}
       <div
         onDragEnter={disabled ? undefined : handleDragIn}
@@ -760,6 +761,6 @@ export function UploadZone({
           </div>
         </div>
       )}
-    </div>
+    </Card>
   );
 }

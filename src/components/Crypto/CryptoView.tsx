@@ -20,6 +20,7 @@ import type {
 import type { PortfolioSnapshot } from '../../types';
 import { API_BASE } from '../../constants';
 import { HistoryChart } from '../common/HistoryChart';
+import { Card } from '@/components/ui/card';
 
 const TOP_N = 5;
 
@@ -97,7 +98,7 @@ function SourceCard({
   };
 
   return (
-    <div className="glass-card rounded-xl overflow-hidden">
+    <Card variant="glass" className="overflow-hidden">
       {/* Header */}
       <div className="p-5 pb-3">
         <div className="flex items-center justify-between mb-1">
@@ -194,7 +195,7 @@ function SourceCard({
           <p className="text-[12px] text-surface-500 text-center">No balances found</p>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -513,7 +514,7 @@ export function CryptoView() {
       )}
 
       {hasNoSources ? (
-        <div className="glass-card rounded-xl p-10 text-center">
+        <Card variant="glass" className="p-10 text-center">
           <div className="p-4 bg-amber-500/10 rounded-2xl w-fit mx-auto mb-5">
             <Bitcoin className="w-8 h-8 text-amber-500" />
           </div>
@@ -522,11 +523,11 @@ export function CryptoView() {
             Add exchange API keys or wallet addresses in Settings to start tracking your crypto
             balances.
           </p>
-        </div>
+        </Card>
       ) : (
         <>
           {/* Total Portfolio Value */}
-          <div className="glass-card rounded-xl p-6 mb-6">
+          <Card variant="glass" className="p-6 mb-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[12px] text-surface-600 uppercase tracking-wider mb-1">
@@ -584,11 +585,11 @@ export function CryptoView() {
                 </div>
               )}
             </div>
-          </div>
+          </Card>
 
           {/* By Asset (with top-5 collapse) */}
           {filteredAssets.length > 0 && (
-            <div className="glass-card rounded-xl overflow-hidden mb-6">
+            <Card variant="glass" className="overflow-hidden mb-6">
               <div className="px-5 pt-5 pb-2">
                 <h3 className="text-[14px] font-semibold text-surface-950">Holdings</h3>
               </div>
@@ -620,11 +621,11 @@ export function CryptoView() {
                   )}
                 </button>
               )}
-            </div>
+            </Card>
           )}
 
           {/* Capital Gains */}
-          <div className="glass-card rounded-xl p-5 mb-6">
+          <Card variant="glass" className="p-5 mb-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-[14px] font-semibold text-surface-950 flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-amber-500" />
@@ -767,11 +768,11 @@ export function CryptoView() {
                 </p>
               </div>
             )}
-          </div>
+          </Card>
 
           {/* History Chart */}
           {snapshots.length >= 2 && (
-            <div className="glass-card rounded-xl p-5 mb-6">
+            <Card variant="glass" className="p-5 mb-6">
               <h3 className="text-[14px] font-semibold text-surface-950 mb-3 flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-amber-500" />
                 Crypto History
@@ -781,7 +782,7 @@ export function CryptoView() {
                 lines={[{ key: 'cryptoValue', label: 'Crypto', color: '#f59e0b' }]}
                 height={180}
               />
-            </div>
+            </Card>
           )}
 
           {/* Source Cards */}

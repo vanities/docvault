@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Lock, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
@@ -42,7 +43,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
 
   return (
     <div className="noise min-h-screen bg-surface-0 flex items-center justify-center px-4">
-      <div className="glass-card rounded-2xl p-8 max-w-sm w-full animate-scale-in">
+      <Card variant="glass" className="rounded-2xl p-8 max-w-sm w-full animate-scale-in">
         {/* Logo */}
         <div className="text-center mb-6">
           <div className="p-4 bg-accent-500/10 rounded-2xl w-fit mx-auto mb-4">
@@ -92,7 +93,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             {submitting ? 'Signing in...' : 'Sign In'}
           </Button>
         </form>
-      </div>
+      </Card>
     </div>
   );
 }

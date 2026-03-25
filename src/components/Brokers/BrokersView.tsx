@@ -19,6 +19,7 @@ import {
 import type { BrokerAccount, BrokerPortfolio, BrokerId, PortfolioSnapshot } from '../../types';
 import { API_BASE } from '../../constants';
 import { HistoryChart } from '../common/HistoryChart';
+import { Card } from '@/components/ui/card';
 
 const BROKER_LABELS: Record<BrokerId, string> = {
   vanguard: 'Vanguard',
@@ -112,7 +113,7 @@ function AddHoldingModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative glass-card rounded-2xl p-6 w-full max-w-sm animate-scale-in">
+      <Card variant="glass" className="relative rounded-2xl p-6 w-full max-w-sm animate-scale-in">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-[16px] font-semibold text-surface-950">Add Manual Holding</h3>
           <button onClick={onClose} className="p-1 hover:bg-surface-200/50 rounded-lg">
@@ -183,7 +184,7 @@ function AddHoldingModal({
             Add
           </button>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }
@@ -204,7 +205,7 @@ function AddAccountModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative glass-card rounded-2xl p-6 w-full max-w-sm animate-scale-in">
+      <Card variant="glass" className="relative rounded-2xl p-6 w-full max-w-sm animate-scale-in">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-[16px] font-semibold text-surface-950">Add Manual Account</h3>
           <button onClick={onClose} className="p-1 hover:bg-surface-200/50 rounded-lg">
@@ -290,7 +291,7 @@ function AddAccountModal({
             Add Account
           </button>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }
@@ -318,7 +319,7 @@ function AccountCard({
   );
 
   return (
-    <div className="glass-card rounded-xl overflow-hidden">
+    <Card variant="glass" className="overflow-hidden">
       {/* Account Header */}
       <div
         className="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-200/20 transition-colors"
@@ -499,7 +500,7 @@ function AccountCard({
           onClose={() => setShowAddHolding(false)}
         />
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -521,7 +522,7 @@ function SnapTradeBanner({
 
   if (!status.configured) {
     return (
-      <div className="glass-card rounded-xl p-4 mb-6 flex items-center justify-between">
+      <Card variant="glass" className="p-4 mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-violet-500/10">
             <Link className="w-4 h-4 text-violet-500" />
@@ -540,12 +541,12 @@ function SnapTradeBanner({
           <ExternalLink className="w-3.5 h-3.5" />
           Set Up in Settings
         </button>
-      </div>
+      </Card>
     );
   }
 
   return (
-    <div className="glass-card rounded-xl p-4 mb-6 flex items-center justify-between">
+    <Card variant="glass" className="p-4 mb-6 flex items-center justify-between">
       <div className="flex items-center gap-3">
         <div className="p-2 rounded-lg bg-green-500/10">
           <Link className="w-4 h-4 text-green-500" />
@@ -581,7 +582,7 @@ function SnapTradeBanner({
           <Unlink className="w-3.5 h-3.5" />
         </button>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -906,7 +907,7 @@ export function BrokersView() {
       )}
 
       {!hasAccounts ? (
-        <div className="glass-card rounded-xl p-10 text-center">
+        <Card variant="glass" className="p-10 text-center">
           <div className="p-4 bg-accent-500/10 rounded-2xl w-fit mx-auto mb-5">
             <PiggyBank className="w-8 h-8 text-accent-400" />
           </div>
@@ -925,11 +926,11 @@ export function BrokersView() {
           >
             Add Your First Account
           </button>
-        </div>
+        </Card>
       ) : (
         <>
           {/* Portfolio Summary */}
-          <div className="glass-card rounded-xl p-6 mb-6">
+          <Card variant="glass" className="p-6 mb-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[12px] text-surface-600 uppercase tracking-wider mb-1">
@@ -956,11 +957,11 @@ export function BrokersView() {
                 </div>
               )}
             </div>
-          </div>
+          </Card>
 
           {/* History Chart */}
           {snapshots.length >= 2 && (
-            <div className="glass-card rounded-xl p-5 mb-6">
+            <Card variant="glass" className="p-5 mb-6">
               <h3 className="text-[14px] font-semibold text-surface-950 mb-3 flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-violet-500" />
                 Broker History
@@ -970,7 +971,7 @@ export function BrokersView() {
                 lines={[{ key: 'brokerValue', label: 'Brokers', color: '#8b5cf6' }]}
                 height={180}
               />
-            </div>
+            </Card>
           )}
 
           {/* Account Cards */}

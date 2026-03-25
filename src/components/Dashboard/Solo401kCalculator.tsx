@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { Landmark, ChevronDown, ChevronUp, Info, Plus, Trash2, Calculator } from 'lucide-react';
 import { useAppContext } from '../../contexts/AppContext';
+import { Card } from '@/components/ui/card';
 
 interface Solo401kCalculatorProps {
   defaultGross: number;
@@ -241,7 +242,7 @@ export function Solo401kCalculator({
   }
 
   return (
-    <div className="glass-card rounded-xl overflow-hidden">
+    <Card variant="glass" className="overflow-hidden">
       {/* Header */}
       <button
         onClick={() => setExpanded(!expanded)}
@@ -507,6 +508,6 @@ export function Solo401kCalculator({
           </button>
         </div>
       )}
-    </div>
+    </Card>
   );
 }

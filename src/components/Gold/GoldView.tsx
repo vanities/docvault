@@ -18,6 +18,7 @@ import {
 import type { GoldEntry, GoldData, MetalType, CoinSize, PortfolioSnapshot } from '../../types';
 import { API_BASE } from '../../constants';
 import { HistoryChart } from '../common/HistoryChart';
+import { Card } from '@/components/ui/card';
 
 const API = '/api/gold';
 
@@ -639,7 +640,7 @@ export function GoldView() {
 
       {/* Scan result message */}
       {scanError && (
-        <div className="glass-card rounded-xl p-3 flex items-center justify-between text-sm">
+        <Card variant="glass" className="p-3 flex items-center justify-between text-sm">
           <span className="text-surface-600">{scanError}</span>
           <button
             onClick={() => setScanError(null)}
@@ -647,12 +648,12 @@ export function GoldView() {
           >
             Dismiss
           </button>
-        </div>
+        </Card>
       )}
 
       {/* Spot Price Banner */}
       {Object.keys(spotPrices).length > 0 && (
-        <div className="glass-card rounded-xl p-4">
+        <Card variant="glass" className="p-4">
           <h3 className="text-xs font-semibold text-surface-600 uppercase tracking-wider mb-3">
             Live Spot Prices (per troy oz)
           </h3>
@@ -673,25 +674,25 @@ export function GoldView() {
                 )
             )}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Summary Cards */}
       {data.entries.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="glass-card rounded-xl p-4">
+          <Card variant="glass" className="p-4">
             <span className="text-xs text-surface-600">Current Value</span>
             <p className="text-lg font-semibold text-surface-950">
               {formatUsd(summary.totalCurrentValue)}
             </p>
-          </div>
-          <div className="glass-card rounded-xl p-4">
+          </Card>
+          <Card variant="glass" className="p-4">
             <span className="text-xs text-surface-600">Total Cost</span>
             <p className="text-lg font-semibold text-surface-950">
               {formatUsd(summary.totalPurchaseValue)}
             </p>
-          </div>
-          <div className="glass-card rounded-xl p-4">
+          </Card>
+          <Card variant="glass" className="p-4">
             <span className="text-xs text-surface-600">Gain/Loss</span>
             <p
               className={`text-lg font-semibold flex items-center gap-1 ${isGain ? 'text-accent-500' : 'text-danger-500'}`}
@@ -700,19 +701,19 @@ export function GoldView() {
               {formatUsd(Math.abs(summary.totalGainLoss))}
               <span className="text-xs font-normal">({gainPercent}%)</span>
             </p>
-          </div>
-          <div className="glass-card rounded-xl p-4">
+          </Card>
+          <Card variant="glass" className="p-4">
             <span className="text-xs text-surface-600">Total Pure oz</span>
             <p className="text-lg font-semibold text-surface-950">
               {summary.totalPureOz.toFixed(4)}
             </p>
-          </div>
+          </Card>
         </div>
       )}
 
       {/* By Metal Breakdown */}
       {Object.keys(summary.byMetal).length > 1 && (
-        <div className="glass-card rounded-xl p-4">
+        <Card variant="glass" className="p-4">
           <h3 className="text-xs font-semibold text-surface-600 uppercase tracking-wider mb-3">
             By Metal
           </h3>
@@ -751,12 +752,12 @@ export function GoldView() {
               );
             })}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Gold History Chart */}
       {snapshots.filter((s) => s.goldValue && s.goldValue > 0).length >= 2 && (
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <h3 className="text-[14px] font-semibold text-surface-950 mb-3 flex items-center gap-2">
             <BarChart3 className="w-4 h-4 text-yellow-500" />
             Gold Value History
@@ -766,7 +767,7 @@ export function GoldView() {
             lines={[{ key: 'goldValue', label: 'Gold', color: '#eab308' }]}
             height={180}
           />
-        </div>
+        </Card>
       )}
 
       {/* Add Entry Form */}
@@ -981,13 +982,13 @@ export function GoldView() {
 
       {/* Entries List */}
       {data.entries.length === 0 ? (
-        <div className="glass-card rounded-xl p-10 text-center">
+        <Card variant="glass" className="p-10 text-center">
           <Coins className="w-10 h-10 text-yellow-500/40 mx-auto mb-3" />
           <p className="text-surface-600 text-sm">No precious metals entries yet.</p>
           <p className="text-surface-500 text-xs mt-1">
             Click "Add Entry" to start tracking your physical gold.
           </p>
-        </div>
+        </Card>
       ) : (
         <EntriesList
           entries={data.entries}
@@ -1206,7 +1207,7 @@ function EntriesList({
         const isExpanded = expanded === entry.id;
 
         return (
-          <div key={entry.id} className="glass-card rounded-xl overflow-hidden">
+          <Card variant="glass" key={entry.id} className="overflow-hidden">
             <button
               onClick={() => setExpanded(isExpanded ? null : entry.id)}
               className="w-full flex items-center justify-between p-4 text-left hover:bg-surface-100/50 transition-colors"
@@ -1361,7 +1362,7 @@ function EntriesList({
                 </div>
               </div>
             )}
-          </div>
+          </Card>
         );
       })}
     </div>
