@@ -13,33 +13,14 @@ import {
 } from 'lucide-react';
 import type { Sale, SaleProduct, SalesData } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 const API = '/api/sales';
 
-// ── Standardized button styles ──────────────────────────────────────
-const BTN = {
-  primary: (color: string) =>
-    `w-full py-3 bg-${color}-500 text-white font-semibold rounded-xl hover:bg-${color}-400 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm`,
-  savePrimary: (color: string) =>
-    `flex-1 py-2.5 bg-${color}-500 text-white text-sm font-semibold rounded-xl hover:bg-${color}-400 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5`,
-  cancel:
-    'flex-1 py-2.5 bg-surface-200 text-surface-700 text-sm font-semibold rounded-xl hover:bg-surface-300 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5',
-  action:
-    'flex items-center gap-1.5 px-3 py-2 text-[12px] font-semibold text-surface-600 bg-surface-100 border border-border/50 rounded-xl hover:bg-surface-200 hover:text-surface-800 active:scale-[0.97] transition-all',
-  actionDanger:
-    'flex items-center gap-1.5 px-3 py-2 text-[12px] font-semibold text-surface-600 bg-surface-100 border border-border/50 rounded-xl hover:bg-danger-500/10 hover:text-danger-500 hover:border-danger-500/20 active:scale-[0.97] transition-all',
-  addSection: (color: string) =>
-    `flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-semibold text-${color}-600 bg-${color}-500/10 border border-${color}-500/20 rounded-xl hover:bg-${color}-500/15 active:scale-[0.97] transition-all`,
-  cancelSection:
-    'flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-semibold text-surface-600 bg-surface-100 border border-border/50 rounded-xl hover:bg-surface-200 active:scale-[0.97] transition-all',
-} as const;
-
-const INPUT =
-  'w-full px-3 py-2.5 bg-surface-100 border border-border rounded-xl text-sm text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400';
-const INPUT_EDIT =
-  'w-full px-2.5 py-2 bg-surface-50 border border-border rounded-xl text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400';
-const LABEL = 'text-[11px] text-surface-500 uppercase tracking-wider font-medium block mb-1';
-const LABEL_SM = 'text-[10px] text-surface-500 uppercase tracking-wider font-medium';
+const SELECT_CLASS =
+  'h-10 w-full rounded-xl border border-border bg-surface-100 px-3 py-2.5 text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-accent-400/30 focus:border-accent-400';
 
 export function SalesView() {
   const { selectedEntity, entities } = useAppContext();
@@ -259,33 +240,33 @@ export function SalesView() {
         </h2>
 
         <div>
-          <label className={LABEL}>Customer</label>
-          <input type="text" value={person} onChange={(e) => setPerson(e.target.value)} placeholder="John Smith" list="known-customers" required autoComplete="off" className={INPUT} />
+          <Label className="mb-1">Customer</Label>
+          <Input type="text" value={person} onChange={(e) => setPerson(e.target.value)} placeholder="John Smith" list="known-customers" required autoComplete="off" />
           <datalist id="known-customers">{knownCustomers.map((c) => <option key={c} value={c} />)}</datalist>
         </div>
 
         <div>
-          <label className={LABEL}>Product</label>
-          <select value={productId} onChange={(e) => setProductId(e.target.value)} className={INPUT}>
+          <Label className="mb-1">Product</Label>
+          <select value={productId} onChange={(e) => setProductId(e.target.value)} className={SELECT_CLASS}>
             {data.products.map((p) => <option key={p.id} value={p.id}>{p.name} — ${p.price.toFixed(2)}</option>)}
           </select>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={LABEL}>Quantity</label>
-            <input type="number" min={1} value={quantity} onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))} className={`${INPUT} text-center`} />
+            <Label className="mb-1">Quantity</Label>
+            <Input type="number" min={1} value={quantity} onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))} className="text-center" />
           </div>
           <div>
-            <label className={LABEL}>Date</label>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={INPUT} />
+            <Label className="mb-1">Date</Label>
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
         </div>
 
-        <button type="submit" disabled={submitting || !person.trim() || !productId} className={BTN.primary('amber')}>
+        <Button type="submit" disabled={submitting || !person.trim() || !productId} size="lg" className="w-full bg-amber-500 hover:bg-amber-400">
           <DollarSign className="w-4 h-4" />
           Record Sale — ${lineTotal.toFixed(2)}
-        </button>
+        </Button>
       </form>
 
       {/* Sales History */}
@@ -308,6 +289,7 @@ export function SalesView() {
           return (
             <div key={month} className="glass-card rounded-xl overflow-hidden">
               <button
+                type="button"
                 onClick={() => setExpandedMonth(isExpanded ? null : month)}
                 className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-surface-100/50 transition-colors"
               >
@@ -331,33 +313,33 @@ export function SalesView() {
                       return (
                         <div key={sale.id} className="px-4 py-3 space-y-2 bg-surface-50 border-b border-border/50 last:border-b-0">
                           <div>
-                            <label className={LABEL_SM}>Customer</label>
-                            <input type="text" value={editPerson} onChange={(e) => setEditPerson(e.target.value)} list="known-customers-edit" autoComplete="off" className={INPUT_EDIT} />
+                            <Label className="text-[10px]">Customer</Label>
+                            <Input type="text" value={editPerson} onChange={(e) => setEditPerson(e.target.value)} list="known-customers-edit" autoComplete="off" className="bg-surface-50" />
                             <datalist id="known-customers-edit">{knownCustomers.map((c) => <option key={c} value={c} />)}</datalist>
                           </div>
                           <div>
-                            <label className={LABEL_SM}>Product</label>
-                            <select value={editProductId} onChange={(e) => setEditProductId(e.target.value)} className={INPUT_EDIT}>
+                            <Label className="text-[10px]">Product</Label>
+                            <select value={editProductId} onChange={(e) => setEditProductId(e.target.value)} className={SELECT_CLASS}>
                               {data.products.map((p) => <option key={p.id} value={p.id}>{p.name} — ${p.price.toFixed(2)}</option>)}
                             </select>
                           </div>
                           <div className="grid grid-cols-2 gap-2">
                             <div>
-                              <label className={LABEL_SM}>Qty</label>
-                              <input type="number" min={1} value={editQuantity} onChange={(e) => setEditQuantity(Math.max(1, parseInt(e.target.value) || 1))} className={`${INPUT_EDIT} text-center`} />
+                              <Label className="text-[10px]">Qty</Label>
+                              <Input type="number" min={1} value={editQuantity} onChange={(e) => setEditQuantity(Math.max(1, parseInt(e.target.value) || 1))} className="bg-surface-50 text-center" />
                             </div>
                             <div>
-                              <label className={LABEL_SM}>Date</label>
-                              <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className={INPUT_EDIT} />
+                              <Label className="text-[10px]">Date</Label>
+                              <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="bg-surface-50" />
                             </div>
                           </div>
                           <div className="flex gap-2 pt-1">
-                            <button type="button" onClick={() => void handleUpdateSale(sale.id)} className={BTN.savePrimary('amber')}>
+                            <Button type="button" onClick={() => void handleUpdateSale(sale.id)} className="flex-1 bg-amber-500 hover:bg-amber-400">
                               <Check className="w-3.5 h-3.5" /> Save
-                            </button>
-                            <button type="button" onClick={() => setEditingSaleId(null)} className={BTN.cancel}>
+                            </Button>
+                            <Button type="button" variant="secondary" onClick={() => setEditingSaleId(null)} className="flex-1">
                               <X className="w-3.5 h-3.5" /> Cancel
-                            </button>
+                            </Button>
                           </div>
                         </div>
                       );
@@ -381,12 +363,12 @@ export function SalesView() {
                           </div>
                         </div>
                         <div className="flex gap-2 mt-2.5">
-                          <button onClick={() => startEditSale(sale)} className={BTN.action}>
+                          <Button type="button" variant="outline" size="sm" onClick={() => startEditSale(sale)}>
                             <Pencil className="w-3 h-3" /> Edit
-                          </button>
-                          <button onClick={() => void handleDelete(sale.id)} className={BTN.actionDanger}>
+                          </Button>
+                          <Button type="button" variant="ghost-danger" size="sm" onClick={() => void handleDelete(sale.id)}>
                             <Trash2 className="w-3 h-3" /> Delete
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     );
@@ -405,20 +387,26 @@ export function SalesView() {
             <Package className="w-4 h-4 text-surface-600" />
             Products
           </h2>
-          <button onClick={() => setShowProductForm(!showProductForm)} className={showProductForm ? BTN.cancelSection : BTN.addSection('amber')}>
-            {showProductForm ? <><X className="w-3 h-3" /> Cancel</> : <><Plus className="w-3 h-3" /> Add</>}
-          </button>
+          {showProductForm ? (
+            <Button type="button" variant="outline" size="sm" onClick={() => setShowProductForm(false)}>
+              <X className="w-3 h-3" /> Cancel
+            </Button>
+          ) : (
+            <Button type="button" variant="outline" size="sm" className="text-amber-600 bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/15" onClick={() => setShowProductForm(true)}>
+              <Plus className="w-3 h-3" /> Add
+            </Button>
+          )}
         </div>
 
         {showProductForm && (
           <form onSubmit={handleAddProduct} className="glass-card rounded-xl p-3 space-y-2">
             <div className="grid grid-cols-[1fr_5rem] gap-2">
-              <input type="text" value={newProductName} onChange={(e) => setNewProductName(e.target.value)} placeholder="Eggs (dozen)" required className={INPUT} />
-              <input type="number" step="0.01" min="0" value={newProductPrice} onChange={(e) => setNewProductPrice(e.target.value)} placeholder="5.00" required className={`${INPUT} text-center`} />
+              <Input type="text" value={newProductName} onChange={(e) => setNewProductName(e.target.value)} placeholder="Eggs (dozen)" required />
+              <Input type="number" step="0.01" min="0" value={newProductPrice} onChange={(e) => setNewProductPrice(e.target.value)} placeholder="5.00" required className="text-center" />
             </div>
-            <button type="submit" className="w-full py-2.5 bg-amber-500 text-white font-semibold rounded-xl hover:bg-amber-400 active:scale-[0.98] transition-all text-sm">
+            <Button type="submit" className="w-full bg-amber-500 hover:bg-amber-400">
               Add Product
-            </button>
+            </Button>
           </form>
         )}
 
@@ -433,16 +421,16 @@ export function SalesView() {
               return (
                 <div key={product.id} className="px-4 py-3 bg-surface-50 border-b border-border/50 last:border-b-0 space-y-2">
                   <div className="grid grid-cols-[1fr_5rem] gap-2">
-                    <input type="text" value={editProductName} onChange={(e) => setEditProductName(e.target.value)} className={INPUT_EDIT} />
-                    <input type="number" step="0.01" min="0" value={editProductPrice} onChange={(e) => setEditProductPrice(e.target.value)} className={`${INPUT_EDIT} text-center`} />
+                    <Input type="text" value={editProductName} onChange={(e) => setEditProductName(e.target.value)} className="bg-surface-50" />
+                    <Input type="number" step="0.01" min="0" value={editProductPrice} onChange={(e) => setEditProductPrice(e.target.value)} className="bg-surface-50 text-center" />
                   </div>
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => void handleUpdateProduct(product.id)} className={BTN.savePrimary('amber')}>
+                    <Button type="button" onClick={() => void handleUpdateProduct(product.id)} className="flex-1 bg-amber-500 hover:bg-amber-400">
                       <Check className="w-3.5 h-3.5" /> Save
-                    </button>
-                    <button type="button" onClick={() => setEditingProductId(null)} className={BTN.cancel}>
+                    </Button>
+                    <Button type="button" variant="secondary" onClick={() => setEditingProductId(null)} className="flex-1">
                       <X className="w-3.5 h-3.5" /> Cancel
-                    </button>
+                    </Button>
                   </div>
                 </div>
               );
@@ -455,12 +443,12 @@ export function SalesView() {
                   <span className="text-sm font-bold text-surface-950 tabular-nums">${product.price.toFixed(2)}</span>
                 </div>
                 <div className="flex gap-2 mt-2">
-                  <button onClick={() => startEditProduct(product)} className={BTN.action}>
+                  <Button type="button" variant="outline" size="sm" onClick={() => startEditProduct(product)}>
                     <Pencil className="w-3 h-3" /> Edit
-                  </button>
-                  <button onClick={() => void handleDeleteProduct(product.id)} className={BTN.actionDanger}>
+                  </Button>
+                  <Button type="button" variant="ghost-danger" size="sm" onClick={() => void handleDeleteProduct(product.id)}>
                     <Trash2 className="w-3 h-3" /> Delete
-                  </button>
+                  </Button>
                 </div>
               </div>
             );

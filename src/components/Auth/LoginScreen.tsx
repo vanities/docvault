@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import { Lock, AlertCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 interface LoginScreenProps {
   onLogin: () => void;
@@ -51,31 +54,25 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="text-[11px] text-surface-600 uppercase tracking-wider block mb-1">
-              Username
-            </label>
-            <input
+            <Label className="mb-1">Username</Label>
+            <Input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               autoComplete="username"
               autoFocus
               required
-              className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-400/30 focus:border-accent-400"
             />
           </div>
 
           <div>
-            <label className="text-[11px] text-surface-600 uppercase tracking-wider block mb-1">
-              Password
-            </label>
-            <input
+            <Label className="mb-1">Password</Label>
+            <Input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
               required
-              className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-400/30 focus:border-accent-400"
             />
           </div>
 
@@ -86,13 +83,14 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             </p>
           )}
 
-          <button
+          <Button
             type="submit"
+            size="lg"
             disabled={submitting || !username.trim() || !password}
-            className="w-full py-3 bg-accent-500 text-white font-medium rounded-xl hover:bg-accent-400 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full"
           >
             {submitting ? 'Signing in...' : 'Sign In'}
-          </button>
+          </Button>
         </form>
       </div>
     </div>
