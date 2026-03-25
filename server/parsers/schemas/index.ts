@@ -252,8 +252,10 @@ export interface Parsed1099CompositeSchema extends ParserMetadata {
 export interface Parsed1098Schema extends ParserMetadata {
   _documentType: '1098';
   lender?: string;
+  lenderTin?: string;
   loanNumber?: string;
   borrowerName?: string;
+  borrowerTin?: string;
   borrowerAddress?: string;
   mortgageInterest?: number;
   outstandingPrincipal?: number;
@@ -263,6 +265,12 @@ export interface Parsed1098Schema extends ParserMetadata {
   pointsPaid?: number;
   propertyAddress?: string;
   propertyTax?: number;
+  // 1098-E
+  studentLoanInterest?: number;
+  // 1098-T
+  tuitionPayments?: number;
+  scholarshipsGrants?: number;
+  formVariant?: string;
   taxYear?: number;
 }
 
@@ -402,8 +410,15 @@ export interface ParsedKoinly8949Schema extends ParserMetadata {
 // --- Koinly Schedule ---
 export interface ParsedKoinlyScheduleSchema extends ParserMetadata {
   _documentType: 'koinly-schedule';
+  scheduleType?: 'D' | '1' | 'both';
+  // Schedule D
+  shortTermGainLoss?: number;
+  longTermGainLoss?: number;
+  totalGainLoss?: number;
+  // Schedule 1
   digitalAssetIncome?: number;
   otherIncome?: Array<{ description: string; amount: number }>;
+  taxYear?: number;
 }
 
 // Union of all typed parser outputs

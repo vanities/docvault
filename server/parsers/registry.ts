@@ -47,6 +47,8 @@ const hintToCanonical: Record<string, string> = {
   'certificate': 'certificate',
   'medical-record': 'medical-record',
   'appraisal': 'appraisal',
+  'koinly-8949': 'koinly-8949',
+  'koinly-schedule': 'koinly-schedule',
 };
 
 // Main entry point — replaces parseWithAI() as the parser router.
@@ -133,6 +135,10 @@ import { bankStatementParser } from './bank-statement.js';
 import { k1Parser } from './k1.js';
 import { receiptParser } from './receipt.js';
 import { creditCardParser } from './credit-card.js';
+import { parser1098 } from './1098.js';
+import { composite1099Parser } from './1099-composite.js';
+import { koinly8949Parser } from './koinly-8949.js';
+import { koinlyScheduleParser } from './koinly-schedule.js';
 
 registerParser(genericParser);
 registerParser(w2Parser);
@@ -145,3 +151,7 @@ registerParser(bankStatementParser);
 registerParser(k1Parser);
 registerParser(receiptParser);
 registerParser(creditCardParser);
+registerParser(parser1098);
+registerParser(composite1099Parser);
+registerParser(koinly8949Parser);
+registerParser(koinlyScheduleParser);
