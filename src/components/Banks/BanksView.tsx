@@ -21,6 +21,7 @@ import type { PortfolioSnapshot } from '../../types';
 import { API_BASE } from '../../constants';
 import { HistoryChart } from '../common/HistoryChart';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 // Types
 
@@ -308,21 +309,26 @@ function SimplefinBanner({
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <button
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
           onClick={onRefresh}
           disabled={isRefreshing}
-          className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-accent-500 hover:bg-accent-500/10 rounded-lg transition-colors disabled:opacity-50"
+          className="text-accent-500 hover:bg-accent-500/10 hover:text-accent-500"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
           {isRefreshing ? 'Syncing...' : 'Sync'}
-        </button>
-        <button
+        </Button>
+        <Button
+          type="button"
+          variant="ghost-danger"
+          size="icon-sm"
           onClick={onDisconnect}
-          className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-surface-500 hover:text-danger-400 hover:bg-danger-500/10 rounded-lg transition-colors"
           title="Disconnect SimpleFIN"
         >
           <Unlink className="w-3.5 h-3.5" />
-        </button>
+        </Button>
       </div>
     </Card>
   );
@@ -481,14 +487,15 @@ export function BanksView() {
           )}
         </div>
         {hasAccounts && (
-          <button
+          <Button
+            type="button"
+            variant="outline"
             onClick={() => loadBalances(true)}
             disabled={isRefreshing}
-            className="flex items-center gap-2 px-4 py-2.5 text-[13px] font-medium text-surface-800 hover:bg-surface-200/50 rounded-xl transition-colors border border-border disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             {isRefreshing ? 'Refreshing...' : 'Refresh'}
-          </button>
+          </Button>
         )}
       </div>
 

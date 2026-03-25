@@ -23,6 +23,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 interface DocumentCardProps {
   document: TaxDocument;
@@ -256,26 +258,30 @@ export function DocumentCard({
             <div className="flex items-center gap-0.5">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
                     onClick={() => onUpdate(doc.id, { tracked: !isTracked })}
-                    className={`p-2 md:p-1 rounded transition-opacity ${
+                    className={`${
                       !isTracked
                         ? 'text-surface-500 opacity-100'
                         : 'text-surface-600 hover:text-surface-900 opacity-100 md:opacity-0 md:group-hover:opacity-100'
                     }`}
                   >
                     {isTracked ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                  </button>
+                  </Button>
                 </TooltipTrigger>
                 <TooltipContent>{isTracked ? 'Exclude from totals' : 'Include in totals'}</TooltipContent>
               </Tooltip>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button
-                    className="p-2 md:p-1 text-surface-600 hover:text-surface-900 rounded opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="text-surface-600 hover:text-surface-900 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
                   >
                     <MoreVertical className="w-4 h-4" />
-                  </button>
+                  </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => setIsEditing(true)}>
@@ -314,7 +320,7 @@ export function DocumentCard({
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] bg-info-500/15 text-info-400"
               >
                 {tag}
-                <button onClick={() => handleRemoveTag(tag)} className="hover:text-info-400/80">
+                <button type="button" onClick={() => handleRemoveTag(tag)} className="hover:text-info-400/80">
                   <X className="w-3 h-3" />
                 </button>
               </span>
@@ -322,13 +328,13 @@ export function DocumentCard({
 
             {/* Add tag button */}
             <div className="inline-flex items-center gap-1">
-              <input
+              <Input
                 type="text"
                 value={newTag}
                 onChange={(e) => setNewTag(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAddTag()}
                 placeholder="Add tag..."
-                className="w-16 text-[11px] bg-transparent border border-transparent focus:border-surface-500 rounded px-1 py-0.5 text-surface-700 placeholder-surface-600"
+                className="w-16 h-5 text-[11px] bg-transparent border-transparent focus-visible:border-surface-500 rounded px-1 shadow-none"
               />
               {newTag && (
                 <button onClick={handleAddTag} className="text-info-400">
@@ -409,15 +415,17 @@ export function DocumentCard({
                 />
               </div>
               <div className="flex gap-2">
-                <button
+                <Button
+                  size="xs"
                   onClick={handleSave}
                   disabled={isSaving}
-                  className="flex items-center gap-1 px-2.5 py-1 bg-accent-500 text-surface-0 text-[11px] font-medium rounded-lg hover:bg-accent-400 disabled:opacity-50"
                 >
                   <Check className="w-3 h-3" />
                   {isSaving ? 'Saving...' : 'Save'}
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="xs"
                   onClick={() => {
                     setIsEditing(false);
                     setEditedType(doc.type);
@@ -425,10 +433,9 @@ export function DocumentCard({
                     setEditedEntity(doc.entity);
                     setEditedYear(doc.taxYear);
                   }}
-                  className="px-2.5 py-1 text-surface-700 text-[11px] hover:bg-surface-300/30 rounded-lg"
                 >
                   Cancel
-                </button>
+                </Button>
               </div>
             </div>
           )}

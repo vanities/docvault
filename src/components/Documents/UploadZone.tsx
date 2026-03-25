@@ -10,6 +10,8 @@ import {
 import { detectDocumentType } from '../../utils/documentDetection';
 import { FileIcon } from '../common/FileIcon';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 interface UploadZoneProps {
   entity: Entity;
@@ -563,14 +565,16 @@ export function UploadZone({
                               <>
                                 <Wand2 className="w-3 h-3" />
                                 <span>Auto-naming</span>
-                                <button
+                                <Button
+                                  variant="ghost"
+                                  size="xs"
                                   onClick={() => suggestFilename(file)}
-                                  className="ml-auto flex items-center gap-1 px-1.5 py-0.5 text-[11px] text-purple-400 hover:bg-purple-500/10 rounded transition-colors"
+                                  className="ml-auto text-purple-400 hover:bg-purple-500/10"
                                   title="Re-analyze with AI"
                                 >
                                   <Sparkles className="w-3 h-3" />
                                   AI
-                                </button>
+                                </Button>
                               </>
                             )}
                           </div>
@@ -578,14 +582,14 @@ export function UploadZone({
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {/* Source/Vendor name */}
                             <div className="col-span-2">
-                              <input
+                              <Input
                                 type="text"
                                 placeholder="Company/Vendor name"
                                 value={metadata.source}
                                 onChange={(e) =>
                                   handleMetadataChange(file.name, 'source', e.target.value)
                                 }
-                                className="w-full text-[12px] bg-surface-200/50 border border-border text-surface-900 rounded px-2 py-1 placeholder:text-surface-500"
+                                className="h-7 text-[12px] rounded px-2"
                               />
                             </div>
 
@@ -628,16 +632,16 @@ export function UploadZone({
                                     </option>
                                   ))}
                                 </select>
-                                <input
+                                <Input
                                   type="number"
-                                  min="1"
-                                  max="31"
+                                  min={1}
+                                  max={31}
                                   placeholder="Day"
                                   value={metadata.day || ''}
                                   onChange={(e) =>
                                     handleMetadataChange(file.name, 'day', parseInt(e.target.value))
                                   }
-                                  className="text-[12px] bg-surface-200/50 border border-border text-surface-900 rounded px-2 py-1 placeholder:text-surface-500"
+                                  className="h-7 text-[12px] rounded px-2"
                                 />
                               </>
                             )}
@@ -645,14 +649,14 @@ export function UploadZone({
                             {/* Description for receipts */}
                             {needsDescription(currentType) && (
                               <div className="col-span-2">
-                                <input
+                                <Input
                                   type="text"
                                   placeholder="Description (optional)"
                                   value={metadata.description}
                                   onChange={(e) =>
                                     handleMetadataChange(file.name, 'description', e.target.value)
                                   }
-                                  className="w-full text-[12px] bg-surface-200/50 border border-border text-surface-900 rounded px-2 py-1 placeholder:text-surface-500"
+                                  className="h-7 text-[12px] rounded px-2"
                                 />
                               </div>
                             )}
@@ -740,24 +744,25 @@ export function UploadZone({
                         </div>
                       </div>
 
-                      <button
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
                         onClick={() => handleRemove(file.name)}
-                        className="p-1 text-surface-600 hover:text-surface-800 transition-colors"
                       >
                         <X className="w-4 h-4" />
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            <button
+            <Button
               onClick={handleUploadAll}
-              className="mt-4 w-full bg-accent-500 text-surface-0 py-2.5 px-4 rounded-xl font-medium hover:bg-accent-400 transition-colors text-[13px]"
+              className="mt-4 w-full"
             >
               Upload {pendingFiles.length} file{pendingFiles.length > 1 ? 's' : ''}
-            </button>
+            </Button>
           </div>
         </div>
       )}

@@ -3,6 +3,7 @@ import { CopyableField } from './CopyableField';
 import type { ExpenseSummary as ExpenseSummaryType, TaxDocument, ParsedReceipt } from '../../types';
 import { EXPENSE_CATEGORIES } from '../../config';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 interface ExpenseSummaryProps {
   summary: ExpenseSummaryType;
@@ -49,13 +50,10 @@ export function ExpenseSummary({
       {/* Header with download */}
       {onDownload && documents.length > 0 && (
         <div className="flex justify-end">
-          <button
-            onClick={onDownload}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-surface-700 hover:text-surface-950 bg-surface-200/50 hover:bg-surface-200 border border-border rounded-lg transition-colors"
-          >
+          <Button variant="outline" size="sm" onClick={onDownload}>
             <Download className="w-4 h-4" />
             Download Expense Docs
-          </button>
+          </Button>
         </div>
       )}
 
@@ -159,14 +157,11 @@ export function ExpenseSummary({
             <h3 className="font-semibold text-surface-950 text-[14px]">
               Mileage Deduction{summary.mileageCount > 0 ? ` (${summary.mileageCount} trips)` : ''}
             </h3>
-            <button
-              onClick={onNavigateToMileage}
-              className="flex items-center gap-1.5 text-[13px] font-medium text-teal-500 hover:text-teal-400 transition-colors"
-            >
+            <Button variant="ghost" size="sm" className="text-teal-500 hover:text-teal-400" onClick={onNavigateToMileage}>
               <Fuel className="w-4 h-4" />
               {summary.mileageCount > 0 ? 'View Mileage Log' : 'Log Mileage'}
               <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+            </Button>
           </div>
           {summary.mileageCount > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -20,6 +20,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 interface EntitySwitcherProps {
   selectedEntity: Entity;
@@ -198,12 +199,13 @@ export function EntitySwitcher({
         const isSelected = selectedEntity === entity.id;
 
         return (
-          <button
+          <Button
             key={entity.id}
+            variant="outline"
             onClick={() => onEntityChange(entity.id as Entity)}
             disabled={disabled}
             className={`
-              flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed
+              border-2 h-auto py-2
               ${
                 isSelected
                   ? `${colors.bg} ${colors.border} ${colors.text} ring-2 ${colors.ring} ring-offset-1`
@@ -213,32 +215,34 @@ export function EntitySwitcher({
           >
             <Icon className="w-4 h-4" />
             <span className="font-medium text-sm">{entity.name}</span>
-          </button>
+          </Button>
         );
       })}
 
       {/* Add Entity Button */}
       {onAddEntity && (
-        <button
+        <Button
+          variant="outline"
           onClick={() => setShowAddModal(true)}
           disabled={disabled}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-dashed border-border/50 text-surface-500 hover:border-border hover:text-surface-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          className="border-2 border-dashed border-border/50 text-surface-500 hover:border-border hover:text-surface-600 h-auto py-2"
         >
           <Plus className="w-4 h-4" />
           <span className="font-medium text-sm">Add</span>
-        </button>
+        </Button>
       )}
 
       {/* Manage Button */}
       {onRemoveEntity && entities.length > 0 && (
-        <button
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={() => setShowManageModal(true)}
           disabled={disabled}
-          className="p-2 rounded-lg text-surface-400 hover:text-surface-600 hover:bg-surface-200/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           title="Manage entities"
         >
           <Settings className="w-4 h-4" />
-        </button>
+        </Button>
       )}
 
       {/* Add Entity Modal */}
@@ -254,12 +258,11 @@ export function EntitySwitcher({
               <label className="block text-sm font-medium text-surface-700 mb-1">
                 Entity Name
               </label>
-              <input
+              <Input
                 type="text"
                 value={newEntityName}
                 onChange={(e) => setNewEntityName(e.target.value)}
                 placeholder="e.g., My New LLC"
-                className="w-full px-3 py-2 border border-border/50 rounded-lg bg-transparent text-surface-950 focus:outline-none focus:ring-2 focus:ring-ring"
                 autoFocus
               />
             </div>
@@ -375,11 +378,11 @@ export function EntitySwitcher({
               })()}
             {showEntityDetailModal &&
               (isEditing ? (
-                <input
+                <Input
                   type="text"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  className="text-lg font-semibold text-surface-950 border border-border/50 rounded px-2 py-1 bg-transparent"
+                  className="text-lg font-semibold h-auto px-2 py-1"
                   autoFocus
                 />
               ) : (
@@ -439,18 +442,20 @@ export function EntitySwitcher({
                         {AVAILABLE_ICONS.map(({ id, icon: IconComp, label }) => {
                           const colors = COLOR_MAP[editColor] || COLOR_MAP.gray;
                           return (
-                            <button
+                            <Button
                               key={id}
+                              variant="outline"
+                              size="icon-sm"
                               onClick={() => setEditIcon(id)}
                               title={label}
-                              className={`p-2 rounded-lg border-2 transition-all ${
+                              className={`border-2 ${
                                 editIcon === id
                                   ? `${colors.bg} ${colors.border} ${colors.text}`
                                   : 'bg-transparent border-border/50 text-surface-500 hover:border-border'
                               }`}
                             >
                               <IconComp className="w-4 h-4" />
-                            </button>
+                            </Button>
                           );
                         })}
                       </div>
@@ -547,13 +552,15 @@ export function EntitySwitcher({
                               </p>
                             </div>
                           </div>
-                          <button
+                          <Button
+                            variant="ghost-danger"
+                            size="icon-xs"
                             onClick={() => handleDeleteDoc(doc)}
-                            className="p-1 text-surface-400 hover:text-danger-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="opacity-0 group-hover:opacity-100"
                             title="Delete"
                           >
                             <X className="w-4 h-4" />
-                          </button>
+                          </Button>
                         </div>
                       );
                     })}

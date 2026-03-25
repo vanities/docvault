@@ -29,6 +29,8 @@ import { useToast } from '../../hooks/useToast';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import { API_BASE } from '../../constants';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   AVAILABLE_ICONS,
   DEFAULT_ENTITY_ICONS,
@@ -232,19 +234,22 @@ function DropboxConnectionSection() {
               )}
             </div>
             <div className="flex items-center gap-1.5">
-              <button
+              <Button
+                variant="ghost"
+                size="xs"
                 onClick={handleSyncNow}
                 disabled={syncing || !status.connected}
-                className="px-3 py-1.5 text-[11px] bg-accent-500/10 text-accent-400 rounded-lg hover:bg-accent-500/20 transition-colors disabled:opacity-40"
+                className="text-accent-400 bg-accent-500/10 hover:bg-accent-500/20"
               >
                 {syncing ? 'Syncing...' : 'Sync Now'}
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="secondary"
+                size="xs"
                 onClick={() => setShowTokenForm(!showTokenForm)}
-                className="px-3 py-1.5 text-[11px] text-surface-600 hover:text-surface-800 bg-surface-200/50 rounded-lg hover:bg-surface-200 transition-colors"
               >
                 Reauth
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -259,13 +264,13 @@ function DropboxConnectionSection() {
             rows={3}
             className="w-full px-3 py-2 bg-surface-100 border border-border rounded-lg text-[12px] font-mono text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-400/30 resize-none"
           />
-          <button
+          <Button
             type="submit"
+            size="sm"
             disabled={saving || !tokenInput.trim()}
-            className="px-4 py-2 bg-accent-500 text-white text-[12px] font-medium rounded-lg hover:bg-accent-400 active:scale-[0.98] transition-all disabled:opacity-40"
           >
             {saving ? 'Saving...' : 'Save Token'}
-          </button>
+          </Button>
         </form>
       )}
     </Card>
@@ -996,13 +1001,14 @@ export function SettingsView() {
                         </span>
                       )}
                     </div>
-                    <button
+                    <Button
+                      variant="ghost-danger"
+                      size="xs"
                       onClick={handleClearKey}
                       disabled={isSaving}
-                      className="text-[13px] text-danger-400 hover:text-danger-300"
                     >
                       Remove
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ) : hasKey && keySource === 'env' ? (
@@ -1021,39 +1027,43 @@ export function SettingsView() {
                     </div>
                   </div>
                   <div className="relative">
-                    <input
+                    <Input
                       type={showKey ? 'text' : 'password'}
                       value={anthropicKey}
                       onChange={(e) => setAnthropicKey(e.target.value)}
                       placeholder="Enter key to override..."
-                      className="w-full px-3 py-2.5 pr-10 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 font-mono placeholder:text-surface-500"
+                      className="pr-10 text-[13px] font-mono"
                     />
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="icon-xs"
                       onClick={() => setShowKey(!showKey)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-surface-600 hover:text-surface-800"
+                      className="absolute right-2 top-1/2 -translate-y-1/2"
                     >
                       {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-2">
                   <div className="relative">
-                    <input
+                    <Input
                       type={showKey ? 'text' : 'password'}
                       value={anthropicKey}
                       onChange={(e) => setAnthropicKey(e.target.value)}
                       placeholder="sk-ant-..."
-                      className="w-full px-3 py-2.5 pr-10 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 font-mono placeholder:text-surface-500"
+                      className="pr-10 text-[13px] font-mono"
                     />
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="icon-xs"
                       onClick={() => setShowKey(!showKey)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-surface-600 hover:text-surface-800"
+                      className="absolute right-2 top-1/2 -translate-y-1/2"
                     >
                       {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
+                    </Button>
                   </div>
                   <p className="text-[11px] text-surface-600">
                     Get your API key at{' '}
@@ -1072,14 +1082,13 @@ export function SettingsView() {
 
             {/* Save button */}
             {anthropicKey && (
-              <button
+              <Button
                 onClick={handleSaveKey}
                 disabled={isSaving}
-                className="flex items-center gap-2 px-4 py-2.5 bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 transition-colors disabled:opacity-50 text-[13px] font-medium"
               >
                 <Save className="w-4 h-4" />
                 {isSaving ? 'Saving...' : 'Save'}
-              </button>
+              </Button>
             )}
 
             {/* Status messages */}
@@ -1101,7 +1110,7 @@ export function SettingsView() {
               <label className="block text-[13px] font-medium text-surface-800 mb-2">
                 Claude Model
               </label>
-              <input
+              <Input
                 type="text"
                 value={claudeModel}
                 onChange={(e) => setClaudeModel(e.target.value)}
@@ -1110,7 +1119,7 @@ export function SettingsView() {
                   if (e.key === 'Enter') handleSaveModel(claudeModel);
                 }}
                 placeholder="claude-sonnet-4-6"
-                className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-xl text-[13px] text-surface-900 placeholder-surface-500 font-mono outline-none focus:ring-2 focus:ring-accent-500/30"
+                className="text-[13px] font-mono"
               />
               <p className="text-[11px] text-surface-500 mt-1">
                 Used for document parsing and filename suggestions. Saves on blur or Enter.
@@ -1145,30 +1154,30 @@ export function SettingsView() {
                       </span>
                     )}
                   </span>
-                  <button
+                  <Button
+                    variant="ghost-danger"
+                    size="xs"
                     onClick={handleRemoveGeoapifyKey}
                     disabled={isSaving}
-                    className="text-[13px] text-danger-400 hover:text-danger-300"
                   >
                     Remove
-                  </button>
+                  </Button>
                 </div>
               ) : (
                 <div className="flex gap-2">
-                  <input
+                  <Input
                     type="password"
                     value={newGeoapifyKey}
                     onChange={(e) => setNewGeoapifyKey(e.target.value)}
                     placeholder="Geoapify API key..."
-                    className="flex-1 px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 font-mono placeholder:text-surface-500"
+                    className="flex-1 text-[13px] font-mono"
                   />
-                  <button
+                  <Button
                     onClick={handleSaveGeoapifyKey}
                     disabled={isSaving || !newGeoapifyKey}
-                    className="px-3 py-2 text-[13px] text-surface-0 bg-accent-500 hover:bg-accent-400 rounded-xl transition-colors disabled:opacity-50 font-medium"
                   >
                     Save
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>
@@ -1188,16 +1197,17 @@ export function SettingsView() {
             <RefreshCw className="w-5 h-5" />
             Sync Status
           </h3>
-          <button
+          <Button
+            variant="ghost"
+            size="icon-xs"
             onClick={() => {
               void loadSyncStatus();
               void loadCacheStatus();
             }}
-            className="p-1.5 rounded-lg hover:bg-surface-300/30 text-surface-600 hover:text-surface-800 transition-colors"
             title="Refresh all"
           >
             <RefreshCw className="w-3.5 h-3.5" />
-          </button>
+          </Button>
         </div>
 
         <div className="space-y-3">
@@ -1423,10 +1433,10 @@ export function SettingsView() {
             />
           </div>
 
-          <button
+          <Button
             onClick={handleSaveSchedules}
             disabled={isScheduleSaving}
-            className="flex items-center gap-2 px-4 py-2.5 bg-violet-500 text-surface-0 rounded-xl hover:bg-violet-400 transition-colors disabled:opacity-50 text-[13px] font-medium"
+            className="bg-violet-500 hover:bg-violet-400"
           >
             {scheduleSaved ? (
               <>
@@ -1439,7 +1449,7 @@ export function SettingsView() {
                 {isScheduleSaving ? 'Saving...' : 'Save Schedules'}
               </>
             )}
-          </button>
+          </Button>
         </div>
       </Card>
 
@@ -1482,12 +1492,13 @@ export function SettingsView() {
                 </p>
               </div>
             </div>
-            <button
+            <Button
+              variant="ghost-danger"
+              size="xs"
               onClick={handleRemoveSimplefin}
-              className="text-[11px] text-red-400 hover:text-red-300 transition-colors"
             >
               Remove SimpleFIN
-            </button>
+            </Button>
           </div>
         ) : (
           <div className="space-y-3">
@@ -1505,13 +1516,13 @@ export function SettingsView() {
                 setup token and paste it here
               </p>
             </div>
-            <button
+            <Button
               onClick={handleSaveSimplefin}
               disabled={isSimplefinSaving || !simplefinToken}
-              className="w-full px-4 py-2.5 text-[13px] font-medium bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 transition-colors disabled:opacity-50"
+              className="w-full"
             >
               {isSimplefinSaving ? 'Connecting...' : 'Connect SimpleFIN'}
-            </button>
+            </Button>
           </div>
         )}
       </Card>
@@ -1547,12 +1558,13 @@ export function SettingsView() {
                 </p>
               </div>
             </div>
-            <button
+            <Button
+              variant="ghost-danger"
+              size="xs"
               onClick={handleRemoveSnapTrade}
-              className="text-[11px] text-red-400 hover:text-red-300 transition-colors"
             >
               Disconnect SnapTrade
-            </button>
+            </Button>
           </div>
         ) : (
           <div className="space-y-3">
@@ -1576,13 +1588,13 @@ export function SettingsView() {
                 className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-xl text-[13px] text-surface-900 placeholder-surface-500 outline-none focus:ring-2 focus:ring-accent-500/30 font-mono"
               />
             </div>
-            <button
+            <Button
               onClick={handleSnapTradeSetup}
               disabled={isSnapTradeSaving || !snapTradeClientId || !snapTradeConsumerKey}
-              className="w-full px-4 py-2.5 text-[13px] font-medium bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 transition-colors disabled:opacity-50"
+              className="w-full"
             >
               {isSnapTradeSaving ? 'Connecting...' : 'Connect SnapTrade'}
-            </button>
+            </Button>
           </div>
         )}
       </Card>
@@ -1768,34 +1780,33 @@ export function SettingsView() {
                 />
               </div>
               <div className="flex gap-2 pt-1">
-                <button
+                <Button
+                  variant="ghost"
                   onClick={() => {
                     setShowAddExchange(false);
                     setNewExchangeKey('');
                     setNewExchangeSecret('');
                     setNewExchangePassphrase('');
                   }}
-                  className="px-3 py-2 text-[13px] text-surface-700 hover:bg-surface-300/30 rounded-xl transition-colors"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={handleAddExchange}
                   disabled={isCryptoSaving || !newExchangeKey || !newExchangeSecret}
-                  className="px-3 py-2 text-[13px] text-surface-0 bg-accent-500 hover:bg-accent-400 rounded-xl transition-colors disabled:opacity-50 font-medium"
                 >
                   {isCryptoSaving ? 'Saving...' : 'Add Exchange'}
-                </button>
+                </Button>
               </div>
             </div>
           ) : (
-            <button
+            <Button
+              variant="ghost"
               onClick={() => setShowAddExchange(true)}
-              className="flex items-center gap-2 px-3 py-2 text-[13px] text-surface-700 hover:text-surface-900 hover:bg-surface-200/50 rounded-xl transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
               Add Exchange
-            </button>
+            </Button>
           )}
         </div>
 
@@ -1942,33 +1953,32 @@ export function SettingsView() {
                 />
               </div>
               <div className="flex gap-2 pt-1">
-                <button
+                <Button
+                  variant="ghost"
                   onClick={() => {
                     setShowAddWallet(false);
                     setNewWalletAddress('');
                     setNewWalletLabel('');
                   }}
-                  className="px-3 py-2 text-[13px] text-surface-700 hover:bg-surface-300/30 rounded-xl transition-colors"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={handleAddWallet}
                   disabled={isCryptoSaving || !newWalletAddress}
-                  className="px-3 py-2 text-[13px] text-surface-0 bg-accent-500 hover:bg-accent-400 rounded-xl transition-colors disabled:opacity-50 font-medium"
                 >
                   {isCryptoSaving ? 'Saving...' : 'Add Wallet'}
-                </button>
+                </Button>
               </div>
             </div>
           ) : (
-            <button
+            <Button
+              variant="ghost"
               onClick={() => setShowAddWallet(true)}
-              className="flex items-center gap-2 px-3 py-2 text-[13px] text-surface-700 hover:text-surface-900 hover:bg-surface-200/50 rounded-xl transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
               Add Wallet
-            </button>
+            </Button>
           )}
 
           {/* Etherscan API Key */}
@@ -1999,30 +2009,30 @@ export function SettingsView() {
                     </span>
                   )}
                 </span>
-                <button
+                <Button
+                  variant="ghost-danger"
+                  size="xs"
                   onClick={handleRemoveEtherscanKey}
                   disabled={isCryptoSaving}
-                  className="text-[13px] text-danger-400 hover:text-danger-300"
                 >
                   Remove
-                </button>
+                </Button>
               </div>
             ) : (
               <div className="flex gap-2">
-                <input
+                <Input
                   type="password"
                   value={newEtherscanKey}
                   onChange={(e) => setNewEtherscanKey(e.target.value)}
                   placeholder="Etherscan API key..."
-                  className="flex-1 px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 font-mono placeholder:text-surface-500"
+                  className="flex-1 text-[13px] font-mono"
                 />
-                <button
+                <Button
                   onClick={handleSaveEtherscanKey}
                   disabled={isCryptoSaving || !newEtherscanKey}
-                  className="px-3 py-2 text-[13px] text-surface-0 bg-accent-500 hover:bg-accent-400 rounded-xl transition-colors disabled:opacity-50 font-medium"
                 >
                   Save
-                </button>
+                </Button>
               </div>
             )}
           </div>
@@ -2137,19 +2147,18 @@ export function SettingsView() {
 
                     {/* Edit Actions */}
                     <div className="flex gap-2 pt-2">
-                      <button
+                      <Button
+                        variant="ghost"
                         onClick={handleCancelEdit}
-                        className="px-3 py-2 text-[13px] text-surface-700 hover:bg-surface-300/30 rounded-xl transition-colors"
                       >
                         Cancel
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         onClick={handleSaveEntity}
                         disabled={isEntitySaving}
-                        className="px-3 py-2 text-[13px] text-surface-0 bg-accent-500 hover:bg-accent-400 rounded-xl transition-colors disabled:opacity-50 font-medium"
                       >
                         {isEntitySaving ? 'Saving...' : 'Save Changes'}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ) : (
@@ -2173,21 +2182,23 @@ export function SettingsView() {
                       {isPersonal && (
                         <span className="text-[11px] text-surface-500 italic mr-2">Default</span>
                       )}
-                      <button
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
                         onClick={() => handleEditEntity(entity)}
-                        className="p-2 text-surface-600 hover:text-surface-800 hover:bg-surface-300/30 rounded-lg transition-colors"
                         title="Edit entity"
                       >
                         <Pencil className="w-4 h-4" />
-                      </button>
+                      </Button>
                       {!isPersonal && (
-                        <button
+                        <Button
+                          variant="ghost-danger"
+                          size="icon-sm"
                           onClick={() => handleRemoveEntity(entity)}
-                          className="p-2 text-surface-600 hover:text-danger-400 hover:bg-danger-500/10 rounded-lg transition-colors"
                           title="Remove entity"
                         >
                           <Trash2 className="w-4 h-4" />
-                        </button>
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -2240,14 +2251,14 @@ export function SettingsView() {
             <p className="text-[11px] text-surface-500 mb-3">
               Download the most recent auto-generated backup. Uses the password set in Schedules.
             </p>
-            <button
+            <Button
               onClick={handleDownloadLatestBackup}
               disabled={isDownloadingLatest}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-violet-500 text-surface-0 rounded-xl hover:bg-violet-400 transition-colors disabled:opacity-50 text-[13px] font-medium"
+              className="w-full bg-violet-500 hover:bg-violet-400"
             >
               <Download className="w-4 h-4" />
               {isDownloadingLatest ? 'Downloading...' : 'Download Latest'}
-            </button>
+            </Button>
           </div>
 
           {/* Manual Backup */}
@@ -2257,21 +2268,21 @@ export function SettingsView() {
               Manual Backup
             </h4>
             <div className="space-y-2">
-              <input
+              <Input
                 type="password"
                 value={backupPassword}
                 onChange={(e) => setBackupPassword(e.target.value)}
                 placeholder="Encryption password (min 4 chars)"
-                className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                className="text-[13px] rounded-lg"
               />
-              <button
+              <Button
                 onClick={handleBackup}
                 disabled={isBackingUp || backupPassword.length < 4}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-violet-500 text-surface-0 rounded-xl hover:bg-violet-400 transition-colors disabled:opacity-50 text-[13px] font-medium"
+                className="w-full bg-violet-500 hover:bg-violet-400"
               >
                 <Download className="w-4 h-4" />
                 {isBackingUp ? 'Encrypting...' : 'Create & Download'}
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -2288,21 +2299,21 @@ export function SettingsView() {
                 onChange={(e) => setRestoreFile(e.target.files?.[0] || null)}
                 className="w-full text-[12px] text-surface-700 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[12px] file:font-medium file:bg-surface-200/50 file:text-surface-700 hover:file:bg-surface-300/50"
               />
-              <input
+              <Input
                 type="password"
                 value={restorePassword}
                 onChange={(e) => setRestorePassword(e.target.value)}
                 placeholder="Backup password"
-                className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                className="text-[13px] rounded-lg"
               />
-              <button
+              <Button
                 onClick={handleRestore}
                 disabled={isRestoring || !restoreFile || !restorePassword}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-500 text-surface-0 rounded-xl hover:bg-amber-400 transition-colors disabled:opacity-50 text-[13px] font-medium"
+                className="w-full bg-amber-500 hover:bg-amber-400"
               >
                 <Upload className="w-4 h-4" />
                 {isRestoring ? 'Restoring...' : 'Restore from Backup'}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

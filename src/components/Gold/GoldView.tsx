@@ -19,6 +19,8 @@ import type { GoldEntry, GoldData, MetalType, CoinSize, PortfolioSnapshot } from
 import { API_BASE } from '../../constants';
 import { HistoryChart } from '../common/HistoryChart';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 const API = '/api/gold';
 
@@ -589,18 +591,22 @@ export function GoldView() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
             onClick={refreshSpot}
             disabled={refreshing}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-surface-700 bg-surface-100 hover:bg-surface-200 rounded-lg transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
             Spot Prices
-          </button>
-          <button
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
             onClick={() => scanInputRef.current?.click()}
             disabled={scanning}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-surface-700 bg-surface-100 hover:bg-surface-200 rounded-lg transition-colors disabled:opacity-50"
           >
             {scanning ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -612,7 +618,7 @@ export function GoldView() {
                 ? `Scanning ${scanProgress.current}/${scanProgress.total}...`
                 : 'Scanning...'
               : 'Scan Receipts'}
-          </button>
+          </Button>
           <input
             ref={scanInputRef}
             type="file"
@@ -625,16 +631,18 @@ export function GoldView() {
               e.target.value = '';
             }}
           />
-          <button
+          <Button
+            type="button"
+            size="sm"
             onClick={() => {
               resetForm();
               setShowForm(!showForm);
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-surface-0 bg-yellow-600 hover:bg-yellow-500 rounded-lg transition-colors"
+            className="bg-yellow-600 hover:bg-yellow-500"
           >
             <Plus className="w-3.5 h-3.5" />
             Add Entry
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -642,12 +650,14 @@ export function GoldView() {
       {scanError && (
         <Card variant="glass" className="p-3 flex items-center justify-between text-sm">
           <span className="text-surface-600">{scanError}</span>
-          <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
             onClick={() => setScanError(null)}
-            className="text-xs text-surface-500 hover:text-surface-700"
           >
             Dismiss
-          </button>
+          </Button>
         </Card>
       )}
 
@@ -828,12 +838,12 @@ export function GoldView() {
                 <label className="block text-xs font-medium text-surface-600 mb-1">
                   Description
                 </label>
-                <input
+                <Input
                   type="text"
                   value={customDescription}
                   onChange={(e) => setCustomDescription(e.target.value)}
                   placeholder="e.g., 1 oz Generic Gold Round"
-                  className="w-full px-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500/40"
+                  className="h-9 rounded-lg text-sm"
                 />
               </div>
             )}
@@ -859,26 +869,26 @@ export function GoldView() {
               <label className="block text-xs font-medium text-surface-600 mb-1">
                 Coin Year <span className="text-surface-500">(optional)</span>
               </label>
-              <input
+              <Input
                 type="number"
                 value={coinYear}
                 onChange={(e) => setCoinYear(e.target.value)}
                 placeholder={`${new Date().getFullYear()}`}
                 min={1800}
                 max={new Date().getFullYear() + 1}
-                className="w-full px-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500/40"
+                className="h-9 rounded-lg text-sm"
               />
             </div>
 
             {/* Quantity */}
             <div>
               <label className="block text-xs font-medium text-surface-600 mb-1">Quantity</label>
-              <input
+              <Input
                 type="number"
                 value={quantity}
                 onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
                 min={1}
-                className="w-full px-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500/40"
+                className="h-9 rounded-lg text-sm"
               />
             </div>
 
@@ -888,10 +898,10 @@ export function GoldView() {
                 Price Paid (per piece)
               </label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-500">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-500 z-10">
                   $
                 </span>
-                <input
+                <Input
                   type="number"
                   value={purchasePrice}
                   onChange={(e) => setPurchasePrice(e.target.value)}
@@ -899,7 +909,7 @@ export function GoldView() {
                   step="0.01"
                   min="0"
                   required
-                  className="w-full pl-7 pr-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500/40"
+                  className="pl-7 h-9 rounded-lg text-sm"
                 />
               </div>
             </div>
@@ -907,12 +917,12 @@ export function GoldView() {
             {/* Purchase Date */}
             <div>
               <label className="block text-xs font-medium text-surface-600 mb-1">Date Bought</label>
-              <input
+              <Input
                 type="date"
                 value={purchaseDate}
                 onChange={(e) => setPurchaseDate(e.target.value)}
                 required
-                className="w-full px-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500/40"
+                className="h-9 rounded-lg text-sm"
               />
             </div>
 
@@ -921,13 +931,13 @@ export function GoldView() {
               <label className="block text-xs font-medium text-surface-600 mb-1">
                 Dealer <span className="text-surface-500">(optional)</span>
               </label>
-              <input
+              <Input
                 type="text"
                 value={dealer}
                 onChange={(e) => setDealer(e.target.value)}
                 list="dealer-suggestions"
                 placeholder="e.g., APMEX"
-                className="w-full px-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500/40"
+                className="h-9 rounded-lg text-sm"
               />
               <datalist id="dealer-suggestions">
                 {KNOWN_DEALERS.map((d) => (
@@ -942,12 +952,12 @@ export function GoldView() {
             <label className="block text-xs font-medium text-surface-600 mb-1">
               Notes <span className="text-surface-500">(optional)</span>
             </label>
-            <input
+            <Input
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Serial number, condition, etc."
-              className="w-full px-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500/40"
+              className="h-9 rounded-lg text-sm"
             />
           </div>
 
@@ -959,23 +969,25 @@ export function GoldView() {
           </p>
 
           <div className="flex justify-end gap-2">
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 setShowForm(false);
                 resetForm();
               }}
-              className="px-4 py-2 text-sm text-surface-600 hover:text-surface-900 transition-colors"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
+              size="sm"
               disabled={submitting || !purchasePrice}
-              className="px-4 py-2 text-sm font-medium text-surface-0 bg-yellow-600 hover:bg-yellow-500 rounded-lg transition-colors disabled:opacity-50"
+              className="bg-yellow-600 hover:bg-yellow-500"
             >
               {submitting ? 'Saving...' : editingId ? 'Update Entry' : 'Add Entry'}
-            </button>
+            </Button>
           </div>
         </form>
       )}
@@ -1178,12 +1190,12 @@ function EntriesList({
               ))}
             </div>
           )}
-          <input
+          <Input
             type="text"
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             placeholder="Search..."
-            className="flex-1 min-w-[120px] px-2.5 py-1 text-xs bg-surface-100 border border-border rounded-lg text-surface-700 placeholder:text-surface-500 focus:outline-none focus:ring-1 focus:ring-yellow-500/40"
+            className="flex-1 min-w-[120px] h-7 px-2.5 text-xs rounded-lg"
           />
         </div>
       </div>
@@ -1317,13 +1329,15 @@ function EntriesList({
                         <FileText className="w-3.5 h-3.5" />
                         View Receipt
                       </a>
-                      <button
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
                         onClick={() => onReceiptRemove(entry.id)}
-                        className="flex items-center gap-1 px-2.5 py-1 text-xs text-surface-500 hover:bg-surface-200/50 rounded-lg transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                         Remove Receipt
-                      </button>
+                      </Button>
                     </>
                   ) : (
                     <label className="flex items-center gap-1 px-2.5 py-1 text-xs text-surface-600 hover:bg-surface-200/50 rounded-lg transition-colors cursor-pointer">
@@ -1345,20 +1359,24 @@ function EntriesList({
                       />
                     </label>
                   )}
-                  <button
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
                     onClick={() => onEdit(entry)}
-                    className="flex items-center gap-1 px-2.5 py-1 text-xs text-surface-600 hover:bg-surface-200/50 rounded-lg transition-colors"
                   >
                     <Edit3 className="w-3.5 h-3.5" />
                     Edit
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost-danger"
+                    size="xs"
                     onClick={() => onDelete(entry.id)}
-                    className="flex items-center gap-1 px-2.5 py-1 text-xs text-danger-500 hover:bg-danger-500/10 rounded-lg transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     Delete
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}

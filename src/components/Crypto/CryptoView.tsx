@@ -21,6 +21,7 @@ import type { PortfolioSnapshot } from '../../types';
 import { API_BASE } from '../../constants';
 import { HistoryChart } from '../common/HistoryChart';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 const TOP_N = 5;
 
@@ -129,14 +130,16 @@ function SourceCard({
             <Clock className="w-3 h-3" />
             {timeAgo(source.lastUpdated)}
           </p>
-          <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
             onClick={handleRefresh}
             disabled={refreshing}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] text-surface-600 hover:text-surface-900 hover:bg-surface-200/50 rounded-lg transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
             {refreshing ? 'Syncing' : 'Refresh'}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -170,9 +173,11 @@ function SourceCard({
             ))}
           </div>
           {hasMore && (
-            <button
+            <Button
+              type="button"
+              variant="ghost"
               onClick={() => setExpanded(!expanded)}
-              className="w-full flex items-center justify-center gap-1.5 py-2.5 text-[12px] font-medium text-accent-500 hover:bg-accent-500/5 transition-colors"
+              className="w-full rounded-none py-2.5 text-[12px] text-accent-500 hover:bg-accent-500/5 hover:text-accent-500"
             >
               {expanded ? (
                 <>
@@ -185,7 +190,7 @@ function SourceCard({
                   Show {sortedBalances.length - TOP_N} more
                 </>
               )}
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -494,14 +499,15 @@ export function CryptoView() {
             </p>
           )}
         </div>
-        <button
+        <Button
+          type="button"
           onClick={() => loadBalances(true)}
           disabled={isRefreshing}
-          className="flex items-center gap-2 px-5 py-2.5 bg-amber-500 text-surface-0 rounded-xl hover:bg-amber-400 transition-colors disabled:opacity-50 text-[14px] font-medium shadow-sm"
+          className="bg-amber-500 hover:bg-amber-400 shadow-sm"
         >
           <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
           {isRefreshing ? 'Syncing...' : 'Sync Balances'}
-        </button>
+        </Button>
       </div>
 
       {isRefreshing && progressBar}
@@ -604,9 +610,11 @@ export function CryptoView() {
                 ))}
               </div>
               {hiddenCount > 0 && (
-                <button
+                <Button
+                  type="button"
+                  variant="ghost"
                   onClick={() => setShowAllAssets(!showAllAssets)}
-                  className="w-full flex items-center justify-center gap-1.5 py-3 text-[12px] font-medium text-accent-500 hover:bg-accent-500/5 transition-colors border-t border-border/30"
+                  className="w-full rounded-none py-3 text-[12px] text-accent-500 hover:bg-accent-500/5 hover:text-accent-500 border-t border-border/30"
                 >
                   {showAllAssets ? (
                     <>
@@ -619,7 +627,7 @@ export function CryptoView() {
                       Show all {filteredAssets.length} assets ({hiddenCount} more)
                     </>
                   )}
-                </button>
+                </Button>
               )}
             </Card>
           )}
@@ -631,10 +639,12 @@ export function CryptoView() {
                 <BarChart3 className="w-4 h-4 text-amber-500" />
                 Capital Gains (Cost Basis)
               </h3>
-              <button
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => loadGains(!!gains)}
                 disabled={gainsLoading}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-surface-700 hover:bg-surface-200/50 rounded-lg transition-colors disabled:opacity-50 border border-border"
               >
                 <RefreshCw className={`w-3 h-3 ${gainsLoading ? 'animate-spin' : ''}`} />
                 {gainsLoading
@@ -642,7 +652,7 @@ export function CryptoView() {
                   : gains
                     ? 'Refresh Gains'
                     : 'Load Gains'}
-              </button>
+              </Button>
             </div>
 
             {gainsError && (

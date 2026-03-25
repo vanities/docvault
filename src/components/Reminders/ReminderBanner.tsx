@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Bell, Check, X, Plus, CalendarClock, Repeat } from 'lucide-react';
 import { useAppContext } from '../../contexts/AppContext';
 import type { Reminder } from '../../types';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 function daysUntil(dateStr: string): number {
   const today = new Date();
@@ -128,22 +130,26 @@ function ReminderRow({
         </div>
       </div>
       <div className="flex items-center gap-1 flex-shrink-0">
-        <button
+        <Button
+          variant="ghost"
+          size="icon-xs"
           onClick={handleComplete}
           disabled={isBusy}
-          className="p-1 rounded-md hover:bg-emerald-500/15 text-surface-600 hover:text-emerald-400 transition-colors disabled:opacity-40"
+          className="hover:bg-emerald-500/15 text-surface-600 hover:text-emerald-400"
           title="Mark complete"
         >
           <Check className="w-3.5 h-3.5" />
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
           onClick={handleDismiss}
           disabled={isBusy}
-          className="p-1 rounded-md hover:bg-red-500/10 text-surface-600 hover:text-red-400 transition-colors disabled:opacity-40"
+          className="hover:bg-red-500/10 text-surface-600 hover:text-red-400"
           title="Dismiss"
         >
           <X className="w-3.5 h-3.5" />
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -193,13 +199,14 @@ export function ReminderBanner() {
     if (selectedEntity !== 'all') {
       return (
         <div className="mb-4">
-          <button
+          <Button
+            variant="ghost"
+            size="xs"
             onClick={() => setShowAddForm(true)}
-            className="flex items-center gap-1.5 text-[12px] text-surface-600 hover:text-surface-800 transition-colors"
           >
             <Bell className="w-3.5 h-3.5" />
             Add reminder
-          </button>
+          </Button>
         </div>
       );
     }
@@ -225,13 +232,14 @@ export function ReminderBanner() {
           )}
         </div>
         {selectedEntity !== 'all' && (
-          <button
+          <Button
+            variant="ghost"
+            size="xs"
             onClick={() => setShowAddForm(!showAddForm)}
-            className="flex items-center gap-1 text-[12px] text-surface-600 hover:text-accent-400 transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             Add
-          </button>
+          </Button>
         )}
       </div>
 
@@ -251,18 +259,18 @@ export function ReminderBanner() {
       {showAddForm && (
         <div className="mt-2 p-3 rounded-lg bg-surface-200/30 border border-surface-400/20">
           <div className="grid grid-cols-2 gap-2 mb-2">
-            <input
+            <Input
               type="text"
               placeholder="Reminder title..."
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              className="col-span-2 px-2.5 py-1.5 bg-surface-100 border border-surface-400/30 rounded-lg text-[13px] text-surface-900 placeholder:text-surface-500"
+              className="col-span-2 h-8 text-[13px]"
             />
-            <input
+            <Input
               type="date"
               value={newDate}
               onChange={(e) => setNewDate(e.target.value)}
-              className="px-2.5 py-1.5 bg-surface-100 border border-surface-400/30 rounded-lg text-[13px] text-surface-900"
+              className="h-8 text-[13px]"
             />
             <select
               value={newRecurrence}
@@ -274,28 +282,29 @@ export function ReminderBanner() {
               <option value="quarterly">Quarterly</option>
               <option value="yearly">Yearly</option>
             </select>
-            <input
+            <Input
               type="text"
               placeholder="Notes (optional)"
               value={newNotes}
               onChange={(e) => setNewNotes(e.target.value)}
-              className="col-span-2 px-2.5 py-1.5 bg-surface-100 border border-surface-400/30 rounded-lg text-[13px] text-surface-900 placeholder:text-surface-500"
+              className="col-span-2 h-8 text-[13px]"
             />
           </div>
           <div className="flex gap-2 justify-end">
-            <button
+            <Button
+              variant="ghost"
+              size="xs"
               onClick={() => setShowAddForm(false)}
-              className="px-3 py-1.5 text-[12px] text-surface-700 hover:bg-surface-300/30 rounded-lg transition-colors"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
+              size="xs"
               onClick={handleAdd}
               disabled={!newTitle || !newDate}
-              className="px-3 py-1.5 text-[12px] font-medium text-accent-400 bg-accent-500/10 hover:bg-accent-500/15 rounded-lg transition-colors disabled:opacity-40"
             >
               Add Reminder
-            </button>
+            </Button>
           </div>
         </div>
       )}

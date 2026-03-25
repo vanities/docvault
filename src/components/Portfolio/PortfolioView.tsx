@@ -27,6 +27,7 @@ import { DonutChart } from './DonutChart';
 import { HistoryChart } from '../common/HistoryChart';
 import { getDonutColor } from './donutColors';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 function formatUsd(value: number): string {
   return value.toLocaleString('en-US', {
@@ -289,23 +290,25 @@ export function PortfolioView() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <button
+          <Button
+            type="button"
+            variant="outline"
             onClick={takeSnapshot}
             disabled={isTakingSnapshot || !hasAnything}
-            className="flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium text-surface-700 hover:bg-surface-200/50 rounded-xl transition-colors disabled:opacity-50 border border-border"
             title="Save today's portfolio value as a snapshot"
           >
             <Camera className={`w-4 h-4 ${isTakingSnapshot ? 'animate-pulse' : ''}`} />
             Snapshot
-          </button>
-          <button
+          </Button>
+          <Button
+            type="button"
             onClick={() => loadAll(true)}
             disabled={isRefreshing}
-            className="flex items-center gap-2 px-5 py-2.5 bg-violet-500 text-surface-0 rounded-xl hover:bg-violet-400 transition-colors disabled:opacity-50 text-[14px] font-medium shadow-sm"
+            className="bg-violet-500 hover:bg-violet-400 shadow-sm"
           >
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             {isRefreshing ? 'Refreshing...' : 'Refresh All'}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -773,9 +776,11 @@ export function PortfolioView() {
               </div>
 
               {hiddenCount > 0 && (
-                <button
+                <Button
+                  type="button"
+                  variant="ghost"
                   onClick={() => setShowAllSlices(!showAllSlices)}
-                  className="w-full flex items-center justify-center gap-1.5 py-3 text-[12px] font-medium text-violet-500 hover:bg-violet-500/5 transition-colors border-t border-border/30"
+                  className="w-full rounded-none py-3 text-[12px] text-violet-500 hover:bg-violet-500/5 hover:text-violet-500 border-t border-border/30"
                 >
                   {showAllSlices ? (
                     <>
@@ -788,7 +793,7 @@ export function PortfolioView() {
                       Show all {slices.length} holdings ({hiddenCount} more)
                     </>
                   )}
-                </button>
+                </Button>
               )}
             </Card>
           )}

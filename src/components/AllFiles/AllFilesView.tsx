@@ -7,6 +7,7 @@ import { useToast } from '../../hooks/useToast';
 import { DocumentList } from '../Documents/DocumentList';
 import type { TaxDocument, Entity, DocumentType } from '../../types';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 export function AllFilesView() {
   const {
@@ -161,14 +162,15 @@ export function AllFilesView() {
         </div>
 
         <div className="flex items-center gap-3">
-          <button
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={loadAllFiles}
             disabled={isLoading || isProcessing}
-            className="p-2 text-surface-600 hover:text-surface-800 hover:bg-surface-300/30 rounded-lg transition-colors disabled:opacity-50"
             title="Refresh"
           >
             <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
-          </button>
+          </Button>
 
           {selectedEntity !== 'all' && (
             <label className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-accent-400 bg-accent-500/10 hover:bg-accent-500/15 rounded-xl cursor-pointer transition-colors">

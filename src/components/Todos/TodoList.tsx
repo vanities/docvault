@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { ListTodo, Plus, Trash2, Check } from 'lucide-react';
 import { useAppContext } from '../../contexts/AppContext';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 export function TodoList() {
   const { todos, addTodo, updateTodo, deleteTodo } = useAppContext();
@@ -38,13 +40,14 @@ export function TodoList() {
   if (pendingTodos.length === 0 && completedTodos.length === 0 && !showAddForm) {
     return (
       <div className="mb-4">
-        <button
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={() => setShowAddForm(true)}
-          className="flex items-center gap-1.5 text-[12px] text-surface-600 hover:text-surface-800 transition-colors"
         >
           <ListTodo className="w-3.5 h-3.5" />
           Add todo
-        </button>
+        </Button>
       </div>
     );
   }
@@ -63,13 +66,14 @@ export function TodoList() {
             </span>
           )}
         </div>
-        <button
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={() => setShowAddForm(!showAddForm)}
-          className="flex items-center gap-1 text-[12px] text-surface-600 hover:text-accent-400 transition-colors"
         >
           <Plus className="w-3.5 h-3.5" />
           Add
-        </button>
+        </Button>
       </div>
 
       {/* Pending todos */}
@@ -87,13 +91,15 @@ export function TodoList() {
             <span className="flex-1 text-[13px] text-surface-900 min-w-0 truncate">
               {todo.title}
             </span>
-            <button
+            <Button
+              variant="ghost-danger"
+              size="icon-xs"
               onClick={() => handleDelete(todo.id)}
-              className="p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-surface-600 hover:text-red-400 transition-all"
+              className="opacity-0 group-hover:opacity-100"
               title="Delete"
             >
               <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            </Button>
           </div>
         ))}
       </div>
@@ -101,43 +107,45 @@ export function TodoList() {
       {/* Add form */}
       {showAddForm && (
         <div className="mt-2 flex items-center gap-2">
-          <input
+          <Input
             type="text"
             placeholder="What needs to be done?"
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
             onKeyDown={handleKeyDown}
             autoFocus
-            className="flex-1 px-2.5 py-1.5 bg-surface-100 border border-surface-400/30 rounded-lg text-[13px] text-surface-900 placeholder:text-surface-500"
+            className="flex-1 h-8 text-[13px]"
           />
-          <button
+          <Button
+            size="xs"
             onClick={handleAdd}
             disabled={!newTitle.trim()}
-            className="px-3 py-1.5 text-[12px] font-medium text-accent-400 bg-accent-500/10 hover:bg-accent-500/15 rounded-lg transition-colors disabled:opacity-40"
           >
             Add
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
+            size="xs"
             onClick={() => {
               setNewTitle('');
               setShowAddForm(false);
             }}
-            className="px-2 py-1.5 text-[12px] text-surface-700 hover:bg-surface-300/30 rounded-lg transition-colors"
           >
             Cancel
-          </button>
+          </Button>
         </div>
       )}
 
       {/* Completed todos (collapsible) */}
       {completedTodos.length > 0 && (
         <div className="mt-3">
-          <button
+          <Button
+            variant="ghost"
+            size="xs"
             onClick={() => setShowCompleted(!showCompleted)}
-            className="text-[11px] text-surface-600 hover:text-surface-800 transition-colors"
           >
             {showCompleted ? 'Hide' : 'Show'} completed ({completedTodos.length})
-          </button>
+          </Button>
           {showCompleted && (
             <div className="space-y-1.5 mt-2">
               {completedTodos.map((todo) => (
@@ -155,13 +163,15 @@ export function TodoList() {
                   <span className="flex-1 text-[13px] text-surface-600 line-through min-w-0 truncate">
                     {todo.title}
                   </span>
-                  <button
+                  <Button
+                    variant="ghost-danger"
+                    size="icon-xs"
                     onClick={() => handleDelete(todo.id)}
-                    className="p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-surface-600 hover:text-red-400 transition-all"
+                    className="opacity-0 group-hover:opacity-100"
                     title="Delete"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  </Button>
                 </div>
               ))}
             </div>

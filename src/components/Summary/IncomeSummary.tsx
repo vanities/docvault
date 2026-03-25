@@ -10,6 +10,7 @@ import type {
 } from '../../types';
 import { DOCUMENT_TYPES } from '../../config';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 interface IncomeSummaryProps {
   summary: IncomeSummaryType;
@@ -51,13 +52,10 @@ export function IncomeSummary({
       {/* Header with download */}
       {onDownload && documents.length > 0 && (
         <div className="flex justify-end">
-          <button
-            onClick={onDownload}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-surface-700 hover:text-surface-950 bg-surface-200/50 hover:bg-surface-200 border border-border rounded-lg transition-colors"
-          >
+          <Button variant="outline" size="sm" onClick={onDownload}>
             <Download className="w-4 h-4" />
             Download Income Docs
-          </button>
+          </Button>
         </div>
       )}
 
@@ -494,14 +492,11 @@ export function IncomeSummary({
             <h3 className="font-semibold text-surface-950 text-[14px]">
               Sales Revenue{summary.salesCount > 0 ? ` (${summary.salesCount} sales)` : ''}
             </h3>
-            <button
-              onClick={onNavigateToSales}
-              className="flex items-center gap-1.5 text-[13px] font-medium text-amber-500 hover:text-amber-400 transition-colors"
-            >
+            <Button variant="ghost" size="sm" className="text-amber-500 hover:text-amber-400" onClick={onNavigateToSales}>
               <Egg className="w-4 h-4" />
               {summary.salesCount > 0 ? 'View Sales' : 'Add Sales'}
               <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+            </Button>
           </div>
           {summary.salesTotal > 0 ? (
             <div className="border border-border rounded-lg p-4">
