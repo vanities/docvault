@@ -5,7 +5,7 @@ import { promises as fs } from 'fs';
 import Anthropic from '@anthropic-ai/sdk';
 import type { ParsedTaxDocument } from './pdf.js';
 import type { ParserMetadata } from './schemas/index.js';
-import { getAnthropicKey, getClaudeModel } from '../index.js';
+import { getAnthropicKey, getClaudeModel } from '../data.js';
 import { withAILimit } from '../aiLimiter.js';
 
 // --- Anthropic Client (lazy, shared) ---
