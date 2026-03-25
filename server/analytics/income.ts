@@ -79,7 +79,8 @@ export function getIncomeSummary(
         federalWithheld += (item.details?.federalWithheld as number) || 0;
         break;
       case '1099-R':
-        income1099Total += item.amount;
+        // 1099-R distributions tracked separately — taxation depends on distribution code
+        // Don't add to income1099Total (which is Schedule C / investment income)
         income1099Count++;
         federalWithheld += (item.details?.federalWithheld as number) || 0;
         break;
