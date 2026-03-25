@@ -9,4 +9,8 @@ export { getExpenseSummary } from './expenses.js';
 export type { ExpenseSummaryResult, ExpenseSummaryItem } from './expenses.js';
 export { getBankDepositSummary } from './bank-deposits.js';
 export type { BankDepositSummaryResult } from './bank-deposits.js';
+export { getInvoiceSummary } from './invoices.js';
+export type { InvoiceSummaryResult } from './invoices.js';
+export { getRetirementSummary } from './retirement.js';
+export type { RetirementSummaryResult } from './retirement.js';
 export { getTaxCalculation } from './tax-calc.js';
