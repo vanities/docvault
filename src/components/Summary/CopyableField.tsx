@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface CopyableFieldProps {
   label: string;
@@ -55,20 +56,19 @@ export function CopyableField({ label, value, format = 'currency', sublabel }: C
         <span className="text-lg font-semibold text-surface-950 font-mono">
           {formatValue(value, format)}
         </span>
-        <button
+        <Button
+          variant="ghost"
+          size="icon-xs"
           onClick={handleCopy}
-          className={`
-            p-1.5 rounded transition-all
-            ${
-              copied
-                ? 'bg-emerald-500/15 text-emerald-400'
-                : 'opacity-0 group-hover:opacity-100 bg-surface-300/30 border border-border text-surface-600 hover:text-surface-800'
-            }
-          `}
+          className={
+            copied
+              ? 'bg-emerald-500/15 text-emerald-400'
+              : 'opacity-0 group-hover:opacity-100 bg-surface-300/30 border border-border text-surface-600 hover:text-surface-800'
+          }
           title="Copy to clipboard"
         >
           {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from 'react';
 import { RefreshCw, Download, Briefcase } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useAppContext, type TabType } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import { QuickStats } from '../Dashboard/QuickStats';
@@ -57,10 +58,10 @@ function DownloadDropdown({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="flex items-center gap-1.5 px-3 py-1.5 mb-1 text-[13px] font-medium text-surface-700 hover:text-surface-950 bg-surface-200/50 hover:bg-surface-200 border border-border rounded-lg transition-colors">
+        <Button variant="outline" size="sm" className="mb-1">
           <Download className="w-4 h-4" />
           <span className="hidden sm:inline">Download</span>
-        </button>
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {options.map((opt) => (
@@ -441,11 +442,13 @@ export function TaxYearView() {
         <div className="flex items-center justify-between">
           <nav className="flex gap-4 md:gap-6">
             {tabs.map((tab) => (
-              <button
+              <Button
                 key={tab.id}
+                variant="ghost"
+                size="sm"
                 onClick={() => setActiveTab(tab.id)}
                 className={`
-                  pb-3 pt-1 md:pt-0 px-1 text-[13px] font-medium border-b-2 transition-all duration-200
+                  pb-3 pt-1 md:pt-0 px-1 rounded-none border-b-2 h-auto
                   ${
                     activeTab === tab.id
                       ? 'border-accent-400 text-accent-400'
@@ -459,20 +462,21 @@ export function TaxYearView() {
                     ({filteredDocuments.length})
                   </span>
                 )}
-              </button>
+              </Button>
             ))}
           </nav>
 
           {/* CPA Package + Download Dropdown */}
           {selectedEntity !== 'all' && (
             <div className="flex items-center gap-2">
-              <button
+              <Button
+                size="sm"
+                className="mb-1"
                 onClick={() => downloadCpaPackage(selectedEntity, selectedYear)}
-                className="flex items-center gap-1.5 px-3 py-1.5 mb-1 text-[13px] font-medium text-white bg-accent-500 hover:bg-accent-600 border border-accent-600 rounded-lg transition-colors"
               >
                 <Briefcase className="w-4 h-4" />
                 <span className="hidden sm:inline">CPA Package</span>
-              </button>
+              </Button>
               <DownloadDropdown
                 entity={selectedEntity}
                 year={selectedYear}

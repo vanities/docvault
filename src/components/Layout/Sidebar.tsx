@@ -24,6 +24,7 @@ import { useAppContext, type NavView } from '../../contexts/AppContext';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import type { SyncStatus } from '../../types';
 import { SIDEBAR_COLOR_MAP as COLOR_MAP, renderEntityIcon } from '../../utils/entityDisplay';
+import { Button } from '@/components/ui/button';
 
 // ---------------------------------------------------------------------------
 // Entity Dropdown Switcher
@@ -144,16 +145,18 @@ function EntitySwitcher({
           {onAddEntity && (
             <>
               <div className="border-t border-border/50 mt-1.5 pt-1.5">
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
                     onAddEntity();
                     setOpen(false);
                   }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-surface-600 hover:text-surface-800 hover:bg-surface-200/50 transition-colors"
+                  className="w-full justify-start gap-2.5 px-3 text-surface-600 hover:text-surface-800"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span className="text-[12px] font-medium">Add Entity</span>
-                </button>
+                </Button>
               </div>
             </>
           )}
@@ -254,23 +257,27 @@ function YearPicker({
 
   return (
     <div className="flex items-center justify-center gap-1 px-2.5 py-1.5">
-      <button
+      <Button
+        variant="ghost"
+        size="icon-xs"
         onClick={() => canGoBack && onYearChange(availableYears[idx + 1])}
         disabled={isProcessing || !canGoBack}
-        className="p-1.5 md:p-1 rounded hover:bg-surface-300/40 transition-all disabled:opacity-30 disabled:cursor-not-allowed text-surface-600"
+        className="text-surface-600"
       >
         <ChevronLeft className="w-3.5 h-3.5" />
-      </button>
+      </Button>
       <span className="text-[13px] font-semibold tabular-nums min-w-[40px] text-center text-surface-900">
         {selectedYear}
       </span>
-      <button
+      <Button
+        variant="ghost"
+        size="icon-xs"
         onClick={() => canGoForward && onYearChange(availableYears[idx - 1])}
         disabled={isProcessing || !canGoForward}
-        className="p-1.5 md:p-1 rounded hover:bg-surface-300/40 transition-all disabled:opacity-30 disabled:cursor-not-allowed text-surface-600"
+        className="text-surface-600"
       >
         <ChevronRight className="w-3.5 h-3.5" />
-      </button>
+      </Button>
     </div>
   );
 }

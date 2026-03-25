@@ -3,6 +3,7 @@ import { FileText, DollarSign, Users, ChevronDown, ChevronRight, Download } from
 import { CopyableField } from './CopyableField';
 import type { InvoiceSummaryData, TaxDocument } from '../../types';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 interface InvoiceSummaryProps {
   summary: InvoiceSummaryData;
@@ -75,9 +76,10 @@ function CustomerSection({ customer, docs }: { customer: string; docs: TaxDocume
 
   return (
     <div className="border border-border rounded-lg overflow-hidden">
-      <button
+      <Button
+        variant="ghost"
         onClick={() => setExpanded(!expanded)}
-        className="w-full bg-surface-200/30 px-4 py-3 flex items-center justify-between hover:bg-surface-200/50 transition-colors"
+        className="w-full bg-surface-200/30 px-4 py-3 flex items-center justify-between hover:bg-surface-200/50 h-auto rounded-none"
       >
         <div className="flex items-center gap-2">
           {expanded ? (
@@ -95,7 +97,7 @@ function CustomerSection({ customer, docs }: { customer: string; docs: TaxDocume
         <p className="font-semibold text-surface-950 font-mono text-[13px]">
           {formatCurrency(total)}
         </p>
-      </button>
+      </Button>
 
       {expanded && (
         <div className="divide-y divide-border">
@@ -187,13 +189,10 @@ export function InvoiceSummary({ summary, documents, onDownload }: InvoiceSummar
       {/* Header with download */}
       {onDownload && documents.length > 0 && (
         <div className="flex justify-end">
-          <button
-            onClick={onDownload}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-surface-700 hover:text-surface-950 bg-surface-200/50 hover:bg-surface-200 border border-border rounded-lg transition-colors"
-          >
+          <Button variant="outline" size="sm" onClick={onDownload}>
             <Download className="w-4 h-4" />
             Download Invoices
-          </button>
+          </Button>
         </div>
       )}
 

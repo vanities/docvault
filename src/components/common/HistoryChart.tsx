@@ -11,6 +11,7 @@ import {
   CartesianGrid,
 } from 'recharts';
 import type { PortfolioSnapshot } from '../../types';
+import { Button } from '@/components/ui/button';
 
 // Time ranges
 const RANGES = [
@@ -145,40 +146,46 @@ export function HistoryChart({
         <div className="flex items-center gap-1.5">
           {showModeToggle && (
             <div className="flex rounded-lg border border-border/50 mr-2">
-              <button
+              <Button
+                variant="ghost"
+                size="xs"
                 onClick={() => setMode('area')}
-                className={`px-2 py-1 text-[10px] font-medium rounded-l-lg transition-colors ${
+                className={`rounded-r-none text-[10px] ${
                   mode === 'area'
                     ? 'bg-surface-200/50 text-surface-900'
                     : 'text-surface-500 hover:text-surface-700'
                 }`}
               >
                 Area
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="ghost"
+                size="xs"
                 onClick={() => setMode('line')}
-                className={`px-2 py-1 text-[10px] font-medium rounded-r-lg transition-colors ${
+                className={`rounded-l-none text-[10px] ${
                   mode === 'line'
                     ? 'bg-surface-200/50 text-surface-900'
                     : 'text-surface-500 hover:text-surface-700'
                 }`}
               >
                 Line
-              </button>
+              </Button>
             </div>
           )}
           {RANGES.map((r) => (
-            <button
+            <Button
               key={r.key}
+              variant="ghost"
+              size="xs"
               onClick={() => setRange(r.key)}
-              className={`px-2 py-1 text-[11px] font-medium rounded-lg transition-colors ${
+              className={`text-[11px] ${
                 range === r.key
                   ? 'bg-accent-500/15 text-accent-400'
                   : 'text-surface-500 hover:text-surface-700 hover:bg-surface-200/30'
               }`}
             >
               {r.key}
-            </button>
+            </Button>
           ))}
         </div>
       </div>

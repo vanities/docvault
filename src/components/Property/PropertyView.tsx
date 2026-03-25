@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import type { PropertyEntry, PropertyData, PropertyType, PropertyAddress } from '../../types';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 const API = '/api/property';
 
@@ -134,8 +136,8 @@ function CurrencyInput({
 
   return (
     <div className="relative">
-      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-500">$</span>
-      <input
+      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-500 z-10">$</span>
+      <Input
         type="text"
         inputMode="decimal"
         value={display}
@@ -143,10 +145,7 @@ function CurrencyInput({
         onBlur={handleBlur}
         placeholder={placeholder}
         required={required}
-        className={
-          className ||
-          'w-full pl-7 pr-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40'
-        }
+        className={className || 'pl-7 h-9 rounded-lg text-sm'}
       />
     </div>
   );
@@ -395,16 +394,18 @@ export function PropertyView() {
             <p className="text-sm text-surface-600">Track real estate holdings and equity</p>
           </div>
         </div>
-        <button
+        <Button
+          type="button"
+          size="sm"
           onClick={() => {
             resetForm();
             setShowForm(!showForm);
           }}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-surface-0 bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors"
+          className="bg-emerald-600 hover:bg-emerald-500"
         >
           <Plus className="w-3.5 h-3.5" />
           Add Property
-        </button>
+        </Button>
       </div>
 
       {/* Summary Cards */}
@@ -454,13 +455,13 @@ export function PropertyView() {
               <label className="block text-xs font-medium text-surface-600 mb-1">
                 Property Name
               </label>
-              <input
+              <Input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g., Springfield House"
                 required
-                className="w-full px-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                className="h-9 rounded-lg text-sm"
               />
             </div>
 
@@ -485,25 +486,25 @@ export function PropertyView() {
               <label className="block text-xs font-medium text-surface-600 mb-1">
                 Street Address
               </label>
-              <input
+              <Input
                 type="text"
                 value={street}
                 onChange={(e) => setStreet(e.target.value)}
                 placeholder="123 Main St"
                 required
-                className="w-full px-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                className="h-9 rounded-lg text-sm"
               />
             </div>
 
             <div>
               <label className="block text-xs font-medium text-surface-600 mb-1">City</label>
-              <input
+              <Input
                 type="text"
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
                 placeholder="Springfield"
                 required
-                className="w-full px-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                className="h-9 rounded-lg text-sm"
               />
             </div>
 
@@ -524,12 +525,12 @@ export function PropertyView() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-surface-600 mb-1">ZIP</label>
-                <input
+                <Input
                   type="text"
                   value={zip}
                   onChange={(e) => setZip(e.target.value)}
                   placeholder="37174"
-                  className="w-full px-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  className="h-9 rounded-lg text-sm"
                 />
               </div>
             </div>
@@ -539,14 +540,14 @@ export function PropertyView() {
               <label className="block text-xs font-medium text-surface-600 mb-1">
                 Acreage <span className="text-surface-500">(optional)</span>
               </label>
-              <input
+              <Input
                 type="number"
                 value={acreage}
                 onChange={(e) => setAcreage(e.target.value)}
                 placeholder="0.5"
                 step="0.01"
                 min="0"
-                className="w-full px-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                className="h-9 rounded-lg text-sm"
               />
             </div>
 
@@ -554,13 +555,13 @@ export function PropertyView() {
               <label className="block text-xs font-medium text-surface-600 mb-1">
                 Square Feet <span className="text-surface-500">(optional)</span>
               </label>
-              <input
+              <Input
                 type="number"
                 value={squareFeet}
                 onChange={(e) => setSquareFeet(e.target.value)}
                 placeholder="2400"
                 min="0"
-                className="w-full px-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                className="h-9 rounded-lg text-sm"
               />
             </div>
 
@@ -569,11 +570,11 @@ export function PropertyView() {
               <label className="block text-xs font-medium text-surface-600 mb-1">
                 Purchase Date
               </label>
-              <input
+              <Input
                 type="date"
                 value={purchaseDate}
                 onChange={(e) => setPurchaseDate(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                className="h-9 rounded-lg text-sm"
               />
             </div>
 
@@ -621,12 +622,12 @@ export function PropertyView() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-surface-600 mb-1">Lender</label>
-                <input
+                <Input
                   type="text"
                   value={mortgageLender}
                   onChange={(e) => setMortgageLender(e.target.value)}
                   placeholder="e.g., Rocket Mortgage"
-                  className="w-full px-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  className="h-9 rounded-lg text-sm"
                 />
               </div>
               <div>
@@ -643,7 +644,7 @@ export function PropertyView() {
                 <label className="block text-xs font-medium text-surface-600 mb-1">
                   Interest Rate (%)
                 </label>
-                <input
+                <Input
                   type="text"
                   inputMode="decimal"
                   value={mortgageRate}
@@ -653,7 +654,7 @@ export function PropertyView() {
                     }
                   }}
                   placeholder="6.5"
-                  className="w-full px-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  className="h-9 rounded-lg text-sm"
                 />
               </div>
               <div>
@@ -674,33 +675,35 @@ export function PropertyView() {
             <label className="block text-xs font-medium text-surface-600 mb-1">
               Notes <span className="text-surface-500">(optional)</span>
             </label>
-            <input
+            <Input
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Parcel number, HOA, etc."
-              className="w-full px-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+              className="h-9 rounded-lg text-sm"
             />
           </div>
 
           <div className="flex justify-end gap-2">
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 setShowForm(false);
                 resetForm();
               }}
-              className="px-4 py-2 text-sm text-surface-600 hover:text-surface-900 transition-colors"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
+              size="sm"
               disabled={submitting || !name.trim() || !purchasePrice || !currentValue}
-              className="px-4 py-2 text-sm font-medium text-surface-0 bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors disabled:opacity-50"
+              className="bg-emerald-600 hover:bg-emerald-500"
             >
               {submitting ? 'Saving...' : editingId ? 'Update Property' : 'Add Property'}
-            </button>
+            </Button>
           </div>
         </form>
       )}
@@ -886,20 +889,24 @@ function PropertyList({
                 )}
 
                 <div className="mt-3 flex justify-end gap-2">
-                  <button
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
                     onClick={() => onEdit(entry)}
-                    className="flex items-center gap-1 px-2.5 py-1 text-xs text-surface-600 hover:bg-surface-200/50 rounded-lg transition-colors"
                   >
                     <Edit3 className="w-3.5 h-3.5" />
                     Edit
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost-danger"
+                    size="xs"
                     onClick={() => onDelete(entry.id)}
-                    className="flex items-center gap-1 px-2.5 py-1 text-xs text-danger-500 hover:bg-danger-500/10 rounded-lg transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     Delete
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}

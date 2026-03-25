@@ -21,6 +21,7 @@ import { HistoryChart } from '../common/HistoryChart';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 const BROKER_LABELS: Record<BrokerId, string> = {
   vanguard: 'Vanguard',
@@ -125,47 +126,47 @@ function AddHoldingModal({
             <label className="text-[12px] font-medium text-surface-700 mb-1 block">
               Ticker Symbol
             </label>
-            <input
+            <Input
               value={ticker}
               onChange={(e) => setTicker(e.target.value)}
               placeholder="e.g. VTI, AAPL, FXAIX"
-              className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-500/30"
+              className="text-[13px]"
               autoFocus
             />
           </div>
           <div>
             <label className="text-[12px] font-medium text-surface-700 mb-1 block">Shares</label>
-            <input
+            <Input
               type="number"
               step="any"
               value={shares}
               onChange={(e) => setShares(e.target.value)}
               placeholder="e.g. 100"
-              className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-500/30"
+              className="text-[13px]"
             />
           </div>
           <div>
             <label className="text-[12px] font-medium text-surface-700 mb-1 block">
               Cost Basis (total, optional)
             </label>
-            <input
+            <Input
               type="number"
               step="any"
               value={costBasis}
               onChange={(e) => setCostBasis(e.target.value)}
               placeholder="e.g. 25000"
-              className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-500/30"
+              className="text-[13px]"
             />
           </div>
           <div>
             <label className="text-[12px] font-medium text-surface-700 mb-1 block">
               Purchase Date (optional, for gain type)
             </label>
-            <input
+            <Input
               type="date"
               value={purchaseDate}
               onChange={(e) => setPurchaseDate(e.target.value)}
-              className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-500/30"
+              className="text-[13px]"
             />
           </div>
         </div>
@@ -233,11 +234,11 @@ function AddAccountModal({
             <label className="text-[12px] font-medium text-surface-700 mb-1 block">
               Account Name
             </label>
-            <input
+            <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Roth IRA, Brokerage, 401k"
-              className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-500/30"
+              className="text-[13px]"
               autoFocus
             />
           </div>
@@ -245,11 +246,11 @@ function AddAccountModal({
             <label className="text-[12px] font-medium text-surface-700 mb-1 block">
               Website URL (optional)
             </label>
-            <input
+            <Input
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="e.g. https://app.altoira.com"
-              className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-500/30"
+              className="text-[13px]"
             />
           </div>
           <div>
@@ -258,12 +259,12 @@ function AddAccountModal({
             </label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-surface-500">$</span>
-              <input
+              <Input
                 type="number"
                 value={overrideValue}
                 onChange={(e) => setOverrideValue(e.target.value)}
                 placeholder="e.g. 39436"
-                className="w-full pl-7 pr-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-500/30"
+                className="pl-7 text-[13px]"
               />
             </div>
             <p className="text-[11px] text-surface-500 mt-1">
@@ -468,26 +469,29 @@ function AccountCard({
           {/* Action Bar */}
           <div className="flex items-center justify-between px-4 py-3 bg-surface-200/20">
             {account.overrideValue === undefined ? (
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setShowAddHolding(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-accent-500 hover:bg-accent-500/10 rounded-lg transition-colors"
+                className="text-accent-500 hover:bg-accent-500/10"
               >
                 <Plus className="w-3.5 h-3.5" />
                 Add Manual Holding
-              </button>
+              </Button>
             ) : (
               <div />
             )}
-            <button
+            <Button
+              variant="ghost-danger"
+              size="sm"
               onClick={() => {
                 if (confirm(`Delete "${account.name}" account and all holdings?`))
                   onDeleteAccount(account.id);
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-danger-400 hover:bg-danger-500/10 rounded-lg transition-colors"
             >
               <Trash2 className="w-3.5 h-3.5" />
               Delete Account
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -534,13 +538,13 @@ function SnapTradeBanner({
             </p>
           </div>
         </div>
-        <button
+        <Button
           onClick={() => window.dispatchEvent(new CustomEvent('navigate-to-settings'))}
-          className="flex items-center gap-1.5 px-4 py-2 text-[13px] font-medium bg-violet-500 text-surface-0 rounded-xl hover:bg-violet-400 transition-colors"
+          className="bg-violet-500 hover:bg-violet-400"
         >
           <ExternalLink className="w-3.5 h-3.5" />
           Set Up in Settings
-        </button>
+        </Button>
       </Card>
     );
   }
@@ -559,28 +563,33 @@ function SnapTradeBanner({
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={onConnect}
-          className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-violet-500 hover:bg-violet-500/10 rounded-lg transition-colors"
+          className="text-violet-500 hover:bg-violet-500/10"
         >
           <Plus className="w-3.5 h-3.5" />
           Link Brokerage
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={onSync}
           disabled={isSyncing}
-          className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-accent-500 hover:bg-accent-500/10 rounded-lg transition-colors disabled:opacity-50"
+          className="text-accent-500 hover:bg-accent-500/10"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
           {isSyncing ? 'Syncing...' : 'Sync'}
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost-danger"
+          size="icon-sm"
           onClick={onDisconnect}
-          className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-surface-500 hover:text-danger-400 hover:bg-danger-500/10 rounded-lg transition-colors"
           title="Disconnect SnapTrade"
         >
           <Unlink className="w-3.5 h-3.5" />
-        </button>
+        </Button>
       </div>
     </Card>
   );
@@ -868,22 +877,21 @@ export function BrokersView() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <button
+          <Button
+            variant="outline"
             onClick={() => setShowAddAccount(true)}
-            className="flex items-center gap-2 px-4 py-2.5 text-[14px] font-medium text-surface-800 hover:bg-surface-200/50 rounded-xl transition-colors border border-border"
           >
             <Plus className="w-4 h-4" />
             Add Manual Account
-          </button>
+          </Button>
           {hasAccounts && (
-            <button
+            <Button
               onClick={() => loadPortfolio(true)}
               disabled={isRefreshing}
-              className="flex items-center gap-2 px-5 py-2.5 bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 transition-colors disabled:opacity-50 text-[14px] font-medium shadow-sm"
             >
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
               {isRefreshing ? 'Refreshing...' : 'Refresh Prices'}
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -920,12 +928,11 @@ export function BrokersView() {
             Note: These brokerages don't offer public APIs for retail investors, so holdings are
             entered manually. Prices are fetched automatically.
           </p>
-          <button
+          <Button
             onClick={() => setShowAddAccount(true)}
-            className="px-5 py-2.5 bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 transition-colors text-[14px] font-medium"
           >
             Add Your First Account
-          </button>
+          </Button>
         </Card>
       ) : (
         <>

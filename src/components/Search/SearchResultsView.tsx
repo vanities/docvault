@@ -1,6 +1,7 @@
 import { Search, FileText, Image, File, Loader2 } from 'lucide-react';
 import { useAppContext, type SearchResult } from '../../contexts/AppContext';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 function ResultFileIcon({ fileType, className }: { fileType: string; className?: string }) {
   if (fileType.startsWith('image/')) return <Image className={className} />;
@@ -90,15 +91,17 @@ function ResultCard({ result }: { result: SearchResult }) {
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5 mt-2">
-            <button
+            <Button
+              variant="ghost"
+              size="xs"
               onClick={(e) => {
                 e.stopPropagation();
                 handleNavigate();
               }}
-              className="inline-flex px-2 py-0.5 rounded-md text-[11px] font-medium bg-accent-500/15 text-accent-400 hover:bg-accent-500/25 transition-colors"
+              className="bg-accent-500/15 text-accent-400 hover:bg-accent-500/25 h-auto px-2 py-0.5"
             >
               {result.entityName}
-            </button>
+            </Button>
 
             {year && (
               <span className="inline-flex px-2 py-0.5 rounded-md text-[11px] font-medium bg-blue-500/15 text-blue-400">

@@ -9,6 +9,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 export function Header() {
   const {
@@ -87,12 +89,14 @@ export function Header() {
   return (
     <header className="glass-strong h-14 flex items-center px-4 md:px-6 gap-3 border-b border-border relative z-20">
       {/* Hamburger — mobile only */}
-      <button
+      <Button
+        variant="ghost"
+        size="icon-sm"
         onClick={() => setSidebarOpen(true)}
-        className="md:hidden p-2 -ml-1 text-surface-700 hover:text-surface-900 hover:bg-surface-300/30 rounded-lg transition-colors"
+        className="md:hidden -ml-1"
       >
         <Menu className="w-5 h-5" />
-      </button>
+      </Button>
 
       {/* Data dir — desktop only */}
       <div className="hidden md:flex items-center gap-3 flex-1">
@@ -102,20 +106,22 @@ export function Header() {
       {/* Search Bar */}
       <div className="relative flex items-center flex-1 md:flex-none">
         <Search className="absolute left-2.5 w-3.5 h-3.5 text-surface-600 pointer-events-none" />
-        <input
+        <Input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search all files..."
-          className="w-full md:w-56 pl-8 pr-7 py-1.5 text-[13px] bg-surface-200/50 border border-border rounded-lg text-surface-900 placeholder-surface-600 focus:outline-none focus:border-accent-500/50 focus:bg-surface-200/80 transition-all"
+          className="w-full md:w-56 h-8 pl-8 pr-7 text-[13px] rounded-lg"
         />
         {searchQuery && (
-          <button
+          <Button
+            variant="ghost"
+            size="icon-xs"
             onClick={clearSearch}
-            className="absolute right-2 p-0.5 text-surface-600 hover:text-surface-900"
+            className="absolute right-1 top-1/2 -translate-y-1/2"
           >
             <X className="w-3 h-3" />
-          </button>
+          </Button>
         )}
       </div>
 
@@ -124,10 +130,12 @@ export function Header() {
         <div className="flex items-center gap-2 ml-4">
           {/* Split parse button */}
           <div className="flex items-center">
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => handleParse(true)}
               disabled={isProcessing || unparsedCount === 0 || selectedEntity === 'all'}
-              className="flex items-center gap-2 px-3 py-1.5 text-[13px] font-medium text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 rounded-l-lg transition-all duration-150 disabled:opacity-40"
+              className="text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 rounded-l-lg rounded-r-none"
               title={
                 selectedEntity === 'all'
                   ? 'Select a specific entity to parse'
@@ -142,15 +150,17 @@ export function Header() {
                     ? 'Parsing...'
                     : `Parse ${unparsedCount} unparsed`}
               </span>
-            </button>
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
                   disabled={isProcessing || scannedDocuments.length === 0 || selectedEntity === 'all'}
-                  className="px-1.5 py-1.5 text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 rounded-r-lg border-l border-purple-500/20 transition-all duration-150 disabled:opacity-40"
+                  className="text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 rounded-l-none rounded-r-lg border-l border-purple-500/20"
                 >
                   <ChevronDown className="w-3.5 h-3.5" />
-                </button>
+                </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
@@ -171,13 +181,14 @@ export function Header() {
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 onClick={handleRescan}
                 disabled={isProcessing}
-                className="p-1.5 text-surface-600 hover:text-surface-900 hover:bg-surface-300/40 rounded-lg transition-all duration-150 disabled:opacity-40"
               >
                 <RefreshCw className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
-              </button>
+              </Button>
             </TooltipTrigger>
             <TooltipContent>Rescan folder</TooltipContent>
           </Tooltip>

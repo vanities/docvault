@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Server, AlertCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { useAppContext } from '../../contexts/AppContext';
@@ -49,12 +50,13 @@ export function Layout() {
               bun run server
             </code>
           </p>
-          <button
+          <Button
             onClick={checkConnection}
-            className="w-full bg-accent-500 text-surface-0 py-3 px-4 rounded-xl font-medium hover:bg-accent-400 transition-all duration-200 active:scale-[0.98]"
+            className="w-full"
+            size="lg"
           >
             Retry Connection
-          </button>
+          </Button>
           {fsError && (
             <p className="mt-4 text-sm text-danger-400 flex items-center justify-center gap-2">
               <AlertCircle className="w-4 h-4" />

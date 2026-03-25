@@ -4,6 +4,8 @@ import { useAppContext } from '../../contexts/AppContext';
 import { EXPENSE_CATEGORIES } from '../../config';
 import type { ExpenseCategory } from '../../types';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -118,13 +120,13 @@ function Field({
               {prefix}
             </span>
           )}
-          <input
+          <Input
             type="text"
             inputMode="numeric"
             value={inputValue ?? ''}
             onChange={(e) => onInputChange(e.target.value)}
             onBlur={(e) => onInputBlur?.(e.target.value)}
-            className={`w-full ${prefix ? 'pl-6' : 'pl-2'} ${suffix ? 'pr-6' : 'pr-2'} py-1 text-[13px] font-mono text-right bg-surface-200/60 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900`}
+            className={`w-full ${prefix ? 'pl-6' : 'pl-2'} ${suffix ? 'pr-6' : 'pr-2'} py-1 h-auto text-[13px] font-mono text-right bg-surface-200/60 rounded-lg`}
           />
           {suffix && (
             <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-surface-500 text-sm">
@@ -703,19 +705,19 @@ export function TnTaxView() {
           <div className="flex-1 flex flex-col gap-1">
             <span className="text-[13px] text-surface-700">Other Business Income</span>
             <div className="flex gap-2">
-              <input
+              <Input
                 type="text"
                 value={j2Line6Form}
                 onChange={(e) => setJ2Line6Form(e.target.value)}
                 placeholder="Form #"
-                className="w-20 px-2 py-1 text-[11px] bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
+                className="w-20 px-2 py-1 h-auto text-[11px] bg-surface-200/50 rounded-lg"
               />
-              <input
+              <Input
                 type="text"
                 value={j2Line6Schedule}
                 onChange={(e) => setJ2Line6Schedule(e.target.value)}
                 placeholder="Schedule"
-                className="w-20 px-2 py-1 text-[11px] bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
+                className="w-20 px-2 py-1 h-auto text-[11px] bg-surface-200/50 rounded-lg"
               />
             </div>
           </div>
@@ -723,13 +725,13 @@ export function TnTaxView() {
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-surface-500 text-sm">
               $
             </span>
-            <input
+            <Input
               type="text"
               inputMode="numeric"
               value={j2Line6}
               onChange={(e) => setJ2Line6(e.target.value)}
               onBlur={(e) => setJ2Line6(fmtInput(parseNum(e.target.value)))}
-              className="w-full pl-6 pr-2 py-1 text-[13px] font-mono text-right bg-surface-200/60 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
+              className="w-full pl-6 pr-2 py-1 h-auto text-[13px] font-mono text-right bg-surface-200/60 rounded-lg"
             />
           </div>
         </div>
@@ -761,7 +763,7 @@ export function TnTaxView() {
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-surface-500 text-sm">
               $
             </span>
-            <input
+            <Input
               type="text"
               inputMode="numeric"
               value={j2Line8Override ?? fmtInput(calc.j2L8)}
@@ -774,7 +776,7 @@ export function TnTaxView() {
                   setJ2Line8Override(fmtInput(v));
                 }
               }}
-              className="w-full pl-6 pr-2 py-1 text-[13px] font-mono text-right bg-surface-200/60 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
+              className="w-full pl-6 pr-2 py-1 h-auto text-[13px] font-mono text-right bg-surface-200/60 rounded-lg"
             />
           </div>
         </div>
@@ -1163,13 +1165,13 @@ export function TnTaxView() {
                 <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-surface-500 text-sm">
                   $
                 </span>
-                <input
+                <Input
                   type="text"
                   inputMode="numeric"
                   value={bankInput}
                   onChange={(e) => setBankInput(e.target.value)}
                   onBlur={(e) => setBankInput(fmtInput(parseNum(e.target.value)))}
-                  className="w-full pl-6 pr-2 py-1.5 text-[13px] font-mono bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
+                  className="w-full pl-6 pr-2 py-1.5 h-auto text-[13px] font-mono bg-surface-200/50 rounded-lg"
                 />
               </div>
             </div>
@@ -1181,13 +1183,13 @@ export function TnTaxView() {
                 <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-surface-500 text-sm">
                   $
                 </span>
-                <input
+                <Input
                   type="text"
                   inputMode="numeric"
                   value={ccInput}
                   onChange={(e) => setCcInput(e.target.value)}
                   onBlur={(e) => setCcInput(fmtInput(parseNum(e.target.value)))}
-                  className="w-full pl-6 pr-2 py-1.5 text-[13px] font-mono bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
+                  className="w-full pl-6 pr-2 py-1.5 h-auto text-[13px] font-mono bg-surface-200/50 rounded-lg"
                 />
               </div>
             </div>
@@ -1206,30 +1208,33 @@ export function TnTaxView() {
                     <span className="text-[12px] text-surface-700">{a.name}</span>
                     <div className="flex items-center gap-3">
                       <span className="text-[12px] font-mono text-surface-900">{fmt(a.value)}</span>
-                      <button
+                      <Button
+                        type="button"
+                        variant="ghost-danger"
+                        size="icon-xs"
                         onClick={() => setBizAssets((prev) => prev.filter((x) => x.id !== a.id))}
-                        className="opacity-0 group-hover:opacity-100 text-surface-500 hover:text-red-400 transition-all"
+                        className="opacity-0 group-hover:opacity-100"
                       >
                         <Trash2 className="w-3 h-3" />
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ))}
               </div>
             )}
             <div className="flex gap-2">
-              <input
+              <Input
                 type="text"
                 value={addAssetName}
                 onChange={(e) => setAddAssetName(e.target.value)}
                 placeholder="e.g. MacBook Pro, Test Phone"
-                className="flex-1 px-2.5 py-1.5 text-[12px] bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
+                className="flex-1 px-2.5 py-1.5 h-auto text-[12px] bg-surface-200/50 rounded-lg"
               />
               <div className="relative w-28">
                 <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-surface-500 text-sm">
                   $
                 </span>
-                <input
+                <Input
                   type="text"
                   inputMode="numeric"
                   value={addAssetValue}
@@ -1238,17 +1243,18 @@ export function TnTaxView() {
                     if (e.key === 'Enter') addAsset();
                   }}
                   placeholder="0"
-                  className="w-full pl-6 pr-2 py-1.5 text-[12px] font-mono bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
+                  className="w-full pl-6 pr-2 py-1.5 h-auto text-[12px] font-mono bg-surface-200/50 rounded-lg"
                 />
               </div>
-              <button
+              <Button
+                type="button"
+                size="sm"
                 onClick={addAsset}
                 disabled={!addAssetName || !addAssetValue}
-                className="flex items-center gap-1 px-2.5 py-1.5 text-[12px] font-medium bg-accent-500 hover:bg-accent-600 disabled:opacity-40 text-white rounded-lg transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />
                 Add
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -1277,13 +1283,13 @@ export function TnTaxView() {
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-surface-500 text-sm">
               $
             </span>
-            <input
+            <Input
               type="text"
               inputMode="numeric"
               value={affiliatedDebtInput}
               onChange={(e) => setAffiliatedDebtInput(e.target.value)}
               onBlur={(e) => setAffiliatedDebtInput(fmtInput(parseNum(e.target.value)))}
-              className="w-full pl-6 pr-2 py-1 text-[13px] font-mono text-right bg-surface-200/60 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
+              className="w-full pl-6 pr-2 py-1 h-auto text-[13px] font-mono text-right bg-surface-200/60 rounded-lg"
             />
           </div>
         </div>

@@ -3,6 +3,7 @@ import { Building2, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { useToast } from '../../hooks/useToast';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 const LABEL_MAP: Record<string, string> = {
   ein: 'EIN',
@@ -109,9 +110,10 @@ export function EntityMetadataBanner({ entityConfig }: EntityMetadataBannerProps
 
   return (
     <Card variant="glass" className="mb-6 overflow-hidden">
-      <button
+      <Button
+        variant="ghost"
         onClick={toggleExpanded}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-200/20 transition-colors"
+        className="w-full flex items-center justify-between px-4 py-3 h-auto rounded-none"
       >
         <div className="flex items-center gap-2">
           <Building2 className="w-4 h-4 text-surface-600" />
@@ -125,7 +127,7 @@ export function EntityMetadataBanner({ entityConfig }: EntityMetadataBannerProps
         ) : (
           <ChevronDown className="w-4 h-4 text-surface-500" />
         )}
-      </button>
+      </Button>
 
       {isExpanded && (
         <div className="px-4 pb-4">

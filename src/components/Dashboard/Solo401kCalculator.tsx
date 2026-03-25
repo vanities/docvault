@@ -2,6 +2,8 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { Landmark, ChevronDown, ChevronUp, Info, Plus, Trash2, Calculator } from 'lucide-react';
 import { useAppContext } from '../../contexts/AppContext';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 interface Solo401kCalculatorProps {
   defaultGross: number;
@@ -111,7 +113,7 @@ function CurrencyInput({
       </label>
       <div className="relative">
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-500 text-sm">$</span>
-        <input
+        <Input
           type="text"
           inputMode="numeric"
           value={value}
@@ -120,7 +122,7 @@ function CurrencyInput({
             const val = parseCurrencyInput(e.target.value);
             onBlur(val.toFixed(0));
           }}
-          className="w-full pl-7 pr-3 py-2 text-sm font-mono bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
+          className="pl-7 h-9 rounded-lg text-sm font-mono bg-surface-200/50"
         />
       </div>
       {hint && <p className="text-[10px] text-surface-500 mt-1">{hint}</p>}
@@ -424,12 +426,15 @@ export function Solo401kCalculator({
                         {formatCurrency(c.amount)}
                       </span>
                     </div>
-                    <button
+                    <Button
+                      type="button"
+                      variant="ghost-danger"
+                      size="icon-xs"
                       onClick={() => removeContribution(c.id)}
-                      className="opacity-0 group-hover:opacity-100 text-surface-500 hover:text-red-400 transition-all"
+                      className="opacity-0 group-hover:opacity-100"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -439,11 +444,11 @@ export function Solo401kCalculator({
             <div className="flex gap-2 items-end">
               <div className="flex-shrink-0">
                 <label className="block text-[10px] text-surface-500 mb-1">Date</label>
-                <input
+                <Input
                   type="date"
                   value={addDate}
                   onChange={(e) => setAddDate(e.target.value)}
-                  className="px-2 py-1.5 text-[12px] font-mono bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
+                  className="px-2 py-1.5 h-auto text-[12px] font-mono bg-surface-200/50 rounded-lg"
                 />
               </div>
               <div className="flex-shrink-0">
@@ -463,7 +468,7 @@ export function Solo401kCalculator({
                   <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-surface-500 text-sm">
                     $
                   </span>
-                  <input
+                  <Input
                     type="text"
                     inputMode="numeric"
                     value={addAmount}
@@ -472,18 +477,20 @@ export function Solo401kCalculator({
                       if (e.key === 'Enter') addContribution();
                     }}
                     placeholder="0"
-                    className="w-full pl-6 pr-2 py-1.5 text-[12px] font-mono bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
+                    className="w-full pl-6 pr-2 py-1.5 h-auto text-[12px] font-mono bg-surface-200/50 rounded-lg"
                   />
                 </div>
               </div>
-              <button
+              <Button
+                type="button"
+                size="sm"
                 onClick={addContribution}
                 disabled={!addAmount || !addDate}
-                className="flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium bg-accent-500 hover:bg-accent-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex-shrink-0"
+                className="flex-shrink-0"
               >
                 <Plus className="w-3.5 h-3.5" />
                 Add
-              </button>
+              </Button>
             </div>
           </div>
 

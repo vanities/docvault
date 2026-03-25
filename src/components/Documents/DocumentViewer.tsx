@@ -25,6 +25,7 @@ import { API_BASE } from '../../constants';
 import { FileIcon } from '../common/FileIcon';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 interface DocumentViewerProps {
   document: TaxDocument;
@@ -331,7 +332,7 @@ export function DocumentViewer({
             <div className="min-w-0">
               {isRenaming ? (
                 <div className="flex items-center gap-1.5">
-                  <input
+                  <Input
                     ref={renameInputRef}
                     type="text"
                     value={renameValue}
@@ -342,46 +343,51 @@ export function DocumentViewer({
                     }}
                     onBlur={cancelRename}
                     disabled={isRenameSaving}
-                    className="bg-surface-200/50 border border-border rounded-md px-2 py-0.5 text-[14px] font-semibold text-surface-950 w-full min-w-0"
+                    className="h-7 px-2 text-[14px] font-semibold rounded-md"
                   />
                   <span className="text-[14px] font-semibold text-surface-600 shrink-0">
                     {fileExtension}
                   </span>
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
                     onMouseDown={(e) => {
                       e.preventDefault();
                       void saveRename();
                     }}
                     disabled={isRenameSaving}
-                    className="p-1 text-success-500 hover:bg-success-500/10 rounded transition-all shrink-0"
+                    className="text-success-500 hover:bg-success-500/10 shrink-0"
                     title="Save"
                   >
                     <Check className="w-4 h-4" />
-                  </button>
+                  </Button>
                 </div>
               ) : (
                 <div className="flex items-center gap-1.5">
                   <h2 className="font-semibold text-surface-950 truncate text-[14px]">
                     {document.fileName}
                   </h2>
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
                     onClick={startRenaming}
-                    className="p-1 text-surface-500 hover:text-surface-800 hover:bg-surface-300/30 rounded transition-all shrink-0"
+                    className="text-surface-500 hover:text-surface-800 shrink-0"
                     title="Rename file"
                   >
                     <Pencil className="w-3.5 h-3.5" />
-                  </button>
+                  </Button>
                 </div>
               )}
               <p className="text-[12px] text-surface-700">{docTypeInfo?.label || document.type}</p>
             </div>
           </div>
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={onClose}
-            className="p-2 text-surface-600 hover:text-surface-900 hover:bg-surface-300/30 rounded-lg transition-all"
           >
             <X className="w-5 h-5" />
-          </button>
+          </Button>
         </div>
 
         {/* Preview */}
@@ -402,13 +408,14 @@ export function DocumentViewer({
             <div className="w-full h-full flex flex-col items-center justify-center text-surface-600">
               <File className="w-16 h-16 mb-4" />
               <p>Preview not available</p>
-              <button
+              <Button
+                variant="link"
                 onClick={handleOpenExternal}
-                className="mt-4 flex items-center gap-2 text-accent-400 hover:text-accent-500"
+                className="mt-4"
               >
                 <ExternalLink className="w-4 h-4" />
                 Open in new tab
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -563,47 +570,52 @@ export function DocumentViewer({
 
         {/* Actions */}
         <div className="border-t border-border p-4 flex flex-col sm:flex-row gap-2">
-          <button
+          <Button
+            variant="secondary"
             onClick={handleDownload}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-surface-300/30 text-surface-800 rounded-xl hover:bg-surface-300/50 transition-all text-[13px] font-medium"
+            className="flex-1"
           >
             <Download className="w-4 h-4" />
             Download
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={handleReparse}
             disabled={isParsing}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 transition-all disabled:opacity-40 text-[13px] font-medium"
+            className="flex-1"
           >
             <RefreshCw className={`w-4 h-4 ${isParsing ? 'animate-spin' : ''}`} />
             {isParsing ? 'Parsing...' : 'Parse Document'}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="outline"
             onClick={handleAiRename}
             disabled={isAiRenaming}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-violet-500/15 text-violet-400 rounded-xl hover:bg-violet-500/25 transition-all disabled:opacity-40 text-[13px] font-medium"
+            className="flex-1 text-violet-400 bg-violet-500/15 hover:bg-violet-500/25 border-violet-500/20"
             title="Auto rename from parsed data"
           >
             <Wand2 className={`w-4 h-4 ${isAiRenaming ? 'animate-pulse' : ''}`} />
             {isAiRenaming ? 'Renaming...' : 'Auto Rename'}
-          </button>
+          </Button>
           {onMove && entities && availableYears && (
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setShowMoveModal(true)}
-              className="flex items-center justify-center gap-2 px-4 py-2 text-warn-400 hover:bg-warn-500/10 rounded-xl transition-all"
+              className="text-warn-400 hover:bg-warn-500/10"
               title="Move to different entity/year"
             >
               <MoveRight className="w-4 h-4" />
-            </button>
+            </Button>
           )}
           {onDelete && (
-            <button
+            <Button
+              variant="ghost-danger"
+              size="icon"
               onClick={handleDelete}
               disabled={isDeleting}
-              className="flex items-center justify-center gap-2 px-4 py-2 text-danger-400 hover:bg-danger-500/10 rounded-xl transition-all disabled:opacity-40"
             >
               <Trash2 className="w-4 h-4" />
-            </button>
+            </Button>
           )}
         </div>
       </div>

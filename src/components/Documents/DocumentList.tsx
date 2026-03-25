@@ -17,6 +17,8 @@ import { DocumentViewer } from './DocumentViewer';
 import type { TaxDocument, DocumentType, Entity } from '../../types';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import { DOCUMENT_TYPES } from '../../config';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 interface DocumentListProps {
   documents: TaxDocument[];
@@ -541,12 +543,12 @@ export function DocumentList({
         {/* Search */}
         <div className="relative w-full md:flex-1 md:min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-600" />
-          <input
+          <Input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search documents..."
-            className="w-full pl-9 pr-4 py-2 bg-surface-200/40 border border-border rounded-lg text-[13px] text-surface-900 placeholder-surface-600"
+            className="pl-9 pr-4 rounded-lg text-[13px]"
           />
         </div>
 
@@ -601,18 +603,22 @@ export function DocumentList({
 
         {/* View toggle */}
         <div className="flex border border-border rounded-lg overflow-hidden">
-          <button
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={() => setViewMode('grid')}
-            className={`p-2 transition-all duration-100 ${viewMode === 'grid' ? 'bg-surface-300/50 text-surface-900' : 'text-surface-600 hover:bg-surface-200/40'}`}
+            className={`rounded-none ${viewMode === 'grid' ? 'bg-surface-300/50 text-surface-900' : 'text-surface-600'}`}
           >
             <Grid className="w-4 h-4" />
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={() => setViewMode('list')}
-            className={`p-2 transition-all duration-100 ${viewMode === 'list' ? 'bg-surface-300/50 text-surface-900' : 'text-surface-600 hover:bg-surface-200/40'}`}
+            className={`rounded-none ${viewMode === 'list' ? 'bg-surface-300/50 text-surface-900' : 'text-surface-600'}`}
           >
             <ListIcon className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -628,33 +634,36 @@ export function DocumentList({
 
         {onParse && (
           <>
-            <button
+            <Button
+              variant="outline"
+              size="xs"
               onClick={selectUnparsed}
-              className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-surface-700 hover:text-surface-900 bg-surface-200/50 hover:bg-surface-200 border border-border rounded-lg transition-colors"
             >
               <Sparkles className="w-3 h-3" />
               Unparsed ({filteredAndSortedDocuments.filter((d) => !d.parsedData).length})
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="outline"
+              size="xs"
               onClick={() => setSelectedIds(new Set(filteredAndSortedDocuments.map((d) => d.id)))}
-              className="px-2.5 py-1 text-[11px] font-medium text-surface-700 hover:text-surface-900 bg-surface-200/50 hover:bg-surface-200 border border-border rounded-lg transition-colors"
             >
               All ({filteredAndSortedDocuments.length})
-            </button>
+            </Button>
             {selectedIds.size > 0 && (
-              <button
+              <Button
+                variant="outline"
+                size="xs"
                 onClick={() => setSelectedIds(new Set())}
-                className="flex items-center gap-1 px-2.5 py-1 text-[11px] text-surface-600 hover:text-surface-900 border border-border rounded-lg transition-colors"
               >
                 <X className="w-3 h-3" />
                 Clear
-              </button>
+              </Button>
             )}
             {selectedIds.size > 0 && (
-              <button
+              <Button
+                size="xs"
                 onClick={handleParseSelected}
                 disabled={!!parseProgress}
-                className="flex items-center gap-1.5 px-3 py-1 text-[12px] font-medium text-white bg-accent-500 hover:bg-accent-600 disabled:opacity-60 rounded-lg transition-colors"
               >
                 {parseProgress ? (
                   <>
@@ -667,7 +676,7 @@ export function DocumentList({
                     Parse {selectedIds.size}
                   </>
                 )}
-              </button>
+              </Button>
             )}
           </>
         )}
