@@ -25,6 +25,9 @@ export function AllFilesView() {
 
   const [allFiles, setAllFiles] = useState<TaxDocument[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(
+    null
+  );
 
   // Load all files when entity changes
   const loadAllFiles = useCallback(async () => {
@@ -42,17 +45,28 @@ export function AllFilesView() {
     const files = e.target.files;
     if (!files || files.length === 0 || selectedEntity === 'all') return;
 
+    const fileList = Array.from(files);
     let succeeded = 0;
     let failed = 0;
-    for (const file of Array.from(files)) {
-      const success = await importFile(file, 'other', selectedEntity, 0);
+
+    if (fileList.length > 1) {
+      setUploadProgress({ current: 0, total: fileList.length });
+    }
+
+    for (let i = 0; i < fileList.length; i++) {
+      if (fileList.length > 1) {
+        setUploadProgress({ current: i + 1, total: fileList.length });
+      }
+      const success = await importFile(fileList[i], 'other', selectedEntity, 0);
       if (success) succeeded++;
       else failed++;
     }
 
+    setUploadProgress(null);
+
     if (succeeded > 0) {
       addToast(
-        files.length === 1
+        fileList.length === 1
           ? 'File uploaded successfully'
           : `${succeeded} file${succeeded !== 1 ? 's' : ''} uploaded${failed > 0 ? `, ${failed} failed` : ''}`,
         failed > 0 ? 'info' : 'success'
@@ -170,6 +184,26 @@ export function AllFilesView() {
           )}
         </div>
       </div>
+
+      {/* Upload progress */}
+      {uploadProgress && (
+        <div className="glass-card rounded-xl p-4 mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm text-surface-700">
+              Uploading {uploadProgress.current} of {uploadProgress.total}...
+            </span>
+            <span className="text-xs text-surface-500">
+              {Math.round((uploadProgress.current / uploadProgress.total) * 100)}%
+            </span>
+          </div>
+          <div className="w-full h-2 bg-surface-200/50 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-accent-500 rounded-full transition-all duration-300"
+              style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {selectedEntity === 'all' && (
         <div className="bg-warn-500/10 border border-warn-500/20 rounded-xl p-4 mb-6">
