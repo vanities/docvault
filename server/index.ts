@@ -2805,12 +2805,6 @@ async function handleRequest(req: Request): Promise<Response> {
                 // Array of deposit transactions
                 depositSources = parsed.deposits as typeof depositSources;
                 depositTotal = depositSources.reduce((s, d) => s + (d.amount || 0), 0);
-              } else if (typeof parsed.totalDeposits === 'number') {
-                // Numeric total (no individual transactions)
-                depositTotal = parsed.totalDeposits as number;
-              } else if (typeof parsed.totalDepositsAndAdditions === 'number') {
-                // Manna-style field name
-                depositTotal = parsed.totalDepositsAndAdditions as number;
               } else if (Array.isArray(parsed.depositsAndAdditions)) {
                 // Manna-style array of deposits
                 const deps = parsed.depositsAndAdditions as {
@@ -2844,6 +2838,12 @@ async function handleRequest(req: Request): Promise<Response> {
                   description: d.description || '',
                   amount: d.amount || 0,
                 }));
+              } else if (typeof parsed.totalDeposits === 'number') {
+                // Numeric total only (no individual transactions for classification)
+                depositTotal = parsed.totalDeposits as number;
+              } else if (typeof parsed.totalDepositsAndAdditions === 'number') {
+                // Numeric total only (Manna-style field name)
+                depositTotal = parsed.totalDepositsAndAdditions as number;
               }
 
               // Classify each deposit as revenue or owner contribution
