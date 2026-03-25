@@ -12,6 +12,8 @@ import {
   Camera,
   Calendar,
   Building2,
+  Coins,
+  MapPin,
 } from 'lucide-react';
 import type {
   CryptoPortfolio,
@@ -453,6 +455,8 @@ export function PortfolioView() {
                     { key: 'brokerValue', label: 'Brokers', color: '#8b5cf6' },
                     { key: 'cryptoValue', label: 'Crypto', color: '#f59e0b' },
                     { key: 'bankValue', label: 'Banks', color: '#3b82f6' },
+                    { key: 'goldValue', label: 'Gold', color: '#eab308' },
+                    { key: 'propertyValue', label: 'Property', color: '#10b981' },
                   ]}
                   stacked={false}
                   height={180}
@@ -495,7 +499,7 @@ export function PortfolioView() {
                   </p>
                   <p className="text-xl font-bold text-amber-500">{formatUsd(shortTermGains)}</p>
                   <p className="text-[10px] text-surface-500 mt-0.5">
-                    Held &lt; 1 year &middot; taxed as income
+                    Held &lt; 1 year · taxed as income
                   </p>
                 </div>
                 <div className="p-3 bg-surface-200/30 rounded-lg">
@@ -504,7 +508,7 @@ export function PortfolioView() {
                   </p>
                   <p className="text-xl font-bold text-green-500">{formatUsd(longTermGains)}</p>
                   <p className="text-[10px] text-surface-500 mt-0.5">
-                    Held &gt; 1 year &middot; lower tax rate
+                    Held &gt; 1 year · lower tax rate
                   </p>
                 </div>
               </div>
@@ -512,7 +516,7 @@ export function PortfolioView() {
           )}
 
           {/* Category Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
             {/* Crypto Card */}
             <button
               onClick={() => setActiveView('crypto')}
@@ -527,7 +531,7 @@ export function PortfolioView() {
                     <p className="font-semibold text-surface-950 text-[15px]">Crypto</p>
                     <p className="text-[11px] text-surface-600">
                       {crypto?.sources.length || 0} source
-                      {(crypto?.sources.length || 0) !== 1 ? 's' : ''} &middot;{' '}
+                      {(crypto?.sources.length || 0) !== 1 ? 's' : ''} ·{' '}
                       {crypto?.byAsset.filter((a) => (a.usdValue || 0) > 0.01).length || 0} assets
                     </p>
                   </div>
@@ -604,6 +608,64 @@ export function PortfolioView() {
                 </div>
               )}
             </button>
+
+            {/* Gold Card */}
+            {goldTotal > 0 && (
+              <button
+                onClick={() => setActiveView('gold')}
+                className="glass-card rounded-xl p-5 text-left hover:ring-2 hover:ring-yellow-500/30 transition-all group"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-lg bg-yellow-500/10">
+                      <Coins className="w-5 h-5 text-yellow-500" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-surface-950 text-[15px]">Gold</p>
+                      <p className="text-[11px] text-surface-600">Precious metals</p>
+                    </div>
+                  </div>
+                  <p className="text-xl font-bold text-surface-950">{formatUsd(goldTotal)}</p>
+                </div>
+                {grandTotal > 0 && (
+                  <div className="w-full h-1.5 bg-surface-200/50 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-yellow-500 rounded-full transition-all duration-500"
+                      style={{ width: `${(goldTotal / grandTotal) * 100}%` }}
+                    />
+                  </div>
+                )}
+              </button>
+            )}
+
+            {/* Property Card */}
+            {propertyTotal > 0 && (
+              <button
+                onClick={() => setActiveView('property')}
+                className="glass-card rounded-xl p-5 text-left hover:ring-2 hover:ring-emerald-500/30 transition-all group"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-lg bg-emerald-500/10">
+                      <MapPin className="w-5 h-5 text-emerald-500" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-surface-950 text-[15px]">Property</p>
+                      <p className="text-[11px] text-surface-600">Real estate equity</p>
+                    </div>
+                  </div>
+                  <p className="text-xl font-bold text-surface-950">{formatUsd(propertyTotal)}</p>
+                </div>
+                {grandTotal > 0 && (
+                  <div className="w-full h-1.5 bg-surface-200/50 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                      style={{ width: `${(propertyTotal / grandTotal) * 100}%` }}
+                    />
+                  </div>
+                )}
+              </button>
+            )}
           </div>
 
           {/* Combined Holdings */}
