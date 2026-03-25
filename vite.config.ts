@@ -1,4 +1,3 @@
-import path from 'node:path';
 import { defineConfig } from 'vite-plus';
 import tailwindcss from '@tailwindcss/vite';
 
@@ -141,7 +140,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': `${import.meta.dirname}/src`,
     },
   },
   plugins: [tailwindcss()],
