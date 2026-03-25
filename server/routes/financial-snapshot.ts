@@ -172,7 +172,7 @@ export async function handleFinancialSnapshotRoutes(
       }
 
       // Parse bank statement deposits using centralized analytics module
-      const { getBankDepositSummary } = await import('./analytics/index.js');
+      const { getBankDepositSummary } = await import('../analytics/index.js');
 
       // Build bank deposit summaries using centralized analytics module
       const bankDepositsByEntity: Record<
@@ -207,7 +207,7 @@ export async function handleFinancialSnapshotRoutes(
       }
 
       // Build tax entity summaries using centralized analytics module
-      const { getIncomeSummary, getExpenseSummary } = await import('./analytics/index.js');
+      const { getIncomeSummary, getExpenseSummary } = await import('../analytics/index.js');
       const taxEntities = config.entities.filter(
         (e) => (e as Record<string, unknown>).type === 'tax'
       );
@@ -527,7 +527,7 @@ export async function handleFinancialSnapshotRoutes(
       };
 
       // ── Tax Summary + Form 2210 (using centralized analytics) ──────
-      const { getTaxCalculation } = await import('./analytics/index.js');
+      const { getTaxCalculation } = await import('../analytics/index.js');
 
       // Retirement deduction total
       let retirementDeduction = 0;
@@ -1100,7 +1100,7 @@ export async function handleFinancialSnapshotRoutes(
 
         if (taxSummary.seTax > 0) {
           lines.push('### Self-Employment Tax');
-          lines.push(`- Net SE Earnings: ${fmt(netSEEarnings)}`);
+          lines.push(`- Net SE Earnings: ${fmt(taxSummary.scheduleCIncome * 0.9235)}`);
           lines.push(`- SE Tax (15.3%): ${fmt(taxSummary.seTax)}`);
           lines.push(`- SE Tax Deduction (50%): ${fmt(taxSummary.seTaxDeduction)}`);
           lines.push('');
