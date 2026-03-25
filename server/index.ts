@@ -2567,6 +2567,156 @@ async function handleRequest(req: Request): Promise<Response> {
     }
   }
 
+  // GET /api/analytics/quick-stats/:entity/:year - All summaries in one request for frontend
+  const quickStatsMatch = pathname.match(/^\/api\/analytics\/quick-stats\/([^/]+)\/(\d{4})$/);
+  if (quickStatsMatch && req.method === 'GET') {
+    const [, entityId, year] = quickStatsMatch;
+    const includeHidden = url.searchParams.get('includeHidden') === 'true';
+
+    try {
+      const config = await loadConfig();
+      const parsedDataMap = await loadParsedData();
+      const metadataMap = includeHidden ? {} : await loadMetadata();
+      const { getIncomeSummary, getExpenseSummary, getBankDepositSummary } =
+        await import('./analytics/index.js');
+
+      // Support "all" entity by iterating all tax entities
+      const entities =
+        entityId === 'all'
+          ? config.entities.filter((e) => (e as Record<string, unknown>).type === 'tax')
+          : config.entities.filter((e) => e.id === entityId);
+
+      if (entities.length === 0) {
+        return jsonResponse({ error: 'Entity not found' }, 404);
+      }
+
+      // Aggregate across all matching entities
+      const allIncome: { items: ReturnType<typeof getIncomeSummary>['items'] } = { items: [] };
+      const allExpenses: { expenses: ReturnType<typeof getExpenseSummary>['expenses'] } = { expenses: [] };
+      let totalW2 = 0,
+        totalW2Count = 0,
+        total1099 = 0,
+        total1099Count = 0,
+        totalK1 = 0,
+        totalK1Count = 0,
+        totalCapGainsST = 0,
+        totalCapGainsLT = 0,
+        totalFederalWithheld = 0,
+        totalStateWithheld = 0,
+        totalExpenses = 0,
+        totalDeductible = 0,
+        documentCount = 0;
+      const expenseItems: ReturnType<typeof getExpenseSummary>['items'] = [];
+      const bankDeposits: Record<string, ReturnType<typeof getBankDepositSummary>> = {};
+
+      for (const entity of entities) {
+        const entityPath = await getEntityPath(entity.id);
+        if (!entityPath) continue;
+
+        const yearPath = path.join(entityPath, year);
+        let files: FileInfo[] = [];
+        try {
+          await fs.access(yearPath);
+          files = await scanDirectory(yearPath, year);
+        } catch {
+          continue;
+        }
+
+        documentCount += files.length;
+        const analyticsFiles = files.map((f) => ({ name: f.name, path: f.path, type: f.type }));
+
+        // Income
+        const inc = getIncomeSummary(entity.id, year, parsedDataMap, metadataMap, analyticsFiles);
+        allIncome.items.push(...inc.items);
+        totalW2 += inc.w2Total;
+        totalW2Count += inc.w2Count;
+        total1099 += inc.income1099Total;
+        total1099Count += inc.income1099Count;
+        totalK1 += inc.k1Total;
+        totalK1Count += inc.k1Count;
+        totalCapGainsST += inc.capitalGainsShortTerm;
+        totalCapGainsLT += inc.capitalGainsLongTerm;
+        totalFederalWithheld += inc.federalWithheld;
+        totalStateWithheld += inc.stateWithheld;
+
+        // Expenses
+        const exp = getExpenseSummary(entity.id, year, parsedDataMap, metadataMap, analyticsFiles);
+        allExpenses.expenses.push(...exp.expenses);
+        totalExpenses += exp.totalExpenses;
+        totalDeductible += exp.totalDeductible;
+        for (const item of exp.items) {
+          const existing = expenseItems.find((e) => e.category === item.category);
+          if (existing) {
+            existing.total += item.total;
+            existing.deductibleAmount += item.deductibleAmount;
+            existing.count += item.count;
+          } else {
+            expenseItems.push({ ...item });
+          }
+        }
+
+        // Bank deposits
+        const statementsPath = path.join(entityPath, year, 'statements', 'bank');
+        try {
+          await fs.access(statementsPath);
+          const statementFiles = await fs.readdir(statementsPath);
+          const depositSummary = getBankDepositSummary(
+            entity.id,
+            year,
+            parsedDataMap,
+            metadataMap,
+            statementFiles
+          );
+          if (depositSummary.monthly.length > 0) {
+            bankDeposits[entity.id] = depositSummary;
+          }
+        } catch {
+          /* no statements dir */
+        }
+      }
+
+      const totalCapGains = totalCapGainsST + totalCapGainsLT;
+
+      return jsonResponse({
+        entityId,
+        year,
+        income: {
+          w2Total: totalW2,
+          w2Count: totalW2Count,
+          income1099Total: total1099,
+          income1099Count: total1099Count,
+          k1Total: totalK1,
+          k1Count: totalK1Count,
+          capitalGainsShortTerm: totalCapGainsST,
+          capitalGainsLongTerm: totalCapGainsLT,
+          capitalGainsTotal: totalCapGains,
+          federalWithheld: totalFederalWithheld,
+          stateWithheld: totalStateWithheld,
+          totalIncome: totalW2 + total1099 + totalK1 + totalCapGains,
+          salesTotal: 0, // TODO: integrate sales data
+          salesCount: 0,
+          items: allIncome.items,
+        },
+        expenses: {
+          items: expenseItems.sort((a, b) => b.total - a.total),
+          totalExpenses,
+          totalDeductible,
+          mileageTotal: 0, // TODO: integrate mileage
+          mileageDeduction: 0,
+          mileageCount: 0,
+          expenses: allExpenses.expenses,
+        },
+        bankDeposits,
+        documentCount,
+      });
+    } catch (err) {
+      return jsonResponse(
+        { error: 'Failed to generate analytics', details: String(err) },
+        500
+      );
+    }
+  }
+
   // GET /api/financial-snapshot/:year - Consolidated financial snapshot for LLM consumption
   const snapshotMatch = pathname.match(/^\/api\/financial-snapshot\/(\d{4})$/);
   if (snapshotMatch && req.method === 'GET') {
