@@ -2,6 +2,7 @@ import { Receipt, TrendingDown, Percent, Download, Fuel, ArrowRight } from 'luci
 import { CopyableField } from './CopyableField';
 import type { ExpenseSummary as ExpenseSummaryType, TaxDocument, ParsedReceipt } from '../../types';
 import { EXPENSE_CATEGORIES } from '../../config';
+import { Card } from '@/components/ui/card';
 
 interface ExpenseSummaryProps {
   summary: ExpenseSummaryType;
@@ -60,7 +61,7 @@ export function ExpenseSummary({
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <div className="flex items-center gap-3 mb-3">
             <div className="p-2 bg-danger-500/10 rounded-lg">
               <TrendingDown className="w-5 h-5 text-danger-400" />
@@ -71,9 +72,9 @@ export function ExpenseSummary({
             {formatCurrency(summary.totalExpenses)}
           </p>
           <p className="text-[11px] text-surface-600 mt-1">Gross expense amount</p>
-        </div>
+        </Card>
 
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <div className="flex items-center gap-3 mb-3">
             <div className="p-2 bg-emerald-500/10 rounded-lg">
               <Percent className="w-5 h-5 text-emerald-400" />
@@ -84,9 +85,9 @@ export function ExpenseSummary({
             {formatCurrency(summary.totalDeductible)}
           </p>
           <p className="text-[11px] text-surface-600 mt-1">After deduction rates applied</p>
-        </div>
+        </Card>
 
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <div className="flex items-center gap-3 mb-3">
             <div className="p-2 bg-info-500/10 rounded-lg">
               <Receipt className="w-5 h-5 text-info-400" />
@@ -99,12 +100,12 @@ export function ExpenseSummary({
           <p className="text-[11px] text-surface-600 mt-1">
             Across {summary.items.length} categories
           </p>
-        </div>
+        </Card>
       </div>
 
       {/* Schedule C Copyable Fields */}
       {summary.items.length > 0 && (
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <h3 className="font-semibold text-surface-950 mb-4 text-[14px]">
             Schedule C Entry Values
           </h3>
@@ -148,12 +149,12 @@ export function ExpenseSummary({
               />
             </div>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Mileage Section */}
       {onNavigateToMileage && (
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-surface-950 text-[14px]">
               Mileage Deduction{summary.mileageCount > 0 ? ` (${summary.mileageCount} trips)` : ''}
@@ -194,12 +195,12 @@ export function ExpenseSummary({
           ) : (
             <p className="text-[13px] text-surface-500">No mileage logged for this tax year.</p>
           )}
-        </div>
+        </Card>
       )}
 
       {/* Category Breakdown */}
       {summary.items.length > 0 && (
-        <div className="glass-card rounded-xl p-5">
+        <Card variant="glass" className="p-5">
           <h3 className="font-semibold text-surface-950 mb-4 text-[14px]">Expense Categories</h3>
 
           <div className="space-y-4">
@@ -274,22 +275,22 @@ export function ExpenseSummary({
               );
             })}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Empty State */}
       {documents.length === 0 && (
-        <div className="glass-card rounded-xl p-8 text-center">
+        <Card variant="glass" className="p-8 text-center">
           <Receipt className="w-12 h-12 text-surface-500 mx-auto mb-4" />
           <h3 className="font-medium text-surface-900 mb-1">No expense receipts</h3>
           <p className="text-[13px] text-surface-600">
             Upload your receipts and categorize them to see your expense summary.
           </p>
-        </div>
+        </Card>
       )}
 
       {/* Category Legend */}
-      <div className="glass-card rounded-xl p-5">
+      <Card variant="glass" className="p-5">
         <h3 className="font-semibold text-surface-950 mb-4 text-[14px]">Expense Category Guide</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {EXPENSE_CATEGORIES.map((cat) => (
@@ -309,7 +310,7 @@ export function ExpenseSummary({
             </div>
           ))}
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

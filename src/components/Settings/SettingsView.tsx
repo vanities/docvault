@@ -28,6 +28,7 @@ import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import { API_BASE } from '../../constants';
+import { Card } from '@/components/ui/card';
 import {
   AVAILABLE_ICONS,
   DEFAULT_ENTITY_ICONS,
@@ -147,7 +148,7 @@ function DropboxConnectionSection() {
 
   if (loading) {
     return (
-      <section className="glass-card rounded-xl p-6 mb-8">
+      <Card variant="glass" className="p-6 mb-8">
         <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
           <Cloud className="w-5 h-5" />
           Dropbox Connection
@@ -156,12 +157,12 @@ function DropboxConnectionSection() {
           <RefreshCw className="w-4 h-4 animate-spin" />
           Checking...
         </div>
-      </section>
+      </Card>
     );
   }
 
   return (
-    <section className="glass-card rounded-xl p-6 mb-8">
+    <Card variant="glass" className="p-6 mb-8">
       <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
         <Cloud className="w-5 h-5" />
         Dropbox Connection
@@ -267,7 +268,7 @@ function DropboxConnectionSection() {
           </button>
         </form>
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -966,7 +967,7 @@ export function SettingsView() {
         AI & API Keys
       </p>
 
-      <section className="glass-card rounded-xl p-6 mb-8">
+      <Card variant="glass" className="p-6 mb-8">
         <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
           <Key className="w-5 h-5" />
           API Configuration
@@ -1173,7 +1174,7 @@ export function SettingsView() {
             </div>
           </div>
         )}
-      </section>
+      </Card>
 
       {/* ── Sync & Scheduling ─────────────────────────── */}
       <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
@@ -1181,7 +1182,7 @@ export function SettingsView() {
       </p>
 
       {/* Sync Status */}
-      <section className="glass-card rounded-xl p-6 mb-8">
+      <Card variant="glass" className="p-6 mb-8">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-surface-950 flex items-center gap-2">
             <RefreshCw className="w-5 h-5" />
@@ -1318,10 +1319,10 @@ export function SettingsView() {
             </div>
           </div>
         </div>
-      </section>
+      </Card>
 
       {/* Scheduled Tasks */}
-      <section className="glass-card rounded-xl p-6 mb-8">
+      <Card variant="glass" className="p-6 mb-8">
         <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
           <RefreshCw className="w-5 h-5" />
           Scheduled Tasks
@@ -1440,7 +1441,7 @@ export function SettingsView() {
             )}
           </button>
         </div>
-      </section>
+      </Card>
 
       {/* ── Integrations ─────────────────────────────────── */}
       <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
@@ -1451,7 +1452,7 @@ export function SettingsView() {
       <DropboxConnectionSection />
 
       {/* SimpleFIN Bank Accounts */}
-      <section className="glass-card rounded-xl p-6 mb-8">
+      <Card variant="glass" className="p-6 mb-8">
         <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
           <Landmark className="w-5 h-5" />
           Bank Accounts (SimpleFIN)
@@ -1513,10 +1514,10 @@ export function SettingsView() {
             </button>
           </div>
         )}
-      </section>
+      </Card>
 
       {/* SnapTrade Brokerage Connection */}
-      <section className="glass-card rounded-xl p-6 mb-8">
+      <Card variant="glass" className="p-6 mb-8">
         <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
           <Key className="w-5 h-5" />
           Brokerage Sync (SnapTrade)
@@ -1584,10 +1585,10 @@ export function SettingsView() {
             </button>
           </div>
         )}
-      </section>
+      </Card>
 
       {/* Crypto Settings Section */}
-      <section className="glass-card rounded-xl p-6 mb-8">
+      <Card variant="glass" className="p-6 mb-8">
         <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
           <Bitcoin className="w-5 h-5" />
           Crypto Tracking
@@ -2026,7 +2027,7 @@ export function SettingsView() {
             )}
           </div>
         </div>
-      </section>
+      </Card>
 
       {/* ── Data Management ──────────────────────────────── */}
       <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
@@ -2034,7 +2035,7 @@ export function SettingsView() {
       </p>
 
       {/* Entity Management Section */}
-      <section className="glass-card rounded-xl p-6 mb-8">
+      <Card variant="glass" className="p-6 mb-8">
         <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
           <Building2 className="w-5 h-5" />
           Entity Management
@@ -2208,10 +2209,10 @@ export function SettingsView() {
             </button>
           )}
         </div>
-      </section>
+      </Card>
 
       {/* Backup & Restore */}
-      <section className="glass-card rounded-xl p-6 mb-8">
+      <Card variant="glass" className="p-6 mb-8">
         <h3 className="text-lg font-semibold text-surface-950 mb-2 flex items-center gap-2">
           <Shield className="w-5 h-5" />
           Encrypted Backup
@@ -2305,7 +2306,7 @@ export function SettingsView() {
             </div>
           </div>
         </div>
-      </section>
+      </Card>
     </div>
   );
 }

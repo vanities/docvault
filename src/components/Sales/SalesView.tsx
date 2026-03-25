@@ -14,6 +14,7 @@ import {
 import type { Sale, SaleProduct, SalesData } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
@@ -220,16 +221,16 @@ export function SalesView() {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="glass-card rounded-xl p-4">
+        <Card variant="glass" className="p-4">
           <p className="text-[11px] text-surface-500 uppercase tracking-wider font-medium">This Month</p>
           <p className="text-2xl font-bold text-surface-950 tabular-nums mt-1">${currentMonthSales.toFixed(2)}</p>
           <p className="text-[11px] text-surface-500 mt-0.5">{currentMonthCount} sale{currentMonthCount !== 1 ? 's' : ''}</p>
-        </div>
-        <div className="glass-card rounded-xl p-4">
+        </Card>
+        <Card variant="glass" className="p-4">
           <p className="text-[11px] text-surface-500 uppercase tracking-wider font-medium">All Time</p>
           <p className="text-2xl font-bold text-amber-500 tabular-nums mt-1">${allTimeSales.toFixed(2)}</p>
           <p className="text-[11px] text-surface-500 mt-0.5">{filteredSales.length} sale{filteredSales.length !== 1 ? 's' : ''}</p>
-        </div>
+        </Card>
       </div>
 
       {/* New Sale Form */}
@@ -274,10 +275,10 @@ export function SalesView() {
         <h2 className="text-sm font-semibold text-surface-900">Sales History</h2>
 
         {months.length === 0 && (
-          <div className="glass-card rounded-xl py-10 text-center">
+          <Card variant="glass" className="py-10 text-center">
             <Egg className="w-8 h-8 text-surface-300 mx-auto mb-2" />
             <p className="text-sm text-surface-500">No sales recorded yet</p>
-          </div>
+          </Card>
         )}
 
         {months.map((month) => {
@@ -287,7 +288,7 @@ export function SalesView() {
           const monthLabel = new Date(month + '-01T00:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
           return (
-            <div key={month} className="glass-card rounded-xl overflow-hidden">
+            <Card variant="glass" key={month} className="overflow-hidden">
               <button
                 type="button"
                 onClick={() => setExpandedMonth(isExpanded ? null : month)}
@@ -375,7 +376,7 @@ export function SalesView() {
                   })}
                 </div>
               )}
-            </div>
+            </Card>
           );
         })}
       </div>
@@ -410,7 +411,7 @@ export function SalesView() {
           </form>
         )}
 
-        <div className="glass-card rounded-xl overflow-hidden">
+        <Card variant="glass" className="overflow-hidden">
           {data.products.length === 0 && (
             <p className="text-sm text-surface-500 text-center py-6">No products added yet</p>
           )}
@@ -453,7 +454,7 @@ export function SalesView() {
               </div>
             );
           })}
-        </div>
+        </Card>
       </div>
     </div>
   );

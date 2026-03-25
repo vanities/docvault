@@ -6,6 +6,7 @@ import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import { DocumentList } from '../Documents/DocumentList';
 import type { TaxDocument, Entity, DocumentType } from '../../types';
+import { Card } from '@/components/ui/card';
 
 export function AllFilesView() {
   const {
@@ -187,7 +188,7 @@ export function AllFilesView() {
 
       {/* Upload progress */}
       {uploadProgress && (
-        <div className="glass-card rounded-xl p-4 mb-6">
+        <Card variant="glass" className="p-4 mb-6">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-surface-700">
               Uploading {uploadProgress.current} of {uploadProgress.total}...
@@ -202,7 +203,7 @@ export function AllFilesView() {
               style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
             />
           </div>
-        </div>
+        </Card>
       )}
 
       {selectedEntity === 'all' && (

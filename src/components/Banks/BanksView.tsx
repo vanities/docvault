@@ -20,6 +20,7 @@ import {
 import type { PortfolioSnapshot } from '../../types';
 import { API_BASE } from '../../constants';
 import { HistoryChart } from '../common/HistoryChart';
+import { Card } from '@/components/ui/card';
 
 // Types
 
@@ -158,7 +159,7 @@ function InstitutionCard({
   });
 
   return (
-    <div className="glass-card rounded-xl overflow-hidden">
+    <Card variant="glass" className="overflow-hidden">
       {/* Header */}
       <button className="w-full p-5 pb-3 text-left" onClick={() => setExpanded(!expanded)}>
         <div className="flex items-center justify-between mb-2">
@@ -245,7 +246,7 @@ function InstitutionCard({
           </div>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -265,7 +266,7 @@ function SimplefinBanner({
 
   if (!configured) {
     return (
-      <div className="glass-card rounded-xl p-4 mb-6 flex items-center justify-between">
+      <Card variant="glass" className="p-4 mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-blue-500/10">
             <Link className="w-4 h-4 text-blue-500" />
@@ -289,12 +290,12 @@ function SimplefinBanner({
           <ExternalLink className="w-3.5 h-3.5" />
           Set Up in Settings
         </a>
-      </div>
+      </Card>
     );
   }
 
   return (
-    <div className="glass-card rounded-xl p-4 mb-6 flex items-center justify-between">
+    <Card variant="glass" className="p-4 mb-6 flex items-center justify-between">
       <div className="flex items-center gap-3">
         <div className="p-2 rounded-lg bg-green-500/10">
           <Link className="w-4 h-4 text-green-500" />
@@ -323,7 +324,7 @@ function SimplefinBanner({
           <Unlink className="w-3.5 h-3.5" />
         </button>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -439,7 +440,7 @@ export function BanksView() {
         <h2 className="font-display text-2xl text-surface-950 mb-1 italic">Banks</h2>
         <p className="text-[14px] text-surface-600 mb-8">Connect bank accounts via SimpleFIN</p>
 
-        <div className="glass-card rounded-2xl p-10 text-center">
+        <Card variant="glass" className="rounded-2xl p-10 text-center">
           <div className="p-4 bg-blue-500/10 rounded-2xl w-fit mx-auto mb-5">
             <Building2 className="w-8 h-8 text-blue-500" />
           </div>
@@ -452,7 +453,7 @@ export function BanksView() {
             Go to <span className="font-medium text-accent-400">Settings</span> &rarr;{' '}
             <span className="font-medium text-accent-400">Bank Accounts (SimpleFIN)</span>
           </p>
-        </div>
+        </Card>
       </div>
     );
   }
@@ -509,15 +510,15 @@ export function BanksView() {
 
       {/* Loading */}
       {isLoading && (
-        <div className="glass-card rounded-xl p-10 text-center">
+        <Card variant="glass" className="p-10 text-center">
           <Loader2 className="w-6 h-6 text-accent-400 animate-spin mx-auto mb-3" />
           <p className="text-[13px] text-surface-600">Loading bank accounts...</p>
-        </div>
+        </Card>
       )}
 
       {/* Empty state */}
       {!isLoading && !hasAccounts && configured && (
-        <div className="glass-card rounded-2xl p-10 text-center">
+        <Card variant="glass" className="rounded-2xl p-10 text-center">
           <div className="p-4 bg-blue-500/10 rounded-2xl w-fit mx-auto mb-5">
             <Building2 className="w-8 h-8 text-blue-500" />
           </div>
@@ -534,14 +535,14 @@ export function BanksView() {
               beta-bridge.simplefin.org
             </a>
           </p>
-        </div>
+        </Card>
       )}
 
       {/* Content */}
       {hasAccounts && !isLoading && (
         <>
           {/* Summary card */}
-          <div className="glass-card rounded-xl p-5 mb-6">
+          <Card variant="glass" className="p-5 mb-6">
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <p className="text-[11px] text-surface-500 uppercase tracking-wider mb-1">
@@ -591,11 +592,11 @@ export function BanksView() {
                 {sortedInstitutions.length} institution{sortedInstitutions.length !== 1 ? 's' : ''}
               </span>
             </div>
-          </div>
+          </Card>
 
           {/* History Chart */}
           {snapshots.filter((s) => (s.bankValue || 0) !== 0).length >= 2 && (
-            <div className="glass-card rounded-xl p-5 mb-6">
+            <Card variant="glass" className="p-5 mb-6">
               <h3 className="text-[14px] font-semibold text-surface-950 mb-3 flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-blue-500" />
                 Bank History
@@ -605,7 +606,7 @@ export function BanksView() {
                 lines={[{ key: 'bankValue', label: 'Banks', color: '#3b82f6' }]}
                 height={180}
               />
-            </div>
+            </Card>
           )}
 
           {/* Institution cards */}

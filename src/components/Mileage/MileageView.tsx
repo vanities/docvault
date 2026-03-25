@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { Vehicle, MileageEntry, MileageData, SavedAddress } from '../../types';
@@ -262,31 +263,31 @@ export function MileageView() {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-3 gap-2">
-        <div className="glass-card rounded-xl p-3">
+        <Card variant="glass" className="p-3">
           <p className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">This Month</p>
           <p className="text-lg font-bold text-surface-950 tabular-nums mt-0.5">{currentMonthMiles.toFixed(0)}</p>
           <p className="text-[10px] text-surface-500">miles</p>
-        </div>
-        <div className="glass-card rounded-xl p-3">
+        </Card>
+        <Card variant="glass" className="p-3">
           <p className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">IRS Deduct</p>
           <p className="text-lg font-bold text-teal-500 tabular-nums mt-0.5">${irsDeduction.toFixed(0)}</p>
           <p className="text-[10px] text-surface-500">this month</p>
-        </div>
-        <div className="glass-card rounded-xl p-3">
+        </Card>
+        <Card variant="glass" className="p-3">
           <p className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">Avg MPG</p>
           <p className="text-lg font-bold text-surface-950 tabular-nums mt-0.5">{avgMpg > 0 ? avgMpg.toFixed(1) : '—'}</p>
           <p className="text-[10px] text-surface-500">{fillUps.length} fill-up{fillUps.length !== 1 ? 's' : ''}</p>
-        </div>
+        </Card>
       </div>
 
       {/* All-time bar */}
-      <div className="glass-card rounded-xl px-4 py-2.5 flex items-center justify-between">
+      <Card variant="glass" className="px-4 py-2.5 flex items-center justify-between">
         <span className="text-[11px] text-surface-500 uppercase tracking-wider font-medium">All Time</span>
         <div className="flex items-center gap-3">
           <span className="text-sm font-semibold text-surface-900 tabular-nums">{allTimeMiles.toFixed(0)} mi</span>
           <span className="text-sm font-bold text-teal-500 tabular-nums">${allTimeDeduction.toFixed(2)}</span>
         </div>
-      </div>
+      </Card>
 
       {/* New Entry Form */}
       <form onSubmit={handleSubmit} className="glass-card rounded-xl p-4 space-y-3">
@@ -373,10 +374,10 @@ export function MileageView() {
         <h2 className="text-sm font-semibold text-surface-900">Trip History</h2>
 
         {months.length === 0 && (
-          <div className="glass-card rounded-xl py-10 text-center">
+          <Card variant="glass" className="py-10 text-center">
             <Car className="w-8 h-8 text-surface-300 mx-auto mb-2" />
             <p className="text-sm text-surface-500">No trips recorded yet</p>
-          </div>
+          </Card>
         )}
 
         {months.map((month) => {
@@ -387,7 +388,7 @@ export function MileageView() {
           const monthLabel = new Date(month + '-01T00:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
           return (
-            <div key={month} className="glass-card rounded-xl overflow-hidden">
+            <Card variant="glass" key={month} className="overflow-hidden">
               <button type="button" onClick={() => setExpandedMonth(isExpanded ? null : month)} className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-surface-100/50 transition-colors">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="text-sm font-medium text-surface-900 truncate">{monthLabel}</span>
@@ -466,7 +467,7 @@ export function MileageView() {
                   })}
                 </div>
               )}
-            </div>
+            </Card>
           );
         })}
       </div>
@@ -500,7 +501,7 @@ export function MileageView() {
           </form>
         )}
 
-        <div className="glass-card rounded-xl overflow-hidden">
+        <Card variant="glass" className="overflow-hidden">
           {data.vehicles.length === 0 && <p className="text-sm text-surface-500 text-center py-6">No vehicles added yet</p>}
           {data.vehicles.map((vehicle) => {
             const isEditing = editingVehicleId === vehicle.id;
@@ -539,7 +540,7 @@ export function MileageView() {
               </div>
             );
           })}
-        </div>
+        </Card>
       </div>
 
       {/* Saved Addresses */}
@@ -566,7 +567,7 @@ export function MileageView() {
             </form>
           )}
 
-          <div className="glass-card rounded-xl overflow-hidden">
+          <Card variant="glass" className="overflow-hidden">
             {savedAddresses.length === 0 && <p className="text-sm text-surface-500 text-center py-6">No saved addresses yet</p>}
             {savedAddresses.map((addr) => {
               const isEditing = editingAddrId === addr.id;
@@ -600,7 +601,7 @@ export function MileageView() {
                 </div>
               );
             })}
-          </div>
+          </Card>
         </div>
       )}
     </div>

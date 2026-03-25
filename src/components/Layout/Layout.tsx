@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Server, AlertCircle } from 'lucide-react';
+import { Card } from '@/components/ui/card';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { useAppContext } from '../../contexts/AppContext';
@@ -35,7 +36,7 @@ export function Layout() {
   if (!isConnected) {
     return (
       <div className="noise min-h-screen bg-surface-0 flex items-center justify-center">
-        <div className="glass-card rounded-2xl p-10 max-w-md text-center animate-scale-in">
+        <Card variant="glass" className="rounded-2xl p-10 max-w-md text-center animate-scale-in">
           <div className="p-4 bg-danger-500/10 rounded-2xl w-fit mx-auto mb-5">
             <Server className="w-8 h-8 text-danger-400" />
           </div>
@@ -60,7 +61,7 @@ export function Layout() {
               {fsError}
             </p>
           )}
-        </div>
+        </Card>
       </div>
     );
   }
