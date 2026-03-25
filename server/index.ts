@@ -2507,11 +2507,13 @@ async function handleRequest(req: Request): Promise<Response> {
     try {
       const config = await loadConfig();
       const parsedDataMap = await loadParsedData();
+      const metadataMap = await loadMetadata();
       const taxEntities = config.entities.filter(
         (e) => (e as Record<string, unknown>).type === 'tax'
       );
 
-      const metadataMap = await loadMetadata();
+      // Use centralized analytics module
+      const { getIncomeSummary, getExpenseSummary } = await import('./analytics/index.js');
 
       const summary: Record<
         string,
@@ -2536,86 +2538,27 @@ async function handleRequest(req: Request): Promise<Response> {
           continue;
         }
 
-        const entitySummary = {
-          entity,
-          documents: [] as {
-            name: string;
-            path: string;
-            type: string;
-            parsedData: ParsedData | null;
-          }[],
-          income: [] as { source: string; amount: number; type: string }[],
-          expenses: [] as { vendor: string; amount: number; category: string }[],
-        };
-
+        // Build document list (still needed for response)
+        const documents: { name: string; path: string; type: string; parsedData: ParsedData | null }[] = [];
         for (const file of files) {
           const parsedKey = `${entity.id}/${file.path}`;
           const parsed = parsedDataMap[parsedKey] || null;
-
-          // Skip untracked files from summaries
           const meta = metadataMap[parsedKey];
           if (meta?.tracked === false) continue;
-
-          entitySummary.documents.push({
-            name: file.name,
-            path: file.path,
-            type: file.type,
-            parsedData: parsed,
-          });
-
-          if (parsed) {
-            // Extract income
-            if (
-              parsed.wages ||
-              parsed.nonemployeeCompensation ||
-              parsed.ordinaryDividends ||
-              parsed.interestIncome
-            ) {
-              entitySummary.income.push({
-                source: (parsed.employerName || parsed.payerName || file.name) as string,
-                amount:
-                  ((parsed.wages ||
-                    parsed.nonemployeeCompensation ||
-                    parsed.ordinaryDividends ||
-                    parsed.interestIncome) as number) || 0,
-                type: file.path.includes('w2')
-                  ? 'W-2'
-                  : file.path.includes('1099')
-                    ? '1099'
-                    : 'other',
-              });
-            }
-
-            // Extract K-1 income
-            if (
-              parsed.documentType === 'k-1' ||
-              parsed.ordinaryIncome ||
-              parsed.guaranteedPayments
-            ) {
-              const k1Amount =
-                ((parsed.ordinaryIncome as number) || 0) +
-                ((parsed.guaranteedPayments as number) || 0);
-              if (k1Amount > 0) {
-                entitySummary.income.push({
-                  source: (parsed.entityName || file.name) as string,
-                  amount: k1Amount,
-                  type: 'K-1',
-                });
-              }
-            }
-
-            // Extract expenses
-            if (parsed.amount && (parsed.vendor || parsed.category)) {
-              entitySummary.expenses.push({
-                vendor: (parsed.vendor || 'Unknown') as string,
-                amount: (parsed.totalAmount || parsed.amount) as number,
-                category: (parsed.category || 'other') as string,
-              });
-            }
-          }
+          documents.push({ name: file.name, path: file.path, type: file.type, parsedData: parsed });
         }
 
-        summary[entity.id] = entitySummary;
+        // Use analytics extractors for income and expenses
+        const analyticsFiles = files.map((f) => ({ name: f.name, path: f.path, type: f.type }));
+        const incomeSummary = getIncomeSummary(entity.id, year, parsedDataMap, metadataMap, analyticsFiles);
+        const expenseSummary = getExpenseSummary(entity.id, year, parsedDataMap, metadataMap, analyticsFiles);
+
+        summary[entity.id] = {
+          entity,
+          documents,
+          income: incomeSummary.items.map((i) => ({ source: i.source, amount: i.amount, type: i.type })),
+          expenses: expenseSummary.expenses.map((e) => ({ vendor: e.vendor, amount: e.amount, category: e.category })),
+        };
       }
 
       return jsonResponse({ year, summary });
@@ -2754,37 +2697,12 @@ async function handleRequest(req: Request): Promise<Response> {
         /* no spot prices */
       }
 
-      // Parse bank statement deposits by month from entity statement files
-      // Classifies deposits as revenue vs owner contributions based on transaction descriptions:
-      //   - Revenue: ACH payments from businesses (contains "Orig CO Name:" or "CO Entry")
-      //   - Owner contribution: internal transfers between accounts ("Online Transfer From", "Transfer From")
-      //   - Fee reversals: bank fee credits ("Fee Reversal") — classified as neither
-      const isRevenueDeposit = (description: string): boolean =>
-        /orig co name:/i.test(description) || /co entry/i.test(description);
-      const isFeeReversal = (description: string): boolean => /fee reversal/i.test(description);
-      const isOwnerContribution = (description: string): boolean =>
-        !isRevenueDeposit(description) &&
-        !isFeeReversal(description) &&
-        (/online transfer.*from/i.test(description) ||
-          /transfer from/i.test(description) ||
-          /mobile deposit/i.test(description));
+      // Parse bank statement deposits using centralized analytics module
+      const { getBankDepositSummary } = await import('./analytics/index.js');
 
-      const bankDepositsByEntity: Record<
-        string,
-        {
-          month: string;
-          deposits: number;
-          ownerContributions: number;
-          revenueDeposits: number;
-          sources: {
-            date: string;
-            description: string;
-            amount: number;
-            isOwnerContribution: boolean;
-          }[];
-          notes?: string;
-        }[]
-      > = {};
+      // Build bank deposit summaries using centralized analytics module
+      const bankDepositsByEntity: Record<string, ReturnType<typeof getBankDepositSummary>['monthly']> = {};
+      const bankDepositSummaries: Record<string, ReturnType<typeof getBankDepositSummary>> = {};
       const taxEntitiesForStatements = config.entities.filter(
         (e) => (e as Record<string, unknown>).type === 'tax'
       );
@@ -2795,103 +2713,24 @@ async function handleRequest(req: Request): Promise<Response> {
         try {
           await fs.access(statementsPath);
           const statementFiles = await fs.readdir(statementsPath);
-          const monthlyDeposits: (typeof bankDepositsByEntity)[string] = [];
-          for (const file of statementFiles.sort()) {
-            const monthMatch = file.match(/(\d{4})-(\d{2})/);
-            if (!monthMatch) continue;
-            const parsedKey = `${entity.id}/${year}/statements/bank/${file}`;
-            const parsed = parsedDataMap[parsedKey];
-            if (parsed) {
-              // AI parser uses inconsistent field names — check all variants
-              let depositTotal = 0;
-              let depositSources: { date: string; description: string; amount: number }[] = [];
-
-              if (Array.isArray(parsed.deposits)) {
-                // Array of deposit transactions
-                depositSources = parsed.deposits as typeof depositSources;
-                depositTotal = depositSources.reduce((s, d) => s + (d.amount || 0), 0);
-              } else if (Array.isArray(parsed.depositsAndAdditions)) {
-                // Manna-style array of deposits
-                const deps = parsed.depositsAndAdditions as {
-                  date?: string;
-                  description?: string;
-                  amount?: number;
-                }[];
-                depositTotal = deps.reduce((s, d) => s + (d.amount || 0), 0);
-                depositSources = deps.map((d) => ({
-                  date: d.date || '',
-                  description: d.description || '',
-                  amount: d.amount || 0,
-                }));
-              } else if (Array.isArray(parsed.transactions)) {
-                // Transactions array — filter for deposits (positive amounts or type === 'deposit')
-                const txns = parsed.transactions as {
-                  date?: string;
-                  description?: string;
-                  amount?: number;
-                  type?: string;
-                }[];
-                const deps = txns.filter(
-                  (t) =>
-                    t.type === 'deposit' ||
-                    t.type === 'Deposit' ||
-                    (t.amount && t.amount > 0 && !t.type?.toLowerCase().includes('withdraw'))
-                );
-                depositTotal = deps.reduce((s, d) => s + (d.amount || 0), 0);
-                depositSources = deps.map((d) => ({
-                  date: d.date || '',
-                  description: d.description || '',
-                  amount: d.amount || 0,
-                }));
-              } else if (typeof parsed.totalDeposits === 'number') {
-                // Numeric total only (no individual transactions for classification)
-                depositTotal = parsed.totalDeposits as number;
-              } else if (typeof parsed.totalDepositsAndAdditions === 'number') {
-                // Numeric total only (Manna-style field name)
-                depositTotal = parsed.totalDepositsAndAdditions as number;
-              }
-
-              // Classify each deposit as revenue or owner contribution
-              const classifiedSources = depositSources.map((d) => ({
-                ...d,
-                isOwnerContribution: isOwnerContribution(d.description),
-              }));
-              const ownerContributions = classifiedSources
-                .filter((d) => d.isOwnerContribution)
-                .reduce((s, d) => s + d.amount, 0);
-
-              // Check for document-level notes from metadata
-              const metaKey = `${entity.id}/${year}/statements/bank/${file}`;
-              const docMeta = metadataMap[metaKey];
-
-              monthlyDeposits.push({
-                month: `${monthMatch[1]}-${monthMatch[2]}`,
-                deposits: depositTotal,
-                ownerContributions,
-                revenueDeposits: depositTotal - ownerContributions,
-                sources: classifiedSources,
-                notes: docMeta?.notes,
-              });
-            } else {
-              // No parsed data at all
-              monthlyDeposits.push({
-                month: `${monthMatch[1]}-${monthMatch[2]}`,
-                deposits: 0,
-                ownerContributions: 0,
-                revenueDeposits: 0,
-                sources: [],
-              });
-            }
-          }
-          if (monthlyDeposits.length > 0) {
-            bankDepositsByEntity[entity.id] = monthlyDeposits;
+          const summary = getBankDepositSummary(
+            entity.id,
+            year,
+            parsedDataMap,
+            metadataMap,
+            statementFiles
+          );
+          if (summary.monthly.length > 0) {
+            bankDepositsByEntity[entity.id] = summary.monthly;
+            bankDepositSummaries[entity.id] = summary;
           }
         } catch {
           /* no statements dir */
         }
       }
 
-      // Build tax entity summaries (income + expenses from parsed docs)
+      // Build tax entity summaries using centralized analytics module
+      const { getIncomeSummary, getExpenseSummary } = await import('./analytics/index.js');
       const taxEntities = config.entities.filter(
         (e) => (e as Record<string, unknown>).type === 'tax'
       );
@@ -2923,101 +2762,24 @@ async function handleRequest(req: Request): Promise<Response> {
           continue;
         }
 
-        const inc: (typeof entitySummaries)[string]['income'] = [];
-        const exp: (typeof entitySummaries)[string]['expenses'] = [];
+        const analyticsFiles = files.map((f) => ({ name: f.name, path: f.path, type: f.type }));
+        const incomeSummary = getIncomeSummary(entity.id, year, parsedDataMap, metadataMap, analyticsFiles);
+        const expenseSummary = getExpenseSummary(entity.id, year, parsedDataMap, metadataMap, analyticsFiles);
 
-        for (const file of files) {
-          const parsedKey = `${entity.id}/${file.path}`;
-          const parsed = parsedDataMap[parsedKey];
-          const meta = metadataMap[parsedKey];
-          if (meta?.tracked === false) continue;
-          if (!parsed) continue;
-
-          // W-2
-          if (parsed.wages) {
-            inc.push({
-              source: (parsed.employerName || file.name) as string,
-              amount: parsed.wages as number,
-              type: 'W-2',
-              details: {
-                federalWithheld: parsed.federalIncomeTaxWithheld,
-                stateWithheld: parsed.stateIncomeTaxWithheld,
-                socialSecurity: parsed.socialSecurityWages,
-                medicare: parsed.medicareWages,
-              },
-            });
-          }
-          // 1099-NEC
-          if (parsed.nonemployeeCompensation) {
-            inc.push({
-              source: (parsed.payerName || file.name) as string,
-              amount: parsed.nonemployeeCompensation as number,
-              type: '1099-NEC',
-            });
-          }
-          // 1099-DIV
-          if (parsed.ordinaryDividends) {
-            inc.push({
-              source: (parsed.payerName || file.name) as string,
-              amount: parsed.ordinaryDividends as number,
-              type: '1099-DIV',
-              details: {
-                qualifiedDividends: parsed.qualifiedDividends,
-                capitalGainDistributions: parsed.capitalGainDistributions,
-                federalWithheld: parsed.federalIncomeTaxWithheld,
-              },
-            });
-          }
-          // 1099-INT
-          if (parsed.interestIncome) {
-            inc.push({
-              source: (parsed.payerName || file.name) as string,
-              amount: parsed.interestIncome as number,
-              type: '1099-INT',
-            });
-          }
-          // 1099-B / Composite
-          if (parsed.documentType === '1099-b' || parsed.documentType === '1099-composite') {
-            const stGain = (parsed.shortTermGainLoss as number) || 0;
-            const ltGain = (parsed.longTermGainLoss as number) || 0;
-            if (stGain || ltGain) {
-              inc.push({
-                source: (parsed.payerName || file.name) as string,
-                amount: stGain + ltGain,
-                type: '1099-B',
-                details: { shortTermGainLoss: stGain, longTermGainLoss: ltGain },
-              });
-            }
-          }
-          // K-1
-          if (parsed.documentType === 'k-1' || parsed.ordinaryIncome || parsed.guaranteedPayments) {
-            const k1Amount =
-              ((parsed.ordinaryIncome as number) || 0) +
-              ((parsed.guaranteedPayments as number) || 0);
-            if (k1Amount > 0) {
-              inc.push({
-                source: (parsed.entityName || file.name) as string,
-                amount: k1Amount,
-                type: 'K-1',
-                details: {
-                  ordinaryIncome: parsed.ordinaryIncome,
-                  guaranteedPayments: parsed.guaranteedPayments,
-                  distributions: parsed.distributions,
-                },
-              });
-            }
-          }
-          // Expenses (receipts)
-          if (parsed.amount && (parsed.vendor || parsed.category)) {
-            exp.push({
-              vendor: (parsed.vendor || 'Unknown') as string,
-              amount: (parsed.totalAmount || parsed.amount) as number,
-              category: (parsed.category || 'other') as string,
-            });
-          }
-        }
-
-        entitySummaries[entity.id] = { entity, income: inc, expenses: exp };
+        entitySummaries[entity.id] = {
+          entity,
+          income: incomeSummary.items.map((i) => ({
+            source: i.source,
+            amount: i.amount,
+            type: i.type,
+            details: i.details,
+          })),
+          expenses: expenseSummary.expenses.map((e) => ({
+            vendor: e.vendor,
+            amount: e.amount,
+            category: e.category,
+          })),
+        };
       }
 
       // Filter sales and mileage by year
@@ -3275,46 +3037,8 @@ async function handleRequest(req: Request): Promise<Response> {
           bankTotal,
       };
 
-      // ── Tax Summary ──────────────────────────────────────────────────
-      // Aggregate tax-relevant data from parsed documents
-      let totalWages = 0;
-      let totalFederalWithheld = 0;
-      let totalScheduleC = 0;
-      let totalCapGainsST = 0;
-      let totalCapGainsLT = 0;
-      let totalOrdinaryDividends = 0;
-      let totalQualifiedDividends = 0;
-      let totalOtherIncome = 0;
-      const w2Details: { employer: string; wages: number; withheld: number }[] = [];
-
-      for (const [, data] of Object.entries(entitySummaries)) {
-        for (const inc of data.income) {
-          if (inc.type === 'W-2') {
-            totalWages += inc.amount;
-            totalFederalWithheld += ((inc.details?.federalWithheld as number) || 0);
-            w2Details.push({
-              employer: inc.source,
-              wages: inc.amount,
-              withheld: (inc.details?.federalWithheld as number) || 0,
-            });
-          } else if (inc.type === '1099-NEC') {
-            totalScheduleC += inc.amount;
-          } else if (inc.type === '1099-B') {
-            totalCapGainsST += ((inc.details?.shortTermGainLoss as number) || 0);
-            totalCapGainsLT += ((inc.details?.longTermGainLoss as number) || 0);
-          } else if (inc.type === '1099-DIV') {
-            totalOrdinaryDividends += inc.amount;
-            totalQualifiedDividends += ((inc.details?.qualifiedDividends as number) || 0);
-          } else if (inc.type === 'K-1') {
-            totalOtherIncome += inc.amount;
-          }
-        }
-      }
-
-      // SE tax estimate (Schedule C × 0.9235 × 15.3%)
-      const netSEEarnings = totalScheduleC * 0.9235;
-      const seTaxEstimate = netSEEarnings * 0.153;
-      const seTaxDeduction = seTaxEstimate / 2;
+      // ── Tax Summary + Form 2210 (using centralized analytics) ──────
+      const { getTaxCalculation } = await import('./analytics/index.js');
 
       // Retirement deduction total
       let retirementDeduction = 0;
@@ -3322,56 +3046,9 @@ async function handleRequest(req: Request): Promise<Response> {
         retirementDeduction += entries.reduce((s, c) => s + c.amount, 0);
       }
 
-      const totalCapGains = totalCapGainsST + totalCapGainsLT;
-      const estimatedTotalIncome = totalWages + totalScheduleC + totalCapGains + totalOrdinaryDividends + totalOtherIncome;
-      const estimatedAdjustments = seTaxDeduction + retirementDeduction;
-      const estimatedAGI = estimatedTotalIncome - estimatedAdjustments;
+      const taxSummary = getTaxCalculation(year, entitySummaries, retirementDeduction);
 
-      // Estimated quarterly payments (110% safe harbor on prior year)
-      const safeHarborMultiplier = estimatedAGI > 150000 ? 1.10 : 1.00;
-      const nextYear = parseInt(year) + 1;
-
-      const taxSummary = {
-        wages: totalWages,
-        federalWithheld: totalFederalWithheld,
-        w2Details,
-        scheduleCIncome: totalScheduleC,
-        capitalGains: {
-          shortTerm: totalCapGainsST,
-          longTerm: totalCapGainsLT,
-          total: totalCapGains,
-        },
-        dividends: {
-          ordinary: totalOrdinaryDividends,
-          qualified: totalQualifiedDividends,
-        },
-        otherIncome: totalOtherIncome,
-        estimatedTotalIncome,
-        seTax: Math.round(seTaxEstimate),
-        seTaxDeduction: Math.round(seTaxDeduction),
-        retirementDeduction,
-        estimatedAdjustments: Math.round(estimatedAdjustments),
-        estimatedAGI: Math.round(estimatedAGI),
-        estimatedPayments: {
-          note: `110% safe harbor (AGI ${estimatedAGI > 150000 ? '>' : '<='} $150K)`,
-          quarterly: [
-            { label: 'Q1', due: `${nextYear}-04-15` },
-            { label: 'Q2', due: `${nextYear}-06-15` },
-            { label: 'Q3', due: `${nextYear}-09-15` },
-            { label: 'Q4', due: `${nextYear + 1}-01-15` },
-          ],
-        },
-      };
-
-      // ── Form 2210 Annualized Income Periods ──────────────────────────
-      // Cumulative bank deposits through each period cutoff for annualized method
-      const form2210Cutoffs = [
-        { label: '1/1–3/31', endMonth: 3 },
-        { label: '1/1–5/31', endMonth: 5 },
-        { label: '1/1–8/31', endMonth: 8 },
-        { label: '1/1–12/31', endMonth: 12 },
-      ];
-
+      // Form 2210 periods from bank deposit summaries (already computed by analytics module)
       const form2210Periods: Record<string, {
         periods: {
           label: string;
@@ -3380,28 +3057,8 @@ async function handleRequest(req: Request): Promise<Response> {
           cumulativeOwnerContributions: number;
         }[];
       }> = {};
-
-      for (const [entityId, monthlyData] of Object.entries(bankDepositsByEntity)) {
-        const periods = form2210Cutoffs.map(({ label, endMonth }) => {
-          let cumDeposits = 0;
-          let cumRevenue = 0;
-          let cumOwner = 0;
-          for (const m of monthlyData) {
-            const monthNum = parseInt(m.month.split('-')[1], 10);
-            if (monthNum <= endMonth) {
-              cumDeposits += m.deposits;
-              cumRevenue += m.revenueDeposits;
-              cumOwner += m.ownerContributions;
-            }
-          }
-          return {
-            label,
-            cumulativeDeposits: cumDeposits,
-            cumulativeRevenue: cumRevenue,
-            cumulativeOwnerContributions: cumOwner,
-          };
-        });
-        form2210Periods[entityId] = { periods };
+      for (const [entityId, summary] of Object.entries(bankDepositSummaries)) {
+        form2210Periods[entityId] = { periods: summary.form2210Periods };
       }
 
       // Build the snapshot object
