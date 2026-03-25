@@ -60,6 +60,28 @@ input[type='number'] {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* shadcn/ui CSS variable mappings → Midnight Ledger tokens */
+  --background: var(--color-surface-0);
+  --foreground: var(--color-surface-950);
+  --card: var(--color-surface-100);
+  --card-foreground: var(--color-surface-950);
+  --popover: var(--color-surface-50);
+  --popover-foreground: var(--color-surface-950);
+  --primary: var(--color-accent-500);
+  --primary-foreground: var(--color-surface-0);
+  --secondary: var(--color-surface-200);
+  --secondary-foreground: var(--color-surface-900);
+  --muted: var(--color-surface-200);
+  --muted-foreground: var(--color-surface-700);
+  --accent: var(--color-surface-200);
+  --accent-foreground: var(--color-surface-900);
+  --destructive: var(--color-danger-500);
+  --destructive-foreground: var(--color-surface-0);
+  --border: var(--color-border);
+  --input: var(--color-surface-200);
+  --ring: var(--color-accent-400);
+  --radius: 0.75rem;
 }
 
 body {
