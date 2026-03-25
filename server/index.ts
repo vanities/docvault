@@ -2750,17 +2750,19 @@ async function handleRequest(req: Request): Promise<Response> {
       }
 
       // Parse bank statement deposits by month from entity statement files
-      // Classifies deposits as revenue vs owner contributions based on transaction descriptions
-      const OWNER_TRANSFER_PATTERNS = [
-        /online transfer.*from.*navy federal/i,
-        /online transfer.*from.*chk/i,
-        /online transfer.*from.*checking/i,
-        /online transfer.*from.*savings/i,
-        /transfer from.*personal/i,
-        /zelle.*mischke/i,
-      ];
+      // Classifies deposits as revenue vs owner contributions based on transaction descriptions:
+      //   - Revenue: ACH payments from businesses (contains "Orig CO Name:" or "CO Entry")
+      //   - Owner contribution: internal transfers between accounts ("Online Transfer From", "Transfer From")
+      //   - Fee reversals: bank fee credits ("Fee Reversal") — classified as neither
+      const isRevenueDeposit = (description: string): boolean =>
+        /orig co name:/i.test(description) || /co entry/i.test(description);
+      const isFeeReversal = (description: string): boolean => /fee reversal/i.test(description);
       const isOwnerContribution = (description: string): boolean =>
-        OWNER_TRANSFER_PATTERNS.some((p) => p.test(description));
+        !isRevenueDeposit(description) &&
+        !isFeeReversal(description) &&
+        (/online transfer.*from/i.test(description) ||
+          /transfer from/i.test(description) ||
+          /mobile deposit/i.test(description));
 
       const bankDepositsByEntity: Record<
         string,
