@@ -2626,16 +2626,27 @@ async function handleRequest(req: Request): Promise<Response> {
     const format = url.searchParams.get('format') || 'json';
 
     try {
-      const [config, parsedDataMap, metadataMap, salesData, mileageData, assets, contributions] =
-        await Promise.all([
-          loadConfig(),
-          loadParsedData(),
-          loadMetadata(),
-          loadSalesData(),
-          loadMileageData(),
-          loadAssets(),
-          loadContributions(),
-        ]);
+      const [
+        config,
+        parsedDataMap,
+        metadataMap,
+        salesData,
+        mileageData,
+        assets,
+        contributions,
+        goldData,
+        propertyData,
+      ] = await Promise.all([
+        loadConfig(),
+        loadParsedData(),
+        loadMetadata(),
+        loadSalesData(),
+        loadMileageData(),
+        loadAssets(),
+        loadContributions(),
+        loadGoldData(),
+        loadPropertyData(),
+      ]);
 
       // Load cached portfolio data (non-critical — use empty defaults on failure)
       let brokerCache: {
@@ -2698,6 +2709,69 @@ async function handleRequest(req: Request): Promise<Response> {
         simplefinCache = JSON.parse(raw);
       } catch {
         /* no bank data */
+      }
+
+      // Fetch metal spot prices (non-blocking)
+      let spotPrices: Record<string, number> = {};
+      try {
+        spotPrices = await fetchMetalSpotPrices();
+      } catch {
+        /* no spot prices */
+      }
+
+      // Parse bank statement deposits by month from entity statement files
+      const bankDepositsByEntity: Record<
+        string,
+        {
+          month: string;
+          deposits: number;
+          sources: { date: string; description: string; amount: number }[];
+        }[]
+      > = {};
+      const taxEntitiesForStatements = config.entities.filter(
+        (e) => (e as Record<string, unknown>).type === 'tax'
+      );
+      for (const entity of taxEntitiesForStatements) {
+        const entityPath = await getEntityPath(entity.id);
+        if (!entityPath) continue;
+        const statementsPath = path.join(entityPath, year, 'statements', 'bank');
+        try {
+          await fs.access(statementsPath);
+          const statementFiles = await fs.readdir(statementsPath);
+          const monthlyDeposits: (typeof bankDepositsByEntity)[string] = [];
+          for (const file of statementFiles.sort()) {
+            const monthMatch = file.match(/(\d{4})-(\d{2})/);
+            if (!monthMatch) continue;
+            const parsedKey = `${entity.id}/${year}/statements/bank/${file}`;
+            const parsed = parsedDataMap[parsedKey];
+            if (parsed?.deposits) {
+              // Use parsed data if available
+              const deposits = parsed.deposits as {
+                date: string;
+                description: string;
+                amount: number;
+              }[];
+              monthlyDeposits.push({
+                month: `${monthMatch[1]}-${monthMatch[2]}`,
+                deposits: deposits.reduce((s: number, d: { amount: number }) => s + d.amount, 0),
+                sources: deposits,
+              });
+            } else {
+              // Try to read PDF and extract "Total Deposits and Additions" from text
+              // For now, just mark as unparsed
+              monthlyDeposits.push({
+                month: `${monthMatch[1]}-${monthMatch[2]}`,
+                deposits: 0,
+                sources: [],
+              });
+            }
+          }
+          if (monthlyDeposits.length > 0) {
+            bankDepositsByEntity[entity.id] = monthlyDeposits;
+          }
+        } catch {
+          /* no statements dir */
+        }
       }
 
       // Build tax entity summaries (income + expenses from parsed docs)
@@ -2841,6 +2915,190 @@ async function handleRequest(req: Request): Promise<Response> {
         }
       }
 
+      // Build quarterly invoice/sales breakdown
+      const quarterLabels = ['Q1 (Jan-Mar)', 'Q2 (Apr-Jun)', 'Q3 (Jul-Sep)', 'Q4 (Oct-Dec)'];
+      const salesByQuarter: { quarter: string; sales: typeof yearSales; total: number }[] = [
+        { quarter: quarterLabels[0], sales: [], total: 0 },
+        { quarter: quarterLabels[1], sales: [], total: 0 },
+        { quarter: quarterLabels[2], sales: [], total: 0 },
+        { quarter: quarterLabels[3], sales: [], total: 0 },
+      ];
+      for (const s of yearSales) {
+        const month = parseInt(s.date.split('-')[1], 10);
+        const qi = month <= 3 ? 0 : month <= 6 ? 1 : month <= 9 ? 2 : 3;
+        salesByQuarter[qi].sales.push(s);
+        salesByQuarter[qi].total += s.total;
+      }
+
+      // Build quarterly bank deposit breakdown per entity
+      const depositsByQuarter: Record<
+        string,
+        { quarter: string; deposits: number; months: { month: string; deposits: number }[] }[]
+      > = {};
+      for (const [entityId, months] of Object.entries(bankDepositsByEntity)) {
+        const quarters = [
+          {
+            quarter: quarterLabels[0],
+            deposits: 0,
+            months: [] as { month: string; deposits: number }[],
+          },
+          {
+            quarter: quarterLabels[1],
+            deposits: 0,
+            months: [] as { month: string; deposits: number }[],
+          },
+          {
+            quarter: quarterLabels[2],
+            deposits: 0,
+            months: [] as { month: string; deposits: number }[],
+          },
+          {
+            quarter: quarterLabels[3],
+            deposits: 0,
+            months: [] as { month: string; deposits: number }[],
+          },
+        ];
+        for (const m of months) {
+          const monthNum = parseInt(m.month.split('-')[1], 10);
+          const qi = monthNum <= 3 ? 0 : monthNum <= 6 ? 1 : monthNum <= 9 ? 2 : 3;
+          quarters[qi].deposits += m.deposits;
+          quarters[qi].months.push({ month: m.month, deposits: m.deposits });
+        }
+        depositsByQuarter[entityId] = quarters;
+      }
+
+      // Build gold/precious metals summary
+      const goldSummary: {
+        entries: {
+          metal: string;
+          product: string;
+          quantity: number;
+          weightOz: number;
+          totalOz: number;
+          purchasePrice: number;
+          totalCost: number;
+          currentValue: number;
+          gainLoss: number;
+          purchaseDate: string;
+        }[];
+        totalCost: number;
+        totalValue: number;
+        totalGainLoss: number;
+        spotPrices: Record<string, number>;
+      } = { entries: [], totalCost: 0, totalValue: 0, totalGainLoss: 0, spotPrices };
+
+      for (const entry of goldData.entries) {
+        const spot = spotPrices[entry.metal] || 0;
+        const totalOz = entry.weightOz * entry.quantity;
+        const totalCost = entry.purchasePrice * entry.quantity;
+        const currentValue = totalOz * spot * entry.purity;
+        goldSummary.entries.push({
+          metal: entry.metal,
+          product: entry.customDescription || entry.productId,
+          quantity: entry.quantity,
+          weightOz: entry.weightOz,
+          totalOz,
+          purchasePrice: entry.purchasePrice,
+          totalCost,
+          currentValue,
+          gainLoss: currentValue - totalCost,
+          purchaseDate: entry.purchaseDate,
+        });
+        goldSummary.totalCost += totalCost;
+        goldSummary.totalValue += currentValue;
+      }
+      goldSummary.totalGainLoss = goldSummary.totalValue - goldSummary.totalCost;
+
+      // Build property summary
+      const propertySummary: {
+        entries: {
+          name: string;
+          type: string;
+          address: string;
+          acreage?: number;
+          squareFeet?: number;
+          purchaseDate: string;
+          purchasePrice: number;
+          currentValue: number;
+          equity: number;
+          appreciation: number;
+          appreciationPercent: number;
+          annualPropertyTax?: number;
+          mortgage?: {
+            lender: string;
+            balance: number;
+            rate: number;
+            monthlyPayment: number;
+          };
+        }[];
+        totalValue: number;
+        totalEquity: number;
+        totalMortgageBalance: number;
+        totalAnnualPropertyTax: number;
+      } = {
+        entries: [],
+        totalValue: 0,
+        totalEquity: 0,
+        totalMortgageBalance: 0,
+        totalAnnualPropertyTax: 0,
+      };
+
+      for (const prop of propertyData.entries) {
+        const mortgageBalance = prop.mortgage?.balance || 0;
+        const equity = prop.currentValue - mortgageBalance;
+        const appreciation = prop.currentValue - prop.purchasePrice;
+        const appreciationPercent =
+          prop.purchasePrice > 0 ? (appreciation / prop.purchasePrice) * 100 : 0;
+        const addr = prop.address;
+        propertySummary.entries.push({
+          name: prop.name,
+          type: prop.type,
+          address: `${addr.street}, ${addr.city}, ${addr.state} ${addr.zip}`,
+          acreage: prop.acreage,
+          squareFeet: prop.squareFeet,
+          purchaseDate: prop.purchaseDate,
+          purchasePrice: prop.purchasePrice,
+          currentValue: prop.currentValue,
+          equity,
+          appreciation,
+          appreciationPercent,
+          annualPropertyTax: prop.annualPropertyTax,
+          mortgage: prop.mortgage
+            ? {
+                lender: prop.mortgage.lender,
+                balance: prop.mortgage.balance,
+                rate: prop.mortgage.rate,
+                monthlyPayment: prop.mortgage.monthlyPayment,
+              }
+            : undefined,
+        });
+        propertySummary.totalValue += prop.currentValue;
+        propertySummary.totalEquity += equity;
+        propertySummary.totalMortgageBalance += mortgageBalance;
+        propertySummary.totalAnnualPropertyTax += prop.annualPropertyTax || 0;
+      }
+
+      // Calculate net worth / portfolio totals
+      const brokerTotal = brokerCache.accounts.reduce(
+        (s, a) => s + a.holdings.reduce((hs, h) => hs + h.marketValue, 0),
+        0
+      );
+      const cryptoTotal = cryptoCache.totalUsdValue || 0;
+      const bankTotal = simplefinCache.accounts.reduce((s, a) => s + a.balance, 0);
+      const portfolioSummary = {
+        brokerage: brokerTotal,
+        crypto: cryptoTotal,
+        preciousMetals: goldSummary.totalValue,
+        property: propertySummary.totalEquity,
+        bankAccounts: bankTotal,
+        totalNetWorth:
+          brokerTotal +
+          cryptoTotal +
+          goldSummary.totalValue +
+          propertySummary.totalEquity +
+          bankTotal,
+      };
+
       // Build the snapshot object
       const snapshot = {
         year,
@@ -2850,6 +3108,7 @@ async function handleRequest(req: Request): Promise<Response> {
           products: salesData.products,
           entries: yearSales,
           totalRevenue: yearSales.reduce((sum, s) => sum + s.total, 0),
+          byQuarter: salesByQuarter,
         },
         mileage: {
           vehicles: mileageData.vehicles,
@@ -2859,6 +3118,7 @@ async function handleRequest(req: Request): Promise<Response> {
           totalDeduction:
             yearMileage.reduce((sum, e) => sum + (e.tripMiles || 0), 0) * mileageData.irsRate,
         },
+        bankStatementDeposits: depositsByQuarter,
         assets,
         retirement: yearContributions,
         investments: {
@@ -2869,6 +3129,8 @@ async function handleRequest(req: Request): Promise<Response> {
           sources: cryptoCache.sources,
           totalUsdValue: cryptoCache.totalUsdValue,
         },
+        preciousMetals: goldSummary,
+        property: propertySummary,
         bankAccounts: {
           accounts: simplefinCache.accounts.map((a) => ({
             name: a.name,
@@ -2878,6 +3140,7 @@ async function handleRequest(req: Request): Promise<Response> {
           })),
           lastUpdated: simplefinCache.lastUpdated,
         },
+        portfolioSummary,
       };
 
       if (format === 'md' || format === 'markdown') {
@@ -2941,7 +3204,7 @@ async function handleRequest(req: Request): Promise<Response> {
           }
         }
 
-        // Sales
+        // Sales with quarterly breakdown
         if (yearSales.length > 0) {
           lines.push('## Sales Revenue');
           const byCust: Record<string, number> = {};
@@ -2955,6 +3218,18 @@ async function handleRequest(req: Request): Promise<Response> {
           }
           lines.push(`| **Total Revenue** | **${fmt(snapshot.sales.totalRevenue)}** |`);
           lines.push('');
+
+          // Quarterly breakdown
+          const hasQuarterData = salesByQuarter.some((q) => q.total > 0);
+          if (hasQuarterData) {
+            lines.push('### Sales by Quarter');
+            lines.push('| Quarter | Revenue | # Sales |');
+            lines.push('|---------|---------|---------|');
+            for (const q of salesByQuarter) {
+              lines.push(`| ${q.quarter} | ${fmt(q.total)} | ${q.sales.length} |`);
+            }
+            lines.push('');
+          }
         }
 
         // Mileage
@@ -3056,6 +3331,102 @@ async function handleRequest(req: Request): Promise<Response> {
           lines.push('');
         }
 
+        // Bank Statement Deposits (quarterly breakdown)
+        if (Object.keys(depositsByQuarter).length > 0) {
+          lines.push('## Bank Statement Deposits');
+          for (const [entityId, quarters] of Object.entries(depositsByQuarter)) {
+            const entityName = entitySummaries[entityId]?.entity.name || entityId;
+            lines.push(`### ${entityName}`);
+            lines.push('| Month | Deposits |');
+            lines.push('|-------|----------|');
+            for (const q of quarters) {
+              for (const m of q.months) {
+                const monthNames = [
+                  '',
+                  'Jan',
+                  'Feb',
+                  'Mar',
+                  'Apr',
+                  'May',
+                  'Jun',
+                  'Jul',
+                  'Aug',
+                  'Sep',
+                  'Oct',
+                  'Nov',
+                  'Dec',
+                ];
+                const monthNum = parseInt(m.month.split('-')[1], 10);
+                const label = monthNames[monthNum] || m.month;
+                lines.push(`| ${label} | ${m.deposits > 0 ? fmt(m.deposits) : '_no deposits_'} |`);
+              }
+              lines.push(`| **${q.quarter}** | **${fmt(q.deposits)}** |`);
+            }
+            const totalDeposits = quarters.reduce((s, q) => s + q.deposits, 0);
+            lines.push(`| **Full Year** | **${fmt(totalDeposits)}** |`);
+            lines.push('');
+          }
+        }
+
+        // Precious Metals
+        if (goldSummary.entries.length > 0) {
+          lines.push('## Precious Metals');
+          if (Object.keys(spotPrices).length > 0) {
+            const spotLines = Object.entries(spotPrices)
+              .filter(([, v]) => v > 0)
+              .map(([metal, price]) => `${metal}: ${fmt(price)}/oz`)
+              .join(', ');
+            lines.push(`_Spot prices: ${spotLines}_`);
+          }
+          lines.push('| Metal | Product | Qty | Weight | Total Cost | Current Value | Gain/Loss |');
+          lines.push('|-------|---------|-----|--------|------------|---------------|-----------|');
+          for (const e of goldSummary.entries) {
+            lines.push(
+              `| ${e.metal} | ${e.product} | ${e.quantity} | ${e.totalOz.toFixed(2)} oz | ${fmt(e.totalCost)} | ${fmt(e.currentValue)} | ${fmt(e.gainLoss)} |`
+            );
+          }
+          lines.push(
+            `| **Total** | | | | **${fmt(goldSummary.totalCost)}** | **${fmt(goldSummary.totalValue)}** | **${fmt(goldSummary.totalGainLoss)}** |`
+          );
+          lines.push('');
+        }
+
+        // Property / Real Estate
+        if (propertySummary.entries.length > 0) {
+          lines.push('## Property & Real Estate');
+          for (const prop of propertySummary.entries) {
+            lines.push(`### ${prop.name}`);
+            lines.push(`- Type: ${prop.type}`);
+            lines.push(`- Address: ${prop.address}`);
+            if (prop.acreage) lines.push(`- Acreage: ${prop.acreage}`);
+            if (prop.squareFeet) lines.push(`- Sq Ft: ${prop.squareFeet.toLocaleString()}`);
+            lines.push(`- Purchase: ${fmt(prop.purchasePrice)} (${prop.purchaseDate})`);
+            lines.push(`- Current Value: ${fmt(prop.currentValue)}`);
+            lines.push(
+              `- Appreciation: ${fmt(prop.appreciation)} (${prop.appreciationPercent.toFixed(1)}%)`
+            );
+            if (prop.mortgage) {
+              lines.push(
+                `- Mortgage: ${fmt(prop.mortgage.balance)} @ ${(prop.mortgage.rate * 100).toFixed(2)}% (${prop.mortgage.lender})`
+              );
+              lines.push(`- Monthly Payment: ${fmt(prop.mortgage.monthlyPayment)}`);
+            }
+            lines.push(`- **Equity: ${fmt(prop.equity)}**`);
+            if (prop.annualPropertyTax)
+              lines.push(`- Annual Property Tax: ${fmt(prop.annualPropertyTax)}`);
+            lines.push('');
+          }
+          lines.push(`**Total Property Value:** ${fmt(propertySummary.totalValue)}`);
+          lines.push(`**Total Equity:** ${fmt(propertySummary.totalEquity)}`);
+          if (propertySummary.totalMortgageBalance > 0)
+            lines.push(`**Total Mortgage Balance:** ${fmt(propertySummary.totalMortgageBalance)}`);
+          if (propertySummary.totalAnnualPropertyTax > 0)
+            lines.push(
+              `**Total Annual Property Tax:** ${fmt(propertySummary.totalAnnualPropertyTax)}`
+            );
+          lines.push('');
+        }
+
         // Bank accounts
         const nonZeroBanks = simplefinCache.accounts.filter((a) => a.balance !== 0);
         if (nonZeroBanks.length > 0) {
@@ -3073,6 +3444,23 @@ async function handleRequest(req: Request): Promise<Response> {
           lines.push(`| **Total** | **${fmt(totalBank)}** |`);
           lines.push('');
         }
+
+        // Portfolio Summary / Net Worth
+        lines.push('## Portfolio Summary (Net Worth)');
+        lines.push('| Asset Class | Value |');
+        lines.push('|-------------|-------|');
+        if (portfolioSummary.brokerage > 0)
+          lines.push(`| Brokerage Accounts | ${fmt(portfolioSummary.brokerage)} |`);
+        if (portfolioSummary.crypto > 0)
+          lines.push(`| Cryptocurrency | ${fmt(portfolioSummary.crypto)} |`);
+        if (portfolioSummary.preciousMetals > 0)
+          lines.push(`| Precious Metals | ${fmt(portfolioSummary.preciousMetals)} |`);
+        if (portfolioSummary.property > 0)
+          lines.push(`| Property (Equity) | ${fmt(portfolioSummary.property)} |`);
+        if (portfolioSummary.bankAccounts !== 0)
+          lines.push(`| Bank Accounts | ${fmt(portfolioSummary.bankAccounts)} |`);
+        lines.push(`| **Total Net Worth** | **${fmt(portfolioSummary.totalNetWorth)}** |`);
+        lines.push('');
 
         return new Response(lines.join('\n'), {
           headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
