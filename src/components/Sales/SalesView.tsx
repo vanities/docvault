@@ -260,7 +260,7 @@ export function SalesView() {
 
         <div>
           <label className={LABEL}>Customer</label>
-          <input type="text" value={person} onChange={(e) => setPerson(e.target.value)} placeholder="Name" list="known-customers" required autoComplete="off" className={INPUT} />
+          <input type="text" value={person} onChange={(e) => setPerson(e.target.value)} placeholder="John Smith" list="known-customers" required autoComplete="off" className={INPUT} />
           <datalist id="known-customers">{knownCustomers.map((c) => <option key={c} value={c} />)}</datalist>
         </div>
 
@@ -413,8 +413,8 @@ export function SalesView() {
         {showProductForm && (
           <form onSubmit={handleAddProduct} className="glass-card rounded-xl p-3 space-y-2">
             <div className="grid grid-cols-[1fr_5rem] gap-2">
-              <input type="text" value={newProductName} onChange={(e) => setNewProductName(e.target.value)} placeholder="Product name" required className={INPUT} />
-              <input type="number" step="0.01" min="0" value={newProductPrice} onChange={(e) => setNewProductPrice(e.target.value)} placeholder="0.00" required className={`${INPUT} text-center`} />
+              <input type="text" value={newProductName} onChange={(e) => setNewProductName(e.target.value)} placeholder="Eggs (dozen)" required className={INPUT} />
+              <input type="number" step="0.01" min="0" value={newProductPrice} onChange={(e) => setNewProductPrice(e.target.value)} placeholder="5.00" required className={`${INPUT} text-center`} />
             </div>
             <button type="submit" className="w-full py-2.5 bg-amber-500 text-white font-semibold rounded-xl hover:bg-amber-400 active:scale-[0.98] transition-all text-sm">
               Add Product
