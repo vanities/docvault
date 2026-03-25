@@ -224,11 +224,13 @@ export function extractCapitalGains(parsed: ParsedData, filename: string): Capit
 export function extractExpense(parsed: ParsedData, filename: string): ExpenseItem | null {
   const docType = (parsed._documentType || parsed.documentType) as string;
 
+  // Invoices are INCOME documents (money owed to the business), not expenses
+  if (docType === 'invoice') return null;
+
   // Only extract from receipt-like documents
   if (
     docType === 'receipt' ||
-    docType === 'invoice' ||
-    (parsed.amount && (parsed.vendor || parsed.category))
+    (parsed.amount && (parsed.vendor || parsed.category) && docType !== 'invoice')
   ) {
     const amount = (parsed.totalAmount || parsed.amount) as number;
     if (!amount || amount <= 0) return null;
@@ -302,10 +304,19 @@ export function extractDepositTransactions(parsed: ParsedData): DepositTransacti
 
 export function extractInvoice(parsed: ParsedData, filename: string): InvoiceItem | null {
   const docType = (parsed._documentType || parsed.documentType) as string;
-  if (docType === 'invoice' || (parsed.amount && (parsed.customer || parsed.vendor))) {
+  if (docType === 'invoice') {
     return {
-      customer: (parsed.customer || parsed.vendor || parsed.clientName || 'Unknown') as string,
-      amount: (parsed.totalAmount || parsed.amount || 0) as number,
+      customer: (parsed.customer || parsed.billTo || parsed.customerName || 'Unknown') as string,
+      amount: (parsed.invoiceTotal || parsed.totalAmount || parsed.amount || 0) as number,
+      date: (parsed.invoiceDate || parsed.date) as string | undefined,
+      invoiceNumber: parsed.invoiceNumber as string | undefined,
+    };
+  }
+  // Legacy: untyped docs with invoice-like fields
+  if (parsed.invoiceTotal || (parsed.amount && parsed.customer)) {
+    return {
+      customer: (parsed.customer || parsed.billTo || parsed.vendor || 'Unknown') as string,
+      amount: (parsed.invoiceTotal || parsed.totalAmount || parsed.amount || 0) as number,
       date: parsed.date as string | undefined,
       invoiceNumber: parsed.invoiceNumber as string | undefined,
     };

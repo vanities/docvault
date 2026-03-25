@@ -449,6 +449,7 @@ export function detectDocumentTypeFromFilename(filename: string): string {
   if (/1098/i.test(lower)) return '1098';
   if (/k-?1\b|schedule.?k/i.test(lower)) return 'K-1';
   if (/w-?2/i.test(lower)) return 'W-2';
+  if (/invoice/i.test(lower)) return 'invoice';
   if (/receipt|expense|purchase/i.test(lower)) return 'receipt';
   if (/operating.?agreement/i.test(lower)) return 'operating-agreement';
   if (/insurance.?polic/i.test(lower)) return 'insurance-policy';
