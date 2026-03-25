@@ -45,7 +45,7 @@ export async function handleFinancialSnapshotRoutes(
   const snapshotMatch = pathname.match(/^\/api\/financial-snapshot\/(\d{4})$/);
   if (snapshotMatch && req.method === 'GET') {
     const year = snapshotMatch[1];
-    const format = url.searchParams.get('format') || 'json';
+    const format = url.searchParams.get('format') || 'toon';
 
     try {
       const [
@@ -627,6 +627,150 @@ export async function handleFinancialSnapshotRoutes(
         taxSummary,
         form2210Periods,
       };
+
+      if (format === 'toon') {
+        // TOON — Token-Optimized Object Notation for LLM consumption.
+        // Flat key:value lines, no JSON overhead, no markdown tables.
+        // ~60% fewer tokens than JSON, ~40% fewer than markdown.
+        const t: string[] = [];
+        const $ = (n: number) =>
+          (n < 0 ? '-' : '') +
+          '$' +
+          Math.abs(n).toLocaleString('en-US', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
+
+        t.push(`FINANCIAL_SNAPSHOT year=${year} date=${new Date().toISOString().split('T')[0]}`);
+        t.push('');
+
+        // Entities + income + expenses
+        for (const [id, data] of Object.entries(entitySummaries)) {
+          const meta = data.entity.metadata || {};
+          t.push(
+            `ENTITY ${id} name="${data.entity.name}"${meta.ein ? ` ein=${meta.ein}` : ''}${data.entity.description ? ` desc="${data.entity.description}"` : ''}`
+          );
+
+          if (data.income.length > 0) {
+            for (const inc of data.income) {
+              let line = `  INCOME type=${inc.type} source="${inc.source}" amt=${$(inc.amount)}`;
+              if (inc.details) {
+                const d = inc.details as Record<string, unknown>;
+                for (const [k, v] of Object.entries(d)) {
+                  if (v !== undefined && v !== null && v !== 0 && v !== '') {
+                    line += ` ${k}=${typeof v === 'number' ? $(v as number) : v}`;
+                  }
+                }
+              }
+              t.push(line);
+            }
+          }
+
+          if (data.expenses.length > 0) {
+            // Group expenses by category
+            const cats = new Map<string, number>();
+            for (const exp of data.expenses) {
+              cats.set(exp.category, (cats.get(exp.category) || 0) + exp.amount);
+            }
+            for (const [cat, total] of cats) {
+              t.push(`  EXPENSE cat=${cat} amt=${$(total)}`);
+            }
+          }
+        }
+        t.push('');
+
+        // Bank deposits
+        for (const [entityId, quarters] of Object.entries(snapshot.bankStatementDeposits || {})) {
+          const total = (quarters as { deposits: number }[]).reduce((s, q) => s + q.deposits, 0);
+          if (total > 0) {
+            t.push(`BANK_DEPOSITS entity=${entityId} total=${$(total)}`);
+            for (const q of quarters as {
+              quarter: string;
+              deposits: number;
+              revenueDeposits: number;
+              ownerContributions: number;
+            }[]) {
+              if (q.deposits > 0) {
+                t.push(
+                  `  ${q.quarter} deposits=${$(q.deposits)} revenue=${$(q.revenueDeposits)} owner=${$(q.ownerContributions)}`
+                );
+              }
+            }
+          }
+        }
+        t.push('');
+
+        // Tax summary
+        t.push('TAX_SUMMARY');
+        t.push(`  wages=${$(taxSummary.wages)} fed_withheld=${$(taxSummary.federalWithheld)}`);
+        t.push(`  schedule_c=${$(taxSummary.scheduleCIncome)}`);
+        t.push(
+          `  cap_gains st=${$(taxSummary.capitalGains.shortTerm)} lt=${$(taxSummary.capitalGains.longTerm)} total=${$(taxSummary.capitalGains.total)}`
+        );
+        t.push(
+          `  dividends ordinary=${$(taxSummary.dividends.ordinary)} qualified=${$(taxSummary.dividends.qualified)}`
+        );
+        t.push(`  other_income=${$(taxSummary.otherIncome)}`);
+        t.push(`  total_income=${$(taxSummary.estimatedTotalIncome)}`);
+        t.push(`  se_tax=${$(taxSummary.seTax)} se_deduction=${$(taxSummary.seTaxDeduction)}`);
+        t.push(`  retirement_deduction=${$(taxSummary.retirementDeduction)}`);
+        t.push(`  est_agi=${$(taxSummary.estimatedAGI)}`);
+        if (taxSummary.w2Details.length > 0) {
+          for (const w of taxSummary.w2Details) {
+            t.push(`  W2 employer="${w.employer}" wages=${$(w.wages)} withheld=${$(w.withheld)}`);
+          }
+        }
+        t.push('');
+
+        // Form 2210
+        for (const [entityId, data] of Object.entries(form2210Periods)) {
+          t.push(`FORM_2210 entity=${entityId}`);
+          for (const p of (
+            data as {
+              periods: {
+                label: string;
+                cumulativeDeposits: number;
+                cumulativeRevenue: number;
+                cumulativeOwnerContributions: number;
+              }[];
+            }
+          ).periods) {
+            t.push(
+              `  ${p.label} deposits=${$(p.cumulativeDeposits)} revenue=${$(p.cumulativeRevenue)}`
+            );
+          }
+        }
+        t.push('');
+
+        // Portfolio
+        if (portfolioSummary.totalNetWorth > 0) {
+          t.push(`PORTFOLIO net_worth=${$(portfolioSummary.totalNetWorth)}`);
+          if (portfolioSummary.brokerage) t.push(`  brokerage=${$(portfolioSummary.brokerage)}`);
+          if (portfolioSummary.crypto) t.push(`  crypto=${$(portfolioSummary.crypto)}`);
+          if (portfolioSummary.preciousMetals)
+            t.push(`  metals=${$(portfolioSummary.preciousMetals)}`);
+          if (portfolioSummary.property) t.push(`  property=${$(portfolioSummary.property)}`);
+          if (portfolioSummary.bankAccounts) t.push(`  bank=${$(portfolioSummary.bankAccounts)}`);
+        }
+
+        // Sales
+        if (snapshot.sales.totalRevenue > 0) {
+          t.push(
+            `SALES total=${$(snapshot.sales.totalRevenue)} count=${snapshot.sales.entries.length}`
+          );
+        }
+
+        // Mileage
+        if (snapshot.mileage.totalMiles > 0) {
+          t.push(
+            `MILEAGE miles=${snapshot.mileage.totalMiles} deduction=${$(snapshot.mileage.totalDeduction)} rate=${snapshot.mileage.irsRate}`
+          );
+        }
+
+        return new Response(t.join('\n'), {
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        });
+      }
 
       if (format === 'md' || format === 'markdown') {
         // Generate markdown
