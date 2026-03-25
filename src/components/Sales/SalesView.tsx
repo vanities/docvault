@@ -16,6 +16,31 @@ import { useAppContext } from '../../contexts/AppContext';
 
 const API = '/api/sales';
 
+// ── Standardized button styles ──────────────────────────────────────
+const BTN = {
+  primary: (color: string) =>
+    `w-full py-3 bg-${color}-500 text-white font-semibold rounded-xl hover:bg-${color}-400 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm`,
+  savePrimary: (color: string) =>
+    `flex-1 py-2.5 bg-${color}-500 text-white text-sm font-semibold rounded-xl hover:bg-${color}-400 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5`,
+  cancel:
+    'flex-1 py-2.5 bg-surface-200 text-surface-700 text-sm font-semibold rounded-xl hover:bg-surface-300 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5',
+  action:
+    'flex items-center gap-1.5 px-3 py-2 text-[12px] font-semibold text-surface-600 bg-surface-100 border border-border/50 rounded-xl hover:bg-surface-200 hover:text-surface-800 active:scale-[0.97] transition-all',
+  actionDanger:
+    'flex items-center gap-1.5 px-3 py-2 text-[12px] font-semibold text-surface-600 bg-surface-100 border border-border/50 rounded-xl hover:bg-danger-500/10 hover:text-danger-500 hover:border-danger-500/20 active:scale-[0.97] transition-all',
+  addSection: (color: string) =>
+    `flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-semibold text-${color}-600 bg-${color}-500/10 border border-${color}-500/20 rounded-xl hover:bg-${color}-500/15 active:scale-[0.97] transition-all`,
+  cancelSection:
+    'flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-semibold text-surface-600 bg-surface-100 border border-border/50 rounded-xl hover:bg-surface-200 active:scale-[0.97] transition-all',
+} as const;
+
+const INPUT =
+  'w-full px-3 py-2.5 bg-surface-100 border border-border rounded-xl text-sm text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400';
+const INPUT_EDIT =
+  'w-full px-2.5 py-2 bg-white border border-border rounded-xl text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400';
+const LABEL = 'text-[11px] text-surface-500 uppercase tracking-wider font-medium block mb-1';
+const LABEL_SM = 'text-[10px] text-surface-500 uppercase tracking-wider font-medium';
+
 export function SalesView() {
   const { selectedEntity, entities } = useAppContext();
   const [data, setData] = useState<SalesData>({ products: [], sales: [] });
@@ -34,17 +59,18 @@ export function SalesView() {
   const [newProductPrice, setNewProductPrice] = useState('');
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
 
-  // Edit state
+  // Edit state — sales
   const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
   const [editPerson, setEditPerson] = useState('');
   const [editProductId, setEditProductId] = useState('');
   const [editQuantity, setEditQuantity] = useState(1);
   const [editDate, setEditDate] = useState('');
+
+  // Edit state — products
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editProductName, setEditProductName] = useState('');
   const [editProductPrice, setEditProductPrice] = useState('');
 
-  // Known customers from past sales (autocomplete)
   const knownCustomers = [...new Set(data.sales.map((s) => s.person))].sort();
 
   const fetchData = useCallback(async () => {
@@ -69,10 +95,10 @@ export function SalesView() {
   const selectedProduct = data.products.find((p) => p.id === productId);
   const lineTotal = selectedProduct ? selectedProduct.price * quantity : 0;
 
+  // ── CRUD handlers ─────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!person.trim() || !productId) return;
-
     setSubmitting(true);
     try {
       const res = await fetch(API, {
@@ -110,10 +136,6 @@ export function SalesView() {
     setEditDate(sale.date);
   };
 
-  const cancelEditSale = () => {
-    setEditingSaleId(null);
-  };
-
   const handleUpdateSale = async (saleId: string) => {
     await fetch(`${API}/${saleId}`, {
       method: 'PUT',
@@ -135,12 +157,8 @@ export function SalesView() {
     setEditProductPrice(String(product.price));
   };
 
-  const cancelEditProduct = () => {
-    setEditingProductId(null);
-  };
-
-  const handleUpdateProduct = async (productId: string) => {
-    await fetch(`${API}/products/${productId}`, {
+  const handleUpdateProduct = async (id: string) => {
+    await fetch(`${API}/products/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -155,7 +173,6 @@ export function SalesView() {
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProductName.trim() || !newProductPrice) return;
-
     await fetch(`${API}/products`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -175,11 +192,10 @@ export function SalesView() {
     await fetchData();
   };
 
-  // Filter sales by selected entity
+  // ── Derived data ──────────────────────────────────────────────────
   const filteredSales =
     selectedEntity === 'all' ? data.sales : data.sales.filter((s) => s.entity === selectedEntity);
 
-  // Group sales by month (most recent first)
   const salesByMonth = filteredSales
     .slice()
     .sort((a, b) => b.date.localeCompare(a.date))
@@ -191,16 +207,11 @@ export function SalesView() {
     }, {});
 
   const months = Object.keys(salesByMonth).sort((a, b) => b.localeCompare(a));
-
-  // Auto-expand current month
   const currentMonth = new Date().toISOString().substring(0, 7);
   const activeMonth = expandedMonth ?? currentMonth;
-
-  // Totals
   const allTimeSales = filteredSales.reduce((sum, s) => sum + s.total, 0);
   const currentMonthSales = (salesByMonth[currentMonth] || []).reduce((sum, s) => sum + s.total, 0);
   const currentMonthCount = (salesByMonth[currentMonth] || []).length;
-
   const entityName = entities.find((e) => e.id === selectedEntity)?.name;
 
   if (loading) {
@@ -229,109 +240,49 @@ export function SalesView() {
       {/* Quick Stats */}
       <div className="grid grid-cols-2 gap-3">
         <div className="glass-card rounded-xl p-4">
-          <p className="text-[11px] text-surface-500 uppercase tracking-wider font-medium">
-            This Month
-          </p>
-          <p className="text-2xl font-bold text-surface-950 tabular-nums mt-1">
-            ${currentMonthSales.toFixed(2)}
-          </p>
-          <p className="text-[11px] text-surface-500 mt-0.5">
-            {currentMonthCount} sale{currentMonthCount !== 1 ? 's' : ''}
-          </p>
+          <p className="text-[11px] text-surface-500 uppercase tracking-wider font-medium">This Month</p>
+          <p className="text-2xl font-bold text-surface-950 tabular-nums mt-1">${currentMonthSales.toFixed(2)}</p>
+          <p className="text-[11px] text-surface-500 mt-0.5">{currentMonthCount} sale{currentMonthCount !== 1 ? 's' : ''}</p>
         </div>
         <div className="glass-card rounded-xl p-4">
-          <p className="text-[11px] text-surface-500 uppercase tracking-wider font-medium">
-            All Time
-          </p>
-          <p className="text-2xl font-bold text-amber-500 tabular-nums mt-1">
-            ${allTimeSales.toFixed(2)}
-          </p>
-          <p className="text-[11px] text-surface-500 mt-0.5">
-            {filteredSales.length} sale{filteredSales.length !== 1 ? 's' : ''}
-          </p>
+          <p className="text-[11px] text-surface-500 uppercase tracking-wider font-medium">All Time</p>
+          <p className="text-2xl font-bold text-amber-500 tabular-nums mt-1">${allTimeSales.toFixed(2)}</p>
+          <p className="text-[11px] text-surface-500 mt-0.5">{filteredSales.length} sale{filteredSales.length !== 1 ? 's' : ''}</p>
         </div>
       </div>
 
-      {/* Quick Entry Form */}
+      {/* New Sale Form */}
       <form onSubmit={handleSubmit} className="glass-card rounded-xl p-4 space-y-3">
         <h2 className="text-sm font-semibold text-surface-900 flex items-center gap-2">
           <Plus className="w-4 h-4 text-amber-500" />
           New Sale
         </h2>
 
-        {/* Customer */}
         <div>
-          <label className="text-[11px] text-surface-500 uppercase tracking-wider font-medium block mb-1">
-            Customer
-          </label>
-          <input
-            type="text"
-            value={person}
-            onChange={(e) => setPerson(e.target.value)}
-            placeholder="Name"
-            list="known-customers"
-            required
-            autoComplete="off"
-            className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400"
-          />
-          <datalist id="known-customers">
-            {knownCustomers.map((c) => (
-              <option key={c} value={c} />
-            ))}
-          </datalist>
+          <label className={LABEL}>Customer</label>
+          <input type="text" value={person} onChange={(e) => setPerson(e.target.value)} placeholder="Name" list="known-customers" required autoComplete="off" className={INPUT} />
+          <datalist id="known-customers">{knownCustomers.map((c) => <option key={c} value={c} />)}</datalist>
         </div>
 
-        {/* Product */}
         <div>
-          <label className="text-[11px] text-surface-500 uppercase tracking-wider font-medium block mb-1">
-            Product
-          </label>
-          <select
-            value={productId}
-            onChange={(e) => setProductId(e.target.value)}
-            className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400"
-          >
-            {data.products.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} — ${p.price.toFixed(2)}
-              </option>
-            ))}
+          <label className={LABEL}>Product</label>
+          <select value={productId} onChange={(e) => setProductId(e.target.value)} className={INPUT}>
+            {data.products.map((p) => <option key={p.id} value={p.id}>{p.name} — ${p.price.toFixed(2)}</option>)}
           </select>
         </div>
 
-        {/* Qty + Date row */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-[11px] text-surface-500 uppercase tracking-wider font-medium block mb-1">
-              Quantity
-            </label>
-            <input
-              type="number"
-              min={1}
-              value={quantity}
-              onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-              className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 text-center focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400"
-            />
+            <label className={LABEL}>Quantity</label>
+            <input type="number" min={1} value={quantity} onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))} className={`${INPUT} text-center`} />
           </div>
           <div>
-            <label className="text-[11px] text-surface-500 uppercase tracking-wider font-medium block mb-1">
-              Date
-            </label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400"
-            />
+            <label className={LABEL}>Date</label>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={INPUT} />
           </div>
         </div>
 
-        {/* Submit */}
-        <button
-          type="submit"
-          disabled={submitting || !person.trim() || !productId}
-          className="w-full py-3 bg-amber-500 text-white font-semibold rounded-lg hover:bg-amber-400 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm"
-        >
+        <button type="submit" disabled={submitting || !person.trim() || !productId} className={BTN.primary('amber')}>
           <DollarSign className="w-4 h-4" />
           Record Sale — ${lineTotal.toFixed(2)}
         </button>
@@ -352,10 +303,7 @@ export function SalesView() {
           const sales = salesByMonth[month];
           const monthTotal = sales.reduce((sum, s) => sum + s.total, 0);
           const isExpanded = activeMonth === month;
-          const monthLabel = new Date(month + '-01T00:00:00').toLocaleDateString('en-US', {
-            month: 'long',
-            year: 'numeric',
-          });
+          const monthLabel = new Date(month + '-01T00:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
           return (
             <div key={month} className="glass-card rounded-xl overflow-hidden">
@@ -364,22 +312,12 @@ export function SalesView() {
                 className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-surface-100/50 transition-colors"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-sm font-medium text-surface-900 truncate">
-                    {monthLabel}
-                  </span>
-                  <span className="text-[11px] text-surface-500 shrink-0">
-                    ({sales.length})
-                  </span>
+                  <span className="text-sm font-medium text-surface-900 truncate">{monthLabel}</span>
+                  <span className="text-[11px] text-surface-500 shrink-0">({sales.length})</span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0 ml-2">
-                  <span className="text-sm font-bold text-amber-500 tabular-nums">
-                    ${monthTotal.toFixed(2)}
-                  </span>
-                  {isExpanded ? (
-                    <ChevronUp className="w-4 h-4 text-surface-400" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-surface-400" />
-                  )}
+                  <span className="text-sm font-bold text-amber-500 tabular-nums">${monthTotal.toFixed(2)}</span>
+                  {isExpanded ? <ChevronUp className="w-4 h-4 text-surface-400" /> : <ChevronDown className="w-4 h-4 text-surface-400" />}
                 </div>
               </button>
 
@@ -391,84 +329,34 @@ export function SalesView() {
 
                     if (isEditing) {
                       return (
-                        <div key={sale.id} className="px-4 py-3 space-y-2 bg-surface-50">
+                        <div key={sale.id} className="px-4 py-3 space-y-2 bg-surface-50 border-b border-border/50 last:border-b-0">
                           <div>
-                            <label className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
-                              Customer
-                            </label>
-                            <input
-                              type="text"
-                              value={editPerson}
-                              onChange={(e) => setEditPerson(e.target.value)}
-                              list="known-customers-edit"
-                              autoComplete="off"
-                              className="w-full px-2.5 py-2 bg-white border border-border rounded-lg text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400"
-                            />
-                            <datalist id="known-customers-edit">
-                              {knownCustomers.map((c) => (
-                                <option key={c} value={c} />
-                              ))}
-                            </datalist>
+                            <label className={LABEL_SM}>Customer</label>
+                            <input type="text" value={editPerson} onChange={(e) => setEditPerson(e.target.value)} list="known-customers-edit" autoComplete="off" className={INPUT_EDIT} />
+                            <datalist id="known-customers-edit">{knownCustomers.map((c) => <option key={c} value={c} />)}</datalist>
                           </div>
                           <div>
-                            <label className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
-                              Product
-                            </label>
-                            <select
-                              value={editProductId}
-                              onChange={(e) => setEditProductId(e.target.value)}
-                              className="w-full px-2.5 py-2 bg-white border border-border rounded-lg text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400"
-                            >
-                              {data.products.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                  {p.name} — ${p.price.toFixed(2)}
-                                </option>
-                              ))}
+                            <label className={LABEL_SM}>Product</label>
+                            <select value={editProductId} onChange={(e) => setEditProductId(e.target.value)} className={INPUT_EDIT}>
+                              {data.products.map((p) => <option key={p.id} value={p.id}>{p.name} — ${p.price.toFixed(2)}</option>)}
                             </select>
                           </div>
                           <div className="grid grid-cols-2 gap-2">
                             <div>
-                              <label className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
-                                Qty
-                              </label>
-                              <input
-                                type="number"
-                                min={1}
-                                value={editQuantity}
-                                onChange={(e) =>
-                                  setEditQuantity(Math.max(1, parseInt(e.target.value) || 1))
-                                }
-                                className="w-full px-2.5 py-2 bg-white border border-border rounded-lg text-sm text-surface-950 text-center focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400"
-                              />
+                              <label className={LABEL_SM}>Qty</label>
+                              <input type="number" min={1} value={editQuantity} onChange={(e) => setEditQuantity(Math.max(1, parseInt(e.target.value) || 1))} className={`${INPUT_EDIT} text-center`} />
                             </div>
                             <div>
-                              <label className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
-                                Date
-                              </label>
-                              <input
-                                type="date"
-                                value={editDate}
-                                onChange={(e) => setEditDate(e.target.value)}
-                                className="w-full px-2.5 py-2 bg-white border border-border rounded-lg text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400"
-                              />
+                              <label className={LABEL_SM}>Date</label>
+                              <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className={INPUT_EDIT} />
                             </div>
                           </div>
                           <div className="flex gap-2 pt-1">
-                            <button
-                              type="button"
-                              onClick={() => void handleUpdateSale(sale.id)}
-                              className="flex-1 py-2 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-400 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                              Save
+                            <button type="button" onClick={() => void handleUpdateSale(sale.id)} className={BTN.savePrimary('amber')}>
+                              <Check className="w-3.5 h-3.5" /> Save
                             </button>
-                            <button
-                              type="button"
-                              onClick={cancelEditSale}
-                              className="flex-1 py-2 bg-surface-200 text-surface-700 text-sm font-medium rounded-lg hover:bg-surface-300 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                              Cancel
+                            <button type="button" onClick={() => setEditingSaleId(null)} className={BTN.cancel}>
+                              <X className="w-3.5 h-3.5" /> Cancel
                             </button>
                           </div>
                         </div>
@@ -476,49 +364,28 @@ export function SalesView() {
                     }
 
                     return (
-                      <div
-                        key={sale.id}
-                        className="px-4 py-3 border-b border-border/50 last:border-b-0"
-                      >
+                      <div key={sale.id} className="px-4 py-3 border-b border-border/50 last:border-b-0">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-surface-950 truncate">
-                              {sale.person}
-                            </p>
+                            <p className="text-sm font-medium text-surface-950 truncate">{sale.person}</p>
                             <p className="text-[12px] text-surface-600 mt-0.5">
                               {product?.name || sale.productId}
-                              {sale.quantity > 1 && (
-                                <span className="text-surface-500"> x{sale.quantity}</span>
-                              )}
+                              {sale.quantity > 1 && <span className="text-surface-500"> x{sale.quantity}</span>}
                             </p>
                           </div>
                           <div className="text-right shrink-0">
-                            <p className="text-sm font-bold text-surface-950 tabular-nums">
-                              ${sale.total.toFixed(2)}
-                            </p>
+                            <p className="text-sm font-bold text-surface-950 tabular-nums">${sale.total.toFixed(2)}</p>
                             <p className="text-[11px] text-surface-500">
-                              {new Date(sale.date + 'T00:00:00').toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                              })}
+                              {new Date(sale.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                             </p>
                           </div>
                         </div>
-                        {/* Action buttons */}
-                        <div className="flex gap-1.5 mt-2">
-                          <button
-                            onClick={() => startEditSale(sale)}
-                            className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-surface-600 bg-surface-100 rounded-lg hover:bg-surface-200 hover:text-surface-800 transition-colors"
-                          >
-                            <Pencil className="w-3 h-3" />
-                            Edit
+                        <div className="flex gap-2 mt-2.5">
+                          <button onClick={() => startEditSale(sale)} className={BTN.action}>
+                            <Pencil className="w-3 h-3" /> Edit
                           </button>
-                          <button
-                            onClick={() => void handleDelete(sale.id)}
-                            className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-surface-600 bg-surface-100 rounded-lg hover:bg-danger-500/10 hover:text-danger-500 transition-colors"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            Delete
+                          <button onClick={() => void handleDelete(sale.id)} className={BTN.actionDanger}>
+                            <Trash2 className="w-3 h-3" /> Delete
                           </button>
                         </div>
                       </div>
@@ -531,47 +398,25 @@ export function SalesView() {
         })}
       </div>
 
-      {/* Products Management */}
+      {/* Products */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-surface-900 flex items-center gap-2">
             <Package className="w-4 h-4 text-surface-600" />
             Products
           </h2>
-          <button
-            onClick={() => setShowProductForm(!showProductForm)}
-            className="text-[12px] font-medium text-amber-500 hover:text-amber-400 transition-colors"
-          >
-            {showProductForm ? 'Cancel' : '+ Add'}
+          <button onClick={() => setShowProductForm(!showProductForm)} className={showProductForm ? BTN.cancelSection : BTN.addSection('amber')}>
+            {showProductForm ? <><X className="w-3 h-3" /> Cancel</> : <><Plus className="w-3 h-3" /> Add</>}
           </button>
         </div>
 
         {showProductForm && (
           <form onSubmit={handleAddProduct} className="glass-card rounded-xl p-3 space-y-2">
             <div className="grid grid-cols-[1fr,5rem] gap-2">
-              <input
-                type="text"
-                value={newProductName}
-                onChange={(e) => setNewProductName(e.target.value)}
-                placeholder="Product name"
-                required
-                className="w-full px-3 py-2 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-amber-400/30"
-              />
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={newProductPrice}
-                onChange={(e) => setNewProductPrice(e.target.value)}
-                placeholder="$"
-                required
-                className="w-full px-3 py-2 bg-surface-100 border border-border rounded-lg text-sm text-surface-950 text-center placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-amber-400/30"
-              />
+              <input type="text" value={newProductName} onChange={(e) => setNewProductName(e.target.value)} placeholder="Product name" required className={INPUT} />
+              <input type="number" step="0.01" min="0" value={newProductPrice} onChange={(e) => setNewProductPrice(e.target.value)} placeholder="$" required className={`${INPUT} text-center`} />
             </div>
-            <button
-              type="submit"
-              className="w-full py-2 bg-amber-500 text-white font-medium rounded-lg hover:bg-amber-400 active:scale-[0.98] transition-all text-sm"
-            >
+            <button type="submit" className="w-full py-2.5 bg-amber-500 text-white font-semibold rounded-xl hover:bg-amber-400 active:scale-[0.98] transition-all text-sm">
               Add Product
             </button>
           </form>
@@ -588,37 +433,15 @@ export function SalesView() {
               return (
                 <div key={product.id} className="px-4 py-3 bg-surface-50 border-b border-border/50 last:border-b-0 space-y-2">
                   <div className="grid grid-cols-[1fr,5rem] gap-2">
-                    <input
-                      type="text"
-                      value={editProductName}
-                      onChange={(e) => setEditProductName(e.target.value)}
-                      className="w-full px-2.5 py-2 bg-white border border-border rounded-lg text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400"
-                    />
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={editProductPrice}
-                      onChange={(e) => setEditProductPrice(e.target.value)}
-                      className="w-full px-2.5 py-2 bg-white border border-border rounded-lg text-sm text-surface-950 text-center focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400"
-                    />
+                    <input type="text" value={editProductName} onChange={(e) => setEditProductName(e.target.value)} className={INPUT_EDIT} />
+                    <input type="number" step="0.01" min="0" value={editProductPrice} onChange={(e) => setEditProductPrice(e.target.value)} className={`${INPUT_EDIT} text-center`} />
                   </div>
                   <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void handleUpdateProduct(product.id)}
-                      className="flex-1 py-1.5 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-400 active:scale-[0.98] transition-all flex items-center justify-center gap-1"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                      Save
+                    <button type="button" onClick={() => void handleUpdateProduct(product.id)} className={BTN.savePrimary('amber')}>
+                      <Check className="w-3.5 h-3.5" /> Save
                     </button>
-                    <button
-                      type="button"
-                      onClick={cancelEditProduct}
-                      className="flex-1 py-1.5 bg-surface-200 text-surface-700 text-sm font-medium rounded-lg hover:bg-surface-300 active:scale-[0.98] transition-all flex items-center justify-center gap-1"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                      Cancel
+                    <button type="button" onClick={() => setEditingProductId(null)} className={BTN.cancel}>
+                      <X className="w-3.5 h-3.5" /> Cancel
                     </button>
                   </div>
                 </div>
@@ -626,30 +449,17 @@ export function SalesView() {
             }
 
             return (
-              <div
-                key={product.id}
-                className="px-4 py-3 border-b border-border/50 last:border-b-0"
-              >
+              <div key={product.id} className="px-4 py-3 border-b border-border/50 last:border-b-0">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-surface-900">{product.name}</span>
-                  <span className="text-sm font-bold text-surface-950 tabular-nums">
-                    ${product.price.toFixed(2)}
-                  </span>
+                  <span className="text-sm font-bold text-surface-950 tabular-nums">${product.price.toFixed(2)}</span>
                 </div>
-                <div className="flex gap-1.5 mt-1.5">
-                  <button
-                    onClick={() => startEditProduct(product)}
-                    className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-surface-600 bg-surface-100 rounded-md hover:bg-surface-200 hover:text-surface-800 transition-colors"
-                  >
-                    <Pencil className="w-2.5 h-2.5" />
-                    Edit
+                <div className="flex gap-2 mt-2">
+                  <button onClick={() => startEditProduct(product)} className={BTN.action}>
+                    <Pencil className="w-3 h-3" /> Edit
                   </button>
-                  <button
-                    onClick={() => void handleDeleteProduct(product.id)}
-                    className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-surface-600 bg-surface-100 rounded-md hover:bg-danger-500/10 hover:text-danger-500 transition-colors"
-                  >
-                    <Trash2 className="w-2.5 h-2.5" />
-                    Delete
+                  <button onClick={() => void handleDeleteProduct(product.id)} className={BTN.actionDanger}>
+                    <Trash2 className="w-3 h-3" /> Delete
                   </button>
                 </div>
               </div>
