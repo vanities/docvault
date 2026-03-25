@@ -37,7 +37,7 @@ const BTN = {
 const INPUT =
   'w-full px-3 py-2.5 bg-surface-100 border border-border rounded-xl text-sm text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400';
 const INPUT_EDIT =
-  'w-full px-2.5 py-2 bg-white border border-border rounded-xl text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400';
+  'w-full px-2.5 py-2 bg-surface-50 border border-border rounded-xl text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400';
 const LABEL = 'text-[11px] text-surface-500 uppercase tracking-wider font-medium block mb-1';
 const LABEL_SM = 'text-[10px] text-surface-500 uppercase tracking-wider font-medium';
 
@@ -412,9 +412,9 @@ export function SalesView() {
 
         {showProductForm && (
           <form onSubmit={handleAddProduct} className="glass-card rounded-xl p-3 space-y-2">
-            <div className="grid grid-cols-[1fr,5rem] gap-2">
+            <div className="grid grid-cols-[1fr_5rem] gap-2">
               <input type="text" value={newProductName} onChange={(e) => setNewProductName(e.target.value)} placeholder="Product name" required className={INPUT} />
-              <input type="number" step="0.01" min="0" value={newProductPrice} onChange={(e) => setNewProductPrice(e.target.value)} placeholder="$" required className={`${INPUT} text-center`} />
+              <input type="number" step="0.01" min="0" value={newProductPrice} onChange={(e) => setNewProductPrice(e.target.value)} placeholder="0.00" required className={`${INPUT} text-center`} />
             </div>
             <button type="submit" className="w-full py-2.5 bg-amber-500 text-white font-semibold rounded-xl hover:bg-amber-400 active:scale-[0.98] transition-all text-sm">
               Add Product
@@ -432,7 +432,7 @@ export function SalesView() {
             if (isEditing) {
               return (
                 <div key={product.id} className="px-4 py-3 bg-surface-50 border-b border-border/50 last:border-b-0 space-y-2">
-                  <div className="grid grid-cols-[1fr,5rem] gap-2">
+                  <div className="grid grid-cols-[1fr_5rem] gap-2">
                     <input type="text" value={editProductName} onChange={(e) => setEditProductName(e.target.value)} className={INPUT_EDIT} />
                     <input type="number" step="0.01" min="0" value={editProductPrice} onChange={(e) => setEditProductPrice(e.target.value)} className={`${INPUT_EDIT} text-center`} />
                   </div>
