@@ -39,16 +39,27 @@ export function AllFilesView() {
   }, [loadAllFiles]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || selectedEntity === 'all') return;
+    const files = e.target.files;
+    if (!files || files.length === 0 || selectedEntity === 'all') return;
 
-    const success = await importFile(file, 'other', selectedEntity, 0);
+    let succeeded = 0;
+    let failed = 0;
+    for (const file of Array.from(files)) {
+      const success = await importFile(file, 'other', selectedEntity, 0);
+      if (success) succeeded++;
+      else failed++;
+    }
 
-    if (success) {
-      addToast('File uploaded successfully', 'success');
+    if (succeeded > 0) {
+      addToast(
+        files.length === 1
+          ? 'File uploaded successfully'
+          : `${succeeded} file${succeeded !== 1 ? 's' : ''} uploaded${failed > 0 ? `, ${failed} failed` : ''}`,
+        failed > 0 ? 'info' : 'success'
+      );
       await loadAllFiles();
     } else {
-      addToast('Failed to upload file', 'error');
+      addToast('Failed to upload file(s)', 'error');
     }
 
     e.target.value = '';
@@ -147,9 +158,10 @@ export function AllFilesView() {
           {selectedEntity !== 'all' && (
             <label className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-accent-400 bg-accent-500/10 hover:bg-accent-500/15 rounded-xl cursor-pointer transition-colors">
               <Upload className="w-4 h-4" />
-              Upload File
+              Upload Files
               <input
                 type="file"
+                multiple
                 className="hidden"
                 onChange={handleFileUpload}
                 disabled={isProcessing}

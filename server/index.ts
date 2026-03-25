@@ -5313,6 +5313,7 @@ const server = Bun.serve({
   port: PORT,
   fetch: handleRequest,
   idleTimeout: 120, // 2 minutes for AI parsing
+  maxRequestBodySize: 1024 * 1024 * 1024, // 1 GB — large PDFs, manuals, etc.
 });
 
 console.log(`DocVault API server running on http://localhost:${server.port}`);
