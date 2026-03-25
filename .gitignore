@@ -31,6 +31,12 @@ dist-ssr
 data/
 data-backup
 
+# Scripts that reference NAS/personal data
+scripts/
+
+# Integration tests using real parsed data (contain personal info)
+**/*.integration.test.ts
+
 # Tax plan workspace (personal, private)
 tax-plan/
 
