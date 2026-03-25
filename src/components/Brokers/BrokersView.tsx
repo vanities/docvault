@@ -27,6 +27,7 @@ const BROKER_LABELS: Record<BrokerId, string> = {
   'navy-federal': 'Navy Federal',
   chase: 'Chase',
   altoira: 'Alto IRA',
+  other: 'Other',
 };
 
 const BROKER_COLORS: Record<BrokerId, string> = {
@@ -36,6 +37,7 @@ const BROKER_COLORS: Record<BrokerId, string> = {
   'navy-federal': 'text-blue-600 bg-blue-600/10',
   chase: 'text-sky-500 bg-sky-500/10',
   altoira: 'text-orange-500 bg-orange-500/10',
+  other: 'text-purple-500 bg-purple-500/10',
 };
 
 function formatUsd(value: number): string {
@@ -191,12 +193,13 @@ function AddAccountModal({
   onAdd,
   onClose,
 }: {
-  onAdd: (broker: BrokerId, name: string, url?: string) => void;
+  onAdd: (broker: BrokerId, name: string, url?: string, overrideValue?: number) => void;
   onClose: () => void;
 }) {
   const [broker, setBroker] = useState<BrokerId>('vanguard');
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
+  const [overrideValue, setOverrideValue] = useState('');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -210,7 +213,7 @@ function AddAccountModal({
         </div>
         <div className="space-y-3">
           <div>
-            <label className="text-[12px] font-medium text-surface-700 mb-1 block">Brokerage</label>
+            <label className="text-[12px] font-medium text-surface-700 mb-1 block">Institution</label>
             <select
               value={broker}
               onChange={(e) => setBroker(e.target.value as BrokerId)}
@@ -222,6 +225,7 @@ function AddAccountModal({
               <option value="navy-federal">Navy Federal</option>
               <option value="chase">Chase</option>
               <option value="altoira">Alto IRA</option>
+              <option value="other">Other</option>
             </select>
           </div>
           <div>
@@ -247,6 +251,24 @@ function AddAccountModal({
               className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-500/30"
             />
           </div>
+          <div>
+            <label className="text-[12px] font-medium text-surface-700 mb-1 block">
+              Override Value (optional)
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-surface-500">$</span>
+              <input
+                type="number"
+                value={overrideValue}
+                onChange={(e) => setOverrideValue(e.target.value)}
+                placeholder="e.g. 39436"
+                className="w-full pl-7 pr-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-500/30"
+              />
+            </div>
+            <p className="text-[11px] text-surface-500 mt-1">
+              Set a fixed balance instead of tracking individual holdings
+            </p>
+          </div>
         </div>
         <div className="flex gap-2 mt-5">
           <button
@@ -257,12 +279,15 @@ function AddAccountModal({
           </button>
           <button
             onClick={() => {
-              if (name.trim()) onAdd(broker, name.trim(), url.trim() || undefined);
+              if (name.trim()) {
+                const ov = overrideValue.trim() ? Number(overrideValue) : undefined;
+                onAdd(broker, name.trim(), url.trim() || undefined, ov);
+              }
             }}
             disabled={!name.trim()}
             className="flex-1 px-4 py-2.5 text-[13px] font-medium bg-accent-500 text-surface-0 rounded-xl hover:bg-accent-400 transition-colors disabled:opacity-50"
           >
-            Add Manual Account
+            Add Account
           </button>
         </div>
       </div>
@@ -323,7 +348,9 @@ function AccountCard({
               </span>
             </div>
             <p className="text-[11px] text-surface-600">
-              {account.holdings.length} holding{account.holdings.length !== 1 ? 's' : ''}
+              {account.overrideValue !== undefined
+                ? 'Fixed balance'
+                : `${account.holdings.length} holding${account.holdings.length !== 1 ? 's' : ''}`}
             </p>
           </div>
         </div>
@@ -351,92 +378,104 @@ function AccountCard({
         </div>
       </div>
 
-      {/* Holdings Table */}
+      {/* Holdings Table / Override Info */}
       {expanded && (
         <div className="border-t border-border">
-          {sortedHoldings.length > 0 && (
-            <div className="px-4">
-              {/* Table Header */}
-              <div className="grid grid-cols-12 gap-2 py-2.5 text-[11px] font-medium text-surface-500 uppercase tracking-wider border-b border-border/50">
-                <div className="col-span-4">Holding</div>
-                <div className="col-span-2 text-right">Shares</div>
-                <div className="col-span-2 text-right">Price</div>
-                <div className="col-span-2 text-right">Value</div>
-                <div className="col-span-2 text-right">Gain/Loss</div>
-              </div>
+          {account.overrideValue !== undefined ? (
+            <div className="px-4 py-4">
+              <p className="text-[12px] text-surface-500">
+                Manual balance: <span className="font-medium text-surface-950">{formatUsd(account.overrideValue)}</span>
+              </p>
+            </div>
+          ) : (
+            sortedHoldings.length > 0 && (
+              <div className="px-4">
+                {/* Table Header */}
+                <div className="grid grid-cols-12 gap-2 py-2.5 text-[11px] font-medium text-surface-500 uppercase tracking-wider border-b border-border/50">
+                  <div className="col-span-4">Holding</div>
+                  <div className="col-span-2 text-right">Shares</div>
+                  <div className="col-span-2 text-right">Price</div>
+                  <div className="col-span-2 text-right">Value</div>
+                  <div className="col-span-2 text-right">Gain/Loss</div>
+                </div>
 
-              {/* Holdings Rows */}
-              {sortedHoldings.map((h) => (
-                <div
-                  key={h.ticker}
-                  className="grid grid-cols-12 gap-2 py-3 border-b border-border/30 last:border-0 items-center group"
-                >
-                  <div className="col-span-4 flex items-center gap-2">
-                    <div className="min-w-0">
-                      <p className="text-[13px] font-mono font-bold text-surface-950">{h.ticker}</p>
-                      {h.label && (
-                        <p className="text-[11px] text-surface-500 truncate">{h.label}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="col-span-2 text-right">
-                    <span className="text-[13px] text-surface-800 font-mono">
-                      {h.shares.toLocaleString('en-US', { maximumFractionDigits: 4 })}
-                    </span>
-                  </div>
-                  <div className="col-span-2 text-right">
-                    <span className="text-[13px] text-surface-700">
-                      {h.price ? formatUsd(h.price) : '--'}
-                    </span>
-                  </div>
-                  <div className="col-span-2 text-right">
-                    <span className="text-[13px] font-medium text-surface-950">
-                      {h.marketValue ? formatUsd(h.marketValue) : '--'}
-                    </span>
-                  </div>
-                  <div className="col-span-2 text-right flex items-center justify-end gap-1">
-                    {h.costBasis && h.gainLoss !== undefined ? (
-                      <div className="text-right">
-                        <span
-                          className={`text-[12px] font-medium ${h.gainLoss >= 0 ? 'text-green-500' : 'text-red-500'}`}
-                        >
-                          {formatUsd(h.gainLoss)}
-                        </span>
-                        {h.gainType && h.gainType !== 'unknown' && (
-                          <span
-                            className={`ml-1 text-[9px] px-1 py-0.5 rounded font-medium ${h.gainType === 'long-term' ? 'text-green-600 bg-green-500/10' : 'text-amber-600 bg-amber-500/10'}`}
-                          >
-                            {h.gainType === 'short-term' ? 'ST' : 'LT'}
-                          </span>
+                {/* Holdings Rows */}
+                {sortedHoldings.map((h) => (
+                  <div
+                    key={h.ticker}
+                    className="grid grid-cols-12 gap-2 py-3 border-b border-border/30 last:border-0 items-center group"
+                  >
+                    <div className="col-span-4 flex items-center gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-mono font-bold text-surface-950">{h.ticker}</p>
+                        {h.label && (
+                          <p className="text-[11px] text-surface-500 truncate">{h.label}</p>
                         )}
                       </div>
-                    ) : (
-                      <span className="text-[12px] text-surface-500">--</span>
-                    )}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (confirm(`Remove ${h.ticker}?`)) onRemoveHolding(account.id, h.ticker);
-                      }}
-                      className="p-1 opacity-0 group-hover:opacity-100 text-surface-400 hover:text-danger-400 transition-all"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
+                    </div>
+                    <div className="col-span-2 text-right">
+                      <span className="text-[13px] text-surface-800 font-mono">
+                        {h.shares.toLocaleString('en-US', { maximumFractionDigits: 4 })}
+                      </span>
+                    </div>
+                    <div className="col-span-2 text-right">
+                      <span className="text-[13px] text-surface-700">
+                        {h.price ? formatUsd(h.price) : '--'}
+                      </span>
+                    </div>
+                    <div className="col-span-2 text-right">
+                      <span className="text-[13px] font-medium text-surface-950">
+                        {h.marketValue ? formatUsd(h.marketValue) : '--'}
+                      </span>
+                    </div>
+                    <div className="col-span-2 text-right flex items-center justify-end gap-1">
+                      {h.costBasis && h.gainLoss !== undefined ? (
+                        <div className="text-right">
+                          <span
+                            className={`text-[12px] font-medium ${h.gainLoss >= 0 ? 'text-green-500' : 'text-red-500'}`}
+                          >
+                            {formatUsd(h.gainLoss)}
+                          </span>
+                          {h.gainType && h.gainType !== 'unknown' && (
+                            <span
+                              className={`ml-1 text-[9px] px-1 py-0.5 rounded font-medium ${h.gainType === 'long-term' ? 'text-green-600 bg-green-500/10' : 'text-amber-600 bg-amber-500/10'}`}
+                            >
+                              {h.gainType === 'short-term' ? 'ST' : 'LT'}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-[12px] text-surface-500">--</span>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Remove ${h.ticker}?`)) onRemoveHolding(account.id, h.ticker);
+                        }}
+                        className="p-1 opacity-0 group-hover:opacity-100 text-surface-400 hover:text-danger-400 transition-all"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )
           )}
 
           {/* Action Bar */}
           <div className="flex items-center justify-between px-4 py-3 bg-surface-200/20">
-            <button
-              onClick={() => setShowAddHolding(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-accent-500 hover:bg-accent-500/10 rounded-lg transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add Manual Holding
-            </button>
+            {account.overrideValue === undefined ? (
+              <button
+                onClick={() => setShowAddHolding(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-accent-500 hover:bg-accent-500/10 rounded-lg transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Manual Holding
+              </button>
+            ) : (
+              <div />
+            )}
             <button
               onClick={() => {
                 if (confirm(`Delete "${account.name}" account and all holdings?`))
@@ -696,12 +735,16 @@ export function BrokersView() {
     }
   };
 
-  const handleAddAccount = async (broker: BrokerId, name: string, url?: string) => {
+  const handleAddAccount = async (broker: BrokerId, name: string, url?: string, overrideValue?: number) => {
     try {
       const res = await fetch(`${API_BASE}/brokers/accounts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ broker, name, ...(url ? { url } : {}) }),
+        body: JSON.stringify({
+          broker, name,
+          ...(url ? { url } : {}),
+          ...(overrideValue !== undefined ? { overrideValue } : {}),
+        }),
       });
       if (!res.ok) throw new Error('Failed to add account');
       setShowAddAccount(false);
