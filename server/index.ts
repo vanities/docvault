@@ -2608,6 +2608,9 @@ async function handleRequest(req: Request): Promise<Response> {
         documentCount = 0;
       const expenseItems: ReturnType<typeof getExpenseSummary>['items'] = [];
       const bankDeposits: Record<string, ReturnType<typeof getBankDepositSummary>> = {};
+      let invoiceTotal = 0, invoiceCount = 0;
+      const invoiceByCustomer = new Map<string, { total: number; count: number }>();
+      let retirementResult: ReturnType<typeof getRetirementSummary> = null;
 
       for (const entity of entities) {
         const entityPath = await getEntityPath(entity.id);
@@ -2652,6 +2655,30 @@ async function handleRequest(req: Request): Promise<Response> {
             existing.count += item.count;
           } else {
             expenseItems.push({ ...item });
+          }
+        }
+
+        // Invoices
+        const invSummary = getInvoiceSummary(entity.id, year, parsedDataMap, metadataMap, analyticsFiles);
+        invoiceTotal += invSummary.invoiceTotal;
+        invoiceCount += invSummary.invoiceCount;
+        for (const cust of invSummary.byCustomer) {
+          const existing = invoiceByCustomer.get(cust.customer);
+          if (existing) { existing.total += cust.total; existing.count += cust.count; }
+          else { invoiceByCustomer.set(cust.customer, { total: cust.total, count: cust.count }); }
+        }
+
+        // Retirement
+        const retSummary = getRetirementSummary(entity.id, year, parsedDataMap, metadataMap, analyticsFiles);
+        if (retSummary) {
+          if (!retirementResult) {
+            retirementResult = { ...retSummary };
+          } else {
+            retirementResult.totalContributions += retSummary.totalContributions;
+            retirementResult.employerContributions += retSummary.employerContributions;
+            retirementResult.employeeContributions += retSummary.employeeContributions;
+            retirementResult.statementCount += retSummary.statementCount;
+            retirementResult.byAccount.push(...retSummary.byAccount);
           }
         }
 
@@ -2707,6 +2734,14 @@ async function handleRequest(req: Request): Promise<Response> {
           expenses: allExpenses.expenses,
         },
         bankDeposits,
+        invoices: {
+          invoiceTotal,
+          invoiceCount,
+          byCustomer: Array.from(invoiceByCustomer.entries())
+            .map(([customer, { total, count }]) => ({ customer, total, count }))
+            .sort((a, b) => b.total - a.total),
+        },
+        retirement: retirementResult,
         documentCount,
       });
     } catch (err) {
@@ -4340,6 +4375,24 @@ async function handleRequest(req: Request): Promise<Response> {
     return jsonResponse({ ok: true, vehicle });
   }
 
+  // PUT /api/mileage/vehicles/:id - Update a vehicle
+  const vehicleUpdateMatch = pathname.match(/^\/api\/mileage\/vehicles\/([^/]+)$/);
+  if (vehicleUpdateMatch && req.method === 'PUT') {
+    const vehicleId = vehicleUpdateMatch[1];
+    const body = await req.json();
+    const data = await loadMileageData();
+    const vehicle = data.vehicles.find((v: Vehicle) => v.id === vehicleId);
+    if (!vehicle) {
+      return jsonResponse({ error: 'Vehicle not found' }, 404);
+    }
+    if (body.name !== undefined) vehicle.name = body.name.trim();
+    if (body.year !== undefined) vehicle.year = body.year === '' ? undefined : Number(body.year);
+    if (body.make !== undefined) vehicle.make = body.make?.trim() || undefined;
+    if (body.model !== undefined) vehicle.model = body.model?.trim() || undefined;
+    await saveMileageData(data);
+    return jsonResponse({ ok: true, vehicle });
+  }
+
   // DELETE /api/mileage/vehicles/:id - Delete a vehicle
   const vehicleDeleteMatch = pathname.match(/^\/api\/mileage\/vehicles\/([^/]+)$/);
   if (vehicleDeleteMatch && req.method === 'DELETE') {
@@ -4382,6 +4435,25 @@ async function handleRequest(req: Request): Promise<Response> {
       lon: Number(lon),
     };
     data.savedAddresses.push(addr);
+    await saveMileageData(data);
+    return jsonResponse({ ok: true, address: addr });
+  }
+
+  // PUT /api/mileage/addresses/:id - Update a saved address
+  const addrUpdateMatch = pathname.match(/^\/api\/mileage\/addresses\/([^/]+)$/);
+  if (addrUpdateMatch && req.method === 'PUT') {
+    const addrId = addrUpdateMatch[1];
+    const body = await req.json();
+    const data = await loadMileageData();
+    if (!data.savedAddresses) data.savedAddresses = [];
+    const addr = data.savedAddresses.find((a) => a.id === addrId);
+    if (!addr) {
+      return jsonResponse({ error: 'Address not found' }, 404);
+    }
+    if (body.label !== undefined) addr.label = body.label.trim();
+    if (body.formatted !== undefined) addr.formatted = body.formatted.trim();
+    if (body.lat !== undefined) addr.lat = Number(body.lat);
+    if (body.lon !== undefined) addr.lon = Number(body.lon);
     await saveMileageData(data);
     return jsonResponse({ ok: true, address: addr });
   }
