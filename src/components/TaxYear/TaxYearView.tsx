@@ -1,5 +1,5 @@
-import { useMemo, useState, useRef, useEffect } from 'react';
-import { RefreshCw, Download, ChevronDown, Briefcase } from 'lucide-react';
+import { useMemo, useState, useEffect } from 'react';
+import { RefreshCw, Download, Briefcase } from 'lucide-react';
 import { useAppContext, type TabType } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import { QuickStats } from '../Dashboard/QuickStats';
@@ -14,6 +14,12 @@ import { ExpenseSummary } from '../Summary/ExpenseSummary';
 import { InvoiceSummary } from '../Summary/InvoiceSummary';
 import { StatementSummary } from '../Summary/StatementSummary';
 import { useAnalytics } from '../../hooks/useAnalytics';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import type {
   Entity,
   DocumentType,
@@ -41,17 +47,6 @@ function DownloadDropdown({
     filter: 'income' | 'expenses' | 'invoices' | 'all'
   ) => Promise<void>;
 }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
   const options: { label: string; filter: 'all' | 'income' | 'expenses' | 'invoices' }[] = [
     { label: 'Download All', filter: 'all' },
     { label: 'Download Income', filter: 'income' },
@@ -60,34 +55,25 @@ function DownloadDropdown({
   ];
 
   return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 px-3 py-1.5 mb-1 text-[13px] font-medium text-surface-700 hover:text-surface-950 bg-surface-200/50 hover:bg-surface-200 border border-border rounded-lg transition-colors"
-      >
-        <Download className="w-4 h-4" />
-        <span className="hidden sm:inline">Download</span>
-        <ChevronDown className="w-3.5 h-3.5" />
-      </button>
-
-      {open && (
-        <div className="absolute right-0 mt-1 glass-strong rounded-lg shadow-2xl z-20 py-1 min-w-[180px] animate-scale-in">
-          {options.map((opt) => (
-            <button
-              key={opt.filter}
-              onClick={() => {
-                void onDownload(entity, year, opt.filter);
-                setOpen(false);
-              }}
-              className="w-full px-3 py-2 text-left text-[13px] text-surface-800 hover:bg-surface-300/30 flex items-center gap-2"
-            >
-              <Download className="w-3.5 h-3.5" />
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className="flex items-center gap-1.5 px-3 py-1.5 mb-1 text-[13px] font-medium text-surface-700 hover:text-surface-950 bg-surface-200/50 hover:bg-surface-200 border border-border rounded-lg transition-colors">
+          <Download className="w-4 h-4" />
+          <span className="hidden sm:inline">Download</span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {options.map((opt) => (
+          <DropdownMenuItem
+            key={opt.filter}
+            onClick={() => void onDownload(entity, year, opt.filter)}
+          >
+            <Download className="w-3.5 h-3.5" />
+            {opt.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

@@ -1,6 +1,7 @@
 import { Layout } from './components/Layout';
 import { LoginScreen } from './components/Auth/LoginScreen';
 import { ToastProvider } from './components/ui/Toast';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { AppProvider, useAppContext } from './contexts/AppContext';
 
 function AppContent() {
@@ -16,9 +17,11 @@ function AppContent() {
 function App() {
   return (
     <ToastProvider>
-      <AppProvider>
-        <AppContent />
-      </AppProvider>
+      <TooltipProvider>
+        <AppProvider>
+          <AppContent />
+        </AppProvider>
+      </TooltipProvider>
     </ToastProvider>
   );
 }
