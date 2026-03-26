@@ -73,6 +73,7 @@ export function UploadZone({
   const [fileMetadata, setFileMetadata] = useState<Map<string, FileMetadata>>(new Map());
   const [aiLoading, setAiLoading] = useState<Set<string>>(new Set());
   const [aiParsedData, setAiParsedData] = useState<Map<string, Record<string, unknown>>>(new Map());
+  const [aiError, setAiError] = useState<Map<string, string>>(new Map());
   // Track which fields the user has manually edited (so AI doesn't overwrite)
   const [userEditedFields, setUserEditedFields] = useState<Map<string, Set<string>>>(new Map());
   // Refs to always read the latest values inside async callbacks (avoids stale closures)
@@ -96,6 +97,13 @@ export function UploadZone({
             headers: { 'Content-Type': file.type || 'application/octet-stream' },
           }
         );
+        if (!response.ok) {
+          console.error('AI suggestion failed:', response.status, response.statusText);
+          setAiError((prev) =>
+            new Map(prev).set(file.name, `AI analysis failed (${response.status})`)
+          );
+          return;
+        }
         const data = await response.json();
 
         if (data.ok && data.suggestion) {
@@ -143,9 +151,22 @@ export function UploadZone({
           if (data.parsedData) {
             setAiParsedData((prev) => new Map(prev).set(file.name, data.parsedData));
           }
+          // Clear any previous error
+          setAiError((prev) => {
+            const next = new Map(prev);
+            next.delete(file.name);
+            return next;
+          });
+        } else {
+          setAiError((prev) =>
+            new Map(prev).set(file.name, data.error || 'AI analysis returned no data')
+          );
         }
       } catch (err) {
         console.error('AI filename suggestion error:', err);
+        setAiError((prev) =>
+          new Map(prev).set(file.name, 'AI analysis failed — check API key in Settings')
+        );
       } finally {
         setAiLoading((prev) => {
           const next = new Set(prev);
@@ -366,6 +387,11 @@ export function UploadZone({
       next.delete(fileName);
       return next;
     });
+    setAiError((prev) => {
+      const next = new Map(prev);
+      next.delete(fileName);
+      return next;
+    });
   };
 
   const handleUploadAll = () => {
@@ -413,6 +439,7 @@ export function UploadZone({
     setFileMetadata(new Map());
     setAiParsedData(new Map());
     setUserEditedFields(new Map());
+    setAiError(new Map());
   };
 
   // Check if document type needs month input
@@ -559,7 +586,26 @@ export function UploadZone({
                             {aiLoading.has(file.name) ? (
                               <>
                                 <Loader2 className="w-3 h-3 animate-spin text-purple-400" />
-                                <span className="text-purple-400">AI analyzing...</span>
+                                <span className="text-purple-400">
+                                  AI analyzing &amp; parsing...
+                                </span>
+                              </>
+                            ) : aiError.has(file.name) ? (
+                              <>
+                                <X className="w-3 h-3 text-red-400" />
+                                <span className="text-red-400 truncate flex-1">
+                                  {aiError.get(file.name)}
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="xs"
+                                  onClick={() => suggestFilename(file)}
+                                  className="ml-auto text-purple-400 hover:bg-purple-500/10"
+                                  title="Retry AI analysis"
+                                >
+                                  <Sparkles className="w-3 h-3" />
+                                  Retry
+                                </Button>
                               </>
                             ) : (
                               <>
@@ -757,11 +803,17 @@ export function UploadZone({
               })}
             </div>
 
-            <Button
-              onClick={handleUploadAll}
-              className="mt-4 w-full"
-            >
-              Upload {pendingFiles.length} file{pendingFiles.length > 1 ? 's' : ''}
+            <Button onClick={handleUploadAll} disabled={aiLoading.size > 0} className="mt-4 w-full">
+              {aiLoading.size > 0 ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Parsing {aiLoading.size} file{aiLoading.size > 1 ? 's' : ''}...
+                </>
+              ) : (
+                <>
+                  Upload {pendingFiles.length} file{pendingFiles.length > 1 ? 's' : ''}
+                </>
+              )}
             </Button>
           </div>
         </div>
