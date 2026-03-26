@@ -7,7 +7,7 @@ import { QuickStats } from '../Dashboard/QuickStats';
 import { ReminderBanner } from '../Reminders/ReminderBanner';
 import { TodoList } from '../Todos/TodoList';
 import { EntityMetadataBanner } from '../EntityMetadata/EntityMetadataBanner';
-import { UploadZone } from '../Documents/UploadZone';
+import { FileUploader } from '../common/FileUploader';
 import { DocumentList } from '../Documents/DocumentList';
 import { IncomeSummary } from '../Summary/IncomeSummary';
 import { ExpenseSummary } from '../Summary/ExpenseSummary';
@@ -149,7 +149,7 @@ export function TaxYearView() {
     }
   };
 
-  // Handle file import from drop zone
+  // Handle file import from upload zone
   const handleImport = async (
     file: File,
     docType: TaxDocument['type'],
@@ -157,7 +157,7 @@ export function TaxYearView() {
     taxYear: number,
     parsedData?: TaxDocument['parsedData'],
     customFilename?: string
-  ) => {
+  ): Promise<boolean> => {
     const expenseCategory =
       docType === 'receipt' && parsedData
         ? (parsedData as { category?: string }).category
@@ -180,6 +180,8 @@ export function TaxYearView() {
       // Refresh backend analytics
       analytics.refresh();
     }
+
+    return success;
   };
 
   // Move document to different entity/year
@@ -288,12 +290,15 @@ export function TaxYearView() {
       {/* Upload Zone - hidden when viewing all entities */}
       {selectedEntity !== 'all' && (
         <div className="mb-6">
-          <UploadZone
+          <FileUploader
             entity={selectedEntity}
             taxYear={selectedYear}
             availableYears={availableYears}
             onUpload={handleImport}
             disabled={isProcessing}
+            parseMode="always"
+            accept=".pdf,.png,.jpg,.jpeg,.csv,.xlsx,.tax,.txf"
+            subtitle="PDF, PNG, JPG, CSV files supported"
           />
         </div>
       )}

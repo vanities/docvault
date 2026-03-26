@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Upload, FolderOpen, RefreshCw } from 'lucide-react';
+import { FolderOpen, RefreshCw } from 'lucide-react';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import { DOCUMENT_TYPES } from '../../config';
@@ -7,12 +7,13 @@ import { DocumentList } from '../Documents/DocumentList';
 import { ReminderBanner } from '../Reminders/ReminderBanner';
 import { TodoList } from '../Todos/TodoList';
 import { EntityMetadataBanner } from '../EntityMetadata/EntityMetadataBanner';
+import { FileUploader } from '../common/FileUploader';
 import type { TaxDocument, DocumentType, Entity } from '../../types';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
-// Business document types for the upload modal
-const BUSINESS_DOC_TYPES = DOCUMENT_TYPES.filter((dt) => dt.category === 'business');
+const BUSINESS_DOC_TYPE_IDS = DOCUMENT_TYPES.filter((dt) => dt.category === 'business').map(
+  (dt) => dt.id
+);
 
 export function BusinessDocsView() {
   const {
@@ -32,9 +33,6 @@ export function BusinessDocsView() {
 
   const [businessDocs, setBusinessDocs] = useState<TaxDocument[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [pendingUpload, setPendingUpload] = useState<{ file: File; type: DocumentType } | null>(
-    null
-  );
 
   // Load business docs when entity changes
   const loadBusinessDocs = useCallback(async () => {
@@ -48,33 +46,34 @@ export function BusinessDocsView() {
     void loadBusinessDocs();
   }, [loadBusinessDocs]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Default to 'formation' type, user can change
-    setPendingUpload({ file, type: 'formation' });
-    e.target.value = '';
+  const handleUploadFile = async (
+    file: File,
+    docType: DocumentType,
+    _entity: Entity,
+    _taxYear: number
+  ): Promise<boolean> => {
+    if (selectedEntity === 'all') return false;
+    return importFile(file, docType, selectedEntity, 0);
   };
 
-  const handleConfirmUpload = async () => {
-    if (!pendingUpload || selectedEntity === 'all') return;
-
-    const success = await importFile(
-      pendingUpload.file,
-      pendingUpload.type,
-      selectedEntity,
-      0 // 0 indicates business doc (no year)
-    );
-
-    if (success) {
-      addToast('Document uploaded successfully', 'success');
+  const handleUploadComplete = async ({
+    succeeded,
+    failed,
+  }: {
+    succeeded: number;
+    failed: number;
+  }) => {
+    if (succeeded > 0) {
+      addToast(
+        succeeded === 1 && failed === 0
+          ? 'Document uploaded successfully'
+          : `${succeeded} document${succeeded !== 1 ? 's' : ''} uploaded${failed > 0 ? `, ${failed} failed` : ''}`,
+        failed > 0 ? 'info' : 'success'
+      );
       await loadBusinessDocs();
-    } else {
-      addToast('Failed to upload document', 'error');
+    } else if (failed > 0) {
+      addToast('Failed to upload document(s)', 'error');
     }
-
-    setPendingUpload(null);
   };
 
   const handleUpdateDoc = (id: string, updates: Partial<TaxDocument>) => {
@@ -171,22 +170,27 @@ export function BusinessDocsView() {
           >
             <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
           </Button>
-
-          {selectedEntity !== 'all' && (
-            <label className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-accent-400 bg-accent-500/10 hover:bg-accent-500/15 rounded-xl cursor-pointer transition-colors">
-              <Upload className="w-4 h-4" />
-              Upload Document
-              <input
-                type="file"
-                className="hidden"
-                accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
-                onChange={handleFileUpload}
-                disabled={isProcessing}
-              />
-            </label>
-          )}
         </div>
       </div>
+
+      {/* Upload Zone */}
+      {selectedEntity !== 'all' && (
+        <div className="mb-6">
+          <FileUploader
+            entity={selectedEntity}
+            taxYear={0}
+            onUpload={handleUploadFile}
+            onComplete={handleUploadComplete}
+            disabled={isProcessing}
+            parseMode="never"
+            allowedDocTypes={BUSINESS_DOC_TYPE_IDS}
+            defaultDocType="formation"
+            accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+            label="Upload Documents"
+            subtitle="Formation docs, EIN letters, contracts, licenses"
+          />
+        </div>
+      )}
 
       {selectedEntity === 'all' && (
         <div className="bg-warn-500/10 border border-warn-500/20 rounded-xl p-4 mb-6">
@@ -221,62 +225,6 @@ export function BusinessDocsView() {
           entities={entities}
         />
       )}
-
-      {/* Upload Confirmation Modal */}
-      <Dialog open={!!pendingUpload} onOpenChange={(open) => { if (!open) setPendingUpload(null); }}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Upload Document</DialogTitle>
-            <DialogDescription>Choose a document type for the selected file.</DialogDescription>
-          </DialogHeader>
-
-          {pendingUpload && (
-            <div className="space-y-4">
-              <div>
-                <p className="text-[13px] text-surface-600 mb-1">File:</p>
-                <p className="text-[13px] font-medium text-surface-950 truncate">
-                  {pendingUpload.file.name}
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-[13px] font-medium text-surface-800 mb-2">
-                  Document Type
-                </label>
-                <select
-                  value={pendingUpload.type}
-                  onChange={(e) =>
-                    setPendingUpload({ ...pendingUpload, type: e.target.value as DocumentType })
-                  }
-                  className="w-full px-3 py-2.5 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900"
-                >
-                  {BUSINESS_DOC_TYPES.map((dt) => (
-                    <option key={dt.id} value={dt.id}>
-                      {dt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <Button
-                  variant="ghost"
-                  onClick={() => setPendingUpload(null)}
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleConfirmUpload}
-                  className="flex-1"
-                >
-                  Upload
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
