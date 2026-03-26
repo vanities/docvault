@@ -16,14 +16,20 @@ import {
   Wand2,
 } from 'lucide-react';
 import type { TaxDocument, Entity, ExpenseCategory } from '../../types';
-import { DOCUMENT_TYPES, EXPENSE_CATEGORIES } from '../../config';
+import { DOCUMENT_TYPES, EXPENSE_CATEGORIES, getDocumentTypeColor } from '../../config';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import { useToast } from '../../hooks/useToast';
 import { useAppContext } from '../../contexts/AppContext';
 import { generateStandardFilename, getExtension } from '../../utils/filenaming';
 import { API_BASE } from '../../constants';
 import { FileIcon } from '../common/FileIcon';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -381,11 +387,7 @@ export function DocumentViewer({
               <p className="text-[12px] text-surface-700">{docTypeInfo?.label || document.type}</p>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-          >
+          <Button variant="ghost" size="icon" onClick={onClose}>
             <X className="w-5 h-5" />
           </Button>
         </div>
@@ -408,11 +410,7 @@ export function DocumentViewer({
             <div className="w-full h-full flex flex-col items-center justify-center text-surface-600">
               <File className="w-16 h-16 mb-4" />
               <p>Preview not available</p>
-              <Button
-                variant="link"
-                onClick={handleOpenExternal}
-                className="mt-4"
-              >
+              <Button variant="link" onClick={handleOpenExternal} className="mt-4">
                 <ExternalLink className="w-4 h-4" />
                 Open in new tab
               </Button>
@@ -452,12 +450,16 @@ export function DocumentViewer({
 
           {/* Tags */}
           <div className="flex flex-wrap gap-1.5">
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-info-500/10 text-info-400 rounded-md text-[12px]">
+            <span
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] ${getDocumentTypeColor(document.type)}`}
+            >
               <Tag className="w-3 h-3" />
               {docTypeInfo?.label || document.type}
             </span>
             {expenseInfo && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-500/10 text-emerald-400 rounded-md text-[12px]">
+              <span
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] ${expenseInfo.color}`}
+              >
                 {expenseInfo.label}
               </span>
             )}
@@ -570,19 +572,11 @@ export function DocumentViewer({
 
         {/* Actions */}
         <div className="border-t border-border p-4 flex flex-col sm:flex-row gap-2">
-          <Button
-            variant="secondary"
-            onClick={handleDownload}
-            className="flex-1"
-          >
+          <Button variant="secondary" onClick={handleDownload} className="flex-1">
             <Download className="w-4 h-4" />
             Download
           </Button>
-          <Button
-            onClick={handleReparse}
-            disabled={isParsing}
-            className="flex-1"
-          >
+          <Button onClick={handleReparse} disabled={isParsing} className="flex-1">
             <RefreshCw className={`w-4 h-4 ${isParsing ? 'animate-spin' : ''}`} />
             {isParsing ? 'Parsing...' : 'Parse Document'}
           </Button>
@@ -608,12 +602,7 @@ export function DocumentViewer({
             </Button>
           )}
           {onDelete && (
-            <Button
-              variant="ghost-danger"
-              size="icon"
-              onClick={handleDelete}
-              disabled={isDeleting}
-            >
+            <Button variant="ghost-danger" size="icon" onClick={handleDelete} disabled={isDeleting}>
               <Trash2 className="w-4 h-4" />
             </Button>
           )}
@@ -626,7 +615,9 @@ export function DocumentViewer({
           <DialogContent className="sm:max-w-sm">
             <DialogHeader>
               <DialogTitle>Move Document</DialogTitle>
-              <DialogDescription>Move this document to a different entity or tax year.</DialogDescription>
+              <DialogDescription>
+                Move this document to a different entity or tax year.
+              </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4">
@@ -666,11 +657,7 @@ export function DocumentViewer({
             </div>
 
             <div className="flex gap-3 mt-2">
-              <Button
-                variant="ghost"
-                onClick={() => setShowMoveModal(false)}
-                className="flex-1"
-              >
+              <Button variant="ghost" onClick={() => setShowMoveModal(false)} className="flex-1">
                 Cancel
               </Button>
               <Button

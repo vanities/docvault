@@ -127,6 +127,7 @@ export const EXPENSE_CATEGORIES: {
   deductionRate: number;
   scheduleC?: string;
   folder?: string; // Maps to folder in expenses/
+  color: string; // Tailwind color classes: "bg-{color}-500/15 text-{color}-400"
 }[] = [
   {
     id: 'meals',
@@ -134,6 +135,7 @@ export const EXPENSE_CATEGORIES: {
     deductionRate: 0.5,
     scheduleC: 'Line 24b',
     folder: 'business',
+    color: 'bg-orange-500/15 text-orange-400',
   },
   {
     id: 'software',
@@ -141,6 +143,7 @@ export const EXPENSE_CATEGORIES: {
     deductionRate: 1,
     scheduleC: 'Line 27a',
     folder: 'business',
+    color: 'bg-blue-500/15 text-blue-400',
   },
   {
     id: 'equipment',
@@ -148,6 +151,7 @@ export const EXPENSE_CATEGORIES: {
     deductionRate: 1,
     scheduleC: 'Line 13',
     folder: 'business',
+    color: 'bg-slate-500/15 text-slate-400',
   },
   {
     id: 'office-supplies',
@@ -155,6 +159,7 @@ export const EXPENSE_CATEGORIES: {
     deductionRate: 1,
     scheduleC: 'Line 18',
     folder: 'business',
+    color: 'bg-cyan-500/15 text-cyan-400',
   },
   {
     id: 'professional-services',
@@ -162,14 +167,23 @@ export const EXPENSE_CATEGORIES: {
     deductionRate: 1,
     scheduleC: 'Line 17',
     folder: 'business',
+    color: 'bg-indigo-500/15 text-indigo-400',
   },
-  { id: 'travel', label: 'Travel', deductionRate: 1, scheduleC: 'Line 24a', folder: 'business' },
+  {
+    id: 'travel',
+    label: 'Travel',
+    deductionRate: 1,
+    scheduleC: 'Line 24a',
+    folder: 'business',
+    color: 'bg-sky-500/15 text-sky-400',
+  },
   {
     id: 'utilities',
     label: 'Utilities',
     deductionRate: 1,
     scheduleC: 'Line 25',
     folder: 'business',
+    color: 'bg-yellow-500/15 text-yellow-400',
   },
   {
     id: 'insurance',
@@ -177,6 +191,7 @@ export const EXPENSE_CATEGORIES: {
     deductionRate: 1,
     scheduleC: 'Line 15',
     folder: 'business',
+    color: 'bg-teal-500/15 text-teal-400',
   },
   {
     id: 'taxes-licenses',
@@ -184,15 +199,35 @@ export const EXPENSE_CATEGORIES: {
     deductionRate: 1,
     scheduleC: 'Line 23',
     folder: 'business',
+    color: 'bg-red-500/15 text-red-400',
   },
-  { id: 'childcare', label: 'Childcare', deductionRate: 1, folder: 'childcare' },
-  { id: 'medical', label: 'Medical', deductionRate: 1, folder: 'medical' },
-  { id: 'education', label: 'Education', deductionRate: 1, folder: 'business' },
+  {
+    id: 'childcare',
+    label: 'Childcare',
+    deductionRate: 1,
+    folder: 'childcare',
+    color: 'bg-pink-500/15 text-pink-400',
+  },
+  {
+    id: 'medical',
+    label: 'Medical',
+    deductionRate: 1,
+    folder: 'medical',
+    color: 'bg-rose-500/15 text-rose-400',
+  },
+  {
+    id: 'education',
+    label: 'Education',
+    deductionRate: 1,
+    folder: 'business',
+    color: 'bg-violet-500/15 text-violet-400',
+  },
   {
     id: 'home-improvement',
     label: 'Home Improvement',
     deductionRate: 0,
     folder: 'home-improvement',
+    color: 'bg-stone-500/15 text-stone-400',
   },
   {
     id: 'feed',
@@ -200,6 +235,7 @@ export const EXPENSE_CATEGORIES: {
     deductionRate: 1,
     scheduleC: 'Schedule F Line 29',
     folder: 'business',
+    color: 'bg-lime-500/15 text-lime-400',
   },
   {
     id: 'livestock',
@@ -207,9 +243,43 @@ export const EXPENSE_CATEGORIES: {
     deductionRate: 1,
     scheduleC: 'Schedule F Line 33',
     folder: 'business',
+    color: 'bg-amber-500/15 text-amber-400',
   },
-  { id: 'other', label: 'Other', deductionRate: 1, scheduleC: 'Line 27a', folder: 'business' },
+  {
+    id: 'other',
+    label: 'Other',
+    deductionRate: 1,
+    scheduleC: 'Line 27a',
+    folder: 'business',
+    color: 'bg-neutral-500/15 text-neutral-400',
+  },
 ];
+
+// =============================================================================
+// COLOR HELPERS
+// =============================================================================
+// Shared color functions used by DocumentCard and DocumentViewer.
+
+export function getDocumentTypeColor(type: DocumentType): string {
+  const docType = DOCUMENT_TYPES.find((dt) => dt.id === type);
+  switch (docType?.category) {
+    case 'income':
+      return 'bg-emerald-500/15 text-emerald-400';
+    case 'expense':
+      return 'bg-red-500/15 text-red-400';
+    case 'crypto':
+      return 'bg-purple-500/15 text-purple-400';
+    default:
+      return 'bg-surface-400/15 text-surface-800';
+  }
+}
+
+export function getExpenseCategoryColor(categoryId: ExpenseCategory): string {
+  return (
+    EXPENSE_CATEGORIES.find((c) => c.id === categoryId)?.color ??
+    'bg-neutral-500/15 text-neutral-400'
+  );
+}
 
 // =============================================================================
 // EXPENSE FOLDER MAP

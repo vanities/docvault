@@ -14,7 +14,7 @@ import {
   EyeOff,
 } from 'lucide-react';
 import type { TaxDocument, DocumentType, Entity } from '../../types';
-import { DOCUMENT_TYPES, EXPENSE_CATEGORIES } from '../../config';
+import { DOCUMENT_TYPES, EXPENSE_CATEGORIES, getDocumentTypeColor } from '../../config';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import {
   DropdownMenu,
@@ -66,20 +66,6 @@ function formatDate(dateString: string): string {
 
 function getDocumentTypeLabel(type: DocumentType): string {
   return DOCUMENT_TYPES.find((dt) => dt.id === type)?.label || type;
-}
-
-function getDocumentTypeColor(type: DocumentType): string {
-  const docType = DOCUMENT_TYPES.find((dt) => dt.id === type);
-  switch (docType?.category) {
-    case 'income':
-      return 'bg-emerald-500/15 text-emerald-400';
-    case 'expense':
-      return 'bg-red-500/15 text-red-400';
-    case 'crypto':
-      return 'bg-purple-500/15 text-purple-400';
-    default:
-      return 'bg-surface-400/15 text-surface-800';
-  }
 }
 
 export function DocumentCard({
@@ -271,7 +257,9 @@ export function DocumentCard({
                     {isTracked ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>{isTracked ? 'Exclude from totals' : 'Include in totals'}</TooltipContent>
+                <TooltipContent>
+                  {isTracked ? 'Exclude from totals' : 'Include in totals'}
+                </TooltipContent>
               </Tooltip>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -288,10 +276,7 @@ export function DocumentCard({
                     <Edit2 className="w-3.5 h-3.5" />
                     Edit
                   </DropdownMenuItem>
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onClick={() => onDelete(doc.id)}
-                  >
+                  <DropdownMenuItem variant="destructive" onClick={() => onDelete(doc.id)}>
                     <Trash2 className="w-3.5 h-3.5" />
                     Delete
                   </DropdownMenuItem>
@@ -309,7 +294,9 @@ export function DocumentCard({
             </span>
 
             {expenseCategory && (
-              <span className="inline-flex px-2 py-0.5 rounded-md text-[11px] font-medium bg-amber-500/15 text-amber-400">
+              <span
+                className={`inline-flex px-2 py-0.5 rounded-md text-[11px] font-medium ${expenseCategory.color}`}
+              >
                 {expenseCategory.label}
               </span>
             )}
@@ -320,7 +307,11 @@ export function DocumentCard({
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] bg-info-500/15 text-info-400"
               >
                 {tag}
-                <button type="button" onClick={() => handleRemoveTag(tag)} className="hover:text-info-400/80">
+                <button
+                  type="button"
+                  onClick={() => handleRemoveTag(tag)}
+                  className="hover:text-info-400/80"
+                >
                   <X className="w-3 h-3" />
                 </button>
               </span>
@@ -415,11 +406,7 @@ export function DocumentCard({
                 />
               </div>
               <div className="flex gap-2">
-                <Button
-                  size="xs"
-                  onClick={handleSave}
-                  disabled={isSaving}
-                >
+                <Button size="xs" onClick={handleSave} disabled={isSaving}>
                   <Check className="w-3 h-3" />
                   {isSaving ? 'Saving...' : 'Save'}
                 </Button>
