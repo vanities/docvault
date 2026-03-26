@@ -1,4 +1,4 @@
-export const DONUT_COLORS = [
+const DONUT_COLORS = [
   '#f59e0b', // amber
   '#6366f1', // indigo
   '#22c55e', // green

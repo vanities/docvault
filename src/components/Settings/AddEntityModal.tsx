@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
+import { SETTINGS_COLOR_MAP, AVAILABLE_COLORS } from '../../utils/entityDisplay';
 import {
   Dialog,
   DialogContent,
@@ -10,17 +11,6 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-
-const COLOR_MAP: Record<string, { bg: string; border: string; ring: string }> = {
-  blue: { bg: 'bg-blue-500/15', border: 'border-blue-500/30', ring: 'ring-blue-500' },
-  green: { bg: 'bg-emerald-500/15', border: 'border-emerald-500/30', ring: 'ring-emerald-500' },
-  amber: { bg: 'bg-amber-500/15', border: 'border-amber-500/30', ring: 'ring-amber-500' },
-  purple: { bg: 'bg-purple-500/15', border: 'border-purple-500/30', ring: 'ring-purple-500' },
-  pink: { bg: 'bg-pink-500/15', border: 'border-pink-500/30', ring: 'ring-pink-500' },
-  red: { bg: 'bg-red-500/15', border: 'border-red-500/30', ring: 'ring-red-500' },
-};
-
-const AVAILABLE_COLORS = ['blue', 'green', 'amber', 'purple', 'pink', 'red'];
 
 interface AddEntityModalProps {
   isOpen: boolean;
@@ -59,7 +49,12 @@ export function AddEntityModal({ isOpen, onClose }: AddEntityModalProps) {
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add Business Entity</DialogTitle>
@@ -85,7 +80,7 @@ export function AddEntityModal({ isOpen, onClose }: AddEntityModalProps) {
             <label className="block text-[13px] font-medium text-surface-800 mb-2">Color</label>
             <div className="flex gap-2.5">
               {AVAILABLE_COLORS.map((c) => {
-                const colors = COLOR_MAP[c];
+                const colors = SETTINGS_COLOR_MAP[c];
                 return (
                   <button
                     key={c}
@@ -106,10 +101,7 @@ export function AddEntityModal({ isOpen, onClose }: AddEntityModalProps) {
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            onClick={handleAdd}
-            disabled={!name.trim() || isAdding}
-          >
+          <Button onClick={handleAdd} disabled={!name.trim() || isAdding}>
             {isAdding ? 'Adding...' : 'Add Entity'}
           </Button>
         </DialogFooter>

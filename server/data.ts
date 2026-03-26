@@ -308,12 +308,6 @@ export async function saveParsedData(data: Record<string, ParsedData>): Promise<
   await fs.writeFile(PARSED_DATA_FILE, JSON.stringify(data, null, 2));
 }
 
-export async function _getParsedDataForFile(filePath: string): Promise<ParsedData | null> {
-  const allData = await loadParsedData();
-  return allData[filePath] || null;
-}
-void _getParsedDataForFile;
-
 // ============================================================================
 // Document Metadata Storage (tags, notes)
 // ============================================================================

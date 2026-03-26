@@ -26,7 +26,7 @@ import type { EntityConfig } from '../hooks/useFileSystemServer';
 // =============================================================================
 
 // Icon mapping — string key to Lucide component
-export const ICON_MAP: Record<string, LucideIcon> = {
+const ICON_MAP: Record<string, LucideIcon> = {
   user: User,
   building: Building2,
   briefcase: Briefcase,
@@ -144,55 +144,6 @@ export const SIDEBAR_COLOR_MAP: Record<
     glow: '',
     bg: 'bg-surface-400/10',
     text: 'text-surface-800',
-  },
-};
-
-// EntitySwitcher color map (light theme with borders and rings)
-export const ENTITY_COLOR_MAP: Record<
-  string,
-  { bg: string; border: string; text: string; ring: string }
-> = {
-  blue: {
-    bg: 'bg-blue-50',
-    border: 'border-blue-200',
-    text: 'text-blue-700',
-    ring: 'ring-blue-500',
-  },
-  green: {
-    bg: 'bg-green-50',
-    border: 'border-green-200',
-    text: 'text-green-700',
-    ring: 'ring-green-500',
-  },
-  amber: {
-    bg: 'bg-amber-50',
-    border: 'border-amber-200',
-    text: 'text-amber-700',
-    ring: 'ring-amber-500',
-  },
-  purple: {
-    bg: 'bg-purple-50',
-    border: 'border-purple-200',
-    text: 'text-purple-700',
-    ring: 'ring-purple-500',
-  },
-  pink: {
-    bg: 'bg-pink-50',
-    border: 'border-pink-200',
-    text: 'text-pink-700',
-    ring: 'ring-pink-500',
-  },
-  red: {
-    bg: 'bg-red-50',
-    border: 'border-red-200',
-    text: 'text-red-700',
-    ring: 'ring-red-500',
-  },
-  gray: {
-    bg: 'bg-gray-50',
-    border: 'border-gray-200',
-    text: 'text-gray-700',
-    ring: 'ring-gray-500',
   },
 };
 

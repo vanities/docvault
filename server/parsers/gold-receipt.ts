@@ -2,12 +2,7 @@
 // Replaces the inline parser at POST /api/gold/parse-receipt in server/index.ts.
 
 import type { DocumentParser } from './base.js';
-import {
-  readFileAsBase64,
-  buildFileContent,
-  callClaude,
-  extractToolResult,
-} from './base.js';
+import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
 
 const SYSTEM_PROMPT = `You analyze receipts and invoices for precious metals purchases (gold, silver, platinum, palladium coins and bars). Extract purchase details using the extract_gold_receipt tool.
 
@@ -43,10 +38,20 @@ const GOLD_RECEIPT_TOOL = {
             productId: {
               type: 'string',
               enum: [
-                'american-eagle', 'american-buffalo', 'canadian-maple-leaf',
-                'south-african-krugerrand', 'austrian-philharmonic', 'chinese-panda',
-                'british-britannia', 'gold-bar', 'american-silver-eagle', 'silver-bar',
-                'silver-round', 'american-platinum-eagle', 'platinum-bar', 'custom',
+                'american-eagle',
+                'american-buffalo',
+                'canadian-maple-leaf',
+                'south-african-krugerrand',
+                'austrian-philharmonic',
+                'chinese-panda',
+                'british-britannia',
+                'gold-bar',
+                'american-silver-eagle',
+                'silver-bar',
+                'silver-round',
+                'american-platinum-eagle',
+                'platinum-bar',
+                'custom',
               ],
               description: 'Product ID',
             },
@@ -97,7 +102,7 @@ export interface ParsedGoldReceiptSchema {
   total?: number;
 }
 
-export const goldReceiptParser: DocumentParser<ParsedGoldReceiptSchema> = {
+const goldReceiptParser: DocumentParser<ParsedGoldReceiptSchema> = {
   type: 'gold-receipt',
   version: 1,
 
@@ -151,6 +156,10 @@ export async function parseGoldReceiptFromBuffer(
     writeFileSync(tmpPath, Buffer.from(buffer));
     return goldReceiptParser.parse(tmpPath, filename);
   } finally {
-    try { unlinkSync(tmpPath); } catch { /* ignore */ }
+    try {
+      unlinkSync(tmpPath);
+    } catch {
+      /* ignore */
+    }
   }
 }
