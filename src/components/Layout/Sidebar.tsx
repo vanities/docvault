@@ -371,6 +371,7 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
   const isTaxEntity = !isDocEntity;
   const showTnTax =
     entityConfig?.type === 'tax' && selectedEntity !== 'all' && selectedEntity !== 'personal';
+  const showPersonalTax = entityConfig?.type === 'tax' && selectedEntity === 'personal';
 
   const handleEntitySelect = (entity: EntityConfig) => {
     setSelectedEntity(entity.id);
@@ -379,7 +380,15 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
       onClose?.();
       return;
     }
-    if (activeView === 'settings') {
+    // Personal-only views — redirect when switching away from personal
+    if (
+      (activeView === 'solo-401k' || activeView === 'estimated-tax') &&
+      entity.id !== 'personal'
+    ) {
+      setActiveView('tax-year');
+    } else if (activeView === 'tn-tax' && entity.id === 'personal') {
+      setActiveView('tax-year');
+    } else if (activeView === 'settings') {
       setActiveView(entity.type === 'docs' ? 'all-files' : 'tax-year');
     } else if (entity.type === 'docs' && activeView !== 'all-files') {
       setActiveView('all-files');
@@ -478,7 +487,7 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
                 onClick={handleViewClick}
               />
 
-              {showTnTax && (
+              {showPersonalTax && (
                 <>
                   <NavButton
                     view="solo-401k"
@@ -500,17 +509,20 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
                     isProcessing={isProcessing}
                     onClick={handleViewClick}
                   />
-                  <NavButton
-                    view="tn-tax"
-                    label="TN Tax"
-                    icon={Calculator}
-                    activeColor="bg-amber-500/10"
-                    activeTextColor="text-amber-500"
-                    activeView={activeView}
-                    isProcessing={isProcessing}
-                    onClick={handleViewClick}
-                  />
                 </>
+              )}
+
+              {showTnTax && (
+                <NavButton
+                  view="tn-tax"
+                  label="TN Tax"
+                  icon={Calculator}
+                  activeColor="bg-amber-500/10"
+                  activeTextColor="text-amber-500"
+                  activeView={activeView}
+                  isProcessing={isProcessing}
+                  onClick={handleViewClick}
+                />
               )}
             </div>
           </div>
