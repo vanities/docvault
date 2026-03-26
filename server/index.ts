@@ -138,7 +138,6 @@ import { handleMiscRoutes } from './routes/misc.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-
 // Request Handler
 // ============================================================================
 
@@ -405,7 +404,6 @@ async function handleRequest(req: Request): Promise<Response> {
   // brokers routes (extracted to routes/brokers.ts)
   const brokersResponse = await handleBrokersRoutes(req, url, pathname);
   if (brokersResponse) return brokersResponse;
-
 
   // =========================================================================
   // Portfolio Snapshots
@@ -1423,7 +1421,12 @@ async function handleRequest(req: Request): Promise<Response> {
         }
 
         // Build document list (still needed for response)
-        const documents: { name: string; path: string; type: string; parsedData: ParsedData | null }[] = [];
+        const documents: {
+          name: string;
+          path: string;
+          type: string;
+          parsedData: ParsedData | null;
+        }[] = [];
         for (const file of files) {
           const parsedKey = `${entity.id}/${file.path}`;
           const parsed = parsedDataMap[parsedKey] || null;
@@ -1434,14 +1437,34 @@ async function handleRequest(req: Request): Promise<Response> {
 
         // Use analytics extractors for income and expenses
         const analyticsFiles = files.map((f) => ({ name: f.name, path: f.path, type: f.type }));
-        const incomeSummary = getIncomeSummary(entity.id, year, parsedDataMap, metadataMap, analyticsFiles);
-        const expenseSummary = getExpenseSummary(entity.id, year, parsedDataMap, metadataMap, analyticsFiles);
+        const incomeSummary = getIncomeSummary(
+          entity.id,
+          year,
+          parsedDataMap,
+          metadataMap,
+          analyticsFiles
+        );
+        const expenseSummary = getExpenseSummary(
+          entity.id,
+          year,
+          parsedDataMap,
+          metadataMap,
+          analyticsFiles
+        );
 
         summary[entity.id] = {
           entity,
           documents,
-          income: incomeSummary.items.map((i) => ({ source: i.source, amount: i.amount, type: i.type })),
-          expenses: expenseSummary.expenses.map((e) => ({ vendor: e.vendor, amount: e.amount, category: e.category })),
+          income: incomeSummary.items.map((i) => ({
+            source: i.source,
+            amount: i.amount,
+            type: i.type,
+          })),
+          expenses: expenseSummary.expenses.map((e) => ({
+            vendor: e.vendor,
+            amount: e.amount,
+            category: e.category,
+          })),
         };
       }
 
@@ -1461,8 +1484,13 @@ async function handleRequest(req: Request): Promise<Response> {
       const config = await loadConfig();
       const parsedDataMap = await loadParsedData();
       const metadataMap = includeHidden ? {} : await loadMetadata();
-      const { getIncomeSummary, getExpenseSummary, getBankDepositSummary, getInvoiceSummary, getRetirementSummary } =
-        await import('./analytics/index.js');
+      const {
+        getIncomeSummary,
+        getExpenseSummary,
+        getBankDepositSummary,
+        getInvoiceSummary,
+        getRetirementSummary,
+      } = await import('./analytics/index.js');
 
       // Support "all" entity by iterating all tax entities
       const entities =
@@ -1474,9 +1502,15 @@ async function handleRequest(req: Request): Promise<Response> {
         return jsonResponse({ error: 'Entity not found' }, 404);
       }
 
+      // Load sales + mileage data for integration
+      const salesData = await loadSalesData();
+      const mileageRawData = await loadMileageData();
+
       // Aggregate across all matching entities
       const allIncome: { items: ReturnType<typeof getIncomeSummary>['items'] } = { items: [] };
-      const allExpenses: { expenses: ReturnType<typeof getExpenseSummary>['expenses'] } = { expenses: [] };
+      const allExpenses: { expenses: ReturnType<typeof getExpenseSummary>['expenses'] } = {
+        expenses: [],
+      };
       let totalW2 = 0,
         totalW2Count = 0,
         total1099 = 0,
@@ -1492,7 +1526,8 @@ async function handleRequest(req: Request): Promise<Response> {
         documentCount = 0;
       const expenseItems: ReturnType<typeof getExpenseSummary>['items'] = [];
       const bankDeposits: Record<string, ReturnType<typeof getBankDepositSummary>> = {};
-      let invoiceTotal = 0, invoiceCount = 0;
+      let invoiceTotal = 0,
+        invoiceCount = 0;
       const invoiceByCustomer = new Map<string, { total: number; count: number }>();
       let retirementResult: ReturnType<typeof getRetirementSummary> = null;
 
@@ -1543,17 +1578,33 @@ async function handleRequest(req: Request): Promise<Response> {
         }
 
         // Invoices
-        const invSummary = getInvoiceSummary(entity.id, year, parsedDataMap, metadataMap, analyticsFiles);
+        const invSummary = getInvoiceSummary(
+          entity.id,
+          year,
+          parsedDataMap,
+          metadataMap,
+          analyticsFiles
+        );
         invoiceTotal += invSummary.invoiceTotal;
         invoiceCount += invSummary.invoiceCount;
         for (const cust of invSummary.byCustomer) {
           const existing = invoiceByCustomer.get(cust.customer);
-          if (existing) { existing.total += cust.total; existing.count += cust.count; }
-          else { invoiceByCustomer.set(cust.customer, { total: cust.total, count: cust.count }); }
+          if (existing) {
+            existing.total += cust.total;
+            existing.count += cust.count;
+          } else {
+            invoiceByCustomer.set(cust.customer, { total: cust.total, count: cust.count });
+          }
         }
 
         // Retirement
-        const retSummary = getRetirementSummary(entity.id, year, parsedDataMap, metadataMap, analyticsFiles);
+        const retSummary = getRetirementSummary(
+          entity.id,
+          year,
+          parsedDataMap,
+          metadataMap,
+          analyticsFiles
+        );
         if (retSummary) {
           if (!retirementResult) {
             retirementResult = { ...retSummary };
@@ -1588,6 +1639,26 @@ async function handleRequest(req: Request): Promise<Response> {
 
       const totalCapGains = totalCapGainsST + totalCapGainsLT;
 
+      // Sales integration — filter by matching entities and year
+      const matchingEntityIds = new Set(entities.map((e) => e.id));
+      const yearSales = salesData.sales.filter((s) => {
+        if (!s.date.startsWith(year)) return false;
+        if (entityId === 'all') return true;
+        return s.entity === entityId || (!s.entity && matchingEntityIds.has(entityId));
+      });
+      const salesTotal = yearSales.reduce((sum, s) => sum + s.total, 0);
+      const salesCount = yearSales.length;
+
+      // Mileage integration — filter by matching entities and year
+      const yearMileage = mileageRawData.entries.filter((e) => {
+        if (!e.date.startsWith(year)) return false;
+        if (entityId === 'all') return true;
+        return e.entity === entityId || (!e.entity && matchingEntityIds.has(entityId));
+      });
+      const mileageTotal = yearMileage.reduce((sum, e) => sum + (e.tripMiles || 0), 0);
+      const mileageCount = yearMileage.length;
+      const mileageDeduction = mileageTotal * mileageRawData.irsRate;
+
       return jsonResponse({
         entityId,
         year,
@@ -1603,18 +1674,18 @@ async function handleRequest(req: Request): Promise<Response> {
           capitalGainsTotal: totalCapGains,
           federalWithheld: totalFederalWithheld,
           stateWithheld: totalStateWithheld,
-          totalIncome: totalW2 + total1099 + totalK1 + totalCapGains,
-          salesTotal: 0, // TODO: integrate sales data
-          salesCount: 0,
+          totalIncome: totalW2 + total1099 + totalK1 + totalCapGains + salesTotal,
+          salesTotal,
+          salesCount,
           items: allIncome.items,
         },
         expenses: {
           items: expenseItems.sort((a, b) => b.total - a.total),
           totalExpenses,
-          totalDeductible,
-          mileageTotal: 0, // TODO: integrate mileage
-          mileageDeduction: 0,
-          mileageCount: 0,
+          totalDeductible: totalDeductible + mileageDeduction,
+          mileageTotal,
+          mileageDeduction,
+          mileageCount,
           expenses: allExpenses.expenses,
         },
         bankDeposits,
@@ -1629,10 +1700,7 @@ async function handleRequest(req: Request): Promise<Response> {
         documentCount,
       });
     } catch (err) {
-      return jsonResponse(
-        { error: 'Failed to generate analytics', details: String(err) },
-        500
-      );
+      return jsonResponse({ error: 'Failed to generate analytics', details: String(err) }, 500);
     }
   }
 
@@ -2163,7 +2231,6 @@ Return: { "naming": {...}, "parsedData": {...} }`,
   const downloadResponse = await handleDownloadRoutes(req, url, pathname);
   if (downloadResponse) return downloadResponse;
 
-
   // ========================================================================
   // Static file serving (built frontend)
   // ========================================================================
@@ -2217,7 +2284,6 @@ Return: { "naming": {...}, "parsedData": {...} }`,
 // ============================================================================
 // Scheduler (extracted to scheduler.ts)
 import { startScheduler, takePortfolioSnapshot, runDropboxSync } from './scheduler.js';
-
 
 // ============================================================================
 // Start server using Bun's native server

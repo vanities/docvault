@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo } from 'react';
 import { RefreshCw, Download, Briefcase } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAppContext, type TabType } from '../../contexts/AppContext';
@@ -20,16 +20,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import type {
-  Entity,
-  DocumentType,
-  TaxDocument,
-  IncomeSummary as IncomeSummaryType,
-  ExpenseSummary as ExpenseSummaryType,
-  ExpenseCategory,
-  Sale,
-  MileageEntry,
-} from '../../types';
+import type { Entity, DocumentType, TaxDocument, ExpenseCategory } from '../../types';
 
 /** Download dropdown for zip exports */
 function DownloadDropdown({
@@ -100,29 +91,6 @@ export function TaxYearView() {
   } = useAppContext();
 
   const { addToast } = useToast();
-
-  // Sales and mileage data for integration into tax year summaries
-  const [salesData, setSalesData] = useState<Sale[]>([]);
-  const [mileageData, setMileageData] = useState<{ entries: MileageEntry[]; irsRate: number }>({
-    entries: [],
-    irsRate: 0.7,
-  });
-
-  useEffect(() => {
-    fetch('/api/sales')
-      .then((r) => r.json())
-      .then((data: { sales?: Sale[] }) => setSalesData(data.sales || []))
-      .catch(() => setSalesData([]));
-  }, []);
-
-  useEffect(() => {
-    fetch('/api/mileage')
-      .then((r) => r.json())
-      .then((data: { entries?: MileageEntry[]; irsRate?: number }) =>
-        setMileageData({ entries: data.entries || [], irsRate: data.irsRate || 0.7 })
-      )
-      .catch(() => setMileageData({ entries: [], irsRate: 0.7 }));
-  }, []);
 
   // Update document in the scanned documents list and persist metadata
   const handleUpdateDoc = (id: string, updates: Partial<TaxDocument>) => {
@@ -261,52 +229,10 @@ export function TaxYearView() {
     [scannedDocuments]
   );
 
-  // Filter sales by year and entity
-  const yearSales = useMemo(() => {
-    const byYear = salesData.filter((s) => s.date.startsWith(String(selectedYear)));
-    if (selectedEntity === 'all') return byYear;
-    return byYear.filter((s) => s.entity === selectedEntity);
-  }, [salesData, selectedYear, selectedEntity]);
-
-  // Filter mileage by year and entity
-  const yearMileage = useMemo(() => {
-    return mileageData.entries.filter((e) => {
-      if (!e.date.startsWith(String(selectedYear))) return false;
-      if (selectedEntity === 'all') return true;
-      return e.entity === selectedEntity;
-    });
-  }, [mileageData.entries, selectedYear, selectedEntity]);
-
-  // --- Backend-driven analytics ---
+  // --- Backend-driven analytics (includes sales + mileage) ---
   const analytics = useAnalytics(selectedEntity, selectedYear);
-
-  // Merge backend analytics with local sales data
-  const incomeSummary = useMemo((): IncomeSummaryType => {
-    const salesTotal = yearSales.reduce((sum, s) => sum + s.total, 0);
-    return {
-      ...analytics.incomeSummary,
-      salesTotal,
-      salesCount: yearSales.length,
-      totalIncome: analytics.incomeSummary.totalIncome + salesTotal,
-    };
-  }, [analytics.incomeSummary, yearSales]);
-
-  const expenseSummary = useMemo((): ExpenseSummaryType => {
-    // Merge in mileage data (not yet in backend analytics)
-    const mileageTotal = yearMileage.reduce((sum, e) => sum + (e.tripMiles || 0), 0);
-    const mileageDeduction = yearMileage.reduce(
-      (sum, e) => sum + (e.tripMiles || 0) * mileageData.irsRate,
-      0
-    );
-    return {
-      ...analytics.expenseSummary,
-      mileageTotal,
-      mileageDeduction,
-      mileageCount: yearMileage.length,
-      totalDeductible: analytics.expenseSummary.totalDeductible + mileageDeduction,
-    };
-  }, [analytics.expenseSummary, yearMileage, mileageData.irsRate]);
-
+  const incomeSummary = analytics.incomeSummary;
+  const expenseSummary = analytics.expenseSummary;
   const bankDepositSummary = analytics.bankDepositSummary;
   const invoiceSummary = analytics.invoiceSummary;
   const retirementSummary = analytics.retirementSummary;
