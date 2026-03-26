@@ -2166,7 +2166,7 @@ Respond ONLY with valid JSON. No markdown.`,
 {
   "source": "Company or vendor name (plain text, spaces ok)",
   "documentType": "w2|1099-nec|1099-misc|1099-div|1099-int|1099-b|1099-composite|1099-r|1098|retirement-statement|receipt|invoice|crypto|return|contract|formation|ein-letter|license|business-agreement|operating-agreement|insurance-policy|bank-statement|credit-card-statement|statement|letter|certificate|medical-record|appraisal|other",
-  "expenseCategory": "meals|software|equipment|travel|office-supplies|professional-services|utilities|insurance|taxes-licenses|childcare|medical|education|other" (only if receipt/expense),
+  "expenseCategory": "meals|software|equipment|travel|office-supplies|professional-services|utilities|insurance|taxes-licenses|childcare|medical|education|feed|livestock|other" (only if receipt/expense),
   "description": "short description if receipt" (optional),
   "year": YYYY (the year from the document - tax year for W-2/1099, or date year for receipts/invoices),
   "month": 1-12 (if visible on document),

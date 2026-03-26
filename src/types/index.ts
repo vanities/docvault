@@ -57,6 +57,7 @@ export type ExpenseCategory =
   | 'education'
   | 'home-improvement'
   | 'feed'
+  | 'livestock'
   | 'other';
 
 // Parsed data structures
@@ -337,21 +338,6 @@ export interface Todo {
 export type CryptoExchangeId = 'coinbase' | 'gemini' | 'kraken';
 export type CryptoChain = 'btc' | 'eth';
 
-export interface CryptoExchangeConfig {
-  id: CryptoExchangeId;
-  apiKey: string;
-  apiSecret: string;
-  passphrase?: string; // Coinbase Advanced requires this
-  enabled: boolean;
-}
-
-export interface CryptoWalletConfig {
-  id: string; // user-chosen unique id
-  address: string;
-  chain: CryptoChain;
-  label: string; // e.g. "Cold storage", "Hardware wallet"
-}
-
 export interface CryptoBalance {
   asset: string; // e.g. "BTC", "ETH", "USDC"
   amount: number;
@@ -373,11 +359,6 @@ export interface CryptoPortfolio {
   totalUsdValue: number;
   byAsset: CryptoBalance[];
   lastUpdated: string;
-}
-
-export interface CryptoSettings {
-  exchanges: CryptoExchangeConfig[];
-  wallets: CryptoWalletConfig[];
 }
 
 // Crypto gains tracking
@@ -409,7 +390,14 @@ export interface CryptoGainsSummary {
 }
 
 // Brokerage tracking types
-export type BrokerId = 'vanguard' | 'fidelity' | 'robinhood' | 'navy-federal' | 'chase' | 'altoira' | 'other';
+export type BrokerId =
+  | 'vanguard'
+  | 'fidelity'
+  | 'robinhood'
+  | 'navy-federal'
+  | 'chase'
+  | 'altoira'
+  | 'other';
 
 export interface BrokerHolding {
   ticker: string;
@@ -564,14 +552,6 @@ export interface GoldData {
   entries: GoldEntry[];
 }
 
-export interface MetalSpotPrices {
-  gold: number;
-  silver: number;
-  platinum: number;
-  palladium: number;
-  lastUpdated: string;
-}
-
 // Property / Real Estate tracking
 export type PropertyType =
   | 'primary-residence'
@@ -615,21 +595,4 @@ export interface PropertyEntry {
 
 export interface PropertyData {
   entries: PropertyEntry[];
-}
-
-// App state
-export interface AppState {
-  selectedEntity: Entity;
-  selectedTaxYear: number;
-  documents: TaxDocument[];
-}
-
-// Filing status for TurboTax workflow
-export interface TaxYearStatus {
-  year: number;
-  status: 'in-progress' | 'ready-to-file' | 'filed';
-  filedDate?: string;
-  confirmationNumber?: string;
-  turboTaxFile?: string;
-  returnPdf?: string;
 }
