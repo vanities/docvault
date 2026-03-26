@@ -201,6 +201,13 @@ export const EXPENSE_CATEGORIES: {
     scheduleC: 'Schedule F Line 29',
     folder: 'business',
   },
+  {
+    id: 'livestock',
+    label: 'Livestock Purchases',
+    deductionRate: 1,
+    scheduleC: 'Schedule F Line 33',
+    folder: 'business',
+  },
   { id: 'other', label: 'Other', deductionRate: 1, scheduleC: 'Line 27a', folder: 'business' },
 ];
 
@@ -225,5 +232,6 @@ export const EXPENSE_FOLDER_MAP: Record<ExpenseCategory, string> = {
   'taxes-licenses': 'expenses/business',
   'home-improvement': 'expenses/home-improvement',
   feed: 'expenses/business',
+  livestock: 'expenses/business',
   other: 'expenses/business',
 };

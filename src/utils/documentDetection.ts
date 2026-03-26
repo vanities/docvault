@@ -86,6 +86,15 @@ export function detectExpenseCategory(path: string): ExpenseCategory | undefined
   if (lower.includes('equipment') || lower.includes('hardware')) return 'equipment';
   if (lower.includes('travel') || lower.includes('flight') || lower.includes('hotel'))
     return 'travel';
+  if (
+    lower.includes('livestock') ||
+    lower.includes('chicken') ||
+    lower.includes('poultry') ||
+    lower.includes('goat') ||
+    lower.includes('cattle') ||
+    lower.includes('hatchery')
+  )
+    return 'livestock';
 
   return undefined;
 }
