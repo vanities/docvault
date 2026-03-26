@@ -31,6 +31,8 @@ import { API_BASE } from '../../constants';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import {
   AVAILABLE_ICONS,
   DEFAULT_ENTITY_ICONS,
@@ -264,12 +266,12 @@ function DropboxConnectionSection() {
 
       {showTokenForm && (
         <form onSubmit={handleSaveToken} className="mt-3 space-y-2">
-          <textarea
+          <Textarea
             value={tokenInput}
             onChange={(e) => setTokenInput(e.target.value)}
             placeholder='Paste the JSON token from rclone authorize "dropbox"'
             rows={3}
-            className="w-full px-3 py-2 bg-surface-100 border border-border rounded-lg text-[12px] font-mono text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-400/30 resize-none"
+            className="text-[12px] font-mono resize-none"
           />
           <Button type="submit" size="sm" disabled={saving || !tokenInput.trim()}>
             {saving ? 'Saving...' : 'Save Token'}
@@ -283,6 +285,7 @@ function DropboxConnectionSection() {
 export function SettingsView() {
   const { entities, updateEntity, removeEntity, selectedEntity, setSelectedEntity } =
     useAppContext();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const { addToast } = useToast();
 
   // API Key state
@@ -610,7 +613,14 @@ export function SettingsView() {
   };
 
   const handleRemoveExchange = async (exchangeId: string) => {
-    if (!confirm(`Remove ${exchangeId} API keys?`)) return;
+    if (
+      !(await confirm({
+        description: `Remove ${exchangeId} API keys?`,
+        confirmLabel: 'Remove',
+        destructive: true,
+      }))
+    )
+      return;
     setIsCryptoSaving(true);
     try {
       const res = await fetch(`${API_BASE}/crypto/settings`, {
@@ -659,7 +669,14 @@ export function SettingsView() {
   };
 
   const handleRemoveWallet = async (walletId: string) => {
-    if (!confirm('Remove this wallet?')) return;
+    if (
+      !(await confirm({
+        description: 'Remove this wallet?',
+        confirmLabel: 'Remove',
+        destructive: true,
+      }))
+    )
+      return;
     setIsCryptoSaving(true);
     try {
       const res = await fetch(`${API_BASE}/crypto/settings`, {
@@ -802,7 +819,14 @@ export function SettingsView() {
   };
 
   const handleRemoveSimplefin = async () => {
-    if (!confirm('Remove SimpleFIN and disconnect all bank accounts?')) return;
+    if (
+      !(await confirm({
+        description: 'Remove SimpleFIN and disconnect all bank accounts?',
+        confirmLabel: 'Disconnect',
+        destructive: true,
+      }))
+    )
+      return;
     try {
       const res = await fetch(`${API_BASE}/simplefin`, { method: 'DELETE' });
       if ((await res.json()).ok) {
@@ -847,7 +871,14 @@ export function SettingsView() {
   };
 
   const handleRemoveSnapTrade = async () => {
-    if (!confirm('Disconnect SnapTrade? This will remove all synced brokerage accounts.')) return;
+    if (
+      !(await confirm({
+        description: 'Disconnect SnapTrade? This will remove all synced brokerage accounts.',
+        confirmLabel: 'Disconnect',
+        destructive: true,
+      }))
+    )
+      return;
     try {
       await fetch(`${API_BASE}/snaptrade`, { method: 'DELETE' });
       addToast('SnapTrade disconnected', 'success');
@@ -928,7 +959,15 @@ export function SettingsView() {
       addToast('Select a backup file and enter the password', 'error');
       return;
     }
-    if (!confirm('This will overwrite all current settings and data. Continue?')) return;
+    if (
+      !(await confirm({
+        title: 'Restore Backup',
+        description: 'This will overwrite all current settings and data. Continue?',
+        confirmLabel: 'Restore',
+        destructive: true,
+      }))
+    )
+      return;
     setIsRestoring(true);
     try {
       const form = new FormData();
@@ -951,7 +990,13 @@ export function SettingsView() {
   };
 
   const handleRemoveEntity = async (entity: EntityConfig) => {
-    if (!confirm(`Remove "${entity.name}"? This won't delete files.`)) {
+    if (
+      !(await confirm({
+        description: `Remove "${entity.name}"? This won't delete files.`,
+        confirmLabel: 'Remove',
+        destructive: true,
+      }))
+    ) {
       return;
     }
 
@@ -1768,7 +1813,7 @@ export function SettingsView() {
                 <label className="block text-[11px] font-medium text-surface-600 mb-1">
                   {newExchangeId === 'coinbase' ? 'Private Key' : 'API Secret'}
                 </label>
-                <textarea
+                <Textarea
                   value={newExchangeSecret}
                   onChange={(e) => setNewExchangeSecret(e.target.value)}
                   placeholder={
@@ -1777,7 +1822,7 @@ export function SettingsView() {
                       : 'API secret...'
                   }
                   rows={newExchangeId === 'coinbase' ? 4 : 1}
-                  className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 font-mono placeholder:text-surface-500 resize-none"
+                  className="text-[13px] font-mono resize-none"
                 />
               </div>
               <div className="flex gap-2 pt-1">
@@ -2082,12 +2127,12 @@ export function SettingsView() {
                       <label className="block text-[11px] font-medium text-surface-600 mb-1">
                         Description
                       </label>
-                      <textarea
+                      <Textarea
                         value={editDescription}
                         onChange={(e) => setEditDescription(e.target.value)}
                         placeholder="What documents does this entity contain? Notes for tax planning..."
                         rows={2}
-                        className="w-full px-3 py-2.5 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 resize-none placeholder:text-surface-500"
+                        className="text-[13px] resize-none"
                       />
                     </div>
 
@@ -2310,6 +2355,7 @@ export function SettingsView() {
           </div>
         </div>
       </Card>
+      <ConfirmDialog />
     </div>
   );
 }

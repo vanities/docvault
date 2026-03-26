@@ -258,10 +258,7 @@ export function SalesView() {
 
       {/* New Sale Form */}
       <form onSubmit={handleSubmit} className="glass-card rounded-xl p-4 space-y-3">
-        <h2 className="text-sm font-semibold text-surface-900 flex items-center gap-2">
-          <Plus className="w-4 h-4 text-amber-500" />
-          New Sale
-        </h2>
+        <h2 className="text-sm font-semibold text-surface-900">New Sale</h2>
 
         <div>
           <Label className="mb-1">Customer</Label>

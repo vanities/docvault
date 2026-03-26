@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import {
   Select,
   SelectContent,
@@ -325,6 +326,7 @@ function AccountCard({
 }) {
   const [expanded, setExpanded] = useState(true);
   const [showAddHolding, setShowAddHolding] = useState(false);
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const brokerColor = BROKER_COLORS[account.broker] || 'text-surface-600 bg-surface-200/50';
   const sortedHoldings = [...account.holdings].sort(
     (a, b) => (b.marketValue || 0) - (a.marketValue || 0)
@@ -466,9 +468,16 @@ function AccountCard({
                         <span className="text-[12px] text-surface-500">--</span>
                       )}
                       <button
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
-                          if (confirm(`Remove ${h.ticker}?`)) onRemoveHolding(account.id, h.ticker);
+                          if (
+                            await confirm({
+                              description: `Remove ${h.ticker}?`,
+                              confirmLabel: 'Remove',
+                              destructive: true,
+                            })
+                          )
+                            onRemoveHolding(account.id, h.ticker);
                         }}
                         className="p-1 opacity-0 group-hover:opacity-100 text-surface-400 hover:text-danger-400 transition-all"
                       >
@@ -499,8 +508,14 @@ function AccountCard({
             <Button
               variant="ghost-danger"
               size="sm"
-              onClick={() => {
-                if (confirm(`Delete "${account.name}" account and all holdings?`))
+              onClick={async () => {
+                if (
+                  await confirm({
+                    description: `Delete "${account.name}" account and all holdings?`,
+                    confirmLabel: 'Delete',
+                    destructive: true,
+                  })
+                )
                   onDeleteAccount(account.id);
               }}
             >
@@ -519,6 +534,7 @@ function AccountCard({
         }}
         onOpenChange={setShowAddHolding}
       />
+      <ConfirmDialog />
     </Card>
   );
 }
@@ -616,6 +632,7 @@ let cachedPortfolio: BrokerPortfolio | null = null;
 export function BrokersView() {
   const [portfolio, setPortfolio] = useState<BrokerPortfolio | null>(cachedPortfolio);
   const [isLoading, setIsLoading] = useState(!cachedPortfolio);
+  const { confirm, ConfirmDialog: BrokersConfirmDialog } = useConfirmDialog();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>([]);
@@ -750,7 +767,14 @@ export function BrokersView() {
   };
 
   const handleSnapTradeDisconnect = async () => {
-    if (!confirm('Disconnect SnapTrade? This will remove all synced accounts.')) return;
+    if (
+      !(await confirm({
+        description: 'Disconnect SnapTrade? This will remove all synced accounts.',
+        confirmLabel: 'Disconnect',
+        destructive: true,
+      }))
+    )
+      return;
     try {
       await fetch(`${API_BASE}/snaptrade`, { method: 'DELETE' });
       setSnapTradeStatus({ configured: false, registered: false });
@@ -1012,6 +1036,7 @@ export function BrokersView() {
         onAdd={handleAddAccount}
         onOpenChange={setShowAddAccount}
       />
+      <BrokersConfirmDialog />
     </div>
   );
 }

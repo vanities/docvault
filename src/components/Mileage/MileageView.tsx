@@ -436,9 +436,7 @@ export function MileageView() {
 
       {/* New Entry Form */}
       <form onSubmit={handleSubmit} className="glass-card rounded-xl p-4 space-y-3">
-        <h2 className="text-sm font-semibold text-surface-900 flex items-center gap-2">
-          <Plus className="w-4 h-4 text-teal-500" /> New Entry
-        </h2>
+        <h2 className="text-sm font-semibold text-surface-900">New Entry</h2>
 
         <div className="grid grid-cols-2 gap-3">
           <div>

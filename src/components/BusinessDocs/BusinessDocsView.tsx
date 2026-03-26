@@ -10,12 +10,14 @@ import { EntityMetadataBanner } from '../EntityMetadata/EntityMetadataBanner';
 import { FileUploader } from '../common/FileUploader';
 import type { TaxDocument, DocumentType, Entity } from '../../types';
 import { Button } from '@/components/ui/button';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 
 const BUSINESS_DOC_TYPE_IDS = DOCUMENT_TYPES.filter((dt) => dt.category === 'business').map(
   (dt) => dt.id
 );
 
 export function BusinessDocsView() {
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const {
     selectedEntity,
     scanBusinessDocs,
@@ -93,7 +95,14 @@ export function BusinessDocsView() {
   const handleDeleteDoc = async (id: string) => {
     const doc = businessDocs.find((d) => d.id === id);
     if (!doc?.filePath) return;
-    if (!confirm(`Delete "${doc.fileName}"?`)) return;
+    if (
+      !(await confirm({
+        description: `Delete "${doc.fileName}"?`,
+        confirmLabel: 'Delete',
+        destructive: true,
+      }))
+    )
+      return;
 
     const success = await deleteFile(doc.entity, doc.filePath);
     if (success) {
@@ -225,6 +234,7 @@ export function BusinessDocsView() {
           entities={entities}
         />
       )}
+      <ConfirmDialog />
     </div>
   );
 }

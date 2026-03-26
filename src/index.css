@@ -50,6 +50,26 @@ input[type='number'] {
   --color-border: #ffffff0d;
   --color-border-subtle: #ffffff08;
   --color-border-strong: #ffffff1a;
+
+  /* shadcn semantic tokens (Tailwind v4 needs --color-* in @theme) */
+  --color-background: #0c0e12;
+  --color-foreground: #d8dde9;
+  --color-card: #16181e;
+  --color-card-foreground: #d8dde9;
+  --color-popover: #111318;
+  --color-popover-foreground: #d8dde9;
+  --color-primary: #10b981;
+  --color-primary-foreground: #0c0e12;
+  --color-secondary: #1c1f26;
+  --color-secondary-foreground: #b4bccf;
+  --color-muted: #1c1f26;
+  --color-muted-foreground: #626a7c;
+  --color-accent: #1c1f26;
+  --color-accent-foreground: #b4bccf;
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #0c0e12;
+  --color-input: #1c1f26;
+  --color-ring: #34d399;
 }
 
 :root {
