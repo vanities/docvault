@@ -1,6 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { Landmark, ChevronDown, ChevronUp, Info, Plus, Trash2, Calculator } from 'lucide-react';
-import { useAppContext } from '../../contexts/AppContext';
+import { Landmark, ChevronDown, ChevronUp, Info, Plus, Trash2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -136,7 +135,6 @@ export function Solo401kCalculator({
   taxYear,
   entity,
 }: Solo401kCalculatorProps) {
-  const { setActiveView } = useAppContext();
   const [expanded, setExpanded] = useState(true);
   const [grossInput, setGrossInput] = useState(defaultGross.toFixed(0));
   const [expensesInput, setExpensesInput] = useState(defaultExpenses.toFixed(0));
@@ -493,26 +491,6 @@ export function Solo401kCalculator({
               </Button>
             </div>
           </div>
-
-          <div className="border-t border-border" />
-
-          {/* TN Tax link */}
-          <button
-            onClick={() => setActiveView('tn-tax')}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/20 transition-colors text-left"
-          >
-            <div className="p-1.5 rounded-lg bg-amber-500/10 flex-shrink-0">
-              <Calculator className="w-4 h-4 text-amber-500" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-semibold text-amber-600">
-                TN Franchise &amp; Excise Tax
-              </p>
-              <p className="text-[11px] text-surface-500">
-                Schedule F1 · Schedule H · Schedule J planner →
-              </p>
-            </div>
-          </button>
         </div>
       )}
     </Card>

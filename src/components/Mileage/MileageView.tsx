@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { Vehicle, MileageEntry, MileageData, SavedAddress } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
+import { useToast } from '../../hooks/useToast';
 import { AddressAutocomplete } from './AddressAutocomplete';
 import type { SelectedAddress } from './AddressAutocomplete';
 
@@ -29,6 +30,7 @@ const SELECT_CLASS =
 
 export function MileageView() {
   const { selectedEntity, entities } = useAppContext();
+  const { addToast } = useToast();
   const [data, setData] = useState<MileageData>({ vehicles: [], entries: [], irsRate: 0.7 });
   const [loading, setLoading] = useState(true);
 
@@ -188,7 +190,12 @@ export function MileageView() {
         setRouteMiles(null);
         setDate(new Date().toISOString().split('T')[0]);
         await fetchData();
+        addToast('Trip recorded', 'success');
+      } else {
+        addToast('Failed to record trip', 'error');
       }
+    } catch {
+      addToast('Failed to record trip', 'error');
     } finally {
       setSubmitting(false);
     }

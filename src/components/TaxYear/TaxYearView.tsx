@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { useAppContext, type TabType } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import { QuickStats } from '../Dashboard/QuickStats';
-import { Solo401kCalculator } from '../Dashboard/Solo401kCalculator';
 import { ReminderBanner } from '../Reminders/ReminderBanner';
 import { TodoList } from '../Todos/TodoList';
 import { EntityMetadataBanner } from '../EntityMetadata/EntityMetadataBanner';
@@ -27,9 +26,7 @@ import type {
   TaxDocument,
   IncomeSummary as IncomeSummaryType,
   ExpenseSummary as ExpenseSummaryType,
-  InvoiceSummaryData,
-  RetirementSummary,
-  BankDepositSummary,
+  ExpenseCategory,
   Sale,
   MileageEntry,
 } from '../../types';
@@ -76,25 +73,6 @@ function DownloadDropdown({
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
-
-/** Extract vendor/customer from an invoice document */
-function getInvoiceVendor(doc: TaxDocument): string {
-  const data = doc.parsedData as Record<string, unknown> | undefined;
-  if (data) {
-    if (typeof data.billTo === 'string' && data.billTo) return data.billTo;
-    if (typeof data.customerName === 'string' && data.customerName) return data.customerName;
-    if (typeof data.vendor === 'string' && data.vendor) return data.vendor;
-  }
-  // Fall back to filename: {Source}_{Type}_{Date}.ext
-  const base = doc.fileName.replace(/\.[^.]+$/, '');
-  const parts = base.split('_');
-  const typeKeywords = ['invoice', 'Invoice'];
-  const typeIdx = parts.findIndex((p) =>
-    typeKeywords.some((kw) => p.toLowerCase() === kw.toLowerCase())
-  );
-  if (typeIdx > 0) return parts.slice(0, typeIdx).join(' ');
-  return parts[0] || 'Unknown';
 }
 
 export function TaxYearView() {
@@ -380,25 +358,6 @@ export function TaxYearView() {
           allBankDepositSummary={allBankDepositSummary}
         />
       </div>
-
-      {/* Solo 401(k) Calculator — only for LLC/self-employment entities (not personal W-2) */}
-      {selectedEntity !== 'all' &&
-        selectedEntity !== 'personal' &&
-        entities.find((e) => e.id === selectedEntity)?.type === 'tax' &&
-        (invoiceSummary.invoiceTotal > 0 || (bankDepositSummary?.totalDeposits ?? 0) > 0) && (
-          <div className="mb-6">
-            <Solo401kCalculator
-              defaultGross={
-                bankDepositSummary && bankDepositSummary.totalDeposits > 0
-                  ? bankDepositSummary.totalDeposits
-                  : invoiceSummary.invoiceTotal
-              }
-              defaultExpenses={expenseSummary.totalDeductible}
-              taxYear={selectedYear}
-              entity={selectedEntity}
-            />
-          </div>
-        )}
 
       {/* Upload Zone - hidden when viewing all entities */}
       {selectedEntity !== 'all' && (
