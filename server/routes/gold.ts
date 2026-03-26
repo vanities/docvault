@@ -3,7 +3,16 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import { loadGoldData, saveGoldData, fetchMetalSpotPrices, jsonResponse, ensureDir, corsHeaders, GOLD_RECEIPTS_DIR, DATA_DIR } from '../data.js';
+import {
+  loadGoldData,
+  saveGoldData,
+  fetchMetalSpotPrices,
+  jsonResponse,
+  ensureDir,
+  corsHeaders,
+  GOLD_RECEIPTS_DIR,
+  DATA_DIR,
+} from '../data.js';
 import { parseGoldReceiptFromBuffer } from '../parsers/gold-receipt.js';
 
 export async function handleGoldRoutes(
@@ -11,8 +20,6 @@ export async function handleGoldRoutes(
   url: URL,
   pathname: string
 ): Promise<Response | null> {
-
-
   // ========================================================================
   // Gold / Precious Metals API
   // ========================================================================
@@ -181,7 +188,6 @@ export async function handleGoldRoutes(
       const body = await req.arrayBuffer();
       const filename = url.searchParams.get('filename') || 'receipt.pdf';
 
-      const { parseGoldReceiptFromBuffer } = await import('./parsers/gold-receipt.js');
       const parsed = await parseGoldReceiptFromBuffer(body, filename);
 
       if (!parsed) {

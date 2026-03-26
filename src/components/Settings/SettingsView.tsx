@@ -264,11 +264,7 @@ function DropboxConnectionSection() {
             rows={3}
             className="w-full px-3 py-2 bg-surface-100 border border-border rounded-lg text-[12px] font-mono text-surface-950 placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-400/30 resize-none"
           />
-          <Button
-            type="submit"
-            size="sm"
-            disabled={saving || !tokenInput.trim()}
-          >
+          <Button type="submit" size="sm" disabled={saving || !tokenInput.trim()}>
             {saving ? 'Saving...' : 'Save Token'}
           </Button>
         </form>
@@ -1082,10 +1078,7 @@ export function SettingsView() {
 
             {/* Save button */}
             {anthropicKey && (
-              <Button
-                onClick={handleSaveKey}
-                disabled={isSaving}
-              >
+              <Button onClick={handleSaveKey} disabled={isSaving}>
                 <Save className="w-4 h-4" />
                 {isSaving ? 'Saving...' : 'Save'}
               </Button>
@@ -1116,7 +1109,7 @@ export function SettingsView() {
                 onChange={(e) => setClaudeModel(e.target.value)}
                 onBlur={() => handleSaveModel(claudeModel)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSaveModel(claudeModel);
+                  if (e.key === 'Enter') void handleSaveModel(claudeModel);
                 }}
                 placeholder="claude-sonnet-4-6"
                 className="text-[13px] font-mono"
@@ -1172,10 +1165,7 @@ export function SettingsView() {
                     placeholder="Geoapify API key..."
                     className="flex-1 text-[13px] font-mono"
                   />
-                  <Button
-                    onClick={handleSaveGeoapifyKey}
-                    disabled={isSaving || !newGeoapifyKey}
-                  >
+                  <Button onClick={handleSaveGeoapifyKey} disabled={isSaving || !newGeoapifyKey}>
                     Save
                   </Button>
                 </div>
@@ -1492,11 +1482,7 @@ export function SettingsView() {
                 </p>
               </div>
             </div>
-            <Button
-              variant="ghost-danger"
-              size="xs"
-              onClick={handleRemoveSimplefin}
-            >
+            <Button variant="ghost-danger" size="xs" onClick={handleRemoveSimplefin}>
               Remove SimpleFIN
             </Button>
           </div>
@@ -1558,11 +1544,7 @@ export function SettingsView() {
                 </p>
               </div>
             </div>
-            <Button
-              variant="ghost-danger"
-              size="xs"
-              onClick={handleRemoveSnapTrade}
-            >
+            <Button variant="ghost-danger" size="xs" onClick={handleRemoveSnapTrade}>
               Disconnect SnapTrade
             </Button>
           </div>
@@ -1800,10 +1782,7 @@ export function SettingsView() {
               </div>
             </div>
           ) : (
-            <Button
-              variant="ghost"
-              onClick={() => setShowAddExchange(true)}
-            >
+            <Button variant="ghost" onClick={() => setShowAddExchange(true)}>
               <Plus className="w-3.5 h-3.5" />
               Add Exchange
             </Button>
@@ -1963,19 +1942,13 @@ export function SettingsView() {
                 >
                   Cancel
                 </Button>
-                <Button
-                  onClick={handleAddWallet}
-                  disabled={isCryptoSaving || !newWalletAddress}
-                >
+                <Button onClick={handleAddWallet} disabled={isCryptoSaving || !newWalletAddress}>
                   {isCryptoSaving ? 'Saving...' : 'Add Wallet'}
                 </Button>
               </div>
             </div>
           ) : (
-            <Button
-              variant="ghost"
-              onClick={() => setShowAddWallet(true)}
-            >
+            <Button variant="ghost" onClick={() => setShowAddWallet(true)}>
               <Plus className="w-3.5 h-3.5" />
               Add Wallet
             </Button>
@@ -2147,16 +2120,10 @@ export function SettingsView() {
 
                     {/* Edit Actions */}
                     <div className="flex gap-2 pt-2">
-                      <Button
-                        variant="ghost"
-                        onClick={handleCancelEdit}
-                      >
+                      <Button variant="ghost" onClick={handleCancelEdit}>
                         Cancel
                       </Button>
-                      <Button
-                        onClick={handleSaveEntity}
-                        disabled={isEntitySaving}
-                      >
+                      <Button onClick={handleSaveEntity} disabled={isEntitySaving}>
                         {isEntitySaving ? 'Saving...' : 'Save Changes'}
                       </Button>
                     </div>
@@ -2243,7 +2210,7 @@ export function SettingsView() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Download Latest Auto-Backup */}
-          <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30">
+          <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30 flex flex-col">
             <h4 className="text-[13px] font-semibold text-surface-900 mb-3 flex items-center gap-1.5">
               <Cloud className="w-4 h-4" />
               Download Latest
@@ -2251,23 +2218,25 @@ export function SettingsView() {
             <p className="text-[11px] text-surface-500 mb-3">
               Download the most recent auto-generated backup. Uses the password set in Schedules.
             </p>
-            <Button
-              onClick={handleDownloadLatestBackup}
-              disabled={isDownloadingLatest}
-              className="w-full bg-violet-500 hover:bg-violet-400"
-            >
-              <Download className="w-4 h-4" />
-              {isDownloadingLatest ? 'Downloading...' : 'Download Latest'}
-            </Button>
+            <div className="mt-auto">
+              <Button
+                onClick={handleDownloadLatestBackup}
+                disabled={isDownloadingLatest}
+                className="w-full bg-violet-500 hover:bg-violet-400"
+              >
+                <Download className="w-4 h-4" />
+                {isDownloadingLatest ? 'Downloading...' : 'Download Latest'}
+              </Button>
+            </div>
           </div>
 
           {/* Manual Backup */}
-          <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30">
+          <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30 flex flex-col">
             <h4 className="text-[13px] font-semibold text-surface-900 mb-3 flex items-center gap-1.5">
               <Download className="w-4 h-4" />
               Manual Backup
             </h4>
-            <div className="space-y-2">
+            <div className="space-y-2 mt-auto">
               <Input
                 type="password"
                 value={backupPassword}
@@ -2287,12 +2256,12 @@ export function SettingsView() {
           </div>
 
           {/* Restore */}
-          <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30">
+          <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30 flex flex-col">
             <h4 className="text-[13px] font-semibold text-surface-900 mb-3 flex items-center gap-1.5">
               <Upload className="w-4 h-4" />
               Restore Backup
             </h4>
-            <div className="space-y-2">
+            <div className="space-y-2 mt-auto">
               <input
                 type="file"
                 accept=".enc"
