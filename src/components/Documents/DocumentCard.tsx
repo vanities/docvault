@@ -25,6 +25,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -413,11 +414,11 @@ export function DocumentCard({
               )}
               <div>
                 <label className="block text-[11px] font-medium text-surface-700 mb-1">Notes</label>
-                <textarea
+                <Textarea
                   value={editedNotes}
                   onChange={(e) => setEditedNotes(e.target.value)}
                   rows={2}
-                  className="w-full text-[13px] bg-surface-200/50 border border-border text-surface-900 rounded-lg px-2 py-1.5"
+                  className="text-[13px]"
                   placeholder="Add notes..."
                 />
               </div>

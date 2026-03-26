@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import {
   Building2,
   RefreshCw,
@@ -337,6 +338,7 @@ function SimplefinBanner({
 // Main Component
 
 export function BanksView() {
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const [data, setData] = useState<SimplefinBalanceCache | null>(cachedData);
   const [isLoading, setIsLoading] = useState(!cachedData);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -387,7 +389,14 @@ export function BanksView() {
   }, []);
 
   const handleDisconnect = async () => {
-    if (!confirm('Disconnect SimpleFIN? This will remove your bank account connection.')) return;
+    if (
+      !(await confirm({
+        description: 'Disconnect SimpleFIN? This will remove your bank account connection.',
+        confirmLabel: 'Disconnect',
+        destructive: true,
+      }))
+    )
+      return;
     try {
       await fetch(`${API_BASE}/simplefin`, { method: 'DELETE' });
       setConfigured(false);
@@ -631,6 +640,7 @@ export function BanksView() {
           </div>
         </>
       )}
+      <ConfirmDialog />
     </div>
   );
 }

@@ -8,8 +8,10 @@ import { DocumentList } from '../Documents/DocumentList';
 import { FileUploader } from '../common/FileUploader';
 import type { TaxDocument, Entity, DocumentType } from '../../types';
 import { Button } from '@/components/ui/button';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 
 export function AllFilesView() {
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const {
     selectedEntity,
     scanAllFiles,
@@ -103,7 +105,14 @@ export function AllFilesView() {
   const handleDeleteDoc = async (id: string) => {
     const doc = allFiles.find((d) => d.id === id);
     if (!doc?.filePath) return;
-    if (!confirm(`Delete "${doc.fileName}"?`)) return;
+    if (
+      !(await confirm({
+        description: `Delete "${doc.fileName}"?`,
+        confirmLabel: 'Delete',
+        destructive: true,
+      }))
+    )
+      return;
 
     const success = await deleteFile(doc.entity, doc.filePath);
     if (success) {
@@ -228,6 +237,7 @@ export function AllFilesView() {
           entities={entities}
         />
       )}
+      <ConfirmDialog />
     </div>
   );
 }
