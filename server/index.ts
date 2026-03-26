@@ -90,6 +90,8 @@ import {
   isAuthenticated,
   snapshotFileForYear,
   loadSnapshotsForYear,
+  getClaudeModel,
+  getAnthropicKey,
 } from './data.js';
 import type {
   EntityConfig,
