@@ -425,6 +425,45 @@ export async function saveContributions(data: ContributionsData): Promise<void> 
 }
 
 // ============================================================================
+// Estimated Tax Payments Storage
+// ============================================================================
+
+export const ESTIMATED_TAX_FILE = path.join(DATA_DIR, '.docvault-estimated-taxes.json');
+
+export interface EstimatedTaxPayment {
+  id: string;
+  date: string; // YYYY-MM-DD (date payment was made)
+  quarter: 1 | 2 | 3 | 4;
+  amount: number;
+}
+
+export interface EstimatedTaxConfig {
+  annualTarget: number; // total estimated tax for the year (e.g., safe harbor amount)
+}
+
+// Keyed by "entity/year" e.g. "consulting-llc/2026"
+export type EstimatedTaxData = Record<
+  string,
+  {
+    payments: EstimatedTaxPayment[];
+    config: EstimatedTaxConfig;
+  }
+>;
+
+export async function loadEstimatedTaxes(): Promise<EstimatedTaxData> {
+  try {
+    const content = await fs.readFile(ESTIMATED_TAX_FILE, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return {};
+  }
+}
+
+export async function saveEstimatedTaxes(data: EstimatedTaxData): Promise<void> {
+  await fs.writeFile(ESTIMATED_TAX_FILE, JSON.stringify(data, null, 2));
+}
+
+// ============================================================================
 // Todos Storage
 // ============================================================================
 

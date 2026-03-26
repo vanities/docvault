@@ -19,6 +19,7 @@ import {
   Check,
   Coins,
   MapPin,
+  Receipt,
 } from 'lucide-react';
 import { useAppContext, type NavView } from '../../contexts/AppContext';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
@@ -485,6 +486,16 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
                     icon={Landmark}
                     activeColor="bg-blue-500/10"
                     activeTextColor="text-blue-400"
+                    activeView={activeView}
+                    isProcessing={isProcessing}
+                    onClick={handleViewClick}
+                  />
+                  <NavButton
+                    view="estimated-tax"
+                    label="Est. Taxes"
+                    icon={Receipt}
+                    activeColor="bg-red-500/10"
+                    activeTextColor="text-red-400"
                     activeView={activeView}
                     isProcessing={isProcessing}
                     onClick={handleViewClick}

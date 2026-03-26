@@ -3,14 +3,32 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import { loadReminders, saveReminders, loadAssets, saveAssets, loadContributions, saveContributions, loadTodos, saveTodos, loadSettings, saveSettings, jsonResponse, corsHeaders, DATA_DIR, CRYPTO_CACHE_FILE, BROKER_CACHE_FILE, SIMPLEFIN_CACHE_FILE } from '../data.js';
+import {
+  loadReminders,
+  saveReminders,
+  loadAssets,
+  saveAssets,
+  loadContributions,
+  saveContributions,
+  loadEstimatedTaxes,
+  saveEstimatedTaxes,
+  loadTodos,
+  saveTodos,
+  loadSettings,
+  saveSettings,
+  jsonResponse,
+  corsHeaders,
+  DATA_DIR,
+  CRYPTO_CACHE_FILE,
+  BROKER_CACHE_FILE,
+  SIMPLEFIN_CACHE_FILE,
+} from '../data.js';
 
 export async function handleMiscRoutes(
   req: Request,
   url: URL,
   pathname: string
 ): Promise<Response | null> {
-
   // GET /api/reminders - Get all reminders (optionally filter by entity)
   if (pathname === '/api/reminders' && req.method === 'GET') {
     const entityFilter = url.searchParams.get('entity');
@@ -190,6 +208,34 @@ export async function handleMiscRoutes(
     allData[key] = contributions;
     await saveContributions(allData);
     return jsonResponse({ ok: true, contributions });
+  }
+
+  // ========================================================================
+  // Estimated Tax Payments API
+  // ========================================================================
+
+  // GET /api/estimated-taxes/:entity/:year
+  const estTaxGetMatch = pathname.match(/^\/api\/estimated-taxes\/([^/]+)\/(\d{4})$/);
+  if (estTaxGetMatch && req.method === 'GET') {
+    const key = `${estTaxGetMatch[1]}/${estTaxGetMatch[2]}`;
+    const allData = await loadEstimatedTaxes();
+    const entry = allData[key] || { payments: [], config: { annualTarget: 0 } };
+    return jsonResponse(entry);
+  }
+
+  // PUT /api/estimated-taxes/:entity/:year
+  const estTaxPutMatch = pathname.match(/^\/api\/estimated-taxes\/([^/]+)\/(\d{4})$/);
+  if (estTaxPutMatch && req.method === 'PUT') {
+    const key = `${estTaxPutMatch[1]}/${estTaxPutMatch[2]}`;
+    const body = await req.json();
+    const { payments, config } = body;
+    if (!Array.isArray(payments)) {
+      return jsonResponse({ error: 'payments must be an array' }, 400);
+    }
+    const allData = await loadEstimatedTaxes();
+    allData[key] = { payments, config: config || allData[key]?.config || { annualTarget: 0 } };
+    await saveEstimatedTaxes(allData);
+    return jsonResponse({ ok: true, ...allData[key] });
   }
 
   // ========================================================================

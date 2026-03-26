@@ -8,7 +8,9 @@ export function detectDocumentType(filename: string, filePath?: string): Documen
   // Business document detection (check path for business-docs folder)
   if (pathLower.includes('business-docs/')) {
     if (
-      /formation|articles.*incorporation|operating.*agreement|certificate.*formation/i.test(lower)
+      /formation|articles.*(incorporation|organization)|operating.*agreement|certificate.*formation/i.test(
+        lower
+      )
     )
       return 'formation';
     if (/ein|employer.*identification/i.test(lower)) return 'ein-letter';
@@ -18,7 +20,9 @@ export function detectDocumentType(filename: string, filePath?: string): Documen
 
   // Tax document detection — composite must match before specific 1099 types
   if (
-    /1099-?composite|consolidated.*1099|year.?end.*tax.*info|tax.*information.*package/i.test(lower)
+    /1099[_-]?composite|consolidated.*1099|year.?end.*tax.*info|tax.*information.*package/i.test(
+      lower
+    )
   )
     return '1099-composite';
   if (/w-?2/i.test(lower)) return 'w2';
@@ -29,15 +33,17 @@ export function detectDocumentType(filename: string, filePath?: string): Documen
   if (/1099-?int/i.test(lower)) return '1099-int';
   if (/1099-?b/i.test(lower)) return '1099-b';
   if (/1099/i.test(lower)) return '1099-nec';
-  if (/k-?1\b|schedule.?k/i.test(lower)) return 'k-1';
+  if (/k-?1(?=[_.\s-]|$)|schedule.?k/i.test(lower)) return 'k-1';
   if (/receipt|expense|purchase/i.test(lower)) return 'receipt';
   if (/invoice/i.test(lower)) return 'invoice';
   if (/koinly|coinbase|kraken|crypto|8949/i.test(lower)) return 'crypto';
   if (/\.tax\d{4}$|return|final/i.test(lower)) return 'return';
+  if (/operating.?agreement/i.test(lower)) return 'operating-agreement';
   if (/contract|agreement|w-?9|nda/i.test(lower)) return 'contract';
 
   // Business document detection by filename (for uploads)
-  if (/formation|articles.*incorporation|certificate.*formation/i.test(lower)) return 'formation';
+  if (/formation|articles.*(incorporation|organization)|certificate.*formation/i.test(lower))
+    return 'formation';
   if (/operating.?agreement/i.test(lower)) return 'operating-agreement';
   if (/ein|employer.*identification/i.test(lower)) return 'ein-letter';
   if (/license|permit|registration/i.test(lower)) return 'license';
