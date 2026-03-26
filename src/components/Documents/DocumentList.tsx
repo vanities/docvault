@@ -19,6 +19,13 @@ import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import { DOCUMENT_TYPES } from '../../config';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface DocumentListProps {
   documents: TaxDocument[];
@@ -553,53 +560,58 @@ export function DocumentList({
         </div>
 
         {/* Type filter */}
-        <div className="relative">
-          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-surface-600" />
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value as DocumentType | 'all')}
-            className="pl-9 pr-8 py-2 bg-surface-200/40 border border-border rounded-lg text-[13px] text-surface-900 appearance-none"
-          >
-            <option value="all">All Types</option>
+        <Select
+          value={filterType}
+          onValueChange={(val) => setFilterType(val as DocumentType | 'all')}
+        >
+          <SelectTrigger className="h-9 text-[13px]">
+            <Filter className="w-3.5 h-3.5 text-surface-600" />
+            <SelectValue placeholder="All Types" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Types</SelectItem>
             {DOCUMENT_TYPES.map((dt) => (
-              <option key={dt.id} value={dt.id}>
+              <SelectItem key={dt.id} value={dt.id}>
                 {dt.label}
-              </option>
+              </SelectItem>
             ))}
-          </select>
-        </div>
+          </SelectContent>
+        </Select>
 
         {/* Group by */}
-        <div className="relative">
-          <Layers className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-surface-600" />
-          <select
-            value={groupMode}
-            onChange={(e) => setGroupMode(e.target.value as GroupMode)}
-            className="pl-9 pr-8 py-2 bg-surface-200/40 border border-border rounded-lg text-[13px] text-surface-900 appearance-none"
-          >
-            <option value="client">Group by Client</option>
-            <option value="folder">Group by Folder</option>
-            <option value="type">Group by Type</option>
-            <option value="none">No Grouping</option>
-          </select>
-        </div>
+        <Select value={groupMode} onValueChange={(val) => setGroupMode(val as GroupMode)}>
+          <SelectTrigger className="h-9 text-[13px]">
+            <Layers className="w-3.5 h-3.5 text-surface-600" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="client">Group by Client</SelectItem>
+            <SelectItem value="folder">Group by Folder</SelectItem>
+            <SelectItem value="type">Group by Type</SelectItem>
+            <SelectItem value="none">No Grouping</SelectItem>
+          </SelectContent>
+        </Select>
 
         {/* Sort */}
-        <select
+        <Select
           value={`${sortField}-${sortOrder}`}
-          onChange={(e) => {
-            const [field, order] = e.target.value.split('-') as [SortField, SortOrder];
+          onValueChange={(val) => {
+            const [field, order] = val.split('-') as [SortField, SortOrder];
             setSortField(field);
             setSortOrder(order);
           }}
-          className="px-3 py-2 bg-surface-200/40 border border-border rounded-lg text-[13px] text-surface-900 appearance-none"
         >
-          <option value="createdAt-desc">Newest First</option>
-          <option value="createdAt-asc">Oldest First</option>
-          <option value="fileName-asc">Name A-Z</option>
-          <option value="fileName-desc">Name Z-A</option>
-          <option value="type-asc">Type A-Z</option>
-        </select>
+          <SelectTrigger className="h-9 text-[13px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="createdAt-desc">Newest First</SelectItem>
+            <SelectItem value="createdAt-asc">Oldest First</SelectItem>
+            <SelectItem value="fileName-asc">Name A-Z</SelectItem>
+            <SelectItem value="fileName-desc">Name Z-A</SelectItem>
+            <SelectItem value="type-asc">Type A-Z</SelectItem>
+          </SelectContent>
+        </Select>
 
         {/* View toggle */}
         <div className="flex border border-border rounded-lg overflow-hidden">
@@ -634,11 +646,7 @@ export function DocumentList({
 
         {onParse && (
           <>
-            <Button
-              variant="outline"
-              size="xs"
-              onClick={selectUnparsed}
-            >
+            <Button variant="outline" size="xs" onClick={selectUnparsed}>
               <Sparkles className="w-3 h-3" />
               Unparsed ({filteredAndSortedDocuments.filter((d) => !d.parsedData).length})
             </Button>
@@ -650,21 +658,13 @@ export function DocumentList({
               All ({filteredAndSortedDocuments.length})
             </Button>
             {selectedIds.size > 0 && (
-              <Button
-                variant="outline"
-                size="xs"
-                onClick={() => setSelectedIds(new Set())}
-              >
+              <Button variant="outline" size="xs" onClick={() => setSelectedIds(new Set())}>
                 <X className="w-3 h-3" />
                 Clear
               </Button>
             )}
             {selectedIds.size > 0 && (
-              <Button
-                size="xs"
-                onClick={handleParseSelected}
-                disabled={!!parseProgress}
-              >
+              <Button size="xs" onClick={handleParseSelected} disabled={!!parseProgress}>
                 {parseProgress ? (
                   <>
                     <Loader2 className="w-3 h-3 animate-spin" />

@@ -14,6 +14,13 @@ import type { PropertyEntry, PropertyData, PropertyType, PropertyAddress } from 
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 const API = '/api/property';
 
@@ -136,7 +143,9 @@ function CurrencyInput({
 
   return (
     <div className="relative">
-      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-500 z-10">$</span>
+      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-500 z-10">
+        $
+      </span>
       <Input
         type="text"
         inputMode="decimal"
@@ -468,17 +477,21 @@ export function PropertyView() {
             {/* Type */}
             <div>
               <label className="block text-xs font-medium text-surface-600 mb-1">Type</label>
-              <select
+              <Select
                 value={propertyType}
-                onChange={(e) => setPropertyType(e.target.value as PropertyType)}
-                className="w-full px-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                onValueChange={(val) => setPropertyType(val as PropertyType)}
               >
-                {PROPERTY_TYPES.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="w-full text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PROPERTY_TYPES.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Address */}
@@ -511,17 +524,18 @@ export function PropertyView() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-surface-600 mb-1">State</label>
-                <select
-                  value={state}
-                  onChange={(e) => setState(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-                >
-                  {US_STATES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
+                <Select value={state} onValueChange={setState}>
+                  <SelectTrigger className="w-full text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {US_STATES.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <label className="block text-xs font-medium text-surface-600 mb-1">ZIP</label>
@@ -889,12 +903,7 @@ function PropertyList({
                 )}
 
                 <div className="mt-3 flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="xs"
-                    onClick={() => onEdit(entry)}
-                  >
+                  <Button type="button" variant="ghost" size="xs" onClick={() => onEdit(entry)}>
                     <Edit3 className="w-3.5 h-3.5" />
                     Edit
                   </Button>

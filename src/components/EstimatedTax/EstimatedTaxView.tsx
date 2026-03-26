@@ -5,6 +5,13 @@ import { useToast } from '../../hooks/useToast';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface EstimatedTaxPayment {
   id: string;
@@ -315,16 +322,20 @@ export function EstimatedTaxView() {
           </div>
           <div className="flex-shrink-0">
             <label className="block text-[10px] text-surface-500 mb-1">Quarter</label>
-            <select
-              value={addQuarter}
-              onChange={(e) => setAddQuarter(parseInt(e.target.value) as 1 | 2 | 3 | 4)}
-              className="px-2 py-1.5 text-[12px] bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
+            <Select
+              value={String(addQuarter)}
+              onValueChange={(val) => setAddQuarter(parseInt(val) as 1 | 2 | 3 | 4)}
             >
-              <option value={1}>Q1</option>
-              <option value={2}>Q2</option>
-              <option value={3}>Q3</option>
-              <option value={4}>Q4</option>
-            </select>
+              <SelectTrigger className="text-[12px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">Q1</SelectItem>
+                <SelectItem value="2">Q2</SelectItem>
+                <SelectItem value="3">Q3</SelectItem>
+                <SelectItem value="4">Q4</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex-1">
             <label className="block text-[10px] text-surface-500 mb-1">Amount</label>

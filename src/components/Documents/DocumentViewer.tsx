@@ -32,6 +32,30 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Sheet,
+  SheetContent,
+  SheetClose,
+  SheetTitle,
+  SheetDescription,
+} from '@/components/ui/sheet';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface DocumentViewerProps {
   document: TaxDocument;
@@ -91,6 +115,7 @@ export function DocumentViewer({
   const { addToast } = useToast();
   const { renameFile, setScannedDocuments, parseFile } = useAppContext();
   const [isAiRenaming, setIsAiRenaming] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Split filename into name and extension for the rename input
   const extMatch = document.fileName.match(/(\.[^.]+)$/);
@@ -284,8 +309,11 @@ export function DocumentViewer({
 
   const handleDelete = () => {
     if (!onDelete) return;
-    if (!confirm(`Delete "${document.fileName}"?`)) return;
+    setShowDeleteConfirm(true);
+  };
 
+  const confirmDelete = () => {
+    if (!onDelete) return;
     setIsDeleting(true);
     try {
       onDelete(document.id);
@@ -325,289 +353,311 @@ export function DocumentViewer({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+    <>
+      <Sheet
+        open
+        onOpenChange={(open) => {
+          if (!open) onClose();
+        }}
+      >
+        <SheetContent
+          side="right"
+          showCloseButton={false}
+          className="w-full sm:max-w-2xl p-0 gap-0 bg-surface-100"
+        >
+          <SheetTitle className="sr-only">{document.fileName}</SheetTitle>
+          <SheetDescription className="sr-only">Document details and preview</SheetDescription>
 
-      {/* Panel */}
-      <div className="relative ml-auto w-full md:max-w-2xl bg-surface-100 shadow-2xl flex flex-col h-full animate-slide-in border-l border-border">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border">
-          <div className="flex items-center gap-3 min-w-0">
-            <FileIcon fileType={document.fileType} className="w-5 h-5 text-surface-700 shrink-0" />
-            <div className="min-w-0">
-              {isRenaming ? (
-                <div className="flex items-center gap-1.5">
-                  <Input
-                    ref={renameInputRef}
-                    type="text"
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') void saveRename();
-                      if (e.key === 'Escape') cancelRename();
-                    }}
-                    onBlur={cancelRename}
-                    disabled={isRenameSaving}
-                    className="h-7 px-2 text-[14px] font-semibold rounded-md"
-                  />
-                  <span className="text-[14px] font-semibold text-surface-600 shrink-0">
-                    {fileExtension}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      void saveRename();
-                    }}
-                    disabled={isRenameSaving}
-                    className="text-success-500 hover:bg-success-500/10 shrink-0"
-                    title="Save"
-                  >
-                    <Check className="w-4 h-4" />
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1.5">
-                  <h2 className="font-semibold text-surface-950 truncate text-[14px]">
-                    {document.fileName}
-                  </h2>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={startRenaming}
-                    className="text-surface-500 hover:text-surface-800 shrink-0"
-                    title="Rename file"
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-              )}
-              <p className="text-[12px] text-surface-700">{docTypeInfo?.label || document.type}</p>
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b border-border">
+            <div className="flex items-center gap-3 min-w-0">
+              <FileIcon
+                fileType={document.fileType}
+                className="w-5 h-5 text-surface-700 shrink-0"
+              />
+              <div className="min-w-0">
+                {isRenaming ? (
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      ref={renameInputRef}
+                      type="text"
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void saveRename();
+                        if (e.key === 'Escape') cancelRename();
+                      }}
+                      onBlur={cancelRename}
+                      disabled={isRenameSaving}
+                      className="h-7 px-2 text-[14px] font-semibold rounded-md"
+                    />
+                    <span className="text-[14px] font-semibold text-surface-600 shrink-0">
+                      {fileExtension}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        void saveRename();
+                      }}
+                      disabled={isRenameSaving}
+                      className="text-success-500 hover:bg-success-500/10 shrink-0"
+                      title="Save"
+                    >
+                      <Check className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <h2 className="font-semibold text-surface-950 truncate text-[14px]">
+                      {document.fileName}
+                    </h2>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={startRenaming}
+                      className="text-surface-500 hover:text-surface-800 shrink-0"
+                      title="Rename file"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                )}
+                <p className="text-[12px] text-surface-700">
+                  {docTypeInfo?.label || document.type}
+                </p>
+              </div>
             </div>
-          </div>
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <X className="w-5 h-5" />
-          </Button>
-        </div>
-
-        {/* Preview */}
-        <div className="flex-1 overflow-hidden bg-surface-200/30">
-          {canPreview ? (
-            <div className="w-full h-full flex items-center justify-center p-4">
-              {isImage ? (
-                <img
-                  src={fileUrl}
-                  alt={document.fileName}
-                  className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-                />
-              ) : isPdf ? (
-                <iframe src={fileUrl} className="w-full h-full rounded-lg bg-white" />
-              ) : null}
-            </div>
-          ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center text-surface-600">
-              <File className="w-16 h-16 mb-4" />
-              <p>Preview not available</p>
-              <Button variant="link" onClick={handleOpenExternal} className="mt-4">
-                <ExternalLink className="w-4 h-4" />
-                Open in new tab
+            <SheetClose asChild>
+              <Button variant="ghost" size="icon">
+                <X className="w-5 h-5" />
               </Button>
-            </div>
-          )}
-        </div>
-
-        {/* Details */}
-        <div className="border-t border-border p-4 space-y-4 max-h-80 overflow-y-auto">
-          {/* File Info */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[13px]">
-            <div className="flex items-center gap-2 text-surface-700">
-              <HardDrive className="w-4 h-4 text-surface-600" />
-              <span>{formatFileSize(document.fileSize)}</span>
-            </div>
-            <div className="flex items-center gap-2 text-surface-700">
-              <Calendar className="w-4 h-4 text-surface-600" />
-              <span>{formatDate(document.createdAt)}</span>
-            </div>
-            <div className="flex items-center gap-2 text-surface-700 col-span-2">
-              <FolderOpen className="w-4 h-4 text-surface-600" />
-              <button
-                onClick={() => {
-                  const entityConfig = entities?.find((e) => e.id === document.entity);
-                  const fullPath = entityConfig
-                    ? `${entityConfig.path}/${document.filePath ?? ''}`
-                    : (document.filePath ?? '');
-                  void copyToClipboard(fullPath);
-                }}
-                className="truncate hover:text-accent-400 cursor-pointer text-left font-mono text-[12px]"
-                title="Click to copy full path"
-              >
-                {copied ? 'Copied!' : document.filePath}
-              </button>
-            </div>
+            </SheetClose>
           </div>
 
-          {/* Tags */}
-          <div className="flex flex-wrap gap-1.5">
-            <span
-              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] ${getDocumentTypeColor(document.type)}`}
-            >
-              <Tag className="w-3 h-3" />
-              {docTypeInfo?.label || document.type}
-            </span>
-            {expenseInfo && (
+          {/* Preview */}
+          <div className="flex-1 overflow-hidden bg-surface-200/30">
+            {canPreview ? (
+              <div className="w-full h-full flex items-center justify-center p-4">
+                {isImage ? (
+                  <img
+                    src={fileUrl}
+                    alt={document.fileName}
+                    className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+                  />
+                ) : isPdf ? (
+                  <iframe src={fileUrl} className="w-full h-full rounded-lg bg-white" />
+                ) : null}
+              </div>
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center text-surface-600">
+                <File className="w-16 h-16 mb-4" />
+                <p>Preview not available</p>
+                <Button variant="link" onClick={handleOpenExternal} className="mt-4">
+                  <ExternalLink className="w-4 h-4" />
+                  Open in new tab
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Details */}
+          <div className="border-t border-border p-4 space-y-4 max-h-80 overflow-y-auto">
+            {/* File Info */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[13px]">
+              <div className="flex items-center gap-2 text-surface-700">
+                <HardDrive className="w-4 h-4 text-surface-600" />
+                <span>{formatFileSize(document.fileSize)}</span>
+              </div>
+              <div className="flex items-center gap-2 text-surface-700">
+                <Calendar className="w-4 h-4 text-surface-600" />
+                <span>{formatDate(document.createdAt)}</span>
+              </div>
+              <div className="flex items-center gap-2 text-surface-700 col-span-2">
+                <FolderOpen className="w-4 h-4 text-surface-600" />
+                <button
+                  onClick={() => {
+                    const entityConfig = entities?.find((e) => e.id === document.entity);
+                    const fullPath = entityConfig
+                      ? `${entityConfig.path}/${document.filePath ?? ''}`
+                      : (document.filePath ?? '');
+                    void copyToClipboard(fullPath);
+                  }}
+                  className="truncate hover:text-accent-400 cursor-pointer text-left font-mono text-[12px]"
+                  title="Click to copy full path"
+                >
+                  {copied ? 'Copied!' : document.filePath}
+                </button>
+              </div>
+            </div>
+
+            {/* Tags */}
+            <div className="flex flex-wrap gap-1.5">
               <span
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] ${expenseInfo.color}`}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] ${getDocumentTypeColor(document.type)}`}
               >
-                {expenseInfo.label}
+                <Tag className="w-3 h-3" />
+                {docTypeInfo?.label || document.type}
               </span>
+              {expenseInfo && (
+                <span
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] ${expenseInfo.color}`}
+                >
+                  {expenseInfo.label}
+                </span>
+              )}
+              {document.taxYear > 0 && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-surface-400/15 text-surface-800 rounded-md text-[12px]">
+                  {document.taxYear}
+                </span>
+              )}
+            </div>
+
+            {/* Parsed Data */}
+            {document.parsedData && (
+              <div className="bg-surface-200/40 rounded-xl p-4">
+                <h3 className="font-medium text-surface-950 mb-3 text-[13px]">Parsed Data</h3>
+                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[13px]">
+                  {Object.entries(document.parsedData)
+                    .filter(
+                      ([key]) => key !== 'parsed' && key !== 'parsedAt' && key !== 'documentType'
+                    )
+                    .map(([key, value]) => {
+                      // Format the key nicely
+                      const label = key
+                        .replace(/([A-Z])/g, ' $1')
+                        .replace(/_/g, ' ')
+                        .trim();
+
+                      // Format the value
+                      let displayValue: string;
+                      if (value === null || value === undefined || value === '') {
+                        return null; // Skip empty values
+                      } else if (typeof value === 'number') {
+                        // Fields that should be displayed as plain numbers (no formatting)
+                        const plainNumberFields = [
+                          'year',
+                          'quantity',
+                          'zip',
+                          'phone',
+                          'ssn',
+                          'tin',
+                          'ein',
+                        ];
+                        const isPlainNumber = plainNumberFields.some((f) =>
+                          key.toLowerCase().includes(f)
+                        );
+
+                        if (isPlainNumber) {
+                          displayValue = String(value);
+                        } else {
+                          // Format as currency if it looks like a money field
+                          const moneyFields = [
+                            'wages',
+                            'withheld',
+                            'tax',
+                            'compensation',
+                            'amount',
+                            'income',
+                            'dividends',
+                            'gains',
+                            'interest',
+                            'rents',
+                            'royalties',
+                            'proceeds',
+                            'payments',
+                            'premium',
+                            'discount',
+                            'expenses',
+                            'penalty',
+                            'distributions',
+                            'subtotal',
+                            'price',
+                          ];
+                          const isMoney = moneyFields.some((f) => key.toLowerCase().includes(f));
+
+                          displayValue = isMoney
+                            ? `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : value.toLocaleString();
+                        }
+                      } else if (typeof value === 'boolean') {
+                        displayValue = value ? 'Yes' : 'No';
+                      } else if (Array.isArray(value)) {
+                        // Handle arrays (like box12 or items)
+                        displayValue = value
+                          .map((item) =>
+                            typeof item === 'object' ? JSON.stringify(item) : String(item)
+                          )
+                          .join(', ');
+                      } else if (typeof value === 'object') {
+                        displayValue = JSON.stringify(value);
+                      } else {
+                        displayValue = String(value);
+                      }
+
+                      return (
+                        <div key={key}>
+                          <dt className="text-surface-600 capitalize text-[11px]">{label}</dt>
+                          <dd className="text-surface-950 font-medium">{displayValue}</dd>
+                        </div>
+                      );
+                    })}
+                </dl>
+              </div>
             )}
-            {document.taxYear > 0 && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-surface-400/15 text-surface-800 rounded-md text-[12px]">
-                {document.taxYear}
-              </span>
+
+            {!document.parsedData && (
+              <div className="bg-warn-500/10 border border-warn-500/20 rounded-xl p-3 text-[13px] text-warn-400">
+                This document hasn't been parsed yet. Click "Parse Document" to extract data.
+              </div>
             )}
           </div>
 
-          {/* Parsed Data */}
-          {document.parsedData && (
-            <div className="bg-surface-200/40 rounded-xl p-4">
-              <h3 className="font-medium text-surface-950 mb-3 text-[13px]">Parsed Data</h3>
-              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[13px]">
-                {Object.entries(document.parsedData)
-                  .filter(
-                    ([key]) => key !== 'parsed' && key !== 'parsedAt' && key !== 'documentType'
-                  )
-                  .map(([key, value]) => {
-                    // Format the key nicely
-                    const label = key
-                      .replace(/([A-Z])/g, ' $1')
-                      .replace(/_/g, ' ')
-                      .trim();
-
-                    // Format the value
-                    let displayValue: string;
-                    if (value === null || value === undefined || value === '') {
-                      return null; // Skip empty values
-                    } else if (typeof value === 'number') {
-                      // Fields that should be displayed as plain numbers (no formatting)
-                      const plainNumberFields = [
-                        'year',
-                        'quantity',
-                        'zip',
-                        'phone',
-                        'ssn',
-                        'tin',
-                        'ein',
-                      ];
-                      const isPlainNumber = plainNumberFields.some((f) =>
-                        key.toLowerCase().includes(f)
-                      );
-
-                      if (isPlainNumber) {
-                        displayValue = String(value);
-                      } else {
-                        // Format as currency if it looks like a money field
-                        const moneyFields = [
-                          'wages',
-                          'withheld',
-                          'tax',
-                          'compensation',
-                          'amount',
-                          'income',
-                          'dividends',
-                          'gains',
-                          'interest',
-                          'rents',
-                          'royalties',
-                          'proceeds',
-                          'payments',
-                          'premium',
-                          'discount',
-                          'expenses',
-                          'penalty',
-                          'distributions',
-                          'subtotal',
-                          'price',
-                        ];
-                        const isMoney = moneyFields.some((f) => key.toLowerCase().includes(f));
-
-                        displayValue = isMoney
-                          ? `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                          : value.toLocaleString();
-                      }
-                    } else if (typeof value === 'boolean') {
-                      displayValue = value ? 'Yes' : 'No';
-                    } else if (Array.isArray(value)) {
-                      // Handle arrays (like box12 or items)
-                      displayValue = value
-                        .map((item) =>
-                          typeof item === 'object' ? JSON.stringify(item) : String(item)
-                        )
-                        .join(', ');
-                    } else if (typeof value === 'object') {
-                      displayValue = JSON.stringify(value);
-                    } else {
-                      displayValue = String(value);
-                    }
-
-                    return (
-                      <div key={key}>
-                        <dt className="text-surface-600 capitalize text-[11px]">{label}</dt>
-                        <dd className="text-surface-950 font-medium">{displayValue}</dd>
-                      </div>
-                    );
-                  })}
-              </dl>
-            </div>
-          )}
-
-          {!document.parsedData && (
-            <div className="bg-warn-500/10 border border-warn-500/20 rounded-xl p-3 text-[13px] text-warn-400">
-              This document hasn't been parsed yet. Click "Parse Document" to extract data.
-            </div>
-          )}
-        </div>
-
-        {/* Actions */}
-        <div className="border-t border-border p-4 flex flex-col sm:flex-row gap-2">
-          <Button variant="secondary" onClick={handleDownload} className="flex-1">
-            <Download className="w-4 h-4" />
-            Download
-          </Button>
-          <Button onClick={handleReparse} disabled={isParsing} className="flex-1">
-            <RefreshCw className={`w-4 h-4 ${isParsing ? 'animate-spin' : ''}`} />
-            {isParsing ? 'Parsing...' : 'Parse Document'}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={handleAiRename}
-            disabled={isAiRenaming}
-            className="flex-1 text-violet-400 bg-violet-500/15 hover:bg-violet-500/25 border-violet-500/20"
-            title="Auto rename from parsed data"
-          >
-            <Wand2 className={`w-4 h-4 ${isAiRenaming ? 'animate-pulse' : ''}`} />
-            {isAiRenaming ? 'Renaming...' : 'Auto Rename'}
-          </Button>
-          {onMove && entities && availableYears && (
+          {/* Actions */}
+          <div className="border-t border-border p-4 flex flex-col sm:flex-row gap-2">
+            <Button variant="secondary" onClick={handleDownload} className="flex-1">
+              <Download className="w-4 h-4" />
+              Download
+            </Button>
+            <Button onClick={handleReparse} disabled={isParsing} className="flex-1">
+              <RefreshCw className={`w-4 h-4 ${isParsing ? 'animate-spin' : ''}`} />
+              {isParsing ? 'Parsing...' : 'Parse Document'}
+            </Button>
             <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setShowMoveModal(true)}
-              className="text-warn-400 hover:bg-warn-500/10"
-              title="Move to different entity/year"
+              variant="outline"
+              onClick={handleAiRename}
+              disabled={isAiRenaming}
+              className="flex-1 text-violet-400 bg-violet-500/15 hover:bg-violet-500/25 border-violet-500/20"
+              title="Auto rename from parsed data"
             >
-              <MoveRight className="w-4 h-4" />
+              <Wand2 className={`w-4 h-4 ${isAiRenaming ? 'animate-pulse' : ''}`} />
+              {isAiRenaming ? 'Renaming...' : 'Auto Rename'}
             </Button>
-          )}
-          {onDelete && (
-            <Button variant="ghost-danger" size="icon" onClick={handleDelete} disabled={isDeleting}>
-              <Trash2 className="w-4 h-4" />
-            </Button>
-          )}
-        </div>
-      </div>
+            {onMove && entities && availableYears && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowMoveModal(true)}
+                className="text-warn-400 hover:bg-warn-500/10"
+                title="Move to different entity/year"
+              >
+                <MoveRight className="w-4 h-4" />
+              </Button>
+            )}
+            {onDelete && (
+              <Button
+                variant="ghost-danger"
+                size="icon"
+                onClick={handleDelete}
+                disabled={isDeleting}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Move Modal */}
       {entities && availableYears && (
@@ -625,34 +675,42 @@ export function DocumentViewer({
                 <label className="block text-[13px] font-medium text-surface-800 mb-2">
                   Entity
                 </label>
-                <select
+                <Select
                   value={moveToEntity}
-                  onChange={(e) => setMoveToEntity(e.target.value as Entity)}
-                  className="w-full px-3 py-2.5 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900"
+                  onValueChange={(val) => setMoveToEntity(val as Entity)}
                 >
-                  {entities.map((entity) => (
-                    <option key={entity.id} value={entity.id}>
-                      {entity.name}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {entities.map((entity) => (
+                      <SelectItem key={entity.id} value={entity.id}>
+                        {entity.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div>
                 <label className="block text-[13px] font-medium text-surface-800 mb-2">
                   Tax Year
                 </label>
-                <select
-                  value={moveToYear}
-                  onChange={(e) => setMoveToYear(parseInt(e.target.value, 10))}
-                  className="w-full px-3 py-2.5 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900"
+                <Select
+                  value={String(moveToYear)}
+                  onValueChange={(val) => setMoveToYear(parseInt(val, 10))}
                 >
-                  {availableYears.map((year) => (
-                    <option key={year} value={year}>
-                      {year}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableYears.map((year) => (
+                      <SelectItem key={year} value={String(year)}>
+                        {year}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -674,6 +732,24 @@ export function DocumentViewer({
           </DialogContent>
         </Dialog>
       )}
-    </div>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Document</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{document.fileName}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={confirmDelete}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

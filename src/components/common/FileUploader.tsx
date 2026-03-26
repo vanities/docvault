@@ -12,6 +12,13 @@ import { FileIcon } from './FileIcon';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -702,53 +709,60 @@ export function FileUploader({
                         {!isFileUploading && !isFileSuccess && (
                           <>
                             <div className="mt-2 flex gap-2 flex-wrap">
-                              <select
+                              <Select
                                 value={currentType}
-                                onChange={(e) =>
-                                  handleTypeChange(file.name, e.target.value as DocumentType)
+                                onValueChange={(val) =>
+                                  handleTypeChange(file.name, val as DocumentType)
                                 }
-                                className="text-[12px] bg-surface-200/50 border border-border text-surface-900 rounded px-2 py-1"
                               >
-                                {docTypes.map((dt) => (
-                                  <option key={dt.id} value={dt.id}>
-                                    {dt.label}
-                                  </option>
-                                ))}
-                              </select>
+                                <SelectTrigger className="h-7 text-[12px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {docTypes.map((dt) => (
+                                    <SelectItem key={dt.id} value={dt.id}>
+                                      {dt.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
 
                               {currentType === 'receipt' && (
-                                <select
-                                  value={selectedCategory.get(file.name) || ''}
-                                  onChange={(e) => handleCategoryChange(file.name, e.target.value)}
-                                  className="text-[12px] bg-surface-200/50 border border-border text-surface-900 rounded px-2 py-1"
+                                <Select
+                                  value={selectedCategory.get(file.name) || undefined}
+                                  onValueChange={(val) => handleCategoryChange(file.name, val)}
                                 >
-                                  <option value="">Select category...</option>
-                                  {EXPENSE_CATEGORIES.map((cat) => (
-                                    <option key={cat.id} value={cat.id}>
-                                      {cat.label}
-                                    </option>
-                                  ))}
-                                </select>
+                                  <SelectTrigger className="h-7 text-[12px]">
+                                    <SelectValue placeholder="Select category..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {EXPENSE_CATEGORIES.map((cat) => (
+                                      <SelectItem key={cat.id} value={cat.id}>
+                                        {cat.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
                               )}
 
                               {availableYears && availableYears.length > 0 && (
-                                <select
-                                  value={metadata.year || taxYear}
-                                  onChange={(e) =>
-                                    handleMetadataChange(
-                                      file.name,
-                                      'year',
-                                      parseInt(e.target.value, 10)
-                                    )
+                                <Select
+                                  value={String(metadata.year || taxYear)}
+                                  onValueChange={(val) =>
+                                    handleMetadataChange(file.name, 'year', parseInt(val, 10))
                                   }
-                                  className="text-[12px] bg-surface-200/50 border border-border text-surface-900 rounded px-2 py-1"
                                 >
-                                  {availableYears.map((yr) => (
-                                    <option key={yr} value={yr}>
-                                      {yr}
-                                    </option>
-                                  ))}
-                                </select>
+                                  <SelectTrigger className="h-7 text-[12px]">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {availableYears.map((yr) => (
+                                      <SelectItem key={yr} value={String(yr)}>
+                                        {yr}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
                               )}
                             </div>
 
@@ -813,46 +827,44 @@ export function FileUploader({
                                   </div>
 
                                   {needsMonth(currentType) && (
-                                    <select
-                                      value={metadata.month || ''}
-                                      onChange={(e) =>
-                                        handleMetadataChange(
-                                          file.name,
-                                          'month',
-                                          parseInt(e.target.value)
-                                        )
+                                    <Select
+                                      value={metadata.month ? String(metadata.month) : undefined}
+                                      onValueChange={(val) =>
+                                        handleMetadataChange(file.name, 'month', parseInt(val))
                                       }
-                                      className="text-[12px] bg-surface-200/50 border border-border text-surface-900 rounded px-2 py-1"
                                     >
-                                      <option value="">Month...</option>
-                                      {MONTHS.map((m) => (
-                                        <option key={m.value} value={m.value}>
-                                          {m.label}
-                                        </option>
-                                      ))}
-                                    </select>
+                                      <SelectTrigger className="h-7 text-[12px]">
+                                        <SelectValue placeholder="Month..." />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {MONTHS.map((m) => (
+                                          <SelectItem key={m.value} value={String(m.value)}>
+                                            {m.label}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
                                   )}
 
                                   {needsDay(currentType) && (
                                     <>
-                                      <select
-                                        value={metadata.month || ''}
-                                        onChange={(e) =>
-                                          handleMetadataChange(
-                                            file.name,
-                                            'month',
-                                            parseInt(e.target.value)
-                                          )
+                                      <Select
+                                        value={metadata.month ? String(metadata.month) : undefined}
+                                        onValueChange={(val) =>
+                                          handleMetadataChange(file.name, 'month', parseInt(val))
                                         }
-                                        className="text-[12px] bg-surface-200/50 border border-border text-surface-900 rounded px-2 py-1"
                                       >
-                                        <option value="">Month...</option>
-                                        {MONTHS.map((m) => (
-                                          <option key={m.value} value={m.value}>
-                                            {m.label}
-                                          </option>
-                                        ))}
-                                      </select>
+                                        <SelectTrigger className="h-7 text-[12px]">
+                                          <SelectValue placeholder="Month..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {MONTHS.map((m) => (
+                                            <SelectItem key={m.value} value={String(m.value)}>
+                                              {m.label}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
                                       <Input
                                         type="number"
                                         min={1}

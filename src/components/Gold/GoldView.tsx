@@ -21,6 +21,15 @@ import { HistoryChart } from '../common/HistoryChart';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 const API = '/api/gold';
 
@@ -650,12 +659,7 @@ export function GoldView() {
       {scanError && (
         <Card variant="glass" className="p-3 flex items-center justify-between text-sm">
           <span className="text-surface-600">{scanError}</span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            onClick={() => setScanError(null)}
-          >
+          <Button type="button" variant="ghost" size="xs" onClick={() => setScanError(null)}>
             Dismiss
           </Button>
         </Card>
@@ -791,45 +795,51 @@ export function GoldView() {
             {/* Product Dropdown */}
             <div>
               <label className="block text-xs font-medium text-surface-600 mb-1">Product</label>
-              <select
-                value={productId}
-                onChange={(e) => handleProductChange(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500/40"
-              >
-                <optgroup label="Gold Coins">
-                  {GOLD_PRODUCTS.filter(
-                    (p) => p.metal === 'gold' && p.id !== 'gold-bar' && p.id !== 'custom'
-                  ).map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Gold Bars">
-                  {GOLD_PRODUCTS.filter((p) => p.id === 'gold-bar').map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Silver">
-                  {GOLD_PRODUCTS.filter((p) => p.metal === 'silver').map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Platinum">
-                  {GOLD_PRODUCTS.filter((p) => p.metal === 'platinum').map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Other">
-                  <option value="custom">Custom / Other</option>
-                </optgroup>
-              </select>
+              <Select value={productId} onValueChange={handleProductChange}>
+                <SelectTrigger className="w-full text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel>Gold Coins</SelectLabel>
+                    {GOLD_PRODUCTS.filter(
+                      (p) => p.metal === 'gold' && p.id !== 'gold-bar' && p.id !== 'custom'
+                    ).map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                  <SelectGroup>
+                    <SelectLabel>Gold Bars</SelectLabel>
+                    {GOLD_PRODUCTS.filter((p) => p.id === 'gold-bar').map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                  <SelectGroup>
+                    <SelectLabel>Silver</SelectLabel>
+                    {GOLD_PRODUCTS.filter((p) => p.metal === 'silver').map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                  <SelectGroup>
+                    <SelectLabel>Platinum</SelectLabel>
+                    {GOLD_PRODUCTS.filter((p) => p.metal === 'platinum').map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                  <SelectGroup>
+                    <SelectLabel>Other</SelectLabel>
+                    <SelectItem value="custom">Custom / Other</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Custom description (only if custom) */}
@@ -851,17 +861,18 @@ export function GoldView() {
             {/* Size Dropdown */}
             <div>
               <label className="block text-xs font-medium text-surface-600 mb-1">Size</label>
-              <select
-                value={size}
-                onChange={(e) => setSize(e.target.value as CoinSize)}
-                className="w-full px-3 py-2 text-sm bg-surface-100 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500/40"
-              >
-                {selectedProduct.availableSizes.map((s) => (
-                  <option key={s} value={s}>
-                    {SIZE_LABELS[s]}
-                  </option>
-                ))}
-              </select>
+              <Select value={size} onValueChange={(val) => setSize(val as CoinSize)}>
+                <SelectTrigger className="w-full text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {selectedProduct.availableSizes.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {SIZE_LABELS[s]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Coin Year */}
@@ -1146,19 +1157,20 @@ function EntriesList({
               <span className="normal-case font-normal ml-2">{formatUsd(filteredTotal.value)}</span>
             )}
           </h3>
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as SortKey)}
-            className="text-xs px-2 py-1 bg-surface-100 border border-border rounded-lg text-surface-700 focus:outline-none"
-          >
-            <option value="date-desc">Newest first</option>
-            <option value="date-asc">Oldest first</option>
-            <option value="value-desc">Highest value</option>
-            <option value="value-asc">Lowest value</option>
-            <option value="gain-desc">Best gain</option>
-            <option value="gain-asc">Worst gain</option>
-            <option value="name">Name A-Z</option>
-          </select>
+          <Select value={sortBy} onValueChange={(val) => setSortBy(val as SortKey)}>
+            <SelectTrigger className="text-xs h-7">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="date-desc">Newest first</SelectItem>
+              <SelectItem value="date-asc">Oldest first</SelectItem>
+              <SelectItem value="value-desc">Highest value</SelectItem>
+              <SelectItem value="value-asc">Lowest value</SelectItem>
+              <SelectItem value="gain-desc">Best gain</SelectItem>
+              <SelectItem value="gain-asc">Worst gain</SelectItem>
+              <SelectItem value="name">Name A-Z</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Metal filter tabs + search */}
@@ -1359,12 +1371,7 @@ function EntriesList({
                       />
                     </label>
                   )}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="xs"
-                    onClick={() => onEdit(entry)}
-                  >
+                  <Button type="button" variant="ghost" size="xs" onClick={() => onEdit(entry)}>
                     <Edit3 className="w-3.5 h-3.5" />
                     Edit
                   </Button>
