@@ -478,16 +478,28 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               />
 
               {showTnTax && (
-                <NavButton
-                  view="tn-tax"
-                  label="TN Tax"
-                  icon={Calculator}
-                  activeColor="bg-amber-500/10"
-                  activeTextColor="text-amber-500"
-                  activeView={activeView}
-                  isProcessing={isProcessing}
-                  onClick={handleViewClick}
-                />
+                <>
+                  <NavButton
+                    view="solo-401k"
+                    label="Solo 401(k)"
+                    icon={Landmark}
+                    activeColor="bg-blue-500/10"
+                    activeTextColor="text-blue-400"
+                    activeView={activeView}
+                    isProcessing={isProcessing}
+                    onClick={handleViewClick}
+                  />
+                  <NavButton
+                    view="tn-tax"
+                    label="TN Tax"
+                    icon={Calculator}
+                    activeColor="bg-amber-500/10"
+                    activeTextColor="text-amber-500"
+                    activeView={activeView}
+                    isProcessing={isProcessing}
+                    onClick={handleViewClick}
+                  />
+                </>
               )}
             </div>
           </div>

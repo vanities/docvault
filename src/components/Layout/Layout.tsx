@@ -18,6 +18,7 @@ import { SalesView } from '../Sales/SalesView';
 import { MileageView } from '../Mileage/MileageView';
 import { GoldView } from '../Gold/GoldView';
 import { PropertyView } from '../Property/PropertyView';
+import { Solo401kView } from '../Solo401k/Solo401kView';
 import { AddEntityModal } from '../Settings/AddEntityModal';
 import { SearchResultsView } from '../Search/SearchResultsView';
 
@@ -50,11 +51,7 @@ export function Layout() {
               bun run server
             </code>
           </p>
-          <Button
-            onClick={checkConnection}
-            className="w-full"
-            size="lg"
-          >
+          <Button onClick={checkConnection} className="w-full" size="lg">
             Retry Connection
           </Button>
           {fsError && (
@@ -85,6 +82,8 @@ export function Layout() {
         return <SettingsView />;
       case 'tn-tax':
         return <TnTaxView />;
+      case 'solo-401k':
+        return <Solo401kView />;
       case 'crypto':
         return <CryptoView />;
       case 'brokers':
