@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Upload, FolderOpen, RefreshCw } from 'lucide-react';
+import { FolderOpen, RefreshCw } from 'lucide-react';
 import { TodoList } from '../Todos/TodoList';
 import { EntityMetadataBanner } from '../EntityMetadata/EntityMetadataBanner';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import { DocumentList } from '../Documents/DocumentList';
+import { FileUploader } from '../common/FileUploader';
 import type { TaxDocument, Entity, DocumentType } from '../../types';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
 export function AllFilesView() {
@@ -27,9 +27,6 @@ export function AllFilesView() {
 
   const [allFiles, setAllFiles] = useState<TaxDocument[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(
-    null
-  );
 
   // Load all files when entity changes
   const loadAllFiles = useCallback(async () => {
@@ -43,42 +40,50 @@ export function AllFilesView() {
     void loadAllFiles();
   }, [loadAllFiles]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0 || selectedEntity === 'all') return;
+  const handleUploadFile = async (
+    file: File,
+    docType: DocumentType,
+    entity: Entity,
+    taxYear: number,
+    parsedData?: TaxDocument['parsedData'],
+    customFilename?: string
+  ): Promise<boolean> => {
+    const expenseCategory =
+      docType === 'receipt' && parsedData
+        ? ((parsedData as { category?: string }).category as
+            | import('../../types').ExpenseCategory
+            | undefined)
+        : undefined;
 
-    const fileList = Array.from(files);
-    let succeeded = 0;
-    let failed = 0;
+    return importFile(
+      file,
+      docType,
+      entity,
+      taxYear,
+      expenseCategory,
+      customFilename,
+      parsedData as Record<string, unknown> | undefined
+    );
+  };
 
-    if (fileList.length > 1) {
-      setUploadProgress({ current: 0, total: fileList.length });
-    }
-
-    for (let i = 0; i < fileList.length; i++) {
-      if (fileList.length > 1) {
-        setUploadProgress({ current: i + 1, total: fileList.length });
-      }
-      const success = await importFile(fileList[i], 'other', selectedEntity, 0);
-      if (success) succeeded++;
-      else failed++;
-    }
-
-    setUploadProgress(null);
-
+  const handleUploadComplete = async ({
+    succeeded,
+    failed,
+  }: {
+    succeeded: number;
+    failed: number;
+  }) => {
     if (succeeded > 0) {
       addToast(
-        fileList.length === 1
+        succeeded === 1 && failed === 0
           ? 'File uploaded successfully'
           : `${succeeded} file${succeeded !== 1 ? 's' : ''} uploaded${failed > 0 ? `, ${failed} failed` : ''}`,
         failed > 0 ? 'info' : 'success'
       );
       await loadAllFiles();
-    } else {
+    } else if (failed > 0) {
       addToast('Failed to upload file(s)', 'error');
     }
-
-    e.target.value = '';
   };
 
   const handleUpdateDoc = (id: string, updates: Partial<TaxDocument>) => {
@@ -171,41 +176,23 @@ export function AllFilesView() {
           >
             <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
           </Button>
-
-          {selectedEntity !== 'all' && (
-            <label className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-accent-400 bg-accent-500/10 hover:bg-accent-500/15 rounded-xl cursor-pointer transition-colors">
-              <Upload className="w-4 h-4" />
-              Upload Files
-              <input
-                type="file"
-                multiple
-                className="hidden"
-                onChange={handleFileUpload}
-                disabled={isProcessing}
-              />
-            </label>
-          )}
         </div>
       </div>
 
-      {/* Upload progress */}
-      {uploadProgress && (
-        <Card variant="glass" className="p-4 mb-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-surface-700">
-              Uploading {uploadProgress.current} of {uploadProgress.total}...
-            </span>
-            <span className="text-xs text-surface-500">
-              {Math.round((uploadProgress.current / uploadProgress.total) * 100)}%
-            </span>
-          </div>
-          <div className="w-full h-2 bg-surface-200/50 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-accent-500 rounded-full transition-all duration-300"
-              style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
-            />
-          </div>
-        </Card>
+      {/* Upload Zone */}
+      {selectedEntity !== 'all' && (
+        <div className="mb-6">
+          <FileUploader
+            entity={selectedEntity}
+            taxYear={0}
+            onUpload={handleUploadFile}
+            onComplete={handleUploadComplete}
+            disabled={isProcessing}
+            parseMode="optional"
+            label="Upload Files"
+            subtitle="Drop files here — toggle AI parsing if needed"
+          />
+        </div>
       )}
 
       {selectedEntity === 'all' && (
