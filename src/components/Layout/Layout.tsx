@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Server, AlertCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { useAppContext } from '../../contexts/AppContext';
@@ -116,25 +117,19 @@ export function Layout() {
       </div>
 
       {/* Mobile Sidebar Drawer */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
-          {/* Backdrop */}
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setSidebarOpen(false)}
+      <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+        <SheetContent side="left" showCloseButton={false} className="w-72 p-0 gap-0 md:hidden">
+          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          <SheetDescription className="sr-only">Main navigation menu</SheetDescription>
+          <Sidebar
+            onAddEntity={() => {
+              setShowAddEntityModal(true);
+              setSidebarOpen(false);
+            }}
+            onClose={() => setSidebarOpen(false)}
           />
-          {/* Drawer */}
-          <div className="relative w-72 h-full animate-slide-in">
-            <Sidebar
-              onAddEntity={() => {
-                setShowAddEntityModal(true);
-                setSidebarOpen(false);
-              }}
-              onClose={() => setSidebarOpen(false)}
-            />
-          </div>
-        </div>
-      )}
+        </SheetContent>
+      </Sheet>
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header />

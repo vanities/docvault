@@ -25,6 +25,13 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface DocumentCardProps {
   document: TaxDocument;
@@ -347,34 +354,39 @@ export function DocumentCard({
                 <label className="block text-[11px] font-medium text-surface-700 mb-1">
                   Document Type
                 </label>
-                <select
+                <Select
                   value={editedType}
-                  onChange={(e) => setEditedType(e.target.value as DocumentType)}
-                  className="w-full text-[13px] bg-surface-200/50 border border-border text-surface-900 rounded-lg px-2 py-1.5"
+                  onValueChange={(val) => setEditedType(val as DocumentType)}
                 >
-                  {DOCUMENT_TYPES.map((dt) => (
-                    <option key={dt.id} value={dt.id}>
-                      {dt.label}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="w-full text-[13px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DOCUMENT_TYPES.map((dt) => (
+                      <SelectItem key={dt.id} value={dt.id}>
+                        {dt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               {entities && entities.length > 0 && (
                 <div>
                   <label className="block text-[11px] font-medium text-surface-700 mb-1">
                     Entity
                   </label>
-                  <select
-                    value={editedEntity}
-                    onChange={(e) => setEditedEntity(e.target.value)}
-                    className="w-full text-[13px] bg-surface-200/50 border border-border text-surface-900 rounded-lg px-2 py-1.5"
-                  >
-                    {entities.map((ent) => (
-                      <option key={ent.id} value={ent.id}>
-                        {ent.name}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={editedEntity} onValueChange={setEditedEntity}>
+                    <SelectTrigger className="w-full text-[13px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {entities.map((ent) => (
+                        <SelectItem key={ent.id} value={ent.id}>
+                          {ent.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
               {availableYears && availableYears.length > 0 && doc.taxYear > 0 && (
@@ -382,17 +394,21 @@ export function DocumentCard({
                   <label className="block text-[11px] font-medium text-surface-700 mb-1">
                     Tax Year
                   </label>
-                  <select
-                    value={editedYear}
-                    onChange={(e) => setEditedYear(parseInt(e.target.value, 10))}
-                    className="w-full text-[13px] bg-surface-200/50 border border-border text-surface-900 rounded-lg px-2 py-1.5"
+                  <Select
+                    value={String(editedYear)}
+                    onValueChange={(val) => setEditedYear(parseInt(val, 10))}
                   >
-                    {availableYears.map((yr) => (
-                      <option key={yr} value={yr}>
-                        {yr}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger className="w-full text-[13px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableYears.map((yr) => (
+                        <SelectItem key={yr} value={String(yr)}>
+                          {yr}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
               <div>

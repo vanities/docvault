@@ -18,11 +18,15 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 const API = '/api/sales';
-
-const SELECT_CLASS =
-  'h-10 w-full rounded-xl border border-border bg-surface-100 px-3 py-2.5 text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-accent-400/30 focus:border-accent-400';
 
 export function SalesView() {
   const { selectedEntity, entities } = useAppContext();
@@ -279,17 +283,18 @@ export function SalesView() {
 
         <div>
           <Label className="mb-1">Product</Label>
-          <select
-            value={productId}
-            onChange={(e) => setProductId(e.target.value)}
-            className={SELECT_CLASS}
-          >
-            {data.products.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} — ${p.price.toFixed(2)}
-              </option>
-            ))}
-          </select>
+          <Select value={productId} onValueChange={setProductId}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {data.products.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name} — ${p.price.toFixed(2)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -395,17 +400,18 @@ export function SalesView() {
                           </div>
                           <div>
                             <Label className="text-[10px]">Product</Label>
-                            <select
-                              value={editProductId}
-                              onChange={(e) => setEditProductId(e.target.value)}
-                              className={SELECT_CLASS}
-                            >
-                              {data.products.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                  {p.name} — ${p.price.toFixed(2)}
-                                </option>
-                              ))}
-                            </select>
+                            <Select value={editProductId} onValueChange={setEditProductId}>
+                              <SelectTrigger className="w-full">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {data.products.map((p) => (
+                                  <SelectItem key={p.id} value={p.id}>
+                                    {p.name} — ${p.price.toFixed(2)}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           </div>
                           <div className="grid grid-cols-2 gap-2">
                             <div>

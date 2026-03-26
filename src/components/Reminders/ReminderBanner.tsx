@@ -4,6 +4,13 @@ import { useAppContext } from '../../contexts/AppContext';
 import type { Reminder } from '../../types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 function daysUntil(dateStr: string): number {
   const today = new Date();
@@ -199,11 +206,7 @@ export function ReminderBanner() {
     if (selectedEntity !== 'all') {
       return (
         <div className="mb-4">
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={() => setShowAddForm(true)}
-          >
+          <Button variant="ghost" size="xs" onClick={() => setShowAddForm(true)}>
             <Bell className="w-3.5 h-3.5" />
             Add reminder
           </Button>
@@ -232,11 +235,7 @@ export function ReminderBanner() {
           )}
         </div>
         {selectedEntity !== 'all' && (
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={() => setShowAddForm(!showAddForm)}
-          >
+          <Button variant="ghost" size="xs" onClick={() => setShowAddForm(!showAddForm)}>
             <Plus className="w-3.5 h-3.5" />
             Add
           </Button>
@@ -272,16 +271,20 @@ export function ReminderBanner() {
               onChange={(e) => setNewDate(e.target.value)}
               className="h-8 text-[13px]"
             />
-            <select
-              value={newRecurrence}
-              onChange={(e) => setNewRecurrence(e.target.value)}
-              className="px-2.5 py-1.5 bg-surface-100 border border-surface-400/30 rounded-lg text-[13px] text-surface-900"
+            <Select
+              value={newRecurrence || 'one-time'}
+              onValueChange={(val) => setNewRecurrence(val === 'one-time' ? '' : val)}
             >
-              <option value="">One-time</option>
-              <option value="monthly">Monthly</option>
-              <option value="quarterly">Quarterly</option>
-              <option value="yearly">Yearly</option>
-            </select>
+              <SelectTrigger className="text-[13px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="one-time">One-time</SelectItem>
+                <SelectItem value="monthly">Monthly</SelectItem>
+                <SelectItem value="quarterly">Quarterly</SelectItem>
+                <SelectItem value="yearly">Yearly</SelectItem>
+              </SelectContent>
+            </Select>
             <Input
               type="text"
               placeholder="Notes (optional)"
@@ -291,18 +294,10 @@ export function ReminderBanner() {
             />
           </div>
           <div className="flex gap-2 justify-end">
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={() => setShowAddForm(false)}
-            >
+            <Button variant="ghost" size="xs" onClick={() => setShowAddForm(false)}>
               Cancel
             </Button>
-            <Button
-              size="xs"
-              onClick={handleAdd}
-              disabled={!newTitle || !newDate}
-            >
+            <Button size="xs" onClick={handleAdd} disabled={!newTitle || !newDate}>
               Add Reminder
             </Button>
           </div>

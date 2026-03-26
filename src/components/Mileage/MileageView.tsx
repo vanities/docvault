@@ -22,11 +22,15 @@ import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import { AddressAutocomplete } from './AddressAutocomplete';
 import type { SelectedAddress } from './AddressAutocomplete';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 const API = '/api/mileage';
-
-const SELECT_CLASS =
-  'h-10 w-full rounded-xl border border-border bg-surface-100 px-3 py-2.5 text-sm text-surface-950 focus:outline-none focus:ring-2 focus:ring-accent-400/30 focus:border-accent-400';
 
 export function MileageView() {
   const { selectedEntity, entities } = useAppContext();
@@ -443,19 +447,27 @@ export function MileageView() {
           </div>
           <div>
             <Label className="mb-1">Vehicle</Label>
-            <select
-              value={vehicleId}
-              onChange={(e) => setVehicleId(e.target.value)}
-              className={SELECT_CLASS}
+            <Select
+              value={vehicleId || undefined}
+              onValueChange={setVehicleId}
+              disabled={data.vehicles.length === 0}
             >
-              {data.vehicles.length === 0 && <option value="">Add a vehicle first</option>}
-              {data.vehicles.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}
-                  {v.year ? ` (${v.year})` : ''}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="w-full">
+                <SelectValue
+                  placeholder={
+                    data.vehicles.length === 0 ? 'Add a vehicle first' : 'Select vehicle'
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {data.vehicles.map((v) => (
+                  <SelectItem key={v.id} value={v.id}>
+                    {v.name}
+                    {v.year ? ` (${v.year})` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -716,17 +728,18 @@ export function MileageView() {
                             </div>
                             <div>
                               <Label className="text-[10px]">Vehicle</Label>
-                              <select
-                                value={editVehicleId}
-                                onChange={(e) => setEditVehicleId(e.target.value)}
-                                className={SELECT_CLASS}
-                              >
-                                {data.vehicles.map((v) => (
-                                  <option key={v.id} value={v.id}>
-                                    {v.name}
-                                  </option>
-                                ))}
-                              </select>
+                              <Select value={editVehicleId} onValueChange={setEditVehicleId}>
+                                <SelectTrigger className="w-full">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {data.vehicles.map((v) => (
+                                    <SelectItem key={v.id} value={v.id}>
+                                      {v.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                             </div>
                           </div>
                           <div>

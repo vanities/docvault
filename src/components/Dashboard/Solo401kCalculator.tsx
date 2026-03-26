@@ -3,6 +3,13 @@ import { Landmark, ChevronDown, ChevronUp, Info, Plus, Trash2 } from 'lucide-rea
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface Solo401kCalculatorProps {
   defaultGross: number;
@@ -451,14 +458,18 @@ export function Solo401kCalculator({
               </div>
               <div className="flex-shrink-0">
                 <label className="block text-[10px] text-surface-500 mb-1">Type</label>
-                <select
+                <Select
                   value={addType}
-                  onChange={(e) => setAddType(e.target.value as 'employee' | 'employer')}
-                  className="px-2 py-1.5 text-[12px] bg-surface-200/50 border border-border rounded-lg focus:outline-none focus:border-accent-400 text-surface-900"
+                  onValueChange={(val) => setAddType(val as 'employee' | 'employer')}
                 >
-                  <option value="employee">Employee</option>
-                  <option value="employer">Employer</option>
-                </select>
+                  <SelectTrigger className="text-[12px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="employee">Employee</SelectItem>
+                    <SelectItem value="employer">Employer</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex-1">
                 <label className="block text-[10px] text-surface-500 mb-1">Amount</label>

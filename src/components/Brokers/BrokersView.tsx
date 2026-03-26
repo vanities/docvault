@@ -19,9 +19,22 @@ import type { BrokerAccount, BrokerPortfolio, BrokerId, PortfolioSnapshot } from
 import { API_BASE } from '../../constants';
 import { HistoryChart } from '../common/HistoryChart';
 import { Card } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 const BROKER_LABELS: Record<BrokerId, string> = {
   vanguard: 'Vanguard',
@@ -119,7 +132,9 @@ function AddHoldingModal({
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Add Manual Holding</DialogTitle>
-          <DialogDescription>Add a holding with ticker, shares, and optional cost basis.</DialogDescription>
+          <DialogDescription>
+            Add a holding with ticker, shares, and optional cost basis.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div>
@@ -171,18 +186,10 @@ function AddHoldingModal({
           </div>
         </div>
         <div className="flex gap-2 mt-1">
-          <Button
-            variant="ghost"
-            onClick={() => onOpenChange(false)}
-            className="flex-1"
-          >
+          <Button variant="ghost" onClick={() => onOpenChange(false)} className="flex-1">
             Cancel
           </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={!ticker || !shares}
-            className="flex-1"
-          >
+          <Button onClick={handleSubmit} disabled={!ticker || !shares} className="flex-1">
             Add
           </Button>
         </div>
@@ -211,24 +218,29 @@ function AddAccountModal({
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Add Manual Account</DialogTitle>
-          <DialogDescription>Add a brokerage account to track holdings and balances.</DialogDescription>
+          <DialogDescription>
+            Add a brokerage account to track holdings and balances.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <label className="text-[12px] font-medium text-surface-700 mb-1 block">Institution</label>
-            <select
-              value={broker}
-              onChange={(e) => setBroker(e.target.value as BrokerId)}
-              className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 focus:outline-none focus:ring-2 focus:ring-accent-500/30"
-            >
-              <option value="vanguard">Vanguard</option>
-              <option value="fidelity">Fidelity</option>
-              <option value="robinhood">Robinhood</option>
-              <option value="navy-federal">Navy Federal</option>
-              <option value="chase">Chase</option>
-              <option value="altoira">Alto IRA</option>
-              <option value="other">Other</option>
-            </select>
+            <label className="text-[12px] font-medium text-surface-700 mb-1 block">
+              Institution
+            </label>
+            <Select value={broker} onValueChange={(val) => setBroker(val as BrokerId)}>
+              <SelectTrigger className="w-full text-[13px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="vanguard">Vanguard</SelectItem>
+                <SelectItem value="fidelity">Fidelity</SelectItem>
+                <SelectItem value="robinhood">Robinhood</SelectItem>
+                <SelectItem value="navy-federal">Navy Federal</SelectItem>
+                <SelectItem value="chase">Chase</SelectItem>
+                <SelectItem value="altoira">Alto IRA</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <label className="text-[12px] font-medium text-surface-700 mb-1 block">
@@ -258,7 +270,9 @@ function AddAccountModal({
               Override Value (optional)
             </label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-surface-500">$</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-surface-500">
+                $
+              </span>
               <Input
                 type="number"
                 value={overrideValue}
@@ -273,11 +287,7 @@ function AddAccountModal({
           </div>
         </div>
         <div className="flex gap-2 mt-1">
-          <Button
-            variant="ghost"
-            onClick={() => onOpenChange(false)}
-            className="flex-1"
-          >
+          <Button variant="ghost" onClick={() => onOpenChange(false)} className="flex-1">
             Cancel
           </Button>
           <Button
@@ -387,7 +397,10 @@ function AccountCard({
           {account.overrideValue !== undefined ? (
             <div className="px-4 py-4">
               <p className="text-[12px] text-surface-500">
-                Manual balance: <span className="font-medium text-surface-950">{formatUsd(account.overrideValue)}</span>
+                Manual balance:{' '}
+                <span className="font-medium text-surface-950">
+                  {formatUsd(account.overrideValue)}
+                </span>
               </p>
             </div>
           ) : (
@@ -410,7 +423,9 @@ function AccountCard({
                   >
                     <div className="col-span-4 flex items-center gap-2">
                       <div className="min-w-0">
-                        <p className="text-[13px] font-mono font-bold text-surface-950">{h.ticker}</p>
+                        <p className="text-[13px] font-mono font-bold text-surface-950">
+                          {h.ticker}
+                        </p>
                         {h.label && (
                           <p className="text-[11px] text-surface-500 truncate">{h.label}</p>
                         )}
@@ -745,13 +760,19 @@ export function BrokersView() {
     }
   };
 
-  const handleAddAccount = async (broker: BrokerId, name: string, url?: string, overrideValue?: number) => {
+  const handleAddAccount = async (
+    broker: BrokerId,
+    name: string,
+    url?: string,
+    overrideValue?: number
+  ) => {
     try {
       const res = await fetch(`${API_BASE}/brokers/accounts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          broker, name,
+          broker,
+          name,
           ...(url ? { url } : {}),
           ...(overrideValue !== undefined ? { overrideValue } : {}),
         }),
@@ -877,18 +898,12 @@ export function BrokersView() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setShowAddAccount(true)}
-          >
+          <Button variant="outline" onClick={() => setShowAddAccount(true)}>
             <Plus className="w-4 h-4" />
             Add Manual Account
           </Button>
           {hasAccounts && (
-            <Button
-              onClick={() => loadPortfolio(true)}
-              disabled={isRefreshing}
-            >
+            <Button onClick={() => loadPortfolio(true)} disabled={isRefreshing}>
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
               {isRefreshing ? 'Refreshing...' : 'Refresh Prices'}
             </Button>
@@ -928,11 +943,7 @@ export function BrokersView() {
             Note: These brokerages don't offer public APIs for retail investors, so holdings are
             entered manually. Prices are fetched automatically.
           </p>
-          <Button
-            onClick={() => setShowAddAccount(true)}
-          >
-            Add Your First Account
-          </Button>
+          <Button onClick={() => setShowAddAccount(true)}>Add Your First Account</Button>
         </Card>
       ) : (
         <>
@@ -996,7 +1007,11 @@ export function BrokersView() {
         </>
       )}
 
-      <AddAccountModal open={showAddAccount} onAdd={handleAddAccount} onOpenChange={setShowAddAccount} />
+      <AddAccountModal
+        open={showAddAccount}
+        onAdd={handleAddAccount}
+        onOpenChange={setShowAddAccount}
+      />
     </div>
   );
 }

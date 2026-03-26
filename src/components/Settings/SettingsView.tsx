@@ -38,6 +38,13 @@ import {
   SETTINGS_COLOR_MAP as COLOR_MAP,
   AVAILABLE_COLORS,
 } from '../../utils/entityDisplay';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface SettingsData {
   hasAnthropicKey: boolean;
@@ -1355,16 +1362,20 @@ export function SettingsView() {
             {snapshotEnabled && (
               <div className="flex items-center gap-2">
                 <label className="text-[12px] text-surface-600">Every</label>
-                <select
-                  value={snapshotInterval}
-                  onChange={(e) => setSnapshotInterval(Number(e.target.value))}
-                  className="px-2 py-1.5 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                <Select
+                  value={String(snapshotInterval)}
+                  onValueChange={(val) => setSnapshotInterval(Number(val))}
                 >
-                  <option value={60}>1 hour</option>
-                  <option value={360}>6 hours</option>
-                  <option value={720}>12 hours</option>
-                  <option value={1440}>24 hours</option>
-                </select>
+                  <SelectTrigger className="text-[13px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="60">1 hour</SelectItem>
+                    <SelectItem value="360">6 hours</SelectItem>
+                    <SelectItem value="720">12 hours</SelectItem>
+                    <SelectItem value="1440">24 hours</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             )}
           </div>
@@ -1389,16 +1400,20 @@ export function SettingsView() {
             {dropboxSyncEnabled && (
               <div className="flex items-center gap-2">
                 <label className="text-[12px] text-surface-600">Every</label>
-                <select
-                  value={dropboxSyncInterval}
-                  onChange={(e) => setDropboxSyncInterval(Number(e.target.value))}
-                  className="px-2 py-1.5 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                <Select
+                  value={String(dropboxSyncInterval)}
+                  onValueChange={(val) => setDropboxSyncInterval(Number(val))}
                 >
-                  <option value={5}>5 minutes</option>
-                  <option value={15}>15 minutes</option>
-                  <option value={30}>30 minutes</option>
-                  <option value={60}>1 hour</option>
-                </select>
+                  <SelectTrigger className="text-[13px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">5 minutes</SelectItem>
+                    <SelectItem value="15">15 minutes</SelectItem>
+                    <SelectItem value="30">30 minutes</SelectItem>
+                    <SelectItem value="60">1 hour</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             )}
           </div>
@@ -1721,15 +1736,19 @@ export function SettingsView() {
                 <label className="block text-[11px] font-medium text-surface-600 mb-1">
                   Exchange
                 </label>
-                <select
+                <Select
                   value={newExchangeId}
-                  onChange={(e) => setNewExchangeId(e.target.value as CryptoExchangeId)}
-                  className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900"
+                  onValueChange={(val) => setNewExchangeId(val as CryptoExchangeId)}
                 >
-                  <option value="coinbase">Coinbase</option>
-                  <option value="gemini">Gemini</option>
-                  <option value="kraken">Kraken</option>
-                </select>
+                  <SelectTrigger className="w-full text-[13px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="coinbase">Coinbase</SelectItem>
+                    <SelectItem value="gemini">Gemini</SelectItem>
+                    <SelectItem value="kraken">Kraken</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-surface-600 mb-1">
@@ -1897,14 +1916,18 @@ export function SettingsView() {
                   <label className="block text-[11px] font-medium text-surface-600 mb-1">
                     Chain
                   </label>
-                  <select
+                  <Select
                     value={newWalletChain}
-                    onChange={(e) => setNewWalletChain(e.target.value as CryptoChain)}
-                    className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900"
+                    onValueChange={(val) => setNewWalletChain(val as CryptoChain)}
                   >
-                    <option value="btc">Bitcoin (BTC)</option>
-                    <option value="eth">Ethereum (ETH)</option>
-                  </select>
+                    <SelectTrigger className="w-full text-[13px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="btc">Bitcoin (BTC)</SelectItem>
+                      <SelectItem value="eth">Ethereum (ETH)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <label className="block text-[11px] font-medium text-surface-600 mb-1">
