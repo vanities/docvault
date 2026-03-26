@@ -405,7 +405,11 @@ export function useFileSystemServer() {
     } else if (docType === 'crypto') {
       destPath += '/crypto';
     } else if (docType === 'return') {
-      destPath += '/returns';
+      if (fileName.includes('.tax')) {
+        destPath += '/turbotax';
+      } else {
+        destPath += '/returns';
+      }
     } else if (docType === 'medical-record') {
       destPath += '/expenses/medical';
     } else {
