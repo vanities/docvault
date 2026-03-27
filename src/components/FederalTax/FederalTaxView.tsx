@@ -1061,6 +1061,7 @@ interface SettingField {
   description: string;
   type: 'number' | 'yearKeyed';
   placeholder?: string;
+  prefix?: string; // defaults to '$'
 }
 
 function TaxSettingsPanel({
@@ -1089,18 +1090,20 @@ function TaxSettingsPanel({
     {
       entityId: 'personal',
       key: 'dependentCount',
-      label: 'Qualifying Children',
-      description: 'Under age 17 with SSN — for Child Tax Credit ($2,200 each)',
+      label: 'Qualifying Children (count)',
+      description: 'Number of children under 17 with SSN — CTC is $2,200 each',
       type: 'number',
       placeholder: '0',
+      prefix: '#',
     },
     {
       entityId: 'personal',
       key: 'educatorExpenseEligible',
-      label: 'Educator Expense Eligible',
-      description: 'Number of spouses who are K-12 teachers ($300 each, max $600 MFJ)',
+      label: 'Eligible Educators (count)',
+      description: 'Number of spouses who are K-12 teachers — deduction is $300 each (max 2)',
       type: 'number',
       placeholder: '0',
+      prefix: '#',
     },
     // Home office per business entity
     ...businessEntities.map((e) => ({
@@ -1213,7 +1216,9 @@ function TaxSettingRow({
         <div className="text-[10px] text-surface-500 leading-tight">{field.description}</div>
       </div>
       <div className="relative">
-        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-surface-400 text-xs">$</span>
+        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-surface-400 text-xs">
+          {field.prefix || '$'}
+        </span>
         <input
           type="text"
           inputMode="numeric"
