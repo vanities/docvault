@@ -242,7 +242,7 @@ export function SalesView() {
           variant="outline"
           size="sm"
           onClick={() => setProductsDialogOpen(true)}
-          className="shrink-0 gap-1.5"
+          className="shrink-0 gap-1.5 border-border"
         >
           <Settings className="w-4 h-4" />
           Products
