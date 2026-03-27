@@ -299,7 +299,13 @@ export function getTaxCalculation(
 
   // Standard deduction
   const standardDeduction = STANDARD_DEDUCTION_MFJ[year] || STANDARD_DEDUCTION_MFJ['2025'];
-  const estimatedTaxableIncome = Math.max(0, estimatedAGI - standardDeduction);
+
+  // QBI deduction (Section 199A) — complex calculation involving Form 8995,
+  // loss carryforwards, and multiple QBI sources. We don't compute it;
+  // set to 0 and let the filed value provide the comparison.
+  const qbiDeduction = 0;
+
+  const estimatedTaxableIncome = Math.max(0, estimatedAGI - standardDeduction - qbiDeduction);
 
   // Income tax using QDCG worksheet (preferential rates for LTCG + qualified dividends)
   const totalLTCG = totalCapGainsLT + cryptoCapGainsLT;
@@ -364,6 +370,7 @@ export function getTaxCalculation(
       total: cryptoCapGainsTotal,
     },
     standardDeduction,
+    qbiDeduction,
     estimatedTaxableIncome,
     estimatedIncomeTax,
     niit,

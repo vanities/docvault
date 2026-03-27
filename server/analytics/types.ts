@@ -112,6 +112,7 @@ export interface TaxCalculation {
   stakingIncome: number;
   cryptoCapitalGains: { shortTerm: number; longTerm: number; total: number };
   standardDeduction: number;
+  qbiDeduction: number;
   estimatedTaxableIncome: number;
   estimatedIncomeTax: number;
   niit: number;

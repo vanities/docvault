@@ -112,7 +112,9 @@ interface ComputedData {
   retirementDeduction: number;
   totalAdjustments: number;
   agi: number;
+  totalCapitalGains: number; // Vanguard + crypto combined (matches filed Schedule D Line 16)
   standardDeduction: number;
+  qbiDeduction: number;
   estimatedTaxableIncome: number;
   estimatedIncomeTax: number;
   niit: number;
@@ -232,7 +234,10 @@ function mapSnapshotToComputed(snapshot: Record<string, unknown>): ComputedData 
   const totalAdjustments = (ts.estimatedAdjustments as number) || 0;
   const agi = (ts.estimatedAGI as number) || 0;
   const federalWithheld = (ts.federalWithheld as number) || 0;
+  const cryptoGains = ts.cryptoCapitalGains as Record<string, number> | undefined;
+  const totalCapitalGains = capitalGains + (cryptoGains ? cryptoGains.total || 0 : 0);
   const standardDeduction = (ts.standardDeduction as number) || 0;
+  const qbiDeduction = (ts.qbiDeduction as number) || 0;
   const estimatedTaxableIncome = (ts.estimatedTaxableIncome as number) || 0;
   const estimatedIncomeTax = (ts.estimatedIncomeTax as number) || 0;
   const niit = (ts.niit as number) || 0;
@@ -260,7 +265,9 @@ function mapSnapshotToComputed(snapshot: Record<string, unknown>): ComputedData 
     retirementDeduction,
     totalAdjustments,
     agi,
+    totalCapitalGains,
     standardDeduction,
+    qbiDeduction,
     estimatedTaxableIncome,
     estimatedIncomeTax,
     niit,
@@ -276,7 +283,7 @@ const COMPUTED_FIELD_MAP: Record<string, keyof ComputedData> = {
   'income.dividendIncome': 'dividendIncome',
   'income.businessIncome': 'businessIncome',
   'income.rentalK1Income': 'k1Income',
-  'income.capitalGains': 'capitalGains',
+  'income.capitalGains': 'totalCapitalGains',
   'income.taxableIRA': 'taxableIRA',
   'income.taxablePension': 'taxablePension',
   'income.otherIncome': 'stakingIncome',
@@ -289,6 +296,7 @@ const COMPUTED_FIELD_MAP: Record<string, keyof ComputedData> = {
   agi: 'agi',
   // Deductions
   'deductions.standardOrItemized': 'standardDeduction',
+  'deductions.qbiDeduction': 'qbiDeduction',
   // Taxable income
   taxableIncome: 'estimatedTaxableIncome',
   // Tax
