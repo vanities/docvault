@@ -118,6 +118,7 @@ export function getTaxCalculation(
   let cryptoCapGainsST = 0;
   let cryptoCapGainsLT = 0;
   let totalK1SEEarnings = 0;
+  const k1SECounted = new Set<string>(); // Only count one K-1 SE per entity
   const w2Details: { employer: string; wages: number; withheld: number }[] = [];
 
   // Track 1099-NEC per entity so we can override with bank revenue if available
@@ -172,8 +173,14 @@ export function getTaxCalculation(
         case 'K-1':
           totalK1Income += inc.amount;
           // K-1 SE earnings reduce the SE tax base (Box 14)
+          // Only count once per entity — MFJ couples have separate K-1s but
+          // only the primary filer's SE earnings go on this return's Schedule SE
           if (inc.details?.selfEmploymentEarnings) {
-            totalK1SEEarnings += (inc.details.selfEmploymentEarnings as number) || 0;
+            const seKey = `k1se:${entityId}`;
+            if (!k1SECounted.has(seKey)) {
+              k1SECounted.add(seKey);
+              totalK1SEEarnings += (inc.details.selfEmploymentEarnings as number) || 0;
+            }
           }
           break;
         case 'other':
