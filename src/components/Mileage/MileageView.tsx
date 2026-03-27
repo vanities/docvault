@@ -420,18 +420,16 @@ export function MileageView() {
       </div>
 
       {/* All-time bar */}
-      <Card variant="glass" className="px-4 py-2.5 flex items-center justify-between">
+      <Card variant="glass" className="px-4 py-2.5 flex items-center justify-center gap-4">
         <span className="text-[11px] text-surface-500 uppercase tracking-wider font-medium">
           All Time
         </span>
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold text-surface-900 tabular-nums">
-            {allTimeMiles.toFixed(0)} mi
-          </span>
-          <span className="text-sm font-bold text-teal-500 tabular-nums">
-            ${allTimeDeduction.toFixed(2)}
-          </span>
-        </div>
+        <span className="text-sm font-semibold text-surface-900 tabular-nums">
+          {allTimeMiles.toFixed(0)} mi
+        </span>
+        <span className="text-sm font-bold text-teal-500 tabular-nums">
+          ${allTimeDeduction.toFixed(2)}
+        </span>
       </Card>
 
       {/* New Entry Form */}
