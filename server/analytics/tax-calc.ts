@@ -160,7 +160,8 @@ export function getTaxCalculation(
   entitySummaries: Record<string, EntityIncome>,
   retirementDeduction: number,
   bankRevenue?: EntityBankRevenue,
-  entityExpenses?: EntityExpenses
+  entityExpenses?: EntityExpenses,
+  qbiLossCarryforward?: number
 ): TaxCalculation {
   let totalWages = 0;
   let totalFederalWithheld = 0;
@@ -300,12 +301,33 @@ export function getTaxCalculation(
   // Standard deduction
   const standardDeduction = STANDARD_DEDUCTION_MFJ[year] || STANDARD_DEDUCTION_MFJ['2025'];
 
-  // QBI deduction (Section 199A) — complex calculation involving Form 8995,
-  // loss carryforwards, and multiple QBI sources. We don't compute it;
-  // set to 0 and let the filed value provide the comparison.
-  const qbiDeduction = 0;
+  // QBI deduction (Section 199A) — Form 8995 simplified computation
+  // Used when taxable income before QBI ≤ $394,600 MFJ (2025)
+  // Schedule C QBI = net profit - SE tax deduction - retirement plan deduction
+  // (Per Reg 1.199A-3(b)(1)(vi): above-the-line deductions allocable to the
+  // trade or business reduce QBI)
+  const scheduleCQBI = Math.max(
+    0,
+    totalScheduleC - Math.round(seTaxDeduction) - retirementDeduction
+  );
+  const k1QBI = totalK1Income; // K-1 ordinary income flows directly as QBI
+  const totalQBI = scheduleCQBI + k1QBI;
+  const priorYearCarryforward = qbiLossCarryforward || 0;
+  const netQBI = Math.max(0, totalQBI - priorYearCarryforward);
+  const qbiComponent = netQBI * 0.2;
 
-  const estimatedTaxableIncome = Math.max(0, estimatedAGI - standardDeduction - qbiDeduction);
+  // Income limitation: 20% × (taxable income before QBI - net capital gains - qualified dividends)
+  const taxableIncomeBeforeQBI = Math.max(0, estimatedAGI - standardDeduction);
+  const allCapGains = totalCapGains + cryptoCapGainsTotal;
+  const netCapGainPlusQD = allCapGains + totalQualifiedDividends;
+  const incomeLimitation = Math.max(0, (taxableIncomeBeforeQBI - netCapGainPlusQD) * 0.2);
+
+  const qbiDeduction = Math.round(Math.min(qbiComponent, incomeLimitation));
+
+  const estimatedTaxableIncome = Math.max(
+    0,
+    Math.round(estimatedAGI) - standardDeduction - qbiDeduction
+  );
 
   // Income tax using QDCG worksheet (preferential rates for LTCG + qualified dividends)
   const totalLTCG = totalCapGainsLT + cryptoCapGainsLT;
@@ -364,6 +386,7 @@ export function getTaxCalculation(
     k1Income: totalK1Income,
     miscIncome: totalMiscIncome,
     stakingIncome: totalStakingIncome,
+    k1SEEarnings: totalK1SEEarnings,
     cryptoCapitalGains: {
       shortTerm: cryptoCapGainsST,
       longTerm: cryptoCapGainsLT,
