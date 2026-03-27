@@ -58,10 +58,12 @@ const STANDARD_DEDUCTION_MFJ: Record<string, number> = {
 const NIIT_THRESHOLD_MFJ = 250000;
 const NIIT_RATE = 0.038;
 
-// 1099-R distribution codes that are typically taxable pension/annuity
-const PENSION_CODES = new Set(['1', '2', '3', '4', '7', 'D']);
-// 1099-R distribution codes for IRA distributions
-const IRA_CODES = new Set(['G', 'H']); // G = rollover (usually non-taxable), H = direct rollover
+// 1099-R distribution codes — all go to taxablePension (1040 Line 5b)
+// G = direct rollover to qualified plan/IRA, H = direct rollover of Roth
+// These report on Line 5a/5b regardless of destination (pension section, not IRA section)
+const PENSION_CODES = new Set(['1', '2', '3', '4', '7', 'D', 'G', 'H']);
+// IRA-specific codes (Line 4a/4b) — traditional/Roth IRA distributions only
+const IRA_CODES = new Set<string>(); // Requires plan-type info we don't have; empty for now
 
 function calculateIncomeTax(taxableIncome: number, year: string): number {
   const brackets = MFJ_BRACKETS[year] || MFJ_BRACKETS['2025'];
@@ -82,10 +84,17 @@ function calculateIncomeTax(taxableIncome: number, year: string): number {
 // Main calculation
 // ---------------------------------------------------------------------------
 
+// Bank deposit revenue by entity — used to compute Schedule C income from
+// actual deposits instead of 1099-NECs (which may be incomplete)
+export interface EntityBankRevenue {
+  [entityId: string]: number; // total revenue deposits for the year
+}
+
 export function getTaxCalculation(
   year: string,
   entitySummaries: Record<string, EntityIncome>,
-  retirementDeduction: number
+  retirementDeduction: number,
+  bankRevenue?: EntityBankRevenue
 ): TaxCalculation {
   let totalWages = 0;
   let totalFederalWithheld = 0;
@@ -105,7 +114,10 @@ export function getTaxCalculation(
   let cryptoCapGainsLT = 0;
   const w2Details: { employer: string; wages: number; withheld: number }[] = [];
 
-  for (const [, data] of Object.entries(entitySummaries)) {
+  // Track 1099-NEC per entity so we can override with bank revenue if available
+  const necByEntity: Record<string, number> = {};
+
+  for (const [entityId, data] of Object.entries(entitySummaries)) {
     for (const inc of data.income) {
       switch (inc.type) {
         case 'W-2':
@@ -118,7 +130,7 @@ export function getTaxCalculation(
           });
           break;
         case '1099-NEC':
-          totalScheduleC += inc.amount;
+          necByEntity[entityId] = (necByEntity[entityId] || 0) + inc.amount;
           break;
         case '1099-B':
           totalCapGainsST += (inc.details?.shortTermGainLoss as number) || 0;
@@ -166,6 +178,16 @@ export function getTaxCalculation(
           }
           break;
       }
+    }
+  }
+
+  // Compute Schedule C income: prefer bank revenue deposits (more complete than 1099-NECs)
+  for (const [entityId, necTotal] of Object.entries(necByEntity)) {
+    if (bankRevenue && bankRevenue[entityId] > 0) {
+      // Use bank revenue deposits instead of 1099-NEC total
+      totalScheduleC += bankRevenue[entityId];
+    } else {
+      totalScheduleC += necTotal;
     }
   }
 
