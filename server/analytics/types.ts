@@ -110,6 +110,7 @@ export interface TaxCalculation {
   k1Income: number;
   miscIncome: number;
   stakingIncome: number;
+  k1SEEarnings: number;
   cryptoCapitalGains: { shortTerm: number; longTerm: number; total: number };
   standardDeduction: number;
   qbiDeduction: number;

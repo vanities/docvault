@@ -562,12 +562,28 @@ export async function handleFinancialSnapshotRoutes(
         }
       }
 
+      // Read QBI loss carryforward from personal entity metadata
+      // Keyed by prior year (e.g., "2024" means carryforward FROM 2024 INTO 2025)
+      let qbiLossCarryforward = 0;
+      const personalEntity = entitySummaries['personal'];
+      if (personalEntity) {
+        const personalMeta = personalEntity.entity?.metadata as Record<string, unknown> | undefined;
+        if (personalMeta?.qbiCarryforward) {
+          const cfData = personalMeta.qbiCarryforward as Record<string, string | number>;
+          const priorYear = String(parseInt(year) - 1);
+          if (cfData[priorYear]) {
+            qbiLossCarryforward = parseFloat(String(cfData[priorYear])) || 0;
+          }
+        }
+      }
+
       const taxSummary = getTaxCalculation(
         year,
         entitySummaries,
         retirementDeduction,
         bankRevenueByEntity,
-        expensesByEntity
+        expensesByEntity,
+        qbiLossCarryforward
       );
 
       // Form 2210 periods from bank deposit summaries (already computed by analytics module)
@@ -1244,22 +1260,39 @@ export async function handleFinancialSnapshotRoutes(
         lines.push('| Source | Amount |');
         lines.push('|--------|--------|');
         if (taxSummary.wages > 0) lines.push(`| W-2 Wages | ${fmt(taxSummary.wages)} |`);
-        if (taxSummary.scheduleCIncome > 0)
-          lines.push(`| Schedule C (Self-Employment) | ${fmt(taxSummary.scheduleCIncome)} |`);
-        if (taxSummary.capitalGains.total !== 0) {
-          lines.push(`| Capital Gains (net) | ${fmt(taxSummary.capitalGains.total)} |`);
-          if (taxSummary.capitalGains.shortTerm !== 0)
-            lines.push(`|   ↳ Short-term | ${fmt(taxSummary.capitalGains.shortTerm)} |`);
-          if (taxSummary.capitalGains.longTerm !== 0)
-            lines.push(`|   ↳ Long-term | ${fmt(taxSummary.capitalGains.longTerm)} |`);
-        }
+        if (taxSummary.interestIncome !== 0)
+          lines.push(`| Interest Income | ${fmt(taxSummary.interestIncome)} |`);
         if (taxSummary.dividends.ordinary > 0) {
           lines.push(`| Dividends (ordinary) | ${fmt(taxSummary.dividends.ordinary)} |`);
           if (taxSummary.dividends.qualified > 0)
             lines.push(`|   ↳ Qualified | ${fmt(taxSummary.dividends.qualified)} |`);
         }
-        if (taxSummary.otherIncome !== 0)
-          lines.push(`| Other Income (K-1, staking, etc.) | ${fmt(taxSummary.otherIncome)} |`);
+        if (taxSummary.scheduleCIncome > 0)
+          lines.push(`| Schedule C (Self-Employment) | ${fmt(taxSummary.scheduleCIncome)} |`);
+        if (taxSummary.k1Income !== 0)
+          lines.push(`| K-1 Income (partnerships) | ${fmt(taxSummary.k1Income)} |`);
+        if (taxSummary.capitalGains.total !== 0 || taxSummary.cryptoCapitalGains.total !== 0) {
+          const combinedTotal = taxSummary.capitalGains.total + taxSummary.cryptoCapitalGains.total;
+          const combinedST =
+            taxSummary.capitalGains.shortTerm + taxSummary.cryptoCapitalGains.shortTerm;
+          const combinedLT =
+            taxSummary.capitalGains.longTerm + taxSummary.cryptoCapitalGains.longTerm;
+          lines.push(`| Capital Gains (net) | ${fmt(combinedTotal)} |`);
+          if (combinedST !== 0) lines.push(`|   ↳ Short-term | ${fmt(combinedST)} |`);
+          if (combinedLT !== 0) lines.push(`|   ↳ Long-term | ${fmt(combinedLT)} |`);
+          if (taxSummary.cryptoCapitalGains.total !== 0)
+            lines.push(
+              `|   ↳ Crypto gains included | ${fmt(taxSummary.cryptoCapitalGains.total)} |`
+            );
+        }
+        if (taxSummary.taxablePension !== 0)
+          lines.push(`| Taxable Pension/401(k) (1099-R) | ${fmt(taxSummary.taxablePension)} |`);
+        if (taxSummary.taxableIRA !== 0)
+          lines.push(`| Taxable IRA Distributions | ${fmt(taxSummary.taxableIRA)} |`);
+        if (taxSummary.stakingIncome !== 0)
+          lines.push(`| Crypto Staking Interest | ${fmt(taxSummary.stakingIncome)} |`);
+        if (taxSummary.miscIncome !== 0)
+          lines.push(`| Other Income | ${fmt(taxSummary.miscIncome)} |`);
         lines.push(`| **Estimated Total Income** | **${fmt(taxSummary.estimatedTotalIncome)}** |`);
         lines.push('');
 
@@ -1277,7 +1310,11 @@ export async function handleFinancialSnapshotRoutes(
 
         if (taxSummary.seTax > 0) {
           lines.push('### Self-Employment Tax');
-          lines.push(`- Net SE Earnings: ${fmt(taxSummary.scheduleCIncome * 0.9235)}`);
+          const seBase = taxSummary.scheduleCIncome + taxSummary.k1SEEarnings;
+          lines.push(`- Schedule C: ${fmt(taxSummary.scheduleCIncome)}`);
+          if (taxSummary.k1SEEarnings !== 0)
+            lines.push(`- K-1 SE Earnings (1 per entity): ${fmt(taxSummary.k1SEEarnings)}`);
+          lines.push(`- Net SE Earnings (× 0.9235): ${fmt(seBase * 0.9235)}`);
           lines.push(`- SE Tax (15.3%): ${fmt(taxSummary.seTax)}`);
           lines.push(`- SE Tax Deduction (50%): ${fmt(taxSummary.seTaxDeduction)}`);
           lines.push('');
