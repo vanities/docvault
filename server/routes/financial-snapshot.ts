@@ -545,10 +545,20 @@ export async function handleFinancialSnapshotRoutes(
       }
 
       // Build expenses by entity for Schedule C net profit
+      // Includes parsed receipt expenses + home office deduction from entity metadata
       const expensesByEntity: Record<string, number> = {};
       for (const [entityId, data] of Object.entries(entitySummaries)) {
+        let total = 0;
         if (data.expenses && data.expenses.length > 0) {
-          expensesByEntity[entityId] = data.expenses.reduce((sum, e) => sum + e.amount, 0);
+          total = data.expenses.reduce((sum, e) => sum + e.amount, 0);
+        }
+        // Add home office deduction if set in entity metadata
+        const entityMeta = data.entity?.metadata as Record<string, string | string[]> | undefined;
+        if (entityMeta?.homeOfficeDeduction) {
+          total += parseFloat(String(entityMeta.homeOfficeDeduction)) || 0;
+        }
+        if (total > 0) {
+          expensesByEntity[entityId] = total;
         }
       }
 
