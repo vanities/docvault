@@ -399,11 +399,10 @@ export function MileageView() {
         <Button
           type="button"
           size="sm"
-          className="shrink-0 gap-1.5"
+          className="shrink-0"
           onClick={() => setSettingsOpen(true)}
         >
-          <Settings2 className="w-4 h-4" />
-          Vehicles / Addresses
+          Edit Vehicles / Addresses
         </Button>
       </div>
 
