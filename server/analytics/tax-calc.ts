@@ -117,6 +117,7 @@ export function getTaxCalculation(
   let totalStakingIncome = 0;
   let cryptoCapGainsST = 0;
   let cryptoCapGainsLT = 0;
+  let totalK1SEEarnings = 0;
   const w2Details: { employer: string; wages: number; withheld: number }[] = [];
 
   // Track 1099-NEC per entity so we can override with bank revenue if available
@@ -170,6 +171,10 @@ export function getTaxCalculation(
           break;
         case 'K-1':
           totalK1Income += inc.amount;
+          // K-1 SE earnings reduce the SE tax base (Box 14)
+          if (inc.details?.selfEmploymentEarnings) {
+            totalK1SEEarnings += (inc.details.selfEmploymentEarnings as number) || 0;
+          }
           break;
         case 'other':
           // Check for koinly/staking income
@@ -197,9 +202,11 @@ export function getTaxCalculation(
     totalScheduleC += gross - expenses;
   }
 
-  // SE tax estimate (Schedule C × 0.9235 × 15.3%)
-  const netSEEarnings = totalScheduleC * 0.9235;
-  const seTaxEstimate = netSEEarnings * 0.153;
+  // SE tax estimate ((Schedule C + K-1 SE earnings) × 0.9235 × 15.3%)
+  // K-1 SE earnings (Box 14) reduce or increase the SE base
+  const totalSEIncome = totalScheduleC + totalK1SEEarnings;
+  const netSEEarnings = totalSEIncome * 0.9235;
+  const seTaxEstimate = Math.max(0, netSEEarnings * 0.153);
   const seTaxDeduction = seTaxEstimate / 2;
 
   const totalCapGains = totalCapGainsST + totalCapGainsLT;
