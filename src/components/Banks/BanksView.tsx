@@ -297,39 +297,41 @@ function SimplefinBanner({
   }
 
   return (
-    <Card variant="glass" className="p-4 mb-6 flex flex-wrap items-center justify-between gap-3">
+    <Card variant="glass" className="p-4 mb-6">
       <div className="flex items-center gap-3">
-        <div className="p-2 rounded-lg bg-green-500/10 shrink-0">
+        <div className="p-2 rounded-lg bg-green-500/10 shrink-0 self-start mt-0.5">
           <Link className="w-4 h-4 text-green-500" />
         </div>
-        <div>
-          <p className="text-[13px] font-medium text-surface-950">SimpleFIN Connected</p>
-          <p className="text-[11px] text-surface-600">
-            Bank accounts synced via SimpleFIN Bridge. Refresh to fetch latest balances.
-          </p>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between">
+            <p className="text-[13px] font-medium text-surface-950">SimpleFIN Connected</p>
+            <Button
+              type="button"
+              variant="ghost-danger"
+              size="icon-sm"
+              onClick={onDisconnect}
+              title="Disconnect SimpleFIN"
+            >
+              <Unlink className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] text-surface-600">
+              Bank accounts synced via SimpleFIN Bridge. Refresh to fetch latest balances.
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onRefresh}
+              disabled={isRefreshing}
+              className="text-accent-500 hover:bg-accent-500/10 hover:text-accent-500 shrink-0"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              {isRefreshing ? 'Syncing...' : 'Sync'}
+            </Button>
+          </div>
         </div>
-      </div>
-      <div className="flex items-center gap-2 ml-auto">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={onRefresh}
-          disabled={isRefreshing}
-          className="text-accent-500 hover:bg-accent-500/10 hover:text-accent-500"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-          {isRefreshing ? 'Syncing...' : 'Sync'}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost-danger"
-          size="icon-sm"
-          onClick={onDisconnect}
-          title="Disconnect SimpleFIN"
-        >
-          <Unlink className="w-3.5 h-3.5" />
-        </Button>
       </div>
     </Card>
   );
