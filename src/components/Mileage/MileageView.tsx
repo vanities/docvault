@@ -398,7 +398,6 @@ export function MileageView() {
         </div>
         <Button
           type="button"
-          variant="outline"
           size="sm"
           className="shrink-0 gap-1.5"
           onClick={() => setSettingsOpen(true)}

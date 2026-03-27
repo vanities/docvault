@@ -446,7 +446,17 @@ export function FederalTaxView() {
   const [computed, setComputed] = useState<ComputedData | null>(null);
   const [showComparison, setShowComparison] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(
+    new Set([
+      'TOTAL INCOME',
+      'TOTAL ADJUSTMENTS',
+      'DEDUCTIONS',
+      'TOTAL TAX',
+      'TOTAL CREDITS',
+      'TOTAL PAYMENTS',
+      'TOTAL AMOUNT OWED',
+    ])
+  );
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [showSettings, setShowSettings] = useState(false);
@@ -626,7 +636,7 @@ export function FederalTaxView() {
 
           {/* Edit toggle */}
           <Button
-            variant={editing ? 'default' : 'ghost'}
+            variant={editing ? 'outline' : 'ghost'}
             size="sm"
             onClick={() => setEditing(!editing)}
             className="gap-1.5"
