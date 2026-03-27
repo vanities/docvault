@@ -535,7 +535,21 @@ export async function handleFinancialSnapshotRoutes(
         retirementDeduction += entries.reduce((s, c) => s + c.amount, 0);
       }
 
-      const taxSummary = getTaxCalculation(year, entitySummaries, retirementDeduction);
+      // Build bank revenue by entity for Schedule C calculation
+      const bankRevenueByEntity: Record<string, number> = {};
+      for (const [entityId, summary] of Object.entries(bankDepositSummaries)) {
+        bankRevenueByEntity[entityId] = summary.monthly.reduce(
+          (sum, m) => sum + m.revenueDeposits,
+          0
+        );
+      }
+
+      const taxSummary = getTaxCalculation(
+        year,
+        entitySummaries,
+        retirementDeduction,
+        bankRevenueByEntity
+      );
 
       // Form 2210 periods from bank deposit summaries (already computed by analytics module)
       const form2210Periods: Record<

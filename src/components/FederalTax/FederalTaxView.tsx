@@ -431,7 +431,7 @@ export function FederalTaxView() {
   const [data, setData] = useState<FederalTaxFiled>(emptyFiled());
   const [priorData, setPriorData] = useState<FederalTaxFiled | null>(null);
   const [computed, setComputed] = useState<ComputedData | null>(null);
-  const [showComparison, setShowComparison] = useState(true);
+  const [showComparison, setShowComparison] = useState(false);
   const [editing, setEditing] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [editingField, setEditingField] = useState<string | null>(null);
@@ -782,7 +782,7 @@ export function FederalTaxView() {
 // ---------------------------------------------------------------------------
 
 function DeltaBadge({ delta, className }: { delta: number | null; className?: string }) {
-  if (delta === null || delta === 0) {
+  if (delta === null || delta === 0 || Math.abs(delta) <= 1) {
     return <div className={`text-right text-xs text-surface-400 ${className}`}>—</div>;
   }
   const isPositive = delta > 0;
