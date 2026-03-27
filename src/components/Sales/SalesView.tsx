@@ -239,7 +239,6 @@ export function SalesView() {
         </div>
         <Button
           type="button"
-          variant="outline"
           size="sm"
           onClick={() => setProductsDialogOpen(true)}
           className="shrink-0 gap-1.5"

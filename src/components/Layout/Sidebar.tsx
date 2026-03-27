@@ -461,6 +461,48 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               />
 
               <NavButton
+                view="federal-tax"
+                label="Federal Taxes"
+                icon={Scale}
+                activeColor="bg-violet-500/10"
+                activeTextColor="text-violet-400"
+                activeView={activeView}
+                isProcessing={isProcessing}
+                onClick={handleViewClick}
+              />
+              {showTnTax && (
+                <NavButton
+                  view="tn-tax"
+                  label="TN Tax"
+                  icon={Calculator}
+                  activeColor="bg-amber-500/10"
+                  activeTextColor="text-amber-500"
+                  activeView={activeView}
+                  isProcessing={isProcessing}
+                  onClick={handleViewClick}
+                />
+              )}
+              <NavButton
+                view="estimated-tax"
+                label="Est. Taxes"
+                icon={Receipt}
+                activeColor="bg-red-500/10"
+                activeTextColor="text-red-400"
+                activeView={activeView}
+                isProcessing={isProcessing}
+                onClick={handleViewClick}
+              />
+              <NavButton
+                view="solo-401k"
+                label="Solo 401(k)"
+                icon={Landmark}
+                activeColor="bg-blue-500/10"
+                activeTextColor="text-blue-400"
+                activeView={activeView}
+                isProcessing={isProcessing}
+                onClick={handleViewClick}
+              />
+              <NavButton
                 view="sales"
                 label="Sales"
                 icon={DollarSign}
@@ -480,50 +522,6 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
                 isProcessing={isProcessing}
                 onClick={handleViewClick}
               />
-
-              <NavButton
-                view="federal-tax"
-                label="Federal Taxes"
-                icon={Scale}
-                activeColor="bg-violet-500/10"
-                activeTextColor="text-violet-400"
-                activeView={activeView}
-                isProcessing={isProcessing}
-                onClick={handleViewClick}
-              />
-              <NavButton
-                view="solo-401k"
-                label="Solo 401(k)"
-                icon={Landmark}
-                activeColor="bg-blue-500/10"
-                activeTextColor="text-blue-400"
-                activeView={activeView}
-                isProcessing={isProcessing}
-                onClick={handleViewClick}
-              />
-              <NavButton
-                view="estimated-tax"
-                label="Est. Taxes"
-                icon={Receipt}
-                activeColor="bg-red-500/10"
-                activeTextColor="text-red-400"
-                activeView={activeView}
-                isProcessing={isProcessing}
-                onClick={handleViewClick}
-              />
-
-              {showTnTax && (
-                <NavButton
-                  view="tn-tax"
-                  label="TN Tax"
-                  icon={Calculator}
-                  activeColor="bg-amber-500/10"
-                  activeTextColor="text-amber-500"
-                  activeView={activeView}
-                  isProcessing={isProcessing}
-                  onClick={handleViewClick}
-                />
-              )}
             </div>
           </div>
         )}
