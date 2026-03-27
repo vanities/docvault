@@ -241,10 +241,9 @@ export function SalesView() {
           type="button"
           size="sm"
           onClick={() => setProductsDialogOpen(true)}
-          className="shrink-0 gap-1.5"
+          className="shrink-0 bg-amber-500 text-white hover:bg-amber-400"
         >
-          <Settings className="w-4 h-4" />
-          Products
+          Edit Products
         </Button>
       </div>
 
