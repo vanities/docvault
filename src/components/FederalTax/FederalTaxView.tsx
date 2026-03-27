@@ -95,10 +95,17 @@ interface FederalTaxFiled {
 
 interface ComputedData {
   wages: number;
+  federalWithheld: number;
   businessIncome: number;
   capitalGains: number;
   dividendIncome: number;
   otherIncome: number;
+  totalIncome: number;
+  seTax: number;
+  seTaxDeduction: number;
+  retirementDeduction: number;
+  totalAdjustments: number;
+  agi: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -188,27 +195,59 @@ function setNestedValue(obj: FederalTaxFiled, path: string, value: number): Fede
   return clone;
 }
 
-// Map quick-stats fields to our computed fields
-function mapQuickStatsToComputed(stats: Record<string, unknown>): ComputedData | null {
-  if (!stats || typeof stats !== 'object') return null;
-  const s = stats as Record<string, number>;
-  if (s.documentCount === 0) return null;
+// Map financial-snapshot taxSummary to our computed fields
+function mapSnapshotToComputed(snapshot: Record<string, unknown>): ComputedData | null {
+  if (!snapshot || typeof snapshot !== 'object') return null;
+  const ts = snapshot.taxSummary as Record<string, unknown> | undefined;
+  if (!ts) return null;
+  const wages = (ts.wages as number) || 0;
+  const businessIncome = (ts.scheduleCIncome as number) || 0;
+  const capGains = ts.capitalGains as Record<string, number> | undefined;
+  const capitalGains = capGains ? capGains.total || 0 : 0;
+  const divs = ts.dividends as Record<string, number> | undefined;
+  const dividendIncome = divs ? divs.ordinary || 0 : 0;
+  const otherIncome = (ts.otherIncome as number) || 0;
+  const totalIncome = (ts.estimatedTotalIncome as number) || 0;
+  const seTax = (ts.seTax as number) || 0;
+  const seTaxDeduction = (ts.seTaxDeduction as number) || 0;
+  const retirementDeduction = (ts.retirementDeduction as number) || 0;
+  const totalAdjustments = (ts.estimatedAdjustments as number) || 0;
+  const agi = (ts.estimatedAGI as number) || 0;
+  const federalWithheld = (ts.federalWithheld as number) || 0;
+
+  // If no meaningful data, return null
+  if (wages === 0 && businessIncome === 0 && capitalGains === 0 && totalIncome === 0) return null;
+
   return {
-    wages: s.w2Total || 0,
-    businessIncome: s.income1099Total || 0,
-    capitalGains: (s.capitalGainsShortTerm || 0) + (s.capitalGainsLongTerm || 0),
-    dividendIncome: 0, // would need 1099-DIV parser
-    otherIncome: 0,
+    wages,
+    federalWithheld,
+    businessIncome,
+    capitalGains,
+    dividendIncome,
+    otherIncome,
+    totalIncome,
+    seTax,
+    seTaxDeduction,
+    retirementDeduction,
+    totalAdjustments,
+    agi,
   };
 }
 
-// Which filed fields map to which computed fields
+// Which filed fields map to which computed fields (from financial-snapshot taxSummary)
 const COMPUTED_FIELD_MAP: Record<string, keyof ComputedData> = {
   'income.wages': 'wages',
   'income.businessIncome': 'businessIncome',
   'income.capitalGains': 'capitalGains',
   'income.dividendIncome': 'dividendIncome',
   'income.otherIncome': 'otherIncome',
+  'income.totalIncome': 'totalIncome',
+  'adjustments.seTaxDeduction': 'seTaxDeduction',
+  'adjustments.sepDeduction': 'retirementDeduction',
+  'adjustments.totalAdjustments': 'totalAdjustments',
+  agi: 'agi',
+  'tax.seTax': 'seTax',
+  'payments.incomeTaxWithheld': 'federalWithheld',
 };
 
 // ---------------------------------------------------------------------------
@@ -357,13 +396,13 @@ export function FederalTaxView() {
     Promise.all([
       fetch(`/api/federal-tax/${selectedYear}`).then((r) => r.json()),
       fetch(`/api/federal-tax/${selectedYear - 1}`).then((r) => r.json()),
-      fetch(`/api/analytics/quick-stats/all/${selectedYear}`)
+      fetch(`/api/financial-snapshot/${selectedYear}?format=json`)
         .then((r) => r.json())
         .catch(() => null),
-    ]).then(([current, prior, stats]) => {
+    ]).then(([current, prior, snapshot]) => {
       setData(current || emptyFiled());
       setPriorData(prior || null);
-      setComputed(mapQuickStatsToComputed(stats));
+      setComputed(mapSnapshotToComputed(snapshot));
       loadedRef.current = true;
     });
   }, [selectedYear]);
