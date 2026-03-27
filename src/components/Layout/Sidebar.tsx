@@ -372,7 +372,6 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
   const isTaxEntity = !isDocEntity;
   const showTnTax =
     entityConfig?.type === 'tax' && selectedEntity !== 'all' && selectedEntity !== 'personal';
-  const showPersonalTax = entityConfig?.type === 'tax' && selectedEntity === 'personal';
 
   const handleEntitySelect = (entity: EntityConfig) => {
     setSelectedEntity(entity.id);
@@ -381,13 +380,7 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
       onClose?.();
       return;
     }
-    // Personal-only views — redirect when switching away from personal
-    if (
-      (activeView === 'solo-401k' || activeView === 'estimated-tax') &&
-      entity.id !== 'personal'
-    ) {
-      setActiveView('tax-year');
-    } else if (activeView === 'tn-tax' && entity.id === 'personal') {
+    if (activeView === 'tn-tax' && entity.id === 'personal') {
       setActiveView('tax-year');
     } else if (activeView === 'settings') {
       setActiveView(entity.type === 'docs' ? 'all-files' : 'tax-year');
@@ -488,40 +481,36 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
                 onClick={handleViewClick}
               />
 
-              {showPersonalTax && (
-                <>
-                  <NavButton
-                    view="federal-tax"
-                    label="Federal Taxes"
-                    icon={Scale}
-                    activeColor="bg-violet-500/10"
-                    activeTextColor="text-violet-400"
-                    activeView={activeView}
-                    isProcessing={isProcessing}
-                    onClick={handleViewClick}
-                  />
-                  <NavButton
-                    view="solo-401k"
-                    label="Solo 401(k)"
-                    icon={Landmark}
-                    activeColor="bg-blue-500/10"
-                    activeTextColor="text-blue-400"
-                    activeView={activeView}
-                    isProcessing={isProcessing}
-                    onClick={handleViewClick}
-                  />
-                  <NavButton
-                    view="estimated-tax"
-                    label="Est. Taxes"
-                    icon={Receipt}
-                    activeColor="bg-red-500/10"
-                    activeTextColor="text-red-400"
-                    activeView={activeView}
-                    isProcessing={isProcessing}
-                    onClick={handleViewClick}
-                  />
-                </>
-              )}
+              <NavButton
+                view="federal-tax"
+                label="Federal Taxes"
+                icon={Scale}
+                activeColor="bg-violet-500/10"
+                activeTextColor="text-violet-400"
+                activeView={activeView}
+                isProcessing={isProcessing}
+                onClick={handleViewClick}
+              />
+              <NavButton
+                view="solo-401k"
+                label="Solo 401(k)"
+                icon={Landmark}
+                activeColor="bg-blue-500/10"
+                activeTextColor="text-blue-400"
+                activeView={activeView}
+                isProcessing={isProcessing}
+                onClick={handleViewClick}
+              />
+              <NavButton
+                view="estimated-tax"
+                label="Est. Taxes"
+                icon={Receipt}
+                activeColor="bg-red-500/10"
+                activeTextColor="text-red-400"
+                activeView={activeView}
+                isProcessing={isProcessing}
+                onClick={handleViewClick}
+              />
 
               {showTnTax && (
                 <NavButton
