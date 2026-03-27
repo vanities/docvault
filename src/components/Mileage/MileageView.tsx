@@ -400,7 +400,7 @@ export function MileageView() {
           type="button"
           variant="outline"
           size="sm"
-          className="shrink-0 gap-1.5"
+          className="shrink-0 gap-1.5 border-border"
           onClick={() => setSettingsOpen(true)}
         >
           <Settings2 className="w-4 h-4" />
