@@ -700,6 +700,11 @@ async function handleRequest(req: Request): Promise<Response> {
     if (color) config.entities[entityIndex].color = color;
     if (icon !== undefined) (config.entities[entityIndex] as Record<string, unknown>).icon = icon;
     if (description !== undefined) config.entities[entityIndex].description = description;
+    if (body.metadata !== undefined) {
+      // Merge metadata (shallow merge — allows setting individual keys)
+      const existing = config.entities[entityIndex].metadata || {};
+      config.entities[entityIndex].metadata = { ...existing, ...body.metadata };
+    }
 
     await saveConfig(config);
 
