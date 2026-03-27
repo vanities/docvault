@@ -110,6 +110,7 @@ interface ComputedData {
   totalIncome: number;
   seTax: number;
   seTaxDeduction: number;
+  educatorExpenses: number;
   retirementDeduction: number;
   totalAdjustments: number;
   agi: number;
@@ -231,6 +232,7 @@ function mapSnapshotToComputed(snapshot: Record<string, unknown>): ComputedData 
   const totalIncome = (ts.estimatedTotalIncome as number) || 0;
   const seTax = (ts.seTax as number) || 0;
   const seTaxDeduction = (ts.seTaxDeduction as number) || 0;
+  const educatorExpenses = (ts.educatorExpenses as number) || 0;
   const retirementDeduction = (ts.retirementDeduction as number) || 0;
   const totalAdjustments = (ts.estimatedAdjustments as number) || 0;
   const agi = (ts.estimatedAGI as number) || 0;
@@ -263,6 +265,7 @@ function mapSnapshotToComputed(snapshot: Record<string, unknown>): ComputedData 
     totalIncome,
     seTax,
     seTaxDeduction,
+    educatorExpenses,
     retirementDeduction,
     totalAdjustments,
     agi,
@@ -290,6 +293,7 @@ const COMPUTED_FIELD_MAP: Record<string, keyof ComputedData> = {
   'income.otherIncome': 'stakingIncome',
   'income.totalIncome': 'totalIncome',
   // Adjustments
+  'adjustments.educatorExpenses': 'educatorExpenses',
   'adjustments.seTaxDeduction': 'seTaxDeduction',
   'adjustments.sepDeduction': 'retirementDeduction',
   'adjustments.totalAdjustments': 'totalAdjustments',
