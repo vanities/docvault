@@ -161,7 +161,8 @@ export function getTaxCalculation(
   retirementDeduction: number,
   bankRevenue?: EntityBankRevenue,
   entityExpenses?: EntityExpenses,
-  qbiLossCarryforward?: number
+  qbiLossCarryforward?: number,
+  educatorExpenseEligible?: number
 ): TaxCalculation {
   let totalWages = 0;
   let totalFederalWithheld = 0;
@@ -295,7 +296,10 @@ export function getTaxCalculation(
     totalStakingIncome +
     totalOtherIncome;
 
-  const estimatedAdjustments = seTaxDeduction + retirementDeduction;
+  // Educator expenses: $300 per eligible K-12 teacher (max $600 MFJ)
+  const educatorExpenses = Math.min((educatorExpenseEligible || 0) * 300, 600);
+
+  const estimatedAdjustments = seTaxDeduction + retirementDeduction + educatorExpenses;
   const estimatedAGI = estimatedTotalIncome - estimatedAdjustments;
 
   // Standard deduction
@@ -392,6 +396,7 @@ export function getTaxCalculation(
       longTerm: cryptoCapGainsLT,
       total: cryptoCapGainsTotal,
     },
+    educatorExpenses,
     standardDeduction,
     qbiDeduction,
     estimatedTaxableIncome,

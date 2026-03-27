@@ -562,9 +562,9 @@ export async function handleFinancialSnapshotRoutes(
         }
       }
 
-      // Read QBI loss carryforward from personal entity metadata
-      // Keyed by prior year (e.g., "2024" means carryforward FROM 2024 INTO 2025)
+      // Read tax settings from personal entity metadata
       let qbiLossCarryforward = 0;
+      let educatorExpenseEligible = 0;
       const personalEntity = entitySummaries['personal'];
       if (personalEntity) {
         const personalMeta = personalEntity.entity?.metadata as Record<string, unknown> | undefined;
@@ -575,6 +575,9 @@ export async function handleFinancialSnapshotRoutes(
             qbiLossCarryforward = parseFloat(String(cfData[priorYear])) || 0;
           }
         }
+        if (personalMeta?.educatorExpenseEligible) {
+          educatorExpenseEligible = parseInt(String(personalMeta.educatorExpenseEligible)) || 0;
+        }
       }
 
       const taxSummary = getTaxCalculation(
@@ -583,7 +586,8 @@ export async function handleFinancialSnapshotRoutes(
         retirementDeduction,
         bankRevenueByEntity,
         expensesByEntity,
-        qbiLossCarryforward
+        qbiLossCarryforward,
+        educatorExpenseEligible
       );
 
       // Form 2210 periods from bank deposit summaries (already computed by analytics module)
