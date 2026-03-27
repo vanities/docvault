@@ -183,6 +183,9 @@ export function extractK1Income(parsed: ParsedData, filename: string): IncomeIte
 export function extractCapitalGains(parsed: ParsedData, filename: string): CapitalGainsItem | null {
   const docType = (parsed._documentType || parsed.documentType) as string;
 
+  // Skip koinly docs — handled by extractKoinly8949/extractKoinlyScheduleIncome
+  if (docType === 'koinly-schedule' || docType === 'koinly-8949') return null;
+
   // 1099-Composite: gains are nested under b.{}
   if (docType === '1099-composite') {
     const b = parsed.b as Record<string, unknown> | undefined;
