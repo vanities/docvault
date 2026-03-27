@@ -21,6 +21,7 @@ export type NavView =
   | 'tn-tax'
   | 'solo-401k'
   | 'estimated-tax'
+  | 'federal-tax'
   | 'crypto'
   | 'brokers'
   | 'banks'
@@ -209,6 +210,7 @@ export function AppProvider({ children }: AppProviderProps) {
     'gold',
     'solo-401k',
     'estimated-tax',
+    'federal-tax',
     'property',
   ]);
 
