@@ -268,9 +268,9 @@ function SimplefinBanner({
 
   if (!configured) {
     return (
-      <Card variant="glass" className="p-4 mb-6 flex items-center justify-between">
+      <Card variant="glass" className="p-4 mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-blue-500/10">
+          <div className="p-2 rounded-lg bg-blue-500/10 shrink-0">
             <Link className="w-4 h-4 text-blue-500" />
           </div>
           <div>
@@ -287,7 +287,7 @@ function SimplefinBanner({
             // Navigate to settings - dispatch a custom event
             window.dispatchEvent(new CustomEvent('navigate-to-settings'));
           }}
-          className="flex items-center gap-1.5 px-4 py-2 text-[13px] font-medium bg-blue-500 text-surface-0 rounded-xl hover:bg-blue-400 transition-colors"
+          className="flex items-center gap-1.5 px-4 py-2 text-[13px] font-medium bg-blue-500 text-surface-0 rounded-xl hover:bg-blue-400 transition-colors ml-auto"
         >
           <ExternalLink className="w-3.5 h-3.5" />
           Set Up in Settings
@@ -297,9 +297,9 @@ function SimplefinBanner({
   }
 
   return (
-    <Card variant="glass" className="p-4 mb-6 flex items-center justify-between">
+    <Card variant="glass" className="p-4 mb-6 flex flex-wrap items-center justify-between gap-3">
       <div className="flex items-center gap-3">
-        <div className="p-2 rounded-lg bg-green-500/10">
+        <div className="p-2 rounded-lg bg-green-500/10 shrink-0">
           <Link className="w-4 h-4 text-green-500" />
         </div>
         <div>
@@ -309,7 +309,7 @@ function SimplefinBanner({
           </p>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 ml-auto">
         <Button
           type="button"
           variant="ghost"

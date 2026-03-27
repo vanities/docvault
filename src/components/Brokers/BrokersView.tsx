@@ -557,9 +557,9 @@ function SnapTradeBanner({
 
   if (!status.configured) {
     return (
-      <Card variant="glass" className="p-4 mb-6 flex items-center justify-between">
+      <Card variant="glass" className="p-4 mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-violet-500/10">
+          <div className="p-2 rounded-lg bg-violet-500/10 shrink-0">
             <Link className="w-4 h-4 text-violet-500" />
           </div>
           <div>
@@ -571,7 +571,7 @@ function SnapTradeBanner({
         </div>
         <Button
           onClick={() => window.dispatchEvent(new CustomEvent('navigate-to-settings'))}
-          className="bg-violet-500 hover:bg-violet-400"
+          className="bg-violet-500 hover:bg-violet-400 ml-auto"
         >
           <ExternalLink className="w-3.5 h-3.5" />
           Set Up in Settings
@@ -581,9 +581,9 @@ function SnapTradeBanner({
   }
 
   return (
-    <Card variant="glass" className="p-4 mb-6 flex items-center justify-between">
+    <Card variant="glass" className="p-4 mb-6 flex flex-wrap items-center justify-between gap-3">
       <div className="flex items-center gap-3">
-        <div className="p-2 rounded-lg bg-green-500/10">
+        <div className="p-2 rounded-lg bg-green-500/10 shrink-0">
           <Link className="w-4 h-4 text-green-500" />
         </div>
         <div>
@@ -593,7 +593,7 @@ function SnapTradeBanner({
           </p>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 ml-auto">
         <Button
           variant="ghost"
           size="sm"
