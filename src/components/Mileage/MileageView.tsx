@@ -12,11 +12,19 @@ import {
   Pencil,
   Check,
   X,
+  Settings2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import type { Vehicle, MileageEntry, MileageData, SavedAddress } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
@@ -91,6 +99,10 @@ export function MileageView() {
   // Edit state — addresses
   const [editingAddrId, setEditingAddrId] = useState<string | null>(null);
   const [editAddrLabel, setEditAddrLabel] = useState('');
+
+  // Settings modal
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'vehicles' | 'addresses'>('vehicles');
 
   const fetchData = useCallback(async () => {
     try {
@@ -377,13 +389,22 @@ export function MileageView() {
         <div className="p-2.5 bg-teal-500/10 rounded-xl">
           <Fuel className="w-6 h-6 text-teal-500" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="font-display text-xl text-surface-950 italic">Mileage Tracker</h1>
           <p className="text-[12px] text-surface-600 truncate">
             {entityName || (selectedEntity === 'all' ? 'All Entities' : selectedEntity)} · IRS Rate:
             ${data.irsRate.toFixed(2)}/mile
           </p>
         </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="shrink-0 text-surface-500 hover:text-surface-900"
+          onClick={() => setSettingsOpen(true)}
+        >
+          <Settings2 className="w-5 h-5" />
+        </Button>
       </div>
 
       {/* Quick Stats */}
@@ -884,300 +905,363 @@ export function MileageView() {
         })}
       </div>
 
-      {/* Vehicles */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-surface-900 flex items-center gap-2">
-            <Car className="w-4 h-4 text-surface-600" /> Vehicles
-          </h2>
-          {showVehicleForm ? (
-            <Button
+      {/* Settings Modal — Vehicles & Addresses */}
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Mileage Settings</DialogTitle>
+            <DialogDescription>Manage your vehicles and saved addresses.</DialogDescription>
+          </DialogHeader>
+
+          {/* Tab switcher */}
+          <div className="flex rounded-lg bg-surface-100 p-0.5">
+            <button
               type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setShowVehicleForm(false)}
+              onClick={() => setSettingsTab('vehicles')}
+              className={`flex-1 flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                settingsTab === 'vehicles'
+                  ? 'bg-white text-surface-900 shadow-sm'
+                  : 'text-surface-500 hover:text-surface-700'
+              }`}
             >
-              <X className="w-3 h-3" /> Cancel
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="text-teal-600 bg-teal-500/10 border-teal-500/20 hover:bg-teal-500/15"
-              onClick={() => setShowVehicleForm(true)}
-            >
-              <Plus className="w-3 h-3" /> Add
-            </Button>
-          )}
-        </div>
-
-        {showVehicleForm && (
-          <form onSubmit={handleAddVehicle} className="glass-card rounded-xl p-3 space-y-2">
-            <div className="grid grid-cols-[1fr_4.5rem] gap-2">
-              <Input
-                type="text"
-                value={newVehicleName}
-                onChange={(e) => setNewVehicleName(e.target.value)}
-                placeholder="Farm Truck"
-                required
-              />
-              <Input
-                type="number"
-                value={newVehicleYear}
-                onChange={(e) => setNewVehicleYear(e.target.value)}
-                placeholder="2020"
-                className="text-center"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <Input
-                type="text"
-                value={newVehicleMake}
-                onChange={(e) => setNewVehicleMake(e.target.value)}
-                placeholder="Ford"
-              />
-              <Input
-                type="text"
-                value={newVehicleModel}
-                onChange={(e) => setNewVehicleModel(e.target.value)}
-                placeholder="F-150"
-              />
-            </div>
-            <Button type="submit" className="w-full bg-teal-500 hover:bg-teal-400">
-              Add Vehicle
-            </Button>
-          </form>
-        )}
-
-        <Card variant="glass" className="overflow-hidden">
-          {data.vehicles.length === 0 && (
-            <p className="text-sm text-surface-500 text-center py-6">No vehicles added yet</p>
-          )}
-          {data.vehicles.map((vehicle) => {
-            const isEditing = editingVehicleId === vehicle.id;
-
-            if (isEditing) {
-              return (
-                <div
-                  key={vehicle.id}
-                  className="px-4 py-3 bg-surface-50 border-b border-border/50 last:border-b-0 space-y-2"
-                >
-                  <div className="grid grid-cols-[1fr_4.5rem] gap-2">
-                    <Input
-                      type="text"
-                      className="bg-surface-50"
-                      value={editVehicleName}
-                      onChange={(e) => setEditVehicleName(e.target.value)}
-                      placeholder="Farm Truck"
-                    />
-                    <Input
-                      type="number"
-                      className="bg-surface-50 text-center"
-                      value={editVehicleYear}
-                      onChange={(e) => setEditVehicleYear(e.target.value)}
-                      placeholder="2020"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input
-                      type="text"
-                      className="bg-surface-50"
-                      value={editVehicleMake}
-                      onChange={(e) => setEditVehicleMake(e.target.value)}
-                      placeholder="Ford"
-                    />
-                    <Input
-                      type="text"
-                      className="bg-surface-50"
-                      value={editVehicleModel}
-                      onChange={(e) => setEditVehicleModel(e.target.value)}
-                      placeholder="F-150"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      className="flex-1 bg-teal-500 hover:bg-teal-400"
-                      onClick={() => void handleUpdateVehicle(vehicle.id)}
-                    >
-                      <Check className="w-3.5 h-3.5" /> Save
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="flex-1"
-                      onClick={() => setEditingVehicleId(null)}
-                    >
-                      <X className="w-3.5 h-3.5" /> Cancel
-                    </Button>
-                  </div>
-                </div>
-              );
-            }
-
-            return (
-              <div key={vehicle.id} className="px-4 py-3 border-b border-border/50 last:border-b-0">
-                <div className="min-w-0">
-                  <span className="text-sm font-medium text-surface-900">{vehicle.name}</span>
-                  {(vehicle.year || vehicle.make || vehicle.model) && (
-                    <p className="text-[11px] text-surface-500 mt-0.5">
-                      {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ')}
-                    </p>
-                  )}
-                </div>
-                <div className="flex gap-2 mt-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => startEditVehicle(vehicle)}
-                  >
-                    <Pencil className="w-3 h-3" /> Edit
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost-danger"
-                    size="sm"
-                    onClick={() => void handleDeleteVehicle(vehicle.id)}
-                  >
-                    <Trash2 className="w-3 h-3" /> Delete
-                  </Button>
-                </div>
-              </div>
-            );
-          })}
-        </Card>
-      </div>
-
-      {/* Saved Addresses */}
-      {geocodeEnabled && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-surface-900 flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-surface-600" /> Saved Addresses
-            </h2>
-            {showAddressForm ? (
-              <Button
+              <Car className="w-3.5 h-3.5" /> Vehicles
+            </button>
+            {geocodeEnabled && (
+              <button
                 type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setShowAddressForm(false)}
+                onClick={() => setSettingsTab('addresses')}
+                className={`flex-1 flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  settingsTab === 'addresses'
+                    ? 'bg-white text-surface-900 shadow-sm'
+                    : 'text-surface-500 hover:text-surface-700'
+                }`}
               >
-                <X className="w-3 h-3" /> Cancel
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="text-teal-600 bg-teal-500/10 border-teal-500/20 hover:bg-teal-500/15"
-                onClick={() => setShowAddressForm(true)}
-              >
-                <Plus className="w-3 h-3" /> Add
-              </Button>
+                <MapPin className="w-3.5 h-3.5" /> Addresses
+              </button>
             )}
           </div>
 
-          {showAddressForm && (
-            <form onSubmit={handleAddAddress} className="glass-card rounded-xl p-3 space-y-2">
-              <Input
-                type="text"
-                value={newAddrLabel}
-                onChange={(e) => setNewAddrLabel(e.target.value)}
-                placeholder="Label (e.g., Home, Office)"
-                required
-              />
-              <AddressAutocomplete
-                label="Address"
-                placeholder="Search for address..."
-                value={newAddrSelected}
-                onChange={setNewAddrSelected}
-              />
-              <Button
-                type="submit"
-                className="w-full bg-teal-500 hover:bg-teal-400"
-                disabled={!newAddrLabel.trim() || !newAddrSelected}
-              >
-                Save Address
-              </Button>
-            </form>
-          )}
-
-          <Card variant="glass" className="overflow-hidden">
-            {savedAddresses.length === 0 && (
-              <p className="text-sm text-surface-500 text-center py-6">No saved addresses yet</p>
-            )}
-            {savedAddresses.map((addr) => {
-              const isEditing = editingAddrId === addr.id;
-
-              if (isEditing) {
-                return (
-                  <div
-                    key={addr.id}
-                    className="px-4 py-3 bg-surface-50 border-b border-border/50 last:border-b-0 space-y-2"
-                  >
-                    <div>
-                      <Label className="text-[10px]">Label</Label>
-                      <Input
-                        type="text"
-                        className="bg-surface-50"
-                        value={editAddrLabel}
-                        onChange={(e) => setEditAddrLabel(e.target.value)}
-                      />
-                    </div>
-                    <p className="text-[11px] text-surface-500 truncate">{addr.formatted}</p>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        className="flex-1 bg-teal-500 hover:bg-teal-400"
-                        onClick={() => void handleUpdateAddress(addr.id)}
-                      >
-                        <Check className="w-3.5 h-3.5" /> Save
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        className="flex-1"
-                        onClick={() => setEditingAddrId(null)}
-                      >
-                        <X className="w-3.5 h-3.5" /> Cancel
-                      </Button>
-                    </div>
-                  </div>
-                );
-              }
-
-              return (
-                <div key={addr.id} className="px-4 py-3 border-b border-border/50 last:border-b-0">
-                  <div className="min-w-0">
-                    <span className="text-sm font-medium text-surface-900">{addr.label}</span>
-                    <p className="text-[11px] text-surface-500 truncate">{addr.formatted}</p>
-                  </div>
-                  <div className="flex gap-2 mt-2">
+          {/* Scrollable content */}
+          <div className="overflow-y-auto -mx-6 px-6 flex-1 min-h-0">
+            {/* ── Vehicles Tab ── */}
+            {settingsTab === 'vehicles' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-surface-500 uppercase tracking-wider">
+                    {data.vehicles.length} vehicle{data.vehicles.length !== 1 ? 's' : ''}
+                  </span>
+                  {showVehicleForm ? (
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => startEditAddress(addr)}
+                      onClick={() => setShowVehicleForm(false)}
                     >
-                      <Pencil className="w-3 h-3" /> Edit
+                      <X className="w-3 h-3" /> Cancel
                     </Button>
+                  ) : (
                     <Button
                       type="button"
-                      variant="ghost-danger"
+                      variant="outline"
                       size="sm"
-                      onClick={() => void handleDeleteAddress(addr.id)}
+                      className="text-teal-600 bg-teal-500/10 border-teal-500/20 hover:bg-teal-500/15"
+                      onClick={() => setShowVehicleForm(true)}
                     >
-                      <Trash2 className="w-3 h-3" /> Delete
+                      <Plus className="w-3 h-3" /> Add
                     </Button>
-                  </div>
+                  )}
                 </div>
-              );
-            })}
-          </Card>
-        </div>
-      )}
+
+                {showVehicleForm && (
+                  <form
+                    onSubmit={handleAddVehicle}
+                    className="rounded-xl border border-border p-3 space-y-2"
+                  >
+                    <div className="grid grid-cols-[1fr_4.5rem] gap-2">
+                      <Input
+                        type="text"
+                        value={newVehicleName}
+                        onChange={(e) => setNewVehicleName(e.target.value)}
+                        placeholder="Farm Truck"
+                        required
+                      />
+                      <Input
+                        type="number"
+                        value={newVehicleYear}
+                        onChange={(e) => setNewVehicleYear(e.target.value)}
+                        placeholder="2020"
+                        className="text-center"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        type="text"
+                        value={newVehicleMake}
+                        onChange={(e) => setNewVehicleMake(e.target.value)}
+                        placeholder="Ford"
+                      />
+                      <Input
+                        type="text"
+                        value={newVehicleModel}
+                        onChange={(e) => setNewVehicleModel(e.target.value)}
+                        placeholder="F-150"
+                      />
+                    </div>
+                    <Button type="submit" className="w-full bg-teal-500 hover:bg-teal-400">
+                      Add Vehicle
+                    </Button>
+                  </form>
+                )}
+
+                <div className="rounded-xl border border-border overflow-hidden">
+                  {data.vehicles.length === 0 && (
+                    <p className="text-sm text-surface-500 text-center py-6">
+                      No vehicles added yet
+                    </p>
+                  )}
+                  {data.vehicles.map((vehicle) => {
+                    const isEditing = editingVehicleId === vehicle.id;
+
+                    if (isEditing) {
+                      return (
+                        <div
+                          key={vehicle.id}
+                          className="px-4 py-3 bg-surface-50 border-b border-border/50 last:border-b-0 space-y-2"
+                        >
+                          <div className="grid grid-cols-[1fr_4.5rem] gap-2">
+                            <Input
+                              type="text"
+                              className="bg-surface-50"
+                              value={editVehicleName}
+                              onChange={(e) => setEditVehicleName(e.target.value)}
+                              placeholder="Farm Truck"
+                            />
+                            <Input
+                              type="number"
+                              className="bg-surface-50 text-center"
+                              value={editVehicleYear}
+                              onChange={(e) => setEditVehicleYear(e.target.value)}
+                              placeholder="2020"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Input
+                              type="text"
+                              className="bg-surface-50"
+                              value={editVehicleMake}
+                              onChange={(e) => setEditVehicleMake(e.target.value)}
+                              placeholder="Ford"
+                            />
+                            <Input
+                              type="text"
+                              className="bg-surface-50"
+                              value={editVehicleModel}
+                              onChange={(e) => setEditVehicleModel(e.target.value)}
+                              placeholder="F-150"
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              className="flex-1 bg-teal-500 hover:bg-teal-400"
+                              onClick={() => void handleUpdateVehicle(vehicle.id)}
+                            >
+                              <Check className="w-3.5 h-3.5" /> Save
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              className="flex-1"
+                              onClick={() => setEditingVehicleId(null)}
+                            >
+                              <X className="w-3.5 h-3.5" /> Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div
+                        key={vehicle.id}
+                        className="px-4 py-3 border-b border-border/50 last:border-b-0"
+                      >
+                        <div className="min-w-0">
+                          <span className="text-sm font-medium text-surface-900">
+                            {vehicle.name}
+                          </span>
+                          {(vehicle.year || vehicle.make || vehicle.model) && (
+                            <p className="text-[11px] text-surface-500 mt-0.5">
+                              {[vehicle.year, vehicle.make, vehicle.model]
+                                .filter(Boolean)
+                                .join(' ')}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex gap-2 mt-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => startEditVehicle(vehicle)}
+                          >
+                            <Pencil className="w-3 h-3" /> Edit
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost-danger"
+                            size="sm"
+                            onClick={() => void handleDeleteVehicle(vehicle.id)}
+                          >
+                            <Trash2 className="w-3 h-3" /> Delete
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ── Addresses Tab ── */}
+            {settingsTab === 'addresses' && geocodeEnabled && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-surface-500 uppercase tracking-wider">
+                    {savedAddresses.length} address{savedAddresses.length !== 1 ? 'es' : ''}
+                  </span>
+                  {showAddressForm ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowAddressForm(false)}
+                    >
+                      <X className="w-3 h-3" /> Cancel
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-teal-600 bg-teal-500/10 border-teal-500/20 hover:bg-teal-500/15"
+                      onClick={() => setShowAddressForm(true)}
+                    >
+                      <Plus className="w-3 h-3" /> Add
+                    </Button>
+                  )}
+                </div>
+
+                {showAddressForm && (
+                  <form
+                    onSubmit={handleAddAddress}
+                    className="rounded-xl border border-border p-3 space-y-2"
+                  >
+                    <Input
+                      type="text"
+                      value={newAddrLabel}
+                      onChange={(e) => setNewAddrLabel(e.target.value)}
+                      placeholder="Label (e.g., Home, Office)"
+                      required
+                    />
+                    <AddressAutocomplete
+                      label="Address"
+                      placeholder="Search for address..."
+                      value={newAddrSelected}
+                      onChange={setNewAddrSelected}
+                    />
+                    <Button
+                      type="submit"
+                      className="w-full bg-teal-500 hover:bg-teal-400"
+                      disabled={!newAddrLabel.trim() || !newAddrSelected}
+                    >
+                      Save Address
+                    </Button>
+                  </form>
+                )}
+
+                <div className="rounded-xl border border-border overflow-hidden">
+                  {savedAddresses.length === 0 && (
+                    <p className="text-sm text-surface-500 text-center py-6">
+                      No saved addresses yet
+                    </p>
+                  )}
+                  {savedAddresses.map((addr) => {
+                    const isEditing = editingAddrId === addr.id;
+
+                    if (isEditing) {
+                      return (
+                        <div
+                          key={addr.id}
+                          className="px-4 py-3 bg-surface-50 border-b border-border/50 last:border-b-0 space-y-2"
+                        >
+                          <div>
+                            <Label className="text-[10px]">Label</Label>
+                            <Input
+                              type="text"
+                              className="bg-surface-50"
+                              value={editAddrLabel}
+                              onChange={(e) => setEditAddrLabel(e.target.value)}
+                            />
+                          </div>
+                          <p className="text-[11px] text-surface-500 truncate">{addr.formatted}</p>
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              className="flex-1 bg-teal-500 hover:bg-teal-400"
+                              onClick={() => void handleUpdateAddress(addr.id)}
+                            >
+                              <Check className="w-3.5 h-3.5" /> Save
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              className="flex-1"
+                              onClick={() => setEditingAddrId(null)}
+                            >
+                              <X className="w-3.5 h-3.5" /> Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div
+                        key={addr.id}
+                        className="px-4 py-3 border-b border-border/50 last:border-b-0"
+                      >
+                        <div className="min-w-0">
+                          <span className="text-sm font-medium text-surface-900">{addr.label}</span>
+                          <p className="text-[11px] text-surface-500 truncate">{addr.formatted}</p>
+                        </div>
+                        <div className="flex gap-2 mt-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => startEditAddress(addr)}
+                          >
+                            <Pencil className="w-3 h-3" /> Edit
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost-danger"
+                            size="sm"
+                            onClick={() => void handleDeleteAddress(addr.id)}
+                          >
+                            <Trash2 className="w-3 h-3" /> Delete
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
