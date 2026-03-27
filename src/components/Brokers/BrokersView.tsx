@@ -581,46 +581,50 @@ function SnapTradeBanner({
   }
 
   return (
-    <Card variant="glass" className="p-4 mb-6 flex flex-wrap items-center justify-between gap-3">
+    <Card variant="glass" className="p-4 mb-6">
       <div className="flex items-center gap-3">
-        <div className="p-2 rounded-lg bg-green-500/10 shrink-0">
+        <div className="p-2 rounded-lg bg-green-500/10 shrink-0 self-start mt-0.5">
           <Link className="w-4 h-4 text-green-500" />
         </div>
-        <div>
-          <p className="text-[13px] font-medium text-surface-950">SnapTrade Connected</p>
-          <p className="text-[11px] text-surface-600">
-            Auto-sync enabled. Connect additional brokerages or sync now.
-          </p>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between">
+            <p className="text-[13px] font-medium text-surface-950">SnapTrade Connected</p>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onConnect}
+                className="text-violet-500 hover:bg-violet-500/10"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Link Brokerage
+              </Button>
+              <Button
+                variant="ghost-danger"
+                size="icon-sm"
+                onClick={onDisconnect}
+                title="Disconnect SnapTrade"
+              >
+                <Unlink className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] text-surface-600">
+              Auto-sync enabled. Connect additional brokerages or sync now.
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onSync}
+              disabled={isSyncing}
+              className="text-accent-500 hover:bg-accent-500/10 shrink-0"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? 'Syncing...' : 'Sync'}
+            </Button>
+          </div>
         </div>
-      </div>
-      <div className="flex items-center gap-2 ml-auto">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onConnect}
-          className="text-violet-500 hover:bg-violet-500/10"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Link Brokerage
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onSync}
-          disabled={isSyncing}
-          className="text-accent-500 hover:bg-accent-500/10"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-          {isSyncing ? 'Syncing...' : 'Sync'}
-        </Button>
-        <Button
-          variant="ghost-danger"
-          size="icon-sm"
-          onClick={onDisconnect}
-          title="Disconnect SnapTrade"
-        >
-          <Unlink className="w-3.5 h-3.5" />
-        </Button>
       </div>
     </Card>
   );
