@@ -242,31 +242,31 @@ export function SalesView() {
           variant="outline"
           size="sm"
           onClick={() => setProductsDialogOpen(true)}
-          className="shrink-0"
-          title="Manage Products"
+          className="shrink-0 gap-1.5"
         >
           <Settings className="w-4 h-4" />
+          Products
         </Button>
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-2 gap-3">
-        <Card variant="glass" className="p-4">
+      <div className="grid grid-cols-2 gap-2">
+        <Card variant="glass" className="p-3">
           <p className="text-[11px] text-surface-500 uppercase tracking-wider font-medium">
             This Month
           </p>
-          <p className="text-2xl font-bold text-surface-950 tabular-nums mt-1">
+          <p className="text-xl font-bold text-surface-950 tabular-nums mt-1">
             ${currentMonthSales.toFixed(2)}
           </p>
           <p className="text-[11px] text-surface-500 mt-0.5">
             {currentMonthCount} sale{currentMonthCount !== 1 ? 's' : ''}
           </p>
         </Card>
-        <Card variant="glass" className="p-4">
+        <Card variant="glass" className="p-3">
           <p className="text-[11px] text-surface-500 uppercase tracking-wider font-medium">
             All Time
           </p>
-          <p className="text-2xl font-bold text-amber-500 tabular-nums mt-1">
+          <p className="text-xl font-bold text-amber-500 tabular-nums mt-1">
             ${allTimeSales.toFixed(2)}
           </p>
           <p className="text-[11px] text-surface-500 mt-0.5">

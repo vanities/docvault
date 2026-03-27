@@ -411,50 +411,39 @@ export function MileageView() {
       {/* Quick Stats */}
       <div className="grid grid-cols-3 gap-2">
         <Card variant="glass" className="p-3">
-          <p className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+          <p className="text-[11px] text-surface-500 uppercase tracking-wider font-medium">
             This Month
           </p>
-          <p className="text-lg font-bold text-surface-950 tabular-nums mt-0.5">
-            {currentMonthMiles.toFixed(0)}
+          <p className="text-xl font-bold text-surface-950 tabular-nums mt-1">
+            {currentMonthMiles.toFixed(0)} mi
           </p>
-          <p className="text-[10px] text-surface-500">miles</p>
+          <p className="text-[11px] text-surface-500 mt-0.5">
+            ${irsDeduction.toFixed(0)} deduction
+          </p>
         </Card>
         <Card variant="glass" className="p-3">
-          <p className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
-            IRS Deduct
+          <p className="text-[11px] text-surface-500 uppercase tracking-wider font-medium">
+            All Time
           </p>
-          <p className="text-lg font-bold text-teal-500 tabular-nums mt-0.5">
-            ${irsDeduction.toFixed(0)}
+          <p className="text-xl font-bold text-teal-500 tabular-nums mt-1">
+            {allTimeMiles.toFixed(0)} mi
           </p>
-          <p className="text-[10px] text-surface-500">this month</p>
+          <p className="text-[11px] text-surface-500 mt-0.5">
+            ${allTimeDeduction.toFixed(2)} deduction
+          </p>
         </Card>
         <Card variant="glass" className="p-3">
-          <p className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+          <p className="text-[11px] text-surface-500 uppercase tracking-wider font-medium">
             Avg MPG
           </p>
-          <p className="text-lg font-bold text-surface-950 tabular-nums mt-0.5">
+          <p className="text-xl font-bold text-surface-950 tabular-nums mt-1">
             {avgMpg > 0 ? avgMpg.toFixed(1) : '—'}
           </p>
-          <p className="text-[10px] text-surface-500">
+          <p className="text-[11px] text-surface-500 mt-0.5">
             {fillUps.length} fill-up{fillUps.length !== 1 ? 's' : ''}
           </p>
         </Card>
       </div>
-
-      {/* All-time bar */}
-      <Card variant="glass" className="px-4 py-2.5">
-        <div className="flex items-center justify-center gap-4">
-          <span className="text-[11px] text-surface-500 uppercase tracking-wider font-medium">
-            All Time
-          </span>
-          <span className="text-sm font-semibold text-surface-900 tabular-nums">
-            {allTimeMiles.toFixed(0)} mi
-          </span>
-          <span className="text-sm font-bold text-teal-500 tabular-nums">
-            ${allTimeDeduction.toFixed(2)}
-          </span>
-        </div>
-      </Card>
 
       {/* New Entry Form */}
       <form onSubmit={handleSubmit} className="glass-card rounded-xl p-4 space-y-3">
