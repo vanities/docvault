@@ -544,11 +544,20 @@ export async function handleFinancialSnapshotRoutes(
         );
       }
 
+      // Build expenses by entity for Schedule C net profit
+      const expensesByEntity: Record<string, number> = {};
+      for (const [entityId, data] of Object.entries(entitySummaries)) {
+        if (data.expenses && data.expenses.length > 0) {
+          expensesByEntity[entityId] = data.expenses.reduce((sum, e) => sum + e.amount, 0);
+        }
+      }
+
       const taxSummary = getTaxCalculation(
         year,
         entitySummaries,
         retirementDeduction,
-        bankRevenueByEntity
+        bankRevenueByEntity,
+        expensesByEntity
       );
 
       // Form 2210 periods from bank deposit summaries (already computed by analytics module)
