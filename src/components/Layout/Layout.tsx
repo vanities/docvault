@@ -21,6 +21,7 @@ import { GoldView } from '../Gold/GoldView';
 import { PropertyView } from '../Property/PropertyView';
 import { Solo401kView } from '../Solo401k/Solo401kView';
 import { EstimatedTaxView } from '../EstimatedTax/EstimatedTaxView';
+import { FederalTaxView } from '../FederalTax/FederalTaxView';
 import { AddEntityModal } from '../Settings/AddEntityModal';
 import { SearchResultsView } from '../Search/SearchResultsView';
 
@@ -88,6 +89,8 @@ export function Layout() {
         return <Solo401kView />;
       case 'estimated-tax':
         return <EstimatedTaxView />;
+      case 'federal-tax':
+        return <FederalTaxView />;
       case 'crypto':
         return <CryptoView />;
       case 'brokers':

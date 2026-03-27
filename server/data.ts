@@ -458,6 +458,108 @@ export async function saveEstimatedTaxes(data: EstimatedTaxData): Promise<void> 
 }
 
 // ============================================================================
+// Federal Tax Storage (filed 1040 data by year)
+// ============================================================================
+
+export const FEDERAL_TAX_FILE = path.join(DATA_DIR, '.docvault-federal.json');
+
+export interface FederalTaxIncome {
+  wages: number;
+  interestIncome: number;
+  dividendIncome: number;
+  businessIncome: number;
+  rentalK1Income: number;
+  capitalGains: number;
+  taxableIRA: number;
+  taxablePension: number;
+  taxableSS: number;
+  unemployment: number;
+  otherIncome: number;
+  totalIncome: number;
+}
+
+export interface FederalTaxAdjustments {
+  iraDeduction: number;
+  educatorExpenses: number;
+  hsaDeduction: number;
+  studentLoanInterest: number;
+  seTaxDeduction: number;
+  sepDeduction: number;
+  otherAdjustments: number;
+  totalAdjustments: number;
+}
+
+export interface FederalTaxDeductions {
+  standardOrItemized: number;
+  qbiDeduction: number;
+  totalDeductions: number;
+}
+
+export interface FederalTaxTax {
+  incomeTax: number;
+  amt: number;
+  seTax: number;
+  additionalTaxQualifiedPlans: number;
+  niit: number;
+  totalTax: number;
+}
+
+export interface FederalTaxCredits {
+  foreignTaxCredit: number;
+  childCareCredit: number;
+  elderlyCredit: number;
+  educationCredit: number;
+  retirementSavingsCredit: number;
+  childTaxCredit: number;
+  totalCredits: number;
+}
+
+export interface FederalTaxPayments {
+  incomeTaxWithheld: number;
+  eic: number;
+  additionalChildTaxCredit: number;
+  excessSocialSecurity: number;
+  estimatedPayments: number;
+  totalPayments: number;
+}
+
+export interface FederalTaxBalance {
+  amountOwed: number;
+  underpaymentPenalty: number;
+  totalOwed: number;
+}
+
+export interface FederalTaxFiled {
+  filed: boolean;
+  filedDate?: string;
+  income: FederalTaxIncome;
+  adjustments: FederalTaxAdjustments;
+  agi: number;
+  deductions: FederalTaxDeductions;
+  taxableIncome: number;
+  tax: FederalTaxTax;
+  credits: FederalTaxCredits;
+  payments: FederalTaxPayments;
+  balance: FederalTaxBalance;
+}
+
+// Keyed by year string e.g. "2025"
+export type FederalTaxData = Record<string, FederalTaxFiled>;
+
+export async function loadFederalTax(): Promise<FederalTaxData> {
+  try {
+    const content = await fs.readFile(FEDERAL_TAX_FILE, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return {};
+  }
+}
+
+export async function saveFederalTax(data: FederalTaxData): Promise<void> {
+  await fs.writeFile(FEDERAL_TAX_FILE, JSON.stringify(data, null, 2));
+}
+
+// ============================================================================
 // Todos Storage
 // ============================================================================
 

@@ -12,6 +12,8 @@ import {
   saveContributions,
   loadEstimatedTaxes,
   saveEstimatedTaxes,
+  loadFederalTax,
+  saveFederalTax,
   loadTodos,
   saveTodos,
   loadSettings,
@@ -236,6 +238,36 @@ export async function handleMiscRoutes(
     allData[key] = { payments, config: config || allData[key]?.config || { annualTarget: 0 } };
     await saveEstimatedTaxes(allData);
     return jsonResponse({ ok: true, ...allData[key] });
+  }
+
+  // ========================================================================
+  // Federal Tax API (filed 1040 data)
+  // ========================================================================
+
+  // GET /api/federal-tax - Get all years
+  if (pathname === '/api/federal-tax' && req.method === 'GET') {
+    const allData = await loadFederalTax();
+    return jsonResponse(allData);
+  }
+
+  // GET /api/federal-tax/:year
+  const fedTaxGetMatch = pathname.match(/^\/api\/federal-tax\/(\d{4})$/);
+  if (fedTaxGetMatch && req.method === 'GET') {
+    const year = fedTaxGetMatch[1];
+    const allData = await loadFederalTax();
+    const entry = allData[year] || null;
+    return jsonResponse(entry);
+  }
+
+  // PUT /api/federal-tax/:year
+  const fedTaxPutMatch = pathname.match(/^\/api\/federal-tax\/(\d{4})$/);
+  if (fedTaxPutMatch && req.method === 'PUT') {
+    const year = fedTaxPutMatch[1];
+    const body = await req.json();
+    const allData = await loadFederalTax();
+    allData[year] = body;
+    await saveFederalTax(allData);
+    return jsonResponse({ ok: true, ...allData[year] });
   }
 
   // ========================================================================
