@@ -7,6 +7,7 @@ import {
   RotateCcw,
   Check,
   ChevronLeft,
+  Settings2,
 } from 'lucide-react';
 import { useAppContext } from '../../contexts/AppContext';
 import { Card } from '@/components/ui/card';
@@ -434,7 +435,7 @@ const STANDALONE_LINES: LineItem[] = [
 // ---------------------------------------------------------------------------
 
 export function FederalTaxView() {
-  const { selectedYear, setSelectedYear, availableYears } = useAppContext();
+  const { selectedYear, setSelectedYear, availableYears, entities } = useAppContext();
 
   const [data, setData] = useState<FederalTaxFiled>(emptyFiled());
   const [priorData, setPriorData] = useState<FederalTaxFiled | null>(null);
@@ -444,6 +445,8 @@ export function FederalTaxView() {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
   const loadedRef = useRef(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -544,6 +547,34 @@ export function FederalTaxView() {
       color: 'bg-amber-400',
       tooltip: `Filed: ${formatCurrency(filedVal)} | Computed: ${formatCurrency(computedVal)} | Delta: ${formatCurrency(filedVal - computedVal)}`,
     };
+  };
+
+  // Save entity metadata helper
+  const saveEntityMetadata = useCallback(
+    async (entityId: string, metadata: Record<string, unknown>) => {
+      setSettingsSaving(true);
+      try {
+        await fetch(`/api/entities/${entityId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ metadata }),
+        });
+        // Reload snapshot to reflect changes in computed values
+        const snapshot = await fetch(`/api/financial-snapshot/${selectedYear}?format=json`)
+          .then((r) => r.json())
+          .catch(() => null);
+        setComputed(mapSnapshotToComputed(snapshot));
+      } finally {
+        setSettingsSaving(false);
+      }
+    },
+    [selectedYear]
+  );
+
+  // Get current metadata values from entities
+  const getEntityMeta = (entityId: string): Record<string, unknown> => {
+    const entity = entities.find((e) => e.id === entityId);
+    return (entity?.metadata as Record<string, unknown>) || {};
   };
 
   const totalOwed = getNestedValue(data, 'balance.totalOwed');
@@ -667,6 +698,17 @@ export function FederalTaxView() {
       </div>
 
       {/* Sections */}
+      {/* Tax Settings Panel */}
+      <TaxSettingsPanel
+        show={showSettings}
+        onToggle={() => setShowSettings(!showSettings)}
+        year={selectedYear}
+        entities={entities}
+        getEntityMeta={getEntityMeta}
+        onSave={saveEntityMetadata}
+        saving={settingsSaving}
+      />
+
       {SECTIONS.map((section, sectionIdx) => {
         const expanded = expandedSections.has(section.title);
         const totalValue = getNestedValue(data, section.totalPath);
@@ -991,5 +1033,198 @@ function StandaloneLine({
         )}
       </div>
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tax Settings Panel — configures entity metadata used by tax-calc
+// ---------------------------------------------------------------------------
+
+interface TaxSettingsPanelProps {
+  show: boolean;
+  onToggle: () => void;
+  year: number;
+  entities: { id: string; name: string; metadata?: Record<string, string | string[]> }[];
+  getEntityMeta: (entityId: string) => Record<string, unknown>;
+  onSave: (entityId: string, metadata: Record<string, unknown>) => Promise<void>;
+  saving: boolean;
+}
+
+interface SettingField {
+  entityId: string;
+  key: string;
+  label: string;
+  description: string;
+  type: 'number' | 'yearKeyed';
+  placeholder?: string;
+}
+
+function TaxSettingsPanel({
+  show,
+  onToggle,
+  year,
+  entities,
+  getEntityMeta,
+  onSave,
+  saving,
+}: TaxSettingsPanelProps) {
+  // Build settings fields from entities
+  const taxEntities = entities.filter((e) => (e as { type?: string }).type === 'tax');
+  const businessEntities = taxEntities.filter((e) => e.id !== 'personal');
+
+  const fields: SettingField[] = [
+    // QBI carryforward on personal entity
+    {
+      entityId: 'personal',
+      key: 'qbiCarryforward',
+      label: 'QBI Loss Carryforward',
+      description: `From ${year - 1} Form 8995 Line 16 — reduces ${year} QBI deduction`,
+      type: 'yearKeyed',
+      placeholder: '0',
+    },
+    {
+      entityId: 'personal',
+      key: 'dependentCount',
+      label: 'Qualifying Children',
+      description: 'Under age 17 with SSN — for Child Tax Credit ($2,200 each)',
+      type: 'number',
+      placeholder: '0',
+    },
+    {
+      entityId: 'personal',
+      key: 'educatorExpenseEligible',
+      label: 'Educator Expense Eligible',
+      description: 'Number of spouses who are K-12 teachers ($300 each, max $600 MFJ)',
+      type: 'number',
+      placeholder: '0',
+    },
+    // Home office per business entity
+    ...businessEntities.map((e) => ({
+      entityId: e.id,
+      key: 'homeOfficeDeduction',
+      label: `Home Office — ${e.name}`,
+      description: 'Simplified method: $5/sq ft × sq ft used (max $1,500)',
+      type: 'number' as const,
+      placeholder: '0',
+    })),
+  ];
+
+  const getValue = (field: SettingField): string => {
+    const meta = getEntityMeta(field.entityId);
+    if (field.type === 'yearKeyed') {
+      const obj = meta[field.key] as Record<string, unknown> | undefined;
+      const priorYear = String(year - 1);
+      return obj?.[priorYear] != null ? String(obj[priorYear]) : '';
+    }
+    return meta[field.key] != null ? String(meta[field.key]) : '';
+  };
+
+  const handleSave = async (field: SettingField, value: string) => {
+    const numValue = parseFloat(value) || 0;
+    if (field.type === 'yearKeyed') {
+      const meta = getEntityMeta(field.entityId);
+      const existing = (meta[field.key] as Record<string, unknown>) || {};
+      const priorYear = String(year - 1);
+      await onSave(field.entityId, {
+        [field.key]: { ...existing, [priorYear]: numValue },
+      });
+    } else {
+      await onSave(field.entityId, { [field.key]: String(numValue) });
+    }
+  };
+
+  return (
+    <Card variant="glass" className="overflow-hidden">
+      <button
+        onClick={onToggle}
+        className="flex items-center w-full px-4 py-3 text-left hover:bg-surface-50/50 transition-colors"
+      >
+        {show ? (
+          <ChevronDown className="w-4 h-4 text-surface-400 mr-2 shrink-0" />
+        ) : (
+          <ChevronRight className="w-4 h-4 text-surface-400 mr-2 shrink-0" />
+        )}
+        <Settings2 className="w-4 h-4 text-surface-400 mr-2" />
+        <span className="text-xs font-semibold text-surface-500 uppercase tracking-wider flex-1">
+          Tax Settings
+        </span>
+        {saving && <span className="text-[10px] text-amber-500 animate-pulse">Saving...</span>}
+      </button>
+      {show && (
+        <div className="border-t border-surface-100 divide-y divide-surface-100">
+          {fields.map((field) => (
+            <TaxSettingRow
+              key={`${field.entityId}:${field.key}`}
+              field={field}
+              value={getValue(field)}
+              onSave={handleSave}
+            />
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function TaxSettingRow({
+  field,
+  value,
+  onSave,
+}: {
+  field: SettingField;
+  value: string;
+  onSave: (field: SettingField, value: string) => Promise<void>;
+}) {
+  const [localValue, setLocalValue] = useState(value);
+  const [dirty, setDirty] = useState(false);
+
+  // Sync when external value changes
+  useEffect(() => {
+    setLocalValue(value);
+    setDirty(false);
+  }, [value]);
+
+  const handleChange = (v: string) => {
+    setLocalValue(v);
+    setDirty(v !== value);
+  };
+
+  const handleBlur = async () => {
+    if (dirty) {
+      await onSave(field, localValue);
+      setDirty(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      (e.target as HTMLInputElement).blur();
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-2.5 group">
+      <div className="flex-1 min-w-0">
+        <div className="text-xs font-medium text-surface-800">{field.label}</div>
+        <div className="text-[10px] text-surface-500 leading-tight">{field.description}</div>
+      </div>
+      <div className="relative">
+        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-surface-400 text-xs">$</span>
+        <input
+          type="text"
+          inputMode="numeric"
+          value={localValue}
+          onChange={(e) => handleChange(e.target.value.replace(/[^0-9.]/g, ''))}
+          onBlur={handleBlur}
+          onKeyDown={handleKeyDown}
+          placeholder={field.placeholder}
+          className={`w-28 text-right font-mono text-sm pl-5 pr-2 py-1 rounded border transition-colors focus:outline-none focus:ring-1 focus:ring-violet-400 ${
+            dirty
+              ? 'border-amber-400 bg-amber-50'
+              : 'border-surface-200 bg-surface-50 hover:border-surface-300'
+          }`}
+        />
+      </div>
+    </div>
   );
 }
