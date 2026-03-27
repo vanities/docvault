@@ -526,7 +526,7 @@ export function FederalTaxView() {
     if (computedVal === 0 && filedVal === 0) return null;
     if (computedVal === 0)
       return { color: 'bg-surface-500', tooltip: 'No computed data from parsed docs' };
-    if (Math.abs(filedVal - computedVal) < 1) {
+    if (Math.abs(filedVal - computedVal) <= 1) {
       return {
         color: 'bg-emerald-400',
         tooltip: `Matches parsed docs: ${formatCurrency(computedVal)}`,

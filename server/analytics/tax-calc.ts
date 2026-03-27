@@ -90,11 +90,16 @@ export interface EntityBankRevenue {
   [entityId: string]: number; // total revenue deposits for the year
 }
 
+export interface EntityExpenses {
+  [entityId: string]: number; // total deductible expenses for the year
+}
+
 export function getTaxCalculation(
   year: string,
   entitySummaries: Record<string, EntityIncome>,
   retirementDeduction: number,
-  bankRevenue?: EntityBankRevenue
+  bankRevenue?: EntityBankRevenue,
+  entityExpenses?: EntityExpenses
 ): TaxCalculation {
   let totalWages = 0;
   let totalFederalWithheld = 0;
@@ -182,13 +187,14 @@ export function getTaxCalculation(
   }
 
   // Compute Schedule C income: prefer bank revenue deposits (more complete than 1099-NECs)
+  // Then subtract parsed expenses for a closer approximation of net profit
   for (const [entityId, necTotal] of Object.entries(necByEntity)) {
+    let gross = necTotal;
     if (bankRevenue && bankRevenue[entityId] > 0) {
-      // Use bank revenue deposits instead of 1099-NEC total
-      totalScheduleC += bankRevenue[entityId];
-    } else {
-      totalScheduleC += necTotal;
+      gross = bankRevenue[entityId];
     }
+    const expenses = entityExpenses?.[entityId] || 0;
+    totalScheduleC += gross - expenses;
   }
 
   // SE tax estimate (Schedule C × 0.9235 × 15.3%)
