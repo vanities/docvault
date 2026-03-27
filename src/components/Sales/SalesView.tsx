@@ -10,6 +10,7 @@ import {
   Pencil,
   Check,
   X,
+  Settings,
 } from 'lucide-react';
 import type { Sale, SaleProduct, SalesData } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
@@ -18,6 +19,13 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -46,6 +54,7 @@ export function SalesView() {
   const [newProductName, setNewProductName] = useState('');
   const [newProductPrice, setNewProductPrice] = useState('');
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
+  const [productsDialogOpen, setProductsDialogOpen] = useState(false);
 
   // Edit state — sales
   const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
@@ -222,12 +231,22 @@ export function SalesView() {
         <div className="p-2.5 bg-amber-500/10 rounded-xl">
           <Egg className="w-6 h-6 text-amber-500" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="font-display text-xl text-surface-950">Sales Tracker</h1>
           <p className="text-[12px] text-surface-600 truncate">
             {entityName || (selectedEntity === 'all' ? 'All Entities' : selectedEntity)}
           </p>
         </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setProductsDialogOpen(true)}
+          className="shrink-0"
+          title="Manage Products"
+        >
+          <Settings className="w-4 h-4" />
+        </Button>
       </div>
 
       {/* Quick Stats */}
@@ -511,143 +530,154 @@ export function SalesView() {
         })}
       </div>
 
-      {/* Products */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-surface-900 flex items-center gap-2">
-            <Package className="w-4 h-4 text-surface-600" />
-            Products
-          </h2>
-          {showProductForm ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setShowProductForm(false)}
-            >
-              <X className="w-3 h-3" /> Cancel
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="text-amber-600 bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/15"
-              onClick={() => setShowProductForm(true)}
-            >
-              <Plus className="w-3 h-3" /> Add
-            </Button>
-          )}
-        </div>
+      {/* Products Dialog */}
+      <Dialog open={productsDialogOpen} onOpenChange={setProductsDialogOpen}>
+        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="w-4 h-4 text-surface-600" />
+              Products
+            </DialogTitle>
+            <DialogDescription>Manage your product catalog</DialogDescription>
+          </DialogHeader>
 
-        {showProductForm && (
-          <form onSubmit={handleAddProduct} className="glass-card rounded-xl p-3 space-y-2">
-            <div className="grid grid-cols-[1fr_5rem] gap-2">
-              <Input
-                type="text"
-                value={newProductName}
-                onChange={(e) => setNewProductName(e.target.value)}
-                placeholder="Eggs (dozen)"
-                required
-              />
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={newProductPrice}
-                onChange={(e) => setNewProductPrice(e.target.value)}
-                placeholder="5.00"
-                required
-                className="text-center"
-              />
-            </div>
-            <Button type="submit" className="w-full bg-amber-500 hover:bg-amber-400">
-              Add Product
-            </Button>
-          </form>
-        )}
-
-        <Card variant="glass" className="overflow-hidden">
-          {data.products.length === 0 && (
-            <p className="text-sm text-surface-500 text-center py-6">No products added yet</p>
-          )}
-          {data.products.map((product) => {
-            const isEditing = editingProductId === product.id;
-
-            if (isEditing) {
-              return (
-                <div
-                  key={product.id}
-                  className="px-4 py-3 bg-surface-50 border-b border-border/50 last:border-b-0 space-y-2"
+          <div className="space-y-3">
+            <div className="flex justify-end">
+              {showProductForm ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowProductForm(false)}
                 >
-                  <div className="grid grid-cols-[1fr_5rem] gap-2">
-                    <Input
-                      type="text"
-                      value={editProductName}
-                      onChange={(e) => setEditProductName(e.target.value)}
-                      className="bg-surface-50"
-                    />
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={editProductPrice}
-                      onChange={(e) => setEditProductPrice(e.target.value)}
-                      className="bg-surface-50 text-center"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      onClick={() => void handleUpdateProduct(product.id)}
-                      className="flex-1 bg-amber-500 hover:bg-amber-400"
-                    >
-                      <Check className="w-3.5 h-3.5" /> Save
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => setEditingProductId(null)}
-                      className="flex-1"
-                    >
-                      <X className="w-3.5 h-3.5" /> Cancel
-                    </Button>
-                  </div>
-                </div>
-              );
-            }
+                  <X className="w-3 h-3" /> Cancel
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-amber-600 bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/15"
+                  onClick={() => setShowProductForm(true)}
+                >
+                  <Plus className="w-3 h-3" /> Add
+                </Button>
+              )}
+            </div>
 
-            return (
-              <div key={product.id} className="px-4 py-3 border-b border-border/50 last:border-b-0">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-surface-900">{product.name}</span>
-                  <span className="text-sm font-bold text-surface-950 tabular-nums">
-                    ${product.price.toFixed(2)}
-                  </span>
+            {showProductForm && (
+              <form onSubmit={handleAddProduct} className="glass-card rounded-xl p-3 space-y-2">
+                <div className="grid grid-cols-[1fr_5rem] gap-2">
+                  <Input
+                    type="text"
+                    value={newProductName}
+                    onChange={(e) => setNewProductName(e.target.value)}
+                    placeholder="Eggs (dozen)"
+                    required
+                  />
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={newProductPrice}
+                    onChange={(e) => setNewProductPrice(e.target.value)}
+                    placeholder="5.00"
+                    required
+                    className="text-center"
+                  />
                 </div>
-                <div className="flex gap-2 mt-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => startEditProduct(product)}
+                <Button type="submit" className="w-full bg-amber-500 hover:bg-amber-400">
+                  Add Product
+                </Button>
+              </form>
+            )}
+
+            <Card variant="glass" className="overflow-hidden">
+              {data.products.length === 0 && (
+                <p className="text-sm text-surface-500 text-center py-6">No products added yet</p>
+              )}
+              {data.products.map((product) => {
+                const isEditing = editingProductId === product.id;
+
+                if (isEditing) {
+                  return (
+                    <div
+                      key={product.id}
+                      className="px-4 py-3 bg-surface-50 border-b border-border/50 last:border-b-0 space-y-2"
+                    >
+                      <div className="grid grid-cols-[1fr_5rem] gap-2">
+                        <Input
+                          type="text"
+                          value={editProductName}
+                          onChange={(e) => setEditProductName(e.target.value)}
+                          className="bg-surface-50"
+                        />
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={editProductPrice}
+                          onChange={(e) => setEditProductPrice(e.target.value)}
+                          className="bg-surface-50 text-center"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          onClick={() => void handleUpdateProduct(product.id)}
+                          className="flex-1 bg-amber-500 hover:bg-amber-400"
+                        >
+                          <Check className="w-3.5 h-3.5" /> Save
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => setEditingProductId(null)}
+                          className="flex-1"
+                        >
+                          <X className="w-3.5 h-3.5" /> Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div
+                    key={product.id}
+                    className="px-4 py-3 border-b border-border/50 last:border-b-0"
                   >
-                    <Pencil className="w-3 h-3" /> Edit
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost-danger"
-                    size="sm"
-                    onClick={() => void handleDeleteProduct(product.id)}
-                  >
-                    <Trash2 className="w-3 h-3" /> Delete
-                  </Button>
-                </div>
-              </div>
-            );
-          })}
-        </Card>
-      </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-surface-900">{product.name}</span>
+                      <span className="text-sm font-bold text-surface-950 tabular-nums">
+                        ${product.price.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => startEditProduct(product)}
+                      >
+                        <Pencil className="w-3 h-3" /> Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost-danger"
+                        size="sm"
+                        onClick={() => void handleDeleteProduct(product.id)}
+                      >
+                        <Trash2 className="w-3 h-3" /> Delete
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </Card>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
