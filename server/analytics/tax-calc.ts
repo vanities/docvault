@@ -65,7 +65,14 @@ const PENSION_CODES = new Set(['1', '2', '3', '4', '7', 'D', 'G', 'H']);
 // IRA-specific codes (Line 4a/4b) — traditional/Roth IRA distributions only
 const IRA_CODES = new Set<string>(); // Requires plan-type info we don't have; empty for now
 
-function calculateIncomeTax(taxableIncome: number, year: string): number {
+// MFJ long-term capital gains rate thresholds
+const LTCG_THRESHOLDS: Record<string, { zero: number; fifteen: number }> = {
+  '2024': { zero: 94050, fifteen: 583750 },
+  '2025': { zero: 96700, fifteen: 600050 },
+  '2026': { zero: 98350, fifteen: 610600 },
+};
+
+function calculateOrdinaryTax(taxableIncome: number, year: string): number {
   const brackets = MFJ_BRACKETS[year] || MFJ_BRACKETS['2025'];
   if (taxableIncome <= 0) return 0;
 
@@ -77,7 +84,61 @@ function calculateIncomeTax(taxableIncome: number, year: string): number {
     tax += taxableInBracket * bracket.rate;
     prevLimit = bracket.limit;
   }
-  return Math.round(tax);
+  return tax;
+}
+
+// Qualified Dividends and Capital Gain Tax Worksheet (Form 1040 instructions)
+// Taxes LTCG + qualified dividends at preferential rates (0%/15%/20%)
+function calculateIncomeTax(
+  taxableIncome: number,
+  year: string,
+  qualifiedDividends: number,
+  ltCapitalGains: number
+): number {
+  if (taxableIncome <= 0) return 0;
+
+  const thresholds = LTCG_THRESHOLDS[year] || LTCG_THRESHOLDS['2025'];
+
+  // Line 5: qualified dividends + net long-term capital gain (but not negative)
+  const preferentialIncome = Math.max(0, qualifiedDividends + Math.max(0, ltCapitalGains));
+
+  // If no preferential income, just use ordinary brackets
+  if (preferentialIncome <= 0) {
+    return Math.round(calculateOrdinaryTax(taxableIncome, year));
+  }
+
+  // Line 6: ordinary income (taxable income minus preferential)
+  const ordinaryIncome = Math.max(0, taxableIncome - preferentialIncome);
+
+  // Tax on ordinary income at normal brackets
+  const ordinaryTax = calculateOrdinaryTax(ordinaryIncome, year);
+
+  // Apply preferential rates to the LTCG/QD portion
+  // The preferential income stacks on top of ordinary income for bracket purposes
+  let preferentialTax = 0;
+  let remaining = preferentialIncome;
+  const stackBase = ordinaryIncome;
+
+  // 0% rate: up to the zero threshold
+  const zeroSpace = Math.max(0, thresholds.zero - stackBase);
+  const atZero = Math.min(remaining, zeroSpace);
+  remaining -= atZero;
+
+  // 15% rate: up to the fifteen threshold
+  const fifteenSpace = Math.max(0, thresholds.fifteen - stackBase - atZero);
+  const atFifteen = Math.min(remaining, fifteenSpace);
+  preferentialTax += atFifteen * 0.15;
+  remaining -= atFifteen;
+
+  // 20% rate: everything above
+  preferentialTax += remaining * 0.2;
+
+  const qdcgTax = ordinaryTax + preferentialTax;
+
+  // The actual tax is the LESSER of the QDCG worksheet result and the all-ordinary calculation
+  const allOrdinaryTax = calculateOrdinaryTax(taxableIncome, year);
+
+  return Math.round(Math.min(qdcgTax, allOrdinaryTax));
 }
 
 // ---------------------------------------------------------------------------
@@ -240,8 +301,14 @@ export function getTaxCalculation(
   const standardDeduction = STANDARD_DEDUCTION_MFJ[year] || STANDARD_DEDUCTION_MFJ['2025'];
   const estimatedTaxableIncome = Math.max(0, estimatedAGI - standardDeduction);
 
-  // Income tax from brackets (simplified — doesn't account for QDCG worksheet)
-  const estimatedIncomeTax = calculateIncomeTax(estimatedTaxableIncome, year);
+  // Income tax using QDCG worksheet (preferential rates for LTCG + qualified dividends)
+  const totalLTCG = totalCapGainsLT + cryptoCapGainsLT;
+  const estimatedIncomeTax = calculateIncomeTax(
+    estimatedTaxableIncome,
+    year,
+    totalQualifiedDividends,
+    totalLTCG
+  );
 
   // NIIT: 3.8% on lesser of net investment income or (AGI - $250K)
   const netInvestmentIncome =
