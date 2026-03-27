@@ -398,12 +398,13 @@ export function MileageView() {
         </div>
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
           size="sm"
-          className="shrink-0 text-surface-500 hover:text-surface-900"
+          className="shrink-0 gap-1.5"
           onClick={() => setSettingsOpen(true)}
         >
-          <Settings2 className="w-5 h-5" />
+          <Settings2 className="w-4 h-4" />
+          Vehicles / Addresses
         </Button>
       </div>
 
@@ -441,16 +442,18 @@ export function MileageView() {
       </div>
 
       {/* All-time bar */}
-      <Card variant="glass" className="px-4 py-2.5 flex items-center justify-center gap-4">
-        <span className="text-[11px] text-surface-500 uppercase tracking-wider font-medium">
-          All Time
-        </span>
-        <span className="text-sm font-semibold text-surface-900 tabular-nums">
-          {allTimeMiles.toFixed(0)} mi
-        </span>
-        <span className="text-sm font-bold text-teal-500 tabular-nums">
-          ${allTimeDeduction.toFixed(2)}
-        </span>
+      <Card variant="glass" className="px-4 py-2.5">
+        <div className="flex items-center justify-center gap-4">
+          <span className="text-[11px] text-surface-500 uppercase tracking-wider font-medium">
+            All Time
+          </span>
+          <span className="text-sm font-semibold text-surface-900 tabular-nums">
+            {allTimeMiles.toFixed(0)} mi
+          </span>
+          <span className="text-sm font-bold text-teal-500 tabular-nums">
+            ${allTimeDeduction.toFixed(2)}
+          </span>
+        </div>
       </Card>
 
       {/* New Entry Form */}
@@ -909,7 +912,7 @@ export function MileageView() {
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md max-h-[80vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Mileage Settings</DialogTitle>
+            <DialogTitle>Vehicles & Addresses</DialogTitle>
             <DialogDescription>Manage your vehicles and saved addresses.</DialogDescription>
           </DialogHeader>
 
@@ -920,7 +923,7 @@ export function MileageView() {
               onClick={() => setSettingsTab('vehicles')}
               className={`flex-1 flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                 settingsTab === 'vehicles'
-                  ? 'bg-white text-surface-900 shadow-sm'
+                  ? 'bg-surface-200 text-surface-900 shadow-sm'
                   : 'text-surface-500 hover:text-surface-700'
               }`}
             >
@@ -932,7 +935,7 @@ export function MileageView() {
                 onClick={() => setSettingsTab('addresses')}
                 className={`flex-1 flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                   settingsTab === 'addresses'
-                    ? 'bg-white text-surface-900 shadow-sm'
+                    ? 'bg-surface-200 text-surface-900 shadow-sm'
                     : 'text-surface-500 hover:text-surface-700'
                 }`}
               >
