@@ -5,7 +5,16 @@
 export interface IncomeItem {
   source: string; // employer name, payer name, entity name
   amount: number;
-  type: 'W-2' | '1099-NEC' | '1099-DIV' | '1099-INT' | '1099-B' | '1099-R' | '1099-MISC' | 'K-1' | 'other';
+  type:
+    | 'W-2'
+    | '1099-NEC'
+    | '1099-DIV'
+    | '1099-INT'
+    | '1099-B'
+    | '1099-R'
+    | '1099-MISC'
+    | 'K-1'
+    | 'other';
   details?: Record<string, unknown>;
   filePath?: string; // source file path for traceability
 }
@@ -94,6 +103,19 @@ export interface TaxCalculation {
     note: string;
     quarterly: { label: string; due: string }[];
   };
+  // Extended fields for federal tax view comparison
+  interestIncome: number;
+  taxablePension: number;
+  taxableIRA: number;
+  k1Income: number;
+  miscIncome: number;
+  stakingIncome: number;
+  cryptoCapitalGains: { shortTerm: number; longTerm: number; total: number };
+  standardDeduction: number;
+  estimatedTaxableIncome: number;
+  estimatedIncomeTax: number;
+  niit: number;
+  estimatedTotalTax: number;
 }
 
 // Form 2210 annualized income periods

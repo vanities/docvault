@@ -187,8 +187,8 @@ export function extractCapitalGains(parsed: ParsedData, filename: string): Capit
   if (docType === '1099-composite') {
     const b = parsed.b as Record<string, unknown> | undefined;
     // Also check flat fields (legacy format)
-    const stGain = ((b?.shortTermGainLoss as number) || (parsed.shortTermGainLoss as number) || 0);
-    const ltGain = ((b?.longTermGainLoss as number) || (parsed.longTermGainLoss as number) || 0);
+    const stGain = (b?.shortTermGainLoss as number) || (parsed.shortTermGainLoss as number) || 0;
+    const ltGain = (b?.longTermGainLoss as number) || (parsed.longTermGainLoss as number) || 0;
     if (stGain === 0 && ltGain === 0) return null;
     return {
       source: (parsed.payer || parsed.payerName || filename) as string,
@@ -204,7 +204,11 @@ export function extractCapitalGains(parsed: ParsedData, filename: string): Capit
   }
 
   // 1099-B: gains are flat
-  if (docType === '1099-b' || parsed.shortTermGainLoss !== undefined || parsed.longTermGainLoss !== undefined) {
+  if (
+    docType === '1099-b' ||
+    parsed.shortTermGainLoss !== undefined ||
+    parsed.longTermGainLoss !== undefined
+  ) {
     const stGain = (parsed.shortTermGainLoss as number) || 0;
     const ltGain = (parsed.longTermGainLoss as number) || 0;
     if (stGain === 0 && ltGain === 0) return null;
@@ -282,7 +286,12 @@ export function extractDepositTransactions(parsed: ParsedData): DepositTransacti
   } else if (Array.isArray(parsed.depositsAndAdditions)) {
     raw = parsed.depositsAndAdditions as typeof raw;
   } else if (Array.isArray(parsed.transactions)) {
-    const txns = parsed.transactions as { date?: string; description?: string; amount?: number; type?: string }[];
+    const txns = parsed.transactions as {
+      date?: string;
+      description?: string;
+      amount?: number;
+      type?: string;
+    }[];
     raw = txns.filter(
       (t) =>
         t.type === 'deposit' ||
@@ -353,7 +362,10 @@ export function extractAllIncome(parsed: ParsedData, filename: string): IncomeIt
   const items: IncomeItem[] = [];
 
   const w2 = extractW2Income(parsed, filename);
-  if (w2) { items.push(w2); return items; } // W-2 is exclusive
+  if (w2) {
+    items.push(w2);
+    return items;
+  } // W-2 is exclusive
 
   const nec = extract1099NECIncome(parsed, filename);
   if (nec) items.push(nec);
@@ -415,5 +427,67 @@ export function extractAllIncome(parsed: ParsedData, filename: string): IncomeIt
     }
   }
 
+  // Koinly 8949 — crypto capital gains
+  const koinlyGains = extractKoinly8949(parsed, filename);
+  if (koinlyGains) items.push(koinlyGains);
+
+  // Koinly Schedule — staking/digital asset income
+  const koinlyStaking = extractKoinlyScheduleIncome(parsed, filename);
+  if (koinlyStaking) items.push(koinlyStaking);
+
   return items;
+}
+
+// -------------------------------------------------------------------------
+// Koinly extractors
+// -------------------------------------------------------------------------
+
+export function extractKoinly8949(parsed: ParsedData, filename: string): IncomeItem | null {
+  const docType = (parsed._documentType || parsed.documentType) as string;
+  if (docType !== 'koinly-8949') return null;
+
+  const shortTermEntries = parsed.shortTerm as Array<{ gainLoss?: number }> | undefined;
+  const longTermEntries = parsed.longTerm as Array<{ gainLoss?: number }> | undefined;
+
+  let stTotal = 0;
+  let ltTotal = 0;
+  if (shortTermEntries) {
+    for (const e of shortTermEntries) stTotal += e.gainLoss || 0;
+  }
+  if (longTermEntries) {
+    for (const e of longTermEntries) ltTotal += e.gainLoss || 0;
+  }
+
+  const total = stTotal + ltTotal;
+  if (stTotal === 0 && ltTotal === 0) return null;
+
+  return {
+    source: 'Koinly 8949',
+    amount: total,
+    type: 'other',
+    details: {
+      cryptoShortTerm: Math.round(stTotal * 100) / 100,
+      cryptoLongTerm: Math.round(ltTotal * 100) / 100,
+    },
+    filePath: filename,
+  };
+}
+
+export function extractKoinlyScheduleIncome(
+  parsed: ParsedData,
+  filename: string
+): IncomeItem | null {
+  const docType = (parsed._documentType || parsed.documentType) as string;
+  if (docType !== 'koinly-schedule') return null;
+
+  const digitalAssetIncome = parsed.digitalAssetIncome as number | undefined;
+  if (!digitalAssetIncome || digitalAssetIncome === 0) return null;
+
+  return {
+    source: 'Koinly Schedule 1',
+    amount: digitalAssetIncome,
+    type: 'other',
+    details: { stakingIncome: digitalAssetIncome },
+    filePath: filename,
+  };
 }

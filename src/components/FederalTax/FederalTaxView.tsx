@@ -99,6 +99,12 @@ interface ComputedData {
   businessIncome: number;
   capitalGains: number;
   dividendIncome: number;
+  interestIncome: number;
+  taxablePension: number;
+  taxableIRA: number;
+  k1Income: number;
+  miscIncome: number;
+  stakingIncome: number;
   otherIncome: number;
   totalIncome: number;
   seTax: number;
@@ -106,6 +112,11 @@ interface ComputedData {
   retirementDeduction: number;
   totalAdjustments: number;
   agi: number;
+  standardDeduction: number;
+  estimatedTaxableIncome: number;
+  estimatedIncomeTax: number;
+  niit: number;
+  estimatedTotalTax: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -200,12 +211,19 @@ function mapSnapshotToComputed(snapshot: Record<string, unknown>): ComputedData 
   if (!snapshot || typeof snapshot !== 'object') return null;
   const ts = snapshot.taxSummary as Record<string, unknown> | undefined;
   if (!ts) return null;
+
   const wages = (ts.wages as number) || 0;
   const businessIncome = (ts.scheduleCIncome as number) || 0;
   const capGains = ts.capitalGains as Record<string, number> | undefined;
   const capitalGains = capGains ? capGains.total || 0 : 0;
   const divs = ts.dividends as Record<string, number> | undefined;
   const dividendIncome = divs ? divs.ordinary || 0 : 0;
+  const interestIncome = (ts.interestIncome as number) || 0;
+  const taxablePension = (ts.taxablePension as number) || 0;
+  const taxableIRA = (ts.taxableIRA as number) || 0;
+  const k1Income = (ts.k1Income as number) || 0;
+  const miscIncome = (ts.miscIncome as number) || 0;
+  const stakingIncome = (ts.stakingIncome as number) || 0;
   const otherIncome = (ts.otherIncome as number) || 0;
   const totalIncome = (ts.estimatedTotalIncome as number) || 0;
   const seTax = (ts.seTax as number) || 0;
@@ -214,6 +232,11 @@ function mapSnapshotToComputed(snapshot: Record<string, unknown>): ComputedData 
   const totalAdjustments = (ts.estimatedAdjustments as number) || 0;
   const agi = (ts.estimatedAGI as number) || 0;
   const federalWithheld = (ts.federalWithheld as number) || 0;
+  const standardDeduction = (ts.standardDeduction as number) || 0;
+  const estimatedTaxableIncome = (ts.estimatedTaxableIncome as number) || 0;
+  const estimatedIncomeTax = (ts.estimatedIncomeTax as number) || 0;
+  const niit = (ts.niit as number) || 0;
+  const estimatedTotalTax = (ts.estimatedTotalTax as number) || 0;
 
   // If no meaningful data, return null
   if (wages === 0 && businessIncome === 0 && capitalGains === 0 && totalIncome === 0) return null;
@@ -224,6 +247,12 @@ function mapSnapshotToComputed(snapshot: Record<string, unknown>): ComputedData 
     businessIncome,
     capitalGains,
     dividendIncome,
+    interestIncome,
+    taxablePension,
+    taxableIRA,
+    k1Income,
+    miscIncome,
+    stakingIncome,
     otherIncome,
     totalIncome,
     seTax,
@@ -231,22 +260,43 @@ function mapSnapshotToComputed(snapshot: Record<string, unknown>): ComputedData 
     retirementDeduction,
     totalAdjustments,
     agi,
+    standardDeduction,
+    estimatedTaxableIncome,
+    estimatedIncomeTax,
+    niit,
+    estimatedTotalTax,
   };
 }
 
 // Which filed fields map to which computed fields (from financial-snapshot taxSummary)
 const COMPUTED_FIELD_MAP: Record<string, keyof ComputedData> = {
+  // Income
   'income.wages': 'wages',
-  'income.businessIncome': 'businessIncome',
-  'income.capitalGains': 'capitalGains',
+  'income.interestIncome': 'interestIncome',
   'income.dividendIncome': 'dividendIncome',
-  'income.otherIncome': 'otherIncome',
+  'income.businessIncome': 'businessIncome',
+  'income.rentalK1Income': 'k1Income',
+  'income.capitalGains': 'capitalGains',
+  'income.taxableIRA': 'taxableIRA',
+  'income.taxablePension': 'taxablePension',
+  'income.otherIncome': 'stakingIncome',
   'income.totalIncome': 'totalIncome',
+  // Adjustments
   'adjustments.seTaxDeduction': 'seTaxDeduction',
   'adjustments.sepDeduction': 'retirementDeduction',
   'adjustments.totalAdjustments': 'totalAdjustments',
+  // AGI
   agi: 'agi',
+  // Deductions
+  'deductions.standardOrItemized': 'standardDeduction',
+  // Taxable income
+  taxableIncome: 'estimatedTaxableIncome',
+  // Tax
+  'tax.incomeTax': 'estimatedIncomeTax',
   'tax.seTax': 'seTax',
+  'tax.niit': 'niit',
+  'tax.totalTax': 'estimatedTotalTax',
+  // Payments
   'payments.incomeTaxWithheld': 'federalWithheld',
 };
 
