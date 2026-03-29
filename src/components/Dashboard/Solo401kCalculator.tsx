@@ -146,6 +146,15 @@ export function Solo401kCalculator({
   const [grossInput, setGrossInput] = useState(defaultGross.toFixed(0));
   const [expensesInput, setExpensesInput] = useState(defaultExpenses.toFixed(0));
 
+  // Sync inputs when analytics data loads (defaultGross/defaultExpenses change from 0 → real value)
+  const prevDefaultsRef = useRef({ gross: defaultGross, expenses: defaultExpenses });
+  useEffect(() => {
+    const prev = prevDefaultsRef.current;
+    if (prev.gross === 0 && defaultGross > 0) setGrossInput(defaultGross.toFixed(0));
+    if (prev.expenses === 0 && defaultExpenses > 0) setExpensesInput(defaultExpenses.toFixed(0));
+    prevDefaultsRef.current = { gross: defaultGross, expenses: defaultExpenses };
+  }, [defaultGross, defaultExpenses]);
+
   const [contributions, setContributions] = useState<Contribution[]>([]);
   const contribLoadedRef = useRef(false);
 
