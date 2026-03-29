@@ -83,7 +83,13 @@ interface QuickStatsResponse {
   income: IncomeSummary & { items: AnalyticsIncomeItem[] };
   expenses: ExpenseSummary & {
     items: AnalyticsExpenseItem[];
-    expenses: { vendor: string; amount: number; category: string; date?: string; filePath?: string }[];
+    expenses: {
+      vendor: string;
+      amount: number;
+      category: string;
+      date?: string;
+      filePath?: string;
+    }[];
   };
   bankDeposits: Record<string, BankDepositSummaryResponse>;
   invoices: InvoicesResponse;
@@ -135,7 +141,11 @@ const emptyExpenses: ExpenseSummary = {
   mileageCount: 0,
 };
 
-export function useAnalytics(entity: string, year: number, includeHidden = false): UseAnalyticsResult {
+export function useAnalytics(
+  entity: string,
+  year: number,
+  includeHidden = false
+): UseAnalyticsResult {
   const [data, setData] = useState<QuickStatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -177,7 +187,11 @@ export function useAnalytics(entity: string, year: number, includeHidden = false
   }, [entity, year, refreshKey]);
 
   const emptyInvoices: InvoiceSummaryData = {
-    entity, taxYear: year, invoiceTotal: 0, invoiceCount: 0, byCustomer: [],
+    entity,
+    taxYear: year,
+    invoiceTotal: 0,
+    invoiceCount: 0,
+    byCustomer: [],
   };
 
   if (!data) {
@@ -234,12 +248,16 @@ export function useAnalytics(entity: string, year: number, includeHidden = false
 
   // Aggregate bank deposits across entities
   let totalDeposits = 0;
+  let totalRevenue = 0;
+  let totalOwnerContributions = 0;
   let depositCount = 0;
   let statementCount = 0;
   const accountMap = new Map<string, { institution: string; accountType: string; total: number }>();
 
   for (const [, summary] of Object.entries(data.bankDeposits)) {
     totalDeposits += summary.totalDeposits;
+    totalRevenue += summary.totalRevenue ?? 0;
+    totalOwnerContributions += summary.totalOwnerContributions ?? 0;
     statementCount += summary.statementCount;
     for (const m of summary.monthly) {
       depositCount += m.sources.length;
@@ -250,6 +268,8 @@ export function useAnalytics(entity: string, year: number, includeHidden = false
     totalDeposits > 0
       ? {
           totalDeposits,
+          totalRevenue,
+          totalOwnerContributions,
           depositCount,
           statementCount,
           byAccount: Array.from(accountMap.values()),

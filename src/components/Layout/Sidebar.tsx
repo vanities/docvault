@@ -372,6 +372,7 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
   const isTaxEntity = !isDocEntity;
   const showTnTax =
     entityConfig?.type === 'tax' && selectedEntity !== 'all' && selectedEntity !== 'personal';
+  const showSolo401k = isTaxEntity;
 
   const handleEntitySelect = (entity: EntityConfig) => {
     setSelectedEntity(entity.id);
@@ -492,16 +493,18 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
                 isProcessing={isProcessing}
                 onClick={handleViewClick}
               />
-              <NavButton
-                view="solo-401k"
-                label="Solo 401(k)"
-                icon={Landmark}
-                activeColor="bg-blue-500/10"
-                activeTextColor="text-blue-400"
-                activeView={activeView}
-                isProcessing={isProcessing}
-                onClick={handleViewClick}
-              />
+              {showSolo401k && (
+                <NavButton
+                  view="solo-401k"
+                  label="Solo 401(k)"
+                  icon={Landmark}
+                  activeColor="bg-blue-500/10"
+                  activeTextColor="text-blue-400"
+                  activeView={activeView}
+                  isProcessing={isProcessing}
+                  onClick={handleViewClick}
+                />
+              )}
               <NavButton
                 view="sales"
                 label="Sales"

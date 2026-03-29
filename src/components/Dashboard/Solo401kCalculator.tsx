@@ -168,9 +168,9 @@ export function Solo401kCalculator({
       });
   }, [entity, taxYear]);
 
-  // Save contributions to server when they change (skip initial load)
+  // Save contributions to server when they change (skip initial load and "all" aggregate view)
   useEffect(() => {
-    if (!contribLoadedRef.current) return;
+    if (!contribLoadedRef.current || entity === 'all') return;
     fetch(`/api/contributions/${entity}/${taxYear}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -431,76 +431,80 @@ export function Solo401kCalculator({
                         {formatCurrency(c.amount)}
                       </span>
                     </div>
-                    <Button
-                      type="button"
-                      variant="ghost-danger"
-                      size="icon-xs"
-                      onClick={() => removeContribution(c.id)}
-                      className="opacity-0 group-hover:opacity-100"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
+                    {entity !== 'all' && (
+                      <Button
+                        type="button"
+                        variant="ghost-danger"
+                        size="icon-xs"
+                        onClick={() => removeContribution(c.id)}
+                        className="opacity-0 group-hover:opacity-100"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
                   </div>
                 ))}
               </div>
             )}
 
-            {/* Add contribution form */}
-            <div className="flex gap-2 items-end">
-              <div className="flex-shrink-0">
-                <label className="block text-[10px] text-surface-500 mb-1">Date</label>
-                <Input
-                  type="date"
-                  value={addDate}
-                  onChange={(e) => setAddDate(e.target.value)}
-                  className="px-2 py-1.5 h-auto text-[12px] font-mono bg-surface-200/50 rounded-lg"
-                />
-              </div>
-              <div className="flex-shrink-0">
-                <label className="block text-[10px] text-surface-500 mb-1">Type</label>
-                <Select
-                  value={addType}
-                  onValueChange={(val) => setAddType(val as 'employee' | 'employer')}
-                >
-                  <SelectTrigger className="text-[12px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="employee">Employee</SelectItem>
-                    <SelectItem value="employer">Employer</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex-1">
-                <label className="block text-[10px] text-surface-500 mb-1">Amount</label>
-                <div className="relative">
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-surface-500 text-sm">
-                    $
-                  </span>
+            {/* Add contribution form (hidden in "all" aggregate view) */}
+            {entity !== 'all' && (
+              <div className="flex gap-2 items-end">
+                <div className="flex-shrink-0">
+                  <label className="block text-[10px] text-surface-500 mb-1">Date</label>
                   <Input
-                    type="text"
-                    inputMode="numeric"
-                    value={addAmount}
-                    onChange={(e) => setAddAmount(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') addContribution();
-                    }}
-                    placeholder="0"
-                    className="w-full pl-6 pr-2 py-1.5 h-auto text-[12px] font-mono bg-surface-200/50 rounded-lg"
+                    type="date"
+                    value={addDate}
+                    onChange={(e) => setAddDate(e.target.value)}
+                    className="px-2 py-1.5 h-auto text-[12px] font-mono bg-surface-200/50 rounded-lg"
                   />
                 </div>
+                <div className="flex-shrink-0">
+                  <label className="block text-[10px] text-surface-500 mb-1">Type</label>
+                  <Select
+                    value={addType}
+                    onValueChange={(val) => setAddType(val as 'employee' | 'employer')}
+                  >
+                    <SelectTrigger className="text-[12px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="employee">Employee</SelectItem>
+                      <SelectItem value="employer">Employer</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex-1">
+                  <label className="block text-[10px] text-surface-500 mb-1">Amount</label>
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-surface-500 text-sm">
+                      $
+                    </span>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      value={addAmount}
+                      onChange={(e) => setAddAmount(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') addContribution();
+                      }}
+                      placeholder="0"
+                      className="w-full pl-6 pr-2 py-1.5 h-auto text-[12px] font-mono bg-surface-200/50 rounded-lg"
+                    />
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={addContribution}
+                  disabled={!addAmount || !addDate}
+                  className="flex-shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add
+                </Button>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                onClick={addContribution}
-                disabled={!addAmount || !addDate}
-                className="flex-shrink-0"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Add
-              </Button>
-            </div>
+            )}
           </div>
         </div>
       )}

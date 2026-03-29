@@ -192,15 +192,34 @@ export async function handleMiscRoutes(
   // GET /api/contributions/:entity/:year
   const contribGetMatch = pathname.match(/^\/api\/contributions\/([^/]+)\/(\d{4})$/);
   if (contribGetMatch && req.method === 'GET') {
-    const key = `${contribGetMatch[1]}/${contribGetMatch[2]}`;
+    const entity = contribGetMatch[1];
+    const year = contribGetMatch[2];
     const allData = await loadContributions();
-    return jsonResponse({ contributions: allData[key] || [] });
+
+    if (entity === 'all') {
+      // Aggregate contributions from all entities for this year
+      const merged: (typeof allData)[string] = [];
+      for (const [key, items] of Object.entries(allData)) {
+        if (key.endsWith(`/${year}`) && key !== `all/${year}` && Array.isArray(items)) {
+          merged.push(...items);
+        }
+      }
+      merged.sort((a, b) => a.date.localeCompare(b.date));
+      return jsonResponse({ contributions: merged });
+    }
+
+    return jsonResponse({ contributions: allData[`${entity}/${year}`] || [] });
   }
 
   // PUT /api/contributions/:entity/:year
   const contribPutMatch = pathname.match(/^\/api\/contributions\/([^/]+)\/(\d{4})$/);
   if (contribPutMatch && req.method === 'PUT') {
-    const key = `${contribPutMatch[1]}/${contribPutMatch[2]}`;
+    const entity = contribPutMatch[1];
+    // "all" is read-only — contributions must be edited per-entity
+    if (entity === 'all') {
+      return jsonResponse({ ok: true, readOnly: true });
+    }
+    const key = `${entity}/${contribPutMatch[2]}`;
     const body = await req.json();
     const { contributions } = body;
     if (!Array.isArray(contributions)) {

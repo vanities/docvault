@@ -307,6 +307,8 @@ export interface RetirementSummary {
 // Bank deposit summary for QuickStats
 export interface BankDepositSummary {
   totalDeposits: number;
+  totalRevenue: number;
+  totalOwnerContributions: number;
   depositCount: number;
   statementCount: number;
   byAccount: { institution: string; accountType: string; total: number }[];
