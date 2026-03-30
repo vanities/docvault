@@ -147,15 +147,16 @@ export function Solo401kCalculator({
   const [expanded, setExpanded] = useState(true);
   const [grossInput, setGrossInput] = useState(defaultGross.toFixed(0));
   const [expensesInput, setExpensesInput] = useState(defaultExpenses.toFixed(0));
+  const [grossEdited, setGrossEdited] = useState(false);
+  const [expensesEdited, setExpensesEdited] = useState(false);
 
-  // Sync inputs when analytics data loads (defaultGross/defaultExpenses change from 0 → real value)
-  const prevDefaultsRef = useRef({ gross: defaultGross, expenses: defaultExpenses });
+  // Sync inputs from analytics defaults unless the user has manually edited them
   useEffect(() => {
-    const prev = prevDefaultsRef.current;
-    if (prev.gross === 0 && defaultGross > 0) setGrossInput(defaultGross.toFixed(0));
-    if (prev.expenses === 0 && defaultExpenses > 0) setExpensesInput(defaultExpenses.toFixed(0));
-    prevDefaultsRef.current = { gross: defaultGross, expenses: defaultExpenses };
-  }, [defaultGross, defaultExpenses]);
+    if (!grossEdited && defaultGross > 0) setGrossInput(defaultGross.toFixed(0));
+  }, [defaultGross, grossEdited]);
+  useEffect(() => {
+    if (!expensesEdited && defaultExpenses > 0) setExpensesInput(defaultExpenses.toFixed(0));
+  }, [defaultExpenses, expensesEdited]);
 
   const [contributions, setContributions] = useState<Contribution[]>([]);
   const contribLoadedRef = useRef(false);
@@ -313,15 +314,27 @@ export function Solo401kCalculator({
             <CurrencyInput
               label="Gross Revenue"
               value={grossInput}
-              onChange={setGrossInput}
-              onBlur={setGrossInput}
+              onChange={(v) => {
+                setGrossInput(v);
+                setGrossEdited(true);
+              }}
+              onBlur={(v) => {
+                setGrossInput(v);
+                setGrossEdited(true);
+              }}
               hint="From bank deposits or invoices"
             />
             <CurrencyInput
               label="Business Expenses"
               value={expensesInput}
-              onChange={setExpensesInput}
-              onBlur={setExpensesInput}
+              onChange={(v) => {
+                setExpensesInput(v);
+                setExpensesEdited(true);
+              }}
+              onBlur={(v) => {
+                setExpensesInput(v);
+                setExpensesEdited(true);
+              }}
               hint="Schedule C deductible expenses"
             />
           </div>
