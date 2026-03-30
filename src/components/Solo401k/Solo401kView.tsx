@@ -4,7 +4,7 @@ import { useAnalytics } from '../../hooks/useAnalytics';
 import { Solo401kCalculator } from '../Dashboard/Solo401kCalculator';
 
 export function Solo401kView() {
-  const { selectedYear } = useAppContext();
+  const { selectedYear, entities } = useAppContext();
   // "all" analytics gives us cross-entity data: per-entity bank deposits + K-1 items
   const allAnalytics = useAnalytics('all', selectedYear);
 
@@ -24,6 +24,11 @@ export function Solo401kView() {
   // Fetch the SE entity's analytics for accurate gross/expenses
   const seAnalytics = useAnalytics(seEntity || 'all', selectedYear);
 
+  // Get home office deduction from SE entity's metadata
+  const seEntityConfig = entities.find((e) => e.id === seEntity);
+  const homeOfficeDeduction =
+    parseFloat(seEntityConfig?.metadata?.homeOfficeDeduction as string) || 0;
+
   // Gross: SE entity's revenue deposits
   const defaultGross =
     seAnalytics.bankDepositSummary && seAnalytics.bankDepositSummary.totalRevenue > 0
@@ -32,17 +37,15 @@ export function Solo401kView() {
         ? seAnalytics.bankDepositSummary.totalDeposits
         : seAnalytics.invoiceSummary.invoiceTotal;
 
-  // Expenses: SE entity's deductible expenses only (not childcare, not farm)
-  const defaultExpenses = seAnalytics.expenseSummary.totalDeductible;
+  // Expenses: SE entity's deductible expenses + home office from metadata
+  const defaultExpenses = seAnalytics.expenseSummary.totalDeductible + homeOfficeDeduction;
 
-  // K-1 SE earnings: only count ONE K-1 per entity (the primary filer's)
-  // The IRS uses one partner's SE earnings, not both. Pick the first K-1 per entity.
+  // K-1 SE earnings: only count ONE K-1 per partnership (the primary filer's)
   const k1SEEarnings = useMemo(() => {
     const seenEntities = new Set<string>();
     let total = 0;
     for (const item of allAnalytics.incomeItems) {
       if (item.type !== 'K-1' || !item.details?.selfEmploymentEarnings) continue;
-      // Use source as entity key — deduplicate to one K-1 per partnership
       const entityKey = item.source;
       if (seenEntities.has(entityKey)) continue;
       seenEntities.add(entityKey);
