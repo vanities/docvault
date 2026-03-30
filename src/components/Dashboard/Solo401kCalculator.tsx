@@ -43,17 +43,7 @@ function parseCurrencyInput(raw: string): number {
   return parseFloat(raw.replace(/[^0-9.]/g, '')) || 0;
 }
 
-// IRS limits by year
-const EMPLOYEE_LIMIT: Record<number, number> = {
-  2024: 23000,
-  2025: 23500,
-  2026: 23500,
-};
-const COMBINED_CAP: Record<number, number> = {
-  2024: 69000,
-  2025: 70000,
-  2026: 70000,
-};
+import { computeSolo401k } from './solo401k-calc';
 
 interface RowProps {
   label: string;
@@ -190,50 +180,16 @@ export function Solo401kCalculator({
     }).catch(() => {});
   }, [contributions, entity, taxYear]);
 
-  const employeeLimit = EMPLOYEE_LIMIT[taxYear] ?? 23500;
-  const combinedCap = COMBINED_CAP[taxYear] ?? 70000;
-
-  const calc = useMemo(() => {
-    const gross = parseCurrencyInput(grossInput);
-    const expenses = parseCurrencyInput(expensesInput);
-    const netProfit = Math.max(0, gross - expenses);
-
-    // IRS Pub 560 Worksheet Step 1: combine ALL SE income
-    // Schedule C net profit + K-1 SE earnings (can be negative for farm losses)
-    const combinedSEIncome = netProfit + k1SEEarnings;
-
-    // Self-employment tax: 15.3% on 92.35% of combined SE income
-    // Round each intermediate step to match IRS worksheet
-    const seTaxBase = Math.round(Math.max(0, combinedSEIncome) * 0.9235);
-    const seTax = Math.round(seTaxBase * 0.153);
-    const halfSeTax = Math.round(seTax / 2);
-
-    // Pub 560 Step 3: net earnings = combined SE income − ½ SE tax
-    const netEarnings = Math.max(0, combinedSEIncome - halfSeTax);
-
-    // Pub 560 Step 5: employer contribution at IRS reduced rate (25% ÷ 125% = 20%)
-    const employerContrib = Math.round(netEarnings * 0.2);
-
-    const rawTotal = employerContrib + employeeLimit;
-    const totalContrib = Math.min(rawTotal, combinedCap);
-    const actualEmployer = Math.min(employerContrib, combinedCap - employeeLimit);
-    const remainingCapacity = Math.max(0, combinedCap - totalContrib);
-
-    return {
-      gross,
-      expenses,
-      netProfit,
-      k1SEEarnings,
-      combinedSEIncome,
-      seTax,
-      halfSeTax,
-      netEarnings,
-      employerContrib: actualEmployer,
-      employeeLimit,
-      totalContrib,
-      remainingCapacity,
-    };
-  }, [grossInput, expensesInput, k1SEEarnings, employeeLimit, combinedCap]);
+  const calc = useMemo(
+    () =>
+      computeSolo401k(
+        parseCurrencyInput(grossInput),
+        parseCurrencyInput(expensesInput),
+        k1SEEarnings,
+        taxYear
+      ),
+    [grossInput, expensesInput, k1SEEarnings, taxYear]
+  );
 
   // Contribution totals
   const totalEmployeeContrib = contributions
@@ -410,11 +366,11 @@ export function Solo401kCalculator({
             />
             {calc.remainingCapacity > 0 && (
               <Row
-                label={`Headroom to $${(combinedCap / 1000).toFixed(0)}K cap`}
+                label={`Headroom to $${(calc.combinedCap / 1000).toFixed(0)}K cap`}
                 value={formatCurrency(calc.remainingCapacity)}
                 indent
                 color="text-surface-500"
-                tooltip={`IRS combined limit for ${taxYear} is $${combinedCap.toLocaleString()}`}
+                tooltip={`IRS combined limit for ${taxYear} is $${calc.combinedCap.toLocaleString()}`}
               />
             )}
           </div>
@@ -466,7 +422,7 @@ export function Solo401kCalculator({
                   <span className="font-mono text-surface-800">
                     {formatCurrency(totalEmployeeContrib)}
                   </span>
-                  <span className="text-surface-500"> / {formatCurrency(employeeLimit)}</span>
+                  <span className="text-surface-500"> / {formatCurrency(calc.employeeLimit)}</span>
                 </span>
                 <span className="text-surface-600">
                   Employer:{' '}
