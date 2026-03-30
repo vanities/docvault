@@ -372,7 +372,7 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
   const isTaxEntity = !isDocEntity;
   const showTnTax =
     entityConfig?.type === 'tax' && selectedEntity !== 'all' && selectedEntity !== 'personal';
-  const showSolo401k = isTaxEntity && selectedEntity !== 'all';
+  const showSolo401k = selectedEntity === 'all';
 
   const handleEntitySelect = (entity: EntityConfig) => {
     setSelectedEntity(entity.id);
