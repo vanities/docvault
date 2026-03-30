@@ -14,6 +14,7 @@ import {
 interface Solo401kCalculatorProps {
   defaultGross: number;
   defaultExpenses: number;
+  k1SEEarnings?: number;
   taxYear: number;
   entity: string;
 }
@@ -139,6 +140,7 @@ function CurrencyInput({
 export function Solo401kCalculator({
   defaultGross,
   defaultExpenses,
+  k1SEEarnings = 0,
   taxYear,
   entity,
 }: Solo401kCalculatorProps) {
@@ -195,17 +197,21 @@ export function Solo401kCalculator({
     const expenses = parseCurrencyInput(expensesInput);
     const netProfit = Math.max(0, gross - expenses);
 
-    // Self-employment tax: 15.3% on 92.35% of net profit
-    const seTaxBase = netProfit * 0.9235;
-    const seTax = seTaxBase * 0.153;
-    const halfSeTax = seTax / 2;
+    // IRS Pub 560 Worksheet Step 1: combine ALL SE income
+    // Schedule C net profit + K-1 SE earnings (can be negative for farm losses)
+    const combinedSEIncome = netProfit + k1SEEarnings;
 
-    // Plan compensation = net profit − half SE tax deduction
-    const planComp = Math.max(0, netProfit - halfSeTax);
+    // Self-employment tax: 15.3% on 92.35% of combined SE income
+    // Round each intermediate step to match IRS worksheet
+    const seTaxBase = Math.round(Math.max(0, combinedSEIncome) * 0.9235);
+    const seTax = Math.round(seTaxBase * 0.153);
+    const halfSeTax = Math.round(seTax / 2);
 
-    // Employer contribution: IRS reduced rate = 25% ÷ 125% = 20%
-    // (Publication 560, Worksheet 1 — accounts for circular deduction)
-    const employerContrib = planComp * 0.2;
+    // Pub 560 Step 3: net earnings = combined SE income − ½ SE tax
+    const netEarnings = Math.max(0, combinedSEIncome - halfSeTax);
+
+    // Pub 560 Step 5: employer contribution at IRS reduced rate (25% ÷ 125% = 20%)
+    const employerContrib = Math.round(netEarnings * 0.2);
 
     const rawTotal = employerContrib + employeeLimit;
     const totalContrib = Math.min(rawTotal, combinedCap);
@@ -216,15 +222,17 @@ export function Solo401kCalculator({
       gross,
       expenses,
       netProfit,
+      k1SEEarnings,
+      combinedSEIncome,
       seTax,
       halfSeTax,
-      planComp,
+      netEarnings,
       employerContrib: actualEmployer,
       employeeLimit,
       totalContrib,
       remainingCapacity,
     };
-  }, [grossInput, expensesInput, employeeLimit, combinedCap]);
+  }, [grossInput, expensesInput, k1SEEarnings, employeeLimit, combinedCap]);
 
   // Contribution totals
   const totalEmployeeContrib = contributions
@@ -237,8 +245,12 @@ export function Solo401kCalculator({
   const remaining401k = Math.max(0, calc.totalContrib - totalContributed);
 
   const contrib401kPct = calc.totalContrib > 0 ? (totalContributed / calc.totalContrib) * 100 : 0;
-  const barColor =
-    contrib401kPct >= 100 ? 'bg-red-400' : contrib401kPct >= 80 ? 'bg-amber-400' : 'bg-blue-400';
+  const isMaxed = contrib401kPct >= 100;
+  const barColor = isMaxed
+    ? 'bg-emerald-400'
+    : contrib401kPct >= 80
+      ? 'bg-amber-400'
+      : 'bg-blue-400';
 
   function addContribution() {
     const amount = parseCurrencyInput(addAmount);
@@ -271,16 +283,21 @@ export function Solo401kCalculator({
           <div className="text-left">
             <p className="text-[13px] font-semibold text-surface-900">Solo 401(k) Calculator</p>
             <p className="text-[11px] text-surface-600">
-              {taxYear} · Self-employment income only · not W-2 or other LLCs
+              {taxYear} · IRS Pub 560 Worksheet · All SE income combined
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {!expanded && (
-            <span className="text-sm font-mono font-bold text-blue-400">
-              {formatCurrency(calc.totalContrib)} max · {formatCurrency(remaining401k)} left
-            </span>
-          )}
+          {!expanded &&
+            (isMaxed ? (
+              <span className="text-sm font-mono font-bold text-emerald-400">
+                Maxed {formatCurrency(totalContributed)}
+              </span>
+            ) : (
+              <span className="text-sm font-mono font-bold text-blue-400">
+                {formatCurrency(calc.totalContrib)} max · {formatCurrency(remaining401k)} left
+              </span>
+            ))}
           {expanded ? (
             <ChevronUp className="w-4 h-4 text-surface-600" />
           ) : (
@@ -311,49 +328,65 @@ export function Solo401kCalculator({
 
           <div className="border-t border-border" />
 
-          {/* Calculation breakdown */}
+          {/* Calculation breakdown — IRS Pub 560 Worksheet */}
           <div>
             <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-wider mb-1">
-              Net Profit
+              Pub 560 Worksheet
             </p>
-            <Row label="Gross Revenue" value={formatCurrency(calc.gross)} />
+            <Row label="Gross Revenue (deposits)" value={formatCurrency(calc.gross)} />
             <Row
               label="Business Expenses"
               value={`− ${formatCurrency(calc.expenses)}`}
               indent
               color="text-red-400"
             />
-            <Row label="Net Profit" value={formatCurrency(calc.netProfit)} bold />
+            <Row label="Schedule C Net Profit" value={formatCurrency(calc.netProfit)} bold />
+            {calc.k1SEEarnings !== 0 && (
+              <>
+                <Row
+                  label="K-1 SE Earnings"
+                  value={formatCurrency(calc.k1SEEarnings)}
+                  indent
+                  color={calc.k1SEEarnings < 0 ? 'text-red-400' : 'text-emerald-400'}
+                  tooltip="Partnership K-1 self-employment earnings. IRS Pub 560 Step 1 combines all SE income."
+                />
+                <Row
+                  label="Combined SE Income (Step 1)"
+                  value={formatCurrency(calc.combinedSEIncome)}
+                  bold
+                />
+              </>
+            )}
             <div className="border-t border-border/50 my-2" />
             <Row
               label="SE Tax (15.3% × 92.35%)"
               value={`− ${formatCurrency(calc.seTax)}`}
               indent
               color="text-red-400"
-              tooltip="Self-employment tax: 12.4% SS + 2.9% Medicare on 92.35% of net profit"
+              tooltip="Self-employment tax: 12.4% SS + 2.9% Medicare on 92.35% of combined SE income"
             />
             <Row
-              label="½ SE Tax Deduction"
+              label="½ SE Tax Deduction (Step 2)"
               value={`− ${formatCurrency(calc.halfSeTax)}`}
               indent
               color="text-emerald-400"
-              tooltip="IRS allows deducting half of SE tax before calculating plan compensation"
+              tooltip="IRS allows deducting half of SE tax before calculating net earnings"
             />
-            <Row label="Plan Compensation" value={formatCurrency(calc.planComp)} bold />
+            <Row label="Net Earnings (Step 3)" value={formatCurrency(calc.netEarnings)} bold />
 
             <div className="border-t border-border/50 mt-3 mb-2" />
             <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-wider mb-1">
               Solo 401(k) Limit
             </p>
             <Row
-              label="Employee Deferral"
+              label="Employee Deferral (Step 9)"
               value={formatCurrency(calc.employeeLimit)}
               tooltip={`${taxYear} IRS elective deferral limit.`}
             />
             <Row
-              label="Employer Profit-Sharing (20%)"
+              label="Employer Profit-Sharing (Step 5)"
               value={formatCurrency(calc.employerContrib)}
-              tooltip="IRS reduced rate: 25% ÷ 125% = 20% of plan compensation (Publication 560, Worksheet 1). Accounts for the circular self-deduction."
+              tooltip="IRS reduced rate: 25% ÷ 125% = 20% of net earnings (Publication 560, Worksheet Step 5). Accounts for the circular self-deduction."
             />
             <div className="border-t border-border/50 my-2" />
             <Row
@@ -381,13 +414,31 @@ export function Solo401kCalculator({
               Contributions Made
             </p>
 
+            {/* Maxed out banner */}
+            {isMaxed && (
+              <div className="mb-3 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                <p className="text-[13px] font-semibold text-emerald-400">
+                  Maxed out for {taxYear}!
+                </p>
+                <p className="text-[11px] text-emerald-400/70">
+                  {formatCurrency(totalContributed)} contributed — IRS Pub 560 maximum reached.
+                </p>
+              </div>
+            )}
+
             {/* Progress bar */}
             <div className="mb-3">
               <div className="flex justify-between text-[11px] text-surface-600 mb-1">
                 <span>{formatCurrency(totalContributed)} contributed</span>
                 <span>
-                  {formatCurrency(remaining401k)} remaining of {formatCurrency(calc.totalContrib)}{' '}
-                  max
+                  {isMaxed ? (
+                    <span className="text-emerald-400 font-medium">Maxed</span>
+                  ) : (
+                    <>
+                      {formatCurrency(remaining401k)} remaining of{' '}
+                      {formatCurrency(calc.totalContrib)} max
+                    </>
+                  )}
                 </span>
               </div>
               <div className="h-2 bg-surface-300/50 rounded-full overflow-hidden">
