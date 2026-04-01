@@ -121,9 +121,11 @@ function CustomerSection({ customer, docs }: { customer: string; docs: TaxDocume
                 <div className="min-w-0 flex-1">
                   <p className="text-[13px] text-surface-800 truncate">{doc.fileName}</p>
                   <p className="text-[11px] text-surface-600">
-                    {data && typeof data.date === 'string'
-                      ? formatDate(data.date)
-                      : formatDate(doc.createdAt)}
+                    {data && typeof data.invoiceDate === 'string'
+                      ? formatDate(data.invoiceDate)
+                      : data && typeof data.date === 'string'
+                        ? formatDate(data.date)
+                        : formatDate(doc.createdAt)}
                     {invoiceNum && ` · #${invoiceNum}`}
                   </p>
                 </div>
