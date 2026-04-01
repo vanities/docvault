@@ -316,20 +316,30 @@ export function extractDepositTransactions(parsed: ParsedData): DepositTransacti
 
 export function extractInvoice(parsed: ParsedData, filename: string): InvoiceItem | null {
   const docType = (parsed._documentType || parsed.documentType) as string;
-  if (docType === 'invoice') {
+  const isInvoiceFile = /invoice/i.test(filename);
+  const customer = (parsed.customer || parsed.client || parsed.billTo || parsed.customerName) as
+    | string
+    | undefined;
+  const amount = (parsed.invoiceTotal ||
+    parsed.totalAmount ||
+    parsed.amount ||
+    parsed.subtotal ||
+    0) as number;
+
+  if (docType === 'invoice' || (isInvoiceFile && (amount > 0 || parsed.invoiceNumber))) {
     return {
-      customer: (parsed.customer || parsed.billTo || parsed.customerName || 'Unknown') as string,
-      amount: (parsed.invoiceTotal || parsed.totalAmount || parsed.amount || 0) as number,
+      customer: customer || 'Unknown',
+      amount,
       date: (parsed.invoiceDate || parsed.date) as string | undefined,
       invoiceNumber: parsed.invoiceNumber as string | undefined,
     };
   }
   // Legacy: untyped docs with invoice-like fields
-  if (parsed.invoiceTotal || (parsed.amount && parsed.customer)) {
+  if (parsed.invoiceTotal || (parsed.amount && customer)) {
     return {
-      customer: (parsed.customer || parsed.billTo || parsed.vendor || 'Unknown') as string,
-      amount: (parsed.invoiceTotal || parsed.totalAmount || parsed.amount || 0) as number,
-      date: parsed.date as string | undefined,
+      customer: customer || (parsed.vendor as string) || 'Unknown',
+      amount,
+      date: (parsed.invoiceDate || parsed.date) as string | undefined,
       invoiceNumber: parsed.invoiceNumber as string | undefined,
     };
   }

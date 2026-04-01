@@ -921,7 +921,8 @@ async function handleRequest(req: Request): Promise<Response> {
     }
 
     const fullDir = path.join(entityPath, destPath);
-    const fullPath = path.join(fullDir, filename);
+    let finalFilename = filename;
+    let fullPath = path.join(fullDir, finalFilename);
 
     if (!fullPath.startsWith(entityPath)) {
       return jsonResponse({ error: 'Access denied' }, 403);
@@ -929,10 +930,27 @@ async function handleRequest(req: Request): Promise<Response> {
 
     try {
       await ensureDir(fullDir);
+
+      // Avoid silent overwrites: append _2, _3, etc. if file exists
+      const ext = path.extname(filename);
+      const base = filename.slice(0, -ext.length || undefined);
+      let counter = 2;
+      while (true) {
+        try {
+          await fs.access(fullPath);
+          // File exists — try next suffix
+          finalFilename = `${base}_${counter}${ext}`;
+          fullPath = path.join(fullDir, finalFilename);
+          counter++;
+        } catch {
+          break; // File doesn't exist — safe to write
+        }
+      }
+
       const body = await req.arrayBuffer();
       await fs.writeFile(fullPath, Buffer.from(body));
 
-      return jsonResponse({ ok: true, path: path.join(destPath, filename) });
+      return jsonResponse({ ok: true, path: path.join(destPath, finalFilename) });
     } catch (err) {
       return jsonResponse({ error: 'Failed to save file', details: String(err) }, 500);
     }
