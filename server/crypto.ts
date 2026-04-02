@@ -532,12 +532,26 @@ const ARBITRUM_TOKENS: { contract: string; symbol: string; decimals: number }[] 
   { contract: '0x912CE59144191C1204E64559FE8253a0e49E6548', symbol: 'ARB', decimals: 18 },
   { contract: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', symbol: 'USDC', decimals: 6 },
   { contract: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', symbol: 'USDT', decimals: 6 },
+  // Dead / defunct (Arbitrum-native)
+  { contract: '0x09E18590E8f76b6Cf471b3cd75fE1A1a9D2B2c2b', symbol: 'AIDOGE', decimals: 18 },
 ];
 
 const OPTIMISM_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
   { contract: '0x4200000000000000000000000000000000000042', symbol: 'OP', decimals: 18 },
   { contract: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', symbol: 'USDC', decimals: 6 },
   { contract: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58', symbol: 'USDT', decimals: 6 },
+];
+
+const POLYGON_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
+  { contract: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', symbol: 'USDC', decimals: 6 },
+  { contract: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', symbol: 'USDT', decimals: 6 },
+  // Dead / defunct (Polygon-native)
+  { contract: '0x4C392822D4bE8494B798cEA17B43d48B2308109C', symbol: 'POLY', decimals: 18 },
+];
+
+const AVALANCHE_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
+  { contract: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E', symbol: 'USDC', decimals: 6 },
+  { contract: '0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7', symbol: 'USDT', decimals: 6 },
 ];
 
 // Chainlink Staking v0.2 — staked LINK is locked in these contracts (no receipt token)
@@ -626,6 +640,16 @@ const ERC20_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
   { contract: '0xc770EEfAd204B5180dF6a14Ee197D99d808ee52d', symbol: 'FOX', decimals: 18 },
   { contract: '0xCa14007Eff0dB1f8135f4C25B34De49AB0d42766', symbol: 'STRK', decimals: 18 },
   { contract: '0x455e53CBB86018Ac2B8092FdCd39d8444aFFC3F6', symbol: 'POL', decimals: 18 },
+  // Additional DeFi / protocol tokens
+  { contract: '0x8798249c2E607446EfB7Ad49eC89dD1865Ff4272', symbol: 'xSUSHI', decimals: 18 },
+  { contract: '0xc00e94Cb662C3520282E6f5717214004A7f26888', symbol: 'COMP', decimals: 18 },
+  { contract: '0x4E15361FD6b4BB609Fa63C81A2be19d873717870', symbol: 'FTM', decimals: 18 },
+  { contract: '0x799a4202c12ca952cB311598a024C80eD371a41e', symbol: 'ONE', decimals: 18 },
+  // Dead / defunct projects
+  { contract: '0x09a3EcAFa817268f77BE1283176B946C4ff2E608', symbol: 'MIR', decimals: 18 },
+  { contract: '0x0A913beaD80F321E7Ac35285Ee10d9d922659cB7', symbol: 'DOS', decimals: 18 },
+  { contract: '0x3b484b82567a09e2588A13D54D032153f0c0aee0', symbol: 'SOS', decimals: 18 },
+  { contract: '0xf16e81dce15b08f326220742020379b855b87df9', symbol: 'ICE', decimals: 18 },
 ];
 
 // Fetch native + ERC-20 balances for any EVM chain supported by Etherscan v2.
@@ -679,17 +703,25 @@ async function fetchChainBalances(
 }
 
 async function fetchEthBalance(address: string): Promise<Balance[]> {
-  // Fetch mainnet, Arbitrum, Optimism, and staking positions in parallel
-  const [mainnet, arbitrum, optimism, stakedLink] = await Promise.all([
+  // Fetch mainnet, Arbitrum, Optimism, Polygon, Avalanche, and staking positions in parallel
+  const [mainnet, arbitrum, optimism, polygon, avalanche, stakedLink] = await Promise.all([
     fetchChainBalances(address, 1, 'ETH', ERC20_TOKENS),
     fetchChainBalances(address, 42161, 'ETH', ARBITRUM_TOKENS),
     fetchChainBalances(address, 10, 'ETH', OPTIMISM_TOKENS),
+    fetchChainBalances(address, 137, 'POL', POLYGON_TOKENS),
+    fetchChainBalances(address, 43114, 'AVAX', AVALANCHE_TOKENS),
     fetchChainlinkStakedBalance(address),
   ]);
 
   // Merge: sum amounts for the same symbol across chains
   const merged = new Map<string, number>();
-  for (const { asset, amount } of [...mainnet, ...arbitrum, ...optimism]) {
+  for (const { asset, amount } of [
+    ...mainnet,
+    ...arbitrum,
+    ...optimism,
+    ...polygon,
+    ...avalanche,
+  ]) {
     merged.set(asset, (merged.get(asset) ?? 0) + amount);
   }
 

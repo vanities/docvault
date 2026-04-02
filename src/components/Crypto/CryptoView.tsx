@@ -79,6 +79,8 @@ const ASSET_TEXT_COLORS = [
   'text-pink-500',
 ];
 
+const DEAD_TOKENS = new Set(['MIR', 'RAD', 'SOS', 'AIDOGE', 'DOS', 'ICE', 'POLY']);
+
 function SourceCard({
   source,
   onRefresh,
@@ -162,6 +164,11 @@ function SourceCard({
                   <span className="text-[13px] font-mono font-bold text-surface-800">
                     {balance.asset}
                   </span>
+                  {DEAD_TOKENS.has(balance.asset) && (
+                    <span className="text-[9px] px-1 py-0.5 rounded bg-red-500/10 text-red-400 font-medium">
+                      defunct
+                    </span>
+                  )}
                   <span className="text-[11px] text-surface-500 font-mono">
                     {formatAmount(balance.amount, balance.asset)}
                   </span>
@@ -231,6 +238,11 @@ function AssetRow({
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
             <p className="text-[13px] font-semibold text-surface-950">{balance.asset}</p>
+            {DEAD_TOKENS.has(balance.asset) && (
+              <span className="text-[9px] px-1 py-0.5 rounded bg-red-500/10 text-red-400 font-medium">
+                defunct
+              </span>
+            )}
             <p className="text-[11px] text-surface-500 font-mono">
               {formatAmount(balance.amount, balance.asset)}
             </p>
