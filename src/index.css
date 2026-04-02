@@ -10,14 +10,24 @@ input[type='number'] {
   -moz-appearance: textfield;
 }
 
-/* Constrain date input calendar button to stay inside the input */
+/* Constrain date input to stay inside its container on iOS Safari */
 input[type='date'] {
   max-width: 100%;
   box-sizing: border-box;
+  -webkit-appearance: none;
+  appearance: none;
+  overflow: hidden;
+  clip-path: inset(0);
+}
+input[type='date']::-webkit-date-and-time-value {
+  text-align: left;
 }
 input[type='date']::-webkit-calendar-picker-indicator {
   margin: 0;
   padding: 0;
+  position: absolute;
+  right: 8px;
+  opacity: 0.6;
 }
 
 /* ============================================
