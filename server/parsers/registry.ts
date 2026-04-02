@@ -53,8 +53,9 @@ const hintToCanonical: Record<string, string> = {
 };
 
 // Infer document type from the folder path (entity/year/folder/... structure).
+// Exported for testing.
 // The folder structure already encodes the document type — use it before LLM.
-function detectTypeFromFolderPath(filePath: string): string {
+export function detectTypeFromFolderPath(filePath: string): string {
   if (/expenses\/business/.test(filePath)) return 'receipt';
   if (/expenses\/childcare/.test(filePath)) return 'receipt';
   if (/expenses\/medical/.test(filePath)) return 'receipt';

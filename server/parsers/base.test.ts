@@ -30,6 +30,30 @@ describe('parseJsonResponse', () => {
     expect(() => parseJsonResponse('not json at all')).toThrow();
   });
 
+  test('extracts JSON when preceded by explanatory text', () => {
+    const text = 'Here is the parsed data:\n{"key": "value"}';
+    const result = parseJsonResponse(text);
+    expect(result).toEqual({ key: 'value' });
+  });
+
+  test('extracts JSON when preceded by a backtick character', () => {
+    const text = '`{"key": "value"}`';
+    const result = parseJsonResponse(text);
+    expect(result).toEqual({ key: 'value' });
+  });
+
+  test('extracts JSON array preceded by text', () => {
+    const text = 'Result: [1, 2, 3]';
+    const result = parseJsonResponse(text);
+    expect(result).toEqual([1, 2, 3]);
+  });
+
+  test('trims trailing text after closing brace', () => {
+    const text = '{"key": "value"}\n\nNote: some extra text';
+    const result = parseJsonResponse(text);
+    expect(result).toEqual({ key: 'value' });
+  });
+
   test('handles JSON with whitespace in code block', () => {
     const text = '```json\n  {\n    "key": "value"\n  }\n```';
     const result = parseJsonResponse(text);
