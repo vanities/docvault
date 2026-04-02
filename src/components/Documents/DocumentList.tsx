@@ -500,9 +500,14 @@ export function DocumentList({
     for (let i = 0; i < docs.length; i++) {
       setParseProgress({ current: i + 1, total: docs.length });
       await onParse(docs[i]);
+      // Deselect each doc as it finishes parsing
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(docs[i].id);
+        return next;
+      });
     }
     setParseProgress(null);
-    setSelectedIds(new Set());
   };
 
   const selectGroup = (docs: TaxDocument[]) => {

@@ -148,11 +148,20 @@ export function DocumentCard({
       ? EXPENSE_CATEGORIES.find((c) => c.id === (doc.parsedData as { category?: string })?.category)
       : null;
 
+  // Extract invoice number from parsed data
+  const invoiceNumber = (() => {
+    if (!doc.parsedData) return null;
+    const data = doc.parsedData as unknown as Record<string, unknown>;
+    if (typeof data.invoiceNumber === 'string') return data.invoiceNumber;
+    return null;
+  })();
+
   // Extract dollar amount from parsed data
   const dollarAmount = (() => {
     if (!doc.parsedData) return null;
     const data = doc.parsedData as unknown as Record<string, unknown>;
-    // Expenses: amount or totalAmount
+    // Invoices: invoiceTotal (structured parser) or totalAmount
+    if (typeof data.invoiceTotal === 'number') return data.invoiceTotal;
     if (typeof data.totalAmount === 'number') return data.totalAmount;
     if (typeof data.amount === 'number') return data.amount;
     // W-2: wages
@@ -236,6 +245,9 @@ export function DocumentCard({
               <p className="text-[13px] font-medium text-surface-950 truncate">{doc.fileName}</p>
               <p className="text-[11px] text-surface-600 mt-0.5">
                 {formatFileSize(doc.fileSize)} · {formatDate(doc.createdAt)}
+                {invoiceNumber && (
+                  <span className="ml-1.5 text-surface-500">· #{invoiceNumber}</span>
+                )}
                 {dollarAmount !== null && (
                   <span className="ml-1.5 font-semibold text-surface-900">
                     · $
