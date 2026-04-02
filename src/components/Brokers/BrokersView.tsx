@@ -336,29 +336,31 @@ function AccountCard({
     <Card variant="glass" className="overflow-hidden">
       {/* Account Header */}
       <div
-        className="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-200/20 transition-colors"
+        className="flex flex-wrap items-center justify-between gap-2 p-4 cursor-pointer hover:bg-surface-200/20 transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
-        <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg ${brokerColor.split(' ').slice(1).join(' ')}`}>
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className={`p-2 rounded-lg shrink-0 ${brokerColor.split(' ').slice(1).join(' ')}`}>
             <Landmark className={`w-4 h-4 ${brokerColor.split(' ')[0]}`} />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <p className="font-semibold text-surface-950 text-[14px]">{account.name}</p>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <p className="font-semibold text-surface-950 text-[14px] truncate">{account.name}</p>
               {account.url && (
                 <a
                   href={account.url}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  className="p-0.5 text-surface-400 hover:text-accent-500 transition-colors"
+                  className="p-0.5 text-surface-400 hover:text-accent-500 transition-colors shrink-0"
                   title={account.url}
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               )}
-              <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-medium ${brokerColor}`}>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${brokerColor}`}
+              >
                 {BROKER_LABELS[account.broker]}
               </span>
             </div>
@@ -369,9 +371,9 @@ function AccountCard({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 shrink-0">
           <div className="text-right">
-            <p className="font-bold text-surface-950 text-[16px]">
+            <p className="font-bold text-surface-950 text-[14px] sm:text-[16px]">
               {formatUsd(account.totalValue)}
             </p>
             {account.totalCostBasis > 0 && (
@@ -981,12 +983,12 @@ export function BrokersView() {
         <>
           {/* Portfolio Summary */}
           <Card variant="glass" className="p-6 mb-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[12px] text-surface-600 uppercase tracking-wider mb-1">
                   Total Portfolio Value
                 </p>
-                <p className="text-3xl font-bold text-surface-950">
+                <p className="text-2xl sm:text-3xl font-bold text-surface-950">
                   {formatUsd(portfolio?.totalValue || 0)}
                 </p>
                 <p className="text-[12px] text-surface-600 mt-1">
