@@ -135,7 +135,9 @@ export function AddressAutocomplete({
           }}
           placeholder={placeholder}
           className={`pl-8 pr-8 ${
-            value ? 'border-teal-400/50 focus-visible:ring-teal-400/30 focus-visible:border-teal-400' : ''
+            value
+              ? 'border-teal-400/50 focus-visible:ring-teal-400/30 focus-visible:border-teal-400'
+              : ''
           }`}
         />
         {isLoading && (

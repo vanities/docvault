@@ -21,9 +21,7 @@ function Card({
   variant = 'default',
   ...props
 }: React.ComponentProps<'div'> & VariantProps<typeof cardVariants>) {
-  return (
-    <div data-slot="card" className={cn(cardVariants({ variant }), className)} {...props} />
-  );
+  return <div data-slot="card" className={cn(cardVariants({ variant }), className)} {...props} />;
 }
 
 function CardHeader({ className, ...props }: React.ComponentProps<'div'>) {
@@ -38,7 +36,11 @@ function CardHeader({ className, ...props }: React.ComponentProps<'div'>) {
 
 function CardTitle({ className, ...props }: React.ComponentProps<'div'>) {
   return (
-    <div data-slot="card-title" className={cn('leading-none font-semibold', className)} {...props} />
+    <div
+      data-slot="card-title"
+      className={cn('leading-none font-semibold', className)}
+      {...props}
+    />
   );
 }
 
@@ -66,4 +68,4 @@ function CardFooter({ className, ...props }: React.ComponentProps<'div'>) {
   );
 }
 
-export { Card, cardVariants, CardHeader, CardFooter, CardTitle, CardDescription, CardContent };
+export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent };

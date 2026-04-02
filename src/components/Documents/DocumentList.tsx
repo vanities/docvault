@@ -768,6 +768,7 @@ export function DocumentList({
             onDelete(id);
             setSelectedDocument(null);
           }}
+          onRename={onUpdate}
           onReparse={
             onParse
               ? async () => {

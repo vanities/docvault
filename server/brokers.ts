@@ -12,7 +12,14 @@ import { Snaptrade } from 'snaptrade-typescript-sdk';
 // Types
 // -----------------------------------------------------------------------------
 
-export type BrokerId = 'vanguard' | 'fidelity' | 'robinhood' | 'navy-federal' | 'chase' | 'altoira' | 'other';
+export type BrokerId =
+  | 'vanguard'
+  | 'fidelity'
+  | 'robinhood'
+  | 'navy-federal'
+  | 'chase'
+  | 'altoira'
+  | 'other';
 
 export interface BrokerHolding {
   ticker: string;

@@ -5,12 +5,7 @@
 
 import type { Parsed1099CompositeSchema } from './schemas/index.js';
 import type { DocumentParser } from './base.js';
-import {
-  readFileAsBase64,
-  buildFileContent,
-  callClaude,
-  extractToolResult,
-} from './base.js';
+import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
 
 const SYSTEM_PROMPT = `You extract data from composite/consolidated 1099 tax statements. These are year-end brokerage statements (from Vanguard, Fidelity, Schwab, etc.) that contain multiple 1099 forms in a single PDF.
 
@@ -45,12 +40,21 @@ const COMPOSITE_TOOL = {
         properties: {
           ordinaryDividends: { type: 'number', description: 'Box 1a - Total ordinary dividends' },
           qualifiedDividends: { type: 'number', description: 'Box 1b - Qualified dividends' },
-          capitalGainDistributions: { type: 'number', description: 'Box 2a - Capital gain distributions' },
+          capitalGainDistributions: {
+            type: 'number',
+            description: 'Box 2a - Capital gain distributions',
+          },
           section199ADividends: { type: 'number', description: 'Box 5 - Section 199A dividends' },
           foreignTaxPaid: { type: 'number', description: 'Box 7 - Foreign tax paid' },
-          nondividendDistributions: { type: 'number', description: 'Box 3 - Nondividend distributions' },
+          nondividendDistributions: {
+            type: 'number',
+            description: 'Box 3 - Nondividend distributions',
+          },
           federalWithheld: { type: 'number', description: 'Box 4 - Federal tax withheld' },
-          exemptInterestDividends: { type: 'number', description: 'Box 12 - Exempt-interest dividends' },
+          exemptInterestDividends: {
+            type: 'number',
+            description: 'Box 12 - Exempt-interest dividends',
+          },
         },
       },
       int: {
@@ -91,7 +95,11 @@ const COMPOSITE_TOOL = {
                 proceeds: { type: 'number', description: 'Sale proceeds' },
                 costBasis: { type: 'number', description: 'Cost basis' },
                 gainLoss: { type: 'number', description: 'Gain or loss' },
-                term: { type: 'string', enum: ['short', 'long'], description: 'Short-term or long-term' },
+                term: {
+                  type: 'string',
+                  enum: ['short', 'long'],
+                  description: 'Short-term or long-term',
+                },
                 boxCategory: { type: 'string', description: 'Box category (A, B, C, D, E, F)' },
               },
               required: ['security', 'proceeds', 'costBasis', 'gainLoss'],
@@ -109,10 +117,19 @@ const COMPOSITE_TOOL = {
           federalWithheld: { type: 'number' },
         },
       },
-      totalDividendIncome: { type: 'number', description: 'Total dividend income across all sections' },
-      totalInterestIncome: { type: 'number', description: 'Total interest income across all sections' },
+      totalDividendIncome: {
+        type: 'number',
+        description: 'Total dividend income across all sections',
+      },
+      totalInterestIncome: {
+        type: 'number',
+        description: 'Total interest income across all sections',
+      },
       totalCapitalGains: { type: 'number', description: 'Net capital gains from 1099-B' },
-      totalFederalWithheld: { type: 'number', description: 'Total federal tax withheld across all sections' },
+      totalFederalWithheld: {
+        type: 'number',
+        description: 'Total federal tax withheld across all sections',
+      },
       taxYear: { type: 'number', description: 'The tax year' },
     },
     required: ['payer'],
@@ -134,7 +151,10 @@ export const composite1099Parser: DocumentParser<Parsed1099CompositeSchema> = {
         system: SYSTEM_PROMPT,
         userContent: [
           fileContent,
-          { type: 'text', text: 'Extract all data from this composite/consolidated 1099 statement, including per-transaction 1099-B details if available.' },
+          {
+            type: 'text',
+            text: 'Extract all data from this composite/consolidated 1099 statement, including per-transaction 1099-B details if available.',
+          },
         ],
         maxTokens: 16384, // Composites can be 20+ pages with many transactions
         tools: [COMPOSITE_TOOL],

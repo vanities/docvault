@@ -19,10 +19,7 @@ import {
 } from './data.js';
 import type { Settings, PortfolioSnapshot } from './data.js';
 import { fetchAllBalances } from './crypto.js';
-import {
-  buildPortfolio,
-  fetchAllSnapTradeHoldings,
-} from './brokers.js';
+import { buildPortfolio, fetchAllSnapTradeHoldings } from './brokers.js';
 import { fetchBalances as fetchSimplefinBalances } from './simplefin.js';
 
 // Scheduler — built-in cron-like recurring tasks

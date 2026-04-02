@@ -22,6 +22,7 @@ import { useToast } from '../../hooks/useToast';
 import { useAppContext } from '../../contexts/AppContext';
 import { generateStandardFilename, getExtension } from '../../utils/filenaming';
 import { API_BASE } from '../../constants';
+import { copyToClipboard } from '../../lib/utils';
 import { FileIcon } from '../common/FileIcon';
 import {
   Dialog,
@@ -62,6 +63,7 @@ interface DocumentViewerProps {
   onClose: () => void;
   onDelete?: (id: string) => void;
   onReparse?: () => Promise<void>;
+  onRename?: (id: string, updates: Partial<TaxDocument>) => void;
   onMove?: (
     fromEntity: Entity,
     fromPath: string,
@@ -97,6 +99,7 @@ export function DocumentViewer({
   onClose,
   onDelete,
   onReparse,
+  onRename,
   onMove,
   entities,
   availableYears,
@@ -113,7 +116,7 @@ export function DocumentViewer({
   const [isRenameSaving, setIsRenameSaving] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const { addToast } = useToast();
-  const { renameFile, setScannedDocuments, parseFile } = useAppContext();
+  const { renameFile, parseFile } = useAppContext();
   const [isAiRenaming, setIsAiRenaming] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -155,19 +158,11 @@ export function DocumentViewer({
       const newPath = await renameFile(document.entity, document.filePath ?? '', newFilename);
       if (newPath) {
         addToast(`Renamed to ${newFilename}`, 'success');
-        // Update the document in the scanned list so UI reflects the change
-        setScannedDocuments((prev) =>
-          prev.map((d) =>
-            d.id === document.id
-              ? {
-                  ...d,
-                  fileName: newFilename,
-                  filePath: newPath,
-                  id: `${document.entity}/${newPath}-${d.fileSize}`,
-                }
-              : d
-          )
-        );
+        onRename?.(document.id, {
+          fileName: newFilename,
+          filePath: newPath,
+          id: `${document.entity}/${newPath}-${document.fileSize}`,
+        });
         setIsRenaming(false);
         onClose();
       } else {
@@ -183,7 +178,7 @@ export function DocumentViewer({
     renameFile,
     document,
     addToast,
-    setScannedDocuments,
+    onRename,
     cancelRename,
     onClose,
   ]);
@@ -257,26 +252,14 @@ export function DocumentViewer({
     }
   }, [document, parseFile, addToast]);
 
-  const copyToClipboard = useCallback(
+  const handleCopyPath = useCallback(
     async (text: string) => {
-      try {
-        if (navigator.clipboard && window.isSecureContext) {
-          await navigator.clipboard.writeText(text);
-        } else {
-          // Fallback for non-HTTPS (e.g. Unraid over HTTP)
-          const textarea = window.document.createElement('textarea');
-          textarea.value = text;
-          textarea.style.position = 'fixed';
-          textarea.style.opacity = '0';
-          window.document.body.appendChild(textarea);
-          textarea.select();
-          window.document.execCommand('copy');
-          window.document.body.removeChild(textarea);
-        }
+      const ok = await copyToClipboard(text);
+      if (ok) {
         setCopied(true);
         addToast('Path copied to clipboard', 'success');
         setTimeout(() => setCopied(false), 2000);
-      } catch {
+      } else {
         addToast('Failed to copy path', 'error');
       }
     },
@@ -482,7 +465,7 @@ export function DocumentViewer({
                     const fullPath = entityConfig
                       ? `${entityConfig.path}/${document.filePath ?? ''}`
                       : (document.filePath ?? '');
-                    void copyToClipboard(fullPath);
+                    void handleCopyPath(fullPath);
                   }}
                   className="truncate hover:text-accent-400 cursor-pointer text-left font-mono text-[12px]"
                   title="Click to copy full path"

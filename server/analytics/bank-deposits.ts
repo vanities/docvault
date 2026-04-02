@@ -1,8 +1,18 @@
 // Bank deposit aggregation — builds monthly/quarterly deposit summaries
 // with revenue vs owner contribution classification.
 
-import type { MonthlyDeposits, QuarterlyDeposits, Form2210Period, ParsedData, DocumentMetadata } from './types.js';
-import { extractDepositTotal, extractDepositTransactions, isOwnerContribution } from './extractors.js';
+import type {
+  MonthlyDeposits,
+  QuarterlyDeposits,
+  Form2210Period,
+  ParsedData,
+  DocumentMetadata,
+} from './types.js';
+import {
+  extractDepositTotal,
+  extractDepositTransactions,
+  isOwnerContribution,
+} from './extractors.js';
 
 export interface BankDepositSummaryResult {
   totalDeposits: number;

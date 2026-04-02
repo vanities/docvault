@@ -3,12 +3,7 @@
 
 import type { ParsedKoinly8949Schema } from './schemas/index.js';
 import type { DocumentParser } from './base.js';
-import {
-  readFileAsBase64,
-  buildFileContent,
-  callClaude,
-  extractToolResult,
-} from './base.js';
+import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
 
 const SYSTEM_PROMPT = `You extract data from Koinly-generated Form 8949 PDFs. These report crypto capital gains and losses organized by exchange and holding period.
 
@@ -34,13 +29,19 @@ const KOINLY_8949_TOOL = {
         items: {
           type: 'object',
           properties: {
-            exchange: { type: 'string', description: 'Exchange name (e.g., Coinbase, Kraken, Non-custodial)' },
+            exchange: {
+              type: 'string',
+              description: 'Exchange name (e.g., Coinbase, Kraken, Non-custodial)',
+            },
             boxCategory: { type: 'string', description: 'Box category (A, B, or C)' },
             proceeds: { type: 'number', description: 'Total proceeds' },
             costBasis: { type: 'number', description: 'Total cost basis' },
             adjustment: { type: 'number', description: 'Adjustment amount (column g)' },
             gainLoss: { type: 'number', description: 'Net gain or loss' },
-            transactionCount: { type: 'number', description: 'Number of transactions in this group' },
+            transactionCount: {
+              type: 'number',
+              description: 'Number of transactions in this group',
+            },
           },
           required: ['exchange', 'proceeds', 'costBasis', 'gainLoss'],
         },
@@ -57,7 +58,10 @@ const KOINLY_8949_TOOL = {
             costBasis: { type: 'number', description: 'Total cost basis' },
             adjustment: { type: 'number', description: 'Adjustment amount' },
             gainLoss: { type: 'number', description: 'Net gain or loss' },
-            transactionCount: { type: 'number', description: 'Number of transactions in this group' },
+            transactionCount: {
+              type: 'number',
+              description: 'Number of transactions in this group',
+            },
           },
           required: ['exchange', 'proceeds', 'costBasis', 'gainLoss'],
         },
@@ -85,7 +89,10 @@ export const koinly8949Parser: DocumentParser<ParsedKoinly8949Schema> = {
         system: SYSTEM_PROMPT,
         userContent: [
           fileContent,
-          { type: 'text', text: 'Extract all capital gains/losses data from this Koinly Form 8949, grouped by exchange.' },
+          {
+            type: 'text',
+            text: 'Extract all capital gains/losses data from this Koinly Form 8949, grouped by exchange.',
+          },
         ],
         maxTokens: 8192,
         tools: [KOINLY_8949_TOOL],

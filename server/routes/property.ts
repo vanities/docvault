@@ -10,8 +10,6 @@ export async function handlePropertyRoutes(
   url: URL,
   pathname: string
 ): Promise<Response | null> {
-
-
   // ========================================================================
   // Property / Real Estate API
   // ========================================================================

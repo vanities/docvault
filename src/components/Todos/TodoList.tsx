@@ -40,11 +40,7 @@ export function TodoList() {
   if (pendingTodos.length === 0 && completedTodos.length === 0 && !showAddForm) {
     return (
       <div className="mb-4">
-        <Button
-          variant="ghost"
-          size="xs"
-          onClick={() => setShowAddForm(true)}
-        >
+        <Button variant="ghost" size="xs" onClick={() => setShowAddForm(true)}>
           <ListTodo className="w-3.5 h-3.5" />
           Add todo
         </Button>
@@ -66,11 +62,7 @@ export function TodoList() {
             </span>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="xs"
-          onClick={() => setShowAddForm(!showAddForm)}
-        >
+        <Button variant="ghost" size="xs" onClick={() => setShowAddForm(!showAddForm)}>
           <Plus className="w-3.5 h-3.5" />
           Add
         </Button>
@@ -116,11 +108,7 @@ export function TodoList() {
             autoFocus
             className="flex-1 h-8 text-[13px]"
           />
-          <Button
-            size="xs"
-            onClick={handleAdd}
-            disabled={!newTitle.trim()}
-          >
+          <Button size="xs" onClick={handleAdd} disabled={!newTitle.trim()}>
             Add
           </Button>
           <Button
@@ -139,11 +127,7 @@ export function TodoList() {
       {/* Completed todos (collapsible) */}
       {completedTodos.length > 0 && (
         <div className="mt-3">
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={() => setShowCompleted(!showCompleted)}
-          >
+          <Button variant="ghost" size="xs" onClick={() => setShowCompleted(!showCompleted)}>
             {showCompleted ? 'Hide' : 'Show'} completed ({completedTodos.length})
           </Button>
           {showCompleted && (

@@ -2,12 +2,7 @@
 
 import type { Parsed1099DIVSchema } from './schemas/index.js';
 import type { DocumentParser } from './base.js';
-import {
-  readFileAsBase64,
-  buildFileContent,
-  callClaude,
-  extractToolResult,
-} from './base.js';
+import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
 
 const SYSTEM_PROMPT = `You extract data from 1099-DIV (Dividends and Distributions) tax forms. Extract ALL visible data using the extract_1099_div tool. All monetary values must be numbers. Omit fields that are blank or not present.`;
 
@@ -24,22 +19,40 @@ const DIV_TOOL = {
       accountNumber: { type: 'string', description: 'Account number' },
       ordinaryDividends: { type: 'number', description: 'Box 1a - Total ordinary dividends' },
       qualifiedDividends: { type: 'number', description: 'Box 1b - Qualified dividends' },
-      capitalGainDistributions: { type: 'number', description: 'Box 2a - Total capital gain distributions' },
+      capitalGainDistributions: {
+        type: 'number',
+        description: 'Box 2a - Total capital gain distributions',
+      },
       unrecaptured1250Gain: { type: 'number', description: 'Box 2b - Unrecap. Sec. 1250 gain' },
       section1202Gain: { type: 'number', description: 'Box 2c - Section 1202 gain' },
       collectiblesGain: { type: 'number', description: 'Box 2d - Collectibles (28%) gain' },
-      section897Dividends: { type: 'number', description: 'Box 2e - Section 897 ordinary dividends' },
+      section897Dividends: {
+        type: 'number',
+        description: 'Box 2e - Section 897 ordinary dividends',
+      },
       section897CapitalGain: { type: 'number', description: 'Box 2f - Section 897 capital gain' },
-      nondividendDistributions: { type: 'number', description: 'Box 3 - Nondividend distributions' },
+      nondividendDistributions: {
+        type: 'number',
+        description: 'Box 3 - Nondividend distributions',
+      },
       federalWithheld: { type: 'number', description: 'Box 4 - Federal income tax withheld' },
       section199ADividends: { type: 'number', description: 'Box 5 - Section 199A dividends' },
       investmentExpenses: { type: 'number', description: 'Box 6 - Investment expenses' },
       foreignTaxPaid: { type: 'number', description: 'Box 7 - Foreign tax paid' },
       foreignCountry: { type: 'string', description: 'Box 8 - Foreign country or U.S. possession' },
       cashLiquidation: { type: 'number', description: 'Box 9 - Cash liquidation distributions' },
-      noncashLiquidation: { type: 'number', description: 'Box 10 - Noncash liquidation distributions' },
-      exemptInterestDividends: { type: 'number', description: 'Box 12 - Exempt-interest dividends' },
-      privateActivityBondDividends: { type: 'number', description: 'Box 13 - Private activity bond interest dividends' },
+      noncashLiquidation: {
+        type: 'number',
+        description: 'Box 10 - Noncash liquidation distributions',
+      },
+      exemptInterestDividends: {
+        type: 'number',
+        description: 'Box 12 - Exempt-interest dividends',
+      },
+      privateActivityBondDividends: {
+        type: 'number',
+        description: 'Box 13 - Private activity bond interest dividends',
+      },
       stateTaxWithheld: { type: 'number', description: 'Box 14 - State tax withheld' },
       stateIncome: { type: 'number', description: 'Box 16 - State income' },
       taxYear: { type: 'number', description: 'The tax year' },

@@ -3,12 +3,7 @@
 
 import type { ParsedReceiptSchema } from './schemas/index.js';
 import type { DocumentParser } from './base.js';
-import {
-  readFileAsBase64,
-  buildFileContent,
-  callClaude,
-  extractToolResult,
-} from './base.js';
+import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
 
 const SYSTEM_PROMPT = `You extract data from receipts and expense documents. Extract ALL visible data using the extract_receipt tool. All monetary values must be numbers. Dates should be YYYY-MM-DD format.
 
@@ -58,7 +53,10 @@ const RECEIPT_TOOL = {
           required: ['amount', 'date', 'description'],
         },
       },
-      totalAmount: { type: 'number', description: 'Sum of all transaction amounts (for payment histories)' },
+      totalAmount: {
+        type: 'number',
+        description: 'Sum of all transaction amounts (for payment histories)',
+      },
       transactionCount: { type: 'number', description: 'Number of transactions' },
       startDate: { type: 'string', description: 'Earliest transaction date' },
       endDate: { type: 'string', description: 'Latest transaction date' },

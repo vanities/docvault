@@ -10,7 +10,6 @@ export async function handleSalesRoutes(
   url: URL,
   pathname: string
 ): Promise<Response | null> {
-
   // ========================================================================
   // Sales API
   // ========================================================================

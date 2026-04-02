@@ -11,7 +11,6 @@ export async function handleCryptoRoutes(
   url: URL,
   pathname: string
 ): Promise<Response | null> {
-
   // GET /api/crypto/settings — get configured exchanges and wallets (keys masked)
   if (pathname === '/api/crypto/settings' && req.method === 'GET') {
     const settings = await loadSettings();

@@ -2,12 +2,7 @@
 
 import type { ParsedCreditCardSchema } from './schemas/index.js';
 import type { DocumentParser } from './base.js';
-import {
-  readFileAsBase64,
-  buildFileContent,
-  callClaude,
-  extractToolResult,
-} from './base.js';
+import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
 
 const SYSTEM_PROMPT = `You extract data from credit card statements. Extract ALL visible data using the extract_credit_card_statement tool. All monetary values must be numbers. Dates should be YYYY-MM-DD format. Omit fields that are blank or not present.`;
 
@@ -26,7 +21,10 @@ const CREDIT_CARD_TOOL = {
       creditLimit: { type: 'number', description: 'Credit limit' },
       paymentDueDate: { type: 'string', description: 'Payment due date (YYYY-MM-DD)' },
       statementDate: { type: 'string', description: 'Statement date (YYYY-MM-DD)' },
-      statementPeriod: { type: 'string', description: 'Statement period (e.g., 11/22/25 - 12/21/25)' },
+      statementPeriod: {
+        type: 'string',
+        description: 'Statement period (e.g., 11/22/25 - 12/21/25)',
+      },
     },
     required: ['institution', 'newBalance'],
   },

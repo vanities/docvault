@@ -492,7 +492,12 @@ export function IncomeSummary({
             <h3 className="font-semibold text-surface-950 text-[14px]">
               Sales Revenue{summary.salesCount > 0 ? ` (${summary.salesCount} sales)` : ''}
             </h3>
-            <Button variant="ghost" size="sm" className="text-amber-500 hover:text-amber-400" onClick={onNavigateToSales}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-amber-500 hover:text-amber-400"
+              onClick={onNavigateToSales}
+            >
               <Egg className="w-4 h-4" />
               {summary.salesCount > 0 ? 'View Sales' : 'Add Sales'}
               <ArrowRight className="w-3.5 h-3.5" />

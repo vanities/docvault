@@ -2,12 +2,7 @@
 
 import type { Parsed1099NECSchema } from './schemas/index.js';
 import type { DocumentParser, ValidationResult } from './base.js';
-import {
-  readFileAsBase64,
-  buildFileContent,
-  callClaude,
-  extractToolResult,
-} from './base.js';
+import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
 
 const SYSTEM_PROMPT = `You extract data from 1099-NEC (Nonemployee Compensation) tax forms. Extract ALL visible data using the extract_1099_nec tool. All monetary values must be numbers. Omit fields that are blank or not present.`;
 
@@ -86,16 +81,10 @@ export const nec1099Parser: DocumentParser<Parsed1099NECSchema> = {
   validate(result: Parsed1099NECSchema): ValidationResult {
     const warnings: string[] = [];
 
-    if (
-      result.nonemployeeCompensation !== undefined &&
-      result.nonemployeeCompensation <= 0
-    ) {
-      warnings.push(
-        `Nonemployee compensation is ${result.nonemployeeCompensation} (expected > 0)`
-      );
+    if (result.nonemployeeCompensation !== undefined && result.nonemployeeCompensation <= 0) {
+      warnings.push(`Nonemployee compensation is ${result.nonemployeeCompensation} (expected > 0)`);
     }
 
     return { valid: warnings.length === 0, warnings };
   },
 };
-
