@@ -717,60 +717,62 @@ export function CryptoView() {
                 </div>
 
                 {/* Per-asset breakdown */}
-                <div className="border-t border-border/30 pt-3">
-                  <div className="grid grid-cols-12 gap-2 pb-2 text-[10px] font-medium text-surface-500 uppercase tracking-wider">
-                    <div className="col-span-2">Asset</div>
-                    <div className="col-span-2 text-right">Amount</div>
-                    <div className="col-span-2 text-right">Cost Basis</div>
-                    <div className="col-span-2 text-right">Current</div>
-                    <div className="col-span-2 text-right">P&L</div>
-                    <div className="col-span-2 text-right">Type</div>
-                  </div>
-                  {gains.assets.slice(0, 10).map((a) => (
-                    <div
-                      key={a.asset}
-                      className="grid grid-cols-12 gap-2 py-2.5 border-b border-border/20 last:border-0 items-center"
-                    >
-                      <div className="col-span-2">
-                        <span className="text-[13px] font-mono font-bold text-surface-950">
-                          {a.asset}
-                        </span>
-                      </div>
-                      <div className="col-span-2 text-right text-[12px] text-surface-700 font-mono">
-                        {formatAmount(a.totalAmount, a.asset)}
-                      </div>
-                      <div className="col-span-2 text-right text-[12px] text-surface-700">
-                        {formatUsd(a.totalCostBasis)}
-                      </div>
-                      <div className="col-span-2 text-right text-[12px] text-surface-950 font-medium">
-                        {formatUsd(a.currentValue)}
-                      </div>
-                      <div className="col-span-2 text-right">
-                        <span
-                          className={`text-[12px] font-medium ${a.unrealizedGain >= 0 ? 'text-green-500' : 'text-red-500'}`}
-                        >
-                          {a.unrealizedGain >= 0 ? '+' : ''}
-                          {formatUsd(a.unrealizedGain)}
-                        </span>
-                      </div>
-                      <div className="col-span-2 text-right">
-                        {a.lots.length > 0 && (
-                          <div className="flex items-center justify-end gap-1">
-                            {a.shortTermGain !== 0 && (
-                              <span className="text-[9px] px-1 py-0.5 rounded bg-amber-500/10 text-amber-600 font-medium">
-                                ST
-                              </span>
-                            )}
-                            {a.longTermGain !== 0 && (
-                              <span className="text-[9px] px-1 py-0.5 rounded bg-green-500/10 text-green-600 font-medium">
-                                LT
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                <div className="border-t border-border/30 pt-3 overflow-x-auto scrollbar-hide">
+                  <div className="min-w-[520px]">
+                    <div className="grid grid-cols-12 gap-2 pb-2 text-[10px] font-medium text-surface-500 uppercase tracking-wider">
+                      <div className="col-span-2">Asset</div>
+                      <div className="col-span-2 text-right">Amount</div>
+                      <div className="col-span-2 text-right">Cost Basis</div>
+                      <div className="col-span-2 text-right">Current</div>
+                      <div className="col-span-2 text-right">P&L</div>
+                      <div className="col-span-2 text-right">Type</div>
                     </div>
-                  ))}
+                    {gains.assets.slice(0, 10).map((a) => (
+                      <div
+                        key={a.asset}
+                        className="grid grid-cols-12 gap-2 py-2.5 border-b border-border/20 last:border-0 items-center"
+                      >
+                        <div className="col-span-2">
+                          <span className="text-[13px] font-mono font-bold text-surface-950">
+                            {a.asset}
+                          </span>
+                        </div>
+                        <div className="col-span-2 text-right text-[12px] text-surface-700 font-mono">
+                          {formatAmount(a.totalAmount, a.asset)}
+                        </div>
+                        <div className="col-span-2 text-right text-[12px] text-surface-700">
+                          {formatUsd(a.totalCostBasis)}
+                        </div>
+                        <div className="col-span-2 text-right text-[12px] text-surface-950 font-medium">
+                          {formatUsd(a.currentValue)}
+                        </div>
+                        <div className="col-span-2 text-right">
+                          <span
+                            className={`text-[12px] font-medium ${a.unrealizedGain >= 0 ? 'text-green-500' : 'text-red-500'}`}
+                          >
+                            {a.unrealizedGain >= 0 ? '+' : ''}
+                            {formatUsd(a.unrealizedGain)}
+                          </span>
+                        </div>
+                        <div className="col-span-2 text-right">
+                          {a.lots.length > 0 && (
+                            <div className="flex items-center justify-end gap-1">
+                              {a.shortTermGain !== 0 && (
+                                <span className="text-[9px] px-1 py-0.5 rounded bg-amber-500/10 text-amber-600 font-medium">
+                                  ST
+                                </span>
+                              )}
+                              {a.longTermGain !== 0 && (
+                                <span className="text-[9px] px-1 py-0.5 rounded bg-green-500/10 text-green-600 font-medium">
+                                  LT
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 <p className="text-[10px] text-surface-500 mt-2">
                   {gains.tradeCount} trades analyzed &middot; FIFO accounting &middot; Updated{' '}

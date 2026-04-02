@@ -695,84 +695,86 @@ export function PortfolioView() {
               </div>
 
               {/* Table header */}
-              <div className="px-5">
-                <div className="grid grid-cols-12 gap-2 py-2 text-[11px] font-medium text-surface-500 uppercase tracking-wider border-b border-border/50">
-                  <div className="col-span-4">Asset</div>
-                  <div className="col-span-2 text-right">Value</div>
-                  <div className="col-span-2 text-right">Gain/Loss</div>
-                  <div className="col-span-2 text-right">Allocation</div>
-                  <div className="col-span-2 text-right">Type</div>
-                </div>
+              <div className="px-5 overflow-x-auto scrollbar-hide">
+                <div className="min-w-[520px]">
+                  <div className="grid grid-cols-12 gap-2 py-2 text-[11px] font-medium text-surface-500 uppercase tracking-wider border-b border-border/50">
+                    <div className="col-span-4">Asset</div>
+                    <div className="col-span-2 text-right">Value</div>
+                    <div className="col-span-2 text-right">Gain/Loss</div>
+                    <div className="col-span-2 text-right">Allocation</div>
+                    <div className="col-span-2 text-right">Type</div>
+                  </div>
 
-                {topSlices.map((slice, i) => {
-                  const pct = grandTotal > 0 ? (slice.value / grandTotal) * 100 : 0;
-                  const barColor = SLICE_COLORS[i % SLICE_COLORS.length];
-                  return (
-                    <div
-                      key={`${slice.label}-${slice.detail || i}`}
-                      className="grid grid-cols-12 gap-2 py-3 border-b border-border/30 last:border-0 items-center"
-                    >
-                      <div className="col-span-4">
-                        <p className="text-[13px] font-mono font-bold text-surface-950">
-                          {slice.label}
-                        </p>
-                        {slice.detail && (
-                          <p className="text-[11px] text-surface-500">{slice.detail}</p>
-                        )}
-                      </div>
-                      <div className="col-span-2 text-right">
-                        <span className="text-[13px] font-medium text-surface-950">
-                          {formatUsd(slice.value)}
-                        </span>
-                      </div>
-                      <div className="col-span-2 text-right">
-                        {slice.gainLoss != null && slice.gainLoss !== 0 ? (
-                          <div>
-                            <span
-                              className={`text-[12px] font-medium ${
-                                slice.gainLoss >= 0 ? 'text-green-500' : 'text-red-500'
-                              }`}
-                            >
-                              {slice.gainLoss >= 0 ? '+' : ''}
-                              {formatUsd(slice.gainLoss)}
+                  {topSlices.map((slice, i) => {
+                    const pct = grandTotal > 0 ? (slice.value / grandTotal) * 100 : 0;
+                    const barColor = SLICE_COLORS[i % SLICE_COLORS.length];
+                    return (
+                      <div
+                        key={`${slice.label}-${slice.detail || i}`}
+                        className="grid grid-cols-12 gap-2 py-3 border-b border-border/30 last:border-0 items-center"
+                      >
+                        <div className="col-span-4">
+                          <p className="text-[13px] font-mono font-bold text-surface-950">
+                            {slice.label}
+                          </p>
+                          {slice.detail && (
+                            <p className="text-[11px] text-surface-500">{slice.detail}</p>
+                          )}
+                        </div>
+                        <div className="col-span-2 text-right">
+                          <span className="text-[13px] font-medium text-surface-950">
+                            {formatUsd(slice.value)}
+                          </span>
+                        </div>
+                        <div className="col-span-2 text-right">
+                          {slice.gainLoss != null && slice.gainLoss !== 0 ? (
+                            <div>
+                              <span
+                                className={`text-[12px] font-medium ${
+                                  slice.gainLoss >= 0 ? 'text-green-500' : 'text-red-500'
+                                }`}
+                              >
+                                {slice.gainLoss >= 0 ? '+' : ''}
+                                {formatUsd(slice.gainLoss)}
+                              </span>
+                              {slice.gainType && slice.gainType !== 'unknown' && (
+                                <p className="text-[9px] text-surface-500 uppercase">
+                                  {slice.gainType === 'short-term' ? 'ST' : 'LT'}
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-surface-500">—</span>
+                          )}
+                        </div>
+                        <div className="col-span-2">
+                          <div className="flex items-center gap-2 justify-end">
+                            <div className="w-16 h-1.5 bg-surface-200/50 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full ${barColor} rounded-full`}
+                                style={{ width: `${Math.max(pct, 0.5)}%` }}
+                              />
+                            </div>
+                            <span className="text-[11px] text-surface-500 tabular-nums w-10 text-right">
+                              {pct.toFixed(1)}%
                             </span>
-                            {slice.gainType && slice.gainType !== 'unknown' && (
-                              <p className="text-[9px] text-surface-500 uppercase">
-                                {slice.gainType === 'short-term' ? 'ST' : 'LT'}
-                              </p>
-                            )}
                           </div>
-                        ) : (
-                          <span className="text-[11px] text-surface-500">—</span>
-                        )}
-                      </div>
-                      <div className="col-span-2">
-                        <div className="flex items-center gap-2 justify-end">
-                          <div className="w-16 h-1.5 bg-surface-200/50 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full ${barColor} rounded-full`}
-                              style={{ width: `${Math.max(pct, 0.5)}%` }}
-                            />
-                          </div>
-                          <span className="text-[11px] text-surface-500 tabular-nums w-10 text-right">
-                            {pct.toFixed(1)}%
+                        </div>
+                        <div className="col-span-2 text-right">
+                          <span
+                            className={`text-[11px] px-1.5 py-0.5 rounded-full font-medium ${
+                              slice.type === 'crypto'
+                                ? 'text-amber-500 bg-amber-500/10'
+                                : 'text-accent-400 bg-accent-500/10'
+                            }`}
+                          >
+                            {slice.type === 'crypto' ? 'Crypto' : 'Stock'}
                           </span>
                         </div>
                       </div>
-                      <div className="col-span-2 text-right">
-                        <span
-                          className={`text-[11px] px-1.5 py-0.5 rounded-full font-medium ${
-                            slice.type === 'crypto'
-                              ? 'text-amber-500 bg-amber-500/10'
-                              : 'text-accent-400 bg-accent-500/10'
-                          }`}
-                        >
-                          {slice.type === 'crypto' ? 'Crypto' : 'Stock'}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
 
               {hiddenCount > 0 && (

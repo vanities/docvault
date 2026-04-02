@@ -407,85 +407,87 @@ function AccountCard({
             </div>
           ) : (
             sortedHoldings.length > 0 && (
-              <div className="px-4">
-                {/* Table Header */}
-                <div className="grid grid-cols-12 gap-2 py-2.5 text-[11px] font-medium text-surface-500 uppercase tracking-wider border-b border-border/50">
-                  <div className="col-span-4">Holding</div>
-                  <div className="col-span-2 text-right">Shares</div>
-                  <div className="col-span-2 text-right">Price</div>
-                  <div className="col-span-2 text-right">Value</div>
-                  <div className="col-span-2 text-right">Gain/Loss</div>
-                </div>
+              <div className="px-4 overflow-x-auto scrollbar-hide">
+                <div className="min-w-[520px]">
+                  {/* Table Header */}
+                  <div className="grid grid-cols-12 gap-2 py-2.5 text-[11px] font-medium text-surface-500 uppercase tracking-wider border-b border-border/50">
+                    <div className="col-span-4">Holding</div>
+                    <div className="col-span-2 text-right">Shares</div>
+                    <div className="col-span-2 text-right">Price</div>
+                    <div className="col-span-2 text-right">Value</div>
+                    <div className="col-span-2 text-right">Gain/Loss</div>
+                  </div>
 
-                {/* Holdings Rows */}
-                {sortedHoldings.map((h) => (
-                  <div
-                    key={h.ticker}
-                    className="grid grid-cols-12 gap-2 py-3 border-b border-border/30 last:border-0 items-center group"
-                  >
-                    <div className="col-span-4 flex items-center gap-2">
-                      <div className="min-w-0">
-                        <p className="text-[13px] font-mono font-bold text-surface-950">
-                          {h.ticker}
-                        </p>
-                        {h.label && (
-                          <p className="text-[11px] text-surface-500 truncate">{h.label}</p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="col-span-2 text-right">
-                      <span className="text-[13px] text-surface-800 font-mono">
-                        {h.shares.toLocaleString('en-US', { maximumFractionDigits: 4 })}
-                      </span>
-                    </div>
-                    <div className="col-span-2 text-right">
-                      <span className="text-[13px] text-surface-700">
-                        {h.price ? formatUsd(h.price) : '--'}
-                      </span>
-                    </div>
-                    <div className="col-span-2 text-right">
-                      <span className="text-[13px] font-medium text-surface-950">
-                        {h.marketValue ? formatUsd(h.marketValue) : '--'}
-                      </span>
-                    </div>
-                    <div className="col-span-2 text-right flex items-center justify-end gap-1">
-                      {h.costBasis && h.gainLoss !== undefined ? (
-                        <div className="text-right">
-                          <span
-                            className={`text-[12px] font-medium ${h.gainLoss >= 0 ? 'text-green-500' : 'text-red-500'}`}
-                          >
-                            {formatUsd(h.gainLoss)}
-                          </span>
-                          {h.gainType && h.gainType !== 'unknown' && (
-                            <span
-                              className={`ml-1 text-[9px] px-1 py-0.5 rounded font-medium ${h.gainType === 'long-term' ? 'text-green-600 bg-green-500/10' : 'text-amber-600 bg-amber-500/10'}`}
-                            >
-                              {h.gainType === 'short-term' ? 'ST' : 'LT'}
-                            </span>
+                  {/* Holdings Rows */}
+                  {sortedHoldings.map((h) => (
+                    <div
+                      key={h.ticker}
+                      className="grid grid-cols-12 gap-2 py-3 border-b border-border/30 last:border-0 items-center group"
+                    >
+                      <div className="col-span-4 flex items-center gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-mono font-bold text-surface-950">
+                            {h.ticker}
+                          </p>
+                          {h.label && (
+                            <p className="text-[11px] text-surface-500 truncate">{h.label}</p>
                           )}
                         </div>
-                      ) : (
-                        <span className="text-[12px] text-surface-500">--</span>
-                      )}
-                      <button
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          if (
-                            await confirm({
-                              description: `Remove ${h.ticker}?`,
-                              confirmLabel: 'Remove',
-                              destructive: true,
-                            })
-                          )
-                            onRemoveHolding(account.id, h.ticker);
-                        }}
-                        className="p-1 opacity-0 group-hover:opacity-100 text-surface-400 hover:text-danger-400 transition-all"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
+                      </div>
+                      <div className="col-span-2 text-right">
+                        <span className="text-[13px] text-surface-800 font-mono">
+                          {h.shares.toLocaleString('en-US', { maximumFractionDigits: 4 })}
+                        </span>
+                      </div>
+                      <div className="col-span-2 text-right">
+                        <span className="text-[13px] text-surface-700">
+                          {h.price ? formatUsd(h.price) : '--'}
+                        </span>
+                      </div>
+                      <div className="col-span-2 text-right">
+                        <span className="text-[13px] font-medium text-surface-950">
+                          {h.marketValue ? formatUsd(h.marketValue) : '--'}
+                        </span>
+                      </div>
+                      <div className="col-span-2 text-right flex items-center justify-end gap-1">
+                        {h.costBasis && h.gainLoss !== undefined ? (
+                          <div className="text-right">
+                            <span
+                              className={`text-[12px] font-medium ${h.gainLoss >= 0 ? 'text-green-500' : 'text-red-500'}`}
+                            >
+                              {formatUsd(h.gainLoss)}
+                            </span>
+                            {h.gainType && h.gainType !== 'unknown' && (
+                              <span
+                                className={`ml-1 text-[9px] px-1 py-0.5 rounded font-medium ${h.gainType === 'long-term' ? 'text-green-600 bg-green-500/10' : 'text-amber-600 bg-amber-500/10'}`}
+                              >
+                                {h.gainType === 'short-term' ? 'ST' : 'LT'}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-[12px] text-surface-500">--</span>
+                        )}
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (
+                              await confirm({
+                                description: `Remove ${h.ticker}?`,
+                                confirmLabel: 'Remove',
+                                destructive: true,
+                              })
+                            )
+                              onRemoveHolding(account.id, h.ticker);
+                          }}
+                          className="p-1 opacity-0 group-hover:opacity-100 text-surface-400 hover:text-danger-400 transition-all"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             )
           )}

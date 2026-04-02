@@ -305,8 +305,8 @@ export function TaxYearView() {
 
       {/* Tab Navigation */}
       <div className="border-b border-border mb-6">
-        <div className="flex items-center justify-between">
-          <nav className="flex gap-4 md:gap-6">
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <nav className="flex gap-2 md:gap-6 overflow-x-auto min-w-0 scrollbar-hide">
             {tabs.map((tab) => (
               <Button
                 key={tab.id}
@@ -334,7 +334,7 @@ export function TaxYearView() {
 
           {/* CPA Package + Download Dropdown */}
           {selectedEntity !== 'all' && (
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               <Button
                 size="sm"
                 className="mb-1"
