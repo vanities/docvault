@@ -547,6 +547,22 @@ const ERC20_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
   { contract: '0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9', symbol: 'AAVE', decimals: 18 },
   { contract: '0x7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0', symbol: 'MATIC', decimals: 18 },
   { contract: '0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE', symbol: 'SHIB', decimals: 18 },
+  // Governance / protocol tokens
+  { contract: '0xC18360217D8F7Ab5e7c516566761Ea12Ce7F9D72', symbol: 'ENS', decimals: 18 },
+  { contract: '0x0D8775F648430679A709E98d2b0Cb6250d2887EF', symbol: 'BAT', decimals: 18 },
+  { contract: '0xc944E90C64B2c07662A292be6244BDf05Cda44a7', symbol: 'GRT', decimals: 18 },
+  { contract: '0xB50721BCf8d664c30412Cfbc6cf7a15145234ad1', symbol: 'ARB', decimals: 18 },
+  { contract: '0x4200000000000000000000000000000000000042', symbol: 'OP', decimals: 18 },
+  { contract: '0xF57e7e7C23978C3cAEC3C3548E3D615c346e79fF', symbol: 'IMX', decimals: 18 },
+  { contract: '0x5283D291DBCF85356A21bA090E6db59121208b44', symbol: 'BLUR', decimals: 18 },
+  { contract: '0x58b6A8A3302369DAEc383334672404Ee733aB239', symbol: 'LPT', decimals: 18 },
+  { contract: '0xcCC8cb5229B0ac8069C51fd58367fd1e622aFD97', symbol: 'GODS', decimals: 18 },
+  { contract: '0xA0b73E1Ff0B80914AB6fe0444E65848C4C34450b', symbol: 'CRO', decimals: 8 },
+  { contract: '0xAf5191B0De278C7286d6C7CC6ab6BB8A73bA2Cd6', symbol: 'STG', decimals: 18 },
+  { contract: '0x31c8EAcBFFdD875c74b94b077895Bd78CF1E64A3', symbol: 'RAD', decimals: 18 },
+  { contract: '0xc770EEfAd204B5180dF6a14Ee197D99d808ee52d', symbol: 'FOX', decimals: 18 },
+  { contract: '0xCa14007Eff0dB1f8135f4C25B34De49AB0d42766', symbol: 'STRK', decimals: 18 },
+  { contract: '0x455e53CBB86018Ac2B8092FdCd39d8444aFFC3F6', symbol: 'POL', decimals: 18 },
 ];
 
 async function fetchEthBalance(address: string): Promise<Balance[]> {
