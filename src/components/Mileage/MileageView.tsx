@@ -12,7 +12,6 @@ import {
   Pencil,
   Check,
   X,
-  Settings2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -385,8 +384,8 @@ export function MileageView() {
   return (
     <div className="max-w-lg mx-auto px-4 py-6 space-y-5 overflow-x-hidden">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="p-2.5 bg-teal-500/10 rounded-xl">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="p-2.5 bg-teal-500/10 rounded-xl shrink-0">
           <Fuel className="w-6 h-6 text-teal-500" />
         </div>
         <div className="min-w-0 flex-1">
@@ -396,13 +395,9 @@ export function MileageView() {
             ${data.irsRate.toFixed(2)}/mile
           </p>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          className="shrink-0"
-          onClick={() => setSettingsOpen(true)}
-        >
-          Edit Vehicles / Addresses
+        <Button type="button" size="sm" className="shrink-0" onClick={() => setSettingsOpen(true)}>
+          <span className="sm:hidden">Settings</span>
+          <span className="hidden sm:inline">Edit Vehicles / Addresses</span>
         </Button>
       </div>
 

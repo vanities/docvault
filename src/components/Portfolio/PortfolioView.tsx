@@ -279,7 +279,7 @@ export function PortfolioView() {
   return (
     <div className="max-w-5xl mx-auto px-4 md:px-6 py-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
         <div>
           <h2 className="text-2xl font-bold text-surface-950">Portfolio Overview</h2>
           {lastUpdated && (
@@ -298,7 +298,7 @@ export function PortfolioView() {
             title="Save today's portfolio value as a snapshot"
           >
             <Camera className={`w-4 h-4 ${isTakingSnapshot ? 'animate-pulse' : ''}`} />
-            Snapshot
+            <span className="hidden sm:inline">Snapshot</span>
           </Button>
           <Button
             type="button"
@@ -307,7 +307,9 @@ export function PortfolioView() {
             className="bg-violet-500 hover:bg-violet-400 shadow-sm"
           >
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-            {isRefreshing ? 'Refreshing...' : 'Refresh All'}
+            <span className="hidden sm:inline">
+              {isRefreshing ? 'Refreshing...' : 'Refresh All'}
+            </span>
           </Button>
         </div>
       </div>

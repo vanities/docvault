@@ -10,7 +10,6 @@ import {
   Pencil,
   Check,
   X,
-  Settings,
 } from 'lucide-react';
 import type { Sale, SaleProduct, SalesData } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
@@ -227,8 +226,8 @@ export function SalesView() {
   return (
     <div className="max-w-lg mx-auto px-4 py-6 space-y-5 overflow-x-hidden">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="p-2.5 bg-amber-500/10 rounded-xl">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="p-2.5 bg-amber-500/10 rounded-xl shrink-0">
           <Egg className="w-6 h-6 text-amber-500" />
         </div>
         <div className="min-w-0 flex-1">
@@ -243,7 +242,8 @@ export function SalesView() {
           onClick={() => setProductsDialogOpen(true)}
           className="shrink-0 bg-amber-500 text-white hover:bg-amber-400"
         >
-          Edit Products
+          <span className="sm:hidden">Products</span>
+          <span className="hidden sm:inline">Edit Products</span>
         </Button>
       </div>
 

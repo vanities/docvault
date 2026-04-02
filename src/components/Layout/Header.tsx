@@ -19,6 +19,7 @@ export function Header() {
     activeView,
     selectedEntity,
     selectedYear,
+    entities,
     scannedDocuments,
     setScannedDocuments,
     isProcessing,
@@ -98,6 +99,20 @@ export function Header() {
         <Menu className="w-5 h-5" />
       </Button>
 
+      {/* Entity + Year — mobile only */}
+      {!searchActive && (
+        <div className="md:hidden flex items-center gap-1.5 min-w-0">
+          <span className="text-[13px] font-semibold text-surface-950 truncate">
+            {selectedEntity === 'all'
+              ? 'All Entities'
+              : (entities.find((e) => e.id === selectedEntity)?.name ?? selectedEntity)}
+          </span>
+          {activeView === 'tax-year' && (
+            <span className="text-[12px] text-surface-600 shrink-0">{selectedYear}</span>
+          )}
+        </div>
+      )}
+
       {/* Data dir — desktop only */}
       <div className="hidden md:flex items-center gap-3 flex-1">
         <p className="text-xs text-surface-600 truncate max-w-[300px] font-mono">{dataDir}</p>
@@ -125,9 +140,9 @@ export function Header() {
         )}
       </div>
 
-      {/* Tax Year Controls - only visible in tax-year view when not searching */}
+      {/* Tax Year Controls - desktop only, visible in tax-year view when not searching */}
       {showTaxYearControls && (
-        <div className="flex items-center gap-2 ml-4">
+        <div className="hidden md:flex items-center gap-2 ml-4">
           {/* Split parse button */}
           <div className="flex items-center">
             <Button
@@ -156,23 +171,19 @@ export function Header() {
                 <Button
                   variant="ghost"
                   size="icon-xs"
-                  disabled={isProcessing || scannedDocuments.length === 0 || selectedEntity === 'all'}
+                  disabled={
+                    isProcessing || scannedDocuments.length === 0 || selectedEntity === 'all'
+                  }
                   className="text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 rounded-l-none rounded-r-lg border-l border-purple-500/20"
                 >
                   <ChevronDown className="w-3.5 h-3.5" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  disabled={unparsedCount === 0}
-                  onClick={() => handleParse(true)}
-                >
+                <DropdownMenuItem disabled={unparsedCount === 0} onClick={() => handleParse(true)}>
                   Parse {unparsedCount} unparsed
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-warn-400"
-                  onClick={() => handleParse(false)}
-                >
+                <DropdownMenuItem className="text-warn-400" onClick={() => handleParse(false)}>
                   Force re-parse all
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -181,12 +192,7 @@ export function Header() {
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={handleRescan}
-                disabled={isProcessing}
-              >
+              <Button variant="ghost" size="icon-sm" onClick={handleRescan} disabled={isProcessing}>
                 <RefreshCw className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
               </Button>
             </TooltipTrigger>
