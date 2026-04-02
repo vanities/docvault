@@ -561,7 +561,7 @@ export function BanksView() {
         <>
           {/* Summary card */}
           <Card variant="glass" className="p-5 mb-6">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <p className="text-[11px] text-surface-500 uppercase tracking-wider mb-1">
                   Net Balance

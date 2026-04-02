@@ -442,7 +442,7 @@ export function MileageView() {
       <form onSubmit={handleSubmit} className="glass-card rounded-xl p-4 space-y-3">
         <h2 className="text-sm font-semibold text-surface-900">New Entry</h2>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label className="mb-1">Date</Label>
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -718,7 +718,7 @@ export function MileageView() {
                           key={entry.id}
                           className="px-4 py-3 space-y-2 bg-surface-50 border-b border-border/50 last:border-b-0"
                         >
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <div>
                               <Label className="text-[10px]">Date</Label>
                               <Input
