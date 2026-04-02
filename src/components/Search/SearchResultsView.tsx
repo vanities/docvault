@@ -133,11 +133,11 @@ export function SearchResultsView() {
   const { searchQuery, searchResults, isSearching } = useAppContext();
 
   return (
-    <div className="p-6">
-      <div className="flex items-center gap-2 mb-5">
-        <Search className="w-5 h-5 text-surface-600" />
-        <h2 className="font-display text-lg text-surface-950 italic">
-          Search results for "{searchQuery}"
+    <div className="p-4 md:p-6">
+      <div className="flex items-center gap-2 mb-5 min-w-0">
+        <Search className="w-5 h-5 text-surface-600 shrink-0" />
+        <h2 className="font-display text-lg text-surface-950 italic truncate">
+          Search results for &ldquo;{searchQuery}&rdquo;
         </h2>
         {!isSearching && (
           <span className="text-[13px] text-surface-600 ml-1">
@@ -154,7 +154,9 @@ export function SearchResultsView() {
       ) : searchResults.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-surface-600">
           <Search className="w-10 h-10 mb-3 opacity-30" />
-          <p className="text-[13px]">No files found matching "{searchQuery}"</p>
+          <p className="text-[13px] text-center px-4 break-all">
+            No files found matching &ldquo;{searchQuery}&rdquo;
+          </p>
         </div>
       ) : (
         <div className="grid gap-2">
