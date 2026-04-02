@@ -3,12 +3,7 @@
 // Distinct from receipts (money paid BY the business).
 
 import type { DocumentParser } from './base.js';
-import {
-  readFileAsBase64,
-  buildFileContent,
-  callClaude,
-  extractToolResult,
-} from './base.js';
+import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
 
 const SYSTEM_PROMPT = `You extract data from invoices. An invoice is a document sent TO a client/customer requesting payment for services rendered or goods delivered. This is NOT a receipt (which records a payment made).
 
@@ -102,11 +97,8 @@ export const invoiceParser: DocumentParser<ParsedInvoiceSchema> = {
 
       const response = await callClaude({
         system: SYSTEM_PROMPT,
-        userContent: [
-          fileContent,
-          { type: 'text', text: 'Extract all data from this invoice.' },
-        ],
-        maxTokens: 2048,
+        userContent: [fileContent, { type: 'text', text: 'Extract all data from this invoice.' }],
+        maxTokens: 8192,
         tools: [INVOICE_TOOL],
         toolChoice: { type: 'tool', name: 'extract_invoice' },
       });
@@ -115,6 +107,18 @@ export const invoiceParser: DocumentParser<ParsedInvoiceSchema> = {
       if (!result) {
         console.error('[Invoice Parser] No tool result from Claude');
         return null;
+      }
+
+      // Compute invoiceTotal from line items if missing
+      if (result.invoiceTotal == null && Array.isArray(result.lineItems)) {
+        const lineTotal = (result.lineItems as Array<{ amount?: number }>).reduce(
+          (sum, item) => sum + (item.amount || 0),
+          0
+        );
+        if (lineTotal > 0) {
+          result.invoiceTotal = lineTotal;
+          result.subtotal = result.subtotal ?? lineTotal;
+        }
       }
 
       return {
