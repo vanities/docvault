@@ -119,6 +119,7 @@ export function DocumentViewer({
   const { renameFile, parseFile } = useAppContext();
   const [isAiRenaming, setIsAiRenaming] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const sheetContainerRef = useRef<HTMLDivElement>(null);
 
   // Split filename into name and extension for the rename input
   const extMatch = document.fileName.match(/(\.[^.]+)$/);
@@ -254,7 +255,7 @@ export function DocumentViewer({
 
   const handleCopyPath = useCallback(
     async (text: string) => {
-      const ok = await copyToClipboard(text);
+      const ok = await copyToClipboard(text, sheetContainerRef.current ?? undefined);
       if (ok) {
         setCopied(true);
         addToast('Path copied to clipboard', 'success');
@@ -446,7 +447,10 @@ export function DocumentViewer({
           </div>
 
           {/* Details */}
-          <div className="border-t border-border p-4 space-y-4 max-h-80 overflow-y-auto">
+          <div
+            ref={sheetContainerRef}
+            className="border-t border-border p-4 space-y-4 max-h-80 overflow-y-auto"
+          >
             {/* File Info */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[13px]">
               <div className="flex items-center gap-2 text-surface-700">
