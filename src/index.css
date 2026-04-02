@@ -115,9 +115,6 @@ body {
   min-height: 100dvh;
   background: var(--color-surface-0);
   color: var(--color-surface-950);
-  /* Safe area insets for notched devices */
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
-    env(safe-area-inset-left);
 }
 
 /* Display / serif headings */

@@ -113,7 +113,7 @@ export function Layout() {
   };
 
   return (
-    <div className="noise flex h-screen bg-surface-0">
+    <div className="noise flex h-dvh bg-surface-0">
       {/* Desktop Sidebar */}
       <div className="hidden md:flex">
         <Sidebar onAddEntity={() => setShowAddEntityModal(true)} />
@@ -136,7 +136,9 @@ export function Layout() {
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header />
-        <main className="flex-1 overflow-auto">{renderContent()}</main>
+        <main className="flex-1 overflow-auto pb-[env(safe-area-inset-bottom)]">
+          {renderContent()}
+        </main>
       </div>
 
       {/* Add Entity Modal */}
