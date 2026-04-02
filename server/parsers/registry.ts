@@ -52,6 +52,27 @@ const hintToCanonical: Record<string, string> = {
   'koinly-schedule': 'koinly-schedule',
 };
 
+// Infer document type from the folder path (entity/year/folder/... structure).
+// The folder structure already encodes the document type — use it before LLM.
+function detectTypeFromFolderPath(filePath: string): string {
+  if (/expenses\/business/.test(filePath)) return 'receipt';
+  if (/expenses\/childcare/.test(filePath)) return 'receipt';
+  if (/expenses\/medical/.test(filePath)) return 'receipt';
+  if (/expenses\/home-improvement/.test(filePath)) return 'receipt';
+  if (/income\/w2/.test(filePath)) return 'w2';
+  if (/income\/1099-nec/.test(filePath)) return '1099-nec';
+  if (/income\/1099-misc/.test(filePath)) return '1099-misc';
+  if (/income\/1099-div/.test(filePath)) return '1099-div';
+  if (/income\/1099-int/.test(filePath)) return '1099-int';
+  if (/income\/1099-b/.test(filePath)) return '1099-b';
+  if (/income\/1099-r/.test(filePath)) return '1099-r';
+  if (/income\/1099/.test(filePath)) return '1099-nec';
+  if (/income\/k-1/.test(filePath)) return 'k-1';
+  if (/statements\/bank/.test(filePath)) return 'bank-statement';
+  if (/statements\/credit-card/.test(filePath)) return 'credit-card-statement';
+  return 'unknown';
+}
+
 // Main entry point — replaces parseWithAI() as the parser router.
 // Detects document type, finds the right parser, runs it, and returns
 // a legacy-compatible ParsedTaxDocument.
@@ -60,7 +81,7 @@ export async function routeParse(
   filename: string,
   forceType?: string
 ): Promise<ParsedTaxDocument | null> {
-  // 1. Detect type — filename first (free), then LLM if needed
+  // 1. Detect type — folder path first (free), then filename, then LLM if needed
   let detectedType: string;
   if (forceType) {
     detectedType = forceType;
@@ -68,11 +89,18 @@ export async function routeParse(
     const filenameHint = detectDocumentTypeFromFilename(filename);
     const canonicalHint = hintToCanonical[filenameHint] || filenameHint;
 
-    if (canonicalHint === 'unknown') {
-      // Filename didn't match — use LLM classification
-      detectedType = await detectDocumentType(filePath, filename);
-    } else {
+    if (canonicalHint !== 'unknown') {
       detectedType = canonicalHint;
+    } else {
+      // Filename didn't match — check folder structure before paying for LLM
+      const pathHint = detectTypeFromFolderPath(filePath);
+      if (pathHint !== 'unknown') {
+        console.log(`[Parser Registry] Path hint: ${filePath} → ${pathHint}`);
+        detectedType = pathHint;
+      } else {
+        // Last resort: LLM classification
+        detectedType = await detectDocumentType(filePath, filename);
+      }
     }
   }
 
