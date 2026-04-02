@@ -280,6 +280,15 @@ body {
   animation-delay: 200ms;
 }
 
+/* Hide scrollbar but keep scroll functional (for tab bars etc.) */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 /* ============================================
    Scrollbar
    ============================================ */
