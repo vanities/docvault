@@ -917,7 +917,7 @@ export function BrokersView() {
   return (
     <div className="max-w-5xl mx-auto px-4 md:px-6 py-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
         <div>
           <h2 className="text-2xl font-bold text-surface-950">Brokerage Portfolio</h2>
           {portfolio?.lastUpdated && (
@@ -930,12 +930,14 @@ export function BrokersView() {
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => setShowAddAccount(true)}>
             <Plus className="w-4 h-4" />
-            Add Manual Account
+            <span className="hidden sm:inline">Add Manual Account</span>
           </Button>
           {hasAccounts && (
             <Button onClick={() => loadPortfolio(true)} disabled={isRefreshing}>
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-              {isRefreshing ? 'Refreshing...' : 'Refresh Prices'}
+              <span className="hidden sm:inline">
+                {isRefreshing ? 'Refreshing...' : 'Refresh Prices'}
+              </span>
             </Button>
           )}
         </div>

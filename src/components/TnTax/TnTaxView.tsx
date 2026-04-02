@@ -580,7 +580,7 @@ export function TnTaxView() {
   return (
     <div className="max-w-4xl mx-auto px-4 md:px-6 py-6 space-y-5">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-surface-950">TN Franchise &amp; Excise Tax</h1>
           <p className="text-[12px] text-surface-600 mt-0.5">

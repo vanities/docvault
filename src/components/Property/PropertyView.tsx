@@ -393,14 +393,16 @@ export function PropertyView() {
   return (
     <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="p-2.5 bg-emerald-500/10 rounded-xl">
             <MapPin className="w-6 h-6 text-emerald-500" />
           </div>
           <div>
             <h1 className="font-display text-xl text-surface-950">Property &amp; Land</h1>
-            <p className="text-sm text-surface-600">Track real estate holdings and equity</p>
+            <p className="text-sm text-surface-600 hidden sm:block">
+              Track real estate holdings and equity
+            </p>
           </div>
         </div>
         <Button
@@ -413,7 +415,7 @@ export function PropertyView() {
           className="bg-emerald-600 hover:bg-emerald-500"
         >
           <Plus className="w-3.5 h-3.5" />
-          Add Property
+          <span className="hidden sm:inline">Add Property</span>
         </Button>
       </div>
 

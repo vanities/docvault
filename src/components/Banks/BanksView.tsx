@@ -487,7 +487,7 @@ export function BanksView() {
   return (
     <div className="p-6 max-w-3xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h2 className="font-display text-2xl text-surface-950 mb-1 italic">Banks</h2>
           {data?.lastUpdated && (
@@ -505,7 +505,7 @@ export function BanksView() {
             disabled={isRefreshing}
           >
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-            {isRefreshing ? 'Refreshing...' : 'Refresh'}
+            <span className="hidden sm:inline">{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
           </Button>
         )}
       </div>

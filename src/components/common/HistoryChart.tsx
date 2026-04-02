@@ -131,7 +131,7 @@ export function HistoryChart({
   return (
     <div>
       {/* Controls */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2">
           <span className={`text-[13px] font-semibold ${isUp ? 'text-green-500' : 'text-red-500'}`}>
             {isUp ? '+' : ''}
