@@ -539,6 +539,9 @@ async function fetchBtcBalance(address: string): Promise<Balance[]> {
 // Etherscan V2 API supports multiple chains via chainid= parameter.
 const ETHERSCAN_API = 'https://api.etherscan.io/v2/api';
 let etherscanApiKey: string | undefined;
+export function setEtherscanApiKey(key: string | undefined): void {
+  etherscanApiKey = key;
+}
 
 // L2 token lists — native tokens on their home chains
 export const ARBITRUM_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
@@ -666,7 +669,7 @@ export const ERC20_TOKENS: { contract: string; symbol: string; decimals: number 
 ];
 
 // Fetch native + ERC-20 balances for any EVM chain supported by Etherscan v2.
-async function fetchChainBalances(
+export async function fetchChainBalances(
   address: string,
   chainId: number,
   nativeSymbol: string,
@@ -716,15 +719,14 @@ async function fetchChainBalances(
 }
 
 async function fetchEthBalance(address: string): Promise<Balance[]> {
-  // Fetch mainnet, Arbitrum, Optimism, Polygon, Avalanche, and staking positions in parallel
-  const [mainnet, arbitrum, optimism, polygon, avalanche, stakedLink] = await Promise.all([
-    fetchChainBalances(address, 1, 'ETH', ERC20_TOKENS),
-    fetchChainBalances(address, 42161, 'ETH', ARBITRUM_TOKENS),
-    fetchChainBalances(address, 10, 'ETH', OPTIMISM_TOKENS),
-    fetchChainBalances(address, 137, 'POL', POLYGON_TOKENS),
-    fetchChainBalances(address, 43114, 'AVAX', AVALANCHE_TOKENS),
-    fetchChainlinkStakedBalance(address),
-  ]);
+  // Scan chains sequentially to stay within Etherscan's 5 req/s rate limit.
+  // Parallel scanning caused silent rate-limit failures (status:"0" skipped as empty).
+  const mainnet = await fetchChainBalances(address, 1, 'ETH', ERC20_TOKENS);
+  const arbitrum = await fetchChainBalances(address, 42161, 'ETH', ARBITRUM_TOKENS);
+  const optimism = await fetchChainBalances(address, 10, 'ETH', OPTIMISM_TOKENS);
+  const polygon = await fetchChainBalances(address, 137, 'POL', POLYGON_TOKENS);
+  const avalanche = await fetchChainBalances(address, 43114, 'AVAX', AVALANCHE_TOKENS);
+  const stakedLink = await fetchChainlinkStakedBalance(address);
 
   // Merge: sum amounts for the same symbol across chains
   const merged = new Map<string, number>();
