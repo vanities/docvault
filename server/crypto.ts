@@ -7,6 +7,7 @@
 // Trade history from exchange APIs for cost basis / gains tracking.
 
 import crypto from 'crypto';
+import { encodeFunctionData, decodeFunctionResult } from 'viem';
 
 // -----------------------------------------------------------------------------
 // Types
@@ -539,6 +540,56 @@ const OPTIMISM_TOKENS: { contract: string; symbol: string; decimals: number }[] 
   { contract: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58', symbol: 'USDT', decimals: 6 },
 ];
 
+// Chainlink Staking v0.2 — staked LINK is locked in these contracts (no receipt token)
+const CHAINLINK_STAKING_POOLS = [
+  { address: '0xBc10f2E862ED4502144c7d632a3459F49DFCDB5e', label: 'CL Community Pool' },
+  { address: '0xa1d76a7ca72128d895dbB12A4e9643E0D29c1f03', label: 'CL Operator Pool' },
+] as const;
+
+const GET_STAKER_PRINCIPAL_ABI = [
+  {
+    name: 'getStakerPrincipal',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'staker', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const;
+
+async function fetchChainlinkStakedBalance(address: string): Promise<number> {
+  const apiKeyParam = etherscanApiKey ? `&apikey=${etherscanApiKey}` : '';
+  let total = 0;
+
+  for (const pool of CHAINLINK_STAKING_POOLS) {
+    try {
+      const data = encodeFunctionData({
+        abi: GET_STAKER_PRINCIPAL_ABI,
+        functionName: 'getStakerPrincipal',
+        args: [address as `0x${string}`],
+      });
+
+      const res = await fetch(
+        `${ETHERSCAN_API}?chainid=1&module=proxy&action=eth_call&to=${pool.address}&data=${data}&tag=latest${apiKeyParam}`
+      );
+      if (!res.ok) continue;
+      const json = await res.json();
+      if (!json.result || json.result === '0x') continue;
+
+      const [principal] = decodeFunctionResult({
+        abi: GET_STAKER_PRINCIPAL_ABI,
+        functionName: 'getStakerPrincipal',
+        data: json.result,
+      }) as [bigint];
+
+      total += Number(principal) / 1e18;
+    } catch {
+      // Pool query failed — skip silently
+    }
+  }
+
+  return total;
+}
+
 // Well-known ERC-20 token contracts on Ethereum mainnet
 const ERC20_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
   // Stablecoins
@@ -628,17 +679,24 @@ async function fetchChainBalances(
 }
 
 async function fetchEthBalance(address: string): Promise<Balance[]> {
-  // Fetch mainnet, Arbitrum, and Optimism in parallel then merge by symbol
-  const [mainnet, arbitrum, optimism] = await Promise.all([
+  // Fetch mainnet, Arbitrum, Optimism, and staking positions in parallel
+  const [mainnet, arbitrum, optimism, stakedLink] = await Promise.all([
     fetchChainBalances(address, 1, 'ETH', ERC20_TOKENS),
     fetchChainBalances(address, 42161, 'ETH', ARBITRUM_TOKENS),
     fetchChainBalances(address, 10, 'ETH', OPTIMISM_TOKENS),
+    fetchChainlinkStakedBalance(address),
   ]);
 
   // Merge: sum amounts for the same symbol across chains
   const merged = new Map<string, number>();
   for (const { asset, amount } of [...mainnet, ...arbitrum, ...optimism]) {
     merged.set(asset, (merged.get(asset) ?? 0) + amount);
+  }
+
+  // Add staked LINK on top of any liquid LINK already in wallet
+  if (stakedLink > 0) {
+    merged.set('LINK', (merged.get('LINK') ?? 0) + stakedLink);
+    console.log(`[Chainlink Staking] ${address}: ${stakedLink.toFixed(4)} LINK staked`);
   }
 
   return Array.from(merged.entries()).map(([asset, amount]) => ({ asset, amount }));
