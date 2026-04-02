@@ -129,6 +129,7 @@ const COINGECKO_IDS: Record<string, string> = {
   BCH: 'bitcoin-cash',
   BNB: 'binancecoin',
   EIGEN: 'eigenlayer',
+  BABY: 'babylon-labs',
   COMP: 'compound-governance-token',
   CRO: 'crypto-com-chain',
 };
@@ -349,6 +350,7 @@ async function fetchGeminiBalances(config: ExchangeConfig): Promise<Balance[]> {
 // Staked assets have suffixes: ETH2.S (staked), ETH2 (rewards), DOT.S, SOL.S, etc.
 const KRAKEN_ASSET_MAP: Record<string, string> = {
   XXBT: 'BTC',
+  XBT: 'BTC',
   XETH: 'ETH',
   ZUSD: 'USD',
   XXRP: 'XRP',
@@ -360,10 +362,13 @@ const KRAKEN_ASSET_MAP: Record<string, string> = {
   ADA: 'ADA',
   USDC: 'USDC',
   USDT: 'USDT',
+  EIGEN: 'EIGEN',
   // Staked asset variants → map to base asset
   'ETH2.S': 'ETH',
   ETH2: 'ETH',
   'XBT.M': 'BTC',
+  'XBT.P': 'BTC',
+  'XBT.S': 'BTC',
   'DOT.S': 'DOT',
   'DOT28.S': 'DOT',
   'SOL.S': 'SOL',
