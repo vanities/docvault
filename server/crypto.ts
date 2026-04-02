@@ -552,7 +552,6 @@ const ERC20_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
   { contract: '0x0D8775F648430679A709E98d2b0Cb6250d2887EF', symbol: 'BAT', decimals: 18 },
   { contract: '0xc944E90C64B2c07662A292be6244BDf05Cda44a7', symbol: 'GRT', decimals: 18 },
   { contract: '0xB50721BCf8d664c30412Cfbc6cf7a15145234ad1', symbol: 'ARB', decimals: 18 },
-  { contract: '0x4200000000000000000000000000000000000042', symbol: 'OP', decimals: 18 },
   { contract: '0xF57e7e7C23978C3cAEC3C3548E3D615c346e79fF', symbol: 'IMX', decimals: 18 },
   { contract: '0x5283D291DBCF85356A21bA090E6db59121208b44', symbol: 'BLUR', decimals: 18 },
   { contract: '0x58b6A8A3302369DAEc383334672404Ee733aB239', symbol: 'LPT', decimals: 18 },
