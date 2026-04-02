@@ -90,11 +90,24 @@ export function buildFileContent(fileData: FileData): FileContentBlock {
 // --- JSON Response Parsing ---
 
 export function parseJsonResponse(text: string): unknown {
-  let jsonStr = text;
-  const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  if (jsonMatch) {
-    jsonStr = jsonMatch[1];
+  let jsonStr = text.trim();
+
+  // Strip triple-backtick code fences (```json ... ``` or ``` ... ```)
+  const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (fenceMatch) {
+    jsonStr = fenceMatch[1].trim();
+  } else {
+    // Find first JSON object or array boundary, stripping any leading text/backticks
+    const start = jsonStr.search(/[{[]/);
+    if (start > 0) {
+      jsonStr = jsonStr.slice(start);
+    }
+    const lastClose = Math.max(jsonStr.lastIndexOf('}'), jsonStr.lastIndexOf(']'));
+    if (lastClose !== -1 && lastClose < jsonStr.length - 1) {
+      jsonStr = jsonStr.slice(0, lastClose + 1);
+    }
   }
+
   return JSON.parse(jsonStr);
 }
 
