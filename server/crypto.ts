@@ -93,7 +93,7 @@ const PRICE_CACHE_TTL = 60_000; // 1 minute
 
 // Map asset symbols (UPPERCASE) to CoinGecko IDs
 // All keys must be uppercase — lookups use .toUpperCase()
-const COINGECKO_IDS: Record<string, string> = {
+export const COINGECKO_IDS: Record<string, string> = {
   BTC: 'bitcoin',
   ETH: 'ethereum',
   SOL: 'solana',
@@ -105,6 +105,7 @@ const COINGECKO_IDS: Record<string, string> = {
   LINK: 'chainlink',
   AVAX: 'avalanche-2',
   MATIC: 'matic-network',
+  POL: 'polygon-ecosystem-token',
   UNI: 'uniswap',
   ATOM: 'cosmos',
   XRP: 'ripple',
@@ -118,7 +119,7 @@ const COINGECKO_IDS: Record<string, string> = {
   // Wrapped
   WBTC: 'wrapped-bitcoin',
   WETH: 'weth',
-  // Other
+  // DeFi / blue chips
   AAVE: 'aave',
   SHIB: 'shiba-inu',
   DAI: 'dai',
@@ -133,19 +134,31 @@ const COINGECKO_IDS: Record<string, string> = {
   BABY: 'babylon-labs',
   COMP: 'compound-governance-token',
   CRO: 'crypto-com-chain',
+  // Governance / protocol tokens
+  ENS: 'ethereum-name-service',
+  BAT: 'basic-attention-token',
+  IMX: 'immutable-x',
+  BLUR: 'blur',
+  LPT: 'livepeer-token',
+  GODS: 'gods-unchained',
+  STG: 'stargate-finance',
+  STRK: 'starknet',
+  FOX: 'shapeshift-fox-token',
+  XSUSHI: 'xsushi',
+  FTM: 'fantom',
+  ONE: 'harmony',
 };
 
-async function fetchPrices(assets: string[]): Promise<Record<string, number>> {
+export async function fetchPrices(assets: string[]): Promise<Record<string, number>> {
   const now = Date.now();
   if (now - priceCacheTime < PRICE_CACHE_TTL && Object.keys(priceCache).length > 0) {
     return priceCache;
   }
 
-  // Map assets to CoinGecko IDs (lookup is case-insensitive)
-  const uniqueUpper = [...new Set(assets.map((a) => a.toUpperCase()))];
-  const ids = uniqueUpper.map((a) => COINGECKO_IDS[a]).filter(Boolean);
-
-  if (ids.length === 0) return priceCache;
+  // Always fetch all known IDs so the cache is comprehensive regardless of
+  // which assets triggered the refresh (avoids partial-cache misses).
+  const ids = Object.values(COINGECKO_IDS);
+  void assets; // caller-provided list unused after moving to full fetch
 
   try {
     const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd`;
@@ -528,7 +541,7 @@ const ETHERSCAN_API = 'https://api.etherscan.io/v2/api';
 let etherscanApiKey: string | undefined;
 
 // L2 token lists — native tokens on their home chains
-const ARBITRUM_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
+export const ARBITRUM_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
   { contract: '0x912CE59144191C1204E64559FE8253a0e49E6548', symbol: 'ARB', decimals: 18 },
   { contract: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', symbol: 'USDC', decimals: 6 },
   { contract: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', symbol: 'USDT', decimals: 6 },
@@ -536,20 +549,20 @@ const ARBITRUM_TOKENS: { contract: string; symbol: string; decimals: number }[] 
   { contract: '0x09E18590E8f76b6Cf471b3cd75fE1A1a9D2B2c2b', symbol: 'AIDOGE', decimals: 18 },
 ];
 
-const OPTIMISM_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
+export const OPTIMISM_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
   { contract: '0x4200000000000000000000000000000000000042', symbol: 'OP', decimals: 18 },
   { contract: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', symbol: 'USDC', decimals: 6 },
   { contract: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58', symbol: 'USDT', decimals: 6 },
 ];
 
-const POLYGON_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
+export const POLYGON_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
   { contract: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', symbol: 'USDC', decimals: 6 },
   { contract: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', symbol: 'USDT', decimals: 6 },
   // Dead / defunct (Polygon-native)
   { contract: '0x4C392822D4bE8494B798cEA17B43d48B2308109C', symbol: 'POLY', decimals: 18 },
 ];
 
-const AVALANCHE_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
+export const AVALANCHE_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
   { contract: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E', symbol: 'USDC', decimals: 6 },
   { contract: '0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7', symbol: 'USDT', decimals: 6 },
 ];
@@ -605,7 +618,7 @@ async function fetchChainlinkStakedBalance(address: string): Promise<number> {
 }
 
 // Well-known ERC-20 token contracts on Ethereum mainnet
-const ERC20_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
+export const ERC20_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
   // Stablecoins
   { contract: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', symbol: 'USDC', decimals: 6 },
   { contract: '0xdAC17F958D2ee523a2206206994597C13D831ec7', symbol: 'USDT', decimals: 6 },
