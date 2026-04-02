@@ -522,9 +522,22 @@ async function fetchBtcBalance(address: string): Promise<Balance[]> {
 // Wallet: Ethereum (native ETH + ERC-20 tokens via Etherscan free API)
 // -----------------------------------------------------------------------------
 
-// Etherscan V2 API (V1 deprecated). chainid=1 for Ethereum mainnet.
-const ETHERSCAN_BASE = 'https://api.etherscan.io/v2/api?chainid=1';
+// Etherscan V2 API supports multiple chains via chainid= parameter.
+const ETHERSCAN_API = 'https://api.etherscan.io/v2/api';
 let etherscanApiKey: string | undefined;
+
+// L2 token lists — native tokens on their home chains
+const ARBITRUM_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
+  { contract: '0x912CE59144191C1204E64559FE8253a0e49E6548', symbol: 'ARB', decimals: 18 },
+  { contract: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', symbol: 'USDC', decimals: 6 },
+  { contract: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', symbol: 'USDT', decimals: 6 },
+];
+
+const OPTIMISM_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
+  { contract: '0x4200000000000000000000000000000000000042', symbol: 'OP', decimals: 18 },
+  { contract: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', symbol: 'USDC', decimals: 6 },
+  { contract: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58', symbol: 'USDT', decimals: 6 },
+];
 
 // Well-known ERC-20 token contracts on Ethereum mainnet
 const ERC20_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
@@ -564,45 +577,46 @@ const ERC20_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
   { contract: '0x455e53CBB86018Ac2B8092FdCd39d8444aFFC3F6', symbol: 'POL', decimals: 18 },
 ];
 
-async function fetchEthBalance(address: string): Promise<Balance[]> {
+// Fetch native + ERC-20 balances for any EVM chain supported by Etherscan v2.
+async function fetchChainBalances(
+  address: string,
+  chainId: number,
+  nativeSymbol: string,
+  tokens: { contract: string; symbol: string; decimals: number }[]
+): Promise<Balance[]> {
   const balances: Balance[] = [];
-
+  const base = `${ETHERSCAN_API}?chainid=${chainId}`;
   const apiKeyParam = etherscanApiKey ? `&apikey=${etherscanApiKey}` : '';
-  // With API key: 5 calls/sec → 210ms delay. Without: 1 call/5sec → 5100ms delay
   const rateDelay = etherscanApiKey ? 210 : 5100;
 
-  // 1. Fetch native ETH balance via Etherscan
+  // Native balance
   try {
-    const ethRes = await fetch(
-      `${ETHERSCAN_BASE}&module=account&action=balance&address=${address}&tag=latest${apiKeyParam}`
+    const res = await fetch(
+      `${base}&module=account&action=balance&address=${address}&tag=latest${apiKeyParam}`
     );
-    if (ethRes.ok) {
-      const ethData = await ethRes.json();
-      if (ethData.status === '1' && ethData.result) {
-        const ethAmount = parseInt(ethData.result, 10) / 1e18;
-        if (ethAmount > 0) {
-          balances.push({ asset: 'ETH', amount: ethAmount });
-        }
+    if (res.ok) {
+      const data = await res.json();
+      if (data.status === '1' && data.result) {
+        const amount = parseInt(data.result, 10) / 1e18;
+        if (amount > 0) balances.push({ asset: nativeSymbol, amount });
       }
     }
   } catch (err) {
-    console.error('[ETH] Native balance error:', err);
+    console.error(`[Chain ${chainId}] Native balance error:`, err);
   }
 
-  // 2. Fetch ERC-20 token balances
-  for (const token of ERC20_TOKENS) {
+  // ERC-20 balances
+  for (const token of tokens) {
     try {
       await new Promise((r) => setTimeout(r, rateDelay));
-      const tokenRes = await fetch(
-        `${ETHERSCAN_BASE}&module=account&action=tokenbalance&contractaddress=${token.contract}&address=${address}&tag=latest${apiKeyParam}`
+      const res = await fetch(
+        `${base}&module=account&action=tokenbalance&contractaddress=${token.contract}&address=${address}&tag=latest${apiKeyParam}`
       );
-      if (tokenRes.ok) {
-        const tokenData = await tokenRes.json();
-        if (tokenData.status === '1' && tokenData.result && tokenData.result !== '0') {
-          const amount = parseInt(tokenData.result, 10) / Math.pow(10, token.decimals);
-          if (amount > 0.001) {
-            balances.push({ asset: token.symbol, amount });
-          }
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === '1' && data.result && data.result !== '0') {
+          const amount = parseInt(data.result, 10) / Math.pow(10, token.decimals);
+          if (amount > 0.001) balances.push({ asset: token.symbol, amount });
         }
       }
     } catch {
@@ -611,6 +625,23 @@ async function fetchEthBalance(address: string): Promise<Balance[]> {
   }
 
   return balances;
+}
+
+async function fetchEthBalance(address: string): Promise<Balance[]> {
+  // Fetch mainnet, Arbitrum, and Optimism in parallel then merge by symbol
+  const [mainnet, arbitrum, optimism] = await Promise.all([
+    fetchChainBalances(address, 1, 'ETH', ERC20_TOKENS),
+    fetchChainBalances(address, 42161, 'ETH', ARBITRUM_TOKENS),
+    fetchChainBalances(address, 10, 'ETH', OPTIMISM_TOKENS),
+  ]);
+
+  // Merge: sum amounts for the same symbol across chains
+  const merged = new Map<string, number>();
+  for (const { asset, amount } of [...mainnet, ...arbitrum, ...optimism]) {
+    merged.set(asset, (merged.get(asset) ?? 0) + amount);
+  }
+
+  return Array.from(merged.entries()).map(([asset, amount]) => ({ asset, amount }));
 }
 
 // =============================================================================
