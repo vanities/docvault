@@ -107,9 +107,7 @@ export function Header() {
               ? 'All Entities'
               : (entities.find((e) => e.id === selectedEntity)?.name ?? selectedEntity)}
           </span>
-          {activeView === 'tax-year' && (
-            <span className="text-[12px] text-surface-600 shrink-0">{selectedYear}</span>
-          )}
+          <span className="text-[12px] text-surface-600 shrink-0">{selectedYear}</span>
         </div>
       )}
 

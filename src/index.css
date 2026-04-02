@@ -10,6 +10,16 @@ input[type='number'] {
   -moz-appearance: textfield;
 }
 
+/* Constrain date input calendar button to stay inside the input */
+input[type='date'] {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+input[type='date']::-webkit-calendar-picker-indicator {
+  margin: 0;
+  padding: 0;
+}
+
 /* ============================================
    DocVault — "Midnight Ledger" Design System
    ============================================ */
