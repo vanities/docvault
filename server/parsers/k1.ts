@@ -3,12 +3,7 @@
 
 import type { ParsedK1Schema } from './schemas/index.js';
 import type { DocumentParser } from './base.js';
-import {
-  readFileAsBase64,
-  buildFileContent,
-  callClaude,
-  extractToolResult,
-} from './base.js';
+import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
 
 const SYSTEM_PROMPT = `You extract data from Schedule K-1 tax forms. These come from partnerships (Form 1065), S-corporations (Form 1120-S), or trusts/estates (Form 1041). Extract ALL visible data using the extract_k1 tool. All monetary values must be numbers. Losses should be negative numbers. Omit fields that are blank or not present.
 
@@ -26,7 +21,11 @@ const K1_TOOL = {
     properties: {
       entityName: { type: 'string', description: 'Partnership/S-Corp/Trust name' },
       entityEin: { type: 'string', description: 'Entity EIN (XX-XXXXXXX)' },
-      formType: { type: 'string', enum: ['partnership', 's-corp', 'trust'], description: 'Form type (1065=partnership, 1120-S=s-corp, 1041=trust)' },
+      formType: {
+        type: 'string',
+        enum: ['partnership', 's-corp', 'trust'],
+        description: 'Form type (1065=partnership, 1120-S=s-corp, 1041=trust)',
+      },
       partnerName: { type: 'string', description: 'Partner/shareholder/beneficiary name' },
       partnerTin: { type: 'string', description: "Partner's TIN" },
       partnerAddress: { type: 'string', description: "Partner's address" },
@@ -37,13 +36,22 @@ const K1_TOOL = {
       interestIncome: { type: 'number', description: 'Box 5 - Interest income' },
       dividends: { type: 'number', description: 'Box 6 - Ordinary dividends' },
       royalties: { type: 'number', description: 'Box 7 - Royalties' },
-      shortTermCapitalGain: { type: 'number', description: 'Box 8 - Net short-term capital gain (loss)' },
-      longTermCapitalGain: { type: 'number', description: 'Box 9a - Net long-term capital gain (loss)' },
+      shortTermCapitalGain: {
+        type: 'number',
+        description: 'Box 8 - Net short-term capital gain (loss)',
+      },
+      longTermCapitalGain: {
+        type: 'number',
+        description: 'Box 9a - Net long-term capital gain (loss)',
+      },
       section1231Gain: { type: 'number', description: 'Box 10 - Net section 1231 gain (loss)' },
       otherIncome: { type: 'number', description: 'Box 11 - Other income (loss)' },
       section179Deduction: { type: 'number', description: 'Box 12 - Section 179 deduction' },
       otherDeductions: { type: 'number', description: 'Box 13 - Other deductions' },
-      selfEmploymentEarnings: { type: 'number', description: 'Box 14 - Self-employment earnings (loss)' },
+      selfEmploymentEarnings: {
+        type: 'number',
+        description: 'Box 14 - Self-employment earnings (loss)',
+      },
       credits: { type: 'number', description: 'Box 15 - Credits' },
       foreignTransactions: { type: 'number', description: 'Box 16 - Foreign transactions' },
       altMinTaxItems: { type: 'number', description: 'Box 17 - AMT items' },

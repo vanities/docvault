@@ -3,17 +3,37 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import { loadSettings, saveSettings, jsonResponse, BROKER_CACHE_FILE, SIMPLEFIN_CACHE_FILE, DATA_DIR } from '../data.js';
-import { buildPortfolio, registerSnapTradeUser, getSnapTradeConnectUrl, fetchAllSnapTradeHoldings, deleteSnapTradeUser, initSnapTrade, extractSnapTradeError, type BrokerAccount, type SnapTradeConfig } from '../brokers.js';
-import { claimSetupToken, fetchBalances as fetchSimplefinBalances, type SimplefinConfig, type SimplefinBalanceCache } from '../simplefin.js';
+import {
+  loadSettings,
+  saveSettings,
+  jsonResponse,
+  BROKER_CACHE_FILE,
+  SIMPLEFIN_CACHE_FILE,
+  DATA_DIR,
+} from '../data.js';
+import {
+  buildPortfolio,
+  registerSnapTradeUser,
+  getSnapTradeConnectUrl,
+  fetchAllSnapTradeHoldings,
+  deleteSnapTradeUser,
+  initSnapTrade,
+  extractSnapTradeError,
+  type BrokerAccount,
+  type SnapTradeConfig,
+} from '../brokers.js';
+import {
+  claimSetupToken,
+  fetchBalances as fetchSimplefinBalances,
+  type SimplefinConfig,
+  type SimplefinBalanceCache,
+} from '../simplefin.js';
 
 export async function handleBrokersRoutes(
   req: Request,
   url: URL,
   pathname: string
 ): Promise<Response | null> {
-
-
   // GET /api/brokers/accounts — list all broker accounts (no secrets to mask)
   if (pathname === '/api/brokers/accounts' && req.method === 'GET') {
     const settings = await loadSettings();
@@ -31,7 +51,10 @@ export async function handleBrokersRoutes(
     if (!settings.brokers) settings.brokers = { accounts: [] };
     const id = `${broker}-${Date.now()}`;
     const account: BrokerAccount = {
-      id, broker, name, holdings: [],
+      id,
+      broker,
+      name,
+      holdings: [],
       ...(url ? { url } : {}),
       ...(overrideValue !== undefined ? { overrideValue: Number(overrideValue) } : {}),
     };
@@ -51,7 +74,8 @@ export async function handleBrokersRoutes(
     if (body.name !== undefined) account.name = body.name;
     if (body.url !== undefined) account.url = body.url || undefined;
     if (body.holdings !== undefined) account.holdings = body.holdings;
-    if (body.overrideValue !== undefined) account.overrideValue = body.overrideValue === null ? undefined : Number(body.overrideValue);
+    if (body.overrideValue !== undefined)
+      account.overrideValue = body.overrideValue === null ? undefined : Number(body.overrideValue);
     await saveSettings(settings);
     return jsonResponse({ ok: true, account });
   }

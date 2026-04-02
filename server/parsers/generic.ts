@@ -316,10 +316,7 @@ IMPORTANT:
 - If a field is empty or not found, omit it.`;
 
 // Infer document type from parsed content (the original fallback chain)
-function inferDocumentType(
-  parsed: Record<string, unknown>,
-  docTypeHint: string
-): string {
+function inferDocumentType(parsed: Record<string, unknown>, docTypeHint: string): string {
   if (parsed.documentType) return parsed.documentType as string;
 
   // Map filename hint to canonical document type
@@ -334,15 +331,15 @@ function inferDocumentType(
     '1098': '1098',
     'K-1': 'k-1',
     'retirement-statement': 'retirement-statement',
-    'receipt': 'receipt',
+    receipt: 'receipt',
     'operating-agreement': 'operating-agreement',
     'insurance-policy': 'insurance-policy',
     'bank-statement': 'bank-statement',
     'credit-card-statement': 'credit-card-statement',
-    'statement': 'statement',
-    'certificate': 'certificate',
+    statement: 'statement',
+    certificate: 'certificate',
     'medical-record': 'medical-record',
-    'appraisal': 'appraisal',
+    appraisal: 'appraisal',
   };
 
   if (docTypeHint !== 'unknown' && hintMap[docTypeHint]) {
@@ -407,10 +404,7 @@ export const genericParser: DocumentParser<ParsedTaxDocument> = {
 
       const response = await callClaude({
         system: SYSTEM_PROMPT,
-        userContent: [
-          fileContent,
-          { type: 'text', text: userPrompt },
-        ],
+        userContent: [fileContent, { type: 'text', text: userPrompt }],
         maxTokens,
       });
 

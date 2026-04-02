@@ -2,12 +2,7 @@
 
 import type { Parsed1099MISCSchema } from './schemas/index.js';
 import type { DocumentParser } from './base.js';
-import {
-  readFileAsBase64,
-  buildFileContent,
-  callClaude,
-  extractToolResult,
-} from './base.js';
+import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
 
 const SYSTEM_PROMPT = `You extract data from 1099-MISC (Miscellaneous Information) tax forms. Extract ALL visible data using the extract_1099_misc tool. All monetary values must be numbers. Omit fields that are blank or not present.`;
 
@@ -29,13 +24,19 @@ const MISC_TOOL = {
       federalWithheld: { type: 'number', description: 'Box 4 - Federal income tax withheld' },
       fishingBoatProceeds: { type: 'number', description: 'Box 5 - Fishing boat proceeds' },
       medicalPayments: { type: 'number', description: 'Box 6 - Medical and health care payments' },
-      substitutePayments: { type: 'number', description: 'Box 8 - Substitute payments in lieu of dividends' },
+      substitutePayments: {
+        type: 'number',
+        description: 'Box 8 - Substitute payments in lieu of dividends',
+      },
       cropInsurance: { type: 'number', description: 'Box 9 - Crop insurance proceeds' },
       grossProceeds: { type: 'number', description: 'Box 10 - Gross proceeds paid to an attorney' },
       fishPurchased: { type: 'number', description: 'Box 11 - Fish purchased for resale' },
       section409ADeferrals: { type: 'number', description: 'Box 12 - Section 409A deferrals' },
       goldenParachute: { type: 'number', description: 'Box 13 - Excess golden parachute payments' },
-      nonqualifiedDeferred: { type: 'number', description: 'Box 14 - Nonqualified deferred compensation' },
+      nonqualifiedDeferred: {
+        type: 'number',
+        description: 'Box 14 - Nonqualified deferred compensation',
+      },
       stateTaxWithheld: { type: 'number', description: 'Box 16 - State tax withheld' },
       stateIncome: { type: 'number', description: 'Box 18 - State income' },
       taxYear: { type: 'number', description: 'The tax year' },

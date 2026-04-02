@@ -45,16 +45,16 @@ const hintToCanonical: Record<string, string> = {
   '1099-B': '1099-b',
   '1098': '1098',
   'K-1': 'k-1',
-  'receipt': 'receipt',
+  receipt: 'receipt',
   'operating-agreement': 'operating-agreement',
   'insurance-policy': 'insurance-policy',
   'retirement-statement': 'retirement-statement',
   'bank-statement': 'bank-statement',
   'credit-card-statement': 'credit-card-statement',
-  'statement': 'statement',
-  'certificate': 'certificate',
+  statement: 'statement',
+  certificate: 'certificate',
   'medical-record': 'medical-record',
-  'appraisal': 'appraisal',
+  appraisal: 'appraisal',
 };
 
 const CLASSIFICATION_PROMPT = `You classify tax and financial documents. Look at this document and respond with ONLY one of these types (nothing else):
@@ -65,10 +65,7 @@ Respond with ONLY the type string, nothing else.`;
 
 // Detect document type from filename first, then LLM if needed.
 // Returns a canonical lowercase type string.
-export async function detectDocumentType(
-  filePath: string,
-  filename: string
-): Promise<string> {
+export async function detectDocumentType(filePath: string, filename: string): Promise<string> {
   // Tier 1: Filename regex (free, instant)
   const filenameHint = detectDocumentTypeFromFilename(filename);
   if (filenameHint !== 'unknown') {
@@ -85,10 +82,7 @@ export async function detectDocumentType(
 
     const response = await callClaude({
       system: CLASSIFICATION_PROMPT,
-      userContent: [
-        fileContent,
-        { type: 'text', text: 'What type of document is this?' },
-      ],
+      userContent: [fileContent, { type: 'text', text: 'What type of document is this?' }],
       maxTokens: 50,
     });
 
@@ -99,7 +93,9 @@ export async function detectDocumentType(
         console.log(`[Type Detector] LLM classified: ${filename} → ${detected}`);
         return detected;
       }
-      console.warn(`[Type Detector] LLM returned invalid type "${detected}", falling back to "other"`);
+      console.warn(
+        `[Type Detector] LLM returned invalid type "${detected}", falling back to "other"`
+      );
     }
   } catch (error) {
     console.error('[Type Detector] LLM classification failed:', error);

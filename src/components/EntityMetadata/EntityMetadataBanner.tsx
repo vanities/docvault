@@ -4,6 +4,7 @@ import { useToast } from '../../hooks/useToast';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { copyToClipboard } from '../../lib/utils';
 
 const LABEL_MAP: Record<string, string> = {
   ein: 'EIN',
@@ -24,24 +25,6 @@ function getLabel(key: string): string {
 
 function formatValue(value: string | string[]): string {
   return Array.isArray(value) ? value.join(', ') : value;
-}
-
-async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    // Fallback for HTTP (Unraid)
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.style.position = 'fixed';
-    textarea.style.opacity = '0';
-    document.body.appendChild(textarea);
-    textarea.select();
-    const ok = document.execCommand('copy');
-    document.body.removeChild(textarea);
-    return ok;
-  }
 }
 
 function MetadataField({ fieldKey, value }: { fieldKey: string; value: string | string[] }) {

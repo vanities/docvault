@@ -37,17 +37,17 @@ const hintToCanonical: Record<string, string> = {
   '1099-R': '1099-r',
   '1098': '1098',
   'K-1': 'k-1',
-  'invoice': 'invoice',
-  'receipt': 'receipt',
+  invoice: 'invoice',
+  receipt: 'receipt',
   'operating-agreement': 'operating-agreement',
   'insurance-policy': 'insurance-policy',
   'retirement-statement': 'retirement-statement',
   'bank-statement': 'bank-statement',
   'credit-card-statement': 'credit-card-statement',
-  'statement': 'statement',
-  'certificate': 'certificate',
+  statement: 'statement',
+  certificate: 'certificate',
   'medical-record': 'medical-record',
-  'appraisal': 'appraisal',
+  appraisal: 'appraisal',
   'koinly-8949': 'koinly-8949',
   'koinly-schedule': 'koinly-schedule',
 };
@@ -101,10 +101,7 @@ export async function routeParse(
   // 5. For type-specific parsers, convert to legacy format.
   //    The generic parser already returns ParsedTaxDocument directly.
   if (isTypeSpecific) {
-    const legacy = toLegacyParsedData(
-      result as Record<string, unknown>,
-      detectedType
-    );
+    const legacy = toLegacyParsedData(result as Record<string, unknown>, detectedType);
     return {
       ...legacy,
       // Attach parser metadata (consumers ignore unknown fields)

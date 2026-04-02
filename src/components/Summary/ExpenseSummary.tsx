@@ -157,7 +157,12 @@ export function ExpenseSummary({
             <h3 className="font-semibold text-surface-950 text-[14px]">
               Mileage Deduction{summary.mileageCount > 0 ? ` (${summary.mileageCount} trips)` : ''}
             </h3>
-            <Button variant="ghost" size="sm" className="text-teal-500 hover:text-teal-400" onClick={onNavigateToMileage}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-teal-500 hover:text-teal-400"
+              onClick={onNavigateToMileage}
+            >
               <Fuel className="w-4 h-4" />
               {summary.mileageCount > 0 ? 'View Mileage Log' : 'Log Mileage'}
               <ArrowRight className="w-3.5 h-3.5" />

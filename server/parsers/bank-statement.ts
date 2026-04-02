@@ -5,12 +5,7 @@
 
 import type { ParsedBankStatementSchema } from './schemas/index.js';
 import type { DocumentParser, ValidationResult } from './base.js';
-import {
-  readFileAsBase64,
-  buildFileContent,
-  callClaude,
-  extractToolResult,
-} from './base.js';
+import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
 
 // Bank-specific prompt hints improve extraction accuracy for known layouts
 const BANK_HINTS: Record<string, string> = {
@@ -51,7 +46,10 @@ const BANK_STATEMENT_TOOL = {
     type: 'object' as const,
     properties: {
       bankName: { type: 'string', description: 'Bank/institution name' },
-      accountType: { type: 'string', description: 'Account type (e.g., Business Checking, Savings)' },
+      accountType: {
+        type: 'string',
+        description: 'Account type (e.g., Business Checking, Savings)',
+      },
       accountNumberLast4: { type: 'string', description: 'Last 4 digits of account number' },
       statementPeriod: {
         type: 'object',
@@ -116,7 +114,10 @@ export const bankStatementParser: DocumentParser<ParsedBankStatementSchema> = {
         system: systemPrompt,
         userContent: [
           fileContent,
-          { type: 'text', text: 'Extract all data from this bank statement, including every transaction.' },
+          {
+            type: 'text',
+            text: 'Extract all data from this bank statement, including every transaction.',
+          },
         ],
         maxTokens: 8192, // Bank statements can have many transactions
         tools: [BANK_STATEMENT_TOOL],
@@ -156,8 +157,7 @@ export const bankStatementParser: DocumentParser<ParsedBankStatementSchema> = {
       result.totalDeposits !== undefined &&
       result.totalWithdrawals !== undefined
     ) {
-      const expected =
-        result.beginningBalance + result.totalDeposits - result.totalWithdrawals;
+      const expected = result.beginningBalance + result.totalDeposits - result.totalWithdrawals;
       const diff = Math.abs(expected - result.endingBalance);
       if (diff > 1) {
         warnings.push(

@@ -3,12 +3,7 @@
 
 import type { Parsed1098Schema } from './schemas/index.js';
 import type { DocumentParser } from './base.js';
-import {
-  readFileAsBase64,
-  buildFileContent,
-  callClaude,
-  extractToolResult,
-} from './base.js';
+import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
 
 const SYSTEM_PROMPT = `You extract data from 1098 series tax forms (Mortgage Interest Statement, 1098-E Student Loan Interest, 1098-T Tuition). Extract ALL visible data using the extract_1098 tool. All monetary values must be numbers. Omit fields that are blank or not present.`;
 
@@ -24,18 +19,39 @@ const TOOL_1098 = {
       borrowerName: { type: 'string', description: "Borrower's name" },
       borrowerTin: { type: 'string', description: "Borrower's TIN" },
       borrowerAddress: { type: 'string', description: "Borrower's address" },
-      mortgageInterest: { type: 'number', description: 'Box 1 - Mortgage interest received from borrower' },
-      outstandingPrincipal: { type: 'number', description: 'Box 2 - Outstanding mortgage principal' },
+      mortgageInterest: {
+        type: 'number',
+        description: 'Box 1 - Mortgage interest received from borrower',
+      },
+      outstandingPrincipal: {
+        type: 'number',
+        description: 'Box 2 - Outstanding mortgage principal',
+      },
       mortgageOriginationDate: { type: 'string', description: 'Box 3 - Mortgage origination date' },
-      refundOfOverpaidInterest: { type: 'number', description: 'Box 4 - Refund of overpaid interest' },
-      mortgageInsurancePremiums: { type: 'number', description: 'Box 5 - Mortgage insurance premiums' },
+      refundOfOverpaidInterest: {
+        type: 'number',
+        description: 'Box 4 - Refund of overpaid interest',
+      },
+      mortgageInsurancePremiums: {
+        type: 'number',
+        description: 'Box 5 - Mortgage insurance premiums',
+      },
       pointsPaid: { type: 'number', description: 'Box 6 - Points paid on purchase' },
-      propertyAddress: { type: 'string', description: 'Box 7 - Address of property securing mortgage' },
+      propertyAddress: {
+        type: 'string',
+        description: 'Box 7 - Address of property securing mortgage',
+      },
       propertyTax: { type: 'number', description: 'Box 10 - Property tax' },
       // 1098-E fields
-      studentLoanInterest: { type: 'number', description: '1098-E Box 1 - Student loan interest received' },
+      studentLoanInterest: {
+        type: 'number',
+        description: '1098-E Box 1 - Student loan interest received',
+      },
       // 1098-T fields
-      tuitionPayments: { type: 'number', description: '1098-T Box 1 - Payments received for qualified tuition' },
+      tuitionPayments: {
+        type: 'number',
+        description: '1098-T Box 1 - Payments received for qualified tuition',
+      },
       scholarshipsGrants: { type: 'number', description: '1098-T Box 5 - Scholarships or grants' },
       formVariant: { type: 'string', description: 'Form type: 1098, 1098-E, or 1098-T' },
       taxYear: { type: 'number', description: 'The tax year' },
@@ -57,10 +73,7 @@ export const parser1098: DocumentParser<Parsed1098Schema> = {
 
       const response = await callClaude({
         system: SYSTEM_PROMPT,
-        userContent: [
-          fileContent,
-          { type: 'text', text: 'Extract all data from this 1098 form.' },
-        ],
+        userContent: [fileContent, { type: 'text', text: 'Extract all data from this 1098 form.' }],
         maxTokens: 1024,
         tools: [TOOL_1098],
         toolChoice: { type: 'tool', name: 'extract_1098' },

@@ -32,32 +32,34 @@ Document → [Type Detector] → "w2" | "1099-div" | "1099-composite" | "1099-ne
 ### Phase 2: Type-Specific Parsers
 
 Each document type gets its own:
+
 - **Prompt** — Optimized for that document's layout and fields
 - **Output schema** — Strict TypeScript interface
 - **Validation** — Post-parse checks (e.g., W-2 box totals should be consistent)
 
 #### Parsers to Build
 
-| Type | Schema | Structured Output? | Notes |
-|------|--------|-------------------|-------|
-| `w2` | Fixed fields (boxes 1-20) | Yes | Well-defined, consistent format |
-| `1099-nec` | 2-3 fields | Yes | Simple |
-| `1099-div` | ~15 fields | Yes | Standard IRS layout |
-| `1099-int` | ~10 fields | Yes | Standard IRS layout |
-| `1099-r` | ~15 fields | Yes | Distribution codes matter |
-| `1099-composite` | DIV + INT + B sections | Yes | Needs per-transaction 1099-B data |
-| `1099-b` / `8949` | Per-transaction array | Yes | Date sold, proceeds, cost, gain per security |
-| `k-1` | ~20 boxes | Yes | Partnership income, SE income, distributions |
-| `schedule-c` | Lines 1-31 | Yes | Business income/expenses |
-| `bank-statement` | Common schema | Partial | See below |
-| `credit-card-statement` | Common schema | Partial | Charges, payments, fees |
-| `receipt` | Vendor, amount, date, category | Yes | Simple but variable layouts |
+| Type                    | Schema                         | Structured Output? | Notes                                        |
+| ----------------------- | ------------------------------ | ------------------ | -------------------------------------------- |
+| `w2`                    | Fixed fields (boxes 1-20)      | Yes                | Well-defined, consistent format              |
+| `1099-nec`              | 2-3 fields                     | Yes                | Simple                                       |
+| `1099-div`              | ~15 fields                     | Yes                | Standard IRS layout                          |
+| `1099-int`              | ~10 fields                     | Yes                | Standard IRS layout                          |
+| `1099-r`                | ~15 fields                     | Yes                | Distribution codes matter                    |
+| `1099-composite`        | DIV + INT + B sections         | Yes                | Needs per-transaction 1099-B data            |
+| `1099-b` / `8949`       | Per-transaction array          | Yes                | Date sold, proceeds, cost, gain per security |
+| `k-1`                   | ~20 boxes                      | Yes                | Partnership income, SE income, distributions |
+| `schedule-c`            | Lines 1-31                     | Yes                | Business income/expenses                     |
+| `bank-statement`        | Common schema                  | Partial            | See below                                    |
+| `credit-card-statement` | Common schema                  | Partial            | Charges, payments, fees                      |
+| `receipt`               | Vendor, amount, date, category | Yes                | Simple but variable layouts                  |
 
 #### Bank Statement Strategy
 
 Bank statements are the hardest because every bank has a different format. Strategy:
 
 1. **Common output schema** — All bank statements produce the same structure:
+
    ```typescript
    interface ParsedBankStatement {
      bankName: string;
@@ -72,13 +74,13 @@ Bank statements are the hardest because every bank has a different format. Strat
        date: string;
        description: string;
        amount: number;
-       category?: "revenue" | "transfer" | "refund" | "other";
+       category?: 'revenue' | 'transfer' | 'refund' | 'other';
      }>;
      withdrawals: Array<{
        date: string;
        description: string;
        amount: number;
-       category?: "transfer" | "payment" | "fee" | "other";
+       category?: 'transfer' | 'payment' | 'fee' | 'other';
      }>;
    }
    ```
@@ -102,25 +104,27 @@ This guarantees the response matches the TypeScript interface — no more field 
 ### Phase 4: Enhanced 1099-Composite Parser
 
 The current parser extracts:
+
 ```json
 {
   "b": {
-    "shortTermProceeds": 10558.90,
+    "shortTermProceeds": 10558.9,
     "shortTermCostBasis": 8746.54,
     "shortTermGainLoss": 1812.36,
     "longTermProceeds": 163386.29,
-    "longTermCostBasis": 68791.50,
+    "longTermCostBasis": 68791.5,
     "longTermGainLoss": 94594.79
   }
 }
 ```
 
 The enhanced parser should extract per-transaction data:
+
 ```json
 {
   "b": {
     "shortTerm": {
-      "totalProceeds": 10558.90,
+      "totalProceeds": 10558.9,
       "totalCostBasis": 8746.54,
       "totalGainLoss": 1812.36,
       "transactions": [
@@ -130,7 +134,7 @@ The enhanced parser should extract per-transaction data:
           "cusip": "67066G104",
           "dateSold": "09/11/25",
           "dateAcquired": "01/28/25",
-          "quantity": 13.000,
+          "quantity": 13.0,
           "proceeds": 2336.49,
           "costBasis": 1584.18,
           "gainLoss": 752.31,
@@ -139,7 +143,9 @@ The enhanced parser should extract per-transaction data:
         }
       ]
     },
-    "longTerm": { /* same structure */ }
+    "longTerm": {
+      /* same structure */
+    }
   },
   "dividends": {
     "details": [
@@ -157,6 +163,7 @@ The enhanced parser should extract per-transaction data:
 ```
 
 This enables:
+
 - Annualized method income allocation by date
 - Per-security gain/loss reporting
 - Dividend income timing for Form 2210
@@ -164,11 +171,12 @@ This enables:
 ### Phase 5: Koinly 8949 Parser
 
 Parse Koinly-generated Form 8949 PDFs:
+
 ```typescript
 interface ParsedKoinly8949 {
   shortTerm: Array<{
-    exchange: string;        // "Coinbase", "Kraken", "Non-custodial"
-    boxCategory: "G" | "H" | "I";
+    exchange: string; // "Coinbase", "Kraken", "Non-custodial"
+    boxCategory: 'G' | 'H' | 'I';
     proceeds: number;
     costBasis: number;
     adjustment: number;
@@ -176,7 +184,7 @@ interface ParsedKoinly8949 {
   }>;
   longTerm: Array<{
     exchange: string;
-    boxCategory: "J" | "K" | "L";
+    boxCategory: 'J' | 'K' | 'L';
     proceeds: number;
     costBasis: number;
     adjustment: number;
@@ -186,9 +194,10 @@ interface ParsedKoinly8949 {
 ```
 
 Also parse Koinly Schedule 1 for staking income:
+
 ```typescript
 interface ParsedKoinlySchedule1 {
-  digitalAssetIncome: number;  // Line 8v
+  digitalAssetIncome: number; // Line 8v
   otherIncome: Array<{ description: string; amount: number }>;
 }
 ```

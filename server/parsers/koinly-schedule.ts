@@ -3,12 +3,7 @@
 
 import type { ParsedKoinlyScheduleSchema } from './schemas/index.js';
 import type { DocumentParser } from './base.js';
-import {
-  readFileAsBase64,
-  buildFileContent,
-  callClaude,
-  extractToolResult,
-} from './base.js';
+import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
 
 const SYSTEM_PROMPT = `You extract data from Koinly-generated tax schedule documents. These may be:
 
@@ -29,13 +24,26 @@ const KOINLY_SCHEDULE_TOOL = {
   input_schema: {
     type: 'object' as const,
     properties: {
-      scheduleType: { type: 'string', enum: ['D', '1', 'both'], description: 'Which schedule this is' },
+      scheduleType: {
+        type: 'string',
+        enum: ['D', '1', 'both'],
+        description: 'Which schedule this is',
+      },
       // Schedule D fields
-      shortTermGainLoss: { type: 'number', description: 'Schedule D Part I - Total short-term gain/loss' },
-      longTermGainLoss: { type: 'number', description: 'Schedule D Part II - Total long-term gain/loss' },
+      shortTermGainLoss: {
+        type: 'number',
+        description: 'Schedule D Part I - Total short-term gain/loss',
+      },
+      longTermGainLoss: {
+        type: 'number',
+        description: 'Schedule D Part II - Total long-term gain/loss',
+      },
       totalGainLoss: { type: 'number', description: 'Schedule D Part III - Combined gain/loss' },
       // Schedule 1 fields
-      digitalAssetIncome: { type: 'number', description: 'Schedule 1 Line 8v - Digital asset income (staking, etc.)' },
+      digitalAssetIncome: {
+        type: 'number',
+        description: 'Schedule 1 Line 8v - Digital asset income (staking, etc.)',
+      },
       otherIncome: {
         type: 'array',
         description: 'Other income line items from Schedule 1',

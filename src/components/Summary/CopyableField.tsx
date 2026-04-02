@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { copyToClipboard } from '@/lib/utils';
 
 interface CopyableFieldProps {
   label: string;
@@ -37,12 +38,10 @@ export function CopyableField({ label, value, format = 'currency', sublabel }: C
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(getRawValue(value, format));
+    const ok = await copyToClipboard(getRawValue(value, format));
+    if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy:', err);
     }
   };
 

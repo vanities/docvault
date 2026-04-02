@@ -3,12 +3,7 @@
 
 import type { Parsed1099RSchema } from './schemas/index.js';
 import type { DocumentParser } from './base.js';
-import {
-  readFileAsBase64,
-  buildFileContent,
-  callClaude,
-  extractToolResult,
-} from './base.js';
+import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
 
 const SYSTEM_PROMPT = `You extract data from 1099-R (Distributions From Pensions, Annuities, Retirement or Profit-Sharing Plans, IRAs, Insurance Contracts, etc.) tax forms. Extract ALL visible data using the extract_1099_r tool. All monetary values must be numbers. Distribution codes are important — extract them exactly as printed (e.g., "1", "7", "G"). Omit fields that are blank or not present.`;
 
@@ -25,15 +20,31 @@ const R_TOOL = {
       accountNumber: { type: 'string', description: 'Account number' },
       grossDistribution: { type: 'number', description: 'Box 1 - Gross distribution' },
       taxableAmount: { type: 'number', description: 'Box 2a - Taxable amount' },
-      taxableAmountNotDetermined: { type: 'boolean', description: 'Box 2b - Taxable amount not determined' },
+      taxableAmountNotDetermined: {
+        type: 'boolean',
+        description: 'Box 2b - Taxable amount not determined',
+      },
       totalDistribution: { type: 'boolean', description: 'Box 2b - Total distribution' },
       capitalGain: { type: 'number', description: 'Box 3 - Capital gain' },
       federalWithheld: { type: 'number', description: 'Box 4 - Federal income tax withheld' },
-      distributionCode: { type: 'string', description: 'Box 7 - Distribution code(s) (e.g., "1", "7", "G")' },
+      distributionCode: {
+        type: 'string',
+        description: 'Box 7 - Distribution code(s) (e.g., "1", "7", "G")',
+      },
       otherAmount: { type: 'number', description: 'Box 8 - Other amount' },
-      otherPercentage: { type: 'number', description: 'Box 9a - Your percentage of total distribution' },
-      employeeContributions: { type: 'number', description: 'Box 5 - Employee contributions/Designated Roth contributions or insurance premiums' },
-      netUnrealizedAppreciation: { type: 'number', description: 'Box 6 - Net unrealized appreciation in employers securities' },
+      otherPercentage: {
+        type: 'number',
+        description: 'Box 9a - Your percentage of total distribution',
+      },
+      employeeContributions: {
+        type: 'number',
+        description:
+          'Box 5 - Employee contributions/Designated Roth contributions or insurance premiums',
+      },
+      netUnrealizedAppreciation: {
+        type: 'number',
+        description: 'Box 6 - Net unrealized appreciation in employers securities',
+      },
       stateTaxWithheld: { type: 'number', description: 'Box 12 - State tax withheld' },
       stateIncome: { type: 'number', description: 'Box 14 - State distribution' },
       localTaxWithheld: { type: 'number', description: 'Box 15 - Local tax withheld' },

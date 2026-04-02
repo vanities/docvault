@@ -10,8 +10,6 @@ export async function handleMileageRoutes(
   url: URL,
   pathname: string
 ): Promise<Response | null> {
-
-
   // ========================================================================
   // Mileage API
   // ========================================================================
@@ -92,11 +90,16 @@ export async function handleMileageRoutes(
       if (!vehicle) return jsonResponse({ error: 'Vehicle not found' }, 404);
       entry.vehicleId = body.vehicleId;
     }
-    if (body.odometerStart !== undefined) entry.odometerStart = body.odometerStart === '' ? undefined : Number(body.odometerStart);
-    if (body.odometerEnd !== undefined) entry.odometerEnd = body.odometerEnd === '' ? undefined : Number(body.odometerEnd);
-    if (body.tripMiles !== undefined) entry.tripMiles = body.tripMiles === '' ? undefined : Number(body.tripMiles);
-    if (body.gallons !== undefined) entry.gallons = body.gallons === '' ? undefined : Number(body.gallons);
-    if (body.totalCost !== undefined) entry.totalCost = body.totalCost === '' ? undefined : Number(body.totalCost);
+    if (body.odometerStart !== undefined)
+      entry.odometerStart = body.odometerStart === '' ? undefined : Number(body.odometerStart);
+    if (body.odometerEnd !== undefined)
+      entry.odometerEnd = body.odometerEnd === '' ? undefined : Number(body.odometerEnd);
+    if (body.tripMiles !== undefined)
+      entry.tripMiles = body.tripMiles === '' ? undefined : Number(body.tripMiles);
+    if (body.gallons !== undefined)
+      entry.gallons = body.gallons === '' ? undefined : Number(body.gallons);
+    if (body.totalCost !== undefined)
+      entry.totalCost = body.totalCost === '' ? undefined : Number(body.totalCost);
     if (body.purpose !== undefined) entry.purpose = body.purpose?.trim() || undefined;
     await saveMileageData(data);
     return jsonResponse({ ok: true, entry });

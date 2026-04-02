@@ -3,12 +3,7 @@
 
 import type { ParsedW2Schema } from './schemas/index.js';
 import type { DocumentParser, ValidationResult } from './base.js';
-import {
-  readFileAsBase64,
-  buildFileContent,
-  callClaude,
-  extractToolResult,
-} from './base.js';
+import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
 
 const SYSTEM_PROMPT = `You extract data from W-2 (Wage and Tax Statement) forms. Extract ALL visible data from the document using the extract_w2 tool. All monetary values must be numbers. Omit fields that are blank or not present on the form.`;
 
@@ -79,10 +74,7 @@ export const w2Parser: DocumentParser<ParsedW2Schema> = {
 
       const response = await callClaude({
         system: SYSTEM_PROMPT,
-        userContent: [
-          fileContent,
-          { type: 'text', text: 'Extract all data from this W-2 form.' },
-        ],
+        userContent: [fileContent, { type: 'text', text: 'Extract all data from this W-2 form.' }],
         maxTokens: 2048,
         tools: [W2_TOOL],
         toolChoice: { type: 'tool', name: 'extract_w2' },
@@ -136,4 +128,3 @@ export const w2Parser: DocumentParser<ParsedW2Schema> = {
     return { valid: warnings.length === 0, warnings };
   },
 };
-

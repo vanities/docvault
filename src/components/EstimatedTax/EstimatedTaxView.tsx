@@ -79,7 +79,7 @@ const STATUS_COLORS = {
 };
 
 export function EstimatedTaxView() {
-  const { selectedEntity, selectedYear } = useAppContext();
+  const { selectedEntity, selectedYear, reminders, updateReminder } = useAppContext();
   const { addToast } = useToast();
 
   const [payments, setPayments] = useState<EstimatedTaxPayment[]>([]);
@@ -158,6 +158,22 @@ export function EstimatedTaxView() {
     const val = parseCurrencyInput(targetInput);
     setTargetInput(String(val));
     setConfig((prev) => ({ ...prev, annualTarget: val }));
+
+    // Sync reminder notes for estimated tax reminders tied to this entity/year
+    if (val > 0) {
+      const quarterly = val / 4;
+      const newNotes = `${formatCurrency(quarterly)} due · 110% safe harbor (${selectedEntity}/${selectedYear})`;
+      reminders
+        .filter(
+          (r) =>
+            r.entityId === selectedEntity &&
+            r.title.includes('Estimated Tax Payment') &&
+            r.notes?.includes(`(${selectedEntity}/${selectedYear})`)
+        )
+        .forEach((r) => {
+          void updateReminder(r.id, { notes: newNotes });
+        });
+    }
   }
 
   return (
