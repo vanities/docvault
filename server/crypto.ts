@@ -573,7 +573,7 @@ export const AVALANCHE_TOKENS: { contract: string; symbol: string; decimals: num
 // Chainlink Staking v0.2 — staked LINK is locked in these contracts (no receipt token)
 const CHAINLINK_STAKING_POOLS = [
   { address: '0xBc10f2E862ED4502144c7d632a3459F49DFCDB5e', label: 'CL Community Pool' },
-  { address: '0xa1d76a7ca72128d895dbB12A4e9643E0D29c1f03', label: 'CL Operator Pool' },
+  { address: '0xa1d76a7ca72128541e9fcacafbda3a92ef94fdc5', label: 'CL Operator Pool' },
 ] as const;
 
 const GET_STAKER_PRINCIPAL_ABI = [
