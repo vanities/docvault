@@ -610,13 +610,13 @@ async function fetchChainlinkStakedBalance(address: string): Promise<number> {
         `[Chainlink Staking] ${pool.label} raw result:`,
         JSON.stringify(json).slice(0, 200)
       );
-      if (!json.result || json.result === '0x') continue;
+      if (!json.result || json.result === '0x' || !/^0x[0-9a-fA-F]+$/.test(json.result)) continue;
 
-      const [principal] = decodeFunctionResult({
+      const principal = decodeFunctionResult({
         abi: GET_STAKER_PRINCIPAL_ABI,
         functionName: 'getStakerPrincipal',
         data: json.result,
-      }) as [bigint];
+      }) as bigint;
 
       total += Number(principal) / 1e18;
     } catch (err) {
