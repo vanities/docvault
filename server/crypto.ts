@@ -635,9 +635,12 @@ const GET_STAKER_PRINCIPAL_ABI = [
 
 async function fetchChainlinkStakedBalance(address: string): Promise<number> {
   const apiKeyParam = etherscanApiKey ? `&apikey=${etherscanApiKey}` : '';
+  const rateDelay = etherscanApiKey ? 250 : 5100;
   let total = 0;
 
   for (const pool of CHAINLINK_STAKING_POOLS) {
+    // Respect Etherscan's 5 req/s limit — chain scanning ends just before this
+    await new Promise((r) => setTimeout(r, rateDelay));
     try {
       const data = encodeFunctionData({
         abi: GET_STAKER_PRINCIPAL_ABI,
