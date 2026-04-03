@@ -11,6 +11,9 @@ import {
   extractTextResponse,
   parseJsonResponse,
 } from './base.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('Generic');
 
 // The original system prompt covering all document types
 const SYSTEM_PROMPT = `You are a tax document parser. Extract ALL available data from tax forms and receipts.
@@ -398,7 +401,7 @@ export const genericParser: DocumentParser<ParsedTaxDocument> = {
         userPrompt = `This appears to be a ${docTypeHint} form. Parse it and extract all relevant data as JSON.`;
       }
 
-      console.log(`[Generic Parser] Parsing ${filename} (hint: ${docTypeHint})`);
+      log.info(`Parsing ${filename} (hint: ${docTypeHint})`);
 
       const maxTokens = docTypeHint === '1099-composite' ? 8192 : 4096;
 
@@ -410,11 +413,11 @@ export const genericParser: DocumentParser<ParsedTaxDocument> = {
 
       const text = extractTextResponse(response);
       if (!text) {
-        console.error('[Generic Parser] No text response from Claude');
+        log.error('No text response from Claude');
         return null;
       }
 
-      console.log('[Generic Parser] Raw response:', text);
+      log.debug('Raw response:', text);
 
       const parsed = parseJsonResponse(text) as Record<string, unknown>;
       const documentType = inferDocumentType(parsed, docTypeHint);
@@ -424,7 +427,7 @@ export const genericParser: DocumentParser<ParsedTaxDocument> = {
         documentType,
       } as ParsedTaxDocument;
     } catch (error) {
-      console.error('[Generic Parser] Error:', error);
+      log.error('Error:', String(error));
       return null;
     }
   },

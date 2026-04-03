@@ -4,6 +4,9 @@
 import type { ParsedReceiptSchema } from './schemas/index.js';
 import type { DocumentParser } from './base.js';
 import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('Receipt');
 
 const SYSTEM_PROMPT = `You extract data from receipts and expense documents. Extract ALL visible data using the extract_receipt tool. All monetary values must be numbers. Dates should be YYYY-MM-DD format.
 
@@ -74,7 +77,7 @@ export const receiptParser: DocumentParser<ParsedReceiptSchema> = {
       const fileData = await readFileAsBase64(filePath, filename);
       const fileContent = buildFileContent(fileData);
 
-      console.log(`[Receipt Parser] Parsing ${filename}`);
+      log.info(`Parsing ${filename}`);
 
       const response = await callClaude({
         system: SYSTEM_PROMPT,
@@ -89,7 +92,7 @@ export const receiptParser: DocumentParser<ParsedReceiptSchema> = {
 
       const result = extractToolResult(response) as Record<string, unknown> | null;
       if (!result) {
-        console.error('[Receipt Parser] No tool result from Claude');
+        log.error('No tool result from Claude');
         return null;
       }
 
@@ -100,7 +103,7 @@ export const receiptParser: DocumentParser<ParsedReceiptSchema> = {
         _parsedWith: 'receipt',
       } as ParsedReceiptSchema;
     } catch (error) {
-      console.error('[Receipt Parser] Error:', error);
+      log.error('Error:', String(error));
       return null;
     }
   },

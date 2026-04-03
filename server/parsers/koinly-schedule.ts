@@ -4,6 +4,9 @@
 import type { ParsedKoinlyScheduleSchema } from './schemas/index.js';
 import type { DocumentParser } from './base.js';
 import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('Koinly Schedule');
 
 const SYSTEM_PROMPT = `You extract data from Koinly-generated tax schedule documents. These may be:
 
@@ -72,7 +75,7 @@ export const koinlyScheduleParser: DocumentParser<ParsedKoinlyScheduleSchema> = 
       const fileData = await readFileAsBase64(filePath, filename);
       const fileContent = buildFileContent(fileData);
 
-      console.log(`[Koinly Schedule Parser] Parsing ${filename}`);
+      log.info(`Parsing ${filename}`);
 
       const response = await callClaude({
         system: SYSTEM_PROMPT,
@@ -87,7 +90,7 @@ export const koinlyScheduleParser: DocumentParser<ParsedKoinlyScheduleSchema> = 
 
       const result = extractToolResult(response) as Record<string, unknown> | null;
       if (!result) {
-        console.error('[Koinly Schedule Parser] No tool result from Claude');
+        log.error('No tool result from Claude');
         return null;
       }
 
@@ -98,7 +101,7 @@ export const koinlyScheduleParser: DocumentParser<ParsedKoinlyScheduleSchema> = 
         _parsedWith: 'koinly-schedule',
       } as ParsedKoinlyScheduleSchema;
     } catch (error) {
-      console.error('[Koinly Schedule Parser] Error:', error);
+      log.error('Error:', String(error));
       return null;
     }
   },

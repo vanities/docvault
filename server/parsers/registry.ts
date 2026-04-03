@@ -6,13 +6,16 @@ import type { DocumentParser } from './base.js';
 import { toLegacyParsedData } from './base.js';
 import { genericParser, detectDocumentTypeFromFilename } from './generic.js';
 import { detectDocumentType } from './detect-type.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('Registry');
 
 // Registry: document type string -> parser instance
 const registry = new Map<string, DocumentParser>();
 
 export function registerParser(parser: DocumentParser): void {
   registry.set(parser.type, parser);
-  console.log(`[Parser Registry] Registered parser: ${parser.type} (v${parser.version})`);
+  log.info(`Registered parser: ${parser.type} (v${parser.version})`);
 }
 
 export function getParser(type: string): DocumentParser | undefined {
@@ -96,7 +99,7 @@ export async function routeParse(
       // Filename didn't match — check folder structure before paying for LLM
       const pathHint = detectTypeFromFolderPath(filePath);
       if (pathHint !== 'unknown') {
-        console.log(`[Parser Registry] Path hint: ${filePath} → ${pathHint}`);
+        log.info(`Path hint: ${filePath} → ${pathHint}`);
         detectedType = pathHint;
       } else {
         // Last resort: LLM classification
@@ -109,8 +112,8 @@ export async function routeParse(
   const parser = registry.get(detectedType) || genericParser;
   const isTypeSpecific = registry.has(detectedType);
 
-  console.log(
-    `[Parser Registry] Routing ${filename} → ${parser.type} parser` +
+  log.info(
+    `Routing ${filename} → ${parser.type} parser` +
       (isTypeSpecific ? ' (type-specific)' : ' (generic fallback)') +
       ` [detected: ${detectedType}]`
   );
@@ -123,7 +126,7 @@ export async function routeParse(
   if (parser.validate) {
     const { warnings } = parser.validate(result);
     for (const w of warnings) {
-      console.warn(`[Parser:${parser.type}] Validation: ${w}`);
+      log.warn(`Validation [${parser.type}]: ${w}`);
     }
   }
 

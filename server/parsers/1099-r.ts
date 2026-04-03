@@ -4,6 +4,9 @@
 import type { Parsed1099RSchema } from './schemas/index.js';
 import type { DocumentParser } from './base.js';
 import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('1099-R');
 
 const SYSTEM_PROMPT = `You extract data from 1099-R (Distributions From Pensions, Annuities, Retirement or Profit-Sharing Plans, IRAs, Insurance Contracts, etc.) tax forms. Extract ALL visible data using the extract_1099_r tool. All monetary values must be numbers. Distribution codes are important — extract them exactly as printed (e.g., "1", "7", "G"). Omit fields that are blank or not present.`;
 
@@ -64,7 +67,7 @@ export const r1099Parser: DocumentParser<Parsed1099RSchema> = {
       const fileData = await readFileAsBase64(filePath, filename);
       const fileContent = buildFileContent(fileData);
 
-      console.log(`[1099-R Parser] Parsing ${filename}`);
+      log.info(`Parsing ${filename}`);
 
       const response = await callClaude({
         system: SYSTEM_PROMPT,
@@ -79,7 +82,7 @@ export const r1099Parser: DocumentParser<Parsed1099RSchema> = {
 
       const result = extractToolResult(response) as Record<string, unknown> | null;
       if (!result) {
-        console.error('[1099-R Parser] No tool result from Claude');
+        log.error('No tool result from Claude');
         return null;
       }
 
@@ -90,7 +93,7 @@ export const r1099Parser: DocumentParser<Parsed1099RSchema> = {
         _parsedWith: '1099-r',
       } as Parsed1099RSchema;
     } catch (error) {
-      console.error('[1099-R Parser] Error:', error);
+      log.error('Error:', String(error));
       return null;
     }
   },

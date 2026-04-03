@@ -6,6 +6,13 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import type { BrokerAccount, SnapTradeConfig } from './brokers.js';
 import type { SimplefinConfig } from './simplefin.js';
+import { createLogger } from './logger.js';
+
+const logFiles = createLogger('Files');
+const logMigration = createLogger('Migration');
+const logSnapshots = createLogger('Snapshots');
+const logGold = createLogger('Gold');
+const logAuth = createLogger('Auth');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -214,7 +221,7 @@ export async function scanDirectory(dirPath: string, basePath: string = ''): Pro
       }
     }
   } catch (err) {
-    console.error(`Error scanning directory ${dirPath}:`, err);
+    logFiles.error(`Error scanning ${dirPath}: ${err}`);
   }
 
   return files;
@@ -287,7 +294,7 @@ export async function migrateParsedData(): Promise<void> {
     try {
       await fs.access(LEGACY_PARSED_DATA_FILE);
       await fs.rename(LEGACY_PARSED_DATA_FILE, PARSED_DATA_FILE);
-      console.log('[Migration] Renamed .taxvault-parsed.json -> .docvault-parsed.json');
+      logMigration.info('Renamed .taxvault-parsed.json -> .docvault-parsed.json');
     } catch {
       // Neither file exists, that's fine
     }
@@ -619,7 +626,7 @@ export async function loadSnapshots(years?: number[]): Promise<PortfolioSnapshot
       }
       // Remove legacy file after successful migration
       await fs.unlink(legacyFile);
-      console.log(`[snapshots] Migrated ${legacySnapshots.length} snapshots from legacy file`);
+      logSnapshots.info(`Migrated ${legacySnapshots.length} snapshots from legacy file`);
     }
   } catch {
     // No legacy file — normal case
@@ -857,7 +864,7 @@ export async function fetchMetalSpotPrices(): Promise<Record<string, number>> {
     metalPriceCacheTime = now;
     return prices;
   } catch (err) {
-    console.warn('[gold] Spot price fetch failed:', err);
+    logGold.warn(`Spot price fetch failed: ${err}`);
     return metalPriceCache; // return stale cache if available
   }
 }
@@ -985,7 +992,7 @@ export function isAuthenticated(req: Request): boolean {
 export const PUBLIC_ROUTES = new Set(['/api/login', '/api/status']);
 
 if (AUTH_ENABLED) {
-  console.log(`[auth] Authentication enabled for user "${AUTH_USERNAME}"`);
+  logAuth.info(`Authentication enabled for user "${AUTH_USERNAME}"`);
 } else {
-  console.log('[auth] Authentication disabled (DOCVAULT_USERNAME/DOCVAULT_PASSWORD not set)');
+  logAuth.info('Authentication disabled (DOCVAULT_USERNAME/DOCVAULT_PASSWORD not set)');
 }

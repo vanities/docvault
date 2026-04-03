@@ -18,6 +18,9 @@ import {
   corsHeaders,
 } from '../data.js';
 import type { EntityConfig, FileInfo, ParsedData, Contribution401k } from '../data.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('Downloads');
 
 export async function handleDownloadRoutes(
   req: Request,
@@ -94,7 +97,7 @@ export async function handleDownloadRoutes(
           // Use the relative path within the year as the zip entry name
           zipData[file.path] = new Uint8Array(content);
         } catch {
-          console.error(`[Zip] Failed to read ${file.path}`);
+          log.error(`Failed to read ${file.path}`);
         }
       }
 
@@ -466,7 +469,7 @@ export async function handleDownloadRoutes(
           const content = await fs.readFile(fullPath);
           zipData[file.path] = new Uint8Array(content);
         } catch {
-          console.error(`[CPA Package] Failed to read ${file.path}`);
+          log.error(`CPA Package: failed to read ${file.path}`);
         }
       }
 

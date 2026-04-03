@@ -5,6 +5,10 @@
 // $15/year, designed for personal finance tools. Powered by MX (16,000+ US banks).
 // API docs: https://beta-bridge.simplefin.org/info/developers
 
+import { createLogger } from './logger.js';
+
+const log = createLogger('SimpleFIN');
+
 // -----------------------------------------------------------------------------
 // Types
 // -----------------------------------------------------------------------------
@@ -121,7 +125,7 @@ export async function fetchBalances(config: SimplefinConfig): Promise<SimplefinA
   const data: SimplefinResponse = await res.json();
 
   if (data.errors?.length) {
-    console.warn('[SimpleFIN] Warnings:', data.errors);
+    log.warn('Warnings:', JSON.stringify(data.errors));
   }
 
   return data.accounts.map((acct) => ({

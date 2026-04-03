@@ -3,6 +3,9 @@
 import type { Parsed1099MISCSchema } from './schemas/index.js';
 import type { DocumentParser } from './base.js';
 import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('1099-MISC');
 
 const SYSTEM_PROMPT = `You extract data from 1099-MISC (Miscellaneous Information) tax forms. Extract ALL visible data using the extract_1099_misc tool. All monetary values must be numbers. Omit fields that are blank or not present.`;
 
@@ -54,7 +57,7 @@ export const misc1099Parser: DocumentParser<Parsed1099MISCSchema> = {
       const fileData = await readFileAsBase64(filePath, filename);
       const fileContent = buildFileContent(fileData);
 
-      console.log(`[1099-MISC Parser] Parsing ${filename}`);
+      log.info(`Parsing ${filename}`);
 
       const response = await callClaude({
         system: SYSTEM_PROMPT,
@@ -69,7 +72,7 @@ export const misc1099Parser: DocumentParser<Parsed1099MISCSchema> = {
 
       const result = extractToolResult(response) as Record<string, unknown> | null;
       if (!result) {
-        console.error('[1099-MISC Parser] No tool result from Claude');
+        log.error('No tool result from Claude');
         return null;
       }
 
@@ -80,7 +83,7 @@ export const misc1099Parser: DocumentParser<Parsed1099MISCSchema> = {
         _parsedWith: '1099-misc',
       } as Parsed1099MISCSchema;
     } catch (error) {
-      console.error('[1099-MISC Parser] Error:', error);
+      log.error('Error:', String(error));
       return null;
     }
   },
