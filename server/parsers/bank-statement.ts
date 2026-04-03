@@ -6,6 +6,9 @@
 import type { ParsedBankStatementSchema } from './schemas/index.js';
 import type { DocumentParser, ValidationResult } from './base.js';
 import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('Bank Statement');
 
 // Bank-specific prompt hints improve extraction accuracy for known layouts
 const BANK_HINTS: Record<string, string> = {
@@ -108,7 +111,7 @@ export const bankStatementParser: DocumentParser<ParsedBankStatementSchema> = {
       const bank = detectBank(filename);
       const systemPrompt = buildSystemPrompt(bank);
 
-      console.log(`[Bank Statement Parser] Parsing ${filename} (bank: ${bank || 'unknown'})`);
+      log.info(`Parsing ${filename} (bank: ${bank || 'unknown'})`);
 
       const response = await callClaude({
         system: systemPrompt,
@@ -126,12 +129,12 @@ export const bankStatementParser: DocumentParser<ParsedBankStatementSchema> = {
 
       const result = extractToolResult(response) as Record<string, unknown> | null;
       if (!result) {
-        console.error('[Bank Statement Parser] No tool result from Claude');
+        log.error('No tool result from Claude');
         return null;
       }
 
-      console.log(
-        `[Bank Statement Parser] Extracted: ${(result.deposits as unknown[])?.length || 0} deposits, ` +
+      log.info(
+        `Extracted: ${(result.deposits as unknown[])?.length || 0} deposits, ` +
           `${(result.withdrawals as unknown[])?.length || 0} withdrawals`
       );
 
@@ -142,7 +145,7 @@ export const bankStatementParser: DocumentParser<ParsedBankStatementSchema> = {
         _parsedWith: 'bank-statement',
       } as ParsedBankStatementSchema;
     } catch (error) {
-      console.error('[Bank Statement Parser] Error:', error);
+      log.error('Error:', String(error));
       return null;
     }
   },

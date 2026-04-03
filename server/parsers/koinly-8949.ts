@@ -4,6 +4,9 @@
 import type { ParsedKoinly8949Schema } from './schemas/index.js';
 import type { DocumentParser } from './base.js';
 import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('Koinly 8949');
 
 const SYSTEM_PROMPT = `You extract data from Koinly-generated Form 8949 PDFs. These report crypto capital gains and losses organized by exchange and holding period.
 
@@ -83,7 +86,7 @@ export const koinly8949Parser: DocumentParser<ParsedKoinly8949Schema> = {
       const fileData = await readFileAsBase64(filePath, filename);
       const fileContent = buildFileContent(fileData);
 
-      console.log(`[Koinly 8949 Parser] Parsing ${filename}`);
+      log.info(`Parsing ${filename}`);
 
       const response = await callClaude({
         system: SYSTEM_PROMPT,
@@ -101,7 +104,7 @@ export const koinly8949Parser: DocumentParser<ParsedKoinly8949Schema> = {
 
       const result = extractToolResult(response) as Record<string, unknown> | null;
       if (!result) {
-        console.error('[Koinly 8949 Parser] No tool result from Claude');
+        log.error('No tool result from Claude');
         return null;
       }
 
@@ -112,7 +115,7 @@ export const koinly8949Parser: DocumentParser<ParsedKoinly8949Schema> = {
         _parsedWith: 'koinly-8949',
       } as ParsedKoinly8949Schema;
     } catch (error) {
-      console.error('[Koinly 8949 Parser] Error:', error);
+      log.error('Error:', String(error));
       return null;
     }
   },

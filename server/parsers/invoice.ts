@@ -4,6 +4,9 @@
 
 import type { DocumentParser } from './base.js';
 import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('Invoice');
 
 const SYSTEM_PROMPT = `You extract data from invoices. An invoice is a document sent TO a client/customer requesting payment for services rendered or goods delivered. This is NOT a receipt (which records a payment made).
 
@@ -93,7 +96,7 @@ export const invoiceParser: DocumentParser<ParsedInvoiceSchema> = {
       const fileData = await readFileAsBase64(filePath, filename);
       const fileContent = buildFileContent(fileData);
 
-      console.log(`[Invoice Parser] Parsing ${filename}`);
+      log.info(`Parsing ${filename}`);
 
       const response = await callClaude({
         system: SYSTEM_PROMPT,
@@ -105,7 +108,7 @@ export const invoiceParser: DocumentParser<ParsedInvoiceSchema> = {
 
       const result = extractToolResult(response) as Record<string, unknown> | null;
       if (!result) {
-        console.error('[Invoice Parser] No tool result from Claude');
+        log.error('No tool result from Claude');
         return null;
       }
 
@@ -128,7 +131,7 @@ export const invoiceParser: DocumentParser<ParsedInvoiceSchema> = {
         _parsedWith: 'invoice',
       } as ParsedInvoiceSchema;
     } catch (error) {
-      console.error('[Invoice Parser] Error:', error);
+      log.error('Error:', String(error));
       return null;
     }
   },

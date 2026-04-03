@@ -4,6 +4,9 @@
 import type { Parsed1098Schema } from './schemas/index.js';
 import type { DocumentParser } from './base.js';
 import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('1098');
 
 const SYSTEM_PROMPT = `You extract data from 1098 series tax forms (Mortgage Interest Statement, 1098-E Student Loan Interest, 1098-T Tuition). Extract ALL visible data using the extract_1098 tool. All monetary values must be numbers. Omit fields that are blank or not present.`;
 
@@ -69,7 +72,7 @@ export const parser1098: DocumentParser<Parsed1098Schema> = {
       const fileData = await readFileAsBase64(filePath, filename);
       const fileContent = buildFileContent(fileData);
 
-      console.log(`[1098 Parser] Parsing ${filename}`);
+      log.info(`Parsing ${filename}`);
 
       const response = await callClaude({
         system: SYSTEM_PROMPT,
@@ -81,7 +84,7 @@ export const parser1098: DocumentParser<Parsed1098Schema> = {
 
       const result = extractToolResult(response) as Record<string, unknown> | null;
       if (!result) {
-        console.error('[1098 Parser] No tool result from Claude');
+        log.error('No tool result from Claude');
         return null;
       }
 
@@ -92,7 +95,7 @@ export const parser1098: DocumentParser<Parsed1098Schema> = {
         _parsedWith: '1098',
       } as Parsed1098Schema;
     } catch (error) {
-      console.error('[1098 Parser] Error:', error);
+      log.error('Error:', String(error));
       return null;
     }
   },

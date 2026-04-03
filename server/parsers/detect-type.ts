@@ -4,6 +4,9 @@
 
 import { readFileAsBase64, buildFileContent, callClaude, extractTextResponse } from './base.js';
 import { detectDocumentTypeFromFilename } from './generic.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('TypeDetect');
 
 // All valid document types the detector can return
 const VALID_TYPES = new Set([
@@ -70,13 +73,13 @@ export async function detectDocumentType(filePath: string, filename: string): Pr
   const filenameHint = detectDocumentTypeFromFilename(filename);
   if (filenameHint !== 'unknown') {
     const canonical = hintToCanonical[filenameHint] || filenameHint;
-    console.log(`[Type Detector] Filename match: ${filename} → ${canonical}`);
+    log.info(`Filename match: ${filename} → ${canonical}`);
     return canonical;
   }
 
   // Tier 2: LLM classification (cheap, one API call with small max_tokens)
   try {
-    console.log(`[Type Detector] Filename unknown, using LLM for: ${filename}`);
+    log.info(`Filename unknown, using LLM for: ${filename}`);
     const fileData = await readFileAsBase64(filePath, filename);
     const fileContent = buildFileContent(fileData);
 
@@ -90,15 +93,13 @@ export async function detectDocumentType(filePath: string, filename: string): Pr
     if (text) {
       const detected = text.trim().toLowerCase();
       if (VALID_TYPES.has(detected)) {
-        console.log(`[Type Detector] LLM classified: ${filename} → ${detected}`);
+        log.info(`LLM classified: ${filename} → ${detected}`);
         return detected;
       }
-      console.warn(
-        `[Type Detector] LLM returned invalid type "${detected}", falling back to "other"`
-      );
+      log.warn(`LLM returned invalid type "${detected}", falling back to "other"`);
     }
   } catch (error) {
-    console.error('[Type Detector] LLM classification failed:', error);
+    log.error('LLM classification failed:', String(error));
   }
 
   return 'other';

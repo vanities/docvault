@@ -6,6 +6,9 @@
 import type { Parsed1099CompositeSchema } from './schemas/index.js';
 import type { DocumentParser } from './base.js';
 import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('1099-Composite');
 
 const SYSTEM_PROMPT = `You extract data from composite/consolidated 1099 tax statements. These are year-end brokerage statements (from Vanguard, Fidelity, Schwab, etc.) that contain multiple 1099 forms in a single PDF.
 
@@ -145,7 +148,7 @@ export const composite1099Parser: DocumentParser<Parsed1099CompositeSchema> = {
       const fileData = await readFileAsBase64(filePath, filename);
       const fileContent = buildFileContent(fileData);
 
-      console.log(`[1099-Composite Parser] Parsing ${filename}`);
+      log.info(`Parsing ${filename}`);
 
       const response = await callClaude({
         system: SYSTEM_PROMPT,
@@ -163,15 +166,15 @@ export const composite1099Parser: DocumentParser<Parsed1099CompositeSchema> = {
 
       const result = extractToolResult(response) as Record<string, unknown> | null;
       if (!result) {
-        console.error('[1099-Composite Parser] No tool result from Claude');
+        log.error('No tool result from Claude');
         return null;
       }
 
       // Log transaction count if available
       const b = result.b as Record<string, unknown> | undefined;
       const txnCount = Array.isArray(b?.transactions) ? (b.transactions as unknown[]).length : 0;
-      console.log(
-        `[1099-Composite Parser] Extracted: ` +
+      log.info(
+        `Extracted: ` +
           `DIV=${result.div ? 'yes' : 'no'} INT=${result.int ? 'yes' : 'no'} ` +
           `B=${result.b ? 'yes' : 'no'} (${txnCount} txns) MISC=${result.misc ? 'yes' : 'no'}`
       );
@@ -183,7 +186,7 @@ export const composite1099Parser: DocumentParser<Parsed1099CompositeSchema> = {
         _parsedWith: '1099-composite',
       } as Parsed1099CompositeSchema;
     } catch (error) {
-      console.error('[1099-Composite Parser] Error:', error);
+      log.error('Error:', String(error));
       return null;
     }
   },

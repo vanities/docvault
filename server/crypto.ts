@@ -1313,13 +1313,13 @@ export async function fetchAllBalances(
   const totalSteps = enabledExchanges.length + wallets.length + 1; // +1 for prices
   let completed = 0;
 
-  console.log(
-    `[fetchAllBalances] Starting sync — ${enabledExchanges.length} exchanges, ${btcWallets.length} BTC wallets, ${ethWallets.length} ETH wallets (Etherscan key: ${etherscanApiKey ? 'yes' : 'no'})`
+  logBalances.info(
+    `Starting sync — ${enabledExchanges.length} exchanges, ${btcWallets.length} BTC wallets, ${ethWallets.length} ETH wallets (Etherscan key: ${etherscanApiKey ? 'yes' : 'no'})`
   );
-  const t0 = Date.now();
+  const elapsed = logBalances.timer();
 
   // Pre-fetch prices so each source can be priced immediately as it completes.
-  console.log('[fetchAllBalances] Pre-fetching prices...');
+  logBalances.info('Pre-fetching prices...');
   const prices = await fetchPrices([]);
 
   const attachPrices = (balances: Balance[]) => {
@@ -1340,8 +1340,8 @@ export async function fetchAllBalances(
       } catch (err) {
         error = err instanceof Error ? err.message : 'Unknown error';
       }
-      if (error) console.error(`[fetchAllBalances] ${exchange.id} error: ${error}`);
-      else console.log(`[fetchAllBalances] ${exchange.id}: ${balances.length} balances`);
+      if (error) logBalances.error(`${exchange.id} error: ${error}`);
+      else logBalances.info(`${exchange.id}: ${balances.length} balances`);
       balances.forEach((b) => allAssets.add(b.asset));
       completed++;
       onProgress?.(completed, totalSteps, EXCHANGE_LABELS[exchange.id] || exchange.id);
@@ -1370,7 +1370,7 @@ export async function fetchAllBalances(
       } catch (err) {
         error = err instanceof Error ? err.message : 'Unknown error';
       }
-      if (error) console.error(`[fetchAllBalances] BTC wallet ${wallet.label}: ${error}`);
+      if (error) logBalances.error(`BTC wallet ${wallet.label}: ${error}`);
       balances.forEach((b) => allAssets.add(b.asset));
       completed++;
       onProgress?.(completed, totalSteps, wallet.label || 'BTC Wallet');
@@ -1434,8 +1434,8 @@ export async function fetchAllBalances(
 
   const totalUsdValue = sources.reduce((sum, s) => sum + s.totalUsdValue, 0);
 
-  console.log(
-    `[fetchAllBalances] Complete — $${totalUsdValue.toFixed(0)} total across ${sources.length} sources in ${Date.now() - t0}ms`
+  logBalances.info(
+    `Complete — $${totalUsdValue.toFixed(0)} total across ${sources.length} sources in ${elapsed()}ms`
   );
 
   return {

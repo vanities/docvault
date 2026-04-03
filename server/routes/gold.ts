@@ -14,6 +14,9 @@ import {
   DATA_DIR,
 } from '../data.js';
 import { parseGoldReceiptFromBuffer } from '../parsers/gold-receipt.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('Gold');
 
 export async function handleGoldRoutes(
   req: Request,
@@ -196,10 +199,10 @@ export async function handleGoldRoutes(
 
       // Strip parser metadata, return in the format the frontend expects
       const { _documentType, _parserVersion, _parsedWith, ...data } = parsed;
-      console.log('[Gold AI] Parsed receipt:', JSON.stringify(data, null, 2));
+      log.debug('Parsed receipt:', JSON.stringify(data, null, 2));
       return jsonResponse({ ok: true, ...data });
     } catch (err) {
-      console.error('[Gold AI] Parse error:', err);
+      log.error('Parse error:', String(err));
       return jsonResponse({ error: 'Failed to parse receipt', details: String(err) }, 500);
     }
   }

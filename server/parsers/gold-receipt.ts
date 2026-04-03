@@ -3,6 +3,9 @@
 
 import type { DocumentParser } from './base.js';
 import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('Gold Receipt');
 
 const SYSTEM_PROMPT = `You analyze receipts and invoices for precious metals purchases (gold, silver, platinum, palladium coins and bars). Extract purchase details using the extract_gold_receipt tool.
 
@@ -111,7 +114,7 @@ const goldReceiptParser: DocumentParser<ParsedGoldReceiptSchema> = {
       const fileData = await readFileAsBase64(filePath, filename);
       const fileContent = buildFileContent(fileData);
 
-      console.log(`[Gold Receipt Parser] Parsing ${filename}`);
+      log.info(`Parsing ${filename}`);
 
       const response = await callClaude({
         system: SYSTEM_PROMPT,
@@ -126,7 +129,7 @@ const goldReceiptParser: DocumentParser<ParsedGoldReceiptSchema> = {
 
       const result = extractToolResult(response) as Record<string, unknown> | null;
       if (!result) {
-        console.error('[Gold Receipt Parser] No tool result from Claude');
+        log.error('No tool result from Claude');
         return null;
       }
 
@@ -137,7 +140,7 @@ const goldReceiptParser: DocumentParser<ParsedGoldReceiptSchema> = {
         _parsedWith: 'gold-receipt',
       } as ParsedGoldReceiptSchema;
     } catch (error) {
-      console.error('[Gold Receipt Parser] Error:', error);
+      log.error('Error:', String(error));
       return null;
     }
   },

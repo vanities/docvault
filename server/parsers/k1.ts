@@ -4,6 +4,9 @@
 import type { ParsedK1Schema } from './schemas/index.js';
 import type { DocumentParser } from './base.js';
 import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('K-1');
 
 const SYSTEM_PROMPT = `You extract data from Schedule K-1 tax forms. These come from partnerships (Form 1065), S-corporations (Form 1120-S), or trusts/estates (Form 1041). Extract ALL visible data using the extract_k1 tool. All monetary values must be numbers. Losses should be negative numbers. Omit fields that are blank or not present.
 
@@ -73,7 +76,7 @@ export const k1Parser: DocumentParser<ParsedK1Schema> = {
       const fileData = await readFileAsBase64(filePath, filename);
       const fileContent = buildFileContent(fileData);
 
-      console.log(`[K-1 Parser] Parsing ${filename}`);
+      log.info(`Parsing ${filename}`);
 
       const response = await callClaude({
         system: SYSTEM_PROMPT,
@@ -88,7 +91,7 @@ export const k1Parser: DocumentParser<ParsedK1Schema> = {
 
       const result = extractToolResult(response) as Record<string, unknown> | null;
       if (!result) {
-        console.error('[K-1 Parser] No tool result from Claude');
+        log.error('No tool result from Claude');
         return null;
       }
 
@@ -99,7 +102,7 @@ export const k1Parser: DocumentParser<ParsedK1Schema> = {
         _parsedWith: 'k-1',
       } as ParsedK1Schema;
     } catch (error) {
-      console.error('[K-1 Parser] Error:', error);
+      log.error('Error:', String(error));
       return null;
     }
   },

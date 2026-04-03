@@ -1,5 +1,9 @@
 // Shared AI rate-limit protection: concurrency limiter + retry with backoff
 
+import { createLogger } from './logger.js';
+
+const log = createLogger('AI');
+
 const MAX_CONCURRENT = 2;
 const MAX_RETRIES = 3;
 
@@ -40,7 +44,7 @@ async function retryOn429<T>(fn: () => Promise<T>): Promise<T> {
 
       const retryAfter = Number(error.headers?.['retry-after']) || 0;
       const delay = retryAfter > 0 ? retryAfter * 1000 : 2000 * 2 ** attempt;
-      console.log(`[AI Limiter] 429 — retry ${attempt + 1}/${MAX_RETRIES} in ${delay}ms`);
+      log.info(`429 — retry ${attempt + 1}/${MAX_RETRIES} in ${delay}ms`);
       await new Promise((r) => setTimeout(r, delay));
     }
   }

@@ -21,9 +21,17 @@ import type { Settings, PortfolioSnapshot } from './data.js';
 import { fetchAllBalances } from './crypto.js';
 import { buildPortfolio, fetchAllSnapTradeHoldings } from './brokers.js';
 import { fetchBalances as fetchSimplefinBalances } from './simplefin.js';
+import { createLogger } from './logger.js';
 
 // Scheduler — built-in cron-like recurring tasks
 // ============================================================================
+
+const logScheduler = createLogger('Scheduler');
+const logSnapshots = createLogger('Snapshots');
+const logSnapTrade = createLogger('SnapTrade');
+const logSimpleFIN = createLogger('SimpleFIN');
+const logDropbox = createLogger('Dropbox');
+const logGold = createLogger('Gold');
 
 const DEFAULT_SNAPSHOT_INTERVAL = 1440; // 24 hours in minutes
 const DEFAULT_DROPBOX_SYNC_INTERVAL = 15; // 15 minutes
@@ -47,9 +55,9 @@ export async function takePortfolioSnapshot(): Promise<void> {
         settings.brokers.accounts = [...manualAccounts, ...snapAccounts];
         await saveSettings(settings);
         settings = await loadSettings(); // re-read after save
-        console.log(`[scheduler] SnapTrade holdings refreshed (${snapAccounts.length} accounts)`);
+        logSnapTrade.info(`SnapTrade holdings refreshed (${snapAccounts.length} accounts)`);
       } catch (err) {
-        console.warn('[scheduler] SnapTrade refresh failed, using existing holdings:', err);
+        logSnapTrade.warn('SnapTrade refresh failed, using existing holdings:', String(err));
       }
     }
 
@@ -59,7 +67,7 @@ export async function takePortfolioSnapshot(): Promise<void> {
     if (brokerPortfolio) {
       try {
         await fs.writeFile(BROKER_CACHE_FILE, JSON.stringify(brokerPortfolio, null, 2));
-        console.log('[scheduler] Broker cache updated');
+        logSnapshots.info('Broker cache updated');
       } catch {
         // Non-critical — snapshot still saves
       }
@@ -78,9 +86,9 @@ export async function takePortfolioSnapshot(): Promise<void> {
         );
         cryptoValue = cryptoPortfolio.totalUsdValue || 0;
         await fs.writeFile(CRYPTO_CACHE_FILE, JSON.stringify(cryptoPortfolio, null, 2));
-        console.log('[scheduler] Crypto cache updated');
+        logSnapshots.info('Crypto cache updated');
       } catch (err) {
-        console.warn('[scheduler] Crypto fetch failed, using cached data:', err);
+        logSnapshots.warn('Crypto fetch failed, using cached data:', String(err));
         // Fall back to cached data if live fetch fails
         try {
           const cryptoData = await fs.readFile(CRYPTO_CACHE_FILE, 'utf-8');
@@ -112,9 +120,9 @@ export async function takePortfolioSnapshot(): Promise<void> {
           lastUpdated: new Date().toISOString(),
         };
         await fs.writeFile(SIMPLEFIN_CACHE_FILE, JSON.stringify(cache, null, 2));
-        console.log('[scheduler] SimpleFIN bank cache updated');
+        logSimpleFIN.info('SimpleFIN bank cache updated');
       } catch (err) {
-        console.warn('[scheduler] SimpleFIN fetch failed, using cached data:', err);
+        logSimpleFIN.warn('SimpleFIN fetch failed, using cached data:', String(err));
         try {
           const bankData = await fs.readFile(SIMPLEFIN_CACHE_FILE, 'utf-8');
           const cached: SimplefinBalanceCache = JSON.parse(bankData);
@@ -147,7 +155,7 @@ export async function takePortfolioSnapshot(): Promise<void> {
         }
       }
     } catch (err) {
-      console.warn('[scheduler] Gold value calc failed:', err);
+      logGold.warn('Gold value calc failed:', String(err));
     }
 
     // Compute property value + apply monthly mortgage amortization
@@ -180,8 +188,8 @@ export async function takePortfolioSnapshot(): Promise<void> {
 
             entry.lastAmortizationDate = currentMonth;
             propertyChanged = true;
-            console.log(
-              `[scheduler] Amortization applied for "${entry.name}": ${monthsToApply} month(s), new balance: $${entry.mortgage.balance}`
+            logSnapshots.info(
+              `Amortization applied for "${entry.name}": ${monthsToApply} month(s), new balance: $${entry.mortgage.balance}`
             );
           }
         }
@@ -194,7 +202,7 @@ export async function takePortfolioSnapshot(): Promise<void> {
         await savePropertyData(propertyData);
       }
     } catch (err) {
-      console.warn('[scheduler] Property value calc failed:', err);
+      logSnapshots.warn('Property value calc failed:', String(err));
     }
 
     const brokerValue = brokerPortfolio?.totalValue || 0;
@@ -211,9 +219,9 @@ export async function takePortfolioSnapshot(): Promise<void> {
       shortTermGains: brokerPortfolio?.shortTermGains || 0,
       longTermGains: brokerPortfolio?.longTermGains || 0,
     });
-    console.log(`[scheduler] Portfolio snapshot saved for ${today}`);
+    logSnapshots.info(`Portfolio snapshot saved for ${today}`);
   } catch (err) {
-    console.error('[scheduler] Snapshot failed:', err);
+    logSnapshots.error('Snapshot failed:', String(err));
   }
 }
 
@@ -256,12 +264,12 @@ async function createEncryptedConfigBackup(password: string): Promise<string | n
     // Write to data dir as .docvault-config-backup.enc
     const backupPath = path.join(DATA_DIR, '.docvault-config-backup.enc');
     await fs.writeFile(backupPath, packed);
-    console.log(
-      `[scheduler] Encrypted config backup written (${Object.keys(filesToBackup).length} files, ${packed.length} bytes)`
+    logScheduler.info(
+      `Encrypted config backup written (${Object.keys(filesToBackup).length} files, ${packed.length} bytes)`
     );
     return backupPath;
   } catch (err) {
-    console.error('[scheduler] Encrypted config backup failed:', err);
+    logScheduler.error('Encrypted config backup failed:', String(err));
     return null;
   }
 }
@@ -298,15 +306,15 @@ export async function runDropboxSync(): Promise<void> {
       await proc.exited;
       const stderr = await new Response(proc.stderr).text();
       if (proc.exitCode !== 0) {
-        console.error(`[scheduler] Dropbox sync failed (exit: ${proc.exitCode}):`, stderr);
+        logDropbox.error(`Dropbox sync failed (exit: ${proc.exitCode}):`, stderr);
       } else {
-        console.log(`[scheduler] Dropbox sync completed`);
+        logDropbox.info('Dropbox sync completed');
       }
     } else {
-      console.log('[scheduler] Dropbox sync skipped — no sync script found');
+      logDropbox.info('Dropbox sync skipped — no sync script found');
     }
   } catch (err) {
-    console.error('[scheduler] Dropbox sync failed:', err);
+    logDropbox.error('Dropbox sync failed:', String(err));
   }
 }
 
@@ -325,16 +333,16 @@ export function startScheduler(schedules: Settings['schedules'] = {}): void {
 
   if (snapshotEnabled) {
     snapshotTimer = setInterval(takePortfolioSnapshot, snapshotMinutes * 60 * 1000);
-    console.log(`[scheduler] Portfolio snapshot: every ${snapshotMinutes}m`);
+    logScheduler.info(`Portfolio snapshot: every ${snapshotMinutes}m`);
   } else {
-    console.log('[scheduler] Portfolio snapshot: disabled');
+    logScheduler.info('Portfolio snapshot: disabled');
   }
 
   if (dropboxEnabled) {
     dropboxSyncTimer = setInterval(runDropboxSync, dropboxMinutes * 60 * 1000);
-    console.log(`[scheduler] Dropbox sync: every ${dropboxMinutes}m`);
+    logScheduler.info(`Dropbox sync: every ${dropboxMinutes}m`);
   } else {
-    console.log('[scheduler] Dropbox sync: disabled');
+    logScheduler.info('Dropbox sync: disabled');
   }
 }
 
@@ -343,7 +351,7 @@ loadSettings()
   .then(async (settings) => {
     startScheduler(settings.schedules);
     // Run first snapshot immediately so we don't wait 24h after container start
-    console.log('[scheduler] Taking initial snapshot on startup...');
+    logScheduler.info('Taking initial snapshot on startup...');
     await takePortfolioSnapshot();
   })
   .catch(() => {

@@ -3,6 +3,9 @@
 import type { Parsed1099NECSchema } from './schemas/index.js';
 import type { DocumentParser, ValidationResult } from './base.js';
 import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('1099-NEC');
 
 const SYSTEM_PROMPT = `You extract data from 1099-NEC (Nonemployee Compensation) tax forms. Extract ALL visible data using the extract_1099_nec tool. All monetary values must be numbers. Omit fields that are blank or not present.`;
 
@@ -45,7 +48,7 @@ export const nec1099Parser: DocumentParser<Parsed1099NECSchema> = {
       const fileData = await readFileAsBase64(filePath, filename);
       const fileContent = buildFileContent(fileData);
 
-      console.log(`[1099-NEC Parser] Parsing ${filename}`);
+      log.info(`Parsing ${filename}`);
 
       const response = await callClaude({
         system: SYSTEM_PROMPT,
@@ -60,11 +63,11 @@ export const nec1099Parser: DocumentParser<Parsed1099NECSchema> = {
 
       const result = extractToolResult(response) as Record<string, unknown> | null;
       if (!result) {
-        console.error('[1099-NEC Parser] No tool result from Claude');
+        log.error('No tool result from Claude');
         return null;
       }
 
-      console.log('[1099-NEC Parser] Extracted:', JSON.stringify(result, null, 2));
+      log.debug('Extracted:', JSON.stringify(result, null, 2));
 
       return {
         ...result,
@@ -73,7 +76,7 @@ export const nec1099Parser: DocumentParser<Parsed1099NECSchema> = {
         _parsedWith: '1099-nec',
       } as Parsed1099NECSchema;
     } catch (error) {
-      console.error('[1099-NEC Parser] Error:', error);
+      log.error('Error:', String(error));
       return null;
     }
   },

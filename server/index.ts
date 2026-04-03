@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createLogger } from './logger.js';
 import { parseWithAI } from './parsers/ai.js';
 import { zipSync } from 'fflate';
 import { withAILimit } from './aiLimiter.js';
@@ -140,6 +141,16 @@ import { handleMiscRoutes } from './routes/misc.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Module-level loggers
+const logHttp = createLogger('HTTP');
+const logClaude = createLogger('Claude');
+const logSnaptrade = createLogger('SnapTrade');
+const logSimplefin = createLogger('SimpleFIN');
+const logGeo = createLogger('Geo');
+
+// Noisy routes to skip HTTP logging (frequent health-check style polls)
+const SILENT_ROUTES = new Set(['/api/status', '/api/config']);
+
 // Request Handler
 // ============================================================================
 
@@ -150,6 +161,10 @@ async function handleRequest(req: Request): Promise<Response> {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders() });
+  }
+
+  if (!SILENT_ROUTES.has(pathname)) {
+    logHttp.info(`${req.method} ${pathname}`);
   }
 
   // --- Auth: login endpoint ---
@@ -472,7 +487,7 @@ async function handleRequest(req: Request): Promise<Response> {
     } catch (err) {
       await saveSettings(settings);
       const detail = extractSnapTradeError(err);
-      console.error('[SnapTrade setup]', detail);
+      logSnaptrade.error(`Setup failed: ${detail}`);
       return jsonResponse({ error: detail }, 500);
     }
   }
@@ -489,7 +504,7 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse({ redirectUrl });
     } catch (err) {
       const detail = extractSnapTradeError(err);
-      console.error('[SnapTrade connect]', detail);
+      logSnaptrade.error(`Connect failed: ${detail}`);
       return jsonResponse({ error: detail }, 500);
     }
   }
@@ -513,7 +528,7 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse({ ok: true, synced: snapAccounts.length });
     } catch (err) {
       const detail = extractSnapTradeError(err);
-      console.error('[SnapTrade sync]', detail);
+      logSnaptrade.error(`Sync failed: ${detail}`);
       return jsonResponse({ error: detail }, 500);
     }
   }
@@ -566,7 +581,7 @@ async function handleRequest(req: Request): Promise<Response> {
       await saveSettings(settings);
       return jsonResponse({ ok: true });
     } catch (err) {
-      console.error('[SimpleFIN setup]', err instanceof Error ? err.message : err);
+      logSimplefin.error(`Setup failed: ${err instanceof Error ? err.message : err}`);
       return jsonResponse({ error: err instanceof Error ? err.message : 'Setup failed' }, 500);
     }
   }
@@ -597,7 +612,7 @@ async function handleRequest(req: Request): Promise<Response> {
       await fs.writeFile(SIMPLEFIN_CACHE_FILE, JSON.stringify(cache, null, 2)).catch(() => {});
       return jsonResponse(cache);
     } catch (err) {
-      console.error('[SimpleFIN balances]', err instanceof Error ? err.message : err);
+      logSimplefin.error(`Balances fetch failed: ${err instanceof Error ? err.message : err}`);
       return jsonResponse(
         { error: err instanceof Error ? err.message : 'Failed to fetch balances' },
         500
@@ -1012,7 +1027,7 @@ async function handleRequest(req: Request): Promise<Response> {
       };
 
       // Always use AI parsing
-      console.log(`[Parse] Using Claude Vision AI for ${filename}`);
+      logClaude.info(`Using Claude Vision AI for ${filename}`);
       const aiData = await parseWithAI(fullPath, filename);
       if (aiData) {
         parsedData = {
@@ -1104,7 +1119,7 @@ async function handleRequest(req: Request): Promise<Response> {
                 parsedAt: new Date().toISOString(),
               };
 
-              console.log(`[Parse All] Using Claude Vision AI for ${file.name}`);
+              logClaude.info(`[Parse All] Using Claude Vision AI for ${file.name}`);
               const aiData = await parseWithAI(fullPath, file.name);
               if (aiData) {
                 parsedData = {
@@ -1114,11 +1129,11 @@ async function handleRequest(req: Request): Promise<Response> {
                 await setParsedDataForFile(`${entityId}/${file.path}`, parsedData);
                 parsed++;
               } else {
-                console.error(`AI returned no data for ${file.name}`);
+                logClaude.warn(`AI returned no data for ${file.name}`);
                 failed++;
               }
             } catch (err) {
-              console.error(`Failed to parse ${file.path}:`, err);
+              logClaude.error(`Failed to parse ${file.path}: ${err}`);
               failed++;
             }
           }
@@ -1780,7 +1795,7 @@ async function handleRequest(req: Request): Promise<Response> {
       const data = await res.json();
       return jsonResponse(data);
     } catch (err) {
-      console.error('Geoapify autocomplete error:', err);
+      logGeo.error(`Autocomplete error: ${err}`);
       return jsonResponse({ error: 'Failed to fetch autocomplete results' }, 500);
     }
   }
@@ -1812,7 +1827,7 @@ async function handleRequest(req: Request): Promise<Response> {
       const distanceMiles = Math.round((distanceMeters / 1609.34) * 10) / 10;
       return jsonResponse({ miles: distanceMiles, meters: distanceMeters });
     } catch (err) {
-      console.error('Geoapify routing error:', err);
+      logGeo.error(`Routing error: ${err}`);
       return jsonResponse({ error: 'Failed to calculate route' }, 500);
     }
   }
@@ -2083,7 +2098,7 @@ async function handleRequest(req: Request): Promise<Response> {
         ...parsedDataObj,
       });
 
-      console.log(`[Save Parsed] Saved parsed data for ${fileKey}`);
+      logClaude.info(`Saved parsed data for ${fileKey}`);
       return jsonResponse({ ok: true });
     } catch (err) {
       return jsonResponse({ error: 'Failed to save parsed data', details: String(err) }, 500);
@@ -2236,14 +2251,14 @@ Return: { "naming": {...}, "parsedData": {...} }`,
       const suggestion = parsed.naming || parsed;
       const parsedData = parsed.parsedData || null;
 
-      console.log(`[AI Filename] Suggested for ${filename}:`, suggestion);
+      logClaude.info(`AI filename suggested for ${filename}: ${JSON.stringify(suggestion)}`);
       if (parsedData) {
-        console.log(`[AI Filename] Parsed data keys:`, Object.keys(parsedData));
+        logClaude.debug(`Parsed data keys: ${Object.keys(parsedData).join(', ')}`);
       }
 
       return jsonResponse({ ok: true, suggestion, parsedData });
     } catch (err) {
-      console.error('[AI Filename] Error:', err);
+      logClaude.error(`AI filename error: ${err}`);
       return jsonResponse({ error: 'Failed to analyze file', details: String(err) }, 500);
     }
   }
@@ -2321,5 +2336,6 @@ const server = Bun.serve({
   maxRequestBodySize: 1024 * 1024 * 1024, // 1 GB — large PDFs, manuals, etc.
 });
 
-console.log(`DocVault API server running on http://localhost:${server.port}`);
-console.log(`Data directory: ${DATA_DIR}`);
+const logServer = createLogger('Server');
+logServer.info(`DocVault API running on http://localhost:${server.port}`);
+logServer.info(`Data directory: ${DATA_DIR}`);

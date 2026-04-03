@@ -4,6 +4,9 @@
 import type { ParsedW2Schema } from './schemas/index.js';
 import type { DocumentParser, ValidationResult } from './base.js';
 import { readFileAsBase64, buildFileContent, callClaude, extractToolResult } from './base.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('W-2');
 
 const SYSTEM_PROMPT = `You extract data from W-2 (Wage and Tax Statement) forms. Extract ALL visible data from the document using the extract_w2 tool. All monetary values must be numbers. Omit fields that are blank or not present on the form.`;
 
@@ -70,7 +73,7 @@ export const w2Parser: DocumentParser<ParsedW2Schema> = {
       const fileData = await readFileAsBase64(filePath, filename);
       const fileContent = buildFileContent(fileData);
 
-      console.log(`[W-2 Parser] Parsing ${filename}`);
+      log.info(`Parsing ${filename}`);
 
       const response = await callClaude({
         system: SYSTEM_PROMPT,
@@ -82,11 +85,11 @@ export const w2Parser: DocumentParser<ParsedW2Schema> = {
 
       const result = extractToolResult(response) as Record<string, unknown> | null;
       if (!result) {
-        console.error('[W-2 Parser] No tool result from Claude');
+        log.error('No tool result from Claude');
         return null;
       }
 
-      console.log('[W-2 Parser] Extracted:', JSON.stringify(result, null, 2));
+      log.debug('Extracted:', JSON.stringify(result, null, 2));
 
       return {
         ...result,
@@ -95,7 +98,7 @@ export const w2Parser: DocumentParser<ParsedW2Schema> = {
         _parsedWith: 'w2',
       } as ParsedW2Schema;
     } catch (error) {
-      console.error('[W-2 Parser] Error:', error);
+      log.error('Error:', String(error));
       return null;
     }
   },
