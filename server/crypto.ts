@@ -152,6 +152,10 @@ export const COINGECKO_IDS: Record<string, string> = {
 export async function fetchPrices(assets: string[]): Promise<Record<string, number>> {
   const now = Date.now();
   if (now - priceCacheTime < PRICE_CACHE_TTL && Object.keys(priceCache).length > 0) {
+    const age = Math.round((now - priceCacheTime) / 1000);
+    console.log(
+      `[CoinGecko] Using cached prices (${Object.keys(priceCache).length} assets, ${age}s old)`
+    );
     return priceCache;
   }
 
@@ -160,10 +164,18 @@ export async function fetchPrices(assets: string[]): Promise<Record<string, numb
   const ids = Object.values(COINGECKO_IDS);
   void assets; // caller-provided list unused after moving to full fetch
 
+  console.log(`[CoinGecko] Fetching prices for ${ids.length} assets...`);
+  const t0 = Date.now();
+
   try {
     const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd`;
     const res = await fetch(url);
-    if (!res.ok) return priceCache; // Use stale cache on error
+    if (!res.ok) {
+      console.warn(
+        `[CoinGecko] HTTP ${res.status} — using stale cache (${Object.keys(priceCache).length} assets)`
+      );
+      return priceCache;
+    }
 
     const data = await res.json();
 
@@ -187,10 +199,16 @@ export async function fetchPrices(assets: string[]): Promise<Record<string, numb
     if (!prices['USDT']) prices['USDT'] = 1;
     if (!prices['USD']) prices['USD'] = 1;
 
+    const missing = ids.filter((id) => !data[id]?.usd).length;
+    console.log(
+      `[CoinGecko] Prices fetched in ${Date.now() - t0}ms — ${Object.keys(prices).length} resolved, ${missing} missing from API`
+    );
+
     priceCache = prices;
     priceCacheTime = now;
     return prices;
-  } catch {
+  } catch (err) {
+    console.warn(`[CoinGecko] Fetch failed (${err}) — using stale cache`);
     return priceCache;
   }
 }
@@ -279,6 +297,7 @@ async function fetchCoinbaseBalances(config: ExchangeConfig): Promise<Balance[]>
   console.log('[Coinbase] URI:', uri);
   console.log('[Coinbase] Key name:', config.apiKey.substring(0, 30) + '...');
 
+  const t0 = Date.now();
   const res = await fetch(`https://api.coinbase.com${requestPath}?limit=250`, {
     headers: {
       Authorization: `Bearer ${jwt}`,
@@ -305,6 +324,9 @@ async function fetchCoinbaseBalances(config: ExchangeConfig): Promise<Balance[]>
     }
   }
 
+  console.log(
+    `[Coinbase] ${balances.length} non-zero balances fetched in ${Date.now() - t0}ms (${data.accounts?.length ?? 0} total accounts)`
+  );
   return balances;
 }
 
@@ -313,6 +335,8 @@ async function fetchCoinbaseBalances(config: ExchangeConfig): Promise<Balance[]>
 // -----------------------------------------------------------------------------
 
 async function fetchGeminiBalances(config: ExchangeConfig): Promise<Balance[]> {
+  console.log('[Gemini] Fetching balances...');
+  const t0 = Date.now();
   const nonce = Date.now().toString();
   const payload = JSON.stringify({
     request: '/v1/balances',
@@ -337,6 +361,7 @@ async function fetchGeminiBalances(config: ExchangeConfig): Promise<Balance[]> {
 
   if (!res.ok) {
     const text = await res.text();
+    console.error('[Gemini] Error response:', res.status, text);
     throw new Error(`Gemini API error ${res.status}: ${text}`);
   }
 
@@ -353,6 +378,7 @@ async function fetchGeminiBalances(config: ExchangeConfig): Promise<Balance[]> {
     }
   }
 
+  console.log(`[Gemini] ${balances.length} non-zero balances fetched in ${Date.now() - t0}ms`);
   return balances;
 }
 
@@ -461,6 +487,8 @@ function krakenSignRequest(
 }
 
 async function fetchKrakenBalances(config: ExchangeConfig): Promise<Balance[]> {
+  console.log('[Kraken] Fetching balances...');
+  const t0 = Date.now();
   const nonce = Date.now().toString();
   const urlPath = '/0/private/Balance';
   const postData = `nonce=${nonce}`;
@@ -509,6 +537,7 @@ async function fetchKrakenBalances(config: ExchangeConfig): Promise<Balance[]> {
     balances.push({ asset, amount });
   }
 
+  console.log(`[Kraken] ${balances.length} non-zero balances fetched in ${Date.now() - t0}ms`);
   return balances;
 }
 
@@ -517,8 +546,11 @@ async function fetchKrakenBalances(config: ExchangeConfig): Promise<Balance[]> {
 // -----------------------------------------------------------------------------
 
 async function fetchBtcBalance(address: string): Promise<Balance[]> {
+  console.log(`[BTC] Fetching balance for ${address.slice(0, 8)}...`);
+  const t0 = Date.now();
   const res = await fetch(`https://blockstream.info/api/address/${address}`);
   if (!res.ok) {
+    console.error(`[BTC] Blockstream API error ${res.status} for ${address}`);
     throw new Error(`Blockstream API error ${res.status}`);
   }
 
@@ -528,6 +560,9 @@ async function fetchBtcBalance(address: string): Promise<Balance[]> {
   const spent = data.chain_stats?.spent_txo_sum || 0;
   const btcAmount = (funded - spent) / 1e8;
 
+  console.log(
+    `[BTC] ${address.slice(0, 8)}...: ${btcAmount.toFixed(8)} BTC (fetched in ${Date.now() - t0}ms)`
+  );
   if (btcAmount <= 0) return [];
   return [{ asset: 'BTC', amount: btcAmount }];
 }
@@ -687,6 +722,12 @@ export async function fetchChainBalances(
   const apiKeyParam = etherscanApiKey ? `&apikey=${etherscanApiKey}` : '';
   const rateDelay = etherscanApiKey ? 210 : 5100;
 
+  const chainLabel = `[Chain ${chainId}]`;
+  console.log(
+    `${chainLabel} Scanning ${address.slice(0, 8)}... — ${nativeSymbol} + ${tokens.length} tokens (${etherscanApiKey ? 'keyed' : 'unkeyed'}, ${rateDelay}ms delay)`
+  );
+  const t0 = Date.now();
+
   // Native balance
   try {
     const res = await fetch(
@@ -696,14 +737,20 @@ export async function fetchChainBalances(
       const data = await res.json();
       if (data.status === '1' && data.result) {
         const amount = parseInt(data.result, 10) / 1e18;
-        if (amount > 0) balances.push({ asset: nativeSymbol, amount });
+        if (amount > 0) {
+          console.log(`${chainLabel} ${nativeSymbol}: ${amount.toFixed(6)}`);
+          balances.push({ asset: nativeSymbol, amount });
+        }
+      } else if (data.status === '0') {
+        console.warn(`${chainLabel} Native balance status=0: ${data.message || data.result}`);
       }
     }
   } catch (err) {
-    console.error(`[Chain ${chainId}] Native balance error:`, err);
+    console.error(`${chainLabel} Native balance error:`, err);
   }
 
   // ERC-20 balances
+  let tokenHits = 0;
   for (const token of tokens) {
     try {
       await new Promise((r) => setTimeout(r, rateDelay));
@@ -714,20 +761,31 @@ export async function fetchChainBalances(
         const data = await res.json();
         if (data.status === '1' && data.result && data.result !== '0') {
           const amount = parseInt(data.result, 10) / Math.pow(10, token.decimals);
-          if (amount > 0.001) balances.push({ asset: token.symbol, amount });
+          if (amount > 0.001) {
+            console.log(`${chainLabel} ${token.symbol}: ${amount.toFixed(4)}`);
+            tokenHits++;
+            balances.push({ asset: token.symbol, amount });
+          }
+        } else if (data.status === '0' && data.message !== 'No transactions found') {
+          console.warn(`${chainLabel} ${token.symbol} status=0: ${data.message || data.result}`);
         }
       }
-    } catch {
-      // Skip failed token lookups silently
+    } catch (err) {
+      console.warn(`${chainLabel} ${token.symbol} error:`, err);
     }
   }
 
+  console.log(
+    `${chainLabel} Done — ${balances.length} balances (${tokenHits}/${tokens.length} tokens hit) in ${Date.now() - t0}ms`
+  );
   return balances;
 }
 
 async function fetchEthBalance(address: string): Promise<Balance[]> {
   // Scan chains sequentially to stay within Etherscan's 5 req/s rate limit.
   // Parallel scanning caused silent rate-limit failures (status:"0" skipped as empty).
+  console.log(`[ETH Wallet] Starting full scan for ${address}`);
+  const t0 = Date.now();
   const mainnet = await fetchChainBalances(address, 1, 'ETH', ERC20_TOKENS);
   const arbitrum = await fetchChainBalances(address, 42161, 'ETH', ARBITRUM_TOKENS);
   const optimism = await fetchChainBalances(address, 10, 'ETH', OPTIMISM_TOKENS);
@@ -753,7 +811,11 @@ async function fetchEthBalance(address: string): Promise<Balance[]> {
     console.log(`[Chainlink Staking] ${address}: ${stakedLink.toFixed(4)} LINK staked`);
   }
 
-  return Array.from(merged.entries()).map(([asset, amount]) => ({ asset, amount }));
+  const result = Array.from(merged.entries()).map(([asset, amount]) => ({ asset, amount }));
+  console.log(
+    `[ETH Wallet] ${address} scan complete — ${result.length} assets in ${Date.now() - t0}ms`
+  );
+  return result;
 }
 
 // =============================================================================
@@ -762,6 +824,8 @@ async function fetchEthBalance(address: string): Promise<Balance[]> {
 
 // --- Coinbase: GET /api/v3/brokerage/orders/historical/fills ---
 async function fetchCoinbaseTrades(config: ExchangeConfig): Promise<CryptoTrade[]> {
+  console.log('[Coinbase Trades] Fetching fill history (paginated, max 50 pages)...');
+  const t0 = Date.now();
   const trades: CryptoTrade[] = [];
   let cursor: string | undefined;
 
@@ -810,13 +874,21 @@ async function fetchCoinbaseTrades(config: ExchangeConfig): Promise<CryptoTrade[
 
     cursor = data.cursor;
     if (!cursor || (data.fills || []).length < 100) break;
+    console.log(
+      `[Coinbase Trades] Page ${page + 1}: ${(data.fills || []).length} fills, cursor continues...`
+    );
   }
 
+  console.log(
+    `[Coinbase Trades] ${trades.length} USD-denominated trades fetched in ${Date.now() - t0}ms`
+  );
   return trades;
 }
 
 // --- Gemini: POST /v1/mytrades ---
 async function fetchGeminiTrades(config: ExchangeConfig): Promise<CryptoTrade[]> {
+  console.log('[Gemini Trades] Fetching trade history for all USD pairs...');
+  const t0 = Date.now();
   const trades: CryptoTrade[] = [];
 
   // Fetch trades for common USD pairs
@@ -862,7 +934,10 @@ async function fetchGeminiTrades(config: ExchangeConfig): Promise<CryptoTrade[]>
         },
       });
 
-      if (!res.ok) continue;
+      if (!res.ok) {
+        console.warn(`[Gemini Trades] ${symbol}: HTTP ${res.status}`);
+        continue;
+      }
       const data = await res.json();
 
       // Extract base asset from symbol (e.g. "btcusd" -> "BTC")
@@ -888,18 +963,22 @@ async function fetchGeminiTrades(config: ExchangeConfig): Promise<CryptoTrade[]>
         }
       }
 
+      if (data.length > 0) console.log(`[Gemini Trades] ${symbol}: ${data.length} trades`);
       // Small delay between symbols for rate limiting
       await new Promise((r) => setTimeout(r, 120));
-    } catch {
-      // Skip failed symbol lookups
+    } catch (err) {
+      console.warn(`[Gemini Trades] ${symbol} error:`, err);
     }
   }
 
+  console.log(`[Gemini Trades] ${trades.length} trades fetched in ${Date.now() - t0}ms`);
   return trades;
 }
 
 // --- Kraken: POST /0/private/TradesHistory ---
 async function fetchKrakenTrades(config: ExchangeConfig): Promise<CryptoTrade[]> {
+  console.log('[Kraken Trades] Fetching trade history (paginated, max 5000 trades)...');
+  const t0 = Date.now();
   const trades: CryptoTrade[] = [];
 
   // Paginate through all trades (50 per page)
@@ -956,11 +1035,17 @@ async function fetchKrakenTrades(config: ExchangeConfig): Promise<CryptoTrade[]>
       }
     }
 
+    console.log(
+      `[Kraken Trades] offset=${offset}: ${tradeEntries.length} entries, running total ${trades.length}`
+    );
     if (tradeEntries.length < 50) break;
     // Small delay between pages
     await new Promise((r) => setTimeout(r, 200));
   }
 
+  console.log(
+    `[Kraken Trades] ${trades.length} USD-denominated trades fetched in ${Date.now() - t0}ms`
+  );
   return trades;
 }
 
@@ -1216,8 +1301,15 @@ export async function fetchAllBalances(
   const allAssets = new Set<string>();
 
   const enabledExchanges = exchanges.filter((e) => e.enabled && EXCHANGE_FETCHERS[e.id]);
+  const btcWallets = wallets.filter((w) => w.chain === 'btc');
+  const ethWallets = wallets.filter((w) => w.chain === 'eth');
   const totalSteps = enabledExchanges.length + wallets.length + 1; // +1 for prices
   let completed = 0;
+
+  console.log(
+    `[fetchAllBalances] Starting sync — ${enabledExchanges.length} exchanges, ${btcWallets.length} BTC wallets, ${ethWallets.length} ETH wallets (Etherscan key: ${etherscanApiKey ? 'yes' : 'no'})`
+  );
+  const t0 = Date.now();
 
   // Fetch all exchange balances in parallel
   const exchangeResults = await Promise.allSettled(
@@ -1241,6 +1333,8 @@ export async function fetchAllBalances(
       result.status === 'fulfilled'
         ? result.value
         : { exchange: enabledExchanges[0], balances: [] as Balance[], error: 'Fetch failed' };
+    if (error) console.error(`[fetchAllBalances] ${exchange.id} error: ${error}`);
+    else console.log(`[fetchAllBalances] ${exchange.id}: ${balances.length} balances`);
     balances.forEach((b) => allAssets.add(b.asset));
     completed++;
     onProgress?.(completed, totalSteps, EXCHANGE_LABELS[exchange.id] || exchange.id);
@@ -1256,9 +1350,6 @@ export async function fetchAllBalances(
   }
 
   // Fetch BTC wallets in parallel (Blockstream has no rate limit)
-  const btcWallets = wallets.filter((w) => w.chain === 'btc');
-  const ethWallets = wallets.filter((w) => w.chain === 'eth');
-
   const btcResults = await Promise.allSettled(
     btcWallets.map(async (wallet) => {
       try {
@@ -1279,6 +1370,7 @@ export async function fetchAllBalances(
       result.status === 'fulfilled'
         ? result.value
         : { wallet: btcWallets[0], balances: [] as Balance[], error: 'Fetch failed' };
+    if (error) console.error(`[fetchAllBalances] BTC wallet ${wallet.label}: ${error}`);
     balances.forEach((b) => allAssets.add(b.asset));
     completed++;
     onProgress?.(completed, totalSteps, wallet.label || 'BTC Wallet');
@@ -1325,6 +1417,9 @@ export async function fetchAllBalances(
 
   // Fetch prices and calculate USD values
   onProgress?.(completed, totalSteps, 'Fetching prices');
+  console.log(
+    `[fetchAllBalances] All wallets scanned — fetching prices for ${allAssets.size} distinct assets`
+  );
   const prices = await fetchPrices(Array.from(allAssets));
   completed++;
   onProgress?.(completed, totalSteps, 'Done');
@@ -1354,6 +1449,10 @@ export async function fetchAllBalances(
     .sort((a, b) => (b.usdValue || 0) - (a.usdValue || 0));
 
   const totalUsdValue = sources.reduce((sum, s) => sum + s.totalUsdValue, 0);
+
+  console.log(
+    `[fetchAllBalances] Complete — $${totalUsdValue.toFixed(0)} total across ${sources.length} sources in ${Date.now() - t0}ms`
+  );
 
   return {
     sources,
