@@ -380,7 +380,39 @@ export function CryptoView() {
             const msg = JSON.parse(line);
             if (msg.type === 'progress') {
               setProgress({ current: msg.current, total: msg.total, label: msg.label });
+            } else if (msg.type === 'source') {
+              // Merge incoming source into portfolio state for live updates
+              setPortfolio((prev) => {
+                const sources = prev
+                  ? prev.sources
+                      .filter((s) => s.sourceId !== msg.source.sourceId)
+                      .concat(msg.source)
+                  : [msg.source];
+                const totalUsdValue = sources.reduce((sum, s) => sum + s.totalUsdValue, 0);
+                const assetMap = new Map<string, { amount: number; usdValue: number }>();
+                for (const s of sources) {
+                  for (const b of s.balances) {
+                    const cur = assetMap.get(b.asset) ?? { amount: 0, usdValue: 0 };
+                    assetMap.set(b.asset, {
+                      amount: cur.amount + b.amount,
+                      usdValue: cur.usdValue + (b.usdValue ?? 0),
+                    });
+                  }
+                }
+                const byAsset = Array.from(assetMap.entries())
+                  .map(([asset, { amount, usdValue }]) => ({ asset, amount, usdValue }))
+                  .sort((a, b) => b.usdValue - a.usdValue);
+                const updated = {
+                  sources,
+                  totalUsdValue,
+                  byAsset,
+                  lastUpdated: msg.source.lastUpdated,
+                };
+                cachedPortfolio = updated;
+                return updated;
+              });
             } else if (msg.type === 'result') {
+              // Final result supersedes incremental state with correct byAsset ordering
               delete msg.type;
               cachedPortfolio = msg as CryptoPortfolio;
               setPortfolio(msg as CryptoPortfolio);

@@ -131,24 +131,25 @@ export async function handleCryptoRoutes(
     const stream = url.searchParams.get('stream') === '1';
 
     if (stream) {
-      // Stream NDJSON progress lines, then final result
+      // Stream NDJSON: emit each source as it completes, then final result
       const encoder = new TextEncoder();
       const readable = new ReadableStream({
         async start(controller) {
+          const send = (data: unknown) =>
+            controller.enqueue(encoder.encode(JSON.stringify(data) + '\n'));
           const portfolio = await fetchAllBalances(
             cryptoConfig.exchanges,
             cryptoConfig.wallets,
             cryptoConfig.etherscanKey,
             (current, total, label) => {
-              controller.enqueue(
-                encoder.encode(JSON.stringify({ type: 'progress', current, total, label }) + '\n')
-              );
+              send({ type: 'progress', current, total, label });
+            },
+            (source) => {
+              send({ type: 'source', source });
             }
           );
           await saveCryptoCache(portfolio);
-          controller.enqueue(
-            encoder.encode(JSON.stringify({ type: 'result', ...portfolio }) + '\n')
-          );
+          send({ type: 'result', ...portfolio });
           controller.close();
         },
       });
