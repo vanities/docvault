@@ -601,8 +601,15 @@ async function fetchChainlinkStakedBalance(address: string): Promise<number> {
       const res = await fetch(
         `${ETHERSCAN_API}?chainid=1&module=proxy&action=eth_call&to=${pool.address}&data=${data}&tag=latest${apiKeyParam}`
       );
-      if (!res.ok) continue;
+      if (!res.ok) {
+        console.warn(`[Chainlink Staking] ${pool.label}: HTTP ${res.status}`);
+        continue;
+      }
       const json = await res.json();
+      console.log(
+        `[Chainlink Staking] ${pool.label} raw result:`,
+        JSON.stringify(json).slice(0, 200)
+      );
       if (!json.result || json.result === '0x') continue;
 
       const [principal] = decodeFunctionResult({
@@ -612,8 +619,8 @@ async function fetchChainlinkStakedBalance(address: string): Promise<number> {
       }) as [bigint];
 
       total += Number(principal) / 1e18;
-    } catch {
-      // Pool query failed — skip silently
+    } catch (err) {
+      console.warn(`[Chainlink Staking] ${pool.label} error:`, err);
     }
   }
 
