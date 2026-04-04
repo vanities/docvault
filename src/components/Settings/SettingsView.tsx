@@ -283,8 +283,15 @@ function DropboxConnectionSection() {
 }
 
 export function SettingsView() {
-  const { entities, updateEntity, removeEntity, selectedEntity, setSelectedEntity } =
-    useAppContext();
+  const {
+    entities,
+    updateEntity,
+    removeEntity,
+    selectedEntity,
+    setSelectedEntity,
+    hideQuickStats,
+    setHideQuickStats,
+  } = useAppContext();
   const { confirm, ConfirmDialog } = useConfirmDialog();
   const { addToast } = useToast();
 
@@ -1014,6 +1021,37 @@ export function SettingsView() {
   return (
     <div className="max-w-3xl mx-auto px-4 md:px-6 py-8">
       <h2 className="text-2xl font-bold text-surface-950 mb-8">Settings</h2>
+
+      {/* ── Display ────────────────────────────────────── */}
+      <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
+        Display
+      </p>
+
+      <Card variant="glass" className="p-6 mb-8">
+        <h3 className="text-lg font-semibold text-surface-950 mb-4">Preferences</h3>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[13px] font-medium text-surface-800">Hide summary stats</p>
+            <p className="text-[12px] text-surface-600 mt-0.5">
+              Hide the financial summary cards at the top of the Tax Year view
+            </p>
+          </div>
+          <button
+            onClick={() => setHideQuickStats(!hideQuickStats)}
+            className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+              hideQuickStats ? 'bg-accent-500' : 'bg-surface-300'
+            }`}
+            role="switch"
+            aria-checked={hideQuickStats}
+          >
+            <span
+              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ${
+                hideQuickStats ? 'translate-x-4' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </div>
+      </Card>
 
       {/* ── AI & API Keys ──────────────────────────────── */}
       <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">

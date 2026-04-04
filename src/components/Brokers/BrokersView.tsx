@@ -29,6 +29,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { useAppContext } from '../../contexts/AppContext';
 import {
   Select,
   SelectContent,
@@ -638,6 +639,7 @@ function SnapTradeBanner({
 let cachedPortfolio: BrokerPortfolio | null = null;
 
 export function BrokersView() {
+  const { hideQuickStats } = useAppContext();
   const [portfolio, setPortfolio] = useState<BrokerPortfolio | null>(cachedPortfolio);
   const [isLoading, setIsLoading] = useState(!cachedPortfolio);
   const { confirm, ConfirmDialog: BrokersConfirmDialog } = useConfirmDialog();
@@ -982,34 +984,36 @@ export function BrokersView() {
       ) : (
         <>
           {/* Portfolio Summary */}
-          <Card variant="glass" className="p-6 mb-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-[12px] text-surface-600 uppercase tracking-wider mb-1">
-                  Total Portfolio Value
-                </p>
-                <p className="text-2xl sm:text-3xl font-bold text-surface-950">
-                  {formatUsd(portfolio?.totalValue || 0)}
-                </p>
-                <p className="text-[12px] text-surface-600 mt-1">
-                  {portfolio?.accounts.length || 0} account
-                  {(portfolio?.accounts.length || 0) !== 1 ? 's' : ''}
-                </p>
-              </div>
-              {portfolio && portfolio.totalCostBasis > 0 && (
-                <div className="text-right">
-                  <p className="text-[11px] text-surface-500 mb-1">Total Gain/Loss</p>
-                  <GainLossBadge
-                    value={portfolio.totalGainLoss}
-                    percent={(portfolio.totalGainLoss / portfolio.totalCostBasis) * 100}
-                  />
-                  <p className="text-[11px] text-surface-500 mt-1">
-                    Cost: {formatUsd(portfolio.totalCostBasis)}
+          {!hideQuickStats && (
+            <Card variant="glass" className="p-6 mb-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-[12px] text-surface-600 uppercase tracking-wider mb-1">
+                    Total Portfolio Value
+                  </p>
+                  <p className="text-2xl sm:text-3xl font-bold text-surface-950">
+                    {formatUsd(portfolio?.totalValue || 0)}
+                  </p>
+                  <p className="text-[12px] text-surface-600 mt-1">
+                    {portfolio?.accounts.length || 0} account
+                    {(portfolio?.accounts.length || 0) !== 1 ? 's' : ''}
                   </p>
                 </div>
-              )}
-            </div>
-          </Card>
+                {portfolio && portfolio.totalCostBasis > 0 && (
+                  <div className="text-right">
+                    <p className="text-[11px] text-surface-500 mb-1">Total Gain/Loss</p>
+                    <GainLossBadge
+                      value={portfolio.totalGainLoss}
+                      percent={(portfolio.totalGainLoss / portfolio.totalCostBasis) * 100}
+                    />
+                    <p className="text-[11px] text-surface-500 mt-1">
+                      Cost: {formatUsd(portfolio.totalCostBasis)}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
 
           {/* History Chart */}
           {snapshots.length >= 2 && (
