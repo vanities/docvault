@@ -93,7 +93,9 @@ function GainLossBadge({ value, percent }: { value: number; percent?: number }) 
       <Icon className="w-3 h-3" />
       <Money>{formatUsd(Math.abs(value))}</Money>
       {percent !== undefined && (
-        <span className="text-[11px] opacity-80">({formatPercent(percent)})</span>
+        <span className="text-[11px] opacity-80">
+          (<Money>{formatPercent(percent)}</Money>)
+        </span>
       )}
     </span>
   );
