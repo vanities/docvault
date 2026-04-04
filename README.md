@@ -1,44 +1,54 @@
 # DocVault
 
-Local-first document vault for organizing tax records, business filings, and important files across multiple entities. Self-hosted via Docker — your documents never leave your machine.
+Personal finance and document management system. Organizes tax records, tracks net worth across brokers/crypto/metals, parses financial documents with AI, and keeps everything self-hosted — your data never leaves your machine.
 
 ## Features
 
 **Document Management**
 
-- Multi-entity organization — separate spaces for personal taxes, LLCs, property, medical, military records, etc.
+- Multi-entity organization — separate spaces for personal, LLCs, property, medical, military records, etc.
 - AI document parsing — Claude Vision extracts structured data from W-2s, 1099s, K-1s, receipts, bank statements (~$0.003/page)
 - Auto file naming — standardized `{Source}_{Type}_{Date}.ext` on upload
 - Full-text search across all documents and parsed data
+- Business document storage and organization
+- Todo list for document/filing tasks
 
 **Tax & Finance**
 
 - Income, expense, and document summaries per entity per year
-- Federal tax summary with Schedule C, K-1, capital gains aggregation
+- Federal tax summary — Schedule C, K-1, capital gains, withholdings aggregated across all entities
 - Solo 401(k) contribution calculator (IRS Pub 560 worksheet)
-- Estimated tax tracker with quarterly payment schedules
-- TN-specific tax views (no state income tax)
+- Estimated quarterly tax tracker
+- State tax views (TN no-income-tax)
 - Sales tracker for business/farm revenue
+- Invoice tracking
+
+**Net Worth & Portfolio**
+
+- Unified portfolio view across all accounts
+- Automatic daily snapshots with historical net worth chart
+- Broker accounts via SnapTrade (Fidelity, Vanguard, Robinhood, etc.)
+- Crypto exchange balances (Kraken, Coinbase, Gemini)
+- Ethereum wallet scanning via Etherscan (ETH + ERC-20 tokens across mainnet, Arbitrum, Optimism, Polygon, Avalanche)
+- Gold/silver precious metals with live spot prices
+- Real estate portfolio with cost basis and equity tracking
+- Retirement account balances and contribution tracking
+- Bank account balances + transaction history via SimpleFIN
 
 **Financial Integrations**
 
-- **Banks** — SimpleFIN Bridge for 16,000+ US institutions (read-only balances + transactions)
-- **Brokers** — SnapTrade for brokerage accounts (Fidelity, Vanguard, Robinhood, etc.)
-- **Crypto** — Ethereum wallet scanning via Etherscan, Kraken/Coinbase/Gemini exchange balances
-- **Gold/Silver** — precious metals tracking with live spot prices
-- **Property** — real estate portfolio with cost basis tracking
-- **Mileage** — business mileage log with address autocomplete
+- **SimpleFIN Bridge** — read-only bank balances and transactions for 16,000+ US institutions
+- **SnapTrade** — brokerage account aggregation
+- **Etherscan** — Ethereum and L2 wallet scanning
+- **Kraken / Coinbase / Gemini** — exchange balance imports
+- **Koinly** — crypto tax report parsing (8949, Schedule D)
 
-**Portfolio & Snapshots**
+**Other**
 
-- Unified portfolio view across brokers, crypto, and metals
-- Automatic daily snapshots with historical chart
-- Net worth history over time
-
-**Infrastructure**
-
+- Mileage log with address autocomplete
+- Filing deadline reminders with recurring support
 - Encrypted backup/restore — AES-256-GCM zip of all config and data
-- Dropbox sync — auto-push documents to Dropbox via rclone
+- Dropbox sync — auto-push documents via rclone on a schedule
 - Authentication — username/password with session cookies
 - Docker-ready — single container, auto-published to GHCR (amd64 + arm64)
 
@@ -71,6 +81,7 @@ ln -s ~/Documents/taxes data/personal
 docker run -p 3005:3005 \
   -v /path/to/documents:/data \
   -e ANTHROPIC_API_KEY=sk-ant-... \
+  -e DOCVAULT_PASSWORD=yourpassword \
   ghcr.io/vanities/docvault:latest
 ```
 
@@ -105,7 +116,7 @@ All other integrations (SimpleFIN, SnapTrade, Etherscan, Kraken, Coinbase, Gemin
 
 ## Data Files
 
-All state lives in `DATA_DIR` as `.docvault-*.json` files:
+All state lives in `DATA_DIR` as `.docvault-*.json` files — mount one volume and everything is portable:
 
 | File                       | Purpose                         |
 | -------------------------- | ------------------------------- |
