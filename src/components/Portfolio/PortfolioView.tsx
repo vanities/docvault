@@ -28,6 +28,7 @@ import { HistoryChart } from '../common/HistoryChart';
 import { getDonutColor } from './donutColors';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Money } from '../common/Money';
 
 function formatUsd(value: number): string {
   return value.toLocaleString('en-US', {
@@ -69,7 +70,7 @@ interface PortfolioSlice {
 }
 
 export function PortfolioView() {
-  const { setActiveView, hideQuickStats } = useAppContext();
+  const { setActiveView } = useAppContext();
   const [crypto, setCrypto] = useState<CryptoPortfolio | null>(null);
   const [brokers, setBrokers] = useState<BrokerPortfolio | null>(null);
   const [bankTotal, setBankTotal] = useState(0);
@@ -327,99 +328,99 @@ export function PortfolioView() {
       ) : (
         <>
           {/* Grand Total */}
-          <div className={hideQuickStats ? 'blur-sm select-none' : ''}>
-            <Card variant="glass" className="p-6 mb-6">
-              <p className="text-[12px] text-surface-600 uppercase tracking-wider mb-1">
-                Total Net Worth
-              </p>
-              <p className="text-4xl font-bold text-surface-950">{formatUsd(grandTotal)}</p>
+          <Card variant="glass" className="p-6 mb-6">
+            <p className="text-[12px] text-surface-600 uppercase tracking-wider mb-1">
+              Total Net Worth
+            </p>
+            <p className="text-4xl font-bold text-surface-950">
+              <Money>{formatUsd(grandTotal)}</Money>
+            </p>
 
-              {/* Allocation bar */}
-              {grandTotal > 0 && (
-                <div className="mt-4">
-                  <div className="flex h-3 rounded-full overflow-hidden">
-                    {brokerTotal > 0 && (
-                      <div
-                        className="bg-violet-500 transition-all duration-500"
-                        style={{ width: `${(brokerTotal / grandTotal) * 100}%` }}
-                        title={`Brokers: ${((brokerTotal / grandTotal) * 100).toFixed(1)}%`}
-                      />
-                    )}
-                    {cryptoTotal > 0 && (
-                      <div
-                        className="bg-amber-500 transition-all duration-500"
-                        style={{ width: `${(cryptoTotal / grandTotal) * 100}%` }}
-                        title={`Crypto: ${((cryptoTotal / grandTotal) * 100).toFixed(1)}%`}
-                      />
-                    )}
-                    {bankTotal > 0 && (
-                      <div
-                        className="bg-blue-500 transition-all duration-500"
-                        style={{ width: `${(bankTotal / grandTotal) * 100}%` }}
-                        title={`Banks: ${((bankTotal / grandTotal) * 100).toFixed(1)}%`}
-                      />
-                    )}
-                    {goldTotal > 0 && (
-                      <div
-                        className="bg-yellow-500 transition-all duration-500"
-                        style={{ width: `${(goldTotal / grandTotal) * 100}%` }}
-                        title={`Gold: ${((goldTotal / grandTotal) * 100).toFixed(1)}%`}
-                      />
-                    )}
-                    {propertyTotal > 0 && (
-                      <div
-                        className="bg-emerald-500 transition-all duration-500"
-                        style={{ width: `${(propertyTotal / grandTotal) * 100}%` }}
-                        title={`Property: ${((propertyTotal / grandTotal) * 100).toFixed(1)}%`}
-                      />
-                    )}
-                  </div>
-                  <div className="flex items-center gap-4 mt-2 flex-wrap">
-                    {brokerTotal > 0 && (
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded-full bg-violet-500" />
-                        <span className="text-[11px] text-surface-600">
-                          Brokers {((brokerTotal / grandTotal) * 100).toFixed(1)}%
-                        </span>
-                      </div>
-                    )}
-                    {cryptoTotal > 0 && (
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                        <span className="text-[11px] text-surface-600">
-                          Crypto {((cryptoTotal / grandTotal) * 100).toFixed(1)}%
-                        </span>
-                      </div>
-                    )}
-                    {bankTotal > 0 && (
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-                        <span className="text-[11px] text-surface-600">
-                          Banks {((bankTotal / grandTotal) * 100).toFixed(1)}%
-                        </span>
-                      </div>
-                    )}
-                    {goldTotal > 0 && (
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
-                        <span className="text-[11px] text-surface-600">
-                          Gold {((goldTotal / grandTotal) * 100).toFixed(1)}%
-                        </span>
-                      </div>
-                    )}
-                    {propertyTotal > 0 && (
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                        <span className="text-[11px] text-surface-600">
-                          Property {((propertyTotal / grandTotal) * 100).toFixed(1)}%
-                        </span>
-                      </div>
-                    )}
-                  </div>
+            {/* Allocation bar */}
+            {grandTotal > 0 && (
+              <div className="mt-4">
+                <div className="flex h-3 rounded-full overflow-hidden">
+                  {brokerTotal > 0 && (
+                    <div
+                      className="bg-violet-500 transition-all duration-500"
+                      style={{ width: `${(brokerTotal / grandTotal) * 100}%` }}
+                      title={`Brokers: ${((brokerTotal / grandTotal) * 100).toFixed(1)}%`}
+                    />
+                  )}
+                  {cryptoTotal > 0 && (
+                    <div
+                      className="bg-amber-500 transition-all duration-500"
+                      style={{ width: `${(cryptoTotal / grandTotal) * 100}%` }}
+                      title={`Crypto: ${((cryptoTotal / grandTotal) * 100).toFixed(1)}%`}
+                    />
+                  )}
+                  {bankTotal > 0 && (
+                    <div
+                      className="bg-blue-500 transition-all duration-500"
+                      style={{ width: `${(bankTotal / grandTotal) * 100}%` }}
+                      title={`Banks: ${((bankTotal / grandTotal) * 100).toFixed(1)}%`}
+                    />
+                  )}
+                  {goldTotal > 0 && (
+                    <div
+                      className="bg-yellow-500 transition-all duration-500"
+                      style={{ width: `${(goldTotal / grandTotal) * 100}%` }}
+                      title={`Gold: ${((goldTotal / grandTotal) * 100).toFixed(1)}%`}
+                    />
+                  )}
+                  {propertyTotal > 0 && (
+                    <div
+                      className="bg-emerald-500 transition-all duration-500"
+                      style={{ width: `${(propertyTotal / grandTotal) * 100}%` }}
+                      title={`Property: ${((propertyTotal / grandTotal) * 100).toFixed(1)}%`}
+                    />
+                  )}
                 </div>
-              )}
-            </Card>
-          </div>
+                <div className="flex items-center gap-4 mt-2 flex-wrap">
+                  {brokerTotal > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-violet-500" />
+                      <span className="text-[11px] text-surface-600">
+                        Brokers {((brokerTotal / grandTotal) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
+                  {cryptoTotal > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                      <span className="text-[11px] text-surface-600">
+                        Crypto {((cryptoTotal / grandTotal) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
+                  {bankTotal > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                      <span className="text-[11px] text-surface-600">
+                        Banks {((bankTotal / grandTotal) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
+                  {goldTotal > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
+                      <span className="text-[11px] text-surface-600">
+                        Gold {((goldTotal / grandTotal) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
+                  {propertyTotal > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                      <span className="text-[11px] text-surface-600">
+                        Property {((propertyTotal / grandTotal) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </Card>
 
           {/* Portfolio History — full width */}
           <Card variant="glass" className="p-5 mb-6">
@@ -507,7 +508,7 @@ export function PortfolioView() {
                       ) : (
                         <TrendingDown className="w-4 h-4" />
                       )}
-                      {formatUsd(Math.abs(totalGainLoss))}
+                      <Money>{formatUsd(Math.abs(totalGainLoss))}</Money>
                     </span>
                   </p>
                 </div>
@@ -515,7 +516,9 @@ export function PortfolioView() {
                   <p className="text-[11px] text-surface-600 uppercase tracking-wider mb-1">
                     Short-Term Gains
                   </p>
-                  <p className="text-xl font-bold text-amber-500">{formatUsd(shortTermGains)}</p>
+                  <p className="text-xl font-bold text-amber-500">
+                    <Money>{formatUsd(shortTermGains)}</Money>
+                  </p>
                   <p className="text-[10px] text-surface-500 mt-0.5">
                     Held &lt; 1 year · taxed as income
                   </p>
@@ -524,7 +527,9 @@ export function PortfolioView() {
                   <p className="text-[11px] text-surface-600 uppercase tracking-wider mb-1">
                     Long-Term Gains
                   </p>
-                  <p className="text-xl font-bold text-green-500">{formatUsd(longTermGains)}</p>
+                  <p className="text-xl font-bold text-green-500">
+                    <Money>{formatUsd(longTermGains)}</Money>
+                  </p>
                   <p className="text-[10px] text-surface-500 mt-0.5">
                     Held &gt; 1 year · lower tax rate
                   </p>
@@ -555,7 +560,9 @@ export function PortfolioView() {
                     </p>
                   </div>
                 </div>
-                <p className="text-xl font-bold text-surface-950">{formatUsd(cryptoTotal)}</p>
+                <p className="text-xl font-bold text-surface-950">
+                  <Money>{formatUsd(cryptoTotal)}</Money>
+                </p>
               </div>
               {grandTotal > 0 && (
                 <div className="w-full h-1.5 bg-surface-200/50 rounded-full overflow-hidden">
@@ -586,7 +593,9 @@ export function PortfolioView() {
                     </p>
                   </div>
                 </div>
-                <p className="text-xl font-bold text-surface-950">{formatUsd(brokerTotal)}</p>
+                <p className="text-xl font-bold text-surface-950">
+                  <Money>{formatUsd(brokerTotal)}</Money>
+                </p>
               </div>
               {grandTotal > 0 && (
                 <div className="w-full h-1.5 bg-surface-200/50 rounded-full overflow-hidden">
@@ -617,7 +626,7 @@ export function PortfolioView() {
                 <p
                   className={`text-xl font-bold ${bankTotal < 0 ? 'text-red-400' : 'text-surface-950'}`}
                 >
-                  {formatUsd(bankTotal)}
+                  <Money>{formatUsd(bankTotal)}</Money>
                 </p>
               </div>
               {grandTotal > 0 && bankTotal > 0 && (
@@ -647,7 +656,9 @@ export function PortfolioView() {
                       <p className="text-[11px] text-surface-600">Precious metals</p>
                     </div>
                   </div>
-                  <p className="text-xl font-bold text-surface-950">{formatUsd(goldTotal)}</p>
+                  <p className="text-xl font-bold text-surface-950">
+                    <Money>{formatUsd(goldTotal)}</Money>
+                  </p>
                 </div>
                 {grandTotal > 0 && (
                   <div className="w-full h-1.5 bg-surface-200/50 rounded-full overflow-hidden">
@@ -677,7 +688,9 @@ export function PortfolioView() {
                       <p className="text-[11px] text-surface-600">Real estate equity</p>
                     </div>
                   </div>
-                  <p className="text-xl font-bold text-surface-950">{formatUsd(propertyTotal)}</p>
+                  <p className="text-xl font-bold text-surface-950">
+                    <Money>{formatUsd(propertyTotal)}</Money>
+                  </p>
                 </div>
                 {grandTotal > 0 && (
                   <div className="w-full h-1.5 bg-surface-200/50 rounded-full overflow-hidden">
@@ -727,7 +740,7 @@ export function PortfolioView() {
                         </div>
                         <div className="col-span-2 text-right">
                           <span className="text-[13px] font-medium text-surface-950">
-                            {formatUsd(slice.value)}
+                            <Money>{formatUsd(slice.value)}</Money>
                           </span>
                         </div>
                         <div className="col-span-2 text-right">
@@ -739,7 +752,7 @@ export function PortfolioView() {
                                 }`}
                               >
                                 {slice.gainLoss >= 0 ? '+' : ''}
-                                {formatUsd(slice.gainLoss)}
+                                <Money>{formatUsd(slice.gainLoss)}</Money>
                               </span>
                               {slice.gainType && slice.gainType !== 'unknown' && (
                                 <p className="text-[9px] text-surface-500 uppercase">

@@ -44,6 +44,7 @@ function parseCurrencyInput(raw: string): number {
 }
 
 import { computeSolo401k } from './solo401k-calc';
+import { Money } from '../common/Money';
 
 interface RowProps {
   label: string;
@@ -84,7 +85,7 @@ function Row({ label, value, indent, bold, color, tooltip }: RowProps) {
       <span
         className={`text-[13px] font-mono font-semibold ${color || (bold ? 'text-surface-950' : 'text-surface-800')}`}
       >
-        {value}
+        <Money>{value}</Money>
       </span>
     </div>
   );
@@ -248,11 +249,12 @@ export function Solo401kCalculator({
           {!expanded &&
             (isMaxed ? (
               <span className="text-sm font-mono font-bold text-emerald-400">
-                Maxed {formatCurrency(totalContributed)}
+                Maxed <Money>{formatCurrency(totalContributed)}</Money>
               </span>
             ) : (
               <span className="text-sm font-mono font-bold text-blue-400">
-                {formatCurrency(calc.totalContrib)} max · {formatCurrency(remaining401k)} left
+                <Money>{formatCurrency(calc.totalContrib)}</Money> max ·{' '}
+                <Money>{formatCurrency(remaining401k)}</Money> left
               </span>
             ))}
           {expanded ? (
@@ -390,7 +392,8 @@ export function Solo401kCalculator({
                   Maxed out for {taxYear}!
                 </p>
                 <p className="text-[11px] text-emerald-400/70">
-                  {formatCurrency(totalContributed)} contributed — IRS Pub 560 maximum reached.
+                  <Money>{formatCurrency(totalContributed)}</Money> contributed — IRS Pub 560
+                  maximum reached.
                 </p>
               </div>
             )}
@@ -398,14 +401,16 @@ export function Solo401kCalculator({
             {/* Progress bar */}
             <div className="mb-3">
               <div className="flex justify-between text-[11px] text-surface-600 mb-1">
-                <span>{formatCurrency(totalContributed)} contributed</span>
+                <span>
+                  <Money>{formatCurrency(totalContributed)}</Money> contributed
+                </span>
                 <span>
                   {isMaxed ? (
                     <span className="text-emerald-400 font-medium">Maxed</span>
                   ) : (
                     <>
-                      {formatCurrency(remaining401k)} remaining of{' '}
-                      {formatCurrency(calc.totalContrib)} max
+                      <Money>{formatCurrency(remaining401k)}</Money> remaining of{' '}
+                      <Money>{formatCurrency(calc.totalContrib)}</Money> max
                     </>
                   )}
                 </span>
@@ -420,18 +425,21 @@ export function Solo401kCalculator({
                 <span className="text-surface-600">
                   Employee:{' '}
                   <span className="font-mono text-surface-800">
-                    {formatCurrency(totalEmployeeContrib)}
+                    <Money>{formatCurrency(totalEmployeeContrib)}</Money>
                   </span>
-                  <span className="text-surface-500"> / {formatCurrency(calc.employeeLimit)}</span>
+                  <span className="text-surface-500">
+                    {' '}
+                    / <Money>{formatCurrency(calc.employeeLimit)}</Money>
+                  </span>
                 </span>
                 <span className="text-surface-600">
                   Employer:{' '}
                   <span className="font-mono text-surface-800">
-                    {formatCurrency(totalEmployerContrib)}
+                    <Money>{formatCurrency(totalEmployerContrib)}</Money>
                   </span>
                   <span className="text-surface-500">
                     {' '}
-                    / {formatCurrency(calc.employerContrib)}
+                    / <Money>{formatCurrency(calc.employerContrib)}</Money>
                   </span>
                 </span>
               </div>
@@ -457,7 +465,7 @@ export function Solo401kCalculator({
                         {c.type}
                       </span>
                       <span className="text-[13px] font-mono text-surface-900">
-                        {formatCurrency(c.amount)}
+                        <Money>{formatCurrency(c.amount)}</Money>
                       </span>
                     </div>
                     {entity !== 'all' && (

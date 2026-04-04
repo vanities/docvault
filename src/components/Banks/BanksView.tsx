@@ -23,7 +23,7 @@ import { API_BASE } from '../../constants';
 import { HistoryChart } from '../common/HistoryChart';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useAppContext } from '../../contexts/AppContext';
+import { Money } from '../common/Money';
 
 // Types
 
@@ -182,7 +182,7 @@ function InstitutionCard({
               <p
                 className={`font-bold text-[18px] ${totalBalance < 0 ? 'text-red-400' : 'text-surface-950'}`}
               >
-                {formatUsd(totalBalance)}
+                <Money>{formatUsd(totalBalance)}</Money>
               </p>
               <p className="text-[11px] text-surface-500 tabular-nums text-right">
                 {pct.toFixed(1)}%
@@ -235,11 +235,11 @@ function InstitutionCard({
                     <p
                       className={`text-[14px] font-mono font-semibold tabular-nums ${isNegative ? 'text-red-400' : 'text-surface-950'}`}
                     >
-                      {formatUsd(acct.balance)}
+                      <Money>{formatUsd(acct.balance)}</Money>
                     </p>
                     {acct.availableBalance !== null && acct.availableBalance !== acct.balance && (
                       <p className="text-[11px] text-surface-500 font-mono tabular-nums">
-                        {formatUsd(acct.availableBalance)} avail.
+                        <Money>{formatUsd(acct.availableBalance)}</Money> avail.
                       </p>
                     )}
                   </div>
@@ -342,7 +342,6 @@ function SimplefinBanner({
 
 export function BanksView() {
   const { confirm, ConfirmDialog } = useConfirmDialog();
-  const { hideQuickStats } = useAppContext();
   const [data, setData] = useState<SimplefinBalanceCache | null>(cachedData);
   const [isLoading, setIsLoading] = useState(!cachedData);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -562,62 +561,58 @@ export function BanksView() {
       {hasAccounts && !isLoading && (
         <>
           {/* Summary card */}
-          <div className={hideQuickStats ? 'blur-sm select-none' : ''}>
-            <Card variant="glass" className="p-5 mb-6">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <p className="text-[11px] text-surface-500 uppercase tracking-wider mb-1">
-                    Net Balance
-                  </p>
-                  <p
-                    className={`text-2xl font-mono font-bold tabular-nums ${totalBalance < 0 ? 'text-red-400' : 'text-surface-950'}`}
-                  >
-                    {formatUsd(totalBalance)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[11px] text-surface-500 uppercase tracking-wider mb-1">
-                    Assets
-                  </p>
-                  <p className="text-lg font-mono font-semibold text-emerald-400 tabular-nums">
-                    {formatUsd(positiveBalance)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[11px] text-surface-500 uppercase tracking-wider mb-1">
-                    Liabilities
-                  </p>
-                  <p className="text-lg font-mono font-semibold text-red-400 tabular-nums">
-                    {formatUsd(negativeBalance)}
-                  </p>
-                </div>
+          <Card variant="glass" className="p-5 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <p className="text-[11px] text-surface-500 uppercase tracking-wider mb-1">
+                  Net Balance
+                </p>
+                <p
+                  className={`text-2xl font-mono font-bold tabular-nums ${totalBalance < 0 ? 'text-red-400' : 'text-surface-950'}`}
+                >
+                  <Money>{formatUsd(totalBalance)}</Money>
+                </p>
               </div>
+              <div>
+                <p className="text-[11px] text-surface-500 uppercase tracking-wider mb-1">Assets</p>
+                <p className="text-lg font-mono font-semibold text-emerald-400 tabular-nums">
+                  <Money>{formatUsd(positiveBalance)}</Money>
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] text-surface-500 uppercase tracking-wider mb-1">
+                  Liabilities
+                </p>
+                <p className="text-lg font-mono font-semibold text-red-400 tabular-nums">
+                  <Money>{formatUsd(negativeBalance)}</Money>
+                </p>
+              </div>
+            </div>
 
-              {/* Allocation bar showing all institutions */}
-              <div className="mt-4 flex items-center gap-3">
-                <div className="flex-1 h-2.5 bg-surface-200/50 rounded-full overflow-hidden flex">
-                  {sortedInstitutions
-                    .filter((i) => i.total > 0)
-                    .map((inst, idx) => {
-                      const pct = positiveBalance > 0 ? (inst.total / positiveBalance) * 100 : 0;
-                      const colors = INST_COLORS[idx % INST_COLORS.length];
-                      return (
-                        <div
-                          key={inst.name}
-                          className={`h-full ${colors.bar} first:rounded-l-full last:rounded-r-full transition-all duration-500`}
-                          style={{ width: `${Math.max(pct, 1)}%` }}
-                          title={`${inst.name}: ${formatUsd(inst.total)}`}
-                        />
-                      );
-                    })}
-                </div>
-                <span className="text-[11px] text-surface-500 flex-shrink-0">
-                  {sortedInstitutions.length} institution
-                  {sortedInstitutions.length !== 1 ? 's' : ''}
-                </span>
+            {/* Allocation bar showing all institutions */}
+            <div className="mt-4 flex items-center gap-3">
+              <div className="flex-1 h-2.5 bg-surface-200/50 rounded-full overflow-hidden flex">
+                {sortedInstitutions
+                  .filter((i) => i.total > 0)
+                  .map((inst, idx) => {
+                    const pct = positiveBalance > 0 ? (inst.total / positiveBalance) * 100 : 0;
+                    const colors = INST_COLORS[idx % INST_COLORS.length];
+                    return (
+                      <div
+                        key={inst.name}
+                        className={`h-full ${colors.bar} first:rounded-l-full last:rounded-r-full transition-all duration-500`}
+                        style={{ width: `${Math.max(pct, 1)}%` }}
+                        title={`${inst.name}: ${formatUsd(inst.total)}`}
+                      />
+                    );
+                  })}
               </div>
-            </Card>
-          </div>
+              <span className="text-[11px] text-surface-500 flex-shrink-0">
+                {sortedInstitutions.length} institution
+                {sortedInstitutions.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+          </Card>
 
           {/* History Chart */}
           {snapshots.filter((s) => (s.bankValue || 0) !== 0).length >= 2 && (

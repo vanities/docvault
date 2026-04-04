@@ -30,7 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useAppContext } from '../../contexts/AppContext';
+import { Money } from '../common/Money';
 
 const API = '/api/gold';
 
@@ -236,7 +236,6 @@ function getMetalBgColor(metal: MetalType): string {
 // =============================================================================
 
 export function GoldView() {
-  const { hideQuickStats } = useAppContext();
   const [data, setData] = useState<GoldData>({ entries: [] });
   const [spotPrices, setSpotPrices] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -688,7 +687,7 @@ export function GoldView() {
                       {metal}
                     </span>
                     <p className="text-lg font-semibold text-surface-950 mt-0.5">
-                      {formatUsd(spotPrices[metal])}
+                      <Money>{formatUsd(spotPrices[metal])}</Money>
                     </p>
                   </div>
                 )
@@ -699,19 +698,17 @@ export function GoldView() {
 
       {/* Summary Cards */}
       {data.entries.length > 0 && (
-        <div
-          className={`grid grid-cols-2 md:grid-cols-4 gap-3${hideQuickStats ? ' blur-sm select-none' : ''}`}
-        >
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Card variant="glass" className="p-4">
             <span className="text-xs text-surface-600">Current Value</span>
             <p className="text-lg font-semibold text-surface-950">
-              {formatUsd(summary.totalCurrentValue)}
+              <Money>{formatUsd(summary.totalCurrentValue)}</Money>
             </p>
           </Card>
           <Card variant="glass" className="p-4">
             <span className="text-xs text-surface-600">Total Cost</span>
             <p className="text-lg font-semibold text-surface-950">
-              {formatUsd(summary.totalPurchaseValue)}
+              <Money>{formatUsd(summary.totalPurchaseValue)}</Money>
             </p>
           </Card>
           <Card variant="glass" className="p-4">
@@ -720,7 +717,7 @@ export function GoldView() {
               className={`text-lg font-semibold flex items-center gap-1 ${isGain ? 'text-accent-500' : 'text-danger-500'}`}
             >
               {isGain ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-              {formatUsd(Math.abs(summary.totalGainLoss))}
+              <Money>{formatUsd(Math.abs(summary.totalGainLoss))}</Money>
               <span className="text-xs font-normal">({gainPercent}%)</span>
             </p>
           </Card>
@@ -761,7 +758,7 @@ export function GoldView() {
                   </div>
                   <div className="text-right">
                     <span className="text-sm font-semibold text-surface-950">
-                      {formatUsd(stats.value)}
+                      <Money>{formatUsd(stats.value)}</Money>
                     </span>
                     <span
                       className={`text-xs ml-2 ${metalGain >= 0 ? 'text-accent-500' : 'text-danger-500'}`}
@@ -984,7 +981,12 @@ export function GoldView() {
           <p className="text-xs text-surface-500">
             Purity: {(selectedProduct.purity * 100).toFixed(2)}% · Size: {SIZE_LABELS[size]} pure{' '}
             {selectedProduct.metal}
-            {quantity > 1 && <> · Total: {formatUsd(Number(purchasePrice || 0) * quantity)}</>}
+            {quantity > 1 && (
+              <>
+                {' '}
+                · Total: <Money>{formatUsd(Number(purchasePrice || 0) * quantity)}</Money>
+              </>
+            )}
           </p>
 
           <div className="flex justify-end gap-2">
@@ -1162,7 +1164,9 @@ function EntriesList({
             Holdings ({filtered.length}
             {filtered.length !== entries.length ? ` of ${entries.length}` : ''})
             {filteredTotal.value > 0 && (
-              <span className="normal-case font-normal ml-2">{formatUsd(filteredTotal.value)}</span>
+              <span className="normal-case font-normal ml-2">
+                <Money>{formatUsd(filteredTotal.value)}</Money>
+              </span>
             )}
           </h3>
           <Select value={sortBy} onValueChange={(val) => setSortBy(val as SortKey)}>
@@ -1255,9 +1259,12 @@ function EntriesList({
                     {entry.coinYear && ` (${entry.coinYear})`}
                   </p>
                   <p className="text-xs text-surface-500">
-                    {SIZE_LABELS[entry.size]} · Paid {formatUsd(entry.purchasePrice)}
-                    {entry.quantity > 1 &&
-                      `/ea (${formatUsd(entry.purchasePrice * entry.quantity)} total)`}
+                    {SIZE_LABELS[entry.size]} · Paid <Money>{formatUsd(entry.purchasePrice)}</Money>
+                    {entry.quantity > 1 && (
+                      <>
+                        /ea (<Money>{formatUsd(entry.purchasePrice * entry.quantity)}</Money> total)
+                      </>
+                    )}
                     {' · '}
                     {entry.purchaseDate}
                     {entry.dealer && ` · ${entry.dealer}`}
@@ -1267,7 +1274,7 @@ function EntriesList({
               <div className="flex items-center gap-3">
                 <div className="text-right">
                   <p className="text-sm font-semibold text-surface-950">
-                    {spotPrice > 0 ? formatUsd(currentValue) : formatUsd(totalCost)}
+                    <Money>{spotPrice > 0 ? formatUsd(currentValue) : formatUsd(totalCost)}</Money>
                   </p>
                   {spotPrice > 0 && (
                     <p
@@ -1307,16 +1314,20 @@ function EntriesList({
                   </div>
                   <div>
                     <span className="text-surface-500">Cost per Piece</span>
-                    <p className="font-medium text-surface-900">{formatUsd(entry.purchasePrice)}</p>
+                    <p className="font-medium text-surface-900">
+                      <Money>{formatUsd(entry.purchasePrice)}</Money>
+                    </p>
                   </div>
                   <div>
                     <span className="text-surface-500">Total Cost</span>
-                    <p className="font-medium text-surface-900">{formatUsd(totalCost)}</p>
+                    <p className="font-medium text-surface-900">
+                      <Money>{formatUsd(totalCost)}</Money>
+                    </p>
                   </div>
                   <div>
                     <span className="text-surface-500">Current Value</span>
                     <p className="font-medium text-surface-900">
-                      {spotPrice > 0 ? formatUsd(currentValue) : 'N/A'}
+                      {spotPrice > 0 ? <Money>{formatUsd(currentValue)}</Money> : 'N/A'}
                     </p>
                   </div>
                   <div>
@@ -1324,13 +1335,20 @@ function EntriesList({
                     <p
                       className={`font-medium ${gainLoss >= 0 ? 'text-accent-500' : 'text-danger-500'}`}
                     >
-                      {spotPrice > 0 ? `${gainLoss >= 0 ? '+' : ''}${formatUsd(gainLoss)}` : 'N/A'}
+                      {spotPrice > 0 ? (
+                        <>
+                          {gainLoss >= 0 ? '+' : ''}
+                          <Money>{formatUsd(gainLoss)}</Money>
+                        </>
+                      ) : (
+                        'N/A'
+                      )}
                     </p>
                   </div>
                   <div>
                     <span className="text-surface-500">Spot Price</span>
                     <p className="font-medium text-surface-900">
-                      {spotPrice > 0 ? formatUsd(spotPrice) : 'N/A'}
+                      {spotPrice > 0 ? <Money>{formatUsd(spotPrice)}</Money> : 'N/A'}
                     </p>
                   </div>
                 </div>

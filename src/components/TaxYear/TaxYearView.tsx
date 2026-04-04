@@ -88,7 +88,6 @@ export function TaxYearView() {
     downloadZip,
     downloadCpaPackage,
     setActiveView,
-    hideQuickStats,
   } = useAppContext();
 
   const { addToast } = useToast();
@@ -271,7 +270,7 @@ export function TaxYearView() {
       <TodoList />
 
       {/* Quick Stats */}
-      <div className={`mb-6${hideQuickStats ? ' blur-sm select-none' : ''}`}>
+      <div className="mb-6">
         <QuickStats
           incomeSummary={incomeSummary}
           expenseSummary={expenseSummary}

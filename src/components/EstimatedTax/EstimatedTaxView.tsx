@@ -4,6 +4,7 @@ import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Money } from '../common/Money';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -220,7 +221,7 @@ export function EstimatedTaxView() {
           <div className="text-right pb-5">
             <p className="text-[11px] text-surface-500">Per Quarter</p>
             <p className="text-lg font-bold font-mono text-surface-950">
-              {formatCurrency(quarterlyTarget)}
+              <Money>{formatCurrency(quarterlyTarget)}</Money>
             </p>
           </div>
         </div>
@@ -230,11 +231,16 @@ export function EstimatedTaxView() {
       <Card variant="glass" className="p-5">
         <div className="flex justify-between text-[12px] text-surface-600 mb-2">
           <span>
-            <span className="font-semibold text-surface-900">{formatCurrency(totalPaid)}</span> paid
+            <span className="font-semibold text-surface-900">
+              <Money>{formatCurrency(totalPaid)}</Money>
+            </span>{' '}
+            paid
           </span>
           <span>
-            <span className="font-semibold text-surface-900">{formatCurrency(totalRemaining)}</span>{' '}
-            remaining of {formatCurrency(config.annualTarget)}
+            <span className="font-semibold text-surface-900">
+              <Money>{formatCurrency(totalRemaining)}</Money>
+            </span>{' '}
+            remaining of <Money>{formatCurrency(config.annualTarget)}</Money>
           </span>
         </div>
         <div className="h-3 bg-surface-300/50 rounded-full overflow-hidden">
@@ -270,10 +276,10 @@ export function EstimatedTaxView() {
                     </span>
                   </div>
                   <span className="text-[13px] font-mono font-bold text-surface-900">
-                    {formatCurrency(paid)}
+                    <Money>{formatCurrency(paid)}</Money>
                     <span className="text-surface-500 font-normal">
                       {' '}
-                      / {formatCurrency(quarterlyTarget)}
+                      / <Money>{formatCurrency(quarterlyTarget)}</Money>
                     </span>
                   </span>
                 </div>
@@ -299,7 +305,7 @@ export function EstimatedTaxView() {
                         <div className="flex items-center gap-3">
                           <span className="text-[11px] text-surface-500 font-mono">{p.date}</span>
                           <span className="text-[13px] font-mono text-surface-900">
-                            {formatCurrency(p.amount)}
+                            <Money>{formatCurrency(p.amount)}</Money>
                           </span>
                         </div>
                         <Button

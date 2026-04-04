@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { copyToClipboard } from '@/lib/utils';
+import { Money } from '../common/Money';
 
 interface CopyableFieldProps {
   label: string;
@@ -53,7 +54,11 @@ export function CopyableField({ label, value, format = 'currency', sublabel }: C
       </div>
       <div className="flex items-center gap-2">
         <span className="text-lg font-semibold text-surface-950 font-mono">
-          {formatValue(value, format)}
+          {format !== 'text' ? (
+            <Money>{formatValue(value, format)}</Money>
+          ) : (
+            formatValue(value, format)
+          )}
         </span>
         <Button
           variant="ghost"

@@ -4,6 +4,7 @@ import type { ExpenseSummary as ExpenseSummaryType, TaxDocument, ParsedReceipt }
 import { EXPENSE_CATEGORIES } from '../../config';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Money } from '../common/Money';
 
 interface ExpenseSummaryProps {
   summary: ExpenseSummaryType;
@@ -67,7 +68,7 @@ export function ExpenseSummary({
             <h3 className="font-semibold text-surface-950 text-[13px]">Total Expenses</h3>
           </div>
           <p className="text-3xl font-bold text-surface-950 font-mono tracking-tight">
-            {formatCurrency(summary.totalExpenses)}
+            <Money>{formatCurrency(summary.totalExpenses)}</Money>
           </p>
           <p className="text-[11px] text-surface-600 mt-1">Gross expense amount</p>
         </Card>
@@ -80,7 +81,7 @@ export function ExpenseSummary({
             <h3 className="font-semibold text-surface-950 text-[13px]">Deductible</h3>
           </div>
           <p className="text-3xl font-bold text-surface-950 font-mono tracking-tight">
-            {formatCurrency(summary.totalDeductible)}
+            <Money>{formatCurrency(summary.totalDeductible)}</Money>
           </p>
           <p className="text-[11px] text-surface-600 mt-1">After deduction rates applied</p>
         </Card>
@@ -173,14 +174,14 @@ export function ExpenseSummary({
               <div className="border border-border rounded-lg p-4">
                 <p className="text-[11px] text-surface-600 mb-1">Total Miles</p>
                 <p className="text-2xl font-bold text-surface-950 font-mono tracking-tight">
-                  {summary.mileageTotal.toLocaleString()}
+                  <Money>{summary.mileageTotal.toLocaleString()}</Money>
                 </p>
                 <p className="text-[11px] text-surface-600 mt-1">Business miles driven</p>
               </div>
               <div className="border border-border rounded-lg p-4">
                 <p className="text-[11px] text-surface-600 mb-1">IRS Deduction</p>
                 <p className="text-2xl font-bold text-emerald-500 font-mono tracking-tight">
-                  {formatCurrency(summary.mileageDeduction)}
+                  <Money>{formatCurrency(summary.mileageDeduction)}</Money>
                 </p>
                 <p className="text-[11px] text-surface-600 mt-1">100% deductible (Schedule C)</p>
               </div>
@@ -229,11 +230,11 @@ export function ExpenseSummary({
                     </div>
                     <div className="text-right">
                       <p className="font-semibold text-surface-950 font-mono text-[13px]">
-                        {formatCurrency(item.deductibleAmount)}
+                        <Money>{formatCurrency(item.deductibleAmount)}</Money>
                       </p>
                       {deductionRate < 1 && (
                         <p className="text-[11px] text-surface-600">
-                          of {formatCurrency(item.total)}
+                          of <Money>{formatCurrency(item.total)}</Money>
                         </p>
                       )}
                     </div>
@@ -257,7 +258,7 @@ export function ExpenseSummary({
                               </p>
                             </div>
                             <p className="text-[13px] font-medium text-surface-950 ml-4 font-mono">
-                              {data?.amount ? formatCurrency(data.amount) : '-'}
+                              {data?.amount ? <Money>{formatCurrency(data.amount)}</Money> : '-'}
                             </p>
                           </div>
                         );

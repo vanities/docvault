@@ -11,7 +11,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import type { PropertyEntry, PropertyData, PropertyType, PropertyAddress } from '../../types';
-import { useAppContext } from '../../contexts/AppContext';
+import { Money } from '../common/Money';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -208,7 +208,6 @@ function getPropertyBgColor(type: PropertyType): string {
 // =============================================================================
 
 export function PropertyView() {
-  const { hideQuickStats } = useAppContext();
   const [data, setData] = useState<PropertyData>({ entries: [] });
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -423,19 +422,17 @@ export function PropertyView() {
 
       {/* Summary Cards */}
       {data.entries.length > 0 && (
-        <div
-          className={`grid grid-cols-2 md:grid-cols-4 gap-3${hideQuickStats ? ' blur-sm select-none' : ''}`}
-        >
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Card variant="glass" className="p-4">
             <span className="text-xs text-surface-600">Total Value</span>
             <p className="text-lg font-semibold text-surface-950">
-              {formatUsd(summary.totalCurrentValue)}
+              <Money>{formatUsd(summary.totalCurrentValue)}</Money>
             </p>
           </Card>
           <Card variant="glass" className="p-4">
             <span className="text-xs text-surface-600">Total Equity</span>
             <p className="text-lg font-semibold text-surface-950">
-              {formatUsd(summary.totalEquity)}
+              <Money>{formatUsd(summary.totalEquity)}</Money>
             </p>
           </Card>
           <Card variant="glass" className="p-4">
@@ -444,14 +441,14 @@ export function PropertyView() {
               className={`text-lg font-semibold flex items-center gap-1 ${isGain ? 'text-accent-500' : 'text-danger-500'}`}
             >
               {isGain ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-              {formatUsd(Math.abs(appreciation))}
+              <Money>{formatUsd(Math.abs(appreciation))}</Money>
               <span className="text-xs font-normal">({appreciationPct}%)</span>
             </p>
           </Card>
           <Card variant="glass" className="p-4">
             <span className="text-xs text-surface-600">Mortgage Balance</span>
             <p className="text-lg font-semibold text-surface-950">
-              {formatUsd(summary.totalMortgage)}
+              <Money>{formatUsd(summary.totalMortgage)}</Money>
             </p>
           </Card>
         </div>
@@ -797,7 +794,7 @@ function PropertyList({
               <div className="flex items-center gap-3">
                 <div className="text-right">
                   <p className="text-sm font-semibold text-surface-950">
-                    {formatUsd(entry.currentValue)}
+                    <Money>{formatUsd(entry.currentValue)}</Money>
                   </p>
                   <p
                     className={`text-xs ${appreciation >= 0 ? 'text-accent-500' : 'text-danger-500'}`}
@@ -819,11 +816,15 @@ function PropertyList({
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                   <div>
                     <span className="text-surface-500">Purchase Price</span>
-                    <p className="font-medium text-surface-900">{formatUsd(entry.purchasePrice)}</p>
+                    <p className="font-medium text-surface-900">
+                      <Money>{formatUsd(entry.purchasePrice)}</Money>
+                    </p>
                   </div>
                   <div>
                     <span className="text-surface-500">Current Value</span>
-                    <p className="font-medium text-surface-900">{formatUsd(entry.currentValue)}</p>
+                    <p className="font-medium text-surface-900">
+                      <Money>{formatUsd(entry.currentValue)}</Money>
+                    </p>
                     {entry.currentValueDate && (
                       <p className="text-[10px] text-surface-400">
                         Updated {entry.currentValueDate}
@@ -832,7 +833,9 @@ function PropertyList({
                   </div>
                   <div>
                     <span className="text-surface-500">Equity</span>
-                    <p className="font-medium text-surface-900">{formatUsd(equity)}</p>
+                    <p className="font-medium text-surface-900">
+                      <Money>{formatUsd(equity)}</Money>
+                    </p>
                   </div>
                   <div>
                     <span className="text-surface-500">Appreciation</span>
@@ -840,7 +843,7 @@ function PropertyList({
                       className={`font-medium ${appreciation >= 0 ? 'text-accent-500' : 'text-danger-500'}`}
                     >
                       {appreciation >= 0 ? '+' : ''}
-                      {formatUsd(appreciation)}
+                      <Money>{formatUsd(appreciation)}</Money>
                     </p>
                   </div>
                   {entry.purchaseDate && (
@@ -867,7 +870,7 @@ function PropertyList({
                     <div>
                       <span className="text-surface-500">Annual Tax</span>
                       <p className="font-medium text-surface-900">
-                        {formatUsd(entry.annualPropertyTax)}
+                        <Money>{formatUsd(entry.annualPropertyTax)}</Money>
                       </p>
                     </div>
                   )}
@@ -885,7 +888,7 @@ function PropertyList({
                       <div>
                         <span className="text-surface-500">Balance</span>
                         <p className="font-medium text-surface-900">
-                          {formatUsd(entry.mortgage.balance)}
+                          <Money>{formatUsd(entry.mortgage.balance)}</Money>
                         </p>
                       </div>
                       <div>
@@ -897,7 +900,7 @@ function PropertyList({
                       <div>
                         <span className="text-surface-500">Monthly Payment</span>
                         <p className="font-medium text-surface-900">
-                          {formatUsd(entry.mortgage.monthlyPayment)}
+                          <Money>{formatUsd(entry.mortgage.monthlyPayment)}</Money>
                         </p>
                       </div>
                     </div>

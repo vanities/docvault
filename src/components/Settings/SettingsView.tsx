@@ -289,8 +289,8 @@ export function SettingsView() {
     removeEntity,
     selectedEntity,
     setSelectedEntity,
-    hideQuickStats,
-    setHideQuickStats,
+    blurNumbers,
+    setBlurNumbers,
   } = useAppContext();
   const { confirm, ConfirmDialog } = useConfirmDialog();
   const { addToast } = useToast();
@@ -1031,22 +1031,22 @@ export function SettingsView() {
         <h3 className="text-lg font-semibold text-surface-950 mb-4">Preferences</h3>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-[13px] font-medium text-surface-800">Blur summary stats</p>
+            <p className="text-[13px] font-medium text-surface-800">Blur financial numbers</p>
             <p className="text-[12px] text-surface-600 mt-0.5">
-              Blur financial summary numbers across all views
+              Blur all dollar amounts and financial values for privacy
             </p>
           </div>
           <button
-            onClick={() => setHideQuickStats(!hideQuickStats)}
+            onClick={() => setBlurNumbers(!blurNumbers)}
             className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-              hideQuickStats ? 'bg-accent-500' : 'bg-surface-300'
+              blurNumbers ? 'bg-accent-500' : 'bg-surface-300'
             }`}
             role="switch"
-            aria-checked={hideQuickStats}
+            aria-checked={blurNumbers}
           >
             <span
               className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ${
-                hideQuickStats ? 'translate-x-4' : 'translate-x-0'
+                blurNumbers ? 'translate-x-4' : 'translate-x-0'
               }`}
             />
           </button>

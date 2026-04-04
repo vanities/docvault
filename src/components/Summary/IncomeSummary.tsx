@@ -11,6 +11,7 @@ import type {
 import { DOCUMENT_TYPES } from '../../config';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Money } from '../common/Money';
 
 interface IncomeSummaryProps {
   summary: IncomeSummaryType;
@@ -69,7 +70,7 @@ export function IncomeSummary({
             <h3 className="font-semibold text-surface-950 text-[13px]">Total Income</h3>
           </div>
           <p className="text-3xl font-bold text-surface-950 font-mono tracking-tight">
-            {formatCurrency(summary.totalIncome)}
+            <Money>{formatCurrency(summary.totalIncome)}</Money>
           </p>
           <p className="text-[11px] text-surface-600 mt-1">For Tax Year {summary.taxYear}</p>
         </Card>
@@ -82,7 +83,7 @@ export function IncomeSummary({
             <h3 className="font-semibold text-surface-950 text-[13px]">Federal Withheld</h3>
           </div>
           <p className="text-3xl font-bold text-surface-950 font-mono tracking-tight">
-            {formatCurrency(summary.federalWithheld)}
+            <Money>{formatCurrency(summary.federalWithheld)}</Money>
           </p>
           <p className="text-[11px] text-surface-600 mt-1">From all sources</p>
         </Card>
@@ -209,25 +210,25 @@ export function IncomeSummary({
                       <div>
                         <p className="text-[11px] text-surface-600">Box 1: Wages</p>
                         <p className="font-medium text-surface-950 font-mono text-[13px]">
-                          {formatCurrency(data.wages)}
+                          <Money>{formatCurrency(data.wages)}</Money>
                         </p>
                       </div>
                       <div>
                         <p className="text-[11px] text-surface-600">Box 2: Fed Withheld</p>
                         <p className="font-medium text-surface-950 font-mono text-[13px]">
-                          {formatCurrency(data.federalWithheld)}
+                          <Money>{formatCurrency(data.federalWithheld)}</Money>
                         </p>
                       </div>
                       <div>
                         <p className="text-[11px] text-surface-600">Box 3: SS Wages</p>
                         <p className="font-medium text-surface-950 font-mono text-[13px]">
-                          {formatCurrency(data.socialSecurityWages)}
+                          <Money>{formatCurrency(data.socialSecurityWages)}</Money>
                         </p>
                       </div>
                       <div>
                         <p className="text-[11px] text-surface-600">Box 5: Medicare</p>
                         <p className="font-medium text-surface-950 font-mono text-[13px]">
-                          {formatCurrency(data.medicareWages)}
+                          <Money>{formatCurrency(data.medicareWages)}</Money>
                         </p>
                       </div>
                     </div>
@@ -285,7 +286,7 @@ export function IncomeSummary({
                                 <div>
                                   <p className="text-[11px] text-surface-600">Ordinary Dividends</p>
                                   <p className="font-medium text-surface-950 font-mono text-[13px]">
-                                    {formatCurrency(data.div.ordinaryDividends)}
+                                    <Money>{formatCurrency(data.div.ordinaryDividends)}</Money>
                                   </p>
                                 </div>
                               )}
@@ -296,7 +297,7 @@ export function IncomeSummary({
                                       Qualified Dividends
                                     </p>
                                     <p className="font-medium text-surface-950 font-mono text-[13px]">
-                                      {formatCurrency(data.div.qualifiedDividends)}
+                                      <Money>{formatCurrency(data.div.qualifiedDividends)}</Money>
                                     </p>
                                   </div>
                                 )}
@@ -305,7 +306,7 @@ export function IncomeSummary({
                                   <div>
                                     <p className="text-[11px] text-surface-600">Foreign Tax Paid</p>
                                     <p className="font-medium text-surface-950 font-mono text-[13px]">
-                                      {formatCurrency(data.div.foreignTaxPaid)}
+                                      <Money>{formatCurrency(data.div.foreignTaxPaid)}</Money>
                                     </p>
                                   </div>
                                 )}
@@ -314,7 +315,7 @@ export function IncomeSummary({
                                   <div>
                                     <p className="text-[11px] text-surface-600">Fed Withheld</p>
                                     <p className="font-medium text-surface-950 font-mono text-[13px]">
-                                      {formatCurrency(data.div.federalWithheld)}
+                                      <Money>{formatCurrency(data.div.federalWithheld)}</Money>
                                     </p>
                                   </div>
                                 )}
@@ -340,7 +341,7 @@ export function IncomeSummary({
                                     <p
                                       className={`font-medium font-mono text-[13px] ${(data.b.shortTermGainLoss || 0) >= 0 ? 'text-emerald-500' : 'text-red-400'}`}
                                     >
-                                      {formatCurrency(data.b.shortTermGainLoss)}
+                                      <Money>{formatCurrency(data.b.shortTermGainLoss)}</Money>
                                     </p>
                                   </div>
                                 )}
@@ -352,7 +353,7 @@ export function IncomeSummary({
                                     <p
                                       className={`font-medium font-mono text-[13px] ${(data.b.longTermGainLoss || 0) >= 0 ? 'text-emerald-500' : 'text-red-400'}`}
                                     >
-                                      {formatCurrency(data.b.longTermGainLoss)}
+                                      <Money>{formatCurrency(data.b.longTermGainLoss)}</Money>
                                     </p>
                                   </div>
                                 )}
@@ -362,7 +363,7 @@ export function IncomeSummary({
                                     <p
                                       className={`font-medium font-mono text-[13px] ${(data.b.totalGainLoss || 0) >= 0 ? 'text-emerald-500' : 'text-red-400'}`}
                                     >
-                                      {formatCurrency(data.b.totalGainLoss)}
+                                      <Money>{formatCurrency(data.b.totalGainLoss)}</Money>
                                     </p>
                                   </div>
                                 )}
@@ -370,7 +371,7 @@ export function IncomeSummary({
                                   <div>
                                     <p className="text-[11px] text-surface-600">Total Proceeds</p>
                                     <p className="font-medium text-surface-950 font-mono text-[13px]">
-                                      {formatCurrency(data.b.totalProceeds)}
+                                      <Money>{formatCurrency(data.b.totalProceeds)}</Money>
                                     </p>
                                   </div>
                                 )}
@@ -388,7 +389,7 @@ export function IncomeSummary({
                               <div>
                                 <p className="text-[11px] text-surface-600">Interest Income</p>
                                 <p className="font-medium text-surface-950 font-mono text-[13px]">
-                                  {formatCurrency(data.int.interestIncome!)}
+                                  <Money>{formatCurrency(data.int.interestIncome!)}</Money>
                                 </p>
                               </div>
                             </div>
@@ -405,7 +406,7 @@ export function IncomeSummary({
                                     Total Federal Withheld
                                   </p>
                                   <p className="font-medium text-surface-950 font-mono text-[13px]">
-                                    {formatCurrency(data.totalFederalWithheld)}
+                                    <Money>{formatCurrency(data.totalFederalWithheld)}</Money>
                                   </p>
                                 </div>
                               </div>
@@ -444,23 +445,25 @@ export function IncomeSummary({
                       <div>
                         <p className="text-[11px] text-surface-600">Amount</p>
                         <p className="font-medium text-surface-950 font-mono text-[13px]">
-                          {formatCurrency(
-                            ((data as unknown as Record<string, unknown>)
-                              .nonemployeeCompensation as number) ??
+                          <Money>
+                            {formatCurrency(
                               ((data as unknown as Record<string, unknown>)
-                                .ordinaryDividends as number) ??
-                              ((data as unknown as Record<string, unknown>)
-                                .interestIncome as number) ??
-                              data.amount ??
-                              0
-                          )}
+                                .nonemployeeCompensation as number) ??
+                                ((data as unknown as Record<string, unknown>)
+                                  .ordinaryDividends as number) ??
+                                ((data as unknown as Record<string, unknown>)
+                                  .interestIncome as number) ??
+                                data.amount ??
+                                0
+                            )}
+                          </Money>
                         </p>
                       </div>
                       {data.federalWithheld !== undefined && data.federalWithheld > 0 && (
                         <div>
                           <p className="text-[11px] text-surface-600">Fed Withheld</p>
                           <p className="font-medium text-surface-950 font-mono text-[13px]">
-                            {formatCurrency(data.federalWithheld)}
+                            <Money>{formatCurrency(data.federalWithheld)}</Money>
                           </p>
                         </div>
                       )}
@@ -509,7 +512,7 @@ export function IncomeSummary({
                 <div>
                   <p className="text-[11px] text-surface-600">Total Sales Revenue</p>
                   <p className="font-medium text-surface-950 font-mono text-[13px]">
-                    {formatCurrency(summary.salesTotal)}
+                    <Money>{formatCurrency(summary.salesTotal)}</Money>
                   </p>
                 </div>
                 <div>
@@ -568,7 +571,7 @@ export function IncomeSummary({
                         <div>
                           <p className="text-[11px] text-surface-600">Box 1: Ordinary Income</p>
                           <p className="font-medium text-surface-950 font-mono text-[13px]">
-                            {formatCurrency(data.ordinaryIncome)}
+                            <Money>{formatCurrency(data.ordinaryIncome)}</Money>
                           </p>
                         </div>
                       )}
@@ -576,7 +579,7 @@ export function IncomeSummary({
                         <div>
                           <p className="text-[11px] text-surface-600">Box 4: Guaranteed Payments</p>
                           <p className="font-medium text-surface-950 font-mono text-[13px]">
-                            {formatCurrency(data.guaranteedPayments)}
+                            <Money>{formatCurrency(data.guaranteedPayments)}</Money>
                           </p>
                         </div>
                       )}
@@ -585,7 +588,7 @@ export function IncomeSummary({
                           <div>
                             <p className="text-[11px] text-surface-600">Box 14: SE Earnings</p>
                             <p className="font-medium text-surface-950 font-mono text-[13px]">
-                              {formatCurrency(data.selfEmploymentEarnings)}
+                              <Money>{formatCurrency(data.selfEmploymentEarnings)}</Money>
                             </p>
                           </div>
                         )}
@@ -593,7 +596,7 @@ export function IncomeSummary({
                         <div>
                           <p className="text-[11px] text-surface-600">Box 19: Distributions</p>
                           <p className="font-medium text-surface-950 font-mono text-[13px]">
-                            {formatCurrency(data.distributions)}
+                            <Money>{formatCurrency(data.distributions)}</Money>
                           </p>
                         </div>
                       )}

@@ -177,8 +177,8 @@ interface AppContextValue {
   downloadCpaPackage: (entity: string, year: number) => Promise<void>;
 
   // Display preferences
-  hideQuickStats: boolean;
-  setHideQuickStats: (v: boolean) => void;
+  blurNumbers: boolean;
+  setBlurNumbers: (v: boolean) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -275,13 +275,13 @@ export function AppProvider({ children }: AppProviderProps) {
   });
 
   // Display preferences with localStorage persistence
-  const [hideQuickStats, setHideQuickStatsState] = useState(() => {
-    return localStorage.getItem('docvault-hide-quick-stats') === 'true';
+  const [blurNumbers, setBlurNumbersState] = useState(() => {
+    return localStorage.getItem('docvault-blur-numbers') === 'true';
   });
 
-  const setHideQuickStats = useCallback((v: boolean) => {
-    setHideQuickStatsState(v);
-    localStorage.setItem('docvault-hide-quick-stats', String(v));
+  const setBlurNumbers = useCallback((v: boolean) => {
+    setBlurNumbersState(v);
+    localStorage.setItem('docvault-blur-numbers', String(v));
   }, []);
 
   // Document state
@@ -491,8 +491,8 @@ export function AppProvider({ children }: AppProviderProps) {
     downloadCpaPackage,
 
     // Display preferences
-    hideQuickStats,
-    setHideQuickStats,
+    blurNumbers,
+    setBlurNumbers,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
