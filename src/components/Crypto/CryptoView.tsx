@@ -579,7 +579,7 @@ export function CryptoView() {
       ) : (
         <>
           {/* Total Portfolio Value */}
-          {!hideQuickStats && (
+          <div className={hideQuickStats ? 'blur-sm select-none' : ''}>
             <Card variant="glass" className="p-6 mb-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -639,7 +639,7 @@ export function CryptoView() {
                 )}
               </div>
             </Card>
-          )}
+          </div>
 
           {/* By Asset (with top-5 collapse) */}
           {filteredAssets.length > 0 && (

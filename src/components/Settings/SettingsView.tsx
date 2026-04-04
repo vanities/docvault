@@ -1031,9 +1031,9 @@ export function SettingsView() {
         <h3 className="text-lg font-semibold text-surface-950 mb-4">Preferences</h3>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-[13px] font-medium text-surface-800">Hide summary stats</p>
+            <p className="text-[13px] font-medium text-surface-800">Blur summary stats</p>
             <p className="text-[12px] text-surface-600 mt-0.5">
-              Hide the financial summary cards at the top of the Tax Year view
+              Blur financial summary numbers across all views
             </p>
           </div>
           <button

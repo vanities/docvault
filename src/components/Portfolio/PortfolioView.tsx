@@ -327,7 +327,7 @@ export function PortfolioView() {
       ) : (
         <>
           {/* Grand Total */}
-          {!hideQuickStats && (
+          <div className={hideQuickStats ? 'blur-sm select-none' : ''}>
             <Card variant="glass" className="p-6 mb-6">
               <p className="text-[12px] text-surface-600 uppercase tracking-wider mb-1">
                 Total Net Worth
@@ -419,7 +419,7 @@ export function PortfolioView() {
                 </div>
               )}
             </Card>
-          )}
+          </div>
 
           {/* Portfolio History — full width */}
           <Card variant="glass" className="p-5 mb-6">

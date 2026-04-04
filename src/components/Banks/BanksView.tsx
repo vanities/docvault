@@ -562,7 +562,7 @@ export function BanksView() {
       {hasAccounts && !isLoading && (
         <>
           {/* Summary card */}
-          {!hideQuickStats && (
+          <div className={hideQuickStats ? 'blur-sm select-none' : ''}>
             <Card variant="glass" className="p-5 mb-6">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
@@ -617,7 +617,7 @@ export function BanksView() {
                 </span>
               </div>
             </Card>
-          )}
+          </div>
 
           {/* History Chart */}
           {snapshots.filter((s) => (s.bankValue || 0) !== 0).length >= 2 && (
