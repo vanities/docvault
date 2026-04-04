@@ -471,7 +471,7 @@ export function PropertyView() {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., Springfield House"
+                placeholder="e.g., Lakeside House"
                 required
                 className="h-9 rounded-lg text-sm"
               />
