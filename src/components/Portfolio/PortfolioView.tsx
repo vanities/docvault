@@ -381,7 +381,7 @@ export function PortfolioView() {
                     <div className="flex items-center gap-1.5">
                       <div className="w-2.5 h-2.5 rounded-full bg-violet-500" />
                       <span className="text-[11px] text-surface-600">
-                        Brokers {((brokerTotal / grandTotal) * 100).toFixed(1)}%
+                        Brokers <Money>{((brokerTotal / grandTotal) * 100).toFixed(1)}%</Money>
                       </span>
                     </div>
                   )}
@@ -389,7 +389,7 @@ export function PortfolioView() {
                     <div className="flex items-center gap-1.5">
                       <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
                       <span className="text-[11px] text-surface-600">
-                        Crypto {((cryptoTotal / grandTotal) * 100).toFixed(1)}%
+                        Crypto <Money>{((cryptoTotal / grandTotal) * 100).toFixed(1)}%</Money>
                       </span>
                     </div>
                   )}
@@ -397,7 +397,7 @@ export function PortfolioView() {
                     <div className="flex items-center gap-1.5">
                       <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
                       <span className="text-[11px] text-surface-600">
-                        Banks {((bankTotal / grandTotal) * 100).toFixed(1)}%
+                        Banks <Money>{((bankTotal / grandTotal) * 100).toFixed(1)}%</Money>
                       </span>
                     </div>
                   )}
@@ -405,7 +405,7 @@ export function PortfolioView() {
                     <div className="flex items-center gap-1.5">
                       <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
                       <span className="text-[11px] text-surface-600">
-                        Gold {((goldTotal / grandTotal) * 100).toFixed(1)}%
+                        Gold <Money>{((goldTotal / grandTotal) * 100).toFixed(1)}%</Money>
                       </span>
                     </div>
                   )}
@@ -413,7 +413,7 @@ export function PortfolioView() {
                     <div className="flex items-center gap-1.5">
                       <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                       <span className="text-[11px] text-surface-600">
-                        Property {((propertyTotal / grandTotal) * 100).toFixed(1)}%
+                        Property <Money>{((propertyTotal / grandTotal) * 100).toFixed(1)}%</Money>
                       </span>
                     </div>
                   )}

@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 import type { PortfolioSnapshot } from '../../types';
 import { Button } from '@/components/ui/button';
+import { useAppContext } from '../../contexts/AppContext';
 
 // Time ranges
 const RANGES = [
@@ -67,6 +68,7 @@ export function HistoryChart({
   defaultRange = '3M',
   showModeToggle = true,
 }: HistoryChartProps) {
+  const { blurNumbers } = useAppContext();
   const [range, setRange] = useState(defaultRange);
   const [mode, setMode] = useState<ChartMode>('area');
 
@@ -133,7 +135,9 @@ export function HistoryChart({
       {/* Controls */}
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2">
-          <span className={`text-[13px] font-semibold ${isUp ? 'text-green-500' : 'text-red-500'}`}>
+          <span
+            className={`text-[13px] font-semibold ${isUp ? 'text-green-500' : 'text-red-500'}${blurNumbers ? ' blur-sm select-none' : ''}`}
+          >
             {isUp ? '+' : ''}
             {formatUsd(change)} ({changePct >= 0 ? '+' : ''}
             {changePct.toFixed(1)}%)
@@ -220,7 +224,7 @@ export function HistoryChart({
             tick={{ fontSize: 10, fill: '#64748b' }}
             axisLine={false}
             tickLine={false}
-            tickFormatter={formatUsd}
+            tickFormatter={blurNumbers ? () => '$•••' : formatUsd}
             width={55}
           />
           <Tooltip
@@ -235,7 +239,10 @@ export function HistoryChart({
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             formatter={(value: any, name: any) => {
               const lineConfig = lines.find((l) => l.key === String(name));
-              return [formatUsdFull(Number(value)), lineConfig?.label || String(name)];
+              return [
+                blurNumbers ? '$•••' : formatUsdFull(Number(value)),
+                lineConfig?.label || String(name),
+              ];
             }}
             labelFormatter={(_, payload) => {
               const fullDate = payload?.[0]?.payload?.fullDate;

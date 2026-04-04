@@ -249,7 +249,9 @@ function AssetRow({
             </p>
           </div>
           <div className="text-right flex items-center gap-2">
-            <span className="text-[11px] text-surface-500 tabular-nums">{pct.toFixed(1)}%</span>
+            <span className="text-[11px] text-surface-500 tabular-nums">
+              <Money>{pct.toFixed(1)}%</Money>
+            </span>
             <p className="text-[14px] font-semibold text-surface-950 tabular-nums">
               {balance.usdValue ? <Money>{formatUsd(balance.usdValue)}</Money> : '--'}
             </p>
