@@ -37,6 +37,7 @@ scripts/
 # Tests using real parsed data (contain personal financial info)
 **/*.integration.test.ts
 server/analytics/tax-calc.test.ts
+src/components/Dashboard/Solo401kCalculator.test.ts
 
 # Tax plan workspace (personal, private)
 tax-plan/
