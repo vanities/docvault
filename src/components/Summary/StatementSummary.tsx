@@ -104,7 +104,7 @@ function getDepositTransactions(data: Record<string, unknown> | undefined): Depo
     }
   }
 
-  // Format 2: "depositsAndAdditions" array (Manna-style)
+  // Format 2: "depositsAndAdditions" array
   if (result.length === 0) {
     const depsAddArr = data.depositsAndAdditions as
       | Array<{ date: string; description: string; amount: number }>
