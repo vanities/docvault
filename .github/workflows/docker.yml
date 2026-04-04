@@ -3,6 +3,7 @@ name: Build and Push Docker Image
 on:
   push:
     branches: [main]
+    tags: ['v*.*.*']
 
 env:
   REGISTRY: ghcr.io
@@ -39,8 +40,11 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest
-            type=raw,value=${{ steps.version.outputs.date }}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.version.outputs.date }},enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
             type=sha,prefix=
           labels: |
             org.opencontainers.image.version=${{ steps.version.outputs.date }}
@@ -49,7 +53,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
