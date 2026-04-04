@@ -43,12 +43,23 @@ Personal finance and document management system. Organizes tax records, tracks n
 - **Kraken / Coinbase / Gemini** — exchange balance imports
 - **Koinly** — crypto tax report parsing (8949, Schedule D)
 
+**Backup & Sync**
+
+- Encrypted backup/restore — AES-256-GCM encrypted zip of all config and parsed data, downloadable on demand
+- Auto-backup — scheduled encrypted backups written to your data dir before every Dropbox sync
+- Dropbox sync — rclone-based push of all entity folders to Dropbox on a configurable schedule (default: every 15 min)
+- Custom sync paths — drop a `.docvault-dropbox-map.json` in your data dir to map entities to specific Dropbox folders
+
+**Scheduled Tasks**
+
+- Portfolio snapshots — automatically fetches live prices and saves a net worth snapshot on a configurable interval (default: daily)
+- Dropbox sync — runs on its own schedule independent of snapshots
+- Both schedulers start on boot and are configurable from the Settings UI
+
 **Other**
 
 - Mileage log with address autocomplete
 - Filing deadline reminders with recurring support
-- Encrypted backup/restore — AES-256-GCM zip of all config and data
-- Dropbox sync — auto-push documents via rclone on a schedule
 - Authentication — username/password with session cookies
 - Docker-ready — single container, auto-published to GHCR (amd64 + arm64)
 
