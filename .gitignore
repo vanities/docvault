@@ -39,9 +39,20 @@ scripts/
 server/analytics/tax-calc.test.ts
 server/analytics/extractors.test.ts
 server/analytics/income.test.ts
+server/analytics/bank-deposits.test.ts
+server/analytics/expenses.test.ts
+server/analytics/invoices.test.ts
+server/analytics/retirement.test.ts
+server/crypto.test.ts
+server/routes/contributions.test.ts
+server/parsers/registry.test.ts
 src/components/Dashboard/Solo401kCalculator.test.ts
 src/utils/filenaming.test.ts
 src/utils/documentDetection.test.ts
+src/utils/mapFileToDocument.test.ts
+
+# Internal design docs
+docs/PRD-shadcn-migration.md
 
 # Tax plan workspace (personal, private)
 tax-plan/
