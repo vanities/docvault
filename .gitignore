@@ -41,6 +41,7 @@ src/components/Dashboard/Solo401kCalculator.test.ts
 
 # Tax plan workspace (personal, private)
 tax-plan/
+FEDERAL_TAX_LIMITATIONS.md
 
 # Lock files (use bun.lock)
 pnpm-lock.yaml
