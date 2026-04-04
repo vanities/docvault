@@ -579,7 +579,7 @@ export interface PropertyMortgage {
 
 export interface PropertyEntry {
   id: string;
-  name: string; // e.g., "Springfield House", "Lot on Riverside Rd"
+  name: string; // e.g., "Lakeside House", "Lot on Riverside Rd"
   type: PropertyType;
   address: PropertyAddress;
   acreage?: number;
