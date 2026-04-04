@@ -5,6 +5,7 @@ import { EXPENSE_CATEGORIES } from '../../config';
 import type { ExpenseCategory } from '../../types';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Money } from '../common/Money';
 import { Input } from '@/components/ui/input';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -136,7 +137,7 @@ function Field({
         </div>
       ) : (
         <span className={`text-[13px] font-mono font-semibold ${colorClass} w-36 text-right`}>
-          {value}
+          <Money>{value}</Money>
         </span>
       )}
     </div>
@@ -1207,7 +1208,9 @@ export function TnTaxView() {
                   >
                     <span className="text-[12px] text-surface-700">{a.name}</span>
                     <div className="flex items-center gap-3">
-                      <span className="text-[12px] font-mono text-surface-900">{fmt(a.value)}</span>
+                      <span className="text-[12px] font-mono text-surface-900">
+                        <Money>{fmt(a.value)}</Money>
+                      </span>
                       <Button
                         type="button"
                         variant="ghost-danger"

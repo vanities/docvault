@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { Sale, SaleProduct, SalesData } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
+import { Money } from '../common/Money';
 import { useToast } from '../../hooks/useToast';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -254,7 +255,7 @@ export function SalesView() {
             This Month
           </p>
           <p className="text-xl font-bold text-surface-950 tabular-nums mt-1">
-            ${currentMonthSales.toFixed(2)}
+            $<Money>{currentMonthSales.toFixed(2)}</Money>
           </p>
           <p className="text-[11px] text-surface-500 mt-0.5">
             {currentMonthCount} sale{currentMonthCount !== 1 ? 's' : ''}
@@ -265,7 +266,7 @@ export function SalesView() {
             All Time
           </p>
           <p className="text-xl font-bold text-amber-500 tabular-nums mt-1">
-            ${allTimeSales.toFixed(2)}
+            $<Money>{allTimeSales.toFixed(2)}</Money>
           </p>
           <p className="text-[11px] text-surface-500 mt-0.5">
             {filteredSales.length} sale{filteredSales.length !== 1 ? 's' : ''}
@@ -304,7 +305,7 @@ export function SalesView() {
             <SelectContent>
               {data.products.map((p) => (
                 <SelectItem key={p.id} value={p.id}>
-                  {p.name} — ${p.price.toFixed(2)}
+                  {p.name} — $<Money>{p.price.toFixed(2)}</Money>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -335,7 +336,7 @@ export function SalesView() {
           className="w-full bg-amber-500 hover:bg-amber-400"
         >
           <DollarSign className="w-4 h-4" />
-          Record Sale — ${lineTotal.toFixed(2)}
+          Record Sale — $<Money>{lineTotal.toFixed(2)}</Money>
         </Button>
       </form>
 
@@ -374,7 +375,7 @@ export function SalesView() {
                 </div>
                 <div className="flex items-center gap-2 shrink-0 ml-2">
                   <span className="text-sm font-bold text-amber-500 tabular-nums">
-                    ${monthTotal.toFixed(2)}
+                    $<Money>{monthTotal.toFixed(2)}</Money>
                   </span>
                   {isExpanded ? (
                     <ChevronUp className="w-4 h-4 text-surface-400" />
@@ -421,7 +422,7 @@ export function SalesView() {
                               <SelectContent>
                                 {data.products.map((p) => (
                                   <SelectItem key={p.id} value={p.id}>
-                                    {p.name} — ${p.price.toFixed(2)}
+                                    {p.name} — $<Money>{p.price.toFixed(2)}</Money>
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -490,7 +491,7 @@ export function SalesView() {
                           </div>
                           <div className="text-right shrink-0">
                             <p className="text-sm font-bold text-surface-950 tabular-nums">
-                              ${sale.total.toFixed(2)}
+                              $<Money>{sale.total.toFixed(2)}</Money>
                             </p>
                             <p className="text-[11px] text-surface-500">
                               {new Date(sale.date + 'T00:00:00').toLocaleDateString('en-US', {
@@ -648,7 +649,7 @@ export function SalesView() {
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium text-surface-900">{product.name}</span>
                       <span className="text-sm font-bold text-surface-950 tabular-nums">
-                        ${product.price.toFixed(2)}
+                        $<Money>{product.price.toFixed(2)}</Money>
                       </span>
                     </div>
                     <div className="flex gap-2 mt-2">

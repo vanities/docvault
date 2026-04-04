@@ -4,6 +4,7 @@ import { CopyableField } from './CopyableField';
 import type { InvoiceSummaryData, TaxDocument } from '../../types';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Money } from '../common/Money';
 
 interface InvoiceSummaryProps {
   summary: InvoiceSummaryData;
@@ -95,7 +96,7 @@ function CustomerSection({ customer, docs }: { customer: string; docs: TaxDocume
           </div>
         </div>
         <p className="font-semibold text-surface-950 font-mono text-[13px]">
-          {formatCurrency(total)}
+          <Money>{formatCurrency(total)}</Money>
         </p>
       </Button>
 
@@ -130,7 +131,7 @@ function CustomerSection({ customer, docs }: { customer: string; docs: TaxDocume
                   </p>
                 </div>
                 <p className="text-[13px] font-medium text-surface-950 ml-4 font-mono">
-                  {amount !== null ? formatCurrency(amount) : '-'}
+                  {amount !== null ? <Money>{formatCurrency(amount)}</Money> : '-'}
                 </p>
               </div>
             );
@@ -208,7 +209,7 @@ export function InvoiceSummary({ summary, documents, onDownload }: InvoiceSummar
             <h3 className="font-semibold text-surface-950 text-[13px]">Total Invoiced</h3>
           </div>
           <p className="text-3xl font-bold text-surface-950 font-mono tracking-tight">
-            {formatCurrency(summary.invoiceTotal)}
+            <Money>{formatCurrency(summary.invoiceTotal)}</Money>
           </p>
           <p className="text-[11px] text-surface-600 mt-1">For Tax Year {summary.taxYear}</p>
         </Card>

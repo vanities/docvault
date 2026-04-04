@@ -8,6 +8,7 @@ import {
   BarChart3,
   Building2,
 } from 'lucide-react';
+import { Money } from '../common/Money';
 import type {
   IncomeSummary,
   ExpenseSummary,
@@ -70,11 +71,11 @@ function StatCard({ icon: Icon, label, value, altValue, subtext, color }: StatCa
         </p>
       </div>
       <p className="text-xl font-bold text-surface-950 font-mono tracking-tight truncate">
-        {value}
+        <Money>{value}</Money>
       </p>
       {altValue && altValue !== value && (
         <p className="text-[10px] text-surface-500 mt-0.5 font-mono truncate">
-          {altValue} w/ hidden
+          <Money>{altValue}</Money> w/ hidden
         </p>
       )}
       {subtext && <p className="text-[10px] text-surface-600 mt-1 truncate">{subtext}</p>}

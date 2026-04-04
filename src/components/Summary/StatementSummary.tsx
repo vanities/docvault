@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import type { TaxDocument, IncomeSummary as IncomeSummaryType } from '../../types';
 import { Card } from '@/components/ui/card';
+import { Money } from '../common/Money';
 
 interface StatementSummaryProps {
   bankDocs: TaxDocument[];
@@ -194,13 +195,13 @@ function BankStatementRow({ doc }: { doc: TaxDocument }) {
           {getMonthLabel(doc)}
         </p>
         <p className="text-[13px] text-emerald-500 font-mono text-right">
-          {formatCurrency(deposits)}
+          <Money>{formatCurrency(deposits)}</Money>
         </p>
         <p className="text-[13px] text-red-400 font-mono text-right">
-          {formatCurrency(withdrawals)}
+          <Money>{formatCurrency(withdrawals)}</Money>
         </p>
         <p className="text-[13px] text-surface-950 font-mono text-right">
-          {ending ? formatCurrency(ending) : '—'}
+          {ending ? <Money>{formatCurrency(ending)}</Money> : '—'}
         </p>
         <p className="text-[13px] text-surface-700 font-mono text-right">{count || '—'}</p>
       </div>
@@ -220,7 +221,7 @@ function BankStatementRow({ doc }: { doc: TaxDocument }) {
                 </span>
               </div>
               <span className="text-emerald-500 font-mono shrink-0 ml-3">
-                {formatCurrency(txn.amount)}
+                <Money>{formatCurrency(txn.amount)}</Money>
               </span>
             </div>
           ))}
@@ -266,15 +267,17 @@ function CreditCardStatementRow({ doc }: { doc: TaxDocument }) {
           )}
           {getMonthLabel(doc)}
         </p>
-        <p className="text-[13px] text-red-400 font-mono text-right">{formatCurrency(purchases)}</p>
+        <p className="text-[13px] text-red-400 font-mono text-right">
+          <Money>{formatCurrency(purchases)}</Money>
+        </p>
         <p className="text-[13px] text-emerald-500 font-mono text-right">
-          {formatCurrency(payments)}
+          <Money>{formatCurrency(payments)}</Money>
         </p>
         <p className="text-[13px] text-surface-950 font-mono text-right">
-          {formatCurrency(balance)}
+          <Money>{formatCurrency(balance)}</Money>
         </p>
         <p className="text-[13px] text-surface-700 font-mono text-right">
-          {limit ? formatCurrency(limit) : '—'}
+          {limit ? <Money>{formatCurrency(limit)}</Money> : '—'}
         </p>
       </div>
 
@@ -293,7 +296,7 @@ function CreditCardStatementRow({ doc }: { doc: TaxDocument }) {
               <span
                 className={`font-mono shrink-0 ml-3 ${txn.amount < 0 ? 'text-emerald-500' : 'text-red-400'}`}
               >
-                {formatCurrency(Math.abs(txn.amount))}
+                <Money>{formatCurrency(Math.abs(txn.amount))}</Money>
               </span>
             </div>
           ))}
@@ -426,7 +429,7 @@ export function StatementSummary({
             <h3 className="font-semibold text-surface-950 text-[13px]">Bank Deposits</h3>
           </div>
           <p className="text-3xl font-bold text-surface-950 font-mono tracking-tight">
-            {formatCurrency(totalDeposits)}
+            <Money>{formatCurrency(totalDeposits)}</Money>
           </p>
           <p className="text-[11px] text-surface-600 mt-1">
             {sortedBank.length} statement{sortedBank.length !== 1 ? 's' : ''}
@@ -441,7 +444,7 @@ export function StatementSummary({
             <h3 className="font-semibold text-surface-950 text-[13px]">CC Purchases</h3>
           </div>
           <p className="text-3xl font-bold text-surface-950 font-mono tracking-tight">
-            {formatCurrency(totalPurchases)}
+            <Money>{formatCurrency(totalPurchases)}</Money>
           </p>
           <p className="text-[11px] text-surface-600 mt-1">
             {sortedCC.length} statement{sortedCC.length !== 1 ? 's' : ''}
@@ -464,10 +467,11 @@ export function StatementSummary({
               className={`text-3xl font-bold font-mono tracking-tight ${Math.abs(difference) > 100 ? 'text-amber-400' : 'text-emerald-400'}`}
             >
               {difference >= 0 ? '+' : ''}
-              {formatCurrency(difference)}
+              <Money>{formatCurrency(difference)}</Money>
             </p>
             <p className="text-[11px] text-surface-600 mt-1">
-              {formatCurrency(totalDeposits)} deposits − {formatCurrency(income1099Total)} 1099s
+              <Money>{formatCurrency(totalDeposits)}</Money> deposits −{' '}
+              <Money>{formatCurrency(income1099Total)}</Money> 1099s
             </p>
           </Card>
         )}
@@ -517,11 +521,15 @@ export function StatementSummary({
                       </p>
                     </div>
                     <p className="text-[13px] text-emerald-500 font-mono text-right self-center">
-                      {group.depositTotal > 0 ? formatCurrency(group.depositTotal) : '—'}
+                      {group.depositTotal > 0 ? (
+                        <Money>{formatCurrency(group.depositTotal)}</Money>
+                      ) : (
+                        '—'
+                      )}
                     </p>
                     <p className="text-[13px] text-surface-950 font-mono text-right self-center">
                       {group.form1099Amount !== null ? (
-                        formatCurrency(group.form1099Amount)
+                        <Money>{formatCurrency(group.form1099Amount)}</Money>
                       ) : (
                         <span className="text-surface-400 text-[11px]">No 1099</span>
                       )}
@@ -538,7 +546,7 @@ export function StatementSummary({
                           <X className="w-3.5 h-3.5 text-amber-400" />
                           <span className="text-[13px] text-amber-400 font-mono">
                             {diff! >= 0 ? '+' : ''}
-                            {formatCurrency(diff!)}
+                            <Money>{formatCurrency(diff!)}</Money>
                           </span>
                         </>
                       )}
@@ -590,10 +598,10 @@ export function StatementSummary({
               <div className="grid grid-cols-5 gap-3 px-4 pt-2 border-t border-border">
                 <p className="text-[13px] font-semibold text-surface-950 pl-5">Total</p>
                 <p className="text-[13px] font-semibold text-emerald-500 font-mono text-right">
-                  {formatCurrency(totalDeposits)}
+                  <Money>{formatCurrency(totalDeposits)}</Money>
                 </p>
                 <p className="text-[13px] font-semibold text-red-400 font-mono text-right">
-                  {formatCurrency(totalWithdrawals)}
+                  <Money>{formatCurrency(totalWithdrawals)}</Money>
                 </p>
                 <p className="text-[13px] text-surface-600 text-right">—</p>
                 <p className="text-[13px] text-surface-600 text-right">—</p>
@@ -639,10 +647,10 @@ export function StatementSummary({
               <div className="grid grid-cols-5 gap-3 px-4 pt-2 border-t border-border">
                 <p className="text-[13px] font-semibold text-surface-950 pl-5">Total</p>
                 <p className="text-[13px] font-semibold text-red-400 font-mono text-right">
-                  {formatCurrency(totalPurchases)}
+                  <Money>{formatCurrency(totalPurchases)}</Money>
                 </p>
                 <p className="text-[13px] font-semibold text-emerald-500 font-mono text-right">
-                  {formatCurrency(totalPayments)}
+                  <Money>{formatCurrency(totalPayments)}</Money>
                 </p>
                 <p className="text-[13px] text-surface-600 text-right">—</p>
                 <p className="text-[13px] text-surface-600 text-right">—</p>

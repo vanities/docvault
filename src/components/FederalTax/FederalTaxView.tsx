@@ -10,6 +10,7 @@ import {
   Settings2,
 } from 'lucide-react';
 import { useAppContext } from '../../contexts/AppContext';
+import { Money } from '../common/Money';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -659,7 +660,7 @@ export function FederalTaxView() {
                 isRefund ? 'text-emerald-500' : 'text-rose-500'
               }`}
             >
-              {formatCurrency(Math.abs(totalOwed))}
+              <Money>{formatCurrency(Math.abs(totalOwed))}</Money>
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -782,12 +783,12 @@ export function FederalTaxView() {
                   {section.title}
                 </span>
                 <span className="w-28 text-right font-mono font-bold text-sm text-surface-950">
-                  {formatCurrency(totalValue)}
+                  <Money>{formatCurrency(totalValue)}</Money>
                 </span>
                 {showComparison && priorData && (
                   <>
                     <span className="w-28 text-right font-mono text-sm text-surface-500">
-                      {priorTotal !== null ? formatCurrency(priorTotal) : '—'}
+                      {priorTotal !== null ? <Money>{formatCurrency(priorTotal)}</Money> : '—'}
                     </span>
                     <DeltaBadge delta={delta} className="w-20" />
                   </>
@@ -820,12 +821,12 @@ export function FederalTaxView() {
                       {section.totalLabel}
                     </div>
                     <div className="w-28 text-right font-mono font-bold text-sm text-surface-950">
-                      {formatCurrency(totalValue)}
+                      <Money>{formatCurrency(totalValue)}</Money>
                     </div>
                     {showComparison && priorData && (
                       <>
                         <div className="w-28 text-right font-mono text-sm text-surface-500">
-                          {priorTotal !== null ? formatCurrency(priorTotal) : '—'}
+                          {priorTotal !== null ? <Money>{formatCurrency(priorTotal)}</Money> : '—'}
                         </div>
                         <DeltaBadge delta={delta} className="w-20" />
                       </>
@@ -857,7 +858,7 @@ function DeltaBadge({ delta, className }: { delta: number | null; className?: st
       } ${className}`}
     >
       {isPositive ? '+' : ''}
-      {formatCurrency(delta)}
+      <Money>{formatCurrency(delta)}</Money>
     </div>
   );
 }
@@ -936,7 +937,7 @@ function LineRow({
           } ${editing ? 'cursor-pointer hover:bg-surface-100 rounded px-2 py-0.5' : ''}`}
           onClick={editing ? () => onStartEdit(line.path, value) : undefined}
         >
-          {formatCurrency(value)}
+          <Money>{formatCurrency(value)}</Money>
         </div>
       )}
 
@@ -947,7 +948,7 @@ function LineRow({
               priorValue === 0 ? 'text-surface-400' : 'text-surface-500'
             }`}
           >
-            {priorValue !== null ? formatCurrency(priorValue) : '—'}
+            {priorValue !== null ? <Money>{formatCurrency(priorValue)}</Money> : '—'}
           </div>
           <DeltaBadge delta={delta} className="w-20" />
         </>
@@ -1033,14 +1034,14 @@ function StandaloneLine({
             }`}
             onClick={editing ? () => onStartEdit(item.path, value) : undefined}
           >
-            {formatCurrency(value)}
+            <Money>{formatCurrency(value)}</Money>
           </div>
         )}
 
         {showComparison && priorData && (
           <>
             <div className="w-28 text-right font-mono text-sm text-surface-500">
-              {priorValue !== null ? formatCurrency(priorValue) : '—'}
+              {priorValue !== null ? <Money>{formatCurrency(priorValue)}</Money> : '—'}
             </div>
             <DeltaBadge delta={delta} className="w-20" />
           </>

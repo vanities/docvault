@@ -22,7 +22,7 @@ import { API_BASE } from '../../constants';
 import { HistoryChart } from '../common/HistoryChart';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useAppContext } from '../../contexts/AppContext';
+import { Money } from '../common/Money';
 
 const TOP_N = 5;
 
@@ -123,7 +123,7 @@ function SourceCard({
           </div>
           <div className="text-right">
             <p className="font-bold text-surface-950 text-[18px]">
-              {formatUsd(source.totalUsdValue)}
+              <Money>{formatUsd(source.totalUsdValue)}</Money>
             </p>
           </div>
         </div>
@@ -171,11 +171,11 @@ function SourceCard({
                     </span>
                   )}
                   <span className="text-[11px] text-surface-500 font-mono">
-                    {formatAmount(balance.amount, balance.asset)}
+                    <Money>{formatAmount(balance.amount, balance.asset)}</Money>
                   </span>
                 </div>
                 <span className="text-[13px] text-surface-950 font-medium">
-                  {balance.usdValue ? formatUsd(balance.usdValue) : '--'}
+                  {balance.usdValue ? <Money>{formatUsd(balance.usdValue)}</Money> : '--'}
                 </span>
               </div>
             ))}
@@ -245,13 +245,13 @@ function AssetRow({
               </span>
             )}
             <p className="text-[11px] text-surface-500 font-mono">
-              {formatAmount(balance.amount, balance.asset)}
+              <Money>{formatAmount(balance.amount, balance.asset)}</Money>
             </p>
           </div>
           <div className="text-right flex items-center gap-2">
             <span className="text-[11px] text-surface-500 tabular-nums">{pct.toFixed(1)}%</span>
             <p className="text-[14px] font-semibold text-surface-950 tabular-nums">
-              {balance.usdValue ? formatUsd(balance.usdValue) : '--'}
+              {balance.usdValue ? <Money>{formatUsd(balance.usdValue)}</Money> : '--'}
             </p>
           </div>
         </div>
@@ -271,7 +271,6 @@ function AssetRow({
 let cachedPortfolio: CryptoPortfolio | null = null;
 
 export function CryptoView() {
-  const { hideQuickStats } = useAppContext();
   const [portfolio, setPortfolio] = useState<CryptoPortfolio | null>(cachedPortfolio);
   const [isLoading, setIsLoading] = useState(!cachedPortfolio);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -579,67 +578,65 @@ export function CryptoView() {
       ) : (
         <>
           {/* Total Portfolio Value */}
-          <div className={hideQuickStats ? 'blur-sm select-none' : ''}>
-            <Card variant="glass" className="p-6 mb-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[12px] text-surface-600 uppercase tracking-wider mb-1">
-                    Total Portfolio Value
-                  </p>
-                  <p className="text-3xl font-bold text-surface-950">
-                    {formatUsd(portfolio?.totalUsdValue || 0)}
-                  </p>
-                  <p className="text-[12px] text-surface-600 mt-1">
-                    {portfolio?.sources.length || 0} source
-                    {(portfolio?.sources.length || 0) !== 1 ? 's' : ''} &middot;{' '}
-                    {filteredAssets.length} asset
-                    {filteredAssets.length !== 1 ? 's' : ''}
-                  </p>
-                </div>
-
-                {/* Mini allocation bar */}
-                {filteredAssets.length > 0 && (
-                  <div className="hidden md:block w-48">
-                    <div className="flex h-3 rounded-full overflow-hidden">
-                      {filteredAssets.slice(0, 6).map((b, i) => {
-                        const pct = ((b.usdValue || 0) / (portfolio?.totalUsdValue || 1)) * 100;
-                        return (
-                          <div
-                            key={b.asset}
-                            className={`${ASSET_COLORS[i % ASSET_COLORS.length]} transition-all duration-500`}
-                            style={{ width: `${pct}%` }}
-                            title={`${b.asset}: ${pct.toFixed(1)}%`}
-                          />
-                        );
-                      })}
-                      {filteredAssets.length > 6 && (
-                        <div
-                          className="bg-surface-300"
-                          style={{
-                            width: `${filteredAssets.slice(6).reduce((sum, b) => sum + ((b.usdValue || 0) / (portfolio?.totalUsdValue || 1)) * 100, 0)}%`,
-                          }}
-                          title="Other assets"
-                        />
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                      {filteredAssets.slice(0, 3).map((b, i) => (
-                        <div key={b.asset} className="flex items-center gap-1">
-                          <div className={`w-2 h-2 rounded-full ${ASSET_COLORS[i]}`} />
-                          <span className="text-[10px] text-surface-500">{b.asset}</span>
-                        </div>
-                      ))}
-                      {filteredAssets.length > 3 && (
-                        <span className="text-[10px] text-surface-400">
-                          +{filteredAssets.length - 3}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
+          <Card variant="glass" className="p-6 mb-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[12px] text-surface-600 uppercase tracking-wider mb-1">
+                  Total Portfolio Value
+                </p>
+                <p className="text-3xl font-bold text-surface-950">
+                  <Money>{formatUsd(portfolio?.totalUsdValue || 0)}</Money>
+                </p>
+                <p className="text-[12px] text-surface-600 mt-1">
+                  {portfolio?.sources.length || 0} source
+                  {(portfolio?.sources.length || 0) !== 1 ? 's' : ''} &middot;{' '}
+                  {filteredAssets.length} asset
+                  {filteredAssets.length !== 1 ? 's' : ''}
+                </p>
               </div>
-            </Card>
-          </div>
+
+              {/* Mini allocation bar */}
+              {filteredAssets.length > 0 && (
+                <div className="hidden md:block w-48">
+                  <div className="flex h-3 rounded-full overflow-hidden">
+                    {filteredAssets.slice(0, 6).map((b, i) => {
+                      const pct = ((b.usdValue || 0) / (portfolio?.totalUsdValue || 1)) * 100;
+                      return (
+                        <div
+                          key={b.asset}
+                          className={`${ASSET_COLORS[i % ASSET_COLORS.length]} transition-all duration-500`}
+                          style={{ width: `${pct}%` }}
+                          title={`${b.asset}: ${pct.toFixed(1)}%`}
+                        />
+                      );
+                    })}
+                    {filteredAssets.length > 6 && (
+                      <div
+                        className="bg-surface-300"
+                        style={{
+                          width: `${filteredAssets.slice(6).reduce((sum, b) => sum + ((b.usdValue || 0) / (portfolio?.totalUsdValue || 1)) * 100, 0)}%`,
+                        }}
+                        title="Other assets"
+                      />
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                    {filteredAssets.slice(0, 3).map((b, i) => (
+                      <div key={b.asset} className="flex items-center gap-1">
+                        <div className={`w-2 h-2 rounded-full ${ASSET_COLORS[i]}`} />
+                        <span className="text-[10px] text-surface-500">{b.asset}</span>
+                      </div>
+                    ))}
+                    {filteredAssets.length > 3 && (
+                      <span className="text-[10px] text-surface-400">
+                        +{filteredAssets.length - 3}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </Card>
 
           {/* By Asset (with top-5 collapse) */}
           {filteredAssets.length > 0 && (
@@ -726,7 +723,7 @@ export function CryptoView() {
                       Cost Basis
                     </p>
                     <p className="text-[16px] font-bold text-surface-950">
-                      {formatUsd(gains.totalCostBasis)}
+                      <Money>{formatUsd(gains.totalCostBasis)}</Money>
                     </p>
                   </div>
                   <div className="p-3 bg-surface-200/30 rounded-lg">
@@ -741,7 +738,7 @@ export function CryptoView() {
                       ) : (
                         <TrendingDown className="w-3.5 h-3.5" />
                       )}
-                      {formatUsd(Math.abs(gains.totalUnrealizedGain))}
+                      <Money>{formatUsd(Math.abs(gains.totalUnrealizedGain))}</Money>
                     </p>
                   </div>
                   <div className="p-3 bg-surface-200/30 rounded-lg">
@@ -749,7 +746,7 @@ export function CryptoView() {
                       Short-Term
                     </p>
                     <p className="text-[16px] font-bold text-amber-500">
-                      {formatUsd(gains.totalShortTermGain)}
+                      <Money>{formatUsd(gains.totalShortTermGain)}</Money>
                     </p>
                     <p className="text-[9px] text-surface-500">Held &lt; 1yr</p>
                   </div>
@@ -758,7 +755,7 @@ export function CryptoView() {
                       Long-Term
                     </p>
                     <p className="text-[16px] font-bold text-green-500">
-                      {formatUsd(gains.totalLongTermGain)}
+                      <Money>{formatUsd(gains.totalLongTermGain)}</Money>
                     </p>
                     <p className="text-[9px] text-surface-500">Held &gt; 1yr</p>
                   </div>
@@ -786,20 +783,20 @@ export function CryptoView() {
                           </span>
                         </div>
                         <div className="col-span-2 text-right text-[12px] text-surface-700 font-mono">
-                          {formatAmount(a.totalAmount, a.asset)}
+                          <Money>{formatAmount(a.totalAmount, a.asset)}</Money>
                         </div>
                         <div className="col-span-2 text-right text-[12px] text-surface-700">
-                          {formatUsd(a.totalCostBasis)}
+                          <Money>{formatUsd(a.totalCostBasis)}</Money>
                         </div>
                         <div className="col-span-2 text-right text-[12px] text-surface-950 font-medium">
-                          {formatUsd(a.currentValue)}
+                          <Money>{formatUsd(a.currentValue)}</Money>
                         </div>
                         <div className="col-span-2 text-right">
                           <span
                             className={`text-[12px] font-medium ${a.unrealizedGain >= 0 ? 'text-green-500' : 'text-red-500'}`}
                           >
                             {a.unrealizedGain >= 0 ? '+' : ''}
-                            {formatUsd(a.unrealizedGain)}
+                            <Money>{formatUsd(a.unrealizedGain)}</Money>
                           </span>
                         </div>
                         <div className="col-span-2 text-right">

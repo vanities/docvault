@@ -29,7 +29,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
-import { useAppContext } from '../../contexts/AppContext';
+import { Money } from '../common/Money';
 import {
   Select,
   SelectContent,
@@ -91,7 +91,7 @@ function GainLossBadge({ value, percent }: { value: number; percent?: number }) 
       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] font-medium ${colorClass}`}
     >
       <Icon className="w-3 h-3" />
-      {formatUsd(Math.abs(value))}
+      <Money>{formatUsd(Math.abs(value))}</Money>
       {percent !== undefined && (
         <span className="text-[11px] opacity-80">({formatPercent(percent)})</span>
       )}
@@ -375,7 +375,7 @@ function AccountCard({
         <div className="flex items-center gap-2 shrink-0">
           <div className="text-right">
             <p className="font-bold text-surface-950 text-[14px] sm:text-[16px]">
-              {formatUsd(account.totalValue)}
+              <Money>{formatUsd(account.totalValue)}</Money>
             </p>
             {account.totalCostBasis > 0 && (
               <GainLossBadge
@@ -404,7 +404,7 @@ function AccountCard({
               <p className="text-[12px] text-surface-500">
                 Manual balance:{' '}
                 <span className="font-medium text-surface-950">
-                  {formatUsd(account.overrideValue)}
+                  <Money>{formatUsd(account.overrideValue)}</Money>
                 </span>
               </p>
             </div>
@@ -444,12 +444,12 @@ function AccountCard({
                       </div>
                       <div className="col-span-2 text-right">
                         <span className="text-[13px] text-surface-700">
-                          {h.price ? formatUsd(h.price) : '--'}
+                          {h.price ? <Money>{formatUsd(h.price)}</Money> : '--'}
                         </span>
                       </div>
                       <div className="col-span-2 text-right">
                         <span className="text-[13px] font-medium text-surface-950">
-                          {h.marketValue ? formatUsd(h.marketValue) : '--'}
+                          {h.marketValue ? <Money>{formatUsd(h.marketValue)}</Money> : '--'}
                         </span>
                       </div>
                       <div className="col-span-2 text-right flex items-center justify-end gap-1">
@@ -458,7 +458,7 @@ function AccountCard({
                             <span
                               className={`text-[12px] font-medium ${h.gainLoss >= 0 ? 'text-green-500' : 'text-red-500'}`}
                             >
-                              {formatUsd(h.gainLoss)}
+                              <Money>{formatUsd(h.gainLoss)}</Money>
                             </span>
                             {h.gainType && h.gainType !== 'unknown' && (
                               <span
@@ -639,7 +639,6 @@ function SnapTradeBanner({
 let cachedPortfolio: BrokerPortfolio | null = null;
 
 export function BrokersView() {
-  const { hideQuickStats } = useAppContext();
   const [portfolio, setPortfolio] = useState<BrokerPortfolio | null>(cachedPortfolio);
   const [isLoading, setIsLoading] = useState(!cachedPortfolio);
   const { confirm, ConfirmDialog: BrokersConfirmDialog } = useConfirmDialog();
@@ -984,36 +983,34 @@ export function BrokersView() {
       ) : (
         <>
           {/* Portfolio Summary */}
-          <div className={hideQuickStats ? 'blur-sm select-none' : ''}>
-            <Card variant="glass" className="p-6 mb-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-[12px] text-surface-600 uppercase tracking-wider mb-1">
-                    Total Portfolio Value
-                  </p>
-                  <p className="text-2xl sm:text-3xl font-bold text-surface-950">
-                    {formatUsd(portfolio?.totalValue || 0)}
-                  </p>
-                  <p className="text-[12px] text-surface-600 mt-1">
-                    {portfolio?.accounts.length || 0} account
-                    {(portfolio?.accounts.length || 0) !== 1 ? 's' : ''}
+          <Card variant="glass" className="p-6 mb-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[12px] text-surface-600 uppercase tracking-wider mb-1">
+                  Total Portfolio Value
+                </p>
+                <p className="text-2xl sm:text-3xl font-bold text-surface-950">
+                  <Money>{formatUsd(portfolio?.totalValue || 0)}</Money>
+                </p>
+                <p className="text-[12px] text-surface-600 mt-1">
+                  {portfolio?.accounts.length || 0} account
+                  {(portfolio?.accounts.length || 0) !== 1 ? 's' : ''}
+                </p>
+              </div>
+              {portfolio && portfolio.totalCostBasis > 0 && (
+                <div className="text-right">
+                  <p className="text-[11px] text-surface-500 mb-1">Total Gain/Loss</p>
+                  <GainLossBadge
+                    value={portfolio.totalGainLoss}
+                    percent={(portfolio.totalGainLoss / portfolio.totalCostBasis) * 100}
+                  />
+                  <p className="text-[11px] text-surface-500 mt-1">
+                    Cost: <Money>{formatUsd(portfolio.totalCostBasis)}</Money>
                   </p>
                 </div>
-                {portfolio && portfolio.totalCostBasis > 0 && (
-                  <div className="text-right">
-                    <p className="text-[11px] text-surface-500 mb-1">Total Gain/Loss</p>
-                    <GainLossBadge
-                      value={portfolio.totalGainLoss}
-                      percent={(portfolio.totalGainLoss / portfolio.totalCostBasis) * 100}
-                    />
-                    <p className="text-[11px] text-surface-500 mt-1">
-                      Cost: {formatUsd(portfolio.totalCostBasis)}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </Card>
-          </div>
+              )}
+            </div>
+          </Card>
 
           {/* History Chart */}
           {snapshots.length >= 2 && (
