@@ -175,6 +175,10 @@ interface AppContextValue {
 
   // CPA Package download
   downloadCpaPackage: (entity: string, year: number) => Promise<void>;
+
+  // Display preferences
+  hideQuickStats: boolean;
+  setHideQuickStats: (v: boolean) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -269,6 +273,16 @@ export function AppProvider({ children }: AppProviderProps) {
     const saved = localStorage.getItem('docvault-year');
     return saved ? parseInt(saved, 10) : currentYear;
   });
+
+  // Display preferences with localStorage persistence
+  const [hideQuickStats, setHideQuickStatsState] = useState(() => {
+    return localStorage.getItem('docvault-hide-quick-stats') === 'true';
+  });
+
+  const setHideQuickStats = useCallback((v: boolean) => {
+    setHideQuickStatsState(v);
+    localStorage.setItem('docvault-hide-quick-stats', String(v));
+  }, []);
 
   // Document state
   const [scannedDocuments, setScannedDocuments] = useState<TaxDocument[]>([]);
@@ -475,6 +489,10 @@ export function AppProvider({ children }: AppProviderProps) {
 
     // CPA Package
     downloadCpaPackage,
+
+    // Display preferences
+    hideQuickStats,
+    setHideQuickStats,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

@@ -30,6 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useAppContext } from '../../contexts/AppContext';
 
 const API = '/api/gold';
 
@@ -235,6 +236,7 @@ function getMetalBgColor(metal: MetalType): string {
 // =============================================================================
 
 export function GoldView() {
+  const { hideQuickStats } = useAppContext();
   const [data, setData] = useState<GoldData>({ entries: [] });
   const [spotPrices, setSpotPrices] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -696,7 +698,7 @@ export function GoldView() {
       )}
 
       {/* Summary Cards */}
-      {data.entries.length > 0 && (
+      {data.entries.length > 0 && !hideQuickStats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Card variant="glass" className="p-4">
             <span className="text-xs text-surface-600">Current Value</span>

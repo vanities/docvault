@@ -88,6 +88,7 @@ export function TaxYearView() {
     downloadZip,
     downloadCpaPackage,
     setActiveView,
+    hideQuickStats,
   } = useAppContext();
 
   const { addToast } = useToast();
@@ -270,22 +271,24 @@ export function TaxYearView() {
       <TodoList />
 
       {/* Quick Stats */}
-      <div className="mb-6">
-        <QuickStats
-          incomeSummary={incomeSummary}
-          expenseSummary={expenseSummary}
-          invoiceSummary={invoiceSummary}
-          documentCount={filteredDocuments.length}
-          allIncomeSummary={allIncomeSummary}
-          allExpenseSummary={allExpenseSummary}
-          allInvoiceSummary={allInvoiceSummary}
-          allDocumentCount={hasHiddenDocs ? scannedDocuments.length : undefined}
-          retirementSummary={retirementSummary}
-          allRetirementSummary={allRetirementSummary}
-          bankDepositSummary={bankDepositSummary}
-          allBankDepositSummary={allBankDepositSummary}
-        />
-      </div>
+      {!hideQuickStats && (
+        <div className="mb-6">
+          <QuickStats
+            incomeSummary={incomeSummary}
+            expenseSummary={expenseSummary}
+            invoiceSummary={invoiceSummary}
+            documentCount={filteredDocuments.length}
+            allIncomeSummary={allIncomeSummary}
+            allExpenseSummary={allExpenseSummary}
+            allInvoiceSummary={allInvoiceSummary}
+            allDocumentCount={hasHiddenDocs ? scannedDocuments.length : undefined}
+            retirementSummary={retirementSummary}
+            allRetirementSummary={allRetirementSummary}
+            bankDepositSummary={bankDepositSummary}
+            allBankDepositSummary={allBankDepositSummary}
+          />
+        </div>
+      )}
 
       {/* Upload Zone - hidden when viewing all entities */}
       {selectedEntity !== 'all' && (

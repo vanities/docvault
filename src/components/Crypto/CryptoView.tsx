@@ -22,6 +22,7 @@ import { API_BASE } from '../../constants';
 import { HistoryChart } from '../common/HistoryChart';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useAppContext } from '../../contexts/AppContext';
 
 const TOP_N = 5;
 
@@ -270,6 +271,7 @@ function AssetRow({
 let cachedPortfolio: CryptoPortfolio | null = null;
 
 export function CryptoView() {
+  const { hideQuickStats } = useAppContext();
   const [portfolio, setPortfolio] = useState<CryptoPortfolio | null>(cachedPortfolio);
   const [isLoading, setIsLoading] = useState(!cachedPortfolio);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -577,65 +579,67 @@ export function CryptoView() {
       ) : (
         <>
           {/* Total Portfolio Value */}
-          <Card variant="glass" className="p-6 mb-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[12px] text-surface-600 uppercase tracking-wider mb-1">
-                  Total Portfolio Value
-                </p>
-                <p className="text-3xl font-bold text-surface-950">
-                  {formatUsd(portfolio?.totalUsdValue || 0)}
-                </p>
-                <p className="text-[12px] text-surface-600 mt-1">
-                  {portfolio?.sources.length || 0} source
-                  {(portfolio?.sources.length || 0) !== 1 ? 's' : ''} &middot;{' '}
-                  {filteredAssets.length} asset
-                  {filteredAssets.length !== 1 ? 's' : ''}
-                </p>
-              </div>
-
-              {/* Mini allocation bar */}
-              {filteredAssets.length > 0 && (
-                <div className="hidden md:block w-48">
-                  <div className="flex h-3 rounded-full overflow-hidden">
-                    {filteredAssets.slice(0, 6).map((b, i) => {
-                      const pct = ((b.usdValue || 0) / (portfolio?.totalUsdValue || 1)) * 100;
-                      return (
-                        <div
-                          key={b.asset}
-                          className={`${ASSET_COLORS[i % ASSET_COLORS.length]} transition-all duration-500`}
-                          style={{ width: `${pct}%` }}
-                          title={`${b.asset}: ${pct.toFixed(1)}%`}
-                        />
-                      );
-                    })}
-                    {filteredAssets.length > 6 && (
-                      <div
-                        className="bg-surface-300"
-                        style={{
-                          width: `${filteredAssets.slice(6).reduce((sum, b) => sum + ((b.usdValue || 0) / (portfolio?.totalUsdValue || 1)) * 100, 0)}%`,
-                        }}
-                        title="Other assets"
-                      />
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                    {filteredAssets.slice(0, 3).map((b, i) => (
-                      <div key={b.asset} className="flex items-center gap-1">
-                        <div className={`w-2 h-2 rounded-full ${ASSET_COLORS[i]}`} />
-                        <span className="text-[10px] text-surface-500">{b.asset}</span>
-                      </div>
-                    ))}
-                    {filteredAssets.length > 3 && (
-                      <span className="text-[10px] text-surface-400">
-                        +{filteredAssets.length - 3}
-                      </span>
-                    )}
-                  </div>
+          {!hideQuickStats && (
+            <Card variant="glass" className="p-6 mb-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[12px] text-surface-600 uppercase tracking-wider mb-1">
+                    Total Portfolio Value
+                  </p>
+                  <p className="text-3xl font-bold text-surface-950">
+                    {formatUsd(portfolio?.totalUsdValue || 0)}
+                  </p>
+                  <p className="text-[12px] text-surface-600 mt-1">
+                    {portfolio?.sources.length || 0} source
+                    {(portfolio?.sources.length || 0) !== 1 ? 's' : ''} &middot;{' '}
+                    {filteredAssets.length} asset
+                    {filteredAssets.length !== 1 ? 's' : ''}
+                  </p>
                 </div>
-              )}
-            </div>
-          </Card>
+
+                {/* Mini allocation bar */}
+                {filteredAssets.length > 0 && (
+                  <div className="hidden md:block w-48">
+                    <div className="flex h-3 rounded-full overflow-hidden">
+                      {filteredAssets.slice(0, 6).map((b, i) => {
+                        const pct = ((b.usdValue || 0) / (portfolio?.totalUsdValue || 1)) * 100;
+                        return (
+                          <div
+                            key={b.asset}
+                            className={`${ASSET_COLORS[i % ASSET_COLORS.length]} transition-all duration-500`}
+                            style={{ width: `${pct}%` }}
+                            title={`${b.asset}: ${pct.toFixed(1)}%`}
+                          />
+                        );
+                      })}
+                      {filteredAssets.length > 6 && (
+                        <div
+                          className="bg-surface-300"
+                          style={{
+                            width: `${filteredAssets.slice(6).reduce((sum, b) => sum + ((b.usdValue || 0) / (portfolio?.totalUsdValue || 1)) * 100, 0)}%`,
+                          }}
+                          title="Other assets"
+                        />
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      {filteredAssets.slice(0, 3).map((b, i) => (
+                        <div key={b.asset} className="flex items-center gap-1">
+                          <div className={`w-2 h-2 rounded-full ${ASSET_COLORS[i]}`} />
+                          <span className="text-[10px] text-surface-500">{b.asset}</span>
+                        </div>
+                      ))}
+                      {filteredAssets.length > 3 && (
+                        <span className="text-[10px] text-surface-400">
+                          +{filteredAssets.length - 3}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
 
           {/* By Asset (with top-5 collapse) */}
           {filteredAssets.length > 0 && (

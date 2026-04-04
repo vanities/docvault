@@ -11,6 +11,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import type { PropertyEntry, PropertyData, PropertyType, PropertyAddress } from '../../types';
+import { useAppContext } from '../../contexts/AppContext';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -207,6 +208,7 @@ function getPropertyBgColor(type: PropertyType): string {
 // =============================================================================
 
 export function PropertyView() {
+  const { hideQuickStats } = useAppContext();
   const [data, setData] = useState<PropertyData>({ entries: [] });
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -420,7 +422,7 @@ export function PropertyView() {
       </div>
 
       {/* Summary Cards */}
-      {data.entries.length > 0 && (
+      {data.entries.length > 0 && !hideQuickStats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Card variant="glass" className="p-4">
             <span className="text-xs text-surface-600">Total Value</span>
