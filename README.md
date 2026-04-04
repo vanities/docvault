@@ -1,16 +1,46 @@
 # DocVault
 
-Local-first document vault for organizing tax records, business filings, and important files across multiple entities. Built with React + Bun, deployable via Docker.
+Local-first document vault for organizing tax records, business filings, and important files across multiple entities. Self-hosted via Docker — your documents never leave your machine.
 
 ## Features
 
-- **Multi-entity organization** — separate spaces for personal taxes, LLCs, military records, medical, property, etc.
-- **AI document parsing** — Claude Vision extracts structured data from W-2s, 1099s, receipts (~$0.003/page)
-- **Tax year views** — income, expenses, and documents per year with running totals
-- **Auto file naming** — standardized `{Source}_{Type}_{Date}.ext` on upload
-- **Reminders** — track filing deadlines with recurring support
-- **Encrypted backup/restore** — AES-256-GCM encrypted zip of all config and data
-- **Docker-ready** — single container, auto-published to GHCR
+**Document Management**
+
+- Multi-entity organization — separate spaces for personal taxes, LLCs, property, medical, military records, etc.
+- AI document parsing — Claude Vision extracts structured data from W-2s, 1099s, K-1s, receipts, bank statements (~$0.003/page)
+- Auto file naming — standardized `{Source}_{Type}_{Date}.ext` on upload
+- Full-text search across all documents and parsed data
+
+**Tax & Finance**
+
+- Income, expense, and document summaries per entity per year
+- Federal tax summary with Schedule C, K-1, capital gains aggregation
+- Solo 401(k) contribution calculator (IRS Pub 560 worksheet)
+- Estimated tax tracker with quarterly payment schedules
+- TN-specific tax views (no state income tax)
+- Sales tracker for business/farm revenue
+
+**Financial Integrations**
+
+- **Banks** — SimpleFIN Bridge for 16,000+ US institutions (read-only balances + transactions)
+- **Brokers** — SnapTrade for brokerage accounts (Fidelity, Vanguard, Robinhood, etc.)
+- **Crypto** — Ethereum wallet scanning via Etherscan, Kraken/Coinbase/Gemini exchange balances
+- **Gold/Silver** — precious metals tracking with live spot prices
+- **Property** — real estate portfolio with cost basis tracking
+- **Mileage** — business mileage log with address autocomplete
+
+**Portfolio & Snapshots**
+
+- Unified portfolio view across brokers, crypto, and metals
+- Automatic daily snapshots with historical chart
+- Net worth history over time
+
+**Infrastructure**
+
+- Encrypted backup/restore — AES-256-GCM zip of all config and data
+- Dropbox sync — auto-push documents to Dropbox via rclone
+- Authentication — username/password with session cookies
+- Docker-ready — single container, auto-published to GHCR (amd64 + arm64)
 
 ## Quick Start
 
@@ -19,30 +49,30 @@ bun install
 bun start
 ```
 
-Frontend on `http://localhost:5173`, backend on `http://localhost:3005`. Vite proxies `/api` to the backend.
+Frontend: `http://localhost:5173` — Backend: `http://localhost:3005`
 
 ### Storage Setup
 
-Create a `data/` directory with subdirectories for each entity:
+Create a `data/` directory with subdirectories per entity:
 
 ```bash
-mkdir -p data/personal data/my-llc
+mkdir -p data/personal data/my-llc data/property
 ```
 
-Or symlink to existing folders:
+Or symlink existing folders:
 
 ```bash
 ln -s ~/Documents/taxes data/personal
-ln -s ~/Documents/business data/my-llc
 ```
 
 ## Docker
 
 ```bash
-docker run -p 3005:3005 -v /path/to/documents:/data ghcr.io/vanities/docvault:latest
+docker run -p 3005:3005 \
+  -v /path/to/documents:/data \
+  -e ANTHROPIC_API_KEY=sk-ant-... \
+  ghcr.io/vanities/docvault:latest
 ```
-
-All config and state lives in the data dir as `.docvault-*.json` files — just mount one volume.
 
 ### Docker Compose
 
@@ -55,9 +85,35 @@ services:
     volumes:
       - /path/to/documents:/data
     environment:
-      - ANTHROPIC_API_KEY= # Optional, or configure via Settings UI
+      - ANTHROPIC_API_KEY= # Required for AI parsing
+      - DOCVAULT_USERNAME=admin # Default: admin
+      - DOCVAULT_PASSWORD= # Required
     restart: unless-stopped
 ```
+
+## Environment Variables
+
+| Variable            | Required       | Description                             |
+| ------------------- | -------------- | --------------------------------------- |
+| `ANTHROPIC_API_KEY` | For AI parsing | Claude Vision API key                   |
+| `DOCVAULT_USERNAME` | No             | Login username (default: `admin`)       |
+| `DOCVAULT_PASSWORD` | Yes            | Login password                          |
+| `DATA_DIR`          | No             | Data directory path (default: `./data`) |
+| `PORT`              | No             | Backend port (default: `3005`)          |
+
+All other integrations (SimpleFIN, SnapTrade, Etherscan, Kraken, Coinbase, Gemini) are configured through the Settings UI and stored in `data/.docvault-settings.json`.
+
+## Data Files
+
+All state lives in `DATA_DIR` as `.docvault-*.json` files:
+
+| File                       | Purpose                         |
+| -------------------------- | ------------------------------- |
+| `.docvault-config.json`    | Entity definitions              |
+| `.docvault-settings.json`  | API keys and integration config |
+| `.docvault-parsed.json`    | Cached AI parse results         |
+| `.docvault-metadata.json`  | Document tags and notes         |
+| `.docvault-reminders.json` | Filing deadline reminders       |
 
 ## Tech Stack
 
@@ -67,24 +123,11 @@ services:
 | Backend  | Bun native server (`Bun.serve()`)        |
 | Storage  | Local filesystem                         |
 | AI       | Anthropic Claude Vision API              |
-| CI/CD    | GitHub Actions → GHCR (amd64 + arm64)    |
-
-## Entity Types
-
-Entities are fully configurable from the Settings UI. Two types:
-
-- **Tax entities** — year-based views with income/expense tracking (W-2s, 1099s, receipts)
-- **Document entities** — flat file listing (military records, medical, property, etc.)
-
-## Document Parsing
-
-1. Add your Anthropic API key in Settings
-2. Click "Parse All" or parse individual documents
-3. Extracted data powers income/expense summaries and tax year totals
+| CI/CD    | GitHub Actions → GHCR                    |
 
 ## API
 
-All endpoints under `/api/`, entity-scoped. Key routes:
+All endpoints under `/api/`, entity-scoped:
 
 | Method | Endpoint                       | Description           |
 | ------ | ------------------------------ | --------------------- |
@@ -94,6 +137,7 @@ All endpoints under `/api/`, entity-scoped. Key routes:
 | `POST` | `/api/parse/:entity/:path`     | AI parse document     |
 | `POST` | `/api/parse-all/:entity/:year` | Batch parse year      |
 | `GET`  | `/api/tax-summary/:year`       | Consolidated tax data |
+| `GET`  | `/api/financial-snapshot`      | Portfolio snapshot    |
 | `POST` | `/api/backup`                  | Encrypted backup      |
 | `POST` | `/api/restore`                 | Restore from backup   |
 
