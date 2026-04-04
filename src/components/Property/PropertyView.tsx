@@ -422,8 +422,10 @@ export function PropertyView() {
       </div>
 
       {/* Summary Cards */}
-      {data.entries.length > 0 && !hideQuickStats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {data.entries.length > 0 && (
+        <div
+          className={`grid grid-cols-2 md:grid-cols-4 gap-3${hideQuickStats ? ' blur-sm select-none' : ''}`}
+        >
           <Card variant="glass" className="p-4">
             <span className="text-xs text-surface-600">Total Value</span>
             <p className="text-lg font-semibold text-surface-950">

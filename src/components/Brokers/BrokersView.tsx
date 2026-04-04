@@ -984,7 +984,7 @@ export function BrokersView() {
       ) : (
         <>
           {/* Portfolio Summary */}
-          {!hideQuickStats && (
+          <div className={hideQuickStats ? 'blur-sm select-none' : ''}>
             <Card variant="glass" className="p-6 mb-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -1013,7 +1013,7 @@ export function BrokersView() {
                 )}
               </div>
             </Card>
-          )}
+          </div>
 
           {/* History Chart */}
           {snapshots.length >= 2 && (
