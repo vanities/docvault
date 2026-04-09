@@ -88,6 +88,7 @@ export function TaxYearView() {
     downloadZip,
     downloadCpaPackage,
     setActiveView,
+    checkConnection,
   } = useAppContext();
 
   const { addToast } = useToast();
@@ -264,7 +265,10 @@ export function TaxYearView() {
       <ReminderBanner />
 
       {/* Entity Metadata */}
-      <EntityMetadataBanner entityConfig={entities.find((e) => e.id === selectedEntity)} />
+      <EntityMetadataBanner
+        entityConfig={entities.find((e) => e.id === selectedEntity)}
+        onEntityUpdated={checkConnection}
+      />
 
       {/* Todos */}
       <TodoList />
