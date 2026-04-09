@@ -23,6 +23,7 @@ export function AllFilesView() {
     setIsParsing,
     relocateFile,
     updateDocMetadata,
+    checkConnection,
   } = useAppContext();
 
   const { addToast } = useToast();
@@ -162,7 +163,10 @@ export function AllFilesView() {
   return (
     <div className="max-w-5xl mx-auto px-4 md:px-6 py-8">
       {/* Entity Metadata */}
-      <EntityMetadataBanner entityConfig={entities.find((e) => e.id === selectedEntity)} />
+      <EntityMetadataBanner
+        entityConfig={entities.find((e) => e.id === selectedEntity)}
+        onEntityUpdated={checkConnection}
+      />
 
       {/* Todos */}
       <TodoList />

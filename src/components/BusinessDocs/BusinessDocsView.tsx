@@ -29,6 +29,7 @@ export function BusinessDocsView() {
     setIsParsing,
     relocateFile,
     updateDocMetadata,
+    checkConnection,
   } = useAppContext();
 
   const { addToast } = useToast();
@@ -155,7 +156,10 @@ export function BusinessDocsView() {
       <ReminderBanner />
 
       {/* Entity Metadata */}
-      <EntityMetadataBanner entityConfig={entities.find((e) => e.id === selectedEntity)} />
+      <EntityMetadataBanner
+        entityConfig={entities.find((e) => e.id === selectedEntity)}
+        onEntityUpdated={checkConnection}
+      />
 
       {/* Todos */}
       <TodoList />
