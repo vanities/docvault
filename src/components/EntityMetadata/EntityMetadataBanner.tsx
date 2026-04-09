@@ -83,7 +83,16 @@ export function EntityMetadataBanner({ entityConfig }: EntityMetadataBannerProps
     return null;
   }
 
-  const entries = Object.entries(entityConfig.metadata);
+  // Only show user-facing metadata (strings/string arrays), skip internal computed fields
+  const entries = Object.entries(entityConfig.metadata).filter(
+    ([, value]) =>
+      typeof value === 'string' ||
+      (Array.isArray(value) && value.every((v) => typeof v === 'string'))
+  );
+
+  if (entries.length === 0) {
+    return null;
+  }
 
   const toggleExpanded = () => {
     const next = !isExpanded;
