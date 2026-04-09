@@ -137,6 +137,8 @@ import { handleSalesRoutes } from './routes/sales.js';
 import { handleMileageRoutes } from './routes/mileage.js';
 import { handleGoldRoutes } from './routes/gold.js';
 import { handlePropertyRoutes } from './routes/property.js';
+import { handleIncomeRoutes } from './routes/income.js';
+import { handleAccountAnnotationRoutes } from './routes/account-annotations.js';
 import { handleMiscRoutes } from './routes/misc.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1766,6 +1768,14 @@ async function handleRequest(req: Request): Promise<Response> {
   // property routes (extracted to routes/property.ts)
   const propertyResponse = await handlePropertyRoutes(req, url, pathname);
   if (propertyResponse) return propertyResponse;
+
+  // income routes (additional recurring income sources)
+  const incomeResponse = await handleIncomeRoutes(req, url, pathname);
+  if (incomeResponse) return incomeResponse;
+
+  // account annotation routes (rates/types for SimpleFIN accounts)
+  const annotationResponse = await handleAccountAnnotationRoutes(req, url, pathname);
+  if (annotationResponse) return annotationResponse;
 
   // ========================================================================
   // Geocode API (Geoapify proxy)

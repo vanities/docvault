@@ -19,6 +19,7 @@ import { SalesView } from '../Sales/SalesView';
 import { MileageView } from '../Mileage/MileageView';
 import { GoldView } from '../Gold/GoldView';
 import { PropertyView } from '../Property/PropertyView';
+import { IncomeView } from '../Income/IncomeView';
 import { Solo401kView } from '../Solo401k/Solo401kView';
 import { EstimatedTaxView } from '../EstimatedTax/EstimatedTaxView';
 import { FederalTaxView } from '../FederalTax/FederalTaxView';
@@ -107,6 +108,8 @@ export function Layout() {
         return <GoldView />;
       case 'property':
         return <PropertyView />;
+      case 'income':
+        return <IncomeView />;
       default:
         return <TaxYearView />;
     }

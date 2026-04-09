@@ -17,6 +17,9 @@ import {
   Link,
   Unlink,
   ExternalLink,
+  Percent,
+  Check,
+  X,
 } from 'lucide-react';
 import type { PortfolioSnapshot } from '../../types';
 import { API_BASE } from '../../constants';
@@ -41,6 +44,16 @@ interface SimplefinAccount {
 interface SimplefinBalanceCache {
   accounts: SimplefinAccount[];
   lastUpdated: string;
+}
+
+interface AccountAnnotation {
+  rate?: number;
+  type?: string;
+  originalBalance?: number;
+  term?: number;
+  startDate?: string;
+  monthlyPayment?: number;
+  notes?: string;
 }
 
 // Institution colors
@@ -129,6 +142,104 @@ function extractMask(name: string): { displayName: string; mask: string | null }
 // Module-level cache
 let cachedData: SimplefinBalanceCache | null = null;
 
+// Inline annotation editor for a single account
+function AnnotationEditor({
+  accountId,
+  annotation,
+  onSave,
+  onCancel,
+}: {
+  accountId: string;
+  annotation: AccountAnnotation | null;
+  onSave: (accountId: string, ann: AccountAnnotation) => void;
+  onCancel: () => void;
+}) {
+  const [rate, setRate] = useState(annotation?.rate ? String(annotation.rate * 100) : '');
+  const [type, setType] = useState(annotation?.type || '');
+  const [monthlyPayment, setMonthlyPayment] = useState(
+    annotation?.monthlyPayment ? String(annotation.monthlyPayment) : ''
+  );
+  const [annNotes, setAnnNotes] = useState(annotation?.notes || '');
+
+  return (
+    <div className="px-5 py-3 bg-surface-100/50 border-t border-border/30">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+        <div>
+          <label className="text-[10px] text-surface-500 block mb-0.5">Rate (%)</label>
+          <input
+            type="number"
+            step="0.01"
+            value={rate}
+            onChange={(e) => setRate(e.target.value)}
+            placeholder="2.00"
+            className="w-full h-7 rounded-md text-xs bg-surface-0 border border-border px-2"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] text-surface-500 block mb-0.5">Type</label>
+          <select
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+            className="w-full h-7 rounded-md text-xs bg-surface-0 border border-border px-2"
+          >
+            <option value="">—</option>
+            <option value="auto-loan">Auto Loan</option>
+            <option value="personal-loan">Personal Loan</option>
+            <option value="student-loan">Student Loan</option>
+            <option value="credit-card">Credit Card</option>
+            <option value="mortgage">Mortgage</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div>
+          <label className="text-[10px] text-surface-500 block mb-0.5">Monthly Payment</label>
+          <input
+            type="number"
+            step="0.01"
+            value={monthlyPayment}
+            onChange={(e) => setMonthlyPayment(e.target.value)}
+            placeholder="250.00"
+            className="w-full h-7 rounded-md text-xs bg-surface-0 border border-border px-2"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] text-surface-500 block mb-0.5">Notes</label>
+          <input
+            type="text"
+            value={annNotes}
+            onChange={(e) => setAnnNotes(e.target.value)}
+            placeholder="Optional"
+            className="w-full h-7 rounded-md text-xs bg-surface-0 border border-border px-2"
+          />
+        </div>
+      </div>
+      <div className="flex justify-end gap-2">
+        <button
+          onClick={onCancel}
+          className="flex items-center gap-1 px-2 py-1 text-[11px] text-surface-500 hover:text-surface-700 rounded"
+        >
+          <X className="w-3 h-3" />
+          Cancel
+        </button>
+        <button
+          onClick={() => {
+            const ann: AccountAnnotation = {};
+            if (rate) ann.rate = parseFloat(rate) / 100;
+            if (type) ann.type = type;
+            if (monthlyPayment) ann.monthlyPayment = parseFloat(monthlyPayment);
+            if (annNotes.trim()) ann.notes = annNotes.trim();
+            onSave(accountId, ann);
+          }}
+          className="flex items-center gap-1 px-2 py-1 text-[11px] text-accent-500 hover:text-accent-400 font-medium rounded"
+        >
+          <Check className="w-3 h-3" />
+          Save
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Institution Card Component
 function InstitutionCard({
   name,
@@ -136,12 +247,16 @@ function InstitutionCard({
   totalBalance,
   colorIndex,
   grandTotal,
+  annotations,
+  onSaveAnnotation,
 }: {
   name: string;
   accounts: SimplefinAccount[];
   totalBalance: number;
   colorIndex: number;
   grandTotal: number;
+  annotations: Record<string, AccountAnnotation>;
+  onSaveAnnotation: (accountId: string, ann: AccountAnnotation) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const colors = INST_COLORS[colorIndex % INST_COLORS.length];
@@ -207,30 +322,66 @@ function InstitutionCard({
 
       {/* Account rows */}
       {expanded && (
-        <div className="border-t border-border">
-          <div className="px-5">
-            {sorted.map((acct) => {
-              const { displayName, mask } = extractMask(acct.name);
-              const type = accountType(acct.name);
-              const isNegative = acct.balance < 0;
+        <AccountRows
+          accounts={sorted}
+          annotations={annotations}
+          onSaveAnnotation={onSaveAnnotation}
+        />
+      )}
+    </Card>
+  );
+}
 
-              return (
-                <div
-                  key={acct.id}
-                  className="flex items-center justify-between py-3 border-b border-border/30 last:border-0"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-surface-500">{accountIcon(acct.name)}</span>
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-[13px] font-medium text-surface-900">{displayName}</p>
-                        {mask && (
-                          <span className="text-[11px] text-surface-500 font-mono">····{mask}</span>
-                        )}
-                      </div>
+// Account rows with annotation support
+function AccountRows({
+  accounts,
+  annotations,
+  onSaveAnnotation,
+}: {
+  accounts: SimplefinAccount[];
+  annotations: Record<string, AccountAnnotation>;
+  onSaveAnnotation: (accountId: string, ann: AccountAnnotation) => void;
+}) {
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+
+  return (
+    <div className="border-t border-border">
+      <div className="px-5">
+        {accounts.map((acct) => {
+          const { displayName, mask } = extractMask(acct.name);
+          const type = accountType(acct.name);
+          const isNegative = acct.balance < 0;
+          const ann = annotations[acct.id];
+          const hasAnnotation = ann && (ann.rate || ann.type || ann.monthlyPayment);
+
+          return (
+            <div key={acct.id}>
+              <div className="flex items-center justify-between py-3 border-b border-border/30 last:border-0">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-surface-500">{accountIcon(acct.name)}</span>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-[13px] font-medium text-surface-900">{displayName}</p>
+                      {mask && (
+                        <span className="text-[11px] text-surface-500 font-mono">····{mask}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5">
                       <p className="text-[11px] text-surface-500">{type}</p>
+                      {hasAnnotation && ann.rate && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-accent-500/10 text-accent-500 font-medium">
+                          {(ann.rate * 100).toFixed(2)}%
+                        </span>
+                      )}
+                      {hasAnnotation && ann.monthlyPayment && (
+                        <span className="text-[10px] text-surface-400">
+                          {formatUsd(ann.monthlyPayment)}/mo
+                        </span>
+                      )}
                     </div>
                   </div>
+                </div>
+                <div className="flex items-center gap-2">
                   <div className="text-right">
                     <p
                       className={`text-[14px] font-mono font-semibold tabular-nums ${isNegative ? 'text-red-400' : 'text-surface-950'}`}
@@ -243,13 +394,37 @@ function InstitutionCard({
                       </p>
                     )}
                   </div>
+                  <button
+                    onClick={() =>
+                      setEditingAccountId(editingAccountId === acct.id ? null : acct.id)
+                    }
+                    className={`p-1 rounded transition-colors ${
+                      hasAnnotation
+                        ? 'text-accent-500 hover:bg-accent-500/10'
+                        : 'text-surface-400 hover:text-surface-600 hover:bg-surface-200/50'
+                    }`}
+                    title={hasAnnotation ? 'Edit annotation' : 'Add rate/details'}
+                  >
+                    <Percent className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </Card>
+              </div>
+              {editingAccountId === acct.id && (
+                <AnnotationEditor
+                  accountId={acct.id}
+                  annotation={ann || null}
+                  onSave={(id, newAnn) => {
+                    onSaveAnnotation(id, newAnn);
+                    setEditingAccountId(null);
+                  }}
+                  onCancel={() => setEditingAccountId(null)}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -348,6 +523,7 @@ export function BanksView() {
   const [error, setError] = useState<string | null>(null);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>([]);
+  const [annotations, setAnnotations] = useState<Record<string, AccountAnnotation>>({});
 
   const loadStatus = useCallback(async () => {
     try {
@@ -410,16 +586,40 @@ export function BanksView() {
     }
   };
 
+  const loadAnnotations = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/account-annotations`);
+      const data = await res.json();
+      setAnnotations(data || {});
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const saveAnnotation = useCallback(async (accountId: string, ann: AccountAnnotation) => {
+    try {
+      await fetch(`${API_BASE}/account-annotations/${encodeURIComponent(accountId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ann),
+      });
+      setAnnotations((prev) => ({ ...prev, [accountId]: { ...prev[accountId], ...ann } }));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   useEffect(() => {
     void loadStatus();
     void loadBalances();
+    void loadAnnotations();
     void fetch(`${API_BASE}/portfolio/snapshots`)
       .then((r) => r.json())
       .then((d) => {
         if (Array.isArray(d)) setSnapshots(d);
       })
       .catch(() => {});
-  }, [loadStatus, loadBalances]);
+  }, [loadStatus, loadBalances, loadAnnotations]);
 
   // Group accounts by connection (institution)
   const accountsByConnection = (data?.accounts || []).reduce(
@@ -639,6 +839,8 @@ export function BanksView() {
                 totalBalance={inst.total}
                 colorIndex={idx}
                 grandTotal={positiveBalance || Math.abs(totalBalance)}
+                annotations={annotations}
+                onSaveAnnotation={saveAnnotation}
               />
             ))}
           </div>

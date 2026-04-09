@@ -377,7 +377,7 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
   const handleEntitySelect = (entity: EntityConfig) => {
     setSelectedEntity(entity.id);
     // Smart view defaulting
-    if (activeView === 'sales' || activeView === 'mileage') {
+    if (activeView === 'sales' || activeView === 'mileage' || activeView === 'income') {
       onClose?.();
       return;
     }
@@ -521,6 +521,16 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
                 icon={Car}
                 activeColor="bg-sky-500/10"
                 activeTextColor="text-sky-400"
+                activeView={activeView}
+                isProcessing={isProcessing}
+                onClick={handleViewClick}
+              />
+              <NavButton
+                view="income"
+                label="Income"
+                icon={Receipt}
+                activeColor="bg-teal-500/10"
+                activeTextColor="text-teal-400"
                 activeView={activeView}
                 isProcessing={isProcessing}
                 onClick={handleViewClick}
