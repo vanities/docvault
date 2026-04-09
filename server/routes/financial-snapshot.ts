@@ -21,6 +21,8 @@ import {
   loadSnapshots,
   loadSnapshotsForYear,
   loadAssets,
+  loadIncomeData,
+  loadAccountAnnotations,
   fetchMetalSpotPrices,
   getEntityPath,
   scanDirectory,
@@ -34,6 +36,7 @@ import type {
   ParsedData,
   PortfolioSnapshot,
   Contribution401k,
+  IncomeSource,
 } from '../data.js';
 
 export async function handleFinancialSnapshotRoutes(
@@ -60,6 +63,8 @@ export async function handleFinancialSnapshotRoutes(
         propertyData,
         reminders,
         portfolioSnapshots,
+        incomeData,
+        accountAnnotations,
       ] = await Promise.all([
         loadConfig(),
         loadParsedData(),
@@ -72,6 +77,8 @@ export async function handleFinancialSnapshotRoutes(
         loadPropertyData(),
         loadReminders(),
         loadSnapshotsForYear(parseInt(year)),
+        loadIncomeData(),
+        loadAccountAnnotations(),
       ]);
 
       // Load cached portfolio data (non-critical — use empty defaults on failure)
@@ -638,12 +645,14 @@ export async function handleFinancialSnapshotRoutes(
         },
         preciousMetals: goldSummary,
         property: propertySummary,
+        additionalIncome: incomeData.sources,
         bankAccounts: {
           accounts: simplefinCache.accounts.map((a) => ({
             name: a.name,
             balance: a.balance,
             currency: a.currency,
             connectionName: a.connectionName,
+            annotation: accountAnnotations[a.id] || undefined,
           })),
           lastUpdated: simplefinCache.lastUpdated,
         },
@@ -794,6 +803,17 @@ export async function handleFinancialSnapshotRoutes(
           }
         }
         t.push('');
+
+        // Additional income
+        if (incomeData.sources.length > 0) {
+          t.push('ADDITIONAL_INCOME');
+          for (const s of incomeData.sources) {
+            t.push(
+              `  ${s.name} amount=${$(s.amount)} freq=${s.frequency} taxable=${s.taxable}${s.entity ? ` entity=${s.entity}` : ''}`
+            );
+          }
+          t.push('');
+        }
 
         // Portfolio
         if (portfolioSummary.totalNetWorth > 0) {
@@ -1163,21 +1183,70 @@ export async function handleFinancialSnapshotRoutes(
           lines.push('');
         }
 
+        // Additional income sources
+        if (incomeData.sources.length > 0) {
+          lines.push('## Additional Income');
+          lines.push('| Source | Amount | Frequency | Taxable | Entity |');
+          lines.push('|--------|--------|-----------|---------|--------|');
+          for (const s of incomeData.sources) {
+            lines.push(
+              `| ${s.name} | ${fmt(s.amount)} | ${s.frequency} | ${s.taxable ? 'Yes' : 'No'} | ${s.entity || '—'} |`
+            );
+          }
+          // Monthly total
+          const monthlyTotal = incomeData.sources.reduce((sum, s) => {
+            switch (s.frequency) {
+              case 'weekly':
+                return sum + (s.amount * 52) / 12;
+              case 'biweekly':
+                return sum + (s.amount * 26) / 12;
+              case 'monthly':
+                return sum + s.amount;
+              case 'quarterly':
+                return sum + s.amount / 3;
+              case 'annually':
+                return sum + s.amount / 12;
+              default:
+                return sum + s.amount;
+            }
+          }, 0);
+          lines.push(`| **Monthly Total** | **${fmt(monthlyTotal)}** | | | |`);
+          lines.push('');
+        }
+
         // Bank accounts
         const nonZeroBanks = simplefinCache.accounts.filter((a) => a.balance !== 0);
         if (nonZeroBanks.length > 0) {
+          // Check if any accounts have annotations
+          const hasAnnotations = nonZeroBanks.some((a) => accountAnnotations[a.id]);
+
           lines.push('## Bank Accounts');
           if (simplefinCache.lastUpdated)
             lines.push(`_Last updated: ${simplefinCache.lastUpdated}_`);
-          lines.push('| Account | Balance |');
-          lines.push('|---------|---------|');
+          if (hasAnnotations) {
+            lines.push('| Account | Balance | Rate | Type |');
+            lines.push('|---------|---------|------|------|');
+          } else {
+            lines.push('| Account | Balance |');
+            lines.push('|---------|---------|');
+          }
           for (const a of nonZeroBanks) {
-            lines.push(
-              `| ${a.name}${a.connectionName ? ` (${a.connectionName})` : ''} | ${fmt(a.balance)} |`
-            );
+            const ann = accountAnnotations[a.id];
+            const name = `${a.name}${a.connectionName ? ` (${a.connectionName})` : ''}`;
+            if (hasAnnotations) {
+              const rate = ann?.rate ? `${(ann.rate * 100).toFixed(2)}%` : '';
+              const type = ann?.type || '';
+              lines.push(`| ${name} | ${fmt(a.balance)} | ${rate} | ${type} |`);
+            } else {
+              lines.push(`| ${name} | ${fmt(a.balance)} |`);
+            }
           }
           const totalBank = nonZeroBanks.reduce((s, a) => s + a.balance, 0);
-          lines.push(`| **Total** | **${fmt(totalBank)}** |`);
+          if (hasAnnotations) {
+            lines.push(`| **Total** | **${fmt(totalBank)}** | | |`);
+          } else {
+            lines.push(`| **Total** | **${fmt(totalBank)}** |`);
+          }
           lines.push('');
         }
 
