@@ -29,7 +29,8 @@ export type NavView =
   | 'sales'
   | 'mileage'
   | 'gold'
-  | 'property';
+  | 'property'
+  | 'income';
 
 // Tab types for tax year view
 export type TabType = 'documents' | 'income' | 'expenses' | 'invoices' | 'statements';
@@ -216,6 +217,7 @@ export function AppProvider({ children }: AppProviderProps) {
     'estimated-tax',
     'federal-tax',
     'property',
+    'income',
   ]);
 
   const viewFromHash = (): NavView | null => {
@@ -223,9 +225,13 @@ export function AppProvider({ children }: AppProviderProps) {
     return validViews.has(hash) ? (hash as NavView) : null;
   };
 
-  // View state: hash > localStorage > default
+  // View state: hash > localStorage > default (validate stored value against known views)
   const [activeView, setActiveViewState] = useState<NavView>(() => {
-    return viewFromHash() || (localStorage.getItem('docvault-view') as NavView) || 'tax-year';
+    const fromHash = viewFromHash();
+    if (fromHash) return fromHash;
+    const stored = localStorage.getItem('docvault-view');
+    if (stored && validViews.has(stored)) return stored as NavView;
+    return 'tax-year';
   });
   const [activeTab, setActiveTab] = useState<TabType>('documents');
 

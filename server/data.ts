@@ -578,6 +578,8 @@ export const PROPERTY_FILE = path.join(DATA_DIR, '.docvault-property.json');
 export const CRYPTO_CACHE_FILE = path.join(DATA_DIR, '.docvault-crypto-cache.json');
 export const BROKER_CACHE_FILE = path.join(DATA_DIR, '.docvault-broker-cache.json');
 export const SIMPLEFIN_CACHE_FILE = path.join(DATA_DIR, '.docvault-simplefin-cache.json');
+export const INCOME_FILE = path.join(DATA_DIR, '.docvault-income.json');
+export const ACCOUNT_ANNOTATIONS_FILE = path.join(DATA_DIR, '.docvault-account-annotations.json');
 
 export interface PortfolioSnapshot {
   date: string;
@@ -940,6 +942,69 @@ export async function setParsedDataForFile(filePath: string, data: ParsedData): 
     await saveParsedData(allData);
   });
   await parsedDataWriteQueue;
+}
+
+// ============================================================================
+// Additional Income Sources
+// ============================================================================
+
+export interface IncomeSource {
+  id: string;
+  name: string;
+  amount: number;
+  frequency: 'monthly' | 'biweekly' | 'weekly' | 'quarterly' | 'annually';
+  taxable: boolean;
+  entity?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface IncomeData {
+  sources: IncomeSource[];
+}
+
+export async function loadIncomeData(): Promise<IncomeData> {
+  try {
+    const content = await fs.readFile(INCOME_FILE, 'utf-8');
+    const data = JSON.parse(content);
+    return { sources: data.sources || [] };
+  } catch {
+    return { sources: [] };
+  }
+}
+
+export async function saveIncomeData(data: IncomeData): Promise<void> {
+  await fs.writeFile(INCOME_FILE, JSON.stringify(data, null, 2));
+}
+
+// ============================================================================
+// Account Annotations (rates, types for SimpleFIN accounts)
+// ============================================================================
+
+export interface AccountAnnotation {
+  rate?: number; // interest rate as decimal (e.g., 0.02 for 2%)
+  type?: 'auto-loan' | 'personal-loan' | 'student-loan' | 'credit-card' | 'mortgage' | 'other';
+  originalBalance?: number;
+  term?: number; // months
+  startDate?: string; // YYYY-MM-DD
+  monthlyPayment?: number;
+  notes?: string;
+}
+
+// Keyed by SimpleFIN account ID
+export type AccountAnnotationsData = Record<string, AccountAnnotation>;
+
+export async function loadAccountAnnotations(): Promise<AccountAnnotationsData> {
+  try {
+    const content = await fs.readFile(ACCOUNT_ANNOTATIONS_FILE, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return {};
+  }
+}
+
+export async function saveAccountAnnotations(data: AccountAnnotationsData): Promise<void> {
+  await fs.writeFile(ACCOUNT_ANNOTATIONS_FILE, JSON.stringify(data, null, 2));
 }
 
 // ============================================================================
