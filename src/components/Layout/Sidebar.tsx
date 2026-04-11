@@ -381,7 +381,9 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
       onClose?.();
       return;
     }
-    if (activeView === 'tn-tax' && entity.id === 'personal') {
+    if (activeView === 'estimated-tax' && entity.id !== 'all') {
+      setActiveView('tax-year');
+    } else if (activeView === 'tn-tax' && entity.id === 'personal') {
       setActiveView('tax-year');
     } else if (activeView === 'settings') {
       setActiveView(entity.type === 'docs' ? 'all-files' : 'tax-year');
@@ -483,16 +485,18 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
                   onClick={handleViewClick}
                 />
               )}
-              <NavButton
-                view="estimated-tax"
-                label="Est. Taxes"
-                icon={Receipt}
-                activeColor="bg-red-500/10"
-                activeTextColor="text-red-400"
-                activeView={activeView}
-                isProcessing={isProcessing}
-                onClick={handleViewClick}
-              />
+              {selectedEntity === 'all' && (
+                <NavButton
+                  view="estimated-tax"
+                  label="Est. Taxes"
+                  icon={Receipt}
+                  activeColor="bg-red-500/10"
+                  activeTextColor="text-red-400"
+                  activeView={activeView}
+                  isProcessing={isProcessing}
+                  onClick={handleViewClick}
+                />
+              )}
               {showSolo401k && (
                 <NavButton
                   view="solo-401k"
