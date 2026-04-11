@@ -178,7 +178,58 @@ export function ReminderBanner() {
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
   const handleComplete = async (id: string) => {
+    const reminder = reminders.find((r) => r.id === id);
     await updateReminder(id, { status: 'completed' });
+
+    // Auto-record estimated tax payment when completing an estimated tax reminder
+    if (reminder?.title.includes('Estimated Tax Payment')) {
+      try {
+        // Determine the tax year & quarter from the reminder's due date
+        const dueDate = new Date(reminder.dueDate + 'T00:00:00');
+        const month = dueDate.getMonth() + 1; // 1-indexed
+        let quarter: 1 | 2 | 3 | 4;
+        let taxYear: number;
+        if (month === 1) {
+          // Jan 15 = Q4 of prior year
+          quarter = 4;
+          taxYear = dueDate.getFullYear() - 1;
+        } else if (month <= 4) {
+          quarter = 1;
+          taxYear = dueDate.getFullYear();
+        } else if (month <= 6) {
+          quarter = 2;
+          taxYear = dueDate.getFullYear();
+        } else {
+          quarter = 3;
+          taxYear = dueDate.getFullYear();
+        }
+
+        // Fetch current estimated tax data for personal entity
+        const res = await fetch(`/api/estimated-taxes/personal/${taxYear}`);
+        const data = await res.json();
+        const payments = data.payments || [];
+        const config = data.config || { annualTarget: 0 };
+
+        if (config.annualTarget > 0) {
+          const quarterlyAmount = config.annualTarget / 4;
+          const today = new Date().toISOString().split('T')[0];
+          payments.push({
+            id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            date: today,
+            quarter,
+            amount: quarterlyAmount,
+          });
+
+          await fetch(`/api/estimated-taxes/personal/${taxYear}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ payments, config }),
+          });
+        }
+      } catch {
+        // Silently fail — the reminder is already completed
+      }
+    }
   };
 
   const handleDismiss = async (id: string) => {

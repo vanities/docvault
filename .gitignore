@@ -50,3 +50,6 @@ FEDERAL_TAX_LIMITATIONS.md
 # Lock files (use bun.lock)
 pnpm-lock.yaml
 .claude
+
+# Local deploy helper
+Makefile

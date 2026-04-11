@@ -80,7 +80,7 @@ const STATUS_COLORS = {
 };
 
 export function EstimatedTaxView() {
-  const { selectedEntity, selectedYear, reminders, updateReminder } = useAppContext();
+  const { selectedYear, reminders, updateReminder } = useAppContext();
   const { addToast } = useToast();
 
   const [payments, setPayments] = useState<EstimatedTaxPayment[]>([]);
@@ -101,10 +101,13 @@ export function EstimatedTaxView() {
   // Annual target input
   const [targetInput, setTargetInput] = useState('');
 
+  // 1040-ES is always a personal obligation — store under "personal" regardless of selected entity
+  const storageEntity = 'personal';
+
   // Load data
   useEffect(() => {
     loadedRef.current = false;
-    fetch(`/api/estimated-taxes/${selectedEntity}/${selectedYear}`)
+    fetch(`/api/estimated-taxes/${storageEntity}/${selectedYear}`)
       .then((r) => r.json())
       .then((data) => {
         setPayments(data.payments || []);
@@ -115,17 +118,17 @@ export function EstimatedTaxView() {
       .catch(() => {
         loadedRef.current = true;
       });
-  }, [selectedEntity, selectedYear]);
+  }, [selectedYear]);
 
   // Save data when payments or config change
   useEffect(() => {
     if (!loadedRef.current) return;
-    fetch(`/api/estimated-taxes/${selectedEntity}/${selectedYear}`, {
+    fetch(`/api/estimated-taxes/${storageEntity}/${selectedYear}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ payments, config }),
     }).catch(() => {});
-  }, [payments, config, selectedEntity, selectedYear]);
+  }, [payments, config, selectedYear]);
 
   const quarterlyTarget = config.annualTarget / 4;
 
@@ -160,16 +163,16 @@ export function EstimatedTaxView() {
     setTargetInput(String(val));
     setConfig((prev) => ({ ...prev, annualTarget: val }));
 
-    // Sync reminder notes for estimated tax reminders tied to this entity/year
+    // Sync reminder notes for estimated tax reminders (always personal)
     if (val > 0) {
       const quarterly = val / 4;
-      const newNotes = `${formatCurrency(quarterly)} due · 110% safe harbor (${selectedEntity}/${selectedYear})`;
+      const newNotes = `${formatCurrency(quarterly)} due · 110% safe harbor (personal/${selectedYear})`;
       reminders
         .filter(
           (r) =>
-            r.entityId === selectedEntity &&
+            r.entityId === 'personal' &&
             r.title.includes('Estimated Tax Payment') &&
-            r.notes?.includes(`(${selectedEntity}/${selectedYear})`)
+            r.notes?.includes(`(personal/${selectedYear})`)
         )
         .forEach((r) => {
           void updateReminder(r.id, { notes: newNotes });
