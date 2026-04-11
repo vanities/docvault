@@ -61,7 +61,7 @@ export function Solo401kView() {
         defaultExpenses={defaultExpenses}
         k1SEEarnings={k1SEEarnings}
         taxYear={selectedYear}
-        entity="all"
+        entity={seEntity || 'all'}
       />
     </div>
   );
