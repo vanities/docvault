@@ -25,6 +25,9 @@ import { JobsDashboardChart } from './JobsDashboardChart';
 import { FedPolicyChart } from './FedPolicyChart';
 import { BusinessCycleChart } from './BusinessCycleChart';
 import { InflationDashboardChart } from './InflationDashboardChart';
+import { FinancialConditionsChart } from './FinancialConditionsChart';
+import { BtcDrawdownChart } from './BtcDrawdownChart';
+import { FearGreedChart } from './FearGreedChart';
 import { useQuantRefresh } from './useQuantData';
 
 /** Four top-level tabs — an overview snapshot plus Cowen's 3 categories. */
@@ -252,11 +255,20 @@ export function QuantView() {
             <AltcoinSeasonChart />
           </ChartGroup>
 
+          <ChartGroup title="BTC Drawdown from ATH" subtitle="running DD + cycle episodes">
+            <BtcDrawdownChart />
+          </ChartGroup>
+
+          <ChartGroup title="Fear & Greed Index" subtitle="alternative.me 0-100 sentiment">
+            <FearGreedChart />
+          </ChartGroup>
+
           <ChartGroup title="Coming next">
             <EmptyCategoryCard
               category="crypto"
               comingSoon={[
                 'Flippening Index',
+                'Hash Rate / Hash Ribbons',
                 'MVRV Z-Score (needs on-chain data)',
                 'Puell Multiple (needs on-chain data)',
               ]}
@@ -297,6 +309,10 @@ export function QuantView() {
             <YieldCurveChart />
           </ChartGroup>
 
+          <ChartGroup title="Financial Conditions" subtitle="NFCI + ANFCI + STLFSI4 + KCFSI">
+            <FinancialConditionsChart />
+          </ChartGroup>
+
           <ChartGroup title="Coming next">
             <EmptyCategoryCard
               category="macro"
@@ -304,7 +320,7 @@ export function QuantView() {
                 'ISM Manufacturing PMI',
                 '2Y Treasury (DGS2)',
                 'Real interest rates',
-                'NFCI (financial conditions)',
+                'Composite Leading Indicator',
               ]}
             />
           </ChartGroup>
