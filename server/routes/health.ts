@@ -1,49 +1,48 @@
 // Health route handlers — Apple Health exports, people management, parsed summaries.
 //
 // Routes:
-//   GET    /api/health/people                                  — list people
-//   POST   /api/health/people                                  — create a person
-//   PATCH  /api/health/people/:id                              — rename/recolor
-//   DELETE /api/health/people/:id?mode=archive|delete          — archive or hard delete
-//   GET    /api/health/:personId/exports                       — list uploaded zips
-//   POST   /api/health/:personId/parse-export                  — parse a previously uploaded zip
+//   GET    /api/health/people                            — list people
+//   POST   /api/health/people                            — create a person
+//   PATCH  /api/health/people/:id                        — rename/recolor
+//   DELETE /api/health/people/:id?mode=archive|delete    — archive or hard delete
+//   GET    /api/health/:personId/exports                 — list uploaded zips
+//   POST   /api/health/:personId/upload-export           — upload zip + auto-unarchive + auto-parse
+//     (body: raw zip bytes, query: ?filename=export.zip)
+//   POST   /api/health/:personId/parse-export            — re-parse a previously uploaded zip
 //     (body: { filename: string })
-//   GET    /api/health/:personId/summary/:filename             — read parsed summary for a zip
-//   GET    /api/health/:personId/summaries                     — list all parsed summaries for a person
+//   GET    /api/health/:personId/summary/:filename       — read parsed summary for a zip
+//   GET    /api/health/:personId/summaries               — list all parsed summaries for a person
 //
 // Storage:
-//   data/health/<personId>/exports/*.zip        — uploaded source exports (never deleted)
-//   data/health/.tmp/                           — scratch for decompressed XML during parse
-//   data/.docvault-health.json                  — parsed summaries keyed by `<personId>/<filename>`
+//   data/health/<personId>/exports/<name>.zip   — uploaded source exports (never deleted)
+//   data/health/<personId>/exports/<name>.xml   — decompressed XML (persistent cache, backed up)
+//   data/.docvault-health.json                  — people list + parsed summaries
 //
-// The Health entity (id: "health", type: "health") lives in .docvault-config.json and
-// its `people` array is the source of truth for person records.
+// Health is NOT an entity — it's a global sidebar section. People and summaries
+// live together in .docvault-health.json and are decoupled from the entity
+// system entirely. The decompressed XML is persisted next to the zip so
+// DocVault's data-dir backup captures both the compressed source and the
+// decompressed working copy, and re-parses skip the ~5-second unzip step.
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import {
-  loadConfig,
-  saveConfig,
-  jsonResponse,
-  ensureDir,
-  getEntityPath,
-  DATA_DIR,
-} from '../data.js';
-import type { HealthPerson, EntityConfig } from '../data.js';
+import { jsonResponse, ensureDir, DATA_DIR } from '../data.js';
+import type { HealthPerson } from '../data.js';
 import { parseAppleHealthExport, type AppleHealthSummary } from '../parsers/apple-health.js';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('Health');
 
 const HEALTH_STORE_FILE = path.join(DATA_DIR, '.docvault-health.json');
-const HEALTH_ENTITY_ID = 'health';
+const HEALTH_DATA_DIR = path.join(DATA_DIR, 'health');
 
 // ---------------------------------------------------------------------------
-// Store (parsed summaries) — keyed by "<personId>/<filename>"
+// Store — people + parsed summaries live together in .docvault-health.json
 // ---------------------------------------------------------------------------
 
 interface HealthStore {
   version: 1;
+  people: HealthPerson[];
   // key format: "<personId>/<filename>"
   summaries: Record<string, AppleHealthSummary>;
 }
@@ -54,16 +53,18 @@ async function loadHealthStore(): Promise<HealthStore> {
     const parsed = JSON.parse(content) as Partial<HealthStore>;
     return {
       version: 1,
+      people: parsed.people ?? [],
       summaries: parsed.summaries ?? {},
     };
   } catch {
-    return { version: 1, summaries: {} };
+    return { version: 1, people: [], summaries: {} };
   }
 }
 
 async function saveHealthStore(store: HealthStore): Promise<void> {
   // Write to a temp path then rename for atomicity (follows the project's
   // "never pipe output back to same file" rule indirectly — safer on crashes).
+  await ensureDir(DATA_DIR);
   const tmp = `${HEALTH_STORE_FILE}.tmp`;
   await fs.writeFile(tmp, JSON.stringify(store, null, 2));
   await fs.rename(tmp, HEALTH_STORE_FILE);
@@ -73,37 +74,14 @@ function storeKey(personId: string, filename: string): string {
   return `${personId}/${filename}`;
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Load the Health entity from config. Throws if missing (unexpected). */
-async function requireHealthEntity(): Promise<EntityConfig> {
-  const config = await loadConfig();
-  const entity = config.entities.find((e) => e.id === HEALTH_ENTITY_ID);
-  if (!entity) {
-    throw new Error('Health entity not found in config — run the Health feature migration');
-  }
-  if (entity.type !== 'health') {
-    throw new Error(`Entity "${HEALTH_ENTITY_ID}" has unexpected type "${entity.type}"`);
-  }
-  return entity;
-}
-
-/** Update the `people` array on the health entity and save config. */
+/** Update the people list inside the health store. */
 async function updateHealthPeople(
   mutator: (people: HealthPerson[]) => HealthPerson[]
 ): Promise<HealthPerson[]> {
-  const config = await loadConfig();
-  const entity = config.entities.find((e) => e.id === HEALTH_ENTITY_ID);
-  if (!entity) {
-    throw new Error('Health entity not found');
-  }
-  const current = entity.people ?? [];
-  const next = mutator(current);
-  entity.people = next;
-  await saveConfig(config);
-  return next;
+  const store = await loadHealthStore();
+  store.people = mutator(store.people);
+  await saveHealthStore(store);
+  return store.people;
 }
 
 function newPersonId(): string {
@@ -116,24 +94,17 @@ function newPersonId(): string {
   return id;
 }
 
-function requirePerson(entity: EntityConfig, personId: string): HealthPerson {
-  const person = (entity.people ?? []).find((p) => p.id === personId);
+async function requirePerson(personId: string): Promise<HealthPerson> {
+  const store = await loadHealthStore();
+  const person = store.people.find((p) => p.id === personId);
   if (!person) {
     throw new Error(`Person "${personId}" not found`);
   }
   return person;
 }
 
-async function getPersonExportsDir(personId: string): Promise<string> {
-  const entityPath = await getEntityPath(HEALTH_ENTITY_ID);
-  if (!entityPath) {
-    throw new Error('Health entity path not resolvable');
-  }
-  return path.join(entityPath, personId, 'exports');
-}
-
-function healthTmpDir(): string {
-  return path.join(DATA_DIR, 'health', '.tmp');
+function getPersonExportsDir(personId: string): string {
+  return path.join(HEALTH_DATA_DIR, personId, 'exports');
 }
 
 // ---------------------------------------------------------------------------
@@ -151,10 +122,9 @@ export async function handleHealthRoutes(
 
   // GET /api/health/people — list all (non-archived by default, ?archived=true to include)
   if (pathname === '/api/health/people' && req.method === 'GET') {
-    const entity = await requireHealthEntity();
+    const store = await loadHealthStore();
     const includeArchived = url.searchParams.get('archived') === 'true';
-    const all = entity.people ?? [];
-    const people = includeArchived ? all : all.filter((p) => !p.archivedAt);
+    const people = includeArchived ? store.people : store.people.filter((p) => !p.archivedAt);
     return jsonResponse({ people });
   }
 
@@ -176,8 +146,7 @@ export async function handleHealthRoutes(
     await updateHealthPeople((people) => [...people, person]);
 
     // Pre-create the person's exports directory so uploads land cleanly
-    const exportsDir = await getPersonExportsDir(person.id);
-    await ensureDir(exportsDir);
+    await ensureDir(getPersonExportsDir(person.id));
 
     log.info(`Created person ${person.id} "${person.name}"`);
     return jsonResponse({ person });
@@ -222,24 +191,19 @@ export async function handleHealthRoutes(
     }
 
     if (mode === 'delete') {
-      // Remove from config
-      await updateHealthPeople((current) => current.filter((p) => p.id !== personId));
-
-      // Remove all files on disk for this person
-      const entityPath = await getEntityPath(HEALTH_ENTITY_ID);
-      if (entityPath) {
-        const personDir = path.join(entityPath, personId);
-        await fs.rm(personDir, { recursive: true, force: true });
-      }
-
-      // Remove any parsed summaries for this person from the store
+      // Remove from store and drop their summaries in one write
       const store = await loadHealthStore();
+      store.people = store.people.filter((p) => p.id !== personId);
       const filtered: Record<string, AppleHealthSummary> = {};
       for (const [k, v] of Object.entries(store.summaries)) {
         if (!k.startsWith(`${personId}/`)) filtered[k] = v;
       }
       store.summaries = filtered;
       await saveHealthStore(store);
+
+      // Remove all files on disk for this person
+      const personDir = path.join(HEALTH_DATA_DIR, personId);
+      await fs.rm(personDir, { recursive: true, force: true });
 
       log.info(`Hard-deleted person ${personId} and all their data`);
       return jsonResponse({ ok: true, mode: 'delete' });
@@ -256,10 +220,9 @@ export async function handleHealthRoutes(
   const listExportsMatch = pathname.match(/^\/api\/health\/([^/]+)\/exports$/);
   if (listExportsMatch && req.method === 'GET') {
     const personId = listExportsMatch[1];
-    const entity = await requireHealthEntity();
-    requirePerson(entity, personId); // throws 404 handled below
+    await requirePerson(personId); // throws 404 handled below
 
-    const dir = await getPersonExportsDir(personId);
+    const dir = getPersonExportsDir(personId);
     await ensureDir(dir);
     const entries = await fs.readdir(dir, { withFileTypes: true });
     const files = await Promise.all(
@@ -290,8 +253,7 @@ export async function handleHealthRoutes(
   const parseExportMatch = pathname.match(/^\/api\/health\/([^/]+)\/parse-export$/);
   if (parseExportMatch && req.method === 'POST') {
     const personId = parseExportMatch[1];
-    const entity = await requireHealthEntity();
-    requirePerson(entity, personId);
+    await requirePerson(personId);
 
     const body = (await req.json()) as { filename?: string };
     const filename = body.filename;
@@ -299,7 +261,7 @@ export async function handleHealthRoutes(
       return jsonResponse({ error: 'Missing or invalid filename' }, 400);
     }
 
-    const dir = await getPersonExportsDir(personId);
+    const dir = getPersonExportsDir(personId);
     const zipPath = path.join(dir, filename);
 
     // Safety: ensure the resolved path is still under the exports dir
@@ -315,8 +277,7 @@ export async function handleHealthRoutes(
 
     try {
       log.info(`Parsing ${personId}/${filename}`);
-      const tmp = healthTmpDir();
-      const summary = await parseAppleHealthExport(zipPath, tmp);
+      const summary = await parseAppleHealthExport(zipPath);
 
       // Persist to store
       const store = await loadHealthStore();
@@ -333,6 +294,61 @@ export async function handleHealthRoutes(
       const msg = err instanceof Error ? err.message : String(err);
       log.error(`Parse failed for ${personId}/${filename}: ${msg}`);
       return jsonResponse({ error: 'Parse failed', details: msg }, 500);
+    }
+  }
+
+  // POST /api/health/:personId/upload-export — one-shot upload + unarchive + parse
+  //
+  // Body is the raw zip bytes (application/zip). The filename comes from the
+  // `filename` query param (so clients can preserve the original name) or
+  // falls back to `export.zip`. On success the full parsed summary is
+  // returned, so the UI can display the dashboard without a follow-up fetch.
+  const uploadExportMatch = pathname.match(/^\/api\/health\/([^/]+)\/upload-export$/);
+  if (uploadExportMatch && req.method === 'POST') {
+    const personId = uploadExportMatch[1];
+    await requirePerson(personId);
+
+    const rawFilename = url.searchParams.get('filename') ?? 'export.zip';
+    // Basic path-safety: strip any directory components
+    const filename = path.basename(rawFilename);
+    if (!filename.toLowerCase().endsWith('.zip')) {
+      return jsonResponse({ error: 'Only .zip files are accepted' }, 400);
+    }
+
+    const dir = getPersonExportsDir(personId);
+    await ensureDir(dir);
+    const zipPath = path.join(dir, filename);
+
+    try {
+      // 1. Save the uploaded zip to disk
+      const body = await req.arrayBuffer();
+      await fs.writeFile(zipPath, Buffer.from(body));
+      log.info(
+        `Uploaded ${personId}/${filename} (${(body.byteLength / 1024 / 1024).toFixed(1)} MB)`
+      );
+
+      // 2. parseAppleHealthExport extracts + persists the XML next to the zip
+      //    and runs the parser against it. The XML is kept on disk so future
+      //    re-parses skip the unzip step AND so the data-dir backup captures
+      //    both the compressed source and the decompressed working copy.
+      log.info(`Unarchiving + parsing ${personId}/${filename}`);
+      const summary = await parseAppleHealthExport(zipPath);
+
+      // 3. Persist summary to store
+      const store = await loadHealthStore();
+      store.summaries[storeKey(personId, filename)] = summary;
+      await saveHealthStore(store);
+
+      log.info(
+        `Parsed ${personId}/${filename}: ${summary.recordCounts.totalRecords} records, ` +
+          `${summary.recordCounts.totalWorkouts} workouts in ${summary.parseDurationMs} ms`
+      );
+
+      return jsonResponse({ ok: true, filename, summary });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error(`Upload+parse failed for ${personId}/${filename}: ${msg}`);
+      return jsonResponse({ error: 'Upload+parse failed', details: msg }, 500);
     }
   }
 
