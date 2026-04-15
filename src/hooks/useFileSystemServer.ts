@@ -4,6 +4,17 @@ import { isBusinessDocumentType, getBusinessSubfolder, EXPENSE_FOLDER_MAP } from
 import { API_BASE } from '../constants';
 import { mapFileToDocument } from '../utils/mapFileToDocument';
 
+// Health "person" — a labeled data bucket inside the Health entity.
+// NOT tied to auth; just a way to group uploads (e.g. per household member).
+export interface HealthPerson {
+  id: string;
+  name: string;
+  color?: string;
+  icon?: string;
+  createdAt: string;
+  archivedAt?: string | null;
+}
+
 // Entity config from server
 export interface EntityConfig {
   id: string;
@@ -11,9 +22,11 @@ export interface EntityConfig {
   color: string;
   path: string;
   icon?: string;
-  type?: 'tax' | 'docs';
+  type?: 'tax' | 'docs' | 'health';
   description?: string;
   metadata?: Record<string, string | string[]>;
+  // Only populated for type === 'health'
+  people?: HealthPerson[];
 }
 
 // File info from the server

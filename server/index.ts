@@ -141,6 +141,7 @@ import { handlePropertyRoutes } from './routes/property.js';
 import { handleIncomeRoutes } from './routes/income.js';
 import { handleAccountAnnotationRoutes } from './routes/account-annotations.js';
 import { handleMiscRoutes } from './routes/misc.js';
+import { handleHealthRoutes } from './routes/health.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1795,6 +1796,10 @@ async function handleRequest(req: Request): Promise<Response> {
   // account annotation routes (rates/types for SimpleFIN accounts)
   const annotationResponse = await handleAccountAnnotationRoutes(req, url, pathname);
   if (annotationResponse) return annotationResponse;
+
+  // health routes (Apple Health exports, people, parsed summaries)
+  const healthResponse = await handleHealthRoutes(req, url, pathname);
+  if (healthResponse) return healthResponse;
 
   // ========================================================================
   // Geocode API (Geoapify proxy)

@@ -31,6 +31,12 @@ dist-ssr
 data/
 data-backup
 
+# Apple Health export fixtures — contain personal medical data, never commit
+server/parsers/fixtures/
+**/apple-health-fixture*.zip
+**/export.zip
+**/apple_health_export/
+
 # Scripts that reference NAS/personal data
 scripts/
 
