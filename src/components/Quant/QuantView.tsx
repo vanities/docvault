@@ -1,6 +1,5 @@
 import { useState, useEffect, type ReactNode } from 'react';
 import { LineChart, Bitcoin, Landmark, Building2, RefreshCw, Grid3x3 } from 'lucide-react';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { PresidentialCycleChart } from './PresidentialCycleChart';
@@ -93,43 +92,6 @@ function ChartGroup({
       </div>
       <div className="space-y-6">{children}</div>
     </div>
-  );
-}
-
-/** Card shown when a category has nothing built yet — prompts the user on
- *  what's coming and points to the plan doc. */
-function EmptyCategoryCard({
-  category,
-  comingSoon,
-}: {
-  category: QuantCategory;
-  comingSoon: string[];
-}) {
-  const meta = CATEGORY_META[category];
-  const Icon = meta.icon;
-  return (
-    <Card variant="glass" className="p-8">
-      <div className="flex flex-col items-center text-center gap-3">
-        <div className="w-12 h-12 rounded-2xl bg-surface-200/30 flex items-center justify-center">
-          <Icon className={`w-6 h-6 ${meta.accent}`} />
-        </div>
-        <h3 className="text-lg font-semibold text-surface-950">No {meta.label} charts yet</h3>
-        <p className="text-[13px] text-surface-800 max-w-xl leading-relaxed">{meta.description}</p>
-        <div className="mt-2 flex flex-wrap justify-center gap-2">
-          {comingSoon.map((name) => (
-            <span
-              key={name}
-              className="px-2 py-1 rounded-lg border border-border/50 bg-surface-100/40 text-[11px] text-surface-700 font-medium"
-            >
-              {name}
-            </span>
-          ))}
-        </div>
-        <div className="text-[11px] text-surface-700 mt-1">
-          Roadmap: see <code className="text-cyan-400 font-mono">docs/quant-charts-plan.md</code>
-        </div>
-      </div>
-    </Card>
   );
 }
 
@@ -273,18 +235,6 @@ export function QuantView() {
           <ChartGroup title="Hash Rate + Hash Ribbons" subtitle="30d × 60d SMA crossovers">
             <HashRateChart />
           </ChartGroup>
-
-          <ChartGroup title="Coming next">
-            <EmptyCategoryCard
-              category="crypto"
-              comingSoon={[
-                'BTC Rainbow Chart (log regression rainbow)',
-                'BTC Volatility (30/60/180d rolling)',
-                'MVRV Z-Score (needs on-chain data)',
-                'Puell Multiple (needs on-chain data)',
-              ]}
-            />
-          </ChartGroup>
         </TabsContent>
 
         {/* ── Macro ──────────────────────────────────────── */}
@@ -327,18 +277,6 @@ export function QuantView() {
           <ChartGroup title="Real Interest Rates" subtitle="DGS10 − T10YIE and DGS5 − T5YIE">
             <RealRatesChart />
           </ChartGroup>
-
-          <ChartGroup title="Coming next">
-            <EmptyCategoryCard
-              category="macro"
-              comingSoon={[
-                'ISM Manufacturing PMI',
-                '2Y Treasury (DGS2)',
-                'Composite Leading Indicator',
-                'Housing starts / mortgage rates',
-              ]}
-            />
-          </ChartGroup>
         </TabsContent>
 
         {/* ── TradFi ─────────────────────────────────────── */}
@@ -365,18 +303,6 @@ export function QuantView() {
 
           <ChartGroup title="Midterm drawdowns" subtitle="every midterm year overlaid, 2026 live">
             <MidtermDrawdownChart />
-          </ChartGroup>
-
-          <ChartGroup title="Coming next">
-            <EmptyCategoryCard
-              category="tradfi"
-              comingSoon={[
-                'SPX Monthly Seasonality',
-                'Running ROI',
-                'Commodity Momentum',
-                'Bond / Equity Ratio',
-              ]}
-            />
           </ChartGroup>
         </TabsContent>
       </Tabs>

@@ -13,6 +13,12 @@ import {
   CalendarRange,
   Layers,
   TrendingDown,
+  Flame,
+  AlertTriangle,
+  ShieldAlert,
+  Percent,
+  Repeat,
+  Cpu,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -27,6 +33,14 @@ import {
   usePresidentialCycle,
   useMidtermDrawdowns,
   useSP500RiskMetric,
+  useBusinessCycle,
+  useInflationDashboard,
+  useFinancialConditions,
+  useBtcDrawdown,
+  useFearGreed,
+  useFlippening,
+  useRealRates,
+  useHashRate,
 } from './useQuantData';
 
 type Tone = 'emerald' | 'cyan' | 'amber' | 'orange' | 'rose' | 'violet' | 'surface';
@@ -104,6 +118,14 @@ export function OverviewPanel({
   const cycle = usePresidentialCycle();
   const midterm = useMidtermDrawdowns();
   const sp500Risk = useSP500RiskMetric();
+  const businessCycle = useBusinessCycle();
+  const inflation = useInflationDashboard();
+  const finConditions = useFinancialConditions();
+  const btcDd = useBtcDrawdown();
+  const fg = useFearGreed();
+  const flip = useFlippening();
+  const realRates = useRealRates();
+  const hashRate = useHashRate();
 
   // Helper to pick BTC risk tone
   const btcRisk = btc.data?.risk.latest.metric;
@@ -179,6 +201,93 @@ export function OverviewPanel({
   const ff = macro.data?.series.find((s) => s.id === 'DFF');
   const cpi = macro.data?.series.find((s) => s.id === 'CPILFESL');
   const m2 = macro.data?.series.find((s) => s.id === 'M2SL');
+
+  // Business cycle pulls
+  const sahm = businessCycle.data?.series.find((s) => s.id === 'SAHMREALTIME');
+  const recProb = businessCycle.data?.series.find((s) => s.id === 'RECPROUSM156N');
+
+  // Financial conditions — NFCI is the composite
+  const nfci = finConditions.data?.series.find((s) => s.id === 'NFCI');
+
+  // Inflation → headline CPI YoY
+  const headlineCpi = inflation.data?.series.find((s) => s.id === 'CPIAUCSL');
+  const walcl = inflation.data?.series.find((s) => s.id === 'WALCL');
+
+  // Fear & Greed tone
+  const fgVal = fg.data?.latest.value;
+  const fgTone: Tone = !fgVal
+    ? 'surface'
+    : fgVal < 25
+      ? 'emerald' // extreme fear = buy signal
+      : fgVal < 45
+        ? 'cyan'
+        : fgVal < 55
+          ? 'amber'
+          : fgVal < 75
+            ? 'orange'
+            : 'rose';
+
+  // BTC drawdown tone
+  const bDd = btcDd.data?.latest.drawdown;
+  const btcDdTone: Tone =
+    bDd == null
+      ? 'surface'
+      : bDd <= -0.5
+        ? 'rose'
+        : bDd <= -0.2
+          ? 'orange'
+          : bDd <= -0.05
+            ? 'amber'
+            : 'emerald';
+
+  // Sahm Rule tone (> 0.5 = recession trigger)
+  const sahmVal = sahm?.latest?.value;
+  const sahmTone: Tone =
+    sahmVal == null
+      ? 'surface'
+      : sahmVal >= 0.5
+        ? 'rose'
+        : sahmVal >= 0.3
+          ? 'orange'
+          : sahmVal >= 0.1
+            ? 'amber'
+            : 'emerald';
+
+  // Recession probability tone
+  const recVal = recProb?.latest?.value;
+  const recTone: Tone =
+    recVal == null
+      ? 'surface'
+      : recVal >= 0.7
+        ? 'rose'
+        : recVal >= 0.4
+          ? 'orange'
+          : recVal >= 0.2
+            ? 'amber'
+            : 'emerald';
+
+  // 10Y real rate tone (rising = restrictive)
+  const real10 = realRates.data?.latest.tenYear.real;
+  const real10Tone: Tone =
+    real10 == null
+      ? 'surface'
+      : real10 >= 2
+        ? 'rose'
+        : real10 >= 1
+          ? 'orange'
+          : real10 >= 0
+            ? 'amber'
+            : 'emerald';
+
+  // NFCI tone
+  const nfciVal = nfci?.latest?.value;
+  const nfciTone: Tone =
+    nfciVal == null ? 'surface' : nfciVal >= 0.5 ? 'rose' : nfciVal >= 0 ? 'amber' : 'emerald';
+
+  // Hash rate regime tone
+  const hashRegime = hashRate.data?.latest.regime;
+  const hashTone: Tone =
+    hashRegime === 'bullish' ? 'emerald' : hashRegime === 'bearish' ? 'rose' : 'surface';
 
   return (
     <div className="space-y-6">
@@ -344,6 +453,58 @@ export function OverviewPanel({
               loading={deriv.loading}
               onClick={() => onJumpTo('crypto')}
             />
+            <MetricCard
+              label="BTC Drawdown"
+              value={bDd != null ? `${(bDd * 100).toFixed(1)}%` : '—'}
+              detail={
+                btcDd.data
+                  ? `${btcDd.data.latest.daysSinceAth}d since ATH $${(btcDd.data.latest.ath / 1000).toFixed(0)}k`
+                  : undefined
+              }
+              tone={btcDdTone}
+              icon={TrendingDown}
+              loading={btcDd.loading}
+              onClick={() => onJumpTo('crypto')}
+            />
+            <MetricCard
+              label="Fear & Greed"
+              value={fgVal != null ? String(fgVal) : '—'}
+              detail={fg.data?.latest.classification}
+              tone={fgTone}
+              icon={Gauge}
+              loading={fg.loading}
+              onClick={() => onJumpTo('crypto')}
+            />
+            <MetricCard
+              label="Flippening"
+              value={
+                flip.data ? `${(flip.data.latest.progressToFlippening * 100).toFixed(1)}%` : '—'
+              }
+              detail={flip.data ? `ETH/BTC ${flip.data.latest.ratio.toFixed(5)}` : undefined}
+              tone="violet"
+              icon={Repeat}
+              loading={flip.loading}
+              onClick={() => onJumpTo('crypto')}
+            />
+            <MetricCard
+              label="Hash Ribbons"
+              value={
+                hashRegime === 'bullish'
+                  ? 'Expanding'
+                  : hashRegime === 'bearish'
+                    ? 'Capitulating'
+                    : '—'
+              }
+              detail={
+                hashRate.data
+                  ? `${(hashRate.data.latest.hashRate / 1_000_000).toFixed(0)} EH/s`
+                  : undefined
+              }
+              tone={hashTone}
+              icon={Cpu}
+              loading={hashRate.loading}
+              onClick={() => onJumpTo('crypto')}
+            />
           </div>
         </div>
 
@@ -409,6 +570,98 @@ export function OverviewPanel({
               tone={m2?.yoyChange != null && m2.yoyChange > 3 ? 'emerald' : 'cyan'}
               icon={Landmark}
               loading={macro.loading}
+              onClick={() => onJumpTo('macro')}
+            />
+            <MetricCard
+              label="Sahm Rule"
+              value={sahmVal != null ? sahmVal.toFixed(2) : '—'}
+              detail={
+                sahmVal != null
+                  ? sahmVal >= 0.5
+                    ? 'Recession signal'
+                    : sahmVal >= 0.3
+                      ? 'Warning'
+                      : sahmVal >= 0.1
+                        ? 'Elevated'
+                        : 'Calm'
+                  : undefined
+              }
+              tone={sahmTone}
+              icon={AlertTriangle}
+              loading={businessCycle.loading}
+              onClick={() => onJumpTo('macro')}
+            />
+            <MetricCard
+              label="Recession Prob"
+              value={recVal != null ? `${(recVal * 100).toFixed(0)}%` : '—'}
+              detail="Chauvet-Piger 12mo"
+              tone={recTone}
+              icon={AlertTriangle}
+              loading={businessCycle.loading}
+              onClick={() => onJumpTo('macro')}
+            />
+            <MetricCard
+              label="10Y Real Rate"
+              value={real10 != null ? `${real10.toFixed(2)}%` : '—'}
+              detail={
+                real10 != null
+                  ? real10 >= 2
+                    ? 'Restrictive'
+                    : real10 >= 1
+                      ? 'Tight'
+                      : real10 >= 0
+                        ? 'Neutral'
+                        : 'Accommodative'
+                  : undefined
+              }
+              tone={real10Tone}
+              icon={Percent}
+              loading={realRates.loading}
+              onClick={() => onJumpTo('macro')}
+            />
+            <MetricCard
+              label="NFCI"
+              value={nfciVal != null ? nfciVal.toFixed(2) : '—'}
+              detail={
+                nfciVal != null
+                  ? nfciVal >= 0.5
+                    ? 'Stressed'
+                    : nfciVal >= 0
+                      ? 'Tight'
+                      : 'Loose'
+                  : undefined
+              }
+              tone={nfciTone}
+              icon={ShieldAlert}
+              loading={finConditions.loading}
+              onClick={() => onJumpTo('macro')}
+            />
+            <MetricCard
+              label="Headline CPI YoY"
+              value={headlineCpi?.yoyChange != null ? `${headlineCpi.yoyChange.toFixed(2)}%` : '—'}
+              detail="All urban consumers"
+              tone={
+                headlineCpi?.yoyChange != null && headlineCpi.yoyChange < 2.5
+                  ? 'emerald'
+                  : headlineCpi?.yoyChange != null && headlineCpi.yoyChange < 4
+                    ? 'cyan'
+                    : 'amber'
+              }
+              icon={Flame}
+              loading={inflation.loading}
+              onClick={() => onJumpTo('macro')}
+            />
+            <MetricCard
+              label="Fed Balance Sheet"
+              value={walcl?.latest ? `$${(walcl.latest.value / 1_000_000).toFixed(2)}T` : '—'}
+              detail={
+                walcl?.yoyChange != null
+                  ? `${walcl.yoyChange >= 0 ? '+' : ''}${walcl.yoyChange.toFixed(2)}% YoY`
+                  : undefined
+              }
+              tone={walcl?.yoyChange != null && walcl.yoyChange >= 0 ? 'emerald' : 'amber'}
+              icon={Landmark}
+              loading={inflation.loading}
               onClick={() => onJumpTo('macro')}
             />
           </div>

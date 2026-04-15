@@ -251,6 +251,51 @@ export interface QuantSnapshot {
     flightToSafety: number;
     totalMarketCapUsd: number;
   };
+  /** BTC drawdown from its running all-time high (negative decimal). */
+  btcDrawdown?: {
+    drawdown: number;
+    daysSinceAth: number;
+    ath: number;
+  };
+  /** Crypto Fear & Greed Index (0-100). */
+  fearGreed?: {
+    value: number;
+    classification: string;
+    ma30: number;
+    ma90: number;
+  };
+  /** ETH/BTC price ratio + estimated progress to flippening (decimal). */
+  flippening?: {
+    ratio: number;
+    progressToFlippening: number;
+  };
+  /** Hash Ribbons regime + hash rate in EH/s. */
+  hashRibbons?: {
+    regime: 'bullish' | 'bearish' | 'unknown';
+    hashRateEhs: number;
+  };
+  /** Business-cycle recession signals. */
+  businessCycle?: {
+    sahm: number | null;
+    recessionProbability: number | null;
+  };
+  /** Headline inflation snapshot. */
+  inflation?: {
+    cpiYoy: number | null;
+    pceYoy: number | null;
+    walclTrillions: number | null;
+  };
+  /** 10Y and 5Y real interest rates. */
+  realRates?: {
+    tenYearReal: number;
+    fiveYearReal: number;
+    tenYearPercentile10y: number;
+  };
+  /** Chicago Fed National Financial Conditions Index (zero-centered). */
+  financialConditions?: {
+    nfci: number | null;
+    anfci: number | null;
+  };
 }
 
 interface QuantSnapshotsFile {
@@ -3574,6 +3619,155 @@ export async function refreshAllQuantData(): Promise<{
     logQuant.warn(`Sector rotation refresh failed: ${msg}`);
   }
 
+  // BTC Drawdown — pure compute on BTC history, reuses fetchBtcHistory
+  try {
+    const data = await computeBtcDrawdown();
+    cache.btcDrawdown = { fetchedAt: now, data };
+    snap.btcDrawdown = {
+      drawdown: data.latest.drawdown,
+      daysSinceAth: data.latest.daysSinceAth,
+      ath: data.latest.ath,
+    };
+    logQuant.info(
+      `BTC drawdown refreshed (DD=${(data.latest.drawdown * 100).toFixed(1)}%, ${data.latest.daysSinceAth}d since ATH)`
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    errors.push(`btcDrawdown: ${msg}`);
+    logQuant.warn(`BTC drawdown refresh failed: ${msg}`);
+  }
+
+  // Fear & Greed — alternative.me free API
+  try {
+    const data = await computeFearGreed();
+    cache.fearGreed = { fetchedAt: now, data };
+    snap.fearGreed = {
+      value: data.latest.value,
+      classification: data.latest.classification,
+      ma30: data.ma30,
+      ma90: data.ma90,
+    };
+    logQuant.info(`Fear & Greed refreshed (${data.latest.value} ${data.latest.classification})`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    errors.push(`fearGreed: ${msg}`);
+    logQuant.warn(`Fear & Greed refresh failed: ${msg}`);
+  }
+
+  // Flippening (ETH/BTC ratio)
+  try {
+    const data = await computeFlippening();
+    cache.flippening = { fetchedAt: now, data };
+    snap.flippening = {
+      ratio: data.latest.ratio,
+      progressToFlippening: data.latest.progressToFlippening,
+    };
+    logQuant.info(
+      `Flippening refreshed (ratio=${data.latest.ratio.toFixed(5)}, progress=${(data.latest.progressToFlippening * 100).toFixed(1)}%)`
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    errors.push(`flippening: ${msg}`);
+    logQuant.warn(`Flippening refresh failed: ${msg}`);
+  }
+
+  // Hash rate + Hash Ribbons
+  try {
+    const data = await computeHashRate();
+    cache.hashRate = { fetchedAt: now, data };
+    snap.hashRibbons = {
+      regime: data.latest.regime,
+      hashRateEhs: data.latest.hashRate / 1_000_000,
+    };
+    logQuant.info(
+      `Hash rate refreshed (${(data.latest.hashRate / 1_000_000).toFixed(0)} EH/s, ${data.latest.regime})`
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    errors.push(`hashRate: ${msg}`);
+    logQuant.warn(`Hash rate refresh failed: ${msg}`);
+  }
+
+  // All-FRED refreshes below need a FRED key — skip silently if missing.
+  try {
+    const settings = await loadSettings();
+    const fredKey = settings.fredApiKey;
+    if (fredKey) {
+      // Business Cycle — recession prob + Sahm Rule
+      try {
+        const data = await computeBusinessCycle(fredKey);
+        cache.businessCycle = { fetchedAt: now, data };
+        const sahm = data.series.find((s) => s.id === 'SAHMREALTIME');
+        const rec = data.series.find((s) => s.id === 'RECPROUSM156N');
+        snap.businessCycle = {
+          sahm: sahm?.latest?.value ?? null,
+          recessionProbability: rec?.latest?.value ?? null,
+        };
+        logQuant.info(
+          `Business cycle refreshed (Sahm=${sahm?.latest?.value?.toFixed(2) ?? '—'}, recProb=${rec?.latest?.value?.toFixed(2) ?? '—'})`
+        );
+      } catch (err) {
+        errors.push(`businessCycle: ${err instanceof Error ? err.message : String(err)}`);
+      }
+
+      // Inflation — headline CPI YoY, PCE YoY, WALCL
+      try {
+        const data = await computeInflationDashboard(fredKey);
+        cache.inflation = { fetchedAt: now, data };
+        const cpi = data.series.find((s) => s.id === 'CPIAUCSL');
+        const pce = data.series.find((s) => s.id === 'PCEPI');
+        const walcl = data.series.find((s) => s.id === 'WALCL');
+        snap.inflation = {
+          cpiYoy: cpi?.yoyChange ?? null,
+          pceYoy: pce?.yoyChange ?? null,
+          walclTrillions: walcl?.latest?.value != null ? walcl.latest.value / 1_000_000 : null,
+        };
+        logQuant.info(
+          `Inflation refreshed (CPI YoY=${cpi?.yoyChange?.toFixed(2) ?? '—'}%, WALCL=$${walcl?.latest?.value != null ? (walcl.latest.value / 1_000_000).toFixed(2) : '—'}T)`
+        );
+      } catch (err) {
+        errors.push(`inflation: ${err instanceof Error ? err.message : String(err)}`);
+      }
+
+      // Real interest rates
+      try {
+        const data = await computeRealRates(fredKey);
+        cache.realRates = { fetchedAt: now, data };
+        snap.realRates = {
+          tenYearReal: data.latest.tenYear.real,
+          fiveYearReal: data.latest.fiveYear.real,
+          tenYearPercentile10y: data.stats.tenYearPercentile10y,
+        };
+        logQuant.info(
+          `Real rates refreshed (10Y=${data.latest.tenYear.real.toFixed(2)}%, pct=${(data.stats.tenYearPercentile10y * 100).toFixed(0)}%)`
+        );
+      } catch (err) {
+        errors.push(`realRates: ${err instanceof Error ? err.message : String(err)}`);
+      }
+
+      // Financial conditions
+      try {
+        const data = await computeFinancialConditions(fredKey);
+        cache.financialConditions = { fetchedAt: now, data };
+        const nfci = data.series.find((s) => s.id === 'NFCI');
+        const anfci = data.series.find((s) => s.id === 'ANFCI');
+        snap.financialConditions = {
+          nfci: nfci?.latest?.value ?? null,
+          anfci: anfci?.latest?.value ?? null,
+        };
+        logQuant.info(
+          `Financial conditions refreshed (NFCI=${nfci?.latest?.value?.toFixed(2) ?? '—'})`
+        );
+      } catch (err) {
+        errors.push(`financialConditions: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    } else {
+      logQuant.info('FRED-backed refreshes skipped — no FRED API key configured');
+    }
+  } catch (err) {
+    logQuant.warn(`FRED settings load failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   await saveCache(cache);
 
   // Only write a snapshot if at least one metric refreshed successfully
@@ -3585,7 +3779,6 @@ export async function refreshAllQuantData(): Promise<{
     }
   }
 
-  // Only write a snapshot if at least one metric refreshed successfully
   return {
     btc: btcOk,
     spxCycle: spxCycleOk,
