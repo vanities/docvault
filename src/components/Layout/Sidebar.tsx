@@ -68,6 +68,7 @@ function EntitySwitcher({
   // Group entities
   const taxEntities = entities.filter((e) => e.type === 'tax' || !e.type);
   const docEntities = entities.filter((e) => e.type === 'docs');
+  const healthEntities = entities.filter((e) => e.type === 'health');
 
   return (
     <div ref={ref} className="relative">
@@ -132,6 +133,28 @@ function EntitySwitcher({
                 </span>
               </div>
               {docEntities.map((e) => (
+                <DropdownItem
+                  key={e.id}
+                  entity={e}
+                  isSelected={selectedEntity === e.id}
+                  onClick={() => {
+                    onSelect(e);
+                    setOpen(false);
+                  }}
+                />
+              ))}
+            </>
+          )}
+
+          {/* Health entities */}
+          {healthEntities.length > 0 && (
+            <>
+              <div className="px-3 pt-2.5 pb-1">
+                <span className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em]">
+                  Health
+                </span>
+              </div>
+              {healthEntities.map((e) => (
                 <DropdownItem
                   key={e.id}
                   entity={e}
