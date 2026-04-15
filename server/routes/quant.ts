@@ -31,6 +31,9 @@ const TTL = {
   fedPolicy: DAY_MS, // target range only moves on FOMC meetings
   businessCycle: DAY_MS, // monthly business cycle data
   inflation: DAY_MS, // monthly CPI/PCE/PPI releases
+  financialConditions: DAY_MS, // weekly Fed stress indices
+  btcDrawdown: 6 * 60 * 60 * 1000, // follows cached BTC prices
+  fearGreed: 60 * 60 * 1000, // alternative.me updates daily, 1h cache
 };
 
 interface CacheEntry<T> {
@@ -54,6 +57,9 @@ type QuantCache = {
   fedPolicy?: CacheEntry<FedPolicyResponse>;
   businessCycle?: CacheEntry<MacroDashboardResponse>;
   inflation?: CacheEntry<MacroDashboardResponse>;
+  financialConditions?: CacheEntry<MacroDashboardResponse>;
+  btcDrawdown?: CacheEntry<BtcDrawdownResponse>;
+  fearGreed?: CacheEntry<FearGreedResponse>;
 };
 
 async function loadCache(): Promise<QuantCache> {
@@ -162,6 +168,12 @@ const CACHE = {
   businessCycle: { maxAge: 2 * 3600, swr: 12 * 3600 },
   // Inflation dashboard — 2h + 12h SWR (CPI/PCE monthly, WALCL weekly).
   inflation: { maxAge: 2 * 3600, swr: 12 * 3600 },
+  // Financial conditions — 2h + 12h SWR (FRED weekly releases).
+  financialConditions: { maxAge: 2 * 3600, swr: 12 * 3600 },
+  // BTC drawdown — 1h + 6h SWR, derived from cached BTC history.
+  btcDrawdown: { maxAge: 3600, swr: 6 * 3600 },
+  // Fear & Greed — 30m + 6h SWR, alternative.me updates daily.
+  fearGreed: { maxAge: 30 * 60, swr: 6 * 3600 },
   // Snapshots grow one row per day; short cache so new snapshots appear fast.
   snapshots: { maxAge: 300, swr: 3600 },
 };
@@ -914,6 +926,75 @@ export interface AltcoinSeasonResponse {
   skipped: string[];
   fetchedAt: number;
   source: 'yahoo';
+}
+
+/** A running-drawdown point — price, the running ATH up to that date,
+ *  and the drawdown (0 = at ATH, −0.5 = 50% below ATH). */
+export interface DrawdownPoint {
+  t: number;
+  price: number;
+  ath: number;
+  drawdown: number;
+}
+
+/** Historical drawdown episode — one row per completed ATH-to-ATH cycle. */
+export interface DrawdownEpisode {
+  athDate: string;
+  athPrice: number;
+  /** The trough between this ATH and the next. */
+  troughDate: string;
+  troughPrice: number;
+  /** Max drawdown during this episode (negative decimal). */
+  maxDrawdown: number;
+  /** Days from ATH to trough. */
+  daysToTrough: number;
+  /** Days from trough back to a new ATH (null if still in drawdown). */
+  daysToRecovery: number | null;
+}
+
+export interface BtcDrawdownResponse {
+  series: DrawdownPoint[];
+  latest: {
+    date: string;
+    price: number;
+    ath: number;
+    /** Current drawdown (negative = below ATH). */
+    drawdown: number;
+    /** Days since the running ATH was set. */
+    daysSinceAth: number;
+  };
+  episodes: DrawdownEpisode[];
+  stats: {
+    /** Percentage of days BTC has spent ≥ 20% below ATH. */
+    pctDaysInBearZone: number;
+    /** All-time worst drawdown (negative decimal). */
+    worstDrawdown: number;
+    /** Average of each episode's max drawdown. */
+    avgBearDrawdown: number;
+    /** Average days from ATH to trough across episodes. */
+    avgDaysToTrough: number;
+  };
+  fetchedAt: number;
+  source: 'yahoo';
+}
+
+export interface FearGreedSample {
+  t: number;
+  /** 0-100 */
+  value: number;
+  classification: string;
+}
+
+export interface FearGreedResponse {
+  history: FearGreedSample[];
+  latest: FearGreedSample;
+  ma30: number;
+  ma90: number;
+  /** Most extreme readings in the last 365 days. */
+  highest365: FearGreedSample | null;
+  lowest365: FearGreedSample | null;
+  fetchedAt: number;
+  source: 'alternative.me';
 }
 
 /** Major non-stablecoin crypto tickers on Yahoo Finance. Curated by market
@@ -2263,6 +2344,42 @@ const INFLATION_SERIES: MacroSeriesSpec[] = [
   },
 ];
 
+const FINANCIAL_CONDITIONS_SERIES: MacroSeriesSpec[] = [
+  {
+    id: 'NFCI',
+    label: 'NFCI',
+    description:
+      'Chicago Fed National Financial Conditions Index. Zero-centered — positive = tighter than average.',
+    unit: '',
+    decimals: 2,
+    start: '1990-01-01',
+  },
+  {
+    id: 'ANFCI',
+    label: 'Adjusted NFCI',
+    description: 'NFCI stripped of macro/cyclical effects. Isolates pure financial-market stress.',
+    unit: '',
+    decimals: 2,
+    start: '1990-01-01',
+  },
+  {
+    id: 'STLFSI4',
+    label: 'St. Louis Financial Stress',
+    description: 'St. Louis Fed Financial Stress Index v4. 18 weekly data series combined.',
+    unit: '',
+    decimals: 2,
+    start: '1993-12-31',
+  },
+  {
+    id: 'KCFSI',
+    label: 'KC Financial Stress',
+    description: 'Kansas City Fed Financial Stress Index. Monthly, 11 components.',
+    unit: '',
+    decimals: 2,
+    start: '1990-01-01',
+  },
+];
+
 const JOBS_SERIES: MacroSeriesSpec[] = [
   {
     id: 'UNRATE',
@@ -2402,6 +2519,176 @@ async function computeBusinessCycle(apiKey: string): Promise<MacroDashboardRespo
 
 async function computeInflationDashboard(apiKey: string): Promise<MacroDashboardResponse> {
   return computeMacroSeriesList(apiKey, INFLATION_SERIES);
+}
+
+async function computeFinancialConditions(apiKey: string): Promise<MacroDashboardResponse> {
+  return computeMacroSeriesList(apiKey, FINANCIAL_CONDITIONS_SERIES);
+}
+
+// ---------------------------------------------------------------------------
+// BTC Drawdown from ATH — pure compute on cached BTC daily history. Tracks
+// the running ATH, current drawdown, days-since-ATH, and breaks the series
+// into completed bear episodes (ATH → trough → next ATH).
+// ---------------------------------------------------------------------------
+
+async function computeBtcDrawdown(): Promise<BtcDrawdownResponse> {
+  const prices = await fetchBtcHistory();
+  if (prices.length < 30) {
+    throw new Error(`Insufficient BTC history (got ${prices.length} points)`);
+  }
+
+  // Walk prices forward, tracking the running ATH.
+  const series: DrawdownPoint[] = [];
+  let ath = 0;
+  for (const p of prices) {
+    if (p.price > ath) ath = p.price;
+    series.push({
+      t: p.t,
+      price: p.price,
+      ath,
+      drawdown: (p.price - ath) / ath,
+    });
+  }
+
+  // Build bear episodes: each time a new ATH is reached, close the previous
+  // episode. The trough is the minimum-drawdown point between consecutive
+  // new-ATH events. We consider an "episode" anything with a peak-to-trough
+  // drawdown ≥ 10% to filter out noise.
+  const episodes: DrawdownEpisode[] = [];
+  let episodeAthIdx = 0;
+  let episodeTroughIdx = 0;
+  for (let i = 1; i < series.length; i++) {
+    if (series[i].price > series[episodeAthIdx].ath - 1e-9) {
+      // A new ATH was reached: the old episode just finished if it had any
+      // meaningful drawdown.
+      const troughDD = series[episodeTroughIdx].drawdown;
+      if (troughDD <= -0.1 && episodeTroughIdx > episodeAthIdx) {
+        episodes.push({
+          athDate: new Date(series[episodeAthIdx].t).toISOString().slice(0, 10),
+          athPrice: series[episodeAthIdx].ath,
+          troughDate: new Date(series[episodeTroughIdx].t).toISOString().slice(0, 10),
+          troughPrice: series[episodeTroughIdx].price,
+          maxDrawdown: troughDD,
+          daysToTrough: Math.round((series[episodeTroughIdx].t - series[episodeAthIdx].t) / DAY_MS),
+          daysToRecovery: Math.round((series[i].t - series[episodeTroughIdx].t) / DAY_MS),
+        });
+      }
+      episodeAthIdx = i;
+      episodeTroughIdx = i;
+    } else if (series[i].drawdown < series[episodeTroughIdx].drawdown) {
+      episodeTroughIdx = i;
+    }
+  }
+
+  // If we're still in a drawdown right now, record the in-progress episode.
+  if (episodeTroughIdx > episodeAthIdx && series[episodeTroughIdx].drawdown <= -0.1) {
+    episodes.push({
+      athDate: new Date(series[episodeAthIdx].t).toISOString().slice(0, 10),
+      athPrice: series[episodeAthIdx].ath,
+      troughDate: new Date(series[episodeTroughIdx].t).toISOString().slice(0, 10),
+      troughPrice: series[episodeTroughIdx].price,
+      maxDrawdown: series[episodeTroughIdx].drawdown,
+      daysToTrough: Math.round((series[episodeTroughIdx].t - series[episodeAthIdx].t) / DAY_MS),
+      daysToRecovery: null,
+    });
+  }
+
+  const latest = series[series.length - 1];
+  // Walk back to find when the current running ATH was first set.
+  let athFirstSeenIdx = series.length - 1;
+  for (let i = series.length - 1; i >= 0; i--) {
+    if (series[i].price >= latest.ath - 1e-9) athFirstSeenIdx = i;
+    if (series[i].t < latest.t - 10 * 365 * DAY_MS) break;
+  }
+
+  const daysInBear = series.filter((p) => p.drawdown <= -0.2).length;
+  const worstDrawdown = series.reduce((w, p) => Math.min(w, p.drawdown), 0);
+  const completedEpisodes = episodes.filter((e) => e.daysToRecovery != null);
+  const avgBearDrawdown =
+    completedEpisodes.length > 0
+      ? completedEpisodes.reduce((a, e) => a + e.maxDrawdown, 0) / completedEpisodes.length
+      : 0;
+  const avgDaysToTrough =
+    completedEpisodes.length > 0
+      ? completedEpisodes.reduce((a, e) => a + e.daysToTrough, 0) / completedEpisodes.length
+      : 0;
+
+  // Downsample the series to keep the response snappy — 1500 points is
+  // plenty for a line chart spanning 10+ years.
+  const downsampled = downsample(series, 1500);
+
+  return {
+    series: downsampled,
+    latest: {
+      date: new Date(latest.t).toISOString().slice(0, 10),
+      price: latest.price,
+      ath: latest.ath,
+      drawdown: latest.drawdown,
+      daysSinceAth: Math.round((latest.t - series[athFirstSeenIdx].t) / DAY_MS),
+    },
+    episodes,
+    stats: {
+      pctDaysInBearZone: daysInBear / series.length,
+      worstDrawdown,
+      avgBearDrawdown,
+      avgDaysToTrough,
+    },
+    fetchedAt: Date.now(),
+    source: 'yahoo',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Fear & Greed Index — alternative.me free JSON API, no key. Daily values
+// back to 2018-02-01. We cache 1h; the upstream only updates once per day.
+// ---------------------------------------------------------------------------
+
+async function computeFearGreed(): Promise<FearGreedResponse> {
+  const res = await fetch('https://api.alternative.me/fng/?limit=0&format=json');
+  if (!res.ok) {
+    throw new Error(`alternative.me fear/greed ${res.status}`);
+  }
+  const json = (await res.json()) as {
+    data?: { value: string; value_classification: string; timestamp: string }[];
+  };
+  const raw = json.data ?? [];
+  if (raw.length === 0) {
+    throw new Error('alternative.me returned empty data');
+  }
+  // API returns newest-first — reverse to oldest-first for plotting.
+  const history: FearGreedSample[] = raw
+    .map((r) => ({
+      t: Number(r.timestamp) * 1000,
+      value: Number(r.value),
+      classification: r.value_classification,
+    }))
+    .filter((s) => Number.isFinite(s.value) && Number.isFinite(s.t))
+    .sort((a, b) => a.t - b.t);
+
+  const latest = history[history.length - 1];
+  const last30 = history.slice(-30);
+  const last90 = history.slice(-90);
+  const ma30 = last30.reduce((a, s) => a + s.value, 0) / last30.length;
+  const ma90 = last90.reduce((a, s) => a + s.value, 0) / last90.length;
+
+  const last365 = history.filter((s) => s.t >= latest.t - 365 * DAY_MS);
+  const highest365 = last365.length
+    ? last365.reduce((best, s) => (s.value > best.value ? s : best), last365[0])
+    : null;
+  const lowest365 = last365.length
+    ? last365.reduce((worst, s) => (s.value < worst.value ? s : worst), last365[0])
+    : null;
+
+  return {
+    history,
+    latest,
+    ma30,
+    ma90,
+    highest365,
+    lowest365,
+    fetchedAt: Date.now(),
+    source: 'alternative.me',
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -3001,6 +3288,94 @@ export async function handleQuantRoutes(
         );
       }
       return jsonResponse({ error: `Inflation dashboard fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/macro/financial-conditions — NFCI / ANFCI / STLFSI4 / KCFSI
+  if (pathname === '/api/quant/macro/financial-conditions' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.financialConditions, TTL.financialConditions)) {
+      return cachedJsonResponse(
+        req,
+        { ...cache.financialConditions!.data, cached: true },
+        CACHE.financialConditions
+      );
+    }
+    try {
+      const settings = await loadSettings();
+      const fredKey = settings.fredApiKey;
+      if (!fredKey) {
+        return jsonResponse(
+          { error: 'FRED API key not configured. Add one in Settings → Quant.' },
+          400
+        );
+      }
+      const data = await computeFinancialConditions(fredKey);
+      cache.financialConditions = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.financialConditions);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.financialConditions) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.financialConditions.data, cached: true, stale: true, fetchError: msg },
+          CACHE.financialConditions
+        );
+      }
+      return jsonResponse({ error: `Financial conditions fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/btc/drawdown — running drawdown from ATH + episodes
+  if (pathname === '/api/quant/btc/drawdown' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.btcDrawdown, TTL.btcDrawdown)) {
+      return cachedJsonResponse(
+        req,
+        { ...cache.btcDrawdown!.data, cached: true },
+        CACHE.btcDrawdown
+      );
+    }
+    try {
+      const data = await computeBtcDrawdown();
+      cache.btcDrawdown = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.btcDrawdown);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.btcDrawdown) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.btcDrawdown.data, cached: true, stale: true, fetchError: msg },
+          CACHE.btcDrawdown
+        );
+      }
+      return jsonResponse({ error: `BTC drawdown fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/btc/fear-greed — alternative.me Crypto Fear & Greed Index
+  if (pathname === '/api/quant/btc/fear-greed' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.fearGreed, TTL.fearGreed)) {
+      return cachedJsonResponse(req, { ...cache.fearGreed!.data, cached: true }, CACHE.fearGreed);
+    }
+    try {
+      const data = await computeFearGreed();
+      cache.fearGreed = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.fearGreed);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.fearGreed) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.fearGreed.data, cached: true, stale: true, fetchError: msg },
+          CACHE.fearGreed
+        );
+      }
+      return jsonResponse({ error: `Fear & Greed fetch failed: ${msg}` }, 502);
     }
   }
 

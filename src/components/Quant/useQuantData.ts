@@ -484,6 +484,81 @@ export function useInflationDashboard() {
   return useQuantFetch<MacroDashboardData>(`${API_BASE}/quant/macro/inflation?_=${bump}`);
 }
 
+export function useFinancialConditions() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<MacroDashboardData>(
+    `${API_BASE}/quant/macro/financial-conditions?_=${bump}`
+  );
+}
+
+export interface DrawdownPointData {
+  t: number;
+  price: number;
+  ath: number;
+  drawdown: number;
+}
+
+export interface DrawdownEpisodeData {
+  athDate: string;
+  athPrice: number;
+  troughDate: string;
+  troughPrice: number;
+  maxDrawdown: number;
+  daysToTrough: number;
+  daysToRecovery: number | null;
+}
+
+export interface BtcDrawdownData {
+  series: DrawdownPointData[];
+  latest: {
+    date: string;
+    price: number;
+    ath: number;
+    drawdown: number;
+    daysSinceAth: number;
+  };
+  episodes: DrawdownEpisodeData[];
+  stats: {
+    pctDaysInBearZone: number;
+    worstDrawdown: number;
+    avgBearDrawdown: number;
+    avgDaysToTrough: number;
+  };
+  fetchedAt: number;
+  source: 'yahoo';
+  cached?: boolean;
+  stale?: boolean;
+}
+
+export function useBtcDrawdown() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<BtcDrawdownData>(`${API_BASE}/quant/btc/drawdown?_=${bump}`);
+}
+
+export interface FearGreedSampleData {
+  t: number;
+  value: number;
+  classification: string;
+}
+
+export interface FearGreedData {
+  history: FearGreedSampleData[];
+  latest: FearGreedSampleData;
+  ma30: number;
+  ma90: number;
+  highest365: FearGreedSampleData | null;
+  lowest365: FearGreedSampleData | null;
+  fetchedAt: number;
+  source: 'alternative.me';
+  cached?: boolean;
+  stale?: boolean;
+}
+
+export function useFearGreed() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<FearGreedData>(`${API_BASE}/quant/btc/fear-greed?_=${bump}`);
+}
+
 export interface FedRateChange {
   t: number;
   newRate: number;
