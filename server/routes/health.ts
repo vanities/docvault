@@ -1,4 +1,5 @@
-// Health route handlers — Apple Health exports, people management, parsed summaries.
+// Health route handlers — Apple Health exports, people management, parsed
+// summaries, segment snapshots.
 //
 // Routes:
 //   GET    /api/health/people                            — list people
@@ -6,29 +7,37 @@
 //   PATCH  /api/health/people/:id                        — rename/recolor
 //   DELETE /api/health/people/:id?mode=archive|delete    — archive or hard delete
 //   GET    /api/health/:personId/exports                 — list uploaded zips
-//   POST   /api/health/:personId/upload-export           — upload zip + auto-unarchive + auto-parse
+//   POST   /api/health/:personId/upload-export           — upload zip + auto-unarchive + auto-parse + compute snapshots
 //     (body: raw zip bytes, query: ?filename=export.zip)
-//   POST   /api/health/:personId/parse-export            — re-parse a previously uploaded zip
+//   POST   /api/health/:personId/parse-export            — re-parse a previously uploaded zip + recompute snapshots
 //     (body: { filename: string })
 //   GET    /api/health/:personId/summary/:filename       — read parsed summary for a zip
 //   GET    /api/health/:personId/summaries               — list all parsed summaries for a person
+//   GET    /api/health/:personId/snapshot/:segment       — read a single segment snapshot for this person's latest upload
+//     (segment = activity|heart|sleep|workouts|body|all)
 //
 // Storage:
 //   data/health/<personId>/exports/<name>.zip   — uploaded source exports (never deleted)
 //   data/health/<personId>/exports/<name>.xml   — decompressed XML (persistent cache, backed up)
-//   data/.docvault-health.json                  — people list + parsed summaries
+//   data/.docvault-health.json                  — people list + parsed summaries + computed snapshots
 //
-// Health is NOT an entity — it's a global sidebar section. People and summaries
-// live together in .docvault-health.json and are decoupled from the entity
-// system entirely. The decompressed XML is persisted next to the zip so
-// DocVault's data-dir backup captures both the compressed source and the
-// decompressed working copy, and re-parses skip the ~5-second unzip step.
+// Health is NOT an entity — it's a global sidebar section. People, summaries,
+// and snapshots all live together in .docvault-health.json and are decoupled
+// from the entity system entirely. The decompressed XML is persisted next to
+// the zip so DocVault's data-dir backup captures both the compressed source
+// and the decompressed working copy, and re-parses skip the ~5-second unzip
+// step.
 
 import { promises as fs } from 'fs';
 import path from 'path';
 import { jsonResponse, ensureDir, DATA_DIR } from '../data.js';
 import type { HealthPerson } from '../data.js';
 import { parseAppleHealthExport, type AppleHealthSummary } from '../parsers/apple-health.js';
+import {
+  computeSnapshots,
+  type PersonSnapshots,
+  type HealthSegment,
+} from '../parsers/apple-health-snapshots.js';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('Health');
@@ -45,6 +54,7 @@ interface HealthStore {
   people: HealthPerson[];
   // key format: "<personId>/<filename>"
   summaries: Record<string, AppleHealthSummary>;
+  snapshots: Record<string, PersonSnapshots>;
 }
 
 async function loadHealthStore(): Promise<HealthStore> {
@@ -55,9 +65,10 @@ async function loadHealthStore(): Promise<HealthStore> {
       version: 1,
       people: parsed.people ?? [],
       summaries: parsed.summaries ?? {},
+      snapshots: parsed.snapshots ?? {},
     };
   } catch {
-    return { version: 1, people: [], summaries: {} };
+    return { version: 1, people: [], summaries: {}, snapshots: {} };
   }
 }
 
@@ -278,15 +289,19 @@ export async function handleHealthRoutes(
     try {
       log.info(`Parsing ${personId}/${filename}`);
       const summary = await parseAppleHealthExport(zipPath);
+      const snapshots = computeSnapshots(summary, filename);
 
       // Persist to store
       const store = await loadHealthStore();
       store.summaries[storeKey(personId, filename)] = summary;
+      store.snapshots[storeKey(personId, filename)] = snapshots;
       await saveHealthStore(store);
 
       log.info(
         `Parsed ${personId}/${filename}: ${summary.recordCounts.totalRecords} records, ` +
-          `${summary.recordCounts.totalWorkouts} workouts in ${summary.parseDurationMs} ms`
+          `${summary.recordCounts.totalWorkouts} workouts in ${summary.parseDurationMs} ms; ` +
+          `snapshots: ${snapshots.activity.daily.length} activity days, ` +
+          `${snapshots.sleep.daily.length} sleep nights, ${snapshots.workouts.headline.totalWorkouts} workouts`
       );
 
       return jsonResponse({ ok: true, summary });
@@ -334,9 +349,13 @@ export async function handleHealthRoutes(
       log.info(`Unarchiving + parsing ${personId}/${filename}`);
       const summary = await parseAppleHealthExport(zipPath);
 
-      // 3. Persist summary to store
+      // 3. Compute segment snapshots (pure, ~8ms for 8 years of data)
+      const snapshots = computeSnapshots(summary, filename);
+
+      // 4. Persist summary + snapshots to store in a single write
       const store = await loadHealthStore();
       store.summaries[storeKey(personId, filename)] = summary;
+      store.snapshots[storeKey(personId, filename)] = snapshots;
       await saveHealthStore(store);
 
       log.info(
@@ -363,6 +382,73 @@ export async function handleHealthRoutes(
       return jsonResponse({ error: 'Summary not found' }, 404);
     }
     return jsonResponse({ summary });
+  }
+
+  // GET /api/health/:personId/snapshot/:segment — read one segment snapshot
+  //
+  // Returns the snapshot for the most recently parsed zip for this person.
+  // If the person has a parsed summary but no snapshot yet (e.g. older data
+  // from before snapshots were introduced), we backfill by computing the
+  // snapshot on demand and writing it to the store.
+  //
+  // `segment` is one of: activity, heart, sleep, workouts, body, all.
+  // Returning the single segment keeps typical responses small (20 KB – 700 KB
+  // instead of the full 1.3 MB when you pass "all").
+  const snapshotMatch = pathname.match(/^\/api\/health\/([^/]+)\/snapshot\/([^/]+)$/);
+  if (snapshotMatch && req.method === 'GET') {
+    const personId = snapshotMatch[1];
+    const segment = snapshotMatch[2];
+    const validSegments: HealthSegment[] = ['activity', 'heart', 'sleep', 'workouts', 'body'];
+    if (segment !== 'all' && !validSegments.includes(segment as HealthSegment)) {
+      return jsonResponse(
+        {
+          error: `Invalid segment "${segment}". Expected one of: ${validSegments.join(', ')}, all`,
+        },
+        400
+      );
+    }
+
+    await requirePerson(personId);
+
+    const store = await loadHealthStore();
+
+    // Find the most recent key for this person (by filename ordering — the
+    // upload flow writes "export.zip" per person, so typically one entry)
+    const prefix = `${personId}/`;
+    const keys = Object.keys(store.summaries).filter((k) => k.startsWith(prefix));
+    if (keys.length === 0) {
+      return jsonResponse({ error: 'No parsed summary for this person yet' }, 404);
+    }
+    // Pick the newest summary by `generatedAt` on the snapshot, or by filename
+    // as a tiebreaker.
+    keys.sort((a, b) => {
+      const sa = store.snapshots[a]?.generatedAt ?? '';
+      const sb = store.snapshots[b]?.generatedAt ?? '';
+      if (sa !== sb) return sb.localeCompare(sa);
+      return b.localeCompare(a);
+    });
+    const key = keys[0];
+
+    // Lazily backfill if the summary is present but the snapshot isn't
+    let snapshots = store.snapshots[key];
+    if (!snapshots) {
+      const summary = store.summaries[key];
+      const filename = key.slice(prefix.length);
+      log.info(`Backfilling snapshot for ${key}`);
+      snapshots = computeSnapshots(summary, filename);
+      store.snapshots[key] = snapshots;
+      await saveHealthStore(store);
+    }
+
+    if (segment === 'all') {
+      return jsonResponse({ snapshot: snapshots });
+    }
+    return jsonResponse({
+      segment,
+      generatedAt: snapshots.generatedAt,
+      sourceFilename: snapshots.sourceFilename,
+      data: snapshots[segment as HealthSegment],
+    });
   }
 
   // GET /api/health/:personId/summaries — list all parsed summaries for a person

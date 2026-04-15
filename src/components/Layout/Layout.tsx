@@ -25,6 +25,11 @@ import { EstimatedTaxView } from '../EstimatedTax/EstimatedTaxView';
 import { FederalTaxView } from '../FederalTax/FederalTaxView';
 import { QuantView } from '../Quant/QuantView';
 import { HealthView } from '../Health/HealthView';
+import { HealthActivityView } from '../Health/HealthActivityView';
+import { HealthHeartView } from '../Health/HealthHeartView';
+import { HealthSleepView } from '../Health/HealthSleepView';
+import { HealthWorkoutsView } from '../Health/HealthWorkoutsView';
+import { HealthBodyView } from '../Health/HealthBodyView';
 import { AddEntityModal } from '../Settings/AddEntityModal';
 import { SearchResultsView } from '../Search/SearchResultsView';
 
@@ -116,6 +121,16 @@ export function Layout() {
         return <QuantView />;
       case 'health':
         return <HealthView />;
+      case 'health-activity':
+        return <HealthActivityView />;
+      case 'health-heart':
+        return <HealthHeartView />;
+      case 'health-sleep':
+        return <HealthSleepView />;
+      case 'health-workouts':
+        return <HealthWorkoutsView />;
+      case 'health-body':
+        return <HealthBodyView />;
       default:
         return <TaxYearView />;
     }

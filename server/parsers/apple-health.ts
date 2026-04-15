@@ -43,10 +43,20 @@ export interface NumericAggregate {
   unit?: string;
 }
 
-/** Category-metric aggregation (e.g. SleepAnalysis values are strings). */
+/**
+ * Category-metric aggregation (e.g. SleepAnalysis values are strings).
+ *
+ * `count` / `valueCounts` track how many records landed on this day.
+ * `totalDurationMinutes` / `valueDurationMinutes` track how many minutes
+ * the category occupied (endDate − startDate, summed). Sleep stages use
+ * this to give "X hours of deep sleep last night" rather than "N sleep
+ * records last night."
+ */
 export interface CategoryAggregate {
   count: number;
   valueCounts: Record<string, number>;
+  totalDurationMinutes: number;
+  valueDurationMinutes: Record<string, number>;
 }
 
 /**
@@ -123,7 +133,7 @@ export interface AppleHealthSummary {
   parserVersion: string;
 }
 
-const PARSER_VERSION = '1.0.0';
+const PARSER_VERSION = '1.1.0'; // +category duration tracking, sleep end-date attribution
 
 // ---------------------------------------------------------------------------
 // Internal parse state
@@ -168,13 +178,25 @@ function extractDate(value: string | undefined): string | null {
   return slice;
 }
 
-/** HealthKit prefixes we strip for readability. */
+/**
+ * HealthKit prefixes we strip for readability.
+ *
+ * Order matters: more specific prefixes (like `HKCategoryValueSleepAnalysis`)
+ * must come before their parent (`HKCategoryValue`), so the strip function
+ * removes the longest matching prefix first.
+ */
 const HK_PREFIXES = [
   'HKQuantityTypeIdentifier',
   'HKCategoryTypeIdentifier',
+  'HKCharacteristicTypeIdentifier',
   'HKDataType',
   'HKWorkoutActivityType',
-  'HKCharacteristicTypeIdentifier',
+  // Category value prefixes — applied to `value` attributes on category
+  // records so sleep stages show up as "AsleepDeep" rather than
+  // "HKCategoryValueSleepAnalysisAsleepDeep".
+  'HKCategoryValueSleepAnalysis',
+  'HKCategoryValueAppleStandHour',
+  'HKCategoryValue',
 ];
 
 function stripPrefix(identifier: string): string {
@@ -236,14 +258,54 @@ function aggregateNumeric(
   if (!agg.unit && unit) agg.unit = unit;
 }
 
-function aggregateCategory(day: DailySummary, type: string, value: string): void {
+function aggregateCategory(
+  day: DailySummary,
+  type: string,
+  value: string,
+  durationMinutes: number
+): void {
   let agg = day.category[type];
   if (!agg) {
-    agg = { count: 0, valueCounts: {} };
+    agg = {
+      count: 0,
+      valueCounts: {},
+      totalDurationMinutes: 0,
+      valueDurationMinutes: {},
+    };
     day.category[type] = agg;
   }
   agg.count += 1;
   agg.valueCounts[value] = (agg.valueCounts[value] ?? 0) + 1;
+  if (durationMinutes > 0) {
+    agg.totalDurationMinutes += durationMinutes;
+    agg.valueDurationMinutes[value] = (agg.valueDurationMinutes[value] ?? 0) + durationMinutes;
+  }
+}
+
+/**
+ * Parse an Apple Health timestamp into milliseconds since epoch.
+ *
+ * Apple's export format is `"YYYY-MM-DD HH:MM:SS ±HHMM"` (space-separated
+ * fields, no colon in the timezone offset). Neither `new Date(s)` nor
+ * `Date.parse(s)` reliably accepts this format — Node/Bun mostly tolerate
+ * it but browsers don't, and the timezone offset without a colon silently
+ * returns NaN in some runtimes. So we parse it explicitly with a regex
+ * and build a canonical ISO string before handing off to `Date.parse`.
+ *
+ * Returns `null` for missing/unparseable inputs — callers must check.
+ */
+export function parseTimestamp(value: string | undefined): number | null {
+  if (!value) return null;
+  const match = value.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}) ([+-])(\d{2})(\d{2})$/);
+  if (!match) {
+    // Fall back to Date.parse for anything non-standard (rare)
+    const ms = Date.parse(value);
+    return Number.isFinite(ms) ? ms : null;
+  }
+  const [, date, time, sign, hh, mm] = match;
+  const iso = `${date}T${time}${sign}${hh}:${mm}`;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -285,13 +347,26 @@ function handleRecord(state: ParseState, attrs: SaxAttrs): void {
   const rawType = attrs.type;
   if (!rawType) return;
 
-  const date = extractDate(attrs.startDate);
+  const type = stripPrefix(rawType);
+  bumpTypeCount(state, type);
+
+  // Duration (endDate − startDate, in minutes). Missing end = 0-duration
+  // record, which is valid for instantaneous measurements like BodyMass.
+  const startMs = parseTimestamp(attrs.startDate);
+  const endMs = parseTimestamp(attrs.endDate);
+  const durationMinutes =
+    startMs !== null && endMs !== null && endMs >= startMs ? (endMs - startMs) / 60_000 : 0;
+
+  // Day attribution. For SleepAnalysis records specifically we use the END
+  // date: a session from 11 PM Monday to 7 AM Tuesday shows up under
+  // Tuesday, matching Apple's "last night's sleep" convention. Everything
+  // else uses the START date, same as before.
+  const dateSource =
+    type === 'SleepAnalysis' ? (attrs.endDate ?? attrs.startDate) : attrs.startDate;
+  const date = extractDate(dateSource);
   if (!date) return;
 
   updateDateRange(state, date);
-
-  const type = stripPrefix(rawType);
-  bumpTypeCount(state, type);
 
   const day = ensureDay(state, date);
   const rawValue = attrs.value;
@@ -302,10 +377,10 @@ function handleRecord(state: ParseState, attrs: SaxAttrs): void {
     aggregateNumeric(day, type, numericValue, attrs.unit);
   } else if (rawValue !== undefined) {
     // Non-numeric → treat as category
-    aggregateCategory(day, type, stripPrefix(rawValue));
+    aggregateCategory(day, type, stripPrefix(rawValue), durationMinutes);
   } else {
     // No value — some event-style records have none. Count as category occurrence.
-    aggregateCategory(day, type, '(present)');
+    aggregateCategory(day, type, '(present)', durationMinutes);
   }
 }
 

@@ -32,7 +32,12 @@ export type NavView =
   | 'property'
   | 'income'
   | 'quant'
-  | 'health';
+  | 'health'
+  | 'health-activity'
+  | 'health-heart'
+  | 'health-sleep'
+  | 'health-workouts'
+  | 'health-body';
 
 // Tab types for tax year view
 export type TabType = 'documents' | 'income' | 'expenses' | 'invoices' | 'statements';
@@ -68,6 +73,13 @@ interface AppContextValue {
   // View state
   activeView: NavView;
   setActiveView: (view: NavView) => void;
+
+  // Health: currently-selected person for segment views (Activity, Heart,
+  // Sleep, Workouts, Body). Null means "no person chosen yet" — segment
+  // views show a person picker in that case. Persisted in localStorage so
+  // it survives page reloads.
+  selectedHealthPersonId: string | null;
+  setSelectedHealthPersonId: (id: string | null) => void;
 
   // Tab state (for tax-year view)
   activeTab: TabType;
@@ -225,6 +237,11 @@ export function AppProvider({ children }: AppProviderProps) {
     'income',
     'quant',
     'health',
+    'health-activity',
+    'health-heart',
+    'health-sleep',
+    'health-workouts',
+    'health-body',
   ]);
 
   const viewFromHash = (): NavView | null => {
@@ -280,6 +297,22 @@ export function AppProvider({ children }: AppProviderProps) {
     const saved = localStorage.getItem('docvault-entity');
     return (saved as Entity) || 'personal';
   });
+
+  // Health "which person am I looking at" state, persisted in localStorage.
+  // Null means "no selection" — segment views render a picker in that case.
+  // Cleared when the user archives/deletes the selected person.
+  const [selectedHealthPersonId, setSelectedHealthPersonIdState] = useState<string | null>(() => {
+    return localStorage.getItem('docvault-health-person') || null;
+  });
+
+  const setSelectedHealthPersonId = useCallback((id: string | null) => {
+    setSelectedHealthPersonIdState(id);
+    if (id) {
+      localStorage.setItem('docvault-health-person', id);
+    } else {
+      localStorage.removeItem('docvault-health-person');
+    }
+  }, []);
 
   // Year state with localStorage persistence
   const [selectedYear, setSelectedYearState] = useState(() => {
@@ -433,6 +466,10 @@ export function AppProvider({ children }: AppProviderProps) {
     // View
     activeView,
     setActiveView,
+
+    // Health person selection
+    selectedHealthPersonId,
+    setSelectedHealthPersonId,
 
     // Tab
     activeTab,
