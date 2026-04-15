@@ -30,6 +30,7 @@ const TTL = {
   jobsDashboard: DAY_MS, // FRED labor data updates monthly
   fedPolicy: DAY_MS, // target range only moves on FOMC meetings
   businessCycle: DAY_MS, // monthly business cycle data
+  inflation: DAY_MS, // monthly CPI/PCE/PPI releases
 };
 
 interface CacheEntry<T> {
@@ -52,6 +53,7 @@ type QuantCache = {
   jobsDashboard?: CacheEntry<MacroDashboardResponse>;
   fedPolicy?: CacheEntry<FedPolicyResponse>;
   businessCycle?: CacheEntry<MacroDashboardResponse>;
+  inflation?: CacheEntry<MacroDashboardResponse>;
 };
 
 async function loadCache(): Promise<QuantCache> {
@@ -158,6 +160,8 @@ const CACHE = {
   fedPolicy: { maxAge: 2 * 3600, swr: 24 * 3600 },
   // Business cycle — 2h + 12h SWR (monthly releases, staggered).
   businessCycle: { maxAge: 2 * 3600, swr: 12 * 3600 },
+  // Inflation dashboard — 2h + 12h SWR (CPI/PCE monthly, WALCL weekly).
+  inflation: { maxAge: 2 * 3600, swr: 12 * 3600 },
   // Snapshots grow one row per day; short cache so new snapshots appear fast.
   snapshots: { maxAge: 300, swr: 3600 },
 };
@@ -2204,6 +2208,61 @@ const BUSINESS_CYCLE_SERIES: MacroSeriesSpec[] = [
   },
 ];
 
+const INFLATION_SERIES: MacroSeriesSpec[] = [
+  {
+    id: 'CPIAUCSL',
+    label: 'Headline CPI',
+    description: 'Consumer Price Index, all urban consumers. Index 1982-84 = 100.',
+    unit: '',
+    decimals: 1,
+    start: '1990-01-01',
+  },
+  {
+    id: 'PCEPI',
+    label: 'PCE Price Index',
+    description:
+      "Personal Consumption Expenditures price index — the Fed's preferred inflation gauge.",
+    unit: '',
+    decimals: 2,
+    start: '1990-01-01',
+  },
+  {
+    id: 'PPIACO',
+    label: 'PPI All Commodities',
+    description: 'Producer Price Index for all commodities. Leading indicator for CPI.',
+    unit: '',
+    decimals: 1,
+    start: '1990-01-01',
+  },
+  {
+    id: 'T5YIE',
+    label: '5Y Breakeven Inflation',
+    description:
+      'Market-implied 5-year inflation expectations (5Y Treasury yield minus 5Y TIPS yield).',
+    unit: '%',
+    decimals: 2,
+    start: '2003-01-01',
+  },
+  {
+    id: 'WALCL',
+    label: 'Fed Balance Sheet',
+    description:
+      'Total assets of the Federal Reserve (millions USD). Expanding = QE, shrinking = QT.',
+    unit: 'M',
+    decimals: 0,
+    start: '2003-01-01',
+  },
+  {
+    id: 'DCOILWTICO',
+    label: 'WTI Crude Oil',
+    description:
+      'West Texas Intermediate crude oil spot price (USD/barrel). Feeds directly into headline CPI.',
+    unit: '',
+    decimals: 2,
+    start: '2000-01-01',
+  },
+];
+
 const JOBS_SERIES: MacroSeriesSpec[] = [
   {
     id: 'UNRATE',
@@ -2339,6 +2398,10 @@ async function computeJobsDashboard(apiKey: string): Promise<MacroDashboardRespo
 
 async function computeBusinessCycle(apiKey: string): Promise<MacroDashboardResponse> {
   return computeMacroSeriesList(apiKey, BUSINESS_CYCLE_SERIES);
+}
+
+async function computeInflationDashboard(apiKey: string): Promise<MacroDashboardResponse> {
+  return computeMacroSeriesList(apiKey, INFLATION_SERIES);
 }
 
 // ---------------------------------------------------------------------------
@@ -2906,6 +2969,38 @@ export async function handleQuantRoutes(
         );
       }
       return jsonResponse({ error: `Business cycle fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/macro/inflation — CPI / PCE / PPI / breakevens / WALCL / oil
+  if (pathname === '/api/quant/macro/inflation' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.inflation, TTL.inflation)) {
+      return cachedJsonResponse(req, { ...cache.inflation!.data, cached: true }, CACHE.inflation);
+    }
+    try {
+      const settings = await loadSettings();
+      const fredKey = settings.fredApiKey;
+      if (!fredKey) {
+        return jsonResponse(
+          { error: 'FRED API key not configured. Add one in Settings → Quant.' },
+          400
+        );
+      }
+      const data = await computeInflationDashboard(fredKey);
+      cache.inflation = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.inflation);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.inflation) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.inflation.data, cached: true, stale: true, fetchError: msg },
+          CACHE.inflation
+        );
+      }
+      return jsonResponse({ error: `Inflation dashboard fetch failed: ${msg}` }, 502);
     }
   }
 

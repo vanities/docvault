@@ -24,6 +24,7 @@ import { MacroDashboardChart } from './MacroDashboardChart';
 import { JobsDashboardChart } from './JobsDashboardChart';
 import { FedPolicyChart } from './FedPolicyChart';
 import { BusinessCycleChart } from './BusinessCycleChart';
+import { InflationDashboardChart } from './InflationDashboardChart';
 import { useQuantRefresh } from './useQuantData';
 
 /** Four top-level tabs — an overview snapshot plus Cowen's 3 categories. */
@@ -277,6 +278,13 @@ export function QuantView() {
             <MacroDashboardChart />
           </ChartGroup>
 
+          <ChartGroup
+            title="Inflation & Fed Balance Sheet"
+            subtitle="CPI, PCE, PPI, breakevens, WALCL, WTI"
+          >
+            <InflationDashboardChart />
+          </ChartGroup>
+
           <ChartGroup title="Fed Policy" subtitle="effective + target range + rate change events">
             <FedPolicyChart />
           </ChartGroup>
@@ -293,11 +301,10 @@ export function QuantView() {
             <EmptyCategoryCard
               category="macro"
               comingSoon={[
-                'Fed Balance Sheet (WALCL)',
                 'ISM Manufacturing PMI',
                 '2Y Treasury (DGS2)',
-                'Headline CPI YoY',
                 'Real interest rates',
+                'NFCI (financial conditions)',
               ]}
             />
           </ChartGroup>
