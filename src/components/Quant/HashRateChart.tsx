@@ -146,6 +146,35 @@ export function HashRateChart() {
         ? 'Miner Capitulation'
         : 'Unknown';
 
+  // When bullish, the interesting number is "days since the recovery signal
+  // fired". When bearish, the recovery is stale — what you actually want to
+  // see is "days since this capitulation started" (how deep we are into the
+  // current dip). We pull that from the most recent event of the right type.
+  const regimeSubtext = (() => {
+    if (!data) return '';
+    if (regime === 'bullish') {
+      const lastRecovery = [...data.events].reverse().find((e) => e.type === 'recovery');
+      if (lastRecovery) {
+        const days = Math.round(
+          (new Date(data.latest.date).getTime() - lastRecovery.t) / 86_400_000
+        );
+        return `${days}d since recovery signal`;
+      }
+      return 'No recovery signal tracked';
+    }
+    if (regime === 'bearish') {
+      const lastCapitulation = [...data.events].reverse().find((e) => e.type === 'capitulation');
+      if (lastCapitulation) {
+        const days = Math.round(
+          (new Date(data.latest.date).getTime() - lastCapitulation.t) / 86_400_000
+        );
+        return `${days}d in capitulation`;
+      }
+      return 'Ribbon inverted — no event tracked';
+    }
+    return 'Insufficient history';
+  })();
+
   return (
     <Card variant="glass" className="p-6">
       <div className="mb-4">
@@ -213,11 +242,7 @@ export function HashRateChart() {
                 Regime
               </div>
               <div className={`text-[16px] font-bold mt-0.5 ${regimeColor}`}>{regimeLabel}</div>
-              <div className="text-[11px] text-surface-700">
-                {data.latest.daysSinceRecovery != null
-                  ? `${data.latest.daysSinceRecovery}d since last recovery`
-                  : 'No recovery signal tracked'}
-              </div>
+              <div className="text-[11px] text-surface-700">{regimeSubtext}</div>
             </div>
           </div>
 
