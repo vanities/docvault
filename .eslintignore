@@ -1,0 +1,6 @@
+# shadcn/ui primitives — scaffolded by the shadcn CLI. We treat these as
+# third-party code even though they live in our tree, because shadcn's
+# recommended workflow is to re-run the CLI and overwrite them when upstream
+# updates. Running our lint rules on them (especially react-refresh's
+# only-export-components) fights patterns shadcn deliberately uses.
+src/components/ui/**
