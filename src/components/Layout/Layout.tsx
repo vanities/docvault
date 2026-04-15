@@ -24,6 +24,7 @@ import { Solo401kView } from '../Solo401k/Solo401kView';
 import { EstimatedTaxView } from '../EstimatedTax/EstimatedTaxView';
 import { FederalTaxView } from '../FederalTax/FederalTaxView';
 import { QuantView } from '../Quant/QuantView';
+import { HealthView } from '../Health/HealthView';
 import { AddEntityModal } from '../Settings/AddEntityModal';
 import { SearchResultsView } from '../Search/SearchResultsView';
 
@@ -113,6 +114,8 @@ export function Layout() {
         return <IncomeView />;
       case 'quant':
         return <QuantView />;
+      case 'health':
+        return <HealthView />;
       default:
         return <TaxYearView />;
     }

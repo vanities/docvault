@@ -29,13 +29,26 @@ export const PORT = 3005;
 // Types
 // ============================================================================
 
+export interface HealthPerson {
+  id: string;
+  name: string;
+  color?: string;
+  icon?: string;
+  createdAt: string;
+  archivedAt?: string | null;
+}
+
 export interface EntityConfig {
   id: string;
   name: string;
   color: string;
   path: string;
+  icon?: string;
+  type?: 'tax' | 'docs' | 'health';
   description?: string;
   metadata?: Record<string, string | string[]>;
+  // Only populated for type === 'health'
+  people?: HealthPerson[];
 }
 
 export interface Config {

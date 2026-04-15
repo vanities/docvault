@@ -31,7 +31,8 @@ export type NavView =
   | 'gold'
   | 'property'
   | 'income'
-  | 'quant';
+  | 'quant'
+  | 'health';
 
 // Tab types for tax year view
 export type TabType = 'documents' | 'income' | 'expenses' | 'invoices' | 'statements';

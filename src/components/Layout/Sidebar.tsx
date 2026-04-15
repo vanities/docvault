@@ -28,6 +28,7 @@ import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import type { SyncStatus } from '../../types';
 import { SIDEBAR_COLOR_MAP as COLOR_MAP, renderEntityIcon } from '../../utils/entityDisplay';
 import { Button } from '@/components/ui/button';
+import { HealthSidebarSection } from './HealthSidebarSection';
 
 // ---------------------------------------------------------------------------
 // Entity Dropdown Switcher
@@ -369,8 +370,9 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
   } = useAppContext();
 
   const entityConfig = entities.find((e) => e.id === selectedEntity);
+  const isHealthEntity = entityConfig?.type === 'health';
   const isDocEntity = entityConfig?.type === 'docs';
-  const isTaxEntity = !isDocEntity;
+  const isTaxEntity = !isDocEntity && !isHealthEntity;
   const showTnTax =
     entityConfig?.type === 'tax' && selectedEntity !== 'all' && selectedEntity !== 'personal';
   const showSolo401k = selectedEntity === 'all';
@@ -378,6 +380,11 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
   const handleEntitySelect = (entity: EntityConfig) => {
     setSelectedEntity(entity.id);
     // Smart view defaulting
+    if (entity.type === 'health') {
+      setActiveView('health');
+      onClose?.();
+      return;
+    }
     if (activeView === 'sales' || activeView === 'mileage' || activeView === 'income') {
       onClose?.();
       return;
@@ -387,6 +394,9 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
     } else if (activeView === 'tn-tax' && entity.id === 'personal') {
       setActiveView('tax-year');
     } else if (activeView === 'settings') {
+      setActiveView(entity.type === 'docs' ? 'all-files' : 'tax-year');
+    } else if (activeView === 'health') {
+      // Coming from Health to a non-health entity — pick a sensible default
       setActiveView(entity.type === 'docs' ? 'all-files' : 'tax-year');
     } else if (entity.type === 'docs' && activeView !== 'all-files') {
       setActiveView('all-files');
@@ -437,233 +447,249 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
 
       {/* Navigation */}
       <div className="flex-1 overflow-y-auto px-3 pb-3">
-        {/* Tax section — hidden for docs-type entities */}
-        {isTaxEntity && (
-          <div className="mb-4">
-            <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
-              Tax
-            </h3>
-            <div className="space-y-0.5">
-              <NavButton
-                view="tax-year"
-                label="Tax Year"
-                icon={Calendar}
-                activeColor="bg-accent-500/10"
-                activeTextColor="text-accent-400"
-                glow="glow-emerald"
-                activeView={activeView}
-                isProcessing={isProcessing}
-                onClick={handleViewClick}
-              />
+        {/* Health section — shown only when a health-type entity is selected.
+            Replaces Tax/Files/Finance/Markets so the sidebar stays focused on
+            Health-specific navigation. */}
+        {isHealthEntity && (
+          <HealthSidebarSection
+            activeView={activeView}
+            isProcessing={isProcessing}
+            onClick={handleViewClick}
+          />
+        )}
 
-              {/* Year picker — separate row */}
-              <YearPicker
-                selectedYear={selectedYear}
-                availableYears={availableYears}
-                isProcessing={isProcessing}
-                onYearChange={handleYearChange}
-              />
+        {/* Tax/Files/Finance/Markets — hidden for health-type entities */}
+        {!isHealthEntity && (
+          <>
+            {/* Tax section — hidden for docs-type entities */}
+            {isTaxEntity && (
+              <div className="mb-4">
+                <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
+                  Tax
+                </h3>
+                <div className="space-y-0.5">
+                  <NavButton
+                    view="tax-year"
+                    label="Tax Year"
+                    icon={Calendar}
+                    activeColor="bg-accent-500/10"
+                    activeTextColor="text-accent-400"
+                    glow="glow-emerald"
+                    activeView={activeView}
+                    isProcessing={isProcessing}
+                    onClick={handleViewClick}
+                  />
 
-              <NavButton
-                view="federal-tax"
-                label="Federal Taxes"
-                icon={Scale}
-                activeColor="bg-violet-500/10"
-                activeTextColor="text-violet-400"
-                activeView={activeView}
-                isProcessing={isProcessing}
-                onClick={handleViewClick}
-              />
-              {showTnTax && (
+                  {/* Year picker — separate row */}
+                  <YearPicker
+                    selectedYear={selectedYear}
+                    availableYears={availableYears}
+                    isProcessing={isProcessing}
+                    onYearChange={handleYearChange}
+                  />
+
+                  <NavButton
+                    view="federal-tax"
+                    label="Federal Taxes"
+                    icon={Scale}
+                    activeColor="bg-violet-500/10"
+                    activeTextColor="text-violet-400"
+                    activeView={activeView}
+                    isProcessing={isProcessing}
+                    onClick={handleViewClick}
+                  />
+                  {showTnTax && (
+                    <NavButton
+                      view="tn-tax"
+                      label="TN Tax"
+                      icon={Calculator}
+                      activeColor="bg-amber-500/10"
+                      activeTextColor="text-amber-500"
+                      activeView={activeView}
+                      isProcessing={isProcessing}
+                      onClick={handleViewClick}
+                    />
+                  )}
+                  {selectedEntity === 'all' && (
+                    <NavButton
+                      view="estimated-tax"
+                      label="Est. Taxes"
+                      icon={Receipt}
+                      activeColor="bg-red-500/10"
+                      activeTextColor="text-red-400"
+                      activeView={activeView}
+                      isProcessing={isProcessing}
+                      onClick={handleViewClick}
+                    />
+                  )}
+                  {showSolo401k && (
+                    <NavButton
+                      view="solo-401k"
+                      label="Solo 401(k)"
+                      icon={Landmark}
+                      activeColor="bg-blue-500/10"
+                      activeTextColor="text-blue-400"
+                      activeView={activeView}
+                      isProcessing={isProcessing}
+                      onClick={handleViewClick}
+                    />
+                  )}
+                  <NavButton
+                    view="sales"
+                    label="Sales"
+                    icon={DollarSign}
+                    activeColor="bg-emerald-500/10"
+                    activeTextColor="text-emerald-400"
+                    activeView={activeView}
+                    isProcessing={isProcessing}
+                    onClick={handleViewClick}
+                  />
+                  <NavButton
+                    view="mileage"
+                    label="Mileage"
+                    icon={Car}
+                    activeColor="bg-sky-500/10"
+                    activeTextColor="text-sky-400"
+                    activeView={activeView}
+                    isProcessing={isProcessing}
+                    onClick={handleViewClick}
+                  />
+                  <NavButton
+                    view="income"
+                    label="Income"
+                    icon={Receipt}
+                    activeColor="bg-teal-500/10"
+                    activeTextColor="text-teal-400"
+                    activeView={activeView}
+                    isProcessing={isProcessing}
+                    onClick={handleViewClick}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Files section */}
+            <div className="mb-4">
+              <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
+                Files
+              </h3>
+              <div className="space-y-0.5">
+                {isTaxEntity && (
+                  <NavButton
+                    view="business-docs"
+                    label="Business Docs"
+                    icon={FolderOpen}
+                    activeColor="bg-accent-500/10"
+                    activeTextColor="text-accent-400"
+                    glow="glow-emerald"
+                    activeView={activeView}
+                    isProcessing={isProcessing}
+                    onClick={handleViewClick}
+                  />
+                )}
                 <NavButton
-                  view="tn-tax"
-                  label="TN Tax"
-                  icon={Calculator}
+                  view="all-files"
+                  label="All Files"
+                  icon={Files}
+                  activeColor="bg-accent-500/10"
+                  activeTextColor="text-accent-400"
+                  glow="glow-emerald"
+                  activeView={activeView}
+                  isProcessing={isProcessing}
+                  onClick={handleViewClick}
+                />
+              </div>
+            </div>
+
+            {/* Finance section */}
+            <div className="mb-4">
+              <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
+                Finance
+              </h3>
+              <div className="space-y-0.5">
+                <NavButton
+                  view="portfolio"
+                  label="Portfolio"
+                  icon={PieChart}
+                  activeColor="bg-violet-500/10"
+                  activeTextColor="text-violet-500"
+                  activeView={activeView}
+                  isProcessing={isProcessing}
+                  onClick={handleViewClick}
+                />
+                <NavButton
+                  view="crypto"
+                  label="Crypto"
+                  icon={Bitcoin}
                   activeColor="bg-amber-500/10"
                   activeTextColor="text-amber-500"
                   activeView={activeView}
                   isProcessing={isProcessing}
                   onClick={handleViewClick}
                 />
-              )}
-              {selectedEntity === 'all' && (
                 <NavButton
-                  view="estimated-tax"
-                  label="Est. Taxes"
-                  icon={Receipt}
-                  activeColor="bg-red-500/10"
-                  activeTextColor="text-red-400"
-                  activeView={activeView}
-                  isProcessing={isProcessing}
-                  onClick={handleViewClick}
-                />
-              )}
-              {showSolo401k && (
-                <NavButton
-                  view="solo-401k"
-                  label="Solo 401(k)"
+                  view="brokers"
+                  label="Brokers"
                   icon={Landmark}
-                  activeColor="bg-blue-500/10"
-                  activeTextColor="text-blue-400"
+                  activeColor="bg-accent-500/10"
+                  activeTextColor="text-accent-400"
                   activeView={activeView}
                   isProcessing={isProcessing}
                   onClick={handleViewClick}
                 />
-              )}
-              <NavButton
-                view="sales"
-                label="Sales"
-                icon={DollarSign}
-                activeColor="bg-emerald-500/10"
-                activeTextColor="text-emerald-400"
-                activeView={activeView}
-                isProcessing={isProcessing}
-                onClick={handleViewClick}
-              />
-              <NavButton
-                view="mileage"
-                label="Mileage"
-                icon={Car}
-                activeColor="bg-sky-500/10"
-                activeTextColor="text-sky-400"
-                activeView={activeView}
-                isProcessing={isProcessing}
-                onClick={handleViewClick}
-              />
-              <NavButton
-                view="income"
-                label="Income"
-                icon={Receipt}
-                activeColor="bg-teal-500/10"
-                activeTextColor="text-teal-400"
-                activeView={activeView}
-                isProcessing={isProcessing}
-                onClick={handleViewClick}
-              />
+                <NavButton
+                  view="banks"
+                  label="Banks"
+                  icon={Building2}
+                  activeColor="bg-blue-500/10"
+                  activeTextColor="text-blue-500"
+                  activeView={activeView}
+                  isProcessing={isProcessing}
+                  onClick={handleViewClick}
+                />
+                <NavButton
+                  view="gold"
+                  label="Gold"
+                  icon={Coins}
+                  activeColor="bg-yellow-500/10"
+                  activeTextColor="text-yellow-500"
+                  activeView={activeView}
+                  isProcessing={isProcessing}
+                  onClick={handleViewClick}
+                />
+                <NavButton
+                  view="property"
+                  label="Property"
+                  icon={MapPin}
+                  activeColor="bg-emerald-500/10"
+                  activeTextColor="text-emerald-500"
+                  activeView={activeView}
+                  isProcessing={isProcessing}
+                  onClick={handleViewClick}
+                />
+              </div>
             </div>
-          </div>
+
+            {/* Markets section */}
+            <div className="mb-4">
+              <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
+                Markets
+              </h3>
+              <div className="space-y-0.5">
+                <NavButton
+                  view="quant"
+                  label="Quant"
+                  icon={LineChart}
+                  activeColor="bg-cyan-500/10"
+                  activeTextColor="text-cyan-400"
+                  activeView={activeView}
+                  isProcessing={isProcessing}
+                  onClick={handleViewClick}
+                />
+              </div>
+            </div>
+          </>
         )}
-
-        {/* Files section */}
-        <div className="mb-4">
-          <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
-            Files
-          </h3>
-          <div className="space-y-0.5">
-            {isTaxEntity && (
-              <NavButton
-                view="business-docs"
-                label="Business Docs"
-                icon={FolderOpen}
-                activeColor="bg-accent-500/10"
-                activeTextColor="text-accent-400"
-                glow="glow-emerald"
-                activeView={activeView}
-                isProcessing={isProcessing}
-                onClick={handleViewClick}
-              />
-            )}
-            <NavButton
-              view="all-files"
-              label="All Files"
-              icon={Files}
-              activeColor="bg-accent-500/10"
-              activeTextColor="text-accent-400"
-              glow="glow-emerald"
-              activeView={activeView}
-              isProcessing={isProcessing}
-              onClick={handleViewClick}
-            />
-          </div>
-        </div>
-
-        {/* Finance section */}
-        <div className="mb-4">
-          <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
-            Finance
-          </h3>
-          <div className="space-y-0.5">
-            <NavButton
-              view="portfolio"
-              label="Portfolio"
-              icon={PieChart}
-              activeColor="bg-violet-500/10"
-              activeTextColor="text-violet-500"
-              activeView={activeView}
-              isProcessing={isProcessing}
-              onClick={handleViewClick}
-            />
-            <NavButton
-              view="crypto"
-              label="Crypto"
-              icon={Bitcoin}
-              activeColor="bg-amber-500/10"
-              activeTextColor="text-amber-500"
-              activeView={activeView}
-              isProcessing={isProcessing}
-              onClick={handleViewClick}
-            />
-            <NavButton
-              view="brokers"
-              label="Brokers"
-              icon={Landmark}
-              activeColor="bg-accent-500/10"
-              activeTextColor="text-accent-400"
-              activeView={activeView}
-              isProcessing={isProcessing}
-              onClick={handleViewClick}
-            />
-            <NavButton
-              view="banks"
-              label="Banks"
-              icon={Building2}
-              activeColor="bg-blue-500/10"
-              activeTextColor="text-blue-500"
-              activeView={activeView}
-              isProcessing={isProcessing}
-              onClick={handleViewClick}
-            />
-            <NavButton
-              view="gold"
-              label="Gold"
-              icon={Coins}
-              activeColor="bg-yellow-500/10"
-              activeTextColor="text-yellow-500"
-              activeView={activeView}
-              isProcessing={isProcessing}
-              onClick={handleViewClick}
-            />
-            <NavButton
-              view="property"
-              label="Property"
-              icon={MapPin}
-              activeColor="bg-emerald-500/10"
-              activeTextColor="text-emerald-500"
-              activeView={activeView}
-              isProcessing={isProcessing}
-              onClick={handleViewClick}
-            />
-          </div>
-        </div>
-
-        {/* Markets section */}
-        <div className="mb-4">
-          <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
-            Markets
-          </h3>
-          <div className="space-y-0.5">
-            <NavButton
-              view="quant"
-              label="Quant"
-              icon={LineChart}
-              activeColor="bg-cyan-500/10"
-              activeTextColor="text-cyan-400"
-              activeView={activeView}
-              isProcessing={isProcessing}
-              onClick={handleViewClick}
-            />
-          </div>
-        </div>
       </div>
 
       {/* Footer — Sync + Settings */}
