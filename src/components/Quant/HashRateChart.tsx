@@ -23,34 +23,44 @@ export function HashRateChart() {
 
   const option = useMemo(() => {
     if (!data) return null;
-    // Convert TH/s → EH/s for readable y-axis on modern data.
+    // Convert TH/s → EH/s for a readable y-axis on modern data. No rounding
+    // (earlier iterations used toFixed(2) and collapsed 2013-era 0.000005
+    // EH/s values to 0, which broke the log axis).
     const toEh = (th: number) => th / 1_000_000;
-    const hash = data.series
-      .filter((p) => p.hashRate > 0)
-      .map((p) => [p.t, Number(toEh(p.hashRate).toFixed(2))]);
-    const sma30 = data.series
-      .filter((p) => p.sma30 != null)
-      .map((p) => [p.t, Number(toEh(p.sma30 as number).toFixed(2))]);
-    const sma60 = data.series
-      .filter((p) => p.sma60 != null)
-      .map((p) => [p.t, Number(toEh(p.sma60 as number).toFixed(2))]);
 
-    // Only show recent events to keep the chart readable.
+    // Trim to the last 8 years so we don't fight a 7-order-of-magnitude
+    // span on the log axis. Hash Ribbons is a short/medium-term signal
+    // anyway — the modern era is what you care about.
     const latestT = data.series.length > 0 ? data.series[data.series.length - 1].t : Date.now();
-    const cutoff = latestT - 5 * 365 * 24 * 60 * 60 * 1000;
-    const recentEvents = data.events.filter((e) => e.t >= cutoff);
-    const markPoints = recentEvents.map((e) => ({
-      name: e.type,
+    const windowStart = latestT - 8 * 365 * 24 * 60 * 60 * 1000;
+    const recent = data.series.filter((p) => p.t >= windowStart);
+
+    const hash = recent.filter((p) => p.hashRate > 0).map((p) => [p.t, toEh(p.hashRate)]);
+    const sma30 = recent
+      .filter((p) => p.sma30 != null && (p.sma30 as number) > 0)
+      .map((p) => [p.t, toEh(p.sma30 as number)]);
+    const sma60 = recent
+      .filter((p) => p.sma60 != null && (p.sma60 as number) > 0)
+      .map((p) => [p.t, toEh(p.sma60 as number)]);
+
+    // Hash ribbon events within the trimmed window — we render them as
+    // vertical `markLine`s so we don't need a y-value (log scale can't
+    // handle y=0 markers).
+    const recentEvents = data.events.filter((e) => e.t >= windowStart);
+    const eventLines = recentEvents.map((e) => ({
       xAxis: e.t,
-      yAxis: 0,
-      itemStyle: { color: e.type === 'recovery' ? '#10b981' : '#f43f5e' },
+      lineStyle: {
+        color: e.type === 'recovery' ? 'rgba(16, 185, 129, 0.6)' : 'rgba(244, 63, 94, 0.6)',
+        width: 1,
+        type: 'dashed' as const,
+      },
       label: {
         show: true,
+        position: 'end' as const,
         color: e.type === 'recovery' ? '#10b981' : '#f43f5e',
         fontSize: 9,
         formatter: e.type === 'recovery' ? '↑' : '↓',
       },
-      symbolSize: 18,
     }));
 
     return {
@@ -61,14 +71,14 @@ export function HashRateChart() {
         borderColor: 'rgba(100, 116, 139, 0.3)',
         textStyle: { color: '#e2e8f0', fontSize: 12 },
         axisPointer: { type: 'cross', crossStyle: { color: 'rgba(14, 165, 233, 0.5)' } },
-        valueFormatter: (v: number) => `${v.toFixed(2)} EH/s`,
+        valueFormatter: (v: number) => `${v.toFixed(1)} EH/s`,
       },
       legend: {
         data: ['Hash Rate', '30d SMA', '60d SMA'],
         textStyle: { color: '#94a3b8', fontSize: 11 },
         top: 4,
       },
-      grid: { top: 40, bottom: 40, left: 60, right: 20 },
+      grid: { top: 40, bottom: 40, left: 65, right: 20 },
       xAxis: {
         type: 'time',
         axisLine: { lineStyle: { color: 'rgba(100, 116, 139, 0.3)' } },
@@ -80,7 +90,15 @@ export function HashRateChart() {
         name: 'EH/s',
         nameTextStyle: { color: '#94a3b8', fontSize: 11 },
         axisLine: { lineStyle: { color: 'rgba(100, 116, 139, 0.3)' } },
-        axisLabel: { color: '#94a3b8', fontSize: 10 },
+        axisLabel: {
+          color: '#94a3b8',
+          fontSize: 10,
+          formatter: (v: number) => {
+            if (v >= 1000) return `${(v / 1000).toFixed(1)}k`;
+            if (v >= 1) return v.toFixed(0);
+            return v.toFixed(2);
+          },
+        },
         splitLine: { lineStyle: { color: 'rgba(100, 116, 139, 0.1)' } },
       },
       series: [
@@ -99,13 +117,8 @@ export function HashRateChart() {
           lineStyle: { color: '#06b6d4', width: 1.5 },
           itemStyle: { color: '#06b6d4' },
           symbol: 'none',
-          markPoint:
-            markPoints.length > 0
-              ? {
-                  symbol: 'circle',
-                  data: markPoints,
-                }
-              : undefined,
+          markLine:
+            eventLines.length > 0 ? { silent: true, symbol: 'none', data: eventLines } : undefined,
         },
         {
           name: '60d SMA',
