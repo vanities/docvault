@@ -559,6 +559,104 @@ export function useFearGreed() {
   return useQuantFetch<FearGreedData>(`${API_BASE}/quant/btc/fear-greed?_=${bump}`);
 }
 
+export interface FlippeningPointData {
+  t: number;
+  ethPrice: number;
+  btcPrice: number;
+  ratio: number;
+}
+
+export interface FlippeningData {
+  series: FlippeningPointData[];
+  latest: {
+    date: string;
+    ethPrice: number;
+    btcPrice: number;
+    ratio: number;
+    progressToFlippening: number;
+  };
+  stats: {
+    ratioAth: number;
+    ratioAthDate: string;
+    ratio90dReturn: number;
+    ratio365dReturn: number;
+  };
+  fetchedAt: number;
+  source: 'yahoo';
+  cached?: boolean;
+  stale?: boolean;
+}
+
+export function useFlippening() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<FlippeningData>(`${API_BASE}/quant/btc/flippening?_=${bump}`);
+}
+
+export interface RealRatePointData {
+  t: number;
+  nominal: number;
+  breakeven: number;
+  real: number;
+}
+
+export interface RealRatesData {
+  ten: RealRatePointData[];
+  five: RealRatePointData[];
+  latest: {
+    date: string;
+    tenYear: { nominal: number; breakeven: number; real: number };
+    fiveYear: { nominal: number; breakeven: number; real: number };
+  };
+  stats: {
+    tenYearPercentile10y: number;
+    tenYearChange52w: number;
+  };
+  fetchedAt: number;
+  source: 'fred';
+  cached?: boolean;
+  stale?: boolean;
+}
+
+export function useRealRates() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<RealRatesData>(`${API_BASE}/quant/macro/real-rates?_=${bump}`);
+}
+
+export interface HashRatePointData {
+  t: number;
+  hashRate: number;
+  sma30: number | null;
+  sma60: number | null;
+}
+
+export interface HashRibbonEventData {
+  t: number;
+  date: string;
+  type: 'capitulation' | 'recovery';
+}
+
+export interface HashRateData {
+  series: HashRatePointData[];
+  events: HashRibbonEventData[];
+  latest: {
+    date: string;
+    hashRate: number;
+    sma30: number | null;
+    sma60: number | null;
+    regime: 'bullish' | 'bearish' | 'unknown';
+    daysSinceRecovery: number | null;
+  };
+  fetchedAt: number;
+  source: 'blockchain.info';
+  cached?: boolean;
+  stale?: boolean;
+}
+
+export function useHashRate() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<HashRateData>(`${API_BASE}/quant/btc/hash-rate?_=${bump}`);
+}
+
 export interface FedRateChange {
   t: number;
   newRate: number;
