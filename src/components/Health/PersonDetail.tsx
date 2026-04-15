@@ -1,23 +1,25 @@
-// Person detail — upload exports, trigger parsing, view parsed summaries.
+// Person detail — upload exports and view parsed summaries.
 //
 // Flow:
-//   1. List exports already uploaded (with "Parsed" badge if summary exists).
-//   2. Upload new export.zip → lands in data/health/<personId>/exports/.
-//   3. Click "Parse" → server streams the XML and stores a summary.
-//   4. When parsed, the DailySummaryTable is rendered below.
+//   1. Upload export.zip → server auto-unarchives + auto-parses in one call
+//   2. Parsed summary comes back in the upload response, immediately rendered
+//   3. Summary card, DailySummaryTable, and WorkoutList are the three views
+//   4. Previously uploaded exports show in a list; clicking one loads its summary
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Upload,
   FileArchive,
   CheckCircle2,
-  PlayCircle,
+  RefreshCcw,
   Loader2,
   AlertCircle,
   RefreshCw,
   CalendarRange,
   Activity,
   TrendingUp,
+  Smartphone,
+  Share2,
 } from 'lucide-react';
 import type { HealthPerson } from '../../hooks/useFileSystemServer';
 import { Card } from '@/components/ui/card';
@@ -53,9 +55,7 @@ export function PersonDetail({ person }: PersonDetailProps) {
   const [exports, setExports] = useState<ExportInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [parsingFilename, setParsingFilename] = useState<string | null>(null);
+  const [busyMessage, setBusyMessage] = useState<string | null>(null);
   const [summary, setSummary] = useState<AppleHealthSummary | null>(null);
   const [selectedFilename, setSelectedFilename] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -77,7 +77,6 @@ export function PersonDetail({ person }: PersonDetailProps) {
           const s = await api.getSummary(person.id, latest.filename);
           setSummary(s);
         } catch (e) {
-          // Summary load failure is non-fatal — user can click Parse
           console.warn('Summary load failed:', e);
         }
       }
@@ -93,38 +92,49 @@ export function PersonDetail({ person }: PersonDetailProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [person.id]);
 
+  /** One-shot upload + unarchive + parse. The server does everything. */
   const handleUpload = async (file: File) => {
-    setUploading(true);
-    setUploadProgress(0);
     setError(null);
+    setBusyMessage(`Uploading ${file.name}…`);
     try {
-      // fetch() doesn't give upload progress without XMLHttpRequest, and
-      // that's more complexity than this flow needs for now. Just show
-      // an indeterminate spinner.
-      await api.uploadExport(person.id, file);
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setUploading(false);
-      setUploadProgress(0);
-    }
-  };
-
-  const handleParse = async (filename: string) => {
-    setParsingFilename(filename);
-    setError(null);
-    try {
-      const s = await api.parseExport(person.id, filename);
-      setSummary(s);
-      setSelectedFilename(filename);
-      // Refresh to update the "parsed" flags on the list
+      // Transition message to "parsing" after a brief moment so the user sees
+      // the flow happening. This is a UI-only cue; the server is already
+      // streaming as soon as the upload body lands.
+      const parsingTimer = setTimeout(
+        () => setBusyMessage(`Unarchiving and parsing ${file.name}…`),
+        1500
+      );
+      try {
+        const { filename, summary: s } = await api.uploadAndParseExport(person.id, file);
+        setSummary(s);
+        setSelectedFilename(filename);
+      } finally {
+        clearTimeout(parsingTimer);
+      }
+      // Refresh the exports list so the new row + "parsed" badge appear
       const list = await api.listExports(person.id);
       setExports(list);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setParsingFilename(null);
+      setBusyMessage(null);
+    }
+  };
+
+  /** Re-parse a previously uploaded zip (e.g. after a parser version bump). */
+  const handleReParse = async (filename: string) => {
+    setError(null);
+    setBusyMessage(`Re-parsing ${filename}…`);
+    try {
+      const s = await api.parseExport(person.id, filename);
+      setSummary(s);
+      setSelectedFilename(filename);
+      const list = await api.listExports(person.id);
+      setExports(list);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyMessage(null);
     }
   };
 
@@ -139,6 +149,9 @@ export function PersonDetail({ person }: PersonDetailProps) {
     }
   };
 
+  const hasExports = exports.length > 0;
+  const busy = busyMessage !== null;
+
   return (
     <div className="space-y-6">
       {error && (
@@ -150,72 +163,77 @@ export function PersonDetail({ person }: PersonDetailProps) {
         </Card>
       )}
 
-      {/* Upload zone */}
-      <Card className="p-5">
-        <div className="flex items-start gap-4">
-          <div className="w-10 h-10 rounded-lg bg-accent-500/10 flex items-center justify-center flex-shrink-0">
-            <Upload className="w-5 h-5 text-accent-400" />
-          </div>
-          <div className="flex-1">
-            <h3 className="font-medium text-surface-950">Upload Apple Health Export</h3>
-            <p className="text-xs text-surface-600 mt-1">
-              On your iPhone: Health → profile picture → Export All Health Data → share the{' '}
-              <code className="font-mono text-surface-800">export.zip</code> to this machine, then
-              upload it here.
-            </p>
-            <div className="mt-3 flex items-center gap-3">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".zip,application/zip"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void handleUpload(file);
-                  if (e.target) e.target.value = '';
-                }}
-              />
-              <Button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-                className="gap-2"
-              >
-                {uploading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Uploading{uploadProgress ? ` ${uploadProgress}%` : '…'}
-                  </>
-                ) : (
-                  <>
-                    <FileArchive className="w-4 h-4" />
-                    Choose export.zip
-                  </>
-                )}
-              </Button>
+      {/* Busy notice — shown during upload + unarchive + parse */}
+      {busy && (
+        <Card className="p-5 border-accent-500/30 bg-accent-500/5">
+          <div className="flex items-center gap-3 text-accent-400">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <div>
+              <div className="font-medium">{busyMessage}</div>
+              <div className="text-xs text-surface-700 mt-0.5">
+                The ~1 GB XML is streamed through the parser — usually 30–60 seconds total.
+              </div>
             </div>
           </div>
-        </div>
-      </Card>
+        </Card>
+      )}
 
-      {/* Exports list */}
-      <Card className="p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-medium text-surface-950">Exports</h3>
-          <Button variant="ghost" size="sm" onClick={() => void refresh()} disabled={loading}>
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
-        </div>
-        {loading ? (
-          <div className="text-sm text-surface-600 py-4">Loading…</div>
-        ) : exports.length === 0 ? (
-          <div className="text-sm text-surface-600 py-4">
-            No exports uploaded yet. Upload an <code>export.zip</code> above to get started.
+      {/* Empty state for a person with no exports yet — step-by-step guide */}
+      {!loading && !hasExports && !busy && <PersonEmptyState onUpload={handleUpload} />}
+
+      {/* Upload zone — shown when there's already at least one export */}
+      {hasExports && (
+        <Card className="p-5">
+          <div className="flex items-start gap-4">
+            <div className="w-10 h-10 rounded-lg bg-accent-500/10 flex items-center justify-center flex-shrink-0">
+              <Upload className="w-5 h-5 text-accent-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-medium text-surface-950">Upload another export</h3>
+              <p className="text-xs text-surface-600 mt-1">
+                Newer exports from the Health app always contain the full history. Uploading
+                replaces the previous parsed summary for this person.
+              </p>
+              <div className="mt-3">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".zip,application/zip"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void handleUpload(file);
+                    if (e.target) e.target.value = '';
+                  }}
+                />
+                <Button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={busy}
+                  className="gap-2"
+                >
+                  <FileArchive className="w-4 h-4" />
+                  Choose export.zip
+                </Button>
+              </div>
+            </div>
           </div>
-        ) : (
+        </Card>
+      )}
+
+      {/* Exports list — hidden when empty, included in the empty state card instead */}
+      {hasExports && (
+        <Card className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-medium text-surface-950">
+              Exports ({exports.length.toLocaleString()})
+            </h3>
+            <Button variant="ghost" size="sm" onClick={() => void refresh()} disabled={loading}>
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
           <div className="space-y-1.5">
             {exports.map((exp) => {
               const isSelected = exp.filename === selectedFilename;
-              const isParsing = exp.filename === parsingFilename;
               return (
                 <div
                   key={exp.filename}
@@ -235,55 +253,33 @@ export function PersonDetail({ person }: PersonDetailProps) {
                   </div>
                   {exp.parsed && (
                     <button
+                      type="button"
                       className="text-emerald-400 flex items-center gap-1 text-xs hover:underline"
                       onClick={() => void handleSelectSummary(exp.filename)}
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      Parsed
+                      View
                     </button>
                   )}
                   <Button
-                    variant={exp.parsed ? 'ghost' : 'default'}
+                    variant="ghost"
                     size="sm"
-                    onClick={() => void handleParse(exp.filename)}
-                    disabled={isParsing}
+                    onClick={() => void handleReParse(exp.filename)}
+                    disabled={busy}
                     className="gap-1.5"
+                    title="Re-run the parser against this zip (e.g. after a parser version bump)"
                   >
-                    {isParsing ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        Parsing…
-                      </>
-                    ) : (
-                      <>
-                        <PlayCircle className="w-3.5 h-3.5" />
-                        {exp.parsed ? 'Re-parse' : 'Parse'}
-                      </>
-                    )}
+                    <RefreshCcw className="w-3.5 h-3.5" />
+                    Re-parse
                   </Button>
                 </div>
               );
             })}
           </div>
-        )}
-      </Card>
-
-      {/* Parse-in-progress notice */}
-      {parsingFilename && (
-        <Card className="p-5 border-accent-500/30 bg-accent-500/5">
-          <div className="flex items-center gap-3 text-accent-400">
-            <Loader2 className="w-5 h-5 animate-spin" />
-            <div>
-              <div className="font-medium">Parsing {parsingFilename}…</div>
-              <div className="text-xs text-surface-700 mt-0.5">
-                Streaming ~1 GB of XML, this usually takes 20–60 seconds.
-              </div>
-            </div>
-          </div>
         </Card>
       )}
 
-      {/* Summary — stats + daily table */}
+      {/* Summary — stats + daily table + workouts */}
       {summary && (
         <>
           <SummaryStats summary={summary} />
@@ -292,6 +288,87 @@ export function PersonDetail({ person }: PersonDetailProps) {
         </>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Per-person empty state — step-by-step guide + upload button
+// ---------------------------------------------------------------------------
+function PersonEmptyState({ onUpload }: { onUpload: (file: File) => Promise<void> }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  return (
+    <Card className="p-6 sm:p-8">
+      <h2 className="font-display text-xl italic text-surface-950 mb-2">
+        Upload their Apple Health export
+      </h2>
+      <p className="text-sm text-surface-700 mb-5 leading-relaxed">
+        Drop in an <code className="font-mono text-[11px]">export.zip</code> and DocVault will
+        unarchive it, run the parser across every metric, and show the daily dashboard. The
+        decompressed XML is kept on disk so your data-dir backup captures it automatically.
+      </p>
+      <ol className="space-y-3 mb-6">
+        <EmptyStep
+          icon={Smartphone}
+          number={1}
+          title="On your iPhone, open the Health app"
+          detail="Tap your profile picture in the top-right corner."
+        />
+        <EmptyStep
+          icon={Share2}
+          number={2}
+          title="Tap “Export All Health Data”"
+          detail="Scroll to the bottom of your profile page. The export takes a few minutes to build — give it time, it's a large file."
+        />
+        <EmptyStep
+          icon={Upload}
+          number={3}
+          title="Share the zip here, then upload it"
+          detail="AirDrop to this machine (or save to Files / iCloud Drive), then click the button below."
+        />
+      </ol>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".zip,application/zip"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void onUpload(f);
+          if (e.target) e.target.value = '';
+        }}
+      />
+      <Button onClick={() => inputRef.current?.click()} size="lg" className="gap-2">
+        <FileArchive className="w-4 h-4" />
+        Choose export.zip
+      </Button>
+    </Card>
+  );
+}
+
+function EmptyStep({
+  icon: Icon,
+  number,
+  title,
+  detail,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  number: number;
+  title: string;
+  detail: string;
+}) {
+  return (
+    <li className="flex gap-3">
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-rose-500/10 flex items-center justify-center">
+        <Icon className="w-4 h-4 text-rose-400" />
+      </div>
+      <div className="flex-1">
+        <div className="font-medium text-sm text-surface-950">
+          <span className="text-rose-400 mr-2">{number}.</span>
+          {title}
+        </div>
+        <div className="text-xs text-surface-700 mt-0.5 leading-relaxed">{detail}</div>
+      </div>
+    </li>
   );
 }
 

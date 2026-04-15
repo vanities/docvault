@@ -4,7 +4,8 @@ import { isBusinessDocumentType, getBusinessSubfolder, EXPENSE_FOLDER_MAP } from
 import { API_BASE } from '../constants';
 import { mapFileToDocument } from '../utils/mapFileToDocument';
 
-// Health "person" — a labeled data bucket inside the Health entity.
+// Health "person" — a labeled data bucket for Apple Health exports.
+// Lives in .docvault-health.json on the server, NOT in the entity config.
 // NOT tied to auth; just a way to group uploads (e.g. per household member).
 export interface HealthPerson {
   id: string;
@@ -22,11 +23,9 @@ export interface EntityConfig {
   color: string;
   path: string;
   icon?: string;
-  type?: 'tax' | 'docs' | 'health';
+  type?: 'tax' | 'docs';
   description?: string;
   metadata?: Record<string, string | string[]>;
-  // Only populated for type === 'health'
-  people?: HealthPerson[];
 }
 
 // File info from the server

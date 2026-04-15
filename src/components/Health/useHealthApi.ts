@@ -97,32 +97,36 @@ export function useHealthApi() {
 
   /**
    * Upload an Apple Health export.zip to a person's exports directory.
-   * Uses the generic /api/upload endpoint so we reuse existing auth + path
-   * resolution. Returns the server-assigned filename (may differ from input
-   * if the server deduped with _2 / _3 suffixes).
+   * Upload + unarchive + parse in a single round-trip. The zip is saved
+   * server-side, extracted to `<basename>.xml` next to it (persistent cache,
+   * backed up with the data dir), then streamed through the parser. The full
+   * summary comes back in the response so the UI can render immediately
+   * without a follow-up fetch.
    */
-  const uploadExport = useCallback(
-    async (personId: string, file: File): Promise<{ filename: string; path: string }> => {
-      const filename = file.name;
-      const destPath = `${personId}/exports`;
-      const qs = new URLSearchParams({
-        entity: 'health',
-        path: destPath,
-        filename,
-      });
-      const res = await fetch(`${API_BASE}/upload?${qs.toString()}`, {
+  const uploadAndParseExport = useCallback(
+    async (
+      personId: string,
+      file: File
+    ): Promise<{ filename: string; summary: AppleHealthSummary }> => {
+      const qs = new URLSearchParams({ filename: file.name });
+      const res = await fetch(`${API_BASE}/health/${personId}/upload-export?${qs.toString()}`, {
         method: 'POST',
         body: file,
       });
       if (!res.ok) {
-        const err = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(err.error ?? `Upload failed: ${res.status}`);
+        const err = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          details?: string;
+        };
+        const msg = err.error ?? `Upload+parse failed: ${res.status}`;
+        throw new Error(err.details ? `${msg}: ${err.details}` : msg);
       }
-      const body = (await res.json()) as { ok: true; path: string };
-      // The server returns the relative path like "person-abc123/exports/export.zip"
-      // Extract just the filename (handles the dedupe suffix case)
-      const finalFilename = body.path.split('/').pop() ?? filename;
-      return { filename: finalFilename, path: body.path };
+      const body = (await res.json()) as {
+        ok: true;
+        filename: string;
+        summary: AppleHealthSummary;
+      };
+      return { filename: body.filename, summary: body.summary };
     },
     []
   );
@@ -135,6 +139,6 @@ export function useHealthApi() {
     listExports,
     parseExport,
     getSummary,
-    uploadExport,
+    uploadAndParseExport,
   };
 }

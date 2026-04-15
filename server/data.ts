@@ -29,6 +29,9 @@ export const PORT = 3005;
 // Types
 // ============================================================================
 
+// Health "person" — a labeled data bucket for Apple Health exports.
+// Stored in .docvault-health.json, NOT in the entity config. Health is a
+// global sidebar section, not an entity.
 export interface HealthPerson {
   id: string;
   name: string;
@@ -44,11 +47,9 @@ export interface EntityConfig {
   color: string;
   path: string;
   icon?: string;
-  type?: 'tax' | 'docs' | 'health';
+  type?: 'tax' | 'docs';
   description?: string;
   metadata?: Record<string, string | string[]>;
-  // Only populated for type === 'health'
-  people?: HealthPerson[];
 }
 
 export interface Config {

@@ -504,36 +504,37 @@ function buildSummary(state: ParseState, parseDurationMs: number): AppleHealthSu
 }
 
 // ---------------------------------------------------------------------------
-// Public entry point
+// Public entry points
 // ---------------------------------------------------------------------------
 
 /**
- * Parse an Apple Health `export.zip` into an aggregated summary.
+ * Extract `apple_health_export/export.xml` from a zip and write it to `xmlPath`.
+ * Skips all other members (CDA, workout routes, ECGs, attachments). Safe to
+ * call repeatedly — if `xmlPath` already exists and is newer than `zipPath`,
+ * this is a no-op and returns `false`.
  *
- * The zip is expected to contain `apple_health_export/export.xml`. Other
- * members (CDA, workout routes, ECGs, clinical records, attachments) are
- * ignored in v1.
- *
- * @param zipPath  Absolute path to the `export.zip`.
- * @param tmpDir   Directory in which to write the transient decompressed XML
- *                 (~1 GB peak for a full 8-year export). Callers should pass
- *                 a path on real disk (e.g. `DATA_DIR/health/.tmp/`) rather
- *                 than `os.tmpdir()`, which is tmpfs on many Linux systems
- *                 and would count against RAM.
+ * @returns `true` if the XML was freshly extracted, `false` if an up-to-date
+ *          cache was already present.
  */
-export async function parseAppleHealthExport(
-  zipPath: string,
-  tmpDir: string
-): Promise<AppleHealthSummary> {
-  const startTime = Date.now();
-  log.info(`Reading zip: ${zipPath}`);
+export async function extractAppleHealthXml(zipPath: string, xmlPath: string): Promise<boolean> {
+  // Cache check: if the XML is already on disk and newer than the zip, skip
+  // the expensive unzip entirely.
+  try {
+    const [xmlStat, zipStat] = await Promise.all([fs.stat(xmlPath), fs.stat(zipPath)]);
+    if (xmlStat.mtimeMs >= zipStat.mtimeMs) {
+      log.info(`Cached XML is up-to-date: ${xmlPath}`);
+      return false;
+    }
+  } catch {
+    // XML doesn't exist yet; fall through and extract
+  }
 
-  // Step 1: read zip into memory (80 MB typical)
+  log.info(`Extracting XML from zip: ${zipPath}`);
   const zipBuffer = await fs.readFile(zipPath);
   log.info(`Zip loaded: ${(zipBuffer.length / 1024 / 1024).toFixed(1)} MB`);
 
-  // Step 2: decompress ONLY export.xml via filter
-  // Spike: ~1 GB for a full export during this call
+  // Decompress ONLY export.xml via filter — avoids decompressing the CDA
+  // file (~672 MB) and workout-routes folder (~208 MB) we don't need.
   const extracted = unzipSync(new Uint8Array(zipBuffer), {
     filter: (file) => file.name === 'apple_health_export/export.xml',
   });
@@ -546,32 +547,43 @@ export async function parseAppleHealthExport(
   }
   log.info(`Extracted export.xml: ${(xmlBytes.length / 1024 / 1024).toFixed(1)} MB`);
 
-  // Step 3: write to temp file on real disk so we can stream-parse without
-  //         holding the decompressed string in memory
-  await fs.mkdir(tmpDir, { recursive: true });
-  const tmpXml = path.join(
-    tmpDir,
-    `export-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.xml`
+  // Write to final destination atomically (temp + rename) so an interrupted
+  // extract never leaves a truncated cache file.
+  await fs.mkdir(path.dirname(xmlPath), { recursive: true });
+  const tmp = `${xmlPath}.tmp-${Date.now()}`;
+  await fs.writeFile(tmp, Buffer.from(xmlBytes));
+  await fs.rename(tmp, xmlPath);
+  log.info(`Wrote XML cache: ${xmlPath}`);
+  return true;
+}
+
+/**
+ * Parse an already-extracted Apple Health `export.xml` file into an aggregated
+ * summary. This is the hot path — skip straight here if the XML is already on
+ * disk (e.g. from a prior `extractAppleHealthXml` call) to avoid the unzip
+ * step.
+ */
+export async function parseAppleHealthXml(xmlPath: string): Promise<AppleHealthSummary> {
+  const parseStart = Date.now();
+  const state = await parseXmlStream(xmlPath);
+  const parseMs = Date.now() - parseStart;
+  log.info(
+    `Parsed ${state.totalRecords} records, ${state.workouts.length} workouts, ` +
+      `${state.activitySummaries.length} activity summaries in ${parseMs} ms`
   );
-  await fs.writeFile(tmpXml, Buffer.from(xmlBytes));
-  log.info(`Wrote temp XML: ${tmpXml}`);
+  return buildSummary(state, parseMs);
+}
 
-  try {
-    // Step 4: stream-parse from disk
-    const parseStart = Date.now();
-    const state = await parseXmlStream(tmpXml);
-    const parseMs = Date.now() - parseStart;
-    log.info(
-      `Parsed ${state.totalRecords} records, ${state.workouts.length} workouts, ` +
-        `${state.activitySummaries.length} activity summaries in ${parseMs} ms`
-    );
-
-    const totalMs = Date.now() - startTime;
-    return buildSummary(state, totalMs);
-  } finally {
-    // Step 5: always clean up the temp file (directory may contain other
-    // in-flight parses from concurrent uploads, so we only unlink our file)
-    await fs.rm(tmpXml, { force: true });
-    log.info(`Cleaned up ${tmpXml}`);
-  }
+/**
+ * Convenience: extract (if needed) and parse in one call. The XML is
+ * persisted next to the zip at `<basename>.xml` so subsequent re-parses
+ * skip the unzip step and so DocVault's data-dir backups capture both
+ * the compressed source and the decompressed working copy.
+ *
+ * @param zipPath  Absolute path to the `export.zip`.
+ */
+export async function parseAppleHealthExport(zipPath: string): Promise<AppleHealthSummary> {
+  const xmlPath = `${zipPath.replace(/\.zip$/i, '')}.xml`;
+  await extractAppleHealthXml(zipPath, xmlPath);
+  return parseAppleHealthXml(xmlPath);
 }
