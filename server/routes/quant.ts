@@ -4,8 +4,9 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
+import { gzipSync } from 'fflate';
 import YahooFinance from 'yahoo-finance2';
-import { DATA_DIR, jsonResponse, QUANT_SNAPSHOTS_FILE } from '../data.js';
+import { DATA_DIR, jsonResponse, loadSettings, QUANT_SNAPSHOTS_FILE } from '../data.js';
 import { createLogger } from '../logger.js';
 
 const yahooFinance = new YahooFinance();
@@ -17,6 +18,11 @@ const DAY_MS = 86_400_000;
 const TTL = {
   presidentialCycle: 7 * DAY_MS, // monthly data — weekly refresh is plenty
   btcLogRegression: DAY_MS, // daily refresh
+  sectorRotation: DAY_MS, // daily refresh (sector ETFs are end-of-day)
+  shillerValuation: 7 * DAY_MS, // Shiller updates monthly; weekly refresh is plenty
+  yieldCurve: DAY_MS, // FRED updates daily on business days
+  btcDominance: 6 * 60 * 60 * 1000, // 6h — dominance changes slowly
+  macroDashboard: DAY_MS, // FRED updates once per business day
 };
 
 interface CacheEntry<T> {
@@ -27,6 +33,11 @@ interface CacheEntry<T> {
 type QuantCache = {
   presidentialCycle?: CacheEntry<PresidentialCycleResponse>;
   btcLogRegression?: CacheEntry<BtcLogRegressionResponse>;
+  sectorRotation?: CacheEntry<SectorRotationResponse>;
+  shillerValuation?: CacheEntry<ShillerValuationResponse>;
+  yieldCurve?: CacheEntry<YieldCurveResponse>;
+  btcDominance?: CacheEntry<DominanceSnapshot>;
+  macroDashboard?: CacheEntry<MacroDashboardResponse>;
 };
 
 async function loadCache(): Promise<QuantCache> {
@@ -46,6 +57,60 @@ function isFresh(entry: CacheEntry<unknown> | undefined, ttl: number): boolean {
   return !!entry && Date.now() - entry.fetchedAt < ttl;
 }
 
+/** gzip + Cache-Control wrapper for quant GET responses. Browsers will serve
+ *  subsequent tab-switches from their own cache (no network, no re-parse) for
+ *  `maxAge` seconds, and serve stale data while revalidating in the background
+ *  for up to `swr` seconds. The manual Refresh button appends a ?_=bump query
+ *  param which creates a unique URL, so it always bypasses the browser cache.
+ *
+ *  We only gzip when the client sent `Accept-Encoding: gzip` (all modern
+ *  browsers do, but scripts without the header get uncompressed JSON). */
+function cachedJsonResponse(
+  req: Request,
+  data: object,
+  opts: { maxAge: number; swr: number }
+): Response {
+  const body = JSON.stringify(data);
+  const acceptsGzip = (req.headers.get('accept-encoding') || '').includes('gzip');
+
+  const commonHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Vary: 'Accept-Encoding',
+    'Cache-Control': `public, max-age=${opts.maxAge}, stale-while-revalidate=${opts.swr}`,
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  };
+
+  if (acceptsGzip) {
+    const gzipped = gzipSync(new TextEncoder().encode(body));
+    return new Response(gzipped, {
+      headers: { ...commonHeaders, 'Content-Encoding': 'gzip' },
+    });
+  }
+
+  return new Response(body, { headers: commonHeaders });
+}
+
+const CACHE = {
+  // Presidential cycle data only changes monthly; browser can hold it for 6h.
+  presidentialCycle: { maxAge: 6 * 3600, swr: 24 * 3600 },
+  // BTC regression updates daily at the server; browser 1h + SWR 12h is snappy.
+  btcLogRegression: { maxAge: 3600, swr: 12 * 3600 },
+  // Sector rotation uses EOD data — 1h browser cache + 12h SWR.
+  sectorRotation: { maxAge: 3600, swr: 12 * 3600 },
+  // Shiller valuation is monthly data — 6h cache + 24h SWR.
+  shillerValuation: { maxAge: 6 * 3600, swr: 24 * 3600 },
+  // Yield curve FRED data updates daily on business days — 1h cache + 12h SWR.
+  yieldCurve: { maxAge: 3600, swr: 12 * 3600 },
+  // BTC dominance is low-frequency — 30min cache + 6h SWR.
+  btcDominance: { maxAge: 30 * 60, swr: 6 * 3600 },
+  // Macro dashboard = aggregated FRED series — 1h + 12h SWR.
+  macroDashboard: { maxAge: 3600, swr: 12 * 3600 },
+  // Snapshots grow one row per day; short cache so new snapshots appear fast.
+  snapshots: { maxAge: 300, swr: 3600 },
+};
+
 // ---------------------------------------------------------------------------
 // Snapshot history — a per-day append-only log of key metrics, used to plot
 // trend sparklines on each chart (e.g. "how has BTC residual sigma moved over
@@ -63,6 +128,8 @@ export interface QuantSnapshot {
     residualSigma: number;
     slope: number;
     stdev: number;
+    /** Composite 0-1 risk metric (null if insufficient history) */
+    riskMetric: number | null;
   };
   spxCycle?: {
     currentYear: number;
@@ -71,6 +138,39 @@ export interface QuantSnapshot {
     currentExpectedReturn: number;
     /** Annual sum for the current year-of-cycle row */
     currentYearAnnualAvg: number;
+  };
+  sectorRotation?: {
+    /** Top-ranked sector by RS ratio */
+    topRS: { ticker: string; rsRatio: number };
+    /** Top-ranked sector by 3M momentum */
+    topMomentum: { ticker: string; momentum: number };
+    /** Count of sectors in each quadrant */
+    quadrantCounts: { leading: number; improving: number; weakening: number; lagging: number };
+  };
+  shillerValuation?: {
+    /** Latest CAPE (PE10) */
+    cape: number;
+    /** CAPE percentile vs full history (0-100; higher = more expensive) */
+    capePercentile: number;
+    /** Latest SP500 dividend yield in % */
+    divYield: number;
+  };
+  yieldCurve?: {
+    /** Latest 10Y-2Y spread in percentage points */
+    t10y2y: number;
+    /** Latest 10Y-3M spread in percentage points */
+    t10y3m: number | null;
+    /** Inversion streak in days (positive = currently inverted, negative = normal) */
+    inversionStreak: number;
+    /** Regime classification */
+    regime: string;
+  };
+  btcDominance?: {
+    btcDominance: number;
+    ethDominance: number;
+    stableDominance: number;
+    flightToSafety: number;
+    totalMarketCapUsd: number;
   };
 }
 
@@ -135,7 +235,7 @@ export interface PresidentialCycleResponse {
   source: 'shiller' | 'yahoo-fallback';
 }
 
-function yearOfCycle(year: number): number {
+export function yearOfCycle(year: number): number {
   // 1-indexed 1..4
   return ((year - 1) % 4) + 1;
 }
@@ -147,7 +247,50 @@ function yearOfCycle(year: number): number {
 const SHILLER_SP500_URL =
   'https://raw.githubusercontent.com/datasets/s-and-p-500/master/data/data.csv';
 
-async function fetchShillerSp500Monthly(): Promise<{ date: Date; close: number }[]> {
+/** Full Shiller row — includes the valuation columns we use for CAPE and
+ *  dividend yield charts in addition to the SP500 close. */
+export interface ShillerRow {
+  date: Date;
+  sp500: number;
+  /** Trailing 12-month dividends per share (Shiller's annualized figure) */
+  dividend: number | null;
+  /** Trailing 12-month earnings per share */
+  earnings: number | null;
+  /** CPI (inflation index) */
+  cpi: number | null;
+  /** 10-year average of real earnings — the denominator of CAPE */
+  pe10: number | null;
+}
+
+/** Parse a line of the Shiller CSV into a ShillerRow. Returns null if the row
+ *  is missing a valid date or SP500 price. */
+export function parseShillerLine(line: string): ShillerRow | null {
+  // Header: Date,SP500,Dividend,Earnings,Consumer Price Index,Long Interest Rate,Real Price,Real Dividend,Real Earnings,PE10
+  const cols = line.split(',');
+  if (cols.length < 10) return null;
+  const dateStr = cols[0];
+  const date = new Date(dateStr + 'T00:00:00Z');
+  if (Number.isNaN(date.getTime())) return null;
+  const sp500 = Number(cols[1]);
+  if (!Number.isFinite(sp500) || sp500 <= 0) return null;
+
+  const num = (s: string): number | null => {
+    const v = Number(s);
+    if (!Number.isFinite(v) || v <= 0) return null;
+    return v;
+  };
+
+  return {
+    date,
+    sp500,
+    dividend: num(cols[2]),
+    earnings: num(cols[3]),
+    cpi: num(cols[4]),
+    pe10: num(cols[9]),
+  };
+}
+
+async function fetchShillerFull(): Promise<ShillerRow[]> {
   const res = await fetch(SHILLER_SP500_URL, {
     headers: { Accept: 'text/csv', 'User-Agent': 'docvault/1.0' },
   });
@@ -156,19 +299,17 @@ async function fetchShillerSp500Monthly(): Promise<{ date: Date; close: number }
   }
   const csv = await res.text();
   const lines = csv.trim().split('\n');
-  // Header: Date,SP500,Dividend,Earnings,...
-  const bars: { date: Date; close: number }[] = [];
+  const rows: ShillerRow[] = [];
   for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(',');
-    if (cols.length < 2) continue;
-    const dateStr = cols[0];
-    const sp500 = Number(cols[1]);
-    if (!Number.isFinite(sp500) || sp500 <= 0) continue;
-    const date = new Date(dateStr + 'T00:00:00Z');
-    if (Number.isNaN(date.getTime())) continue;
-    bars.push({ date, close: sp500 });
+    const row = parseShillerLine(lines[i]);
+    if (row) rows.push(row);
   }
-  return bars;
+  return rows;
+}
+
+async function fetchShillerSp500Monthly(): Promise<{ date: Date; close: number }[]> {
+  const rows = await fetchShillerFull();
+  return rows.map((r) => ({ date: r.date, close: r.sp500 }));
 }
 
 /** Fallback: yahoo-finance2 monthly ^GSPC (1985+). Used only if the Shiller
@@ -283,6 +424,88 @@ export interface BtcLogRegressionResponse {
     fitted: number;
     residualSigma: number;
   };
+  /** Cowen Corridor data — 20-week SMA (100 daily bars) + the multipliers
+   *  we render as corridor bands on the frontend. Null entries early in the
+   *  series where the rolling window hasn't filled yet. */
+  corridor: {
+    /** 20W SMA aligned with `prices` */
+    sma20w: (number | null)[];
+    /** Multipliers applied to the SMA to form corridor levels */
+    multipliers: number[];
+    /** Current SMA value and where BTC sits in the corridor */
+    latest: {
+      sma20w: number | null;
+      /** price / sma20w — the "corridor multiple" of current BTC */
+      currentMultiple: number | null;
+    };
+  };
+  /** Bull Market Support Band — 20W SMA + 21W EMA pair. Tests in Jan/Feb
+   *  of halving years are Cowen's key signal. Arrays aligned with `prices`. */
+  bmsb: {
+    sma20w: (number | null)[];
+    ema21w: (number | null)[];
+    latest: {
+      sma20w: number | null;
+      ema21w: number | null;
+      /** "above" when price is above both, "below" when below both, "inside" when between */
+      state: 'above' | 'inside' | 'below' | 'unknown';
+    };
+  };
+  /** Pi Cycle Top — 111D SMA vs 350D SMA × 2. When the faster crosses above
+   *  the slower, it's called a cycle top (2013, 2017, 2021 all hit). */
+  piCycle: {
+    sma111d: (number | null)[];
+    sma350dDouble: (number | null)[];
+    /** True when 111D SMA > 350D SMA × 2 (top signal active) */
+    signal: (boolean | null)[];
+    latest: {
+      sma111d: number | null;
+      sma350dDouble: number | null;
+      /** Ratio sma111d / sma350dDouble — 1.0 = crossover */
+      ratio: number | null;
+      signalActive: boolean;
+    };
+  };
+  /** BTC Risk Metric — composite 0-1 Cowen-style score blended from 5 inputs.
+   *  0 = deep value / accumulation, 1 = euphoria / distribution. Each input
+   *  is percentile-ranked over a 5-year rolling window then averaged. */
+  risk: {
+    /** 0-1 composite aligned with `prices` */
+    metric: (number | null)[];
+    /** Raw inputs aligned with `prices` */
+    components: {
+      mayerMultiple: (number | null)[];
+      sma20wDistance: (number | null)[];
+      regressionSigma: (number | null)[];
+      rsi14: (number | null)[];
+      drawdownFromAth: (number | null)[];
+    };
+    /** Normalized (0-1) inputs aligned with `prices` — what actually gets averaged */
+    normalized: {
+      mayerMultiple: (number | null)[];
+      sma20wDistance: (number | null)[];
+      regressionSigma: (number | null)[];
+      rsi14: (number | null)[];
+      drawdownFromAth: (number | null)[];
+    };
+    latest: {
+      metric: number | null;
+      components: {
+        mayerMultiple: number | null;
+        sma20wDistance: number | null;
+        regressionSigma: number | null;
+        rsi14: number | null;
+        drawdownFromAth: number | null;
+      };
+      normalized: {
+        mayerMultiple: number | null;
+        sma20wDistance: number | null;
+        regressionSigma: number | null;
+        rsi14: number | null;
+        drawdownFromAth: number | null;
+      };
+    };
+  };
 }
 
 /** Fetch daily BTC-USD history from yahoo-finance2. Has data back to
@@ -365,6 +588,95 @@ async function computeBtcLogRegression(): Promise<BtcLogRegressionResponse> {
   const latestResidualSigma =
     (Math.log10(latestPrice) - (slope * xs[latestIdx] + intercept)) / stdev;
 
+  // Cowen Corridor — 20-week SMA (100 daily bars) with empirically-chosen
+  // multipliers that historically acted as BTC support/resistance levels.
+  // The actual ITC multipliers are proprietary; these are reasonable picks.
+  const priceArr = points.map((p) => p.price);
+  const sma20w = sma(priceArr, 100);
+  const sma200d = sma(priceArr, 200);
+  const latestSma = sma20w[sma20w.length - 1];
+  const currentMultiple = latestSma != null ? latestPrice / latestSma : null;
+  const CORRIDOR_MULTIPLIERS = [0.4, 0.6, 1.0, 1.6, 2.5, 4.0];
+
+  // ---- BMSB — Bull Market Support Band (20W SMA + 21W EMA) ----
+  // 20W SMA = already computed as sma20w (100 daily bars)
+  // 21W EMA = 105 daily bars
+  const ema21w = ema(priceArr, 105);
+  const latestEma21w = ema21w[ema21w.length - 1];
+  let bmsbState: 'above' | 'inside' | 'below' | 'unknown' = 'unknown';
+  if (latestSma != null && latestEma21w != null) {
+    const upper = Math.max(latestSma, latestEma21w);
+    const lower = Math.min(latestSma, latestEma21w);
+    if (latestPrice > upper) bmsbState = 'above';
+    else if (latestPrice < lower) bmsbState = 'below';
+    else bmsbState = 'inside';
+  }
+
+  // ---- Pi Cycle Top — 111D SMA vs 350D SMA × 2 ----
+  const sma111d = sma(priceArr, 111);
+  const sma350d = sma(priceArr, 350);
+  const sma350dDouble: (number | null)[] = sma350d.map((v) => (v != null ? v * 2 : null));
+  const piCycleSignal: (boolean | null)[] = sma111d.map((s, i) => {
+    const d = sma350dDouble[i];
+    if (s == null || d == null) return null;
+    return s > d;
+  });
+  const latestSma111d = sma111d[sma111d.length - 1];
+  const latestSma350dDouble = sma350dDouble[sma350dDouble.length - 1];
+  const piRatio =
+    latestSma111d != null && latestSma350dDouble != null && latestSma350dDouble > 0
+      ? latestSma111d / latestSma350dDouble
+      : null;
+  const piSignalActive = piRatio != null && piRatio > 1;
+
+  // ---- Risk Metric components ----
+  // 1. Mayer multiple: price / 200d SMA (Trace Mayer's classic indicator)
+  const mayerMultiple: (number | null)[] = priceArr.map((p, i) => {
+    const s = sma200d[i];
+    return s != null && s > 0 ? p / s : null;
+  });
+  // 2. 20W SMA distance (relative deviation from 20WMA)
+  const sma20wDistance: (number | null)[] = priceArr.map((p, i) => {
+    const s = sma20w[i];
+    return s != null && s > 0 ? (p - s) / s : null;
+  });
+  // 3. Log-regression residual σ (reuse xs/ys from earlier OLS fit)
+  const regressionSigma: (number | null)[] = new Array(n).fill(null);
+  for (let i = 0; i < n; i++) {
+    const expectedLog = slope * xs[i] + intercept;
+    regressionSigma[i] = (ys[i] - expectedLog) / stdev;
+  }
+  // 4. RSI-14 on daily closes
+  const rsi14 = rsi(priceArr, 14);
+  // 5. Drawdown from ATH (always ≤ 0, so we negate so "deeper drawdown" = lower 0-1 score)
+  const drawdownFromAth = runningDrawdown(priceArr);
+  // For drawdown we want "near ATH = high risk", so the raw value (0 near ATH, -0.8 deep)
+  // already orders higher → more risk. Percentile rank will handle it.
+
+  // ---- Normalize each component via rolling 5-year percentile (1260 daily bars) ----
+  const PERCENTILE_WINDOW = 1260;
+  const mayerPct = rollingPercentile(mayerMultiple, PERCENTILE_WINDOW);
+  const sma20wDistPct = rollingPercentile(sma20wDistance, PERCENTILE_WINDOW);
+  const regressionPct = rollingPercentile(regressionSigma, PERCENTILE_WINDOW);
+  const rsi14Pct = rollingPercentile(rsi14, PERCENTILE_WINDOW);
+  const drawdownPct = rollingPercentile(drawdownFromAth as (number | null)[], PERCENTILE_WINDOW);
+
+  // ---- Composite: average of all non-null normalized inputs ----
+  const riskMetric: (number | null)[] = new Array(n).fill(null);
+  for (let i = 0; i < n; i++) {
+    const inputs = [
+      mayerPct[i],
+      sma20wDistPct[i],
+      regressionPct[i],
+      rsi14Pct[i],
+      drawdownPct[i],
+    ].filter((v): v is number => v != null);
+    if (inputs.length >= 3) {
+      riskMetric[i] = inputs.reduce((a, b) => a + b, 0) / inputs.length;
+    }
+  }
+  const latestDrawdownRaw = drawdownFromAth[n - 1];
+
   return {
     prices: points.map((p) => ({ t: p.t, price: p.price })),
     fit: { line, upper1, lower1, upper2, lower2 },
@@ -376,6 +688,881 @@ async function computeBtcLogRegression(): Promise<BtcLogRegressionResponse> {
       fitted: latestFitted,
       residualSigma: latestResidualSigma,
     },
+    corridor: {
+      sma20w,
+      multipliers: CORRIDOR_MULTIPLIERS,
+      latest: {
+        sma20w: latestSma,
+        currentMultiple,
+      },
+    },
+    bmsb: {
+      sma20w,
+      ema21w,
+      latest: {
+        sma20w: latestSma,
+        ema21w: latestEma21w,
+        state: bmsbState,
+      },
+    },
+    piCycle: {
+      sma111d,
+      sma350dDouble,
+      signal: piCycleSignal,
+      latest: {
+        sma111d: latestSma111d,
+        sma350dDouble: latestSma350dDouble,
+        ratio: piRatio,
+        signalActive: piSignalActive,
+      },
+    },
+    risk: {
+      metric: riskMetric,
+      components: {
+        mayerMultiple,
+        sma20wDistance,
+        regressionSigma,
+        rsi14,
+        drawdownFromAth,
+      },
+      normalized: {
+        mayerMultiple: mayerPct,
+        sma20wDistance: sma20wDistPct,
+        regressionSigma: regressionPct,
+        rsi14: rsi14Pct,
+        drawdownFromAth: drawdownPct,
+      },
+      latest: {
+        metric: riskMetric[n - 1],
+        components: {
+          mayerMultiple: mayerMultiple[n - 1],
+          sma20wDistance: sma20wDistance[n - 1],
+          regressionSigma: regressionSigma[n - 1],
+          rsi14: rsi14[n - 1],
+          drawdownFromAth: latestDrawdownRaw,
+        },
+        normalized: {
+          mayerMultiple: mayerPct[n - 1],
+          sma20wDistance: sma20wDistPct[n - 1],
+          regressionSigma: regressionPct[n - 1],
+          rsi14: rsi14Pct[n - 1],
+          drawdownFromAth: drawdownPct[n - 1],
+        },
+      },
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Bitcoin Dominance (Crypto)
+// ---------------------------------------------------------------------------
+//
+// CoinGecko's /global endpoint is free and returns current dominance for
+// all major coins. No key required. We cache aggressively since the value
+// only needs daily precision for macro charts.
+
+export interface DominanceSnapshot {
+  /** Current BTC dominance in percent (0-100) */
+  btcDominance: number;
+  /** ETH dominance in percent */
+  ethDominance: number;
+  /** Stablecoin dominance approximation (USDT, USDC, DAI, BUSD summed) */
+  stableDominance: number;
+  /** Cowen's "flight to safety" = BTC + stablecoins */
+  flightToSafety: number;
+  /** Total crypto market cap in USD */
+  totalMarketCapUsd: number;
+  /** 24h change in total market cap */
+  totalMarketCapChange24h: number;
+  /** When the snapshot was captured */
+  fetchedAt: number;
+  source: 'coingecko';
+}
+
+interface CoinGeckoGlobalResponse {
+  data: {
+    total_market_cap: Record<string, number>;
+    total_volume: Record<string, number>;
+    market_cap_percentage: Record<string, number>;
+    market_cap_change_percentage_24h_usd: number;
+  };
+}
+
+async function fetchBtcDominance(): Promise<DominanceSnapshot> {
+  const res = await fetch('https://api.coingecko.com/api/v3/global', {
+    headers: { Accept: 'application/json', 'User-Agent': 'docvault/1.0' },
+  });
+  if (!res.ok) {
+    throw new Error(`CoinGecko /global ${res.status}: ${await res.text()}`);
+  }
+  const json = (await res.json()) as CoinGeckoGlobalResponse;
+  const pct = json.data.market_cap_percentage;
+  const btc = pct.btc ?? 0;
+  const eth = pct.eth ?? 0;
+  // CoinGecko doesn't return every stablecoin individually; sum the big ones
+  const stable =
+    (pct.usdt ?? 0) + (pct.usdc ?? 0) + (pct.dai ?? 0) + (pct.busd ?? 0) + (pct.tusd ?? 0);
+  return {
+    btcDominance: btc,
+    ethDominance: eth,
+    stableDominance: stable,
+    flightToSafety: btc + stable,
+    totalMarketCapUsd: json.data.total_market_cap.usd ?? 0,
+    totalMarketCapChange24h: json.data.market_cap_change_percentage_24h_usd ?? 0,
+    fetchedAt: Date.now(),
+    source: 'coingecko',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Sector Rotation (TradFi)
+// ---------------------------------------------------------------------------
+//
+// Rank the 11 S&P sector SPDR ETFs by their Relative Strength vs SPY and
+// Momentum, then classify each into one of 4 quadrants (Relative Rotation
+// Graph style — Leading / Improving / Weakening / Lagging).
+//
+// Metrics computed per sector:
+//   RS Ratio  = 100 × (sector/sector_Nd_ago) ÷ (spy/spy_Nd_ago)  using N=252
+//   Momentum  = 100 × (sector/sector_Md_ago) ÷ (spy/spy_Md_ago)  using M=63
+//
+// - RS > 100: sector has outperformed SPY over the past year
+// - Mom > 100: sector has outperformed SPY over the past quarter
+//
+// The cross classifies:
+//   (RS > 100, Mom > 100) → Leading       — already winning, trend-follow
+//   (RS < 100, Mom > 100) → Improving     — turning up, best risk-reward
+//   (RS > 100, Mom < 100) → Weakening     — rolling over, take profits
+//   (RS < 100, Mom < 100) → Lagging       — broken, avoid until improving
+//
+// We also report raw period returns (1w, 1m, 3m, 6m, YTD) so the user can
+// sort by any metric they care about.
+
+export interface SectorReturn {
+  /** ETF ticker symbol */
+  ticker: string;
+  /** Human-readable sector name */
+  name: string;
+  /** Latest close */
+  price: number;
+  /** Raw period returns in % */
+  returns: {
+    d1: number | null;
+    w1: number | null;
+    m1: number | null;
+    m3: number | null;
+    m6: number | null;
+    ytd: number | null;
+  };
+  /** RS ratio vs SPY on a 1-year window. 100 = matching SPY */
+  rsRatio: number | null;
+  /** Momentum vs SPY on a 3-month window. 100 = matching SPY */
+  momentum: number | null;
+  /** Quadrant classification based on rsRatio and momentum */
+  quadrant: 'leading' | 'improving' | 'weakening' | 'lagging' | 'unknown';
+}
+
+export interface SectorRotationResponse {
+  /** SPY baseline itself (useful for sorting display) */
+  benchmark: SectorReturn;
+  /** The 11 sectors */
+  sectors: SectorReturn[];
+  /** Range of data used */
+  dataRange: { from: string; to: string };
+  /** Data source identifier */
+  source: 'yahoo';
+}
+
+const SECTOR_ETFS: Array<{ ticker: string; name: string }> = [
+  { ticker: 'XLE', name: 'Energy' },
+  { ticker: 'XLB', name: 'Materials' },
+  { ticker: 'XLI', name: 'Industrials' },
+  { ticker: 'XLY', name: 'Consumer Discretionary' },
+  { ticker: 'XLF', name: 'Financials' },
+  { ticker: 'XLK', name: 'Technology' },
+  { ticker: 'XLC', name: 'Communication Services' },
+  { ticker: 'XLU', name: 'Utilities' },
+  { ticker: 'XLP', name: 'Consumer Staples' },
+  { ticker: 'XLV', name: 'Healthcare' },
+  { ticker: 'XLRE', name: 'Real Estate' },
+];
+
+export interface DailyBar {
+  t: number; // ms
+  close: number;
+}
+
+async function fetchYahooDaily(symbol: string, period1: Date, period2: Date): Promise<DailyBar[]> {
+  const result = await yahooFinance.chart(symbol, {
+    period1,
+    period2,
+    interval: '1d',
+  });
+  const quotes = result.quotes ?? [];
+  return quotes
+    .filter((q) => q.close != null && q.date != null)
+    .map((q) => ({
+      t: new Date(q.date as Date).getTime(),
+      close: q.close as number,
+    }))
+    .filter((b) => b.close > 0);
+}
+
+/** Get the close N trading days ago (not calendar days). Returns null if
+ *  the history is too short. */
+export function closeNBack(bars: DailyBar[], n: number): number | null {
+  if (bars.length <= n) return null;
+  return bars[bars.length - 1 - n].close;
+}
+
+/** Get the close at the latest bar on or before YYYY-01-01 of the current
+ *  year. Used for YTD returns. */
+export function ytdStartClose(bars: DailyBar[], asOf: Date = new Date()): number | null {
+  const thisYear = asOf.getFullYear();
+  const yearStart = new Date(Date.UTC(thisYear, 0, 1)).getTime();
+  // First bar on or after year start = YTD baseline
+  const idx = bars.findIndex((b) => b.t >= yearStart);
+  if (idx < 0) return null;
+  // Use the bar BEFORE year start (last close of prior year) if available
+  const baseIdx = idx > 0 ? idx - 1 : idx;
+  return bars[baseIdx].close;
+}
+
+export function pctChange(current: number, base: number | null): number | null {
+  if (base == null || base === 0) return null;
+  return ((current - base) / base) * 100;
+}
+
+/** Compute RS ratio = 100 × (sector return) / (benchmark return) over N
+ *  trading days. Returns null if not enough history. */
+export function rsRatio(sector: DailyBar[], benchmark: DailyBar[], nDays: number): number | null {
+  const sectorNow = sector[sector.length - 1]?.close;
+  const sectorThen = closeNBack(sector, nDays);
+  const spyNow = benchmark[benchmark.length - 1]?.close;
+  const spyThen = closeNBack(benchmark, nDays);
+  if (!sectorNow || !sectorThen || !spyNow || !spyThen) return null;
+  const sectorGrowth = sectorNow / sectorThen;
+  const spyGrowth = spyNow / spyThen;
+  return (sectorGrowth / spyGrowth) * 100;
+}
+
+/** Classify a sector into one of the 4 Relative Rotation Graph quadrants
+ *  based on RS ratio and momentum (both relative to a baseline of 100). */
+export function classifyQuadrant(rs: number | null, mom: number | null): SectorReturn['quadrant'] {
+  if (rs == null || mom == null) return 'unknown';
+  if (rs >= 100 && mom >= 100) return 'leading';
+  if (rs < 100 && mom >= 100) return 'improving';
+  if (rs >= 100 && mom < 100) return 'weakening';
+  return 'lagging';
+}
+
+export function computeSectorReturns(
+  ticker: string,
+  name: string,
+  bars: DailyBar[],
+  spy: DailyBar[],
+  asOf: Date = new Date()
+): SectorReturn {
+  const last = bars[bars.length - 1];
+  if (!last) {
+    return {
+      ticker,
+      name,
+      price: 0,
+      returns: { d1: null, w1: null, m1: null, m3: null, m6: null, ytd: null },
+      rsRatio: null,
+      momentum: null,
+      quadrant: 'unknown',
+    };
+  }
+  const price = last.close;
+  const rs = rsRatio(bars, spy, 252); // ~1 year of trading days
+  const mom = rsRatio(bars, spy, 63); // ~3 months of trading days
+  const quadrant = classifyQuadrant(rs, mom);
+
+  return {
+    ticker,
+    name,
+    price,
+    returns: {
+      d1: pctChange(price, closeNBack(bars, 1)),
+      w1: pctChange(price, closeNBack(bars, 5)),
+      m1: pctChange(price, closeNBack(bars, 21)),
+      m3: pctChange(price, closeNBack(bars, 63)),
+      m6: pctChange(price, closeNBack(bars, 126)),
+      ytd: pctChange(price, ytdStartClose(bars, asOf)),
+    },
+    rsRatio: rs,
+    momentum: mom,
+    quadrant,
+  };
+}
+
+async function computeSectorRotation(): Promise<SectorRotationResponse> {
+  // Fetch 2 years of daily bars (need 252 bars + some slack for 1-year RS).
+  const period2 = new Date();
+  const period1 = new Date(period2.getTime() - 730 * DAY_MS);
+
+  // Parallel fetch: SPY + 11 sectors
+  const [spyBars, ...sectorResults] = await Promise.all([
+    fetchYahooDaily('SPY', period1, period2),
+    ...SECTOR_ETFS.map((s) => fetchYahooDaily(s.ticker, period1, period2)),
+  ]);
+
+  if (spyBars.length < 30) {
+    throw new Error(`Insufficient SPY history (got ${spyBars.length} bars)`);
+  }
+
+  const benchmark = computeSectorReturns('SPY', 'S&P 500', spyBars, spyBars);
+  // SPY vs itself is always 100 — force quadrant to unknown for clarity
+  benchmark.quadrant = 'unknown';
+
+  const sectors = SECTOR_ETFS.map((meta, i) =>
+    computeSectorReturns(meta.ticker, meta.name, sectorResults[i], spyBars)
+  );
+
+  return {
+    benchmark,
+    sectors,
+    dataRange: {
+      from: new Date(spyBars[0].t).toISOString().slice(0, 10),
+      to: new Date(spyBars[spyBars.length - 1].t).toISOString().slice(0, 10),
+    },
+    source: 'yahoo',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Shiller Valuation — CAPE (PE10) and SP500 Dividend Yield
+// ---------------------------------------------------------------------------
+//
+// Both metrics are computed directly from the Shiller dataset we already
+// cache for the Presidential Cycle chart. No new network fetch needed if the
+// cache is warm — we just re-read the full CSV with richer parsing.
+//
+// - CAPE (Shiller PE) = price / 10-year average of inflation-adjusted earnings.
+//   Comes pre-computed in the CSV as `PE10`. High CAPE = historically
+//   expensive.
+// - SP500 Dividend Yield = (trailing 12m dividends / price) × 100.
+
+export interface ShillerValuationPoint {
+  /** YYYY-MM */
+  date: string;
+  /** Unix ms */
+  t: number;
+  /** SP500 price used for the ratio */
+  sp500: number;
+  /** CAPE / Shiller PE (= PE10 column) */
+  cape: number | null;
+  /** Dividend yield as percent (dividend / sp500 × 100) */
+  divYield: number | null;
+}
+
+export interface ShillerValuationResponse {
+  points: ShillerValuationPoint[];
+  latest: {
+    date: string;
+    sp500: number;
+    cape: number | null;
+    divYield: number | null;
+  };
+  /** Historical medians for anchoring chart bands */
+  medians: {
+    cape: number;
+    divYield: number;
+  };
+  /** Percentile of latest CAPE vs. full history (0–100; higher = more expensive) */
+  capePercentile: number | null;
+  /** Range of data used */
+  dataRange: { from: string; to: string };
+  source: 'shiller';
+}
+
+function median(arr: number[]): number {
+  if (arr.length === 0) return 0;
+  const sorted = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/** Percentile rank of `value` within `arr` (0–100). */
+/** Simple moving average on a number array. Returns an array of the same
+ *  length where entries before the window has filled are null. */
+export function sma(values: number[], window: number): (number | null)[] {
+  if (window <= 0) throw new Error('SMA window must be positive');
+  const out: (number | null)[] = new Array(values.length).fill(null);
+  let sum = 0;
+  for (let i = 0; i < values.length; i++) {
+    sum += values[i];
+    if (i >= window) sum -= values[i - window];
+    if (i >= window - 1) out[i] = sum / window;
+  }
+  return out;
+}
+
+/** Exponential moving average. The first EMA value is seeded with the SMA of
+ *  the first `window` points so early bars aren't biased by a zero start. */
+export function ema(values: number[], window: number): (number | null)[] {
+  if (window <= 0) throw new Error('EMA window must be positive');
+  const out: (number | null)[] = new Array(values.length).fill(null);
+  if (values.length < window) return out;
+  const k = 2 / (window + 1);
+  // Seed with SMA of first `window` bars
+  let sum = 0;
+  for (let i = 0; i < window; i++) sum += values[i];
+  let prev = sum / window;
+  out[window - 1] = prev;
+  for (let i = window; i < values.length; i++) {
+    prev = values[i] * k + prev * (1 - k);
+    out[i] = prev;
+  }
+  return out;
+}
+
+/** Wilder's RSI (Relative Strength Index) — the standard used in most TA
+ *  tools. `period` defaults to 14 (Wilder's original). Values before the
+ *  window has filled are null. Output is in the range [0, 100]. */
+export function rsi(values: number[], period = 14): (number | null)[] {
+  const out: (number | null)[] = new Array(values.length).fill(null);
+  if (values.length <= period) return out;
+
+  // Initial average gain/loss over first `period` bars (excluding the seed)
+  let avgGain = 0;
+  let avgLoss = 0;
+  for (let i = 1; i <= period; i++) {
+    const diff = values[i] - values[i - 1];
+    if (diff >= 0) avgGain += diff;
+    else avgLoss -= diff;
+  }
+  avgGain /= period;
+  avgLoss /= period;
+  out[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+
+  // Subsequent values use Wilder smoothing (EMA-like with α = 1/period)
+  for (let i = period + 1; i < values.length; i++) {
+    const diff = values[i] - values[i - 1];
+    const gain = diff > 0 ? diff : 0;
+    const loss = diff < 0 ? -diff : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    out[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  }
+  return out;
+}
+
+/** Running drawdown from all-time high — returns values in [-1, 0] where 0
+ *  means "at a new ATH" and -0.5 means "50% off ATH". */
+export function runningDrawdown(values: number[]): number[] {
+  const out: number[] = new Array(values.length).fill(0);
+  let peak = -Infinity;
+  for (let i = 0; i < values.length; i++) {
+    if (values[i] > peak) peak = values[i];
+    out[i] = peak > 0 ? (values[i] - peak) / peak : 0;
+  }
+  return out;
+}
+
+/** Normalize `values` to [0, 1] where each point's position is its percentile
+ *  rank within a trailing rolling window. Earlier points (before window is
+ *  filled) use the smaller available window. Higher value → higher 0-1 score. */
+export function rollingPercentile(values: (number | null)[], window: number): (number | null)[] {
+  const out: (number | null)[] = new Array(values.length).fill(null);
+  for (let i = 0; i < values.length; i++) {
+    if (values[i] == null) continue;
+    const start = Math.max(0, i - window + 1);
+    const slice: number[] = [];
+    for (let j = start; j <= i; j++) {
+      if (values[j] != null) slice.push(values[j] as number);
+    }
+    if (slice.length < 2) continue;
+    out[i] = percentileRank(slice, values[i] as number) / 100;
+  }
+  return out;
+}
+
+export function percentileRank(arr: number[], value: number): number {
+  if (arr.length === 0) return 0;
+  let below = 0;
+  for (const v of arr) {
+    if (v < value) below++;
+    else if (v === value) below += 0.5;
+  }
+  return (below / arr.length) * 100;
+}
+
+async function computeShillerValuation(): Promise<ShillerValuationResponse> {
+  const rows = await fetchShillerFull();
+  if (rows.length < 120) {
+    throw new Error(`Insufficient Shiller history (got ${rows.length} rows)`);
+  }
+
+  const points: ShillerValuationPoint[] = rows.map((r) => ({
+    date: r.date.toISOString().slice(0, 7),
+    t: r.date.getTime(),
+    sp500: r.sp500,
+    cape: r.pe10,
+    divYield: r.dividend != null ? (r.dividend / r.sp500) * 100 : null,
+  }));
+
+  const capeValues = points.map((p) => p.cape).filter((v): v is number => v != null);
+  const dyValues = points.map((p) => p.divYield).filter((v): v is number => v != null);
+
+  // Shiller's dataset usually lags 1–3 months on the valuation columns (they
+  // wait for official earnings/dividend reports). CAPE and dividend yield
+  // are reported independently, so we walk backwards for each separately
+  // to find the most recent populated value.
+  const lastRow = points[points.length - 1];
+  const findLatest = (field: 'cape' | 'divYield'): ShillerValuationPoint => {
+    for (let i = points.length - 1; i >= 0; i--) {
+      if (points[i][field] != null) return points[i];
+    }
+    return lastRow;
+  };
+  const latestCape = findLatest('cape');
+  const latestDiv = findLatest('divYield');
+
+  const capePercentile =
+    latestCape.cape != null && capeValues.length > 0
+      ? percentileRank(capeValues, latestCape.cape)
+      : null;
+
+  return {
+    points,
+    latest: {
+      // Report the date from whichever is fresher
+      date: latestCape.t >= latestDiv.t ? latestCape.date : latestDiv.date,
+      sp500: (latestCape.t >= latestDiv.t ? latestCape : latestDiv).sp500,
+      cape: latestCape.cape,
+      divYield: latestDiv.divYield,
+    },
+    medians: {
+      cape: median(capeValues),
+      divYield: median(dyValues),
+    },
+    capePercentile,
+    dataRange: {
+      from: points[0].date,
+      to: lastRow.date,
+    },
+    source: 'shiller',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// FRED (Federal Reserve Economic Data) helpers
+// ---------------------------------------------------------------------------
+//
+// Shared fetcher for FRED time-series endpoints. Used by the Yield Curve
+// chart and future macro charts. Requires the user to have configured a
+// FRED API key in Settings → Quant. Free 120 req/min tier is plenty since
+// we cache server-side.
+
+export interface FredObservation {
+  /** YYYY-MM-DD */
+  date: string;
+  t: number; // unix ms
+  value: number;
+}
+
+interface FredRawResponse {
+  observations: { date: string; value: string }[];
+  error_code?: number;
+  error_message?: string;
+}
+
+/** Parse FRED's JSON observations format into clean points. Filters out the
+ *  "." missing-value marker FRED uses. Exported for tests. */
+export function parseFredObservations(json: FredRawResponse): FredObservation[] {
+  if (json.error_message) {
+    throw new Error(`FRED API error ${json.error_code ?? '?'}: ${json.error_message}`);
+  }
+  if (!Array.isArray(json.observations)) {
+    throw new Error('FRED response missing observations array');
+  }
+  const out: FredObservation[] = [];
+  for (const obs of json.observations) {
+    if (!obs.value || obs.value === '.') continue;
+    const v = Number(obs.value);
+    if (!Number.isFinite(v)) continue;
+    const date = new Date(obs.date + 'T00:00:00Z');
+    if (Number.isNaN(date.getTime())) continue;
+    out.push({ date: obs.date, t: date.getTime(), value: v });
+  }
+  return out;
+}
+
+async function fetchFredSeries(
+  seriesId: string,
+  apiKey: string,
+  observationStart = '1970-01-01'
+): Promise<FredObservation[]> {
+  const url =
+    `https://api.stlouisfed.org/fred/series/observations?series_id=${encodeURIComponent(seriesId)}` +
+    `&api_key=${encodeURIComponent(apiKey)}&file_type=json&observation_start=${observationStart}`;
+  const res = await fetch(url, {
+    headers: { Accept: 'application/json', 'User-Agent': 'docvault/1.0' },
+  });
+  if (!res.ok) {
+    throw new Error(`FRED ${seriesId} ${res.status}: ${await res.text()}`);
+  }
+  const json = (await res.json()) as FredRawResponse;
+  return parseFredObservations(json);
+}
+
+// ---------------------------------------------------------------------------
+// Macro Dashboard (FRED) — 10Y, DFF, M2, DXY, Core CPI YoY
+// ---------------------------------------------------------------------------
+//
+// A single endpoint that fetches a handful of FRED series in parallel and
+// returns them together. The frontend renders 5 mini-charts on one card.
+
+export interface MacroSeries {
+  /** FRED series ID */
+  id: string;
+  /** Human label */
+  label: string;
+  /** Short description */
+  description: string;
+  /** Unit suffix for display */
+  unit: string;
+  /** Number of decimal places for display */
+  decimals: number;
+  /** Downsampled points for the mini-chart */
+  points: { t: number; value: number }[];
+  /** Latest value */
+  latest: { date: string; value: number } | null;
+  /** YoY change (%) if there's enough history */
+  yoyChange: number | null;
+}
+
+export interface MacroDashboardResponse {
+  series: MacroSeries[];
+  fetchedAt: number;
+  source: 'fred';
+}
+
+const MACRO_SERIES: Array<
+  Omit<MacroSeries, 'points' | 'latest' | 'yoyChange'> & { start: string }
+> = [
+  {
+    id: 'DGS10',
+    label: '10Y Treasury',
+    description: '10-year constant-maturity Treasury yield',
+    unit: '%',
+    decimals: 2,
+    start: '1990-01-01',
+  },
+  {
+    id: 'DFF',
+    label: 'Fed Funds Rate',
+    description: 'Effective federal funds rate',
+    unit: '%',
+    decimals: 2,
+    start: '1990-01-01',
+  },
+  {
+    id: 'M2SL',
+    label: 'M2 Money Supply',
+    description: 'M2 money stock (billions USD)',
+    unit: 'B',
+    decimals: 0,
+    start: '1990-01-01',
+  },
+  {
+    id: 'DTWEXBGS',
+    label: 'Dollar Index',
+    description: 'Broad Trade-Weighted US Dollar Index',
+    unit: '',
+    decimals: 2,
+    start: '2006-01-01',
+  },
+  {
+    id: 'CPILFESL',
+    label: 'Core CPI',
+    description: 'Core Consumer Price Index (ex food & energy)',
+    unit: '',
+    decimals: 1,
+    start: '1990-01-01',
+  },
+];
+
+/** Downsample a points array to ~N points using uniform stride selection. */
+function downsample<T>(arr: T[], maxPoints: number): T[] {
+  if (arr.length <= maxPoints) return arr;
+  const step = Math.ceil(arr.length / maxPoints);
+  const out: T[] = [];
+  for (let i = 0; i < arr.length; i += step) out.push(arr[i]);
+  // Always include the last point for fresh data visibility
+  if (out[out.length - 1] !== arr[arr.length - 1]) out.push(arr[arr.length - 1]);
+  return out;
+}
+
+async function computeMacroDashboard(apiKey: string): Promise<MacroDashboardResponse> {
+  const results = await Promise.all(
+    MACRO_SERIES.map(async (meta) => {
+      try {
+        const obs = await fetchFredSeries(meta.id, apiKey, meta.start);
+        // YoY change: find the observation closest to exactly 1 year before
+        // the latest point. This works for both daily and monthly series.
+        const last = obs[obs.length - 1];
+        let yearAgo: FredObservation | undefined;
+        if (last) {
+          const targetTime = last.t - 365 * DAY_MS;
+          // Binary search / linear walk for the closest observation at or
+          // before the target time
+          for (let i = obs.length - 1; i >= 0; i--) {
+            if (obs[i].t <= targetTime) {
+              yearAgo = obs[i];
+              break;
+            }
+          }
+        }
+        const yoyChange =
+          last && yearAgo && yearAgo.value !== 0
+            ? ((last.value - yearAgo.value) / yearAgo.value) * 100
+            : null;
+        const points = downsample(
+          obs.map((o) => ({ t: o.t, value: o.value })),
+          1500
+        );
+        return {
+          id: meta.id,
+          label: meta.label,
+          description: meta.description,
+          unit: meta.unit,
+          decimals: meta.decimals,
+          points,
+          latest: last ? { date: last.date, value: last.value } : null,
+          yoyChange,
+        } satisfies MacroSeries;
+      } catch (err) {
+        logQuant.warn(`Macro ${meta.id} failed: ${err instanceof Error ? err.message : err}`);
+        return {
+          id: meta.id,
+          label: meta.label,
+          description: meta.description,
+          unit: meta.unit,
+          decimals: meta.decimals,
+          points: [],
+          latest: null,
+          yoyChange: null,
+        } satisfies MacroSeries;
+      }
+    })
+  );
+  return {
+    series: results,
+    fetchedAt: Date.now(),
+    source: 'fred',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Yield Curve (Macro) — T10Y2Y and T10Y3M spreads
+// ---------------------------------------------------------------------------
+
+export interface YieldCurvePoint {
+  date: string;
+  t: number;
+  /** 10Y - 2Y in percentage points */
+  t10y2y: number | null;
+  /** 10Y - 3M in percentage points */
+  t10y3m: number | null;
+}
+
+export interface YieldCurveResponse {
+  points: YieldCurvePoint[];
+  latest: {
+    date: string;
+    t10y2y: number | null;
+    t10y3m: number | null;
+    /** Regime label based on current T10Y2Y */
+    regime: 'deeply-inverted' | 'inverted' | 'flattening' | 'normal' | 'steepening';
+  };
+  /** How long (in trading days) the curve has been inverted (T10Y2Y < 0).
+   *  Negative means "days since last inversion ended" when the curve is normal. */
+  inversionStreak: number;
+  /** Date of the most recent inversion signal (first day T10Y2Y crossed below 0 in the current streak) */
+  lastInversionStart: string | null;
+  dataRange: { from: string; to: string };
+  source: 'fred';
+}
+
+/** Classify the current yield curve state based on the 10Y-2Y spread. */
+export function classifyYieldCurveRegime(
+  t10y2y: number | null
+): YieldCurveResponse['latest']['regime'] {
+  if (t10y2y == null) return 'normal';
+  if (t10y2y < -0.5) return 'deeply-inverted';
+  if (t10y2y < 0) return 'inverted';
+  if (t10y2y < 0.25) return 'flattening';
+  if (t10y2y < 1.5) return 'normal';
+  return 'steepening';
+}
+
+async function computeYieldCurve(apiKey: string): Promise<YieldCurveResponse> {
+  // T10Y2Y daily back to 1976, T10Y3M daily back to 1982.
+  const [t10y2yObs, t10y3mObs] = await Promise.all([
+    fetchFredSeries('T10Y2Y', apiKey, '1976-06-01'),
+    fetchFredSeries('T10Y3M', apiKey, '1982-01-01'),
+  ]);
+
+  // Align into a single time-series map keyed by date
+  const map = new Map<string, YieldCurvePoint>();
+  for (const obs of t10y2yObs) {
+    map.set(obs.date, { date: obs.date, t: obs.t, t10y2y: obs.value, t10y3m: null });
+  }
+  for (const obs of t10y3mObs) {
+    const existing = map.get(obs.date);
+    if (existing) {
+      existing.t10y3m = obs.value;
+    } else {
+      map.set(obs.date, { date: obs.date, t: obs.t, t10y2y: null, t10y3m: obs.value });
+    }
+  }
+  const points = [...map.values()].sort((a, b) => a.t - b.t);
+
+  if (points.length < 100) {
+    throw new Error(`Insufficient FRED yield curve history (got ${points.length} points)`);
+  }
+
+  const last = points[points.length - 1];
+  const regime = classifyYieldCurveRegime(last.t10y2y);
+
+  // Compute inversion streak: how many days back from the latest point has
+  // T10Y2Y been consistently below/above 0.
+  const currentlyInverted = last.t10y2y != null && last.t10y2y < 0;
+  let streak = 0;
+  let lastInversionStart: string | null = null;
+  for (let i = points.length - 1; i >= 0; i--) {
+    const p = points[i];
+    if (p.t10y2y == null) continue;
+    const inv = p.t10y2y < 0;
+    if (inv === currentlyInverted) {
+      streak++;
+      if (currentlyInverted) lastInversionStart = p.date;
+    } else {
+      break;
+    }
+  }
+  // Convention: positive streak for inverted, negative for normal
+  const inversionStreak = currentlyInverted ? streak : -streak;
+
+  return {
+    points,
+    latest: {
+      date: last.date,
+      t10y2y: last.t10y2y,
+      t10y3m: last.t10y3m,
+      regime,
+    },
+    inversionStreak,
+    lastInversionStart: currentlyInverted ? lastInversionStart : null,
+    dataRange: {
+      from: points[0].date,
+      to: last.date,
+    },
+    source: 'fred',
   };
 }
 
@@ -388,6 +1575,10 @@ async function computeBtcLogRegression(): Promise<BtcLogRegressionResponse> {
 export async function refreshAllQuantData(): Promise<{
   btc: boolean;
   spxCycle: boolean;
+  sectorRotation: boolean;
+  shillerValuation: boolean;
+  yieldCurve: boolean;
+  btcDominance: boolean;
   errors: string[];
 }> {
   const errors: string[] = [];
@@ -431,6 +1622,7 @@ export async function refreshAllQuantData(): Promise<{
       residualSigma: data.latest.residualSigma,
       slope: data.slope,
       stdev: data.stdev,
+      riskMetric: data.risk.latest.metric,
     };
     btcOk = true;
     logQuant.info(
@@ -442,10 +1634,120 @@ export async function refreshAllQuantData(): Promise<{
     logQuant.warn(`BTC log regression refresh failed: ${msg}`);
   }
 
+  // BTC Dominance (CoinGecko /global)
+  let dominanceOk = false;
+  try {
+    const data = await fetchBtcDominance();
+    cache.btcDominance = { fetchedAt: now, data };
+    snap.btcDominance = {
+      btcDominance: data.btcDominance,
+      ethDominance: data.ethDominance,
+      stableDominance: data.stableDominance,
+      flightToSafety: data.flightToSafety,
+      totalMarketCapUsd: data.totalMarketCapUsd,
+    };
+    dominanceOk = true;
+    logQuant.info(
+      `BTC dominance refreshed (BTC.D=${data.btcDominance.toFixed(1)}%, ETH.D=${data.ethDominance.toFixed(1)}%)`
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    errors.push(`btcDominance: ${msg}`);
+    logQuant.warn(`BTC dominance refresh failed: ${msg}`);
+  }
+
+  // Yield curve (FRED) — requires a FRED API key, silent skip if missing
+  let yieldCurveOk = false;
+  try {
+    const settings = await loadSettings();
+    const fredKey = settings.fredApiKey;
+    if (!fredKey) {
+      logQuant.info('Yield curve refresh skipped — no FRED API key configured');
+    } else {
+      const data = await computeYieldCurve(fredKey);
+      cache.yieldCurve = { fetchedAt: now, data };
+      if (data.latest.t10y2y != null) {
+        snap.yieldCurve = {
+          t10y2y: data.latest.t10y2y,
+          t10y3m: data.latest.t10y3m,
+          inversionStreak: data.inversionStreak,
+          regime: data.latest.regime,
+        };
+      }
+      yieldCurveOk = true;
+      logQuant.info(
+        `Yield curve refreshed (T10Y2Y=${data.latest.t10y2y?.toFixed(2) ?? '—'}, regime=${data.latest.regime})`
+      );
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    errors.push(`yieldCurve: ${msg}`);
+    logQuant.warn(`Yield curve refresh failed: ${msg}`);
+  }
+
+  // Shiller valuation (CAPE + dividend yield)
+  let shillerOk = false;
+  try {
+    const data = await computeShillerValuation();
+    cache.shillerValuation = { fetchedAt: now, data };
+    if (data.latest.cape != null && data.capePercentile != null && data.latest.divYield != null) {
+      snap.shillerValuation = {
+        cape: data.latest.cape,
+        capePercentile: data.capePercentile,
+        divYield: data.latest.divYield,
+      };
+    }
+    shillerOk = true;
+    logQuant.info(
+      `Shiller valuation refreshed (CAPE=${data.latest.cape?.toFixed(1) ?? '—'}, DY=${data.latest.divYield?.toFixed(2) ?? '—'}%)`
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    errors.push(`shillerValuation: ${msg}`);
+    logQuant.warn(`Shiller valuation refresh failed: ${msg}`);
+  }
+
+  // Sector rotation
+  let sectorOk = false;
+  try {
+    const data = await computeSectorRotation();
+    cache.sectorRotation = { fetchedAt: now, data };
+
+    // Rank and capture summary into the snapshot
+    const ranked = [...data.sectors]
+      .filter((s) => s.rsRatio != null)
+      .sort((a, b) => (b.rsRatio ?? 0) - (a.rsRatio ?? 0));
+    const rankedMom = [...data.sectors]
+      .filter((s) => s.momentum != null)
+      .sort((a, b) => (b.momentum ?? 0) - (a.momentum ?? 0));
+    const quadCounts = { leading: 0, improving: 0, weakening: 0, lagging: 0 };
+    for (const s of data.sectors) {
+      if (s.quadrant === 'leading') quadCounts.leading++;
+      else if (s.quadrant === 'improving') quadCounts.improving++;
+      else if (s.quadrant === 'weakening') quadCounts.weakening++;
+      else if (s.quadrant === 'lagging') quadCounts.lagging++;
+    }
+    if (ranked[0]?.rsRatio != null && rankedMom[0]?.momentum != null) {
+      snap.sectorRotation = {
+        topRS: { ticker: ranked[0].ticker, rsRatio: ranked[0].rsRatio },
+        topMomentum: { ticker: rankedMom[0].ticker, momentum: rankedMom[0].momentum },
+        quadrantCounts: quadCounts,
+      };
+    }
+    sectorOk = true;
+    logQuant.info(
+      `Sector rotation refreshed (top RS: ${ranked[0]?.ticker ?? '-'}, top Mom: ${rankedMom[0]?.ticker ?? '-'})`
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    errors.push(`sectorRotation: ${msg}`);
+    logQuant.warn(`Sector rotation refresh failed: ${msg}`);
+  }
+
   await saveCache(cache);
 
   // Only write a snapshot if at least one metric refreshed successfully
-  if (spxCycleOk || btcOk) {
+  if (spxCycleOk || btcOk || sectorOk || shillerOk || yieldCurveOk || dominanceOk) {
     try {
       await appendSnapshot(snap);
     } catch (err) {
@@ -453,7 +1755,16 @@ export async function refreshAllQuantData(): Promise<{
     }
   }
 
-  return { btc: btcOk, spxCycle: spxCycleOk, errors };
+  // Only write a snapshot if at least one metric refreshed successfully
+  return {
+    btc: btcOk,
+    spxCycle: spxCycleOk,
+    sectorRotation: sectorOk,
+    shillerValuation: shillerOk,
+    yieldCurve: yieldCurveOk,
+    btcDominance: dominanceOk,
+    errors,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -469,9 +1780,19 @@ export async function handleQuantRoutes(
   if (pathname === '/api/quant/refresh' && req.method === 'POST') {
     const result = await refreshAllQuantData();
     return jsonResponse({
-      ok: result.btc || result.spxCycle,
+      ok:
+        result.btc ||
+        result.spxCycle ||
+        result.sectorRotation ||
+        result.shillerValuation ||
+        result.yieldCurve ||
+        result.btcDominance,
       btcRefreshed: result.btc,
       spxCycleRefreshed: result.spxCycle,
+      sectorRotationRefreshed: result.sectorRotation,
+      shillerValuationRefreshed: result.shillerValuation,
+      yieldCurveRefreshed: result.yieldCurve,
+      btcDominanceRefreshed: result.btcDominance,
       errors: result.errors,
       refreshedAt: Date.now(),
     });
@@ -483,42 +1804,262 @@ export async function handleQuantRoutes(
     const file = await readSnapshots();
     const cutoff = Date.now() - days * DAY_MS;
     const filtered = file.snapshots.filter((s) => s.takenAt >= cutoff);
-    return jsonResponse({
-      snapshots: filtered,
-      totalAll: file.snapshots.length,
-      returned: filtered.length,
-      days,
-    });
+    return cachedJsonResponse(
+      req,
+      {
+        snapshots: filtered,
+        totalAll: file.snapshots.length,
+        returned: filtered.length,
+        days,
+      },
+      CACHE.snapshots
+    );
   }
 
   // GET /api/quant/cycle/presidential
   if (pathname === '/api/quant/cycle/presidential' && req.method === 'GET') {
     const cache = await loadCache();
     if (isFresh(cache.presidentialCycle, TTL.presidentialCycle)) {
-      return jsonResponse({
-        ...cache.presidentialCycle!.data,
-        cached: true,
-        fetchedAt: cache.presidentialCycle!.fetchedAt,
-      });
+      return cachedJsonResponse(
+        req,
+        {
+          ...cache.presidentialCycle!.data,
+          cached: true,
+          fetchedAt: cache.presidentialCycle!.fetchedAt,
+        },
+        CACHE.presidentialCycle
+      );
     }
     try {
       const data = await computePresidentialCycle();
       cache.presidentialCycle = { fetchedAt: Date.now(), data };
       await saveCache(cache);
-      return jsonResponse({ ...data, cached: false, fetchedAt: cache.presidentialCycle.fetchedAt });
+      return cachedJsonResponse(
+        req,
+        { ...data, cached: false, fetchedAt: cache.presidentialCycle.fetchedAt },
+        CACHE.presidentialCycle
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       // Fall back to stale cache if a fetch fails
       if (cache.presidentialCycle) {
-        return jsonResponse({
-          ...cache.presidentialCycle.data,
-          cached: true,
-          stale: true,
-          fetchedAt: cache.presidentialCycle.fetchedAt,
-          fetchError: msg,
-        });
+        return cachedJsonResponse(
+          req,
+          {
+            ...cache.presidentialCycle.data,
+            cached: true,
+            stale: true,
+            fetchedAt: cache.presidentialCycle.fetchedAt,
+            fetchError: msg,
+          },
+          CACHE.presidentialCycle
+        );
       }
       return jsonResponse({ error: `Presidential cycle fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/macro/dashboard — 10Y, DFF, M2, DXY, Core CPI from FRED
+  if (pathname === '/api/quant/macro/dashboard' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.macroDashboard, TTL.macroDashboard)) {
+      return cachedJsonResponse(
+        req,
+        { ...cache.macroDashboard!.data, cached: true },
+        CACHE.macroDashboard
+      );
+    }
+    try {
+      const settings = await loadSettings();
+      const fredKey = settings.fredApiKey;
+      if (!fredKey) {
+        return jsonResponse(
+          {
+            error:
+              'FRED API key not configured. Add one in Settings → Quant (free, 30-second signup).',
+          },
+          400
+        );
+      }
+      const data = await computeMacroDashboard(fredKey);
+      cache.macroDashboard = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.macroDashboard);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.macroDashboard) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.macroDashboard.data, cached: true, stale: true, fetchError: msg },
+          CACHE.macroDashboard
+        );
+      }
+      return jsonResponse({ error: `Macro dashboard fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/macro/yield-curve — T10Y2Y and T10Y3M from FRED
+  if (pathname === '/api/quant/macro/yield-curve' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.yieldCurve, TTL.yieldCurve)) {
+      return cachedJsonResponse(
+        req,
+        {
+          ...cache.yieldCurve!.data,
+          cached: true,
+          fetchedAt: cache.yieldCurve!.fetchedAt,
+        },
+        CACHE.yieldCurve
+      );
+    }
+    try {
+      const settings = await loadSettings();
+      const fredKey = settings.fredApiKey;
+      if (!fredKey) {
+        return jsonResponse(
+          {
+            error:
+              'FRED API key not configured. Add one in Settings → Quant (free, 30-second signup).',
+          },
+          400
+        );
+      }
+      const data = await computeYieldCurve(fredKey);
+      cache.yieldCurve = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(
+        req,
+        { ...data, cached: false, fetchedAt: cache.yieldCurve.fetchedAt },
+        CACHE.yieldCurve
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.yieldCurve) {
+        return cachedJsonResponse(
+          req,
+          {
+            ...cache.yieldCurve.data,
+            cached: true,
+            stale: true,
+            fetchedAt: cache.yieldCurve.fetchedAt,
+            fetchError: msg,
+          },
+          CACHE.yieldCurve
+        );
+      }
+      return jsonResponse({ error: `Yield curve fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/tradfi/shiller-valuation — CAPE + SP500 dividend yield
+  if (pathname === '/api/quant/tradfi/shiller-valuation' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.shillerValuation, TTL.shillerValuation)) {
+      return cachedJsonResponse(
+        req,
+        {
+          ...cache.shillerValuation!.data,
+          cached: true,
+          fetchedAt: cache.shillerValuation!.fetchedAt,
+        },
+        CACHE.shillerValuation
+      );
+    }
+    try {
+      const data = await computeShillerValuation();
+      cache.shillerValuation = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(
+        req,
+        { ...data, cached: false, fetchedAt: cache.shillerValuation.fetchedAt },
+        CACHE.shillerValuation
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.shillerValuation) {
+        return cachedJsonResponse(
+          req,
+          {
+            ...cache.shillerValuation.data,
+            cached: true,
+            stale: true,
+            fetchedAt: cache.shillerValuation.fetchedAt,
+            fetchError: msg,
+          },
+          CACHE.shillerValuation
+        );
+      }
+      return jsonResponse({ error: `Shiller valuation fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/tradfi/sectors/rotation
+  if (pathname === '/api/quant/tradfi/sectors/rotation' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.sectorRotation, TTL.sectorRotation)) {
+      return cachedJsonResponse(
+        req,
+        {
+          ...cache.sectorRotation!.data,
+          cached: true,
+          fetchedAt: cache.sectorRotation!.fetchedAt,
+        },
+        CACHE.sectorRotation
+      );
+    }
+    try {
+      const data = await computeSectorRotation();
+      cache.sectorRotation = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(
+        req,
+        { ...data, cached: false, fetchedAt: cache.sectorRotation.fetchedAt },
+        CACHE.sectorRotation
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.sectorRotation) {
+        return cachedJsonResponse(
+          req,
+          {
+            ...cache.sectorRotation.data,
+            cached: true,
+            stale: true,
+            fetchedAt: cache.sectorRotation.fetchedAt,
+            fetchError: msg,
+          },
+          CACHE.sectorRotation
+        );
+      }
+      return jsonResponse({ error: `Sector rotation fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/btc/dominance — CoinGecko /global
+  if (pathname === '/api/quant/btc/dominance' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.btcDominance, TTL.btcDominance)) {
+      return cachedJsonResponse(
+        req,
+        { ...cache.btcDominance!.data, cached: true },
+        CACHE.btcDominance
+      );
+    }
+    try {
+      const data = await fetchBtcDominance();
+      cache.btcDominance = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.btcDominance);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.btcDominance) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.btcDominance.data, cached: true, stale: true, fetchError: msg },
+          CACHE.btcDominance
+        );
+      }
+      return jsonResponse({ error: `BTC dominance fetch failed: ${msg}` }, 502);
     }
   }
 
@@ -526,31 +2067,39 @@ export async function handleQuantRoutes(
   if (pathname === '/api/quant/btc/log-regression' && req.method === 'GET') {
     const cache = await loadCache();
     if (isFresh(cache.btcLogRegression, TTL.btcLogRegression)) {
-      return jsonResponse({
-        ...cache.btcLogRegression!.data,
-        cached: true,
-        fetchedAt: cache.btcLogRegression!.fetchedAt,
-      });
+      return cachedJsonResponse(
+        req,
+        {
+          ...cache.btcLogRegression!.data,
+          cached: true,
+          fetchedAt: cache.btcLogRegression!.fetchedAt,
+        },
+        CACHE.btcLogRegression
+      );
     }
     try {
       const data = await computeBtcLogRegression();
       cache.btcLogRegression = { fetchedAt: Date.now(), data };
       await saveCache(cache);
-      return jsonResponse({
-        ...data,
-        cached: false,
-        fetchedAt: cache.btcLogRegression.fetchedAt,
-      });
+      return cachedJsonResponse(
+        req,
+        { ...data, cached: false, fetchedAt: cache.btcLogRegression.fetchedAt },
+        CACHE.btcLogRegression
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (cache.btcLogRegression) {
-        return jsonResponse({
-          ...cache.btcLogRegression.data,
-          cached: true,
-          stale: true,
-          fetchedAt: cache.btcLogRegression.fetchedAt,
-          fetchError: msg,
-        });
+        return cachedJsonResponse(
+          req,
+          {
+            ...cache.btcLogRegression.data,
+            cached: true,
+            stale: true,
+            fetchedAt: cache.btcLogRegression.fetchedAt,
+            fetchError: msg,
+          },
+          CACHE.btcLogRegression
+        );
       }
       return jsonResponse({ error: `BTC log regression fetch failed: ${msg}` }, 502);
     }

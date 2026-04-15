@@ -39,6 +39,8 @@ scripts/
 **/*.test.tsx
 **/*.spec.ts
 **/*.spec.tsx
+# Exception: quant math tests are pure computation, no personal data
+!server/routes/quant.test.ts
 
 # Internal design docs
 docs/PRD-shadcn-migration.md
@@ -53,3 +55,8 @@ pnpm-lock.yaml
 
 # Local deploy helper
 Makefile
+
+# ITC HTML scrapes used for descriptions — not part of the app
+outer.html
+inner.html
+inner2.html
