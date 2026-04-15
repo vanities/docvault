@@ -657,6 +657,44 @@ export function useHashRate() {
   return useQuantFetch<HashRateData>(`${API_BASE}/quant/btc/hash-rate?_=${bump}`);
 }
 
+export interface RunningRoiPointData {
+  t: number;
+  roi: number;
+}
+
+export interface RunningRoiWindowData {
+  label: string;
+  bars: number;
+  approxDays: number;
+  series: RunningRoiPointData[];
+  latest: number | null;
+  latestPercentile: number | null;
+  count: number;
+  mean: number;
+  min: number;
+  max: number;
+}
+
+export interface RunningRoiAssetData {
+  asset: string;
+  range: { from: string; to: string };
+  windows: RunningRoiWindowData[];
+}
+
+export interface RunningRoiData {
+  btc: RunningRoiAssetData;
+  spx: RunningRoiAssetData;
+  fetchedAt: number;
+  source: 'yahoo+shiller';
+  cached?: boolean;
+  stale?: boolean;
+}
+
+export function useRunningRoi() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<RunningRoiData>(`${API_BASE}/quant/running-roi?_=${bump}`);
+}
+
 export interface FedRateChange {
   t: number;
   newRate: number;
