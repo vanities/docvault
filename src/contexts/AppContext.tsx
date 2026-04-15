@@ -201,7 +201,10 @@ interface AppProviderProps {
 export function AppProvider({ children }: AppProviderProps) {
   const currentYear = new Date().getFullYear();
 
-  // Valid views for hash routing
+  // Valid views for hash routing. Must stay in sync with the `NavView` union
+  // above — a missing entry here silently falls back to 'tax-year' on both
+  // page load and any hashchange, which looks like "clicking the sidebar
+  // button sometimes snaps back to Tax Year."
   const validViews = new Set<string>([
     'tax-year',
     'business-docs',
@@ -221,6 +224,7 @@ export function AppProvider({ children }: AppProviderProps) {
     'property',
     'income',
     'quant',
+    'health',
   ]);
 
   const viewFromHash = (): NavView | null => {
