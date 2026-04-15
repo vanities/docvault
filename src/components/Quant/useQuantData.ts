@@ -474,6 +474,11 @@ export function useJobsDashboard() {
   return useQuantFetch<MacroDashboardData>(`${API_BASE}/quant/macro/jobs?_=${bump}`);
 }
 
+export function useBusinessCycle() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<MacroDashboardData>(`${API_BASE}/quant/macro/business-cycle?_=${bump}`);
+}
+
 export interface FedRateChange {
   t: number;
   newRate: number;

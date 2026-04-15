@@ -23,6 +23,7 @@ import { YieldCurveChart } from './YieldCurveChart';
 import { MacroDashboardChart } from './MacroDashboardChart';
 import { JobsDashboardChart } from './JobsDashboardChart';
 import { FedPolicyChart } from './FedPolicyChart';
+import { BusinessCycleChart } from './BusinessCycleChart';
 import { useQuantRefresh } from './useQuantData';
 
 /** Four top-level tabs — an overview snapshot plus Cowen's 3 categories. */
@@ -267,6 +268,10 @@ export function QuantView() {
           <p className="text-[12px] text-surface-600 mb-6 leading-relaxed">
             {CATEGORY_META.macro.description}
           </p>
+
+          <ChartGroup title="Business Cycle" subtitle="recession probability + leading indicators">
+            <BusinessCycleChart />
+          </ChartGroup>
 
           <ChartGroup title="Macro regime" subtitle="5 key FRED series">
             <MacroDashboardChart />
