@@ -2,7 +2,7 @@
 // Click a card to drill into that person. Each card has an archive button.
 
 import { useState } from 'react';
-import { User, Archive, Trash2, ChevronRight } from 'lucide-react';
+import { User, Archive, Trash2, ChevronRight, Edit3 } from 'lucide-react';
 import type { HealthPerson } from '../../hooks/useFileSystemServer';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ import {
 interface PeopleListProps {
   people: HealthPerson[];
   onSelect: (person: HealthPerson) => void;
+  onEdit: (person: HealthPerson) => void;
   onDelete: (id: string, mode: 'archive' | 'delete') => Promise<void>;
 }
 
@@ -35,7 +36,7 @@ function colorFor(color?: string): { bg: string; text: string } {
   return COLOR_MAP[color ?? 'rose'] ?? COLOR_MAP.gray;
 }
 
-export function PeopleList({ people, onSelect, onDelete }: PeopleListProps) {
+export function PeopleList({ people, onSelect, onEdit, onDelete }: PeopleListProps) {
   const [confirmDelete, setConfirmDelete] = useState<HealthPerson | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -62,7 +63,19 @@ export function PeopleList({ people, onSelect, onDelete }: PeopleListProps) {
                 </div>
                 <ChevronRight className="w-4 h-4 text-surface-500 flex-shrink-0" />
               </div>
-              <div className="flex justify-end mt-3">
+              <div className="flex justify-end gap-1 mt-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-surface-600 hover:text-surface-950 h-7 px-2 gap-1"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit(person);
+                  }}
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  Edit
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"

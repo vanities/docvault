@@ -18,6 +18,7 @@ import {
   Share2,
   Upload,
   Sparkles,
+  Edit3,
 } from 'lucide-react';
 import type { HealthPerson } from '../../hooks/useFileSystemServer';
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,7 @@ import { Card } from '@/components/ui/card';
 import { useHealthApi } from './useHealthApi';
 import { PeopleList } from './PeopleList';
 import { AddPersonModal } from './AddPersonModal';
+import { EditPersonModal } from './EditPersonModal';
 import { PersonDetail } from './PersonDetail';
 
 export function HealthView() {
@@ -34,6 +36,7 @@ export function HealthView() {
   const [error, setError] = useState<string | null>(null);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingPerson, setEditingPerson] = useState<HealthPerson | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -83,6 +86,19 @@ export function HealthView() {
     [api, refresh]
   );
 
+  const handleEditSave = useCallback(
+    async (id: string, updates: { name: string; color: string }) => {
+      try {
+        const updated = await api.updatePerson(id, updates);
+        setPeople((prev) => prev.map((p) => (p.id === id ? updated : p)));
+        setEditingPerson(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [api]
+  );
+
   const selectedPerson = selectedPersonId
     ? (people.find((p) => p.id === selectedPersonId) ?? null)
     : null;
@@ -104,10 +120,29 @@ export function HealthView() {
               <ArrowLeft className="w-4 h-4" />
               People
             </Button>
-            <h1 className="font-display text-2xl italic text-surface-950">{selectedPerson.name}</h1>
+            <h1 className="font-display text-2xl italic text-surface-950 flex-1 truncate">
+              {selectedPerson.name}
+            </h1>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setEditingPerson(selectedPerson)}
+              className="gap-1.5"
+              title="Rename this person"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              Edit
+            </Button>
           </div>
           <PersonDetail person={selectedPerson} />
         </div>
+
+        <EditPersonModal
+          isOpen={editingPerson !== null}
+          person={editingPerson}
+          onClose={() => setEditingPerson(null)}
+          onSave={handleEditSave}
+        />
       </div>
     );
   }
@@ -151,6 +186,7 @@ export function HealthView() {
           <PeopleList
             people={people}
             onSelect={(p) => setSelectedPersonId(p.id)}
+            onEdit={(p) => setEditingPerson(p)}
             onDelete={handleDelete}
           />
         )}
@@ -160,6 +196,13 @@ export function HealthView() {
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
         onCreate={handleCreate}
+      />
+
+      <EditPersonModal
+        isOpen={editingPerson !== null}
+        person={editingPerson}
+        onClose={() => setEditingPerson(null)}
+        onSave={handleEditSave}
       />
     </div>
   );
