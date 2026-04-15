@@ -21,6 +21,8 @@ import { SP500RiskMetricChart } from './SP500RiskMetricChart';
 import { MidtermDrawdownChart } from './MidtermDrawdownChart';
 import { YieldCurveChart } from './YieldCurveChart';
 import { MacroDashboardChart } from './MacroDashboardChart';
+import { JobsDashboardChart } from './JobsDashboardChart';
+import { FedPolicyChart } from './FedPolicyChart';
 import { useQuantRefresh } from './useQuantData';
 
 /** Four top-level tabs — an overview snapshot plus Cowen's 3 categories. */
@@ -270,6 +272,14 @@ export function QuantView() {
             <MacroDashboardChart />
           </ChartGroup>
 
+          <ChartGroup title="Fed Policy" subtitle="effective + target range + rate change events">
+            <FedPolicyChart />
+          </ChartGroup>
+
+          <ChartGroup title="Jobs Dashboard" subtitle="6 FRED labor series">
+            <JobsDashboardChart />
+          </ChartGroup>
+
           <ChartGroup title="Yield curve" subtitle="FRED T10Y2Y + T10Y3M">
             <YieldCurveChart />
           </ChartGroup>
@@ -278,11 +288,11 @@ export function QuantView() {
             <EmptyCategoryCard
               category="macro"
               comingSoon={[
-                'Unemployment Rate (UNRATE)',
                 'Fed Balance Sheet (WALCL)',
                 'ISM Manufacturing PMI',
                 '2Y Treasury (DGS2)',
                 'Headline CPI YoY',
+                'Real interest rates',
               ]}
             />
           </ChartGroup>

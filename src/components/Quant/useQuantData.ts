@@ -469,6 +469,42 @@ export function useMacroDashboard() {
   return useQuantFetch<MacroDashboardData>(`${API_BASE}/quant/macro/dashboard?_=${bump}`);
 }
 
+export function useJobsDashboard() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<MacroDashboardData>(`${API_BASE}/quant/macro/jobs?_=${bump}`);
+}
+
+export interface FedRateChange {
+  t: number;
+  newRate: number;
+  changeBps: number;
+  type: 'hike' | 'cut';
+}
+
+export interface FedPolicyData {
+  effectiveRate: { t: number; rate: number }[];
+  targetUpper: { t: number; rate: number }[];
+  targetLower: { t: number; rate: number }[];
+  rateChanges: FedRateChange[];
+  latest: {
+    date: string;
+    effectiveRate: number;
+    targetUpper: number;
+    targetLower: number;
+    stance: 'cutting' | 'hiking' | 'hold';
+    daysSinceLastChange: number;
+  };
+  dataRange: { from: string; to: string };
+  source: 'fred';
+  cached?: boolean;
+  stale?: boolean;
+}
+
+export function useFedPolicy() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<FedPolicyData>(`${API_BASE}/quant/macro/fed-policy?_=${bump}`);
+}
+
 export function useMidtermDrawdowns() {
   const bump = useQuantRefreshBump();
   return useQuantFetch<MidtermDrawdownData>(`${API_BASE}/quant/tradfi/midterm-drawdowns?_=${bump}`);
