@@ -66,21 +66,36 @@ export function YieldCurveChart() {
     // Build markArea data for every historical inversion period of T10Y2Y.
     // Walk through the points and emit [start, end] pairs for contiguous
     // runs where t10y2y < 0.
-    const inversions: Array<[{ xAxis: number }, { xAxis: number }]> = [];
+    const inversions: Array<[{ xAxis: number; itemStyle?: { color: string } }, { xAxis: number }]> =
+      [];
     let inversionStart: number | null = null;
     for (const p of sampled) {
       if (p.t10y2y == null) continue;
       if (p.t10y2y < 0) {
         if (inversionStart == null) inversionStart = p.t;
       } else if (inversionStart != null) {
-        inversions.push([{ xAxis: inversionStart }, { xAxis: p.t }]);
+        inversions.push([
+          { xAxis: inversionStart, itemStyle: { color: 'rgba(244, 63, 94, 0.15)' } },
+          { xAxis: p.t },
+        ]);
         inversionStart = null;
       }
     }
     if (inversionStart != null) {
       const last = sampled[sampled.length - 1];
-      inversions.push([{ xAxis: inversionStart }, { xAxis: last.t }]);
+      inversions.push([
+        { xAxis: inversionStart, itemStyle: { color: 'rgba(244, 63, 94, 0.15)' } },
+        { xAxis: last.t },
+      ]);
     }
+
+    // Recession shading (NBER USREC) — darker gray, drawn in a separate
+    // markArea so it layers behind the inversion shading.
+    const recessions: Array<[{ xAxis: number; itemStyle?: { color: string } }, { xAxis: number }]> =
+      data.recessions.map((r) => [
+        { xAxis: r.start, itemStyle: { color: 'rgba(100, 116, 139, 0.25)' } },
+        { xAxis: r.end },
+      ]);
 
     return {
       backgroundColor: 'transparent',
@@ -113,6 +128,20 @@ export function YieldCurveChart() {
         splitLine: { lineStyle: { color: 'rgba(100, 116, 139, 0.1)' } },
       },
       series: [
+        // Recession shading — invisible line that hosts the markArea
+        {
+          name: 'NBER Recessions',
+          type: 'line',
+          data: [] as [number, number][],
+          silent: true,
+          showInLegend: false,
+          lineStyle: { width: 0 },
+          symbol: 'none',
+          markArea: {
+            silent: true,
+            data: recessions,
+          },
+        },
         {
           name: '10Y − 2Y',
           type: 'line',
@@ -129,7 +158,6 @@ export function YieldCurveChart() {
           },
           markArea: {
             silent: true,
-            itemStyle: { color: 'rgba(244, 63, 94, 0.15)' },
             data: inversions,
           },
         },
@@ -156,7 +184,9 @@ export function YieldCurveChart() {
         </h3>
         <p className="text-[13px] text-surface-600 mt-1 leading-relaxed">
           10Y − 2Y and 10Y − 3M Treasury spreads from FRED. Inverted periods (spread &lt; 0) are
-          shaded rose — every US recession since 1970 has been preceded by a T10Y2Y inversion,
+          shaded <span className="text-rose-400 font-semibold">rose</span>; actual{' '}
+          <span className="text-surface-400 font-semibold">NBER recessions</span> (FRED USREC) are
+          shaded gray. Every US recession since 1970 has been preceded by a T10Y2Y inversion,
           typically 6–18 months before recession onset.
         </p>
       </div>

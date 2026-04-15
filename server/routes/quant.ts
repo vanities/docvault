@@ -25,6 +25,7 @@ const TTL = {
   macroDashboard: DAY_MS, // FRED updates once per business day
   midtermDrawdowns: 7 * DAY_MS, // Shiller monthly — weekly refresh
   sp500RiskMetric: 7 * DAY_MS, // Shiller monthly — weekly refresh
+  btcDerivatives: 30 * 60 * 1000, // 30 min — funding rate updates 3x/day
 };
 
 interface CacheEntry<T> {
@@ -42,6 +43,7 @@ type QuantCache = {
   macroDashboard?: CacheEntry<MacroDashboardResponse>;
   midtermDrawdowns?: CacheEntry<MidtermDrawdownResponse>;
   sp500RiskMetric?: CacheEntry<SP500RiskResponse>;
+  btcDerivatives?: CacheEntry<BtcDerivativesResponse>;
 };
 
 async function loadCache(): Promise<QuantCache> {
@@ -115,6 +117,8 @@ const CACHE = {
   midtermDrawdowns: { maxAge: 6 * 3600, swr: 24 * 3600 },
   // SP500 risk metric = monthly composite — 6h + 24h SWR.
   sp500RiskMetric: { maxAge: 6 * 3600, swr: 24 * 3600 },
+  // BTC derivatives = OKX funding/OI — 10 min + 2h SWR.
+  btcDerivatives: { maxAge: 600, swr: 2 * 3600 },
   // Snapshots grow one row per day; short cache so new snapshots appear fast.
   snapshots: { maxAge: 300, swr: 3600 },
 };
@@ -833,6 +837,136 @@ async function computeBtcLogRegression(): Promise<BtcLogRegressionResponse> {
 }
 
 // ---------------------------------------------------------------------------
+// BTC Derivatives (Crypto) — funding rate, open interest, long/short ratio
+// ---------------------------------------------------------------------------
+//
+// Sourced from OKX's free public API. Binance futures is US-blocked, Bybit
+// is also US-blocked (403 from their edge); OKX remains accessible and
+// serves aggregate BTC derivatives data with no auth required.
+
+export interface FundingRatePoint {
+  /** Unix ms */
+  t: number;
+  /** Funding rate in decimal (e.g. 0.0001 = 0.01%) */
+  rate: number;
+}
+
+export interface OpenInterestPoint {
+  /** Unix ms */
+  t: number;
+  /** Open interest in USD notional */
+  oiUsd: number;
+}
+
+export interface LongShortPoint {
+  /** Unix ms */
+  t: number;
+  /** Long / short account ratio (1.0 = balanced, > 1 = more longs) */
+  ratio: number;
+}
+
+export interface BtcDerivativesResponse {
+  currentFundingRate: number;
+  /** Annualized funding rate ≈ rate × 3 × 365 (BTC funds 3x/day on OKX) */
+  annualizedFundingRate: number;
+  currentOpenInterestUsd: number;
+  currentLongShortRatio: number | null;
+  fundingHistory: FundingRatePoint[];
+  openInterestHistory: OpenInterestPoint[];
+  longShortHistory: LongShortPoint[];
+  fetchedAt: number;
+  source: 'okx';
+}
+
+interface OkxFundingHistoryRaw {
+  code: string;
+  msg: string;
+  data?: { fundingTime: string; fundingRate: string; realizedRate?: string }[];
+}
+interface OkxOiCurrentRaw {
+  code: string;
+  msg: string;
+  data?: { oiUsd: string; ts: string }[];
+}
+interface OkxOiHistoryRaw {
+  code: string;
+  msg: string;
+  data?: string[][];
+}
+interface OkxLongShortRaw {
+  code: string;
+  msg: string;
+  data?: string[][];
+}
+
+async function fetchOkxJson<T>(url: string): Promise<T> {
+  const res = await fetch(url, {
+    headers: { Accept: 'application/json', 'User-Agent': 'docvault/1.0' },
+  });
+  if (!res.ok) {
+    throw new Error(`OKX ${res.status}: ${await res.text()}`);
+  }
+  return (await res.json()) as T;
+}
+
+async function computeBtcDerivatives(): Promise<BtcDerivativesResponse> {
+  const [fundingHistRaw, oiCurrentRaw, oiHistRaw, lsRaw] = await Promise.all([
+    fetchOkxJson<OkxFundingHistoryRaw>(
+      'https://www.okx.com/api/v5/public/funding-rate-history?instId=BTC-USDT-SWAP&limit=100'
+    ),
+    fetchOkxJson<OkxOiCurrentRaw>(
+      'https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=BTC-USDT-SWAP'
+    ),
+    fetchOkxJson<OkxOiHistoryRaw>(
+      'https://www.okx.com/api/v5/rubik/stat/contracts/open-interest-volume?ccy=BTC&period=1D'
+    ),
+    fetchOkxJson<OkxLongShortRaw>(
+      'https://www.okx.com/api/v5/rubik/stat/contracts/long-short-account-ratio?ccy=BTC&period=1D'
+    ),
+  ]);
+
+  const fundingHistory: FundingRatePoint[] = (fundingHistRaw.data ?? [])
+    .map((row) => ({
+      t: Number(row.fundingTime),
+      rate: Number(row.realizedRate ?? row.fundingRate),
+    }))
+    .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.rate))
+    .sort((a, b) => a.t - b.t);
+
+  const currentOiRow = oiCurrentRaw.data?.[0];
+  const currentOpenInterestUsd = currentOiRow ? Number(currentOiRow.oiUsd) : 0;
+
+  const openInterestHistory: OpenInterestPoint[] = (oiHistRaw.data ?? [])
+    .map((row) => ({ t: Number(row[0]), oiUsd: Number(row[1]) }))
+    .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.oiUsd) && p.oiUsd > 0)
+    .sort((a, b) => a.t - b.t);
+
+  const longShortHistory: LongShortPoint[] = (lsRaw.data ?? [])
+    .map((row) => ({ t: Number(row[0]), ratio: Number(row[1]) }))
+    .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.ratio))
+    .sort((a, b) => a.t - b.t);
+
+  const currentFundingRate =
+    fundingHistory.length > 0 ? fundingHistory[fundingHistory.length - 1].rate : 0;
+  // BTC funds 3x/day on OKX → annualized ≈ rate × 3 × 365
+  const annualizedFundingRate = currentFundingRate * 3 * 365;
+  const currentLongShortRatio =
+    longShortHistory.length > 0 ? longShortHistory[longShortHistory.length - 1].ratio : null;
+
+  return {
+    currentFundingRate,
+    annualizedFundingRate,
+    currentOpenInterestUsd,
+    currentLongShortRatio,
+    fundingHistory,
+    openInterestHistory,
+    longShortHistory,
+    fetchedAt: Date.now(),
+    source: 'okx',
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Bitcoin Dominance (Crypto)
 // ---------------------------------------------------------------------------
 //
@@ -853,6 +987,11 @@ export interface DominanceSnapshot {
   totalMarketCapUsd: number;
   /** 24h change in total market cap */
   totalMarketCapChange24h: number;
+  /** Stablecoin Supply Ratio = BTC market cap / stablecoin market cap.
+   *  Low SSR = lots of dry powder on the sidelines. High SSR = money already
+   *  deployed into BTC. Per ITC: "The Stablecoin Supply Ratio is equal to
+   *  the Bitcoin market cap divided by the stablecoin market cap." */
+  ssr: number;
   /** When the snapshot was captured */
   fetchedAt: number;
   source: 'coingecko';
@@ -881,6 +1020,8 @@ async function fetchBtcDominance(): Promise<DominanceSnapshot> {
   // CoinGecko doesn't return every stablecoin individually; sum the big ones
   const stable =
     (pct.usdt ?? 0) + (pct.usdc ?? 0) + (pct.dai ?? 0) + (pct.busd ?? 0) + (pct.tusd ?? 0);
+  // SSR = BTC mcap / stablecoin mcap = btc dominance / stable dominance
+  const ssr = stable > 0 ? btc / stable : 0;
   return {
     btcDominance: btc,
     ethDominance: eth,
@@ -888,6 +1029,7 @@ async function fetchBtcDominance(): Promise<DominanceSnapshot> {
     flightToSafety: btc + stable,
     totalMarketCapUsd: json.data.total_market_cap.usd ?? 0,
     totalMarketCapChange24h: json.data.market_cap_change_percentage_24h_usd ?? 0,
+    ssr,
     fetchedAt: Date.now(),
     source: 'coingecko',
   };
@@ -1893,6 +2035,9 @@ export interface YieldCurveResponse {
   inversionStreak: number;
   /** Date of the most recent inversion signal (first day T10Y2Y crossed below 0 in the current streak) */
   lastInversionStart: string | null;
+  /** Historical NBER recession periods from FRED USREC. Each pair is
+   *  [start_date, end_date] as unix ms. Used to shade recession bands. */
+  recessions: { start: number; end: number }[];
   dataRange: { from: string; to: string };
   source: 'fred';
 }
@@ -1910,10 +2055,12 @@ export function classifyYieldCurveRegime(
 }
 
 async function computeYieldCurve(apiKey: string): Promise<YieldCurveResponse> {
-  // T10Y2Y daily back to 1976, T10Y3M daily back to 1982.
-  const [t10y2yObs, t10y3mObs] = await Promise.all([
+  // T10Y2Y daily back to 1976, T10Y3M daily back to 1982, USREC monthly
+  // back to 1854 (we'll only use periods that overlap our yield curve range).
+  const [t10y2yObs, t10y3mObs, usrecObs] = await Promise.all([
     fetchFredSeries('T10Y2Y', apiKey, '1976-06-01'),
     fetchFredSeries('T10Y3M', apiKey, '1982-01-01'),
+    fetchFredSeries('USREC', apiKey, '1970-01-01'),
   ]);
 
   // Align into a single time-series map keyed by date
@@ -1957,6 +2104,26 @@ async function computeYieldCurve(apiKey: string): Promise<YieldCurveResponse> {
   // Convention: positive streak for inverted, negative for normal
   const inversionStreak = currentlyInverted ? streak : -streak;
 
+  // Build recession ranges from USREC (monthly 0/1 indicator).
+  // Walk through observations, emit [start, end] ms pairs for contiguous runs
+  // of value=1.
+  const recessions: { start: number; end: number }[] = [];
+  let recStart: number | null = null;
+  let prevT = 0;
+  for (const obs of usrecObs) {
+    if (obs.value > 0) {
+      if (recStart == null) recStart = obs.t;
+      prevT = obs.t;
+    } else if (recStart != null) {
+      recessions.push({ start: recStart, end: prevT });
+      recStart = null;
+    }
+  }
+  if (recStart != null) {
+    // Recession currently in progress
+    recessions.push({ start: recStart, end: prevT });
+  }
+
   return {
     points,
     latest: {
@@ -1967,6 +2134,7 @@ async function computeYieldCurve(apiKey: string): Promise<YieldCurveResponse> {
     },
     inversionStreak,
     lastInversionStart: currentlyInverted ? lastInversionStart : null,
+    recessions,
     dataRange: {
       from: points[0].date,
       to: last.date,
@@ -2497,6 +2665,34 @@ export async function handleQuantRoutes(
         );
       }
       return jsonResponse({ error: `Sector rotation fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/btc/derivatives — OKX funding/OI/LS ratio
+  if (pathname === '/api/quant/btc/derivatives' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.btcDerivatives, TTL.btcDerivatives)) {
+      return cachedJsonResponse(
+        req,
+        { ...cache.btcDerivatives!.data, cached: true },
+        CACHE.btcDerivatives
+      );
+    }
+    try {
+      const data = await computeBtcDerivatives();
+      cache.btcDerivatives = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.btcDerivatives);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.btcDerivatives) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.btcDerivatives.data, cached: true, stale: true, fetchError: msg },
+          CACHE.btcDerivatives
+        );
+      }
+      return jsonResponse({ error: `BTC derivatives fetch failed: ${msg}` }, 502);
     }
   }
 
