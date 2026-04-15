@@ -29,6 +29,7 @@ const TTL = {
   altcoinSeason: 6 * 60 * 60 * 1000, // 6h — 90d return doesn't shift much hour-to-hour
   jobsDashboard: DAY_MS, // FRED labor data updates monthly
   fedPolicy: DAY_MS, // target range only moves on FOMC meetings
+  businessCycle: DAY_MS, // monthly business cycle data
 };
 
 interface CacheEntry<T> {
@@ -50,6 +51,7 @@ type QuantCache = {
   altcoinSeason?: CacheEntry<AltcoinSeasonResponse>;
   jobsDashboard?: CacheEntry<MacroDashboardResponse>;
   fedPolicy?: CacheEntry<FedPolicyResponse>;
+  businessCycle?: CacheEntry<MacroDashboardResponse>;
 };
 
 async function loadCache(): Promise<QuantCache> {
@@ -154,6 +156,8 @@ const CACHE = {
   jobsDashboard: { maxAge: 2 * 3600, swr: 12 * 3600 },
   // Fed policy — 2h + 24h SWR (target moves only on FOMC meetings).
   fedPolicy: { maxAge: 2 * 3600, swr: 24 * 3600 },
+  // Business cycle — 2h + 12h SWR (monthly releases, staggered).
+  businessCycle: { maxAge: 2 * 3600, swr: 12 * 3600 },
   // Snapshots grow one row per day; short cache so new snapshots appear fast.
   snapshots: { maxAge: 300, swr: 3600 },
 };
@@ -2149,6 +2153,57 @@ const MACRO_SERIES: MacroSeriesSpec[] = [
   },
 ];
 
+const BUSINESS_CYCLE_SERIES: MacroSeriesSpec[] = [
+  {
+    id: 'SAHMREALTIME',
+    label: 'Sahm Rule Indicator',
+    description: '3-month avg unemployment minus 12-month min. ≥ 0.5 signals recession has begun.',
+    unit: '',
+    decimals: 2,
+    start: '1990-01-01',
+  },
+  {
+    id: 'RECPROUSM156N',
+    label: 'Recession Probability',
+    description: 'Smoothed Chauvet-Piger 12-month recession probability (0-1).',
+    unit: '',
+    decimals: 3,
+    start: '1990-01-01',
+  },
+  {
+    id: 'INDPRO',
+    label: 'Industrial Production',
+    description: 'Total industrial production index (2017 = 100). Coincident indicator.',
+    unit: '',
+    decimals: 1,
+    start: '1990-01-01',
+  },
+  {
+    id: 'DGORDER',
+    label: 'Durable Goods Orders',
+    description: 'New orders for durable goods (millions USD). Leading indicator.',
+    unit: 'M',
+    decimals: 0,
+    start: '1992-01-01',
+  },
+  {
+    id: 'PERMIT',
+    label: 'Building Permits',
+    description: 'New private housing units authorized (thousands). Classic leading indicator.',
+    unit: 'k',
+    decimals: 0,
+    start: '1990-01-01',
+  },
+  {
+    id: 'UMCSENT',
+    label: 'Consumer Sentiment',
+    description: 'University of Michigan Consumer Sentiment Index.',
+    unit: '',
+    decimals: 1,
+    start: '1990-01-01',
+  },
+];
+
 const JOBS_SERIES: MacroSeriesSpec[] = [
   {
     id: 'UNRATE',
@@ -2280,6 +2335,10 @@ async function computeMacroDashboard(apiKey: string): Promise<MacroDashboardResp
 
 async function computeJobsDashboard(apiKey: string): Promise<MacroDashboardResponse> {
   return computeMacroSeriesList(apiKey, JOBS_SERIES);
+}
+
+async function computeBusinessCycle(apiKey: string): Promise<MacroDashboardResponse> {
+  return computeMacroSeriesList(apiKey, BUSINESS_CYCLE_SERIES);
 }
 
 // ---------------------------------------------------------------------------
@@ -2811,6 +2870,42 @@ export async function handleQuantRoutes(
         );
       }
       return jsonResponse({ error: `Presidential cycle fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/macro/business-cycle — recession prob + leading/coincident indicators
+  if (pathname === '/api/quant/macro/business-cycle' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.businessCycle, TTL.businessCycle)) {
+      return cachedJsonResponse(
+        req,
+        { ...cache.businessCycle!.data, cached: true },
+        CACHE.businessCycle
+      );
+    }
+    try {
+      const settings = await loadSettings();
+      const fredKey = settings.fredApiKey;
+      if (!fredKey) {
+        return jsonResponse(
+          { error: 'FRED API key not configured. Add one in Settings → Quant.' },
+          400
+        );
+      }
+      const data = await computeBusinessCycle(fredKey);
+      cache.businessCycle = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.businessCycle);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.businessCycle) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.businessCycle.data, cached: true, stale: true, fetchError: msg },
+          CACHE.businessCycle
+        );
+      }
+      return jsonResponse({ error: `Business cycle fetch failed: ${msg}` }, 502);
     }
   }
 
