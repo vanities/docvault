@@ -1,6 +1,6 @@
 // Thin client wrapper around /api/health routes.
 
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import type { HealthPerson } from '../../hooks/useFileSystemServer';
 import { API_BASE } from '../../constants';
 import type { AppleHealthSummary, ExportInfo } from './types';
@@ -131,14 +131,31 @@ export function useHealthApi() {
     []
   );
 
-  return {
-    listPeople,
-    createPerson,
-    updatePerson,
-    deletePerson,
-    listExports,
-    parseExport,
-    getSummary,
-    uploadAndParseExport,
-  };
+  // Memoize the return object so consumers that put `api` in a useEffect
+  // dependency array don't spin in an infinite loop. Without this wrapper,
+  // every render of the calling component creates a fresh object literal —
+  // even though the individual callbacks are stable `useCallback`s, the
+  // wrapper's identity changes, which busts dep-array equality checks.
+  return useMemo(
+    () => ({
+      listPeople,
+      createPerson,
+      updatePerson,
+      deletePerson,
+      listExports,
+      parseExport,
+      getSummary,
+      uploadAndParseExport,
+    }),
+    [
+      listPeople,
+      createPerson,
+      updatePerson,
+      deletePerson,
+      listExports,
+      parseExport,
+      getSummary,
+      uploadAndParseExport,
+    ]
+  );
 }
