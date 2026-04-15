@@ -35,7 +35,7 @@ export function SP500RiskMetricChart() {
     if (r < 0.55)
       return {
         label: 'Fair Value',
-        color: 'text-surface-200',
+        color: 'text-surface-950',
         tip: 'Neutral zone. Stay the course.',
       };
     if (r < 0.7)
@@ -345,7 +345,7 @@ export function SP500RiskMetricChart() {
                   <div className="text-[9px] text-surface-700 uppercase tracking-wider font-medium">
                     {meta.label}
                   </div>
-                  <div className="text-[14px] font-bold text-surface-200 mt-0.5">
+                  <div className="text-[14px] font-bold text-surface-950 mt-0.5">
                     {raw != null ? meta.fmt(raw) : '—'}
                   </div>
                   <div className="text-[9px] text-cyan-400 mt-0.5">

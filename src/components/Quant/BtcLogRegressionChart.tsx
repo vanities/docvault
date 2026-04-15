@@ -223,7 +223,7 @@ export function BtcLogRegressionChart() {
               <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Fair Value (Fit)
               </div>
-              <div className="text-[16px] font-bold text-surface-200 mt-0.5">
+              <div className="text-[16px] font-bold text-surface-950 mt-0.5">
                 ${data.latest.fitted.toLocaleString(undefined, { maximumFractionDigits: 0 })}
               </div>
             </div>
@@ -258,9 +258,9 @@ export function BtcLogRegressionChart() {
             <LegendSwatch color="rgba(34, 197, 94, 0.8)" label="±1σ Lower" dashed />
             <LegendSwatch color="rgba(239, 68, 68, 0.5)" label="±2σ Outer" />
             <span className="ml-auto text-surface-700">
-              Slope: <span className="text-surface-300 font-mono">{data.slope.toFixed(3)}</span>
+              Slope: <span className="text-surface-800 font-mono">{data.slope.toFixed(3)}</span>
               {' · '}
-              σ: <span className="text-surface-300 font-mono">{data.stdev.toFixed(3)}</span>
+              σ: <span className="text-surface-800 font-mono">{data.stdev.toFixed(3)}</span>
               {' · '}
               {data.prices.length.toLocaleString()} bars
             </span>

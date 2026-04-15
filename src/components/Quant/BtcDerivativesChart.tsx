@@ -287,7 +287,7 @@ export function BtcDerivativesChart() {
           {/* 3 mini charts in a grid */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/20">
-              <div className="text-[11px] font-semibold text-surface-200 mb-1">
+              <div className="text-[11px] font-semibold text-surface-950 mb-1">
                 Funding Rate History
               </div>
               <div className="text-[9px] text-surface-700 mb-1">
@@ -303,7 +303,7 @@ export function BtcDerivativesChart() {
               )}
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/20">
-              <div className="text-[11px] font-semibold text-surface-200 mb-1">
+              <div className="text-[11px] font-semibold text-surface-950 mb-1">
                 Open Interest History
               </div>
               <div className="text-[9px] text-surface-700 mb-1">
@@ -319,7 +319,7 @@ export function BtcDerivativesChart() {
               )}
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/20">
-              <div className="text-[11px] font-semibold text-surface-200 mb-1">
+              <div className="text-[11px] font-semibold text-surface-950 mb-1">
                 Long/Short Ratio History
               </div>
               <div className="text-[9px] text-surface-700 mb-1">

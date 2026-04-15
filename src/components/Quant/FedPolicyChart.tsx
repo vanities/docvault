@@ -165,7 +165,7 @@ export function FedPolicyChart() {
               <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Effective Rate
               </div>
-              <div className="text-[16px] font-bold text-surface-200 mt-0.5">
+              <div className="text-[16px] font-bold text-surface-950 mt-0.5">
                 {data.latest.effectiveRate.toFixed(2)}%
               </div>
               <div className="text-[10px] text-surface-700 mt-0.5">Market actual</div>
@@ -181,7 +181,7 @@ export function FedPolicyChart() {
               <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Days Since Last Change
               </div>
-              <div className="text-[16px] font-bold text-surface-200 mt-0.5">
+              <div className="text-[16px] font-bold text-surface-950 mt-0.5">
                 {data.latest.daysSinceLastChange}d
               </div>
               <div className="text-[10px] text-surface-700 mt-0.5">
@@ -224,7 +224,7 @@ export function FedPolicyChart() {
                         <ArrowDown className="w-4 h-4 text-emerald-400 flex-shrink-0" />
                       )}
                       <div className="flex-1 min-w-0">
-                        <div className="text-[11px] font-mono text-surface-300">{date}</div>
+                        <div className="text-[11px] font-mono text-surface-800">{date}</div>
                         <div
                           className={`text-[12px] font-bold ${
                             c.type === 'hike' ? 'text-rose-400' : 'text-emerald-400'

@@ -242,7 +242,7 @@ export function HashRateChart() {
                         {e.type === 'recovery' ? '↑' : '↓'}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-[11px] font-mono text-surface-300">{e.date}</div>
+                        <div className="text-[11px] font-mono text-surface-800">{e.date}</div>
                         <div
                           className={`text-[11px] font-semibold ${
                             e.type === 'recovery' ? 'text-emerald-400' : 'text-rose-400'

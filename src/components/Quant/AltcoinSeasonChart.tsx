@@ -199,7 +199,7 @@ export function AltcoinSeasonChart() {
                     className="flex items-baseline justify-between text-[11px] border-b border-border/20 last:border-0 pb-1 last:pb-0"
                   >
                     <div>
-                      <span className="font-mono font-bold text-surface-200">{c.symbol}</span>
+                      <span className="font-mono font-bold text-surface-950">{c.symbol}</span>
                       <span className="text-surface-700 ml-1">{c.name}</span>
                     </div>
                     <div className="text-right">
@@ -234,7 +234,7 @@ export function AltcoinSeasonChart() {
                       className="flex items-baseline justify-between text-[11px] border-b border-border/20 last:border-0 pb-1 last:pb-0"
                     >
                       <div>
-                        <span className="font-mono font-bold text-surface-200">{c.symbol}</span>
+                        <span className="font-mono font-bold text-surface-950">{c.symbol}</span>
                         <span className="text-surface-700 ml-1">{c.name}</span>
                       </div>
                       <div className="text-right">

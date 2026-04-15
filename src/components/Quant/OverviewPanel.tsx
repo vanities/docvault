@@ -38,7 +38,7 @@ const TONE_CLASS: Record<Tone, { text: string; bg: string; border: string }> = {
   orange: { text: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/30' },
   rose: { text: 'text-rose-400', bg: 'bg-rose-500/10', border: 'border-rose-500/30' },
   violet: { text: 'text-violet-400', bg: 'bg-violet-500/10', border: 'border-violet-500/30' },
-  surface: { text: 'text-surface-200', bg: 'bg-surface-100/30', border: 'border-border/40' },
+  surface: { text: 'text-surface-950', bg: 'bg-surface-100/30', border: 'border-border/40' },
 };
 
 function MetricCard({

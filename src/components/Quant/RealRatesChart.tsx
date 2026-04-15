@@ -160,7 +160,7 @@ export function RealRatesChart() {
               <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 10Y Percentile (10y)
               </div>
-              <div className="text-[22px] font-bold text-surface-200 mt-0.5">
+              <div className="text-[22px] font-bold text-surface-950 mt-0.5">
                 {(percentile * 100).toFixed(0)}%
               </div>
               <div className="text-[11px] text-surface-700">
