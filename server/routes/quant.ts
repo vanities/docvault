@@ -37,6 +37,7 @@ const TTL = {
   flippening: 6 * 60 * 60 * 1000, // ETH/BTC ratio — follows cached prices
   realRates: DAY_MS, // FRED daily release for yields + breakevens
   hashRate: DAY_MS, // blockchain.info daily hash rate
+  runningRoi: DAY_MS, // derived from cached BTC + Shiller
 };
 
 interface CacheEntry<T> {
@@ -66,6 +67,7 @@ type QuantCache = {
   flippening?: CacheEntry<FlippeningResponse>;
   realRates?: CacheEntry<RealRatesResponse>;
   hashRate?: CacheEntry<HashRateResponse>;
+  runningRoi?: CacheEntry<RunningRoiResponse>;
 };
 
 async function loadCache(): Promise<QuantCache> {
@@ -186,6 +188,8 @@ const CACHE = {
   realRates: { maxAge: 2 * 3600, swr: 12 * 3600 },
   // Hash rate — 4h + 24h SWR (blockchain.info updates daily).
   hashRate: { maxAge: 4 * 3600, swr: 24 * 3600 },
+  // Running ROI — derived, no upstream fetch cost. 2h + 12h SWR.
+  runningRoi: { maxAge: 2 * 3600, swr: 12 * 3600 },
   // Snapshots grow one row per day; short cache so new snapshots appear fast.
   snapshots: { maxAge: 300, swr: 3600 },
 };
@@ -1149,6 +1153,51 @@ export interface HashRateResponse {
   };
   fetchedAt: number;
   source: 'blockchain.info';
+}
+
+/** One rolling-ROI observation: if you bought on `t` and held for the
+ *  window, your return was `roi` (decimal, e.g. 0.25 = +25%). */
+export interface RunningRoiPoint {
+  t: number;
+  roi: number;
+}
+
+export interface RunningRoiWindow {
+  /** Human-readable window label, e.g. "1y", "4y". */
+  label: string;
+  /** Window size in *bars* — days for BTC, months for SPX. */
+  bars: number;
+  /** Approximate calendar days (bars × 1 for daily, × 30.4375 for monthly). */
+  approxDays: number;
+  /** Rolling return series — one point per bar where both endpoints exist. */
+  series: RunningRoiPoint[];
+  /** Most recent window's return (bar `n - bars` → bar `n`). Null if the
+   *  series is shorter than the window. */
+  latest: number | null;
+  /** Percentile of `latest` against the full historical distribution. */
+  latestPercentile: number | null;
+  /** Number of samples in the series. */
+  count: number;
+  /** Mean, min, max of the historical distribution (decimal returns). */
+  mean: number;
+  min: number;
+  max: number;
+}
+
+export interface RunningRoiAsset {
+  /** Asset label for display ("BTC" / "S&P 500"). */
+  asset: string;
+  /** Historical coverage — first and last observation dates. */
+  range: { from: string; to: string };
+  /** Window table (e.g. 1y, 2y, 4y for BTC; 1y, 3y, 5y, 10y for SPX). */
+  windows: RunningRoiWindow[];
+}
+
+export interface RunningRoiResponse {
+  btc: RunningRoiAsset;
+  spx: RunningRoiAsset;
+  fetchedAt: number;
+  source: 'yahoo+shiller';
 }
 
 /** Major non-stablecoin crypto tickers on Yahoo Finance. Curated by market
@@ -3152,6 +3201,131 @@ export function detectHashRibbonEvents(series: HashRatePoint[]): HashRibbonEvent
   return events;
 }
 
+/** Pure helper — given a sorted price series and a list of window sizes
+ *  (in bars), compute a rolling N-bar return series for each window. Each
+ *  output point is (t_start, price[t_end]/price[t_start] − 1). Exported for
+ *  unit testing. */
+export function computeRunningRoiWindows<T extends { t: number; close: number }>(
+  prices: T[],
+  windows: { label: string; bars: number; barDays: number }[]
+): RunningRoiWindow[] {
+  const out: RunningRoiWindow[] = [];
+  for (const w of windows) {
+    const series: RunningRoiPoint[] = [];
+    for (let i = 0; i + w.bars < prices.length; i++) {
+      const start = prices[i];
+      const end = prices[i + w.bars];
+      if (start.close > 0 && end.close > 0) {
+        series.push({ t: start.t, roi: end.close / start.close - 1 });
+      }
+    }
+    if (series.length === 0) {
+      out.push({
+        label: w.label,
+        bars: w.bars,
+        approxDays: Math.round(w.bars * w.barDays),
+        series: [],
+        latest: null,
+        latestPercentile: null,
+        count: 0,
+        mean: 0,
+        min: 0,
+        max: 0,
+      });
+      continue;
+    }
+    // Latest window is the ROI of holding from (n-bars) to (n) — i.e., the
+    // last valid start index is (n-bars-1), but that's the rolling return
+    // *ending* at the last valid bar. We want "if you bought `bars` ago, what's
+    // your return today?" — which is prices[n-1]/prices[n-1-bars] − 1.
+    const latestStart = prices.length - 1 - w.bars;
+    const latest =
+      latestStart >= 0 && prices[latestStart].close > 0
+        ? prices[prices.length - 1].close / prices[latestStart].close - 1
+        : null;
+    // Percentile of `latest` vs the full historical distribution.
+    let latestPercentile: number | null = null;
+    if (latest != null) {
+      const sorted = [...series.map((s) => s.roi)].sort((a, b) => a - b);
+      let below = 0;
+      for (const v of sorted) {
+        if (v <= latest) below++;
+        else break;
+      }
+      latestPercentile = below / sorted.length;
+    }
+    const sum = series.reduce((a, p) => a + p.roi, 0);
+    const mean = sum / series.length;
+    let minV = series[0].roi;
+    let maxV = series[0].roi;
+    for (const p of series) {
+      if (p.roi < minV) minV = p.roi;
+      if (p.roi > maxV) maxV = p.roi;
+    }
+    out.push({
+      label: w.label,
+      bars: w.bars,
+      approxDays: Math.round(w.bars * w.barDays),
+      series: downsample(series, 1500),
+      latest,
+      latestPercentile,
+      count: series.length,
+      mean,
+      min: minV,
+      max: maxV,
+    });
+  }
+  return out;
+}
+
+async function computeRunningRoi(): Promise<RunningRoiResponse> {
+  // BTC: daily bars from yahoo (2014+). Windows are in days.
+  const btcRaw = await fetchBtcHistory();
+  const btcBars = btcRaw.map((p) => ({ t: p.t, close: p.price }));
+  const btcWindows = computeRunningRoiWindows(btcBars, [
+    { label: '1y', bars: 365, barDays: 1 },
+    { label: '2y', bars: 730, barDays: 1 },
+    { label: '4y', bars: 1460, barDays: 1 }, // halving cycle
+  ]);
+
+  // SPX: Shiller monthly bars (1871+). Windows are in months. Fall back to
+  // yahoo if Shiller is unreachable, like computePresidentialCycle does.
+  let spxRaw: { date: Date; close: number }[];
+  try {
+    spxRaw = await fetchShillerSp500Monthly();
+  } catch {
+    spxRaw = await fetchYahooSp500Monthly();
+  }
+  const spxBars = spxRaw.map((r) => ({ t: r.date.getTime(), close: r.close }));
+  const spxWindows = computeRunningRoiWindows(spxBars, [
+    { label: '1y', bars: 12, barDays: 30.4375 },
+    { label: '3y', bars: 36, barDays: 30.4375 },
+    { label: '5y', bars: 60, barDays: 30.4375 },
+    { label: '10y', bars: 120, barDays: 30.4375 },
+  ]);
+
+  return {
+    btc: {
+      asset: 'BTC',
+      range: {
+        from: new Date(btcBars[0].t).toISOString().slice(0, 10),
+        to: new Date(btcBars[btcBars.length - 1].t).toISOString().slice(0, 10),
+      },
+      windows: btcWindows,
+    },
+    spx: {
+      asset: 'S&P 500',
+      range: {
+        from: new Date(spxBars[0].t).toISOString().slice(0, 10),
+        to: new Date(spxBars[spxBars.length - 1].t).toISOString().slice(0, 10),
+      },
+      windows: spxWindows,
+    },
+    fetchedAt: Date.now(),
+    source: 'yahoo+shiller',
+  };
+}
+
 async function computeHashRate(): Promise<HashRateResponse> {
   const res = await fetch(
     'https://api.blockchain.info/charts/hash-rate?timespan=all&format=json&cors=true'
@@ -4115,6 +4289,30 @@ export async function handleQuantRoutes(
         );
       }
       return jsonResponse({ error: `Hash rate fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/running-roi — rolling holding-period returns for BTC + SPX
+  if (pathname === '/api/quant/running-roi' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.runningRoi, TTL.runningRoi)) {
+      return cachedJsonResponse(req, { ...cache.runningRoi!.data, cached: true }, CACHE.runningRoi);
+    }
+    try {
+      const data = await computeRunningRoi();
+      cache.runningRoi = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.runningRoi);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.runningRoi) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.runningRoi.data, cached: true, stale: true, fetchError: msg },
+          CACHE.runningRoi
+        );
+      }
+      return jsonResponse({ error: `Running ROI fetch failed: ${msg}` }, 502);
     }
   }
 

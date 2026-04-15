@@ -30,6 +30,7 @@ import { FearGreedChart } from './FearGreedChart';
 import { FlippeningChart } from './FlippeningChart';
 import { RealRatesChart } from './RealRatesChart';
 import { HashRateChart } from './HashRateChart';
+import { RunningRoiChart } from './RunningRoiChart';
 import { useQuantRefresh } from './useQuantData';
 
 /** Four top-level tabs — an overview snapshot plus Cowen's 3 categories. */
@@ -235,6 +236,10 @@ export function QuantView() {
           <ChartGroup title="Hash Rate + Hash Ribbons" subtitle="30d × 60d SMA crossovers">
             <HashRateChart />
           </ChartGroup>
+
+          <ChartGroup title="Running ROI" subtitle="1y / 2y / 4y rolling hold returns">
+            <RunningRoiChart asset="btc" />
+          </ChartGroup>
         </TabsContent>
 
         {/* ── Macro ──────────────────────────────────────── */}
@@ -303,6 +308,13 @@ export function QuantView() {
 
           <ChartGroup title="Midterm drawdowns" subtitle="every midterm year overlaid, 2026 live">
             <MidtermDrawdownChart />
+          </ChartGroup>
+
+          <ChartGroup
+            title="S&P 500 Running ROI"
+            subtitle="1y / 3y / 5y / 10y rolling holds, 1871+"
+          >
+            <RunningRoiChart asset="spx" />
           </ChartGroup>
         </TabsContent>
       </Tabs>
