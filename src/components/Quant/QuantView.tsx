@@ -6,12 +6,16 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { PresidentialCycleChart } from './PresidentialCycleChart';
 import { BtcLogRegressionChart } from './BtcLogRegressionChart';
 import { BtcRiskMetricChart } from './BtcRiskMetricChart';
+import { BtcMovingAveragesChart } from './BtcMovingAveragesChart';
 import { BmsbChart } from './BmsbChart';
 import { PiCycleChart } from './PiCycleChart';
+import { GoldenDeathCrossChart } from './GoldenDeathCrossChart';
 import { BtcDominanceChart } from './BtcDominanceChart';
 import { CowenCorridorChart } from './CowenCorridorChart';
 import { SectorRotationChart } from './SectorRotationChart';
 import { ShillerValuationChart } from './ShillerValuationChart';
+import { SP500RiskMetricChart } from './SP500RiskMetricChart';
+import { MidtermDrawdownChart } from './MidtermDrawdownChart';
 import { YieldCurveChart } from './YieldCurveChart';
 import { MacroDashboardChart } from './MacroDashboardChart';
 import { useQuantRefresh } from './useQuantData';
@@ -188,6 +192,10 @@ export function QuantView() {
             <BtcLogRegressionChart />
           </ChartGroup>
 
+          <ChartGroup title="BTC Moving Averages + Mayer" subtitle="200W cycle line + Mayer bands">
+            <BtcMovingAveragesChart />
+          </ChartGroup>
+
           <ChartGroup title="Bull Market Support Band" subtitle="20W SMA + 21W EMA">
             <BmsbChart />
           </ChartGroup>
@@ -198,6 +206,10 @@ export function QuantView() {
 
           <ChartGroup title="Pi Cycle Top" subtitle="111D SMA vs 350D × 2">
             <PiCycleChart />
+          </ChartGroup>
+
+          <ChartGroup title="Golden / Death Cross" subtitle="50D × 200D SMA crossovers">
+            <GoldenDeathCrossChart />
           </ChartGroup>
 
           <ChartGroup title="Bitcoin Dominance" subtitle="BTC.D + flight to safety">
@@ -246,6 +258,10 @@ export function QuantView() {
             {CATEGORY_META.tradfi.description}
           </p>
 
+          <ChartGroup title="SP500 Risk Metric" subtitle="composite 0-1, Shiller 1871+">
+            <SP500RiskMetricChart />
+          </ChartGroup>
+
           <ChartGroup title="Sector rotation" subtitle="11 S&P sectors vs SPY">
             <SectorRotationChart />
           </ChartGroup>
@@ -254,18 +270,22 @@ export function QuantView() {
             <ShillerValuationChart />
           </ChartGroup>
 
-          <ChartGroup title="Market cycles" subtitle="S&P 500, 1871–present (Shiller)">
+          <ChartGroup title="Market cycles" subtitle="Presidential cycle heatmap, 1871–present">
             <PresidentialCycleChart />
+          </ChartGroup>
+
+          <ChartGroup title="Midterm drawdowns" subtitle="every midterm year overlaid, 2026 live">
+            <MidtermDrawdownChart />
           </ChartGroup>
 
           <ChartGroup title="Coming next">
             <EmptyCategoryCard
               category="tradfi"
               comingSoon={[
-                'Yield Curve (T10Y2Y)',
-                'Midterm Drawdown Overlay',
                 'SPX Monthly Seasonality',
                 'Running ROI',
+                'Commodity Momentum',
+                'Bond / Equity Ratio',
               ]}
             />
           </ChartGroup>

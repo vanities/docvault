@@ -16,6 +16,7 @@ import {
   rollingPercentile,
   parseFredObservations,
   classifyYieldCurveRegime,
+  detectCrossovers,
   type DailyBar,
 } from './quant.js';
 
@@ -629,6 +630,55 @@ describe('rollingPercentile', () => {
     expect(medianTest[4]).toBeCloseTo(0.2, 2);
     // Verify the monotonic last value still behaves correctly
     expect(result[4]).toBeCloseTo(0.9, 2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectCrossovers
+// ---------------------------------------------------------------------------
+
+describe('detectCrossovers', () => {
+  test('flags a golden cross when fast rises above slow', () => {
+    // Day 0: fast=5 < slow=10
+    // Day 1: fast=12 > slow=10 → golden
+    const result = detectCrossovers([5, 12], [10, 10]);
+    expect(result[0]).toBeNull(); // first index always null
+    expect(result[1]).toBe('golden');
+  });
+
+  test('flags a death cross when fast falls below slow', () => {
+    const result = detectCrossovers([15, 5], [10, 10]);
+    expect(result[0]).toBeNull();
+    expect(result[1]).toBe('death');
+  });
+
+  test('returns "none" when no crossover occurs', () => {
+    // Both above, both below, or staying on the same side
+    const result = detectCrossovers([15, 16], [10, 10]);
+    expect(result[1]).toBe('none');
+  });
+
+  test('handles null entries by returning null', () => {
+    const result = detectCrossovers([null, 10, 20], [5, 15, 15]);
+    expect(result[0]).toBeNull();
+    // i=1: fast0=null, so null
+    expect(result[1]).toBeNull();
+    // i=2: fast=20>slow=15, fast0=10<=slow0=15 → golden
+    expect(result[2]).toBe('golden');
+  });
+
+  test('detects multiple cross events in one pass', () => {
+    //                  0  1  2  3  4  5
+    const fast = [5, 12, 12, 8, 8, 15];
+    const slow = [10, 10, 10, 10, 10, 10];
+    const result = detectCrossovers(fast, slow);
+    expect(result[1]).toBe('golden'); // 5 → 12
+    expect(result[3]).toBe('death'); // 12 → 8
+    expect(result[5]).toBe('golden'); // 8 → 15
+  });
+
+  test('throws on length mismatch', () => {
+    expect(() => detectCrossovers([1, 2], [1, 2, 3])).toThrow();
   });
 });
 

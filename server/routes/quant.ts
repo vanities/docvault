@@ -23,6 +23,8 @@ const TTL = {
   yieldCurve: DAY_MS, // FRED updates daily on business days
   btcDominance: 6 * 60 * 60 * 1000, // 6h — dominance changes slowly
   macroDashboard: DAY_MS, // FRED updates once per business day
+  midtermDrawdowns: 7 * DAY_MS, // Shiller monthly — weekly refresh
+  sp500RiskMetric: 7 * DAY_MS, // Shiller monthly — weekly refresh
 };
 
 interface CacheEntry<T> {
@@ -38,6 +40,8 @@ type QuantCache = {
   yieldCurve?: CacheEntry<YieldCurveResponse>;
   btcDominance?: CacheEntry<DominanceSnapshot>;
   macroDashboard?: CacheEntry<MacroDashboardResponse>;
+  midtermDrawdowns?: CacheEntry<MidtermDrawdownResponse>;
+  sp500RiskMetric?: CacheEntry<SP500RiskResponse>;
 };
 
 async function loadCache(): Promise<QuantCache> {
@@ -107,6 +111,10 @@ const CACHE = {
   btcDominance: { maxAge: 30 * 60, swr: 6 * 3600 },
   // Macro dashboard = aggregated FRED series — 1h + 12h SWR.
   macroDashboard: { maxAge: 3600, swr: 12 * 3600 },
+  // Midterm drawdowns = monthly Shiller data — 6h + 24h SWR.
+  midtermDrawdowns: { maxAge: 6 * 3600, swr: 24 * 3600 },
+  // SP500 risk metric = monthly composite — 6h + 24h SWR.
+  sp500RiskMetric: { maxAge: 6 * 3600, swr: 24 * 3600 },
   // Snapshots grow one row per day; short cache so new snapshots appear fast.
   snapshots: { maxAge: 300, swr: 3600 },
 };
@@ -424,6 +432,33 @@ export interface BtcLogRegressionResponse {
     fitted: number;
     residualSigma: number;
   };
+  /** Long-term moving averages — 200-day (Mayer) and 200-week (Cowen cycle). */
+  movingAverages: {
+    /** 50-day SMA — used for Golden/Death Cross detection */
+    sma50d: (number | null)[];
+    /** 200-day SMA aligned with `prices` (Trace Mayer's denominator) */
+    sma200d: (number | null)[];
+    /** 200-week SMA = 1000 daily bars (Cowen's cycle trend line) */
+    sma200w: (number | null)[];
+    /** Mayer band multipliers applied to 200d SMA */
+    mayerBandMultipliers: number[];
+    latest: {
+      sma50d: number | null;
+      sma200d: number | null;
+      sma200w: number | null;
+      /** price / 200w — how far BTC is from the Cowen cycle line */
+      priceVs200w: number | null;
+    };
+  };
+  /** Golden/Death Cross events on the 50D × 200D pair. */
+  goldenDeathCrosses: {
+    /** Historical events: date + type */
+    events: { t: number; type: 'golden' | 'death' }[];
+    /** Current regime: 'bullish' when 50D > 200D, 'bearish' otherwise */
+    currentRegime: 'bullish' | 'bearish' | 'unknown';
+    /** Most recent cross event */
+    latestEvent: { t: number; type: 'golden' | 'death' } | null;
+  };
   /** Cowen Corridor data — 20-week SMA (100 daily bars) + the multipliers
    *  we render as corridor bands on the frontend. Null entries early in the
    *  series where the rolling window hasn't filled yet. */
@@ -593,10 +628,37 @@ async function computeBtcLogRegression(): Promise<BtcLogRegressionResponse> {
   // The actual ITC multipliers are proprietary; these are reasonable picks.
   const priceArr = points.map((p) => p.price);
   const sma20w = sma(priceArr, 100);
+  const sma50d = sma(priceArr, 50);
   const sma200d = sma(priceArr, 200);
+  const sma200w = sma(priceArr, 1000); // 200 weeks × 5 trading days
   const latestSma = sma20w[sma20w.length - 1];
   const currentMultiple = latestSma != null ? latestPrice / latestSma : null;
   const CORRIDOR_MULTIPLIERS = [0.4, 0.6, 1.0, 1.6, 2.5, 4.0];
+  // Mayer bands — classic reference levels at 0.8× (capitulation), 1× (the SMA
+  // itself, fair value), 2.4× (historical top zone per Trace Mayer)
+  const MAYER_BAND_MULTIPLIERS = [0.8, 1.0, 2.4];
+  const latestSma50d = sma50d[sma50d.length - 1];
+  const latestSma200d = sma200d[sma200d.length - 1];
+  const latestSma200w = sma200w[sma200w.length - 1];
+  const priceVs200w =
+    latestSma200w != null && latestSma200w > 0 ? latestPrice / latestSma200w : null;
+
+  // Golden/Death Crosses — 50D × 200D
+  const crossSignals = detectCrossovers(sma50d, sma200d);
+  const crossEvents: { t: number; type: 'golden' | 'death' }[] = [];
+  for (let i = 0; i < crossSignals.length; i++) {
+    const s = crossSignals[i];
+    if (s === 'golden' || s === 'death') {
+      crossEvents.push({ t: points[i].t, type: s });
+    }
+  }
+  const currentRegime: 'bullish' | 'bearish' | 'unknown' =
+    latestSma50d != null && latestSma200d != null
+      ? latestSma50d >= latestSma200d
+        ? 'bullish'
+        : 'bearish'
+      : 'unknown';
+  const latestCrossEvent = crossEvents.length > 0 ? crossEvents[crossEvents.length - 1] : null;
 
   // ---- BMSB — Bull Market Support Band (20W SMA + 21W EMA) ----
   // 20W SMA = already computed as sma20w (100 daily bars)
@@ -687,6 +749,23 @@ async function computeBtcLogRegression(): Promise<BtcLogRegressionResponse> {
       price: latestPrice,
       fitted: latestFitted,
       residualSigma: latestResidualSigma,
+    },
+    movingAverages: {
+      sma50d,
+      sma200d,
+      sma200w,
+      mayerBandMultipliers: MAYER_BAND_MULTIPLIERS,
+      latest: {
+        sma50d: latestSma50d,
+        sma200d: latestSma200d,
+        sma200w: latestSma200w,
+        priceVs200w,
+      },
+    },
+    goldenDeathCrosses: {
+      events: crossEvents,
+      currentRegime,
+      latestEvent: latestCrossEvent,
     },
     corridor: {
       sma20w,
@@ -1033,6 +1112,311 @@ async function computeSectorRotation(): Promise<SectorRotationResponse> {
 }
 
 // ---------------------------------------------------------------------------
+// SP500 Risk Metric — Cowen-style 0-1 composite adapted for monthly SPX data
+// from the Shiller cache. Same five-input blend as the BTC risk metric, but
+// the inputs use monthly periods (12m SMA instead of 200d, 14m RSI, etc.)
+// and the rolling percentile window is 50 years (600 months).
+// ---------------------------------------------------------------------------
+
+export interface SP500RiskResponse {
+  /** Monthly time series in ascending order */
+  points: { date: string; t: number; price: number }[];
+  /** Composite 0-1 risk aligned with `points` */
+  metric: (number | null)[];
+  /** Raw input values aligned with `points` */
+  components: {
+    mayerLike12m: (number | null)[];
+    sma24mDistance: (number | null)[];
+    regressionSigma: (number | null)[];
+    rsi14m: (number | null)[];
+    drawdownFromAth: (number | null)[];
+  };
+  /** Percentile-ranked 0-1 inputs aligned with `points` */
+  normalized: {
+    mayerLike12m: (number | null)[];
+    sma24mDistance: (number | null)[];
+    regressionSigma: (number | null)[];
+    rsi14m: (number | null)[];
+    drawdownFromAth: (number | null)[];
+  };
+  latest: {
+    date: string;
+    price: number;
+    metric: number | null;
+    components: {
+      mayerLike12m: number | null;
+      sma24mDistance: number | null;
+      regressionSigma: number | null;
+      rsi14m: number | null;
+      drawdownFromAth: number | null;
+    };
+    normalized: {
+      mayerLike12m: number | null;
+      sma24mDistance: number | null;
+      regressionSigma: number | null;
+      rsi14m: number | null;
+      drawdownFromAth: number | null;
+    };
+  };
+  dataRange: { from: string; to: string };
+  source: 'shiller';
+}
+
+async function computeSP500RiskMetric(): Promise<SP500RiskResponse> {
+  const rows = await fetchShillerFull();
+  if (rows.length < 240) {
+    throw new Error(`Insufficient Shiller history (got ${rows.length} rows)`);
+  }
+
+  const priceArr = rows.map((r) => r.sp500);
+  const points = rows.map((r) => ({
+    date: r.date.toISOString().slice(0, 7),
+    t: r.date.getTime(),
+    price: r.sp500,
+  }));
+  const n = points.length;
+
+  // ---- Components (adapted to monthly timeframe) ----
+  // 1. Mayer-like: price / 12-month SMA (equivalent of 200D on daily)
+  const sma12m = sma(priceArr, 12);
+  const mayerLike12m: (number | null)[] = priceArr.map((p, i) => {
+    const s = sma12m[i];
+    return s != null && s > 0 ? p / s : null;
+  });
+  // 2. 24-month SMA distance (stable medium-term distance metric)
+  const sma24m = sma(priceArr, 24);
+  const sma24mDistance: (number | null)[] = priceArr.map((p, i) => {
+    const s = sma24m[i];
+    return s != null && s > 0 ? (p - s) / s : null;
+  });
+  // 3. Log-regression residual σ — fit log10(price) vs month index
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (let i = 0; i < n; i++) {
+    xs.push(Math.log10(i + 1));
+    ys.push(Math.log10(priceArr[i]));
+  }
+  let meanX = 0;
+  let meanY = 0;
+  for (let i = 0; i < n; i++) {
+    meanX += xs[i];
+    meanY += ys[i];
+  }
+  meanX /= n;
+  meanY /= n;
+  let num = 0;
+  let den = 0;
+  for (let i = 0; i < n; i++) {
+    num += (xs[i] - meanX) * (ys[i] - meanY);
+    den += (xs[i] - meanX) ** 2;
+  }
+  const slope = num / den;
+  const intercept = meanY - slope * meanX;
+  let sqSum = 0;
+  for (let i = 0; i < n; i++) {
+    const fitted = slope * xs[i] + intercept;
+    sqSum += (ys[i] - fitted) ** 2;
+  }
+  const stdev = Math.sqrt(sqSum / n);
+  const regressionSigma: (number | null)[] = new Array(n).fill(null);
+  for (let i = 0; i < n; i++) {
+    const fitted = slope * xs[i] + intercept;
+    regressionSigma[i] = (ys[i] - fitted) / stdev;
+  }
+  // 4. 14-month RSI
+  const rsi14m = rsi(priceArr, 14);
+  // 5. Drawdown from ATH
+  const drawdownFromAth = runningDrawdown(priceArr);
+
+  // ---- Normalize via rolling 50-year (600 month) percentile ----
+  const WINDOW = 600;
+  const mayerPct = rollingPercentile(mayerLike12m, WINDOW);
+  const sma24mDistPct = rollingPercentile(sma24mDistance, WINDOW);
+  const regressionPct = rollingPercentile(regressionSigma, WINDOW);
+  const rsi14mPct = rollingPercentile(rsi14m, WINDOW);
+  const drawdownPct = rollingPercentile(drawdownFromAth as (number | null)[], WINDOW);
+
+  // ---- Composite ----
+  const metric: (number | null)[] = new Array(n).fill(null);
+  for (let i = 0; i < n; i++) {
+    const inputs = [
+      mayerPct[i],
+      sma24mDistPct[i],
+      regressionPct[i],
+      rsi14mPct[i],
+      drawdownPct[i],
+    ].filter((v): v is number => v != null);
+    if (inputs.length >= 3) {
+      metric[i] = inputs.reduce((a, b) => a + b, 0) / inputs.length;
+    }
+  }
+
+  const last = points[n - 1];
+  return {
+    points,
+    metric,
+    components: {
+      mayerLike12m,
+      sma24mDistance,
+      regressionSigma,
+      rsi14m,
+      drawdownFromAth: drawdownFromAth as (number | null)[],
+    },
+    normalized: {
+      mayerLike12m: mayerPct,
+      sma24mDistance: sma24mDistPct,
+      regressionSigma: regressionPct,
+      rsi14m: rsi14mPct,
+      drawdownFromAth: drawdownPct,
+    },
+    latest: {
+      date: last.date,
+      price: last.price,
+      metric: metric[n - 1],
+      components: {
+        mayerLike12m: mayerLike12m[n - 1],
+        sma24mDistance: sma24mDistance[n - 1],
+        regressionSigma: regressionSigma[n - 1],
+        rsi14m: rsi14m[n - 1],
+        drawdownFromAth: drawdownFromAth[n - 1],
+      },
+      normalized: {
+        mayerLike12m: mayerPct[n - 1],
+        sma24mDistance: sma24mDistPct[n - 1],
+        regressionSigma: regressionPct[n - 1],
+        rsi14m: rsi14mPct[n - 1],
+        drawdownFromAth: drawdownPct[n - 1],
+      },
+    },
+    dataRange: { from: points[0].date, to: last.date },
+    source: 'shiller',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Midterm Drawdown Overlay — every midterm year since 1871 as a normalized
+// drawdown curve from the pre-midterm peak through end of Y3. Shows whether
+// 2026 is tracking ahead or behind the historical midterm-then-recovery
+// pattern. Uses the Shiller CSV we already cache.
+// ---------------------------------------------------------------------------
+
+export interface MidtermCurvePoint {
+  /** Offset in months from the pre-midterm peak (0 = peak) */
+  offsetMonths: number;
+  /** Drawdown from the peak expressed as a decimal (0 = at peak, -0.3 = -30%) */
+  drawdown: number;
+}
+
+export interface MidtermCurve {
+  midtermYear: number;
+  label: string;
+  isCurrent: boolean;
+  points: MidtermCurvePoint[];
+  peakClose: number;
+  peakDate: string;
+}
+
+export interface MidtermDrawdownResponse {
+  curves: MidtermCurve[];
+  averageCurve: MidtermCurvePoint[];
+  dataRange: { from: string; to: string };
+  source: 'shiller';
+}
+
+async function computeMidtermDrawdowns(): Promise<MidtermDrawdownResponse> {
+  const rows = await fetchShillerFull();
+  if (rows.length < 240) {
+    throw new Error(`Insufficient Shiller history (got ${rows.length} rows)`);
+  }
+
+  const byYear = new Map<number, ShillerRow[]>();
+  for (const r of rows) {
+    const y = r.date.getUTCFullYear();
+    if (!byYear.has(y)) byYear.set(y, []);
+    byYear.get(y)!.push(r);
+  }
+
+  const curves: MidtermCurve[] = [];
+  const currentYear = new Date().getUTCFullYear();
+  const currentYoC = yearOfCycle(currentYear);
+
+  for (let y = 1871; y <= currentYear; y++) {
+    if (yearOfCycle(y) !== 2) continue;
+
+    const y1Rows = byYear.get(y - 1);
+    const y2Rows = byYear.get(y);
+    const y3Rows = byYear.get(y + 1);
+    if (!y1Rows || !y2Rows) continue;
+
+    const window: ShillerRow[] = [...y1Rows, ...y2Rows, ...(y3Rows ?? [])];
+    if (window.length < 12) continue;
+
+    // Running max to find the peak
+    let peak = window[0].sp500;
+    let peakIdx = 0;
+    for (let i = 0; i < window.length; i++) {
+      if (window[i].sp500 > peak) {
+        peak = window[i].sp500;
+        peakIdx = i;
+      }
+    }
+
+    // Only include windows where the peak occurs in the first half — otherwise
+    // the "drawdown from peak" framing doesn't apply. Exception: the current
+    // live midterm year is always included.
+    const isCurrent = y === currentYear && currentYoC === 2;
+    if (!isCurrent && peakIdx > window.length / 2) continue;
+
+    const peakRow = window[peakIdx];
+    const points: MidtermCurvePoint[] = [];
+    for (let i = peakIdx; i < window.length; i++) {
+      const row = window[i];
+      const dd = (row.sp500 - peakRow.sp500) / peakRow.sp500;
+      points.push({ offsetMonths: i - peakIdx, drawdown: dd });
+    }
+
+    curves.push({
+      midtermYear: y,
+      label: isCurrent ? `${y} (live)` : String(y),
+      isCurrent,
+      points,
+      peakClose: peakRow.sp500,
+      peakDate: peakRow.date.toISOString().slice(0, 7),
+    });
+  }
+
+  // Average across all non-live curves at each offset
+  const maxOffset = Math.max(
+    ...curves.filter((c) => !c.isCurrent).map((c) => c.points.length - 1),
+    0
+  );
+  const averageCurve: MidtermCurvePoint[] = [];
+  for (let off = 0; off <= maxOffset; off++) {
+    let sum = 0;
+    let count = 0;
+    for (const c of curves) {
+      if (c.isCurrent) continue;
+      const pt = c.points.find((p) => p.offsetMonths === off);
+      if (pt) {
+        sum += pt.drawdown;
+        count++;
+      }
+    }
+    if (count > 0) averageCurve.push({ offsetMonths: off, drawdown: sum / count });
+  }
+
+  return {
+    curves,
+    averageCurve,
+    dataRange: {
+      from: rows[0].date.toISOString().slice(0, 7),
+      to: rows[rows.length - 1].date.toISOString().slice(0, 7),
+    },
+    source: 'shiller',
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Shiller Valuation — CAPE (PE10) and SP500 Dividend Yield
 // ---------------------------------------------------------------------------
 //
@@ -1115,6 +1499,31 @@ export function ema(values: number[], window: number): (number | null)[] {
   for (let i = window; i < values.length; i++) {
     prev = values[i] * k + prev * (1 - k);
     out[i] = prev;
+  }
+  return out;
+}
+
+/** Detect crossover events between a fast and slow series.
+ *  Returns `'golden'` when fast crosses above slow, `'death'` when below.
+ *  Output aligned with input length; entries are null where either series is
+ *  null, 'none' for days without a crossover, or the event type otherwise. */
+export function detectCrossovers(
+  fast: (number | null)[],
+  slow: (number | null)[]
+): ('golden' | 'death' | 'none' | null)[] {
+  if (fast.length !== slow.length) {
+    throw new Error('detectCrossovers: fast and slow must have equal length');
+  }
+  const out: ('golden' | 'death' | 'none' | null)[] = new Array(fast.length).fill(null);
+  for (let i = 1; i < fast.length; i++) {
+    const f0 = fast[i - 1];
+    const f1 = fast[i];
+    const s0 = slow[i - 1];
+    const s1 = slow[i];
+    if (f0 == null || f1 == null || s0 == null || s1 == null) continue;
+    if (f0 <= s0 && f1 > s1) out[i] = 'golden';
+    else if (f0 >= s0 && f1 < s1) out[i] = 'death';
+    else out[i] = 'none';
   }
   return out;
 }
@@ -1948,6 +2357,62 @@ export async function handleQuantRoutes(
         );
       }
       return jsonResponse({ error: `Yield curve fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/tradfi/sp500-risk-metric — monthly Cowen-style composite
+  if (pathname === '/api/quant/tradfi/sp500-risk-metric' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.sp500RiskMetric, TTL.sp500RiskMetric)) {
+      return cachedJsonResponse(
+        req,
+        { ...cache.sp500RiskMetric!.data, cached: true },
+        CACHE.sp500RiskMetric
+      );
+    }
+    try {
+      const data = await computeSP500RiskMetric();
+      cache.sp500RiskMetric = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.sp500RiskMetric);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.sp500RiskMetric) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.sp500RiskMetric.data, cached: true, stale: true, fetchError: msg },
+          CACHE.sp500RiskMetric
+        );
+      }
+      return jsonResponse({ error: `SP500 risk metric fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/tradfi/midterm-drawdowns — historical midterm drawdown curves
+  if (pathname === '/api/quant/tradfi/midterm-drawdowns' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.midtermDrawdowns, TTL.midtermDrawdowns)) {
+      return cachedJsonResponse(
+        req,
+        { ...cache.midtermDrawdowns!.data, cached: true },
+        CACHE.midtermDrawdowns
+      );
+    }
+    try {
+      const data = await computeMidtermDrawdowns();
+      cache.midtermDrawdowns = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.midtermDrawdowns);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.midtermDrawdowns) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.midtermDrawdowns.data, cached: true, stale: true, fetchError: msg },
+          CACHE.midtermDrawdowns
+        );
+      }
+      return jsonResponse({ error: `Midterm drawdowns fetch failed: ${msg}` }, 502);
     }
   }
 
