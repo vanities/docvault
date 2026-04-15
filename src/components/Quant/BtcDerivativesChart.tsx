@@ -200,7 +200,7 @@ export function BtcDerivativesChart() {
           <Zap className="w-5 h-5 text-amber-400" />
           BTC Derivatives
         </h3>
-        <p className="text-[13px] text-surface-600 mt-1 leading-relaxed">
+        <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
           Funding rate, open interest, and long/short ratio from OKX perpetual futures. Cowen
           watches these for short-term top/bottom signals:{' '}
           <strong className="text-rose-400">positive funding</strong> = longs paying, often near
@@ -210,7 +210,7 @@ export function BtcDerivativesChart() {
       </div>
 
       {loading && (
-        <div className="h-[360px] flex items-center justify-center text-surface-500 text-[13px]">
+        <div className="h-[360px] flex items-center justify-center text-surface-700 text-[13px]">
           Loading OKX derivatives data...
         </div>
       )}
@@ -233,7 +233,7 @@ export function BtcDerivativesChart() {
                   : 'border-cyan-500/40 bg-cyan-500/5'
               }`}
             >
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Funding Rate (8h)
               </div>
               <div
@@ -244,22 +244,22 @@ export function BtcDerivativesChart() {
                 {data.currentFundingRate >= 0 ? '+' : ''}
                 {(data.currentFundingRate * 100).toFixed(4)}%
               </div>
-              <div className="text-[10px] text-surface-500 mt-0.5">
+              <div className="text-[10px] text-surface-700 mt-0.5">
                 Annualized: {data.annualizedFundingRate >= 0 ? '+' : ''}
                 {(data.annualizedFundingRate * 100).toFixed(1)}%
               </div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Open Interest
               </div>
               <div className="text-[16px] font-bold text-violet-400 mt-0.5">
                 ${(data.currentOpenInterestUsd / 1e9).toFixed(2)}B
               </div>
-              <div className="text-[10px] text-surface-500 mt-0.5">OKX BTC-USDT SWAP</div>
+              <div className="text-[10px] text-surface-700 mt-0.5">OKX BTC-USDT SWAP</div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Long / Short
               </div>
               <div
@@ -269,16 +269,16 @@ export function BtcDerivativesChart() {
               >
                 {data.currentLongShortRatio != null ? data.currentLongShortRatio.toFixed(2) : '—'}
               </div>
-              <div className="text-[10px] text-surface-500 mt-0.5">1.0 = balanced</div>
+              <div className="text-[10px] text-surface-700 mt-0.5">1.0 = balanced</div>
             </div>
             <div className={`p-3 rounded-xl border border-border/40 bg-surface-100/30`}>
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Regime
               </div>
               <div className={`text-[15px] font-bold mt-0.5 ${fundingZone?.color ?? ''}`}>
                 {fundingZone?.label ?? '—'}
               </div>
-              <div className="text-[10px] text-surface-600 mt-0.5 leading-tight">
+              <div className="text-[10px] text-surface-800 mt-0.5 leading-tight">
                 {fundingZone?.tip}
               </div>
             </div>
@@ -290,7 +290,7 @@ export function BtcDerivativesChart() {
               <div className="text-[11px] font-semibold text-surface-200 mb-1">
                 Funding Rate History
               </div>
-              <div className="text-[9px] text-surface-500 mb-1">
+              <div className="text-[9px] text-surface-700 mb-1">
                 {data.fundingHistory.length} bars · 8-hour intervals
               </div>
               {fundingOption && (
@@ -306,7 +306,7 @@ export function BtcDerivativesChart() {
               <div className="text-[11px] font-semibold text-surface-200 mb-1">
                 Open Interest History
               </div>
-              <div className="text-[9px] text-surface-500 mb-1">
+              <div className="text-[9px] text-surface-700 mb-1">
                 {data.openInterestHistory.length} days · OKX BTC-USDT SWAP
               </div>
               {oiOption && (
@@ -322,7 +322,7 @@ export function BtcDerivativesChart() {
               <div className="text-[11px] font-semibold text-surface-200 mb-1">
                 Long/Short Ratio History
               </div>
-              <div className="text-[9px] text-surface-500 mb-1">
+              <div className="text-[9px] text-surface-700 mb-1">
                 {data.longShortHistory.length} days · aggregate account ratio
               </div>
               {lsOption && (
@@ -336,7 +336,7 @@ export function BtcDerivativesChart() {
             </div>
           </div>
 
-          <div className="mt-3 text-[10px] text-surface-500 text-center">
+          <div className="mt-3 text-[10px] text-surface-700 text-center">
             Source:{' '}
             <a
               href="https://www.okx.com/api/v5/"

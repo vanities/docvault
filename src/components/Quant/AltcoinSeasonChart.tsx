@@ -94,7 +94,7 @@ export function AltcoinSeasonChart() {
           <Sparkles className="w-5 h-5 text-rose-400" />
           Altcoin Season Index
         </h3>
-        <p className="text-[13px] text-surface-600 mt-1 leading-relaxed">
+        <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
           Percentage of the top 50 non-stablecoin alts that have outperformed BTC over the past 90
           days. Per ITC:{' '}
           <em>
@@ -106,7 +106,7 @@ export function AltcoinSeasonChart() {
       </div>
 
       {loading && (
-        <div className="h-[520px] flex items-center justify-center text-surface-500 text-[13px]">
+        <div className="h-[520px] flex items-center justify-center text-surface-700 text-[13px]">
           Loading 50 alt tickers from Yahoo (batched, ~5s)...
         </div>
       )}
@@ -123,7 +123,7 @@ export function AltcoinSeasonChart() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             {/* Gauge */}
             <div className="p-4 rounded-xl border border-border/40 bg-surface-100/20">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium mb-2 text-center">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium mb-2 text-center">
                 Index
               </div>
               {gaugeOption && (
@@ -136,14 +136,14 @@ export function AltcoinSeasonChart() {
               )}
               <div className="mt-2 text-center">
                 <div className={`text-[18px] font-bold ${meta.color}`}>{meta.label}</div>
-                <div className="text-[11px] text-surface-600 mt-1 max-w-xs mx-auto">{meta.tip}</div>
+                <div className="text-[11px] text-surface-800 mt-1 max-w-xs mx-auto">{meta.tip}</div>
               </div>
             </div>
 
             {/* Stats column */}
             <div className="flex flex-col justify-center gap-3">
               <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-                <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+                <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                   BTC 90d Return
                 </div>
                 <div
@@ -154,7 +154,7 @@ export function AltcoinSeasonChart() {
                   {data.btcReturn90d >= 0 ? '+' : ''}
                   {(data.btcReturn90d * 100).toFixed(2)}%
                 </div>
-                <div className="text-[10px] text-surface-500 mt-0.5">
+                <div className="text-[10px] text-surface-700 mt-0.5">
                   Baseline the index is measured against
                 </div>
               </div>
@@ -165,20 +165,20 @@ export function AltcoinSeasonChart() {
                 <div className={`text-[22px] font-bold mt-0.5 ${meta.color}`}>
                   {data.outperformerCount} / {data.totalCounted}
                 </div>
-                <div className="text-[10px] text-surface-500 mt-0.5">
+                <div className="text-[10px] text-surface-700 mt-0.5">
                   {((data.outperformerCount / data.totalCounted) * 100).toFixed(1)}% of tracked alts
                   beat BTC
                 </div>
               </div>
               {data.skipped.length > 0 && (
                 <div className="p-2 rounded-lg border border-border/40 bg-surface-100/20">
-                  <div className="text-[9px] text-surface-500 uppercase font-medium">
+                  <div className="text-[9px] text-surface-700 uppercase font-medium">
                     Skipped Tickers
                   </div>
-                  <div className="text-[11px] text-surface-600 mt-0.5">
+                  <div className="text-[11px] text-surface-800 mt-0.5">
                     {data.skipped.join(', ')}
                   </div>
-                  <div className="text-[9px] text-surface-500 mt-0.5">
+                  <div className="text-[9px] text-surface-700 mt-0.5">
                     Not available on Yahoo (rebranded or delisted)
                   </div>
                 </div>
@@ -200,7 +200,7 @@ export function AltcoinSeasonChart() {
                   >
                     <div>
                       <span className="font-mono font-bold text-surface-200">{c.symbol}</span>
-                      <span className="text-surface-500 ml-1">{c.name}</span>
+                      <span className="text-surface-700 ml-1">{c.name}</span>
                     </div>
                     <div className="text-right">
                       <span
@@ -211,7 +211,7 @@ export function AltcoinSeasonChart() {
                         {c.return90d >= 0 ? '+' : ''}
                         {(c.return90d * 100).toFixed(1)}%
                       </span>
-                      <span className="text-[9px] text-surface-500 ml-1">
+                      <span className="text-[9px] text-surface-700 ml-1">
                         ({c.outperformance >= 0 ? '+' : ''}
                         {c.outperformance.toFixed(1)}pp)
                       </span>
@@ -235,7 +235,7 @@ export function AltcoinSeasonChart() {
                     >
                       <div>
                         <span className="font-mono font-bold text-surface-200">{c.symbol}</span>
-                        <span className="text-surface-500 ml-1">{c.name}</span>
+                        <span className="text-surface-700 ml-1">{c.name}</span>
                       </div>
                       <div className="text-right">
                         <span
@@ -246,7 +246,7 @@ export function AltcoinSeasonChart() {
                           {c.return90d >= 0 ? '+' : ''}
                           {(c.return90d * 100).toFixed(1)}%
                         </span>
-                        <span className="text-[9px] text-surface-500 ml-1">
+                        <span className="text-[9px] text-surface-700 ml-1">
                           ({c.outperformance >= 0 ? '+' : ''}
                           {c.outperformance.toFixed(1)}pp)
                         </span>

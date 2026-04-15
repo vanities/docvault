@@ -119,7 +119,7 @@ export function PiCycleChart() {
           <Target className="w-5 h-5 text-rose-400" />
           Pi Cycle Top Indicator
         </h3>
-        <p className="text-[13px] text-surface-600 mt-1 leading-relaxed">
+        <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
           Per ITC:{' '}
           <em>
             &ldquo;Local price bottom/top indicator using the crossover of the 111D SMA and the 2 ×
@@ -131,7 +131,7 @@ export function PiCycleChart() {
       </div>
 
       {loading && (
-        <div className="h-[360px] flex items-center justify-center text-surface-500 text-[13px]">
+        <div className="h-[360px] flex items-center justify-center text-surface-700 text-[13px]">
           Loading...
         </div>
       )}
@@ -147,7 +147,7 @@ export function PiCycleChart() {
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 111D SMA
               </div>
               <div className="text-[16px] font-bold text-cyan-400 mt-0.5">
@@ -157,7 +157,7 @@ export function PiCycleChart() {
               </div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 350D SMA × 2
               </div>
               <div className="text-[16px] font-bold text-rose-400 mt-0.5">
@@ -167,13 +167,13 @@ export function PiCycleChart() {
               </div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Ratio (111 / 350×2)
               </div>
               <div className="text-[16px] font-bold text-surface-200 mt-0.5">
                 {data.piCycle.latest.ratio != null ? data.piCycle.latest.ratio.toFixed(3) : '—'}
               </div>
-              <div className="text-[10px] text-surface-500 mt-0.5">1.0 = crossover</div>
+              <div className="text-[10px] text-surface-700 mt-0.5">1.0 = crossover</div>
             </div>
             <div
               className={`p-3 rounded-xl border ${
@@ -196,7 +196,7 @@ export function PiCycleChart() {
               >
                 {data.piCycle.latest.signalActive ? 'TOP ACTIVE' : 'Inactive'}
               </div>
-              <div className="text-[10px] text-surface-600 mt-0.5 leading-tight">
+              <div className="text-[10px] text-surface-800 mt-0.5 leading-tight">
                 {data.piCycle.latest.signalActive
                   ? 'Cycle top likely within ~3 days'
                   : 'No crossover — market is not at a cycle top'}

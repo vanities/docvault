@@ -69,7 +69,7 @@ export function BtcDominanceChart() {
           <PieChartIcon className="w-5 h-5 text-amber-400" />
           Bitcoin Dominance
         </h3>
-        <p className="text-[13px] text-surface-600 mt-1 leading-relaxed">
+        <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
           BTC market cap as a share of total crypto market cap. Per ITC:{' '}
           <em>
             &ldquo;Dominance is the asset market cap divided by the total market cap.&rdquo;
@@ -81,7 +81,7 @@ export function BtcDominanceChart() {
       </div>
 
       {loading && (
-        <div className="h-[360px] flex items-center justify-center text-surface-500 text-[13px]">
+        <div className="h-[360px] flex items-center justify-center text-surface-700 text-[13px]">
           Loading CoinGecko /global...
         </div>
       )}
@@ -104,7 +104,7 @@ export function BtcDominanceChart() {
             />
             <div className="flex flex-col justify-center gap-2">
               <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-                <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+                <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                   BTC Dominance
                 </div>
                 <div className="text-[22px] font-bold text-amber-400 mt-0.5">
@@ -116,13 +116,13 @@ export function BtcDominanceChart() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="p-2 rounded-lg border border-border/40 bg-surface-100/20">
-                  <div className="text-[10px] text-surface-500 uppercase font-medium">ETH</div>
+                  <div className="text-[10px] text-surface-700 uppercase font-medium">ETH</div>
                   <div className="text-[14px] font-bold text-violet-400">
                     {data.ethDominance.toFixed(2)}%
                   </div>
                 </div>
                 <div className="p-2 rounded-lg border border-border/40 bg-surface-100/20">
-                  <div className="text-[10px] text-surface-500 uppercase font-medium">Stables</div>
+                  <div className="text-[10px] text-surface-700 uppercase font-medium">Stables</div>
                   <div className="text-[14px] font-bold text-cyan-400">
                     {data.stableDominance.toFixed(2)}%
                   </div>
@@ -134,7 +134,7 @@ export function BtcDominanceChart() {
                   <div className="text-[16px] font-bold text-amber-300">
                     {data.flightToSafety.toFixed(2)}%
                   </div>
-                  <div className="text-[9px] text-surface-500 mt-0.5">
+                  <div className="text-[9px] text-surface-700 mt-0.5">
                     Cowen's risk-off dominance gauge
                   </div>
                 </div>
@@ -143,7 +143,7 @@ export function BtcDominanceChart() {
                     Stablecoin Supply Ratio (SSR)
                   </div>
                   <div className="text-[16px] font-bold text-cyan-300">{data.ssr.toFixed(2)}×</div>
-                  <div className="text-[9px] text-surface-500 mt-0.5">
+                  <div className="text-[9px] text-surface-700 mt-0.5">
                     BTC mcap ÷ stables mcap ·{' '}
                     {data.ssr < 3
                       ? 'Dry powder on the sidelines'
@@ -153,7 +153,7 @@ export function BtcDominanceChart() {
                   </div>
                 </div>
                 <div className="p-2 rounded-lg border border-border/40 bg-surface-100/20 col-span-2">
-                  <div className="text-[10px] text-surface-500 uppercase font-medium">
+                  <div className="text-[10px] text-surface-700 uppercase font-medium">
                     Total Market Cap
                   </div>
                   <div className="text-[14px] font-bold text-surface-200">
@@ -171,7 +171,7 @@ export function BtcDominanceChart() {
               </div>
             </div>
           </div>
-          <div className="mt-3 text-[10px] text-surface-500 text-center">
+          <div className="mt-3 text-[10px] text-surface-700 text-center">
             Source:{' '}
             <a
               href="https://www.coingecko.com/"

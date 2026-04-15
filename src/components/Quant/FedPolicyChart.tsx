@@ -118,7 +118,7 @@ export function FedPolicyChart() {
           <Landmark className="w-5 h-5 text-cyan-400" />
           Fed Policy &amp; Rate Decisions
         </h3>
-        <p className="text-[13px] text-surface-600 mt-1 leading-relaxed">
+        <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
           Effective federal funds rate plotted against the FOMC target range (upper/lower bounds,
           2008+). Every rate change event is detected by walking the target history — hikes and cuts
           with their basis-point deltas. The current{' '}
@@ -128,7 +128,7 @@ export function FedPolicyChart() {
       </div>
 
       {loading && (
-        <div className="h-[480px] flex items-center justify-center text-surface-500 text-[13px]">
+        <div className="h-[480px] flex items-center justify-center text-surface-700 text-[13px]">
           Loading FRED rate history...
         </div>
       )}
@@ -137,7 +137,7 @@ export function FedPolicyChart() {
         <div className="h-[480px] flex flex-col items-center justify-center gap-2 text-danger-400 p-6 text-center">
           <AlertCircle className="w-5 h-5" />
           <div className="text-[13px] font-medium">Fed policy not available</div>
-          <div className="text-[11px] text-surface-500 max-w-md">{error}</div>
+          <div className="text-[11px] text-surface-700 max-w-md">{error}</div>
           {error.toLowerCase().includes('fred api key') && (
             <div className="text-[11px] text-cyan-400 mt-2">
               Add your free FRED API key in <strong>Settings → Quant</strong>.
@@ -157,34 +157,34 @@ export function FedPolicyChart() {
               <div className="text-[16px] font-bold text-cyan-400 mt-0.5">
                 {data.latest.targetLower.toFixed(2)}–{data.latest.targetUpper.toFixed(2)}%
               </div>
-              <div className="text-[10px] text-surface-500 mt-0.5">
+              <div className="text-[10px] text-surface-700 mt-0.5">
                 Midpoint {((data.latest.targetUpper + data.latest.targetLower) / 2).toFixed(2)}%
               </div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Effective Rate
               </div>
               <div className="text-[16px] font-bold text-surface-200 mt-0.5">
                 {data.latest.effectiveRate.toFixed(2)}%
               </div>
-              <div className="text-[10px] text-surface-500 mt-0.5">Market actual</div>
+              <div className="text-[10px] text-surface-700 mt-0.5">Market actual</div>
             </div>
             <div className={`p-3 rounded-xl border ${meta.border} ${meta.bg}`}>
               <div className={`text-[10px] uppercase tracking-wider font-medium ${meta.color}`}>
                 Current Stance
               </div>
               <div className={`text-[16px] font-bold mt-0.5 ${meta.color}`}>{meta.label}</div>
-              <div className="text-[10px] text-surface-600 mt-0.5 leading-tight">{meta.tip}</div>
+              <div className="text-[10px] text-surface-800 mt-0.5 leading-tight">{meta.tip}</div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Days Since Last Change
               </div>
               <div className="text-[16px] font-bold text-surface-200 mt-0.5">
                 {data.latest.daysSinceLastChange}d
               </div>
-              <div className="text-[10px] text-surface-500 mt-0.5">
+              <div className="text-[10px] text-surface-700 mt-0.5">
                 {data.rateChanges.length} total changes tracked
               </div>
             </div>
@@ -200,7 +200,7 @@ export function FedPolicyChart() {
 
           {/* Recent rate changes list */}
           <div className="mt-4">
-            <div className="text-[11px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2">
+            <div className="text-[11px] font-semibold text-surface-700 uppercase tracking-[0.15em] mb-2">
               Recent FOMC Decisions
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -240,7 +240,7 @@ export function FedPolicyChart() {
             </div>
           </div>
 
-          <div className="mt-3 text-[10px] text-surface-500 text-center">
+          <div className="mt-3 text-[10px] text-surface-700 text-center">
             Source:{' '}
             <a
               href="https://fred.stlouisfed.org/series/DFEDTARU"

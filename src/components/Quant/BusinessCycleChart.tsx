@@ -111,7 +111,7 @@ function MiniChart({ series }: { series: MacroSeriesData }) {
       <div className="flex items-baseline justify-between mb-1">
         <div>
           <div className="text-[11px] font-semibold text-surface-200">{series.label}</div>
-          <div className="text-[9px] text-surface-500 leading-tight">
+          <div className="text-[9px] text-surface-700 leading-tight">
             FRED: <span className="font-mono">{series.id}</span>
           </div>
         </div>
@@ -133,7 +133,7 @@ function MiniChart({ series }: { series: MacroSeriesData }) {
         opts={{ renderer: 'canvas' }}
         notMerge
       />
-      <div className="text-[9px] text-surface-500 mt-1 leading-tight">{series.description}</div>
+      <div className="text-[9px] text-surface-700 mt-1 leading-tight">{series.description}</div>
     </div>
   );
 }
@@ -203,7 +203,7 @@ export function BusinessCycleChart() {
           <Activity className="w-5 h-5 text-rose-400" />
           Business Cycle Dashboard
         </h3>
-        <p className="text-[13px] text-surface-600 mt-1 leading-relaxed">
+        <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
           Classic recession / business-cycle indicators: Sahm Rule, Chauvet-Piger smoothed recession
           probability, industrial production (coincident), durable goods orders and building permits
           (leading), and Michigan consumer sentiment. Together these tell you where we are in the
@@ -212,7 +212,7 @@ export function BusinessCycleChart() {
       </div>
 
       {loading && (
-        <div className="h-[400px] flex items-center justify-center text-surface-500 text-[13px]">
+        <div className="h-[400px] flex items-center justify-center text-surface-700 text-[13px]">
           Loading 6 FRED business-cycle series...
         </div>
       )}
@@ -221,7 +221,7 @@ export function BusinessCycleChart() {
         <div className="h-[400px] flex flex-col items-center justify-center gap-2 text-danger-400 p-6 text-center">
           <AlertCircle className="w-5 h-5" />
           <div className="text-[13px] font-medium">Business cycle not available</div>
-          <div className="text-[11px] text-surface-500 max-w-md">{error}</div>
+          <div className="text-[11px] text-surface-700 max-w-md">{error}</div>
           {error.toLowerCase().includes('fred api key') && (
             <div className="text-[11px] text-cyan-400 mt-2">
               Add your free FRED API key in <strong>Settings → Quant</strong>.
@@ -246,22 +246,22 @@ export function BusinessCycleChart() {
               }`}
             >
               <div className="flex items-center gap-2 mb-2">
-                <AlertTriangle className={`w-4 h-4 ${sahmZone?.color ?? 'text-surface-500'}`} />
-                <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+                <AlertTriangle className={`w-4 h-4 ${sahmZone?.color ?? 'text-surface-700'}`} />
+                <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                   Sahm Rule Indicator
                 </div>
               </div>
               <div className={`text-[28px] font-bold ${sahmZone?.color ?? ''}`}>
                 {sahm?.latest ? sahm.latest.value.toFixed(2) : '—'}
-                <span className="text-[14px] text-surface-500 font-normal ml-2">
+                <span className="text-[14px] text-surface-700 font-normal ml-2">
                   / 0.50 threshold
                 </span>
               </div>
               <div className={`text-[13px] font-semibold mt-1 ${sahmZone?.color ?? ''}`}>
                 {sahmZone?.label ?? '—'}
               </div>
-              <div className="text-[11px] text-surface-600 mt-1 leading-tight">{sahmZone?.tip}</div>
-              <div className="text-[9px] text-surface-500 mt-2">
+              <div className="text-[11px] text-surface-800 mt-1 leading-tight">{sahmZone?.tip}</div>
+              <div className="text-[9px] text-surface-700 mt-2">
                 3-month avg U-3 unemployment minus its 12-month low. Developed by Claudia Sahm —
                 triggered at the start of every U.S. recession since 1970.
               </div>
@@ -278,8 +278,8 @@ export function BusinessCycleChart() {
               }`}
             >
               <div className="flex items-center gap-2 mb-2">
-                <AlertTriangle className={`w-4 h-4 ${recProbZone?.color ?? 'text-surface-500'}`} />
-                <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+                <AlertTriangle className={`w-4 h-4 ${recProbZone?.color ?? 'text-surface-700'}`} />
+                <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                   Recession Probability (12mo)
                 </div>
               </div>
@@ -289,10 +289,10 @@ export function BusinessCycleChart() {
               <div className={`text-[13px] font-semibold mt-1 ${recProbZone?.color ?? ''}`}>
                 {recProbZone?.label ?? '—'}
               </div>
-              <div className="text-[11px] text-surface-600 mt-1 leading-tight">
+              <div className="text-[11px] text-surface-800 mt-1 leading-tight">
                 {recProbZone?.tip}
               </div>
-              <div className="text-[9px] text-surface-500 mt-2">
+              <div className="text-[9px] text-surface-700 mt-2">
                 Chauvet-Piger smoothed recession probability — a dynamic factor model combining
                 employment, industrial production, income, and sales. FRED series{' '}
                 <span className="font-mono">RECPROUSM156N</span>.
@@ -306,7 +306,7 @@ export function BusinessCycleChart() {
               <MiniChart key={s.id} series={s} />
             ))}
           </div>
-          <div className="mt-3 text-[10px] text-surface-500 text-center">
+          <div className="mt-3 text-[10px] text-surface-700 text-center">
             Source:{' '}
             <a
               href="https://fred.stlouisfed.org/"

@@ -130,7 +130,7 @@ export function BtcMovingAveragesChart() {
           <TrendingUp className="w-5 h-5 text-cyan-400" />
           BTC Moving Averages + Mayer Multiple
         </h3>
-        <p className="text-[13px] text-surface-600 mt-1 leading-relaxed">
+        <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
           BTC price overlaid with the <strong className="text-cyan-400">200-week SMA</strong>{' '}
           (Cowen's cycle trend line — bull/bear regime boundary) and the{' '}
           <strong>200-day SMA with Mayer bands</strong> at 0.8× (capitulation), 1× (fair value), and
@@ -140,7 +140,7 @@ export function BtcMovingAveragesChart() {
       </div>
 
       {loading && (
-        <div className="h-[480px] flex items-center justify-center text-surface-500 text-[13px]">
+        <div className="h-[480px] flex items-center justify-center text-surface-700 text-[13px]">
           Loading...
         </div>
       )}
@@ -156,7 +156,7 @@ export function BtcMovingAveragesChart() {
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 BTC Price
               </div>
               <div className="text-[16px] font-bold text-amber-400 mt-0.5">
@@ -164,7 +164,7 @@ export function BtcMovingAveragesChart() {
               </div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 200W SMA
               </div>
               <div className="text-[16px] font-bold text-cyan-400 mt-0.5">
@@ -172,14 +172,14 @@ export function BtcMovingAveragesChart() {
                   ? `$${data.movingAverages.latest.sma200w.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
                   : '—'}
               </div>
-              <div className="text-[10px] text-surface-500 mt-0.5">
+              <div className="text-[10px] text-surface-700 mt-0.5">
                 {data.movingAverages.latest.priceVs200w != null
                   ? `Price = ${data.movingAverages.latest.priceVs200w.toFixed(2)}× of 200W`
                   : ''}
               </div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Mayer Multiple
               </div>
               <div className="text-[16px] font-bold text-surface-200 mt-0.5">
@@ -187,18 +187,18 @@ export function BtcMovingAveragesChart() {
                   ? `${data.risk.latest.components.mayerMultiple.toFixed(2)}×`
                   : '—'}
               </div>
-              <div className="text-[10px] text-surface-500 mt-0.5">Price ÷ 200D SMA</div>
+              <div className="text-[10px] text-surface-700 mt-0.5">Price ÷ 200D SMA</div>
             </div>
             <div className="p-3 rounded-xl border border-cyan-500/40 bg-cyan-500/5">
               <div className="text-[10px] text-cyan-500 uppercase tracking-wider font-medium">
                 Zone
               </div>
               <div
-                className={`text-[16px] font-bold mt-0.5 ${mayerZone?.color ?? 'text-surface-500'}`}
+                className={`text-[16px] font-bold mt-0.5 ${mayerZone?.color ?? 'text-surface-700'}`}
               >
                 {mayerZone?.label ?? '—'}
               </div>
-              <div className="text-[10px] text-surface-500 mt-0.5">Mayer classification</div>
+              <div className="text-[10px] text-surface-700 mt-0.5">Mayer classification</div>
             </div>
           </div>
 

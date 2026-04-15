@@ -34,7 +34,7 @@ const STATE_META = {
   },
   unknown: {
     label: '—',
-    color: 'text-surface-500',
+    color: 'text-surface-700',
     bg: 'bg-surface-200/20',
     border: 'border-border/30',
     tip: '',
@@ -154,7 +154,7 @@ export function BmsbChart() {
           <Shield className="w-5 h-5 text-emerald-400" />
           Bull Market Support Band (BMSB)
         </h3>
-        <p className="text-[13px] text-surface-600 mt-1 leading-relaxed">
+        <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
           20-week simple moving average + 21-week exponential moving average. Per ITC:{' '}
           <em>
             &ldquo;The bull market support band is the area between the 20W simple moving average
@@ -165,7 +165,7 @@ export function BmsbChart() {
       </div>
 
       {loading && (
-        <div className="h-[360px] flex items-center justify-center text-surface-500 text-[13px]">
+        <div className="h-[360px] flex items-center justify-center text-surface-700 text-[13px]">
           Loading...
         </div>
       )}
@@ -181,7 +181,7 @@ export function BmsbChart() {
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 BTC Price
               </div>
               <div className="text-[16px] font-bold text-amber-400 mt-0.5">
@@ -189,7 +189,7 @@ export function BmsbChart() {
               </div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 20W SMA
               </div>
               <div className="text-[16px] font-bold text-emerald-400 mt-0.5">
@@ -199,7 +199,7 @@ export function BmsbChart() {
               </div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 21W EMA
               </div>
               <div className="text-[16px] font-bold text-rose-400 mt-0.5">
@@ -213,7 +213,7 @@ export function BmsbChart() {
                 State
               </div>
               <div className={`text-[16px] font-bold mt-0.5 ${meta.color}`}>{meta.label}</div>
-              <div className="text-[10px] text-surface-600 mt-0.5 leading-tight">{meta.tip}</div>
+              <div className="text-[10px] text-surface-800 mt-0.5 leading-tight">{meta.tip}</div>
             </div>
           </div>
 

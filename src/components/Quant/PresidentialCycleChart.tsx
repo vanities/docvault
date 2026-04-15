@@ -164,7 +164,7 @@ export function PresidentialCycleChart() {
           <CalendarRange className="w-5 h-5 text-cyan-400" />
           Presidential Cycle Heatmap
         </h3>
-        <p className="text-[13px] text-surface-600 mt-1 leading-relaxed">
+        <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
           Average monthly S&amp;P 500 return by year-of-cycle and calendar month. Year 2 (midterm)
           is historically the weakest; Year 3 (pre-election) is the best. The
           <span className="text-cyan-400 font-semibold"> NOW</span> pin marks where we are in the
@@ -173,7 +173,7 @@ export function PresidentialCycleChart() {
       </div>
 
       {loading && (
-        <div className="h-[420px] flex items-center justify-center text-surface-500 text-[13px]">
+        <div className="h-[420px] flex items-center justify-center text-surface-700 text-[13px]">
           Loading {data?.dataRange ? '...' : 'Shiller dataset (1871–present)...'}
         </div>
       )}
@@ -182,7 +182,7 @@ export function PresidentialCycleChart() {
         <div className="h-[420px] flex flex-col items-center justify-center gap-2 text-danger-400">
           <AlertCircle className="w-5 h-5" />
           <div className="text-[13px] font-medium">Failed to load cycle data</div>
-          <div className="text-[11px] text-surface-500">{error}</div>
+          <div className="text-[11px] text-surface-700">{error}</div>
         </div>
       )}
 
@@ -195,10 +195,10 @@ export function PresidentialCycleChart() {
             notMerge
           />
 
-          <div className="mt-4 flex flex-wrap gap-4 text-[11px] text-surface-500 items-center justify-between">
+          <div className="mt-4 flex flex-wrap gap-4 text-[11px] text-surface-700 items-center justify-between">
             <div className="flex items-center gap-4">
               <div>
-                <span className="text-surface-600 font-medium">Source:</span>{' '}
+                <span className="text-surface-800 font-medium">Source:</span>{' '}
                 <span className="text-surface-900">
                   {data.source === 'shiller'
                     ? 'Shiller SP500 (GitHub)'
@@ -206,13 +206,13 @@ export function PresidentialCycleChart() {
                 </span>
               </div>
               <div>
-                <span className="text-surface-600 font-medium">Range:</span>{' '}
+                <span className="text-surface-800 font-medium">Range:</span>{' '}
                 <span className="text-surface-900">
                   {data.dataRange.from} → {data.dataRange.to}
                 </span>
               </div>
               <div>
-                <span className="text-surface-600 font-medium">Current:</span>{' '}
+                <span className="text-surface-800 font-medium">Current:</span>{' '}
                 <span className="text-cyan-400 font-semibold">
                   {data.currentYear} · Y{data.currentYearOfCycle}{' '}
                   {
@@ -242,7 +242,7 @@ export function PresidentialCycleChart() {
                       : 'border-border/40 bg-surface-100/30'
                   }`}
                 >
-                  <div className="text-[10px] text-surface-500 font-medium uppercase tracking-wider">
+                  <div className="text-[10px] text-surface-700 font-medium uppercase tracking-wider">
                     {label}
                   </div>
                   <div
@@ -253,7 +253,7 @@ export function PresidentialCycleChart() {
                     {annual >= 0 ? '+' : ''}
                     {annual.toFixed(2)}%
                   </div>
-                  <div className="text-[9px] text-surface-500 mt-0.5">avg annual sum</div>
+                  <div className="text-[9px] text-surface-700 mt-0.5">avg annual sum</div>
                 </div>
               );
             })}

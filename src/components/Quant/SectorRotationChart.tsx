@@ -48,7 +48,7 @@ const QUADRANT_META = {
   },
   unknown: {
     label: '—',
-    color: 'text-surface-500',
+    color: 'text-surface-700',
     bg: 'bg-surface-200/20',
     border: 'border-border/30',
     dot: '#64748b',
@@ -77,7 +77,7 @@ function QuadrantBadge({ quadrant }: { quadrant: SectorReturnData['quadrant'] })
 }
 
 function ReturnCell({ value }: { value: number | null }) {
-  if (value == null) return <span className="text-surface-500">—</span>;
+  if (value == null) return <span className="text-surface-700">—</span>;
   const color = value >= 0 ? 'text-emerald-400' : 'text-rose-400';
   return <span className={`font-mono text-[12px] ${color}`}>{fmtPct(value)}</span>;
 }
@@ -255,7 +255,7 @@ export function SectorRotationChart() {
     align?: 'left' | 'right';
   }) => (
     <th
-      className={`px-2 py-2 text-[10px] font-semibold text-surface-500 uppercase tracking-wider cursor-pointer hover:text-surface-300 select-none ${
+      className={`px-2 py-2 text-[10px] font-semibold text-surface-700 uppercase tracking-wider cursor-pointer hover:text-surface-300 select-none ${
         align === 'right' ? 'text-right' : 'text-left'
       }`}
       onClick={() => handleSort(k)}
@@ -289,7 +289,7 @@ export function SectorRotationChart() {
           <Layers className="w-5 h-5 text-emerald-400" />
           Sector Rotation
         </h3>
-        <p className="text-[13px] text-surface-600 mt-1 leading-relaxed">
+        <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
           All 11 S&amp;P sector SPDR ETFs ranked by Relative Strength (1yr vs SPY) and Momentum (3m
           vs SPY), classified into the four Relative Rotation Graph quadrants.
           <span className="text-emerald-400 font-semibold"> Leading</span> and
@@ -300,7 +300,7 @@ export function SectorRotationChart() {
       </div>
 
       {loading && (
-        <div className="h-[600px] flex items-center justify-center text-surface-500 text-[13px]">
+        <div className="h-[600px] flex items-center justify-center text-surface-700 text-[13px]">
           Loading 12 tickers from Yahoo Finance...
         </div>
       )}
@@ -309,7 +309,7 @@ export function SectorRotationChart() {
         <div className="h-[600px] flex flex-col items-center justify-center gap-2 text-danger-400">
           <AlertCircle className="w-5 h-5" />
           <div className="text-[13px] font-medium">Failed to load sector data</div>
-          <div className="text-[11px] text-surface-500 max-w-md text-center">{error}</div>
+          <div className="text-[11px] text-surface-700 max-w-md text-center">{error}</div>
         </div>
       )}
 
@@ -332,11 +332,11 @@ export function SectorRotationChart() {
                       </div>
                       <div className={`text-[18px] font-bold ${meta.color} mt-0.5`}>
                         {count}
-                        <span className="text-[11px] text-surface-500 font-normal ml-1">
+                        <span className="text-[11px] text-surface-700 font-normal ml-1">
                           sectors
                         </span>
                       </div>
-                      <div className="text-[10px] text-surface-600 mt-0.5 leading-tight">
+                      <div className="text-[10px] text-surface-800 mt-0.5 leading-tight">
                         {meta.description}
                       </div>
                     </div>
@@ -363,10 +363,10 @@ export function SectorRotationChart() {
               <thead>
                 <tr className="border-b border-border/40">
                   <SortHeader label="Ticker" k="ticker" align="left" />
-                  <th className="px-2 py-2 text-left text-[10px] font-semibold text-surface-500 uppercase tracking-wider">
+                  <th className="px-2 py-2 text-left text-[10px] font-semibold text-surface-700 uppercase tracking-wider">
                     Sector
                   </th>
-                  <th className="px-2 py-2 text-right text-[10px] font-semibold text-surface-500 uppercase tracking-wider">
+                  <th className="px-2 py-2 text-right text-[10px] font-semibold text-surface-700 uppercase tracking-wider">
                     Price
                   </th>
                   <SortHeader label="YTD" k="ytd" />
@@ -375,7 +375,7 @@ export function SectorRotationChart() {
                   <SortHeader label="6M" k="m6" />
                   <SortHeader label="RS" k="rs" />
                   <SortHeader label="Mom" k="mom" />
-                  <th className="px-2 py-2 text-right text-[10px] font-semibold text-surface-500 uppercase tracking-wider">
+                  <th className="px-2 py-2 text-right text-[10px] font-semibold text-surface-700 uppercase tracking-wider">
                     Quadrant
                   </th>
                 </tr>
@@ -387,7 +387,7 @@ export function SectorRotationChart() {
                     className="border-b border-border/20 hover:bg-surface-200/20 transition-colors"
                   >
                     <td className="px-2 py-2 font-mono font-bold text-surface-100">{s.ticker}</td>
-                    <td className="px-2 py-2 text-surface-600">{s.name}</td>
+                    <td className="px-2 py-2 text-surface-800">{s.name}</td>
                     <td className="px-2 py-2 text-right font-mono text-surface-300">
                       ${s.price.toFixed(2)}
                     </td>
@@ -419,7 +419,7 @@ export function SectorRotationChart() {
                   <td className="px-2 py-2 font-mono font-bold text-cyan-400">
                     {data.benchmark.ticker}
                   </td>
-                  <td className="px-2 py-2 text-surface-500 italic">
+                  <td className="px-2 py-2 text-surface-700 italic">
                     {data.benchmark.name} (baseline)
                   </td>
                   <td className="px-2 py-2 text-right font-mono text-surface-400">
@@ -437,25 +437,25 @@ export function SectorRotationChart() {
                   <td className="px-2 py-2 text-right">
                     <ReturnCell value={data.benchmark.returns.m6} />
                   </td>
-                  <td className="px-2 py-2 text-right font-mono text-surface-500">100.0</td>
-                  <td className="px-2 py-2 text-right font-mono text-surface-500">100.0</td>
-                  <td className="px-2 py-2 text-right text-[10px] text-surface-500">—</td>
+                  <td className="px-2 py-2 text-right font-mono text-surface-700">100.0</td>
+                  <td className="px-2 py-2 text-right font-mono text-surface-700">100.0</td>
+                  <td className="px-2 py-2 text-right text-[10px] text-surface-700">—</td>
                 </tr>
               </tbody>
             </table>
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-3 text-[10px] text-surface-500 items-center justify-between">
+          <div className="mt-3 flex flex-wrap gap-3 text-[10px] text-surface-700 items-center justify-between">
             <div>
-              <span className="text-surface-600 font-medium">Source:</span>{' '}
+              <span className="text-surface-800 font-medium">Source:</span>{' '}
               <span className="text-surface-900">Yahoo Finance</span>
               {' · '}
-              <span className="text-surface-600 font-medium">Range:</span>{' '}
+              <span className="text-surface-800 font-medium">Range:</span>{' '}
               <span className="text-surface-900">
                 {data.dataRange.from} → {data.dataRange.to}
               </span>
             </div>
-            <div className="text-surface-500">
+            <div className="text-surface-700">
               RS = 1yr return vs SPY · Mom = 3m return vs SPY · 100 = matching SPY
             </div>
           </div>

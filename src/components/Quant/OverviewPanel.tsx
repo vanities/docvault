@@ -66,7 +66,7 @@ function MetricCard({
       className={`p-3 rounded-xl border text-left transition-all hover:scale-[1.01] hover:shadow-sm ${t.border} ${t.bg}`}
     >
       <div className="flex items-center justify-between mb-1.5">
-        <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+        <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
           {label}
         </div>
         <Icon className={`w-3.5 h-3.5 ${t.text} opacity-60`} />
@@ -77,7 +77,7 @@ function MetricCard({
         <>
           <div className={`text-[16px] font-bold leading-tight ${t.text}`}>{value}</div>
           {detail && (
-            <div className="text-[10px] text-surface-500 mt-0.5 leading-tight">{detail}</div>
+            <div className="text-[10px] text-surface-700 mt-0.5 leading-tight">{detail}</div>
           )}
         </>
       )}
@@ -185,7 +185,7 @@ export function OverviewPanel({
       <Card variant="glass" className="p-6">
         <div className="mb-4">
           <h3 className="text-lg font-semibold text-surface-950">Market snapshot</h3>
-          <p className="text-[13px] text-surface-600 mt-1">
+          <p className="text-[13px] text-surface-800 mt-1">
             Every signal in one view. Click any card to jump to the detailed chart.
           </p>
         </div>
