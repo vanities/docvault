@@ -2300,7 +2300,7 @@ export interface MacroDashboardResponse {
   source: 'fred';
 }
 
-type MacroSeriesSpec = Omit<MacroSeries, 'points' | 'latest' | 'yoyChange'> & {
+export type MacroSeriesSpec = Omit<MacroSeries, 'points' | 'latest' | 'yoyChange'> & {
   start: string;
 };
 
@@ -2347,7 +2347,7 @@ const MACRO_SERIES: MacroSeriesSpec[] = [
   },
 ];
 
-const BUSINESS_CYCLE_SERIES: MacroSeriesSpec[] = [
+export const BUSINESS_CYCLE_SERIES: MacroSeriesSpec[] = [
   {
     id: 'SAHMREALTIME',
     label: 'Sahm Rule Indicator',
@@ -2398,7 +2398,7 @@ const BUSINESS_CYCLE_SERIES: MacroSeriesSpec[] = [
   },
 ];
 
-const INFLATION_SERIES: MacroSeriesSpec[] = [
+export const INFLATION_SERIES: MacroSeriesSpec[] = [
   {
     id: 'CPIAUCSL',
     label: 'Headline CPI',
@@ -2453,7 +2453,7 @@ const INFLATION_SERIES: MacroSeriesSpec[] = [
   },
 ];
 
-const FINANCIAL_CONDITIONS_SERIES: MacroSeriesSpec[] = [
+export const FINANCIAL_CONDITIONS_SERIES: MacroSeriesSpec[] = [
   {
     id: 'NFCI',
     label: 'NFCI',
@@ -2640,12 +2640,13 @@ async function computeFinancialConditions(apiKey: string): Promise<MacroDashboar
 // into completed bear episodes (ATH → trough → next ATH).
 // ---------------------------------------------------------------------------
 
-async function computeBtcDrawdown(): Promise<BtcDrawdownResponse> {
-  const prices = await fetchBtcHistory();
-  if (prices.length < 30) {
-    throw new Error(`Insufficient BTC history (got ${prices.length} points)`);
-  }
-
+/** Pure helper — given a sorted price history, build the running-drawdown
+ *  series, detect every bear episode ≥ `minEpisodeDrawdown` from a prior
+ *  ATH, and compute aggregate stats. Exported for unit testing. */
+export function computeDrawdownFromPrices(
+  prices: { t: number; price: number }[],
+  minEpisodeDrawdown = 0.1
+): Omit<BtcDrawdownResponse, 'fetchedAt' | 'source'> & { athFirstSeenIdx: number } {
   // Walk prices forward, tracking the running ATH.
   const series: DrawdownPoint[] = [];
   let ath = 0;
@@ -2661,17 +2662,14 @@ async function computeBtcDrawdown(): Promise<BtcDrawdownResponse> {
 
   // Build bear episodes: each time a new ATH is reached, close the previous
   // episode. The trough is the minimum-drawdown point between consecutive
-  // new-ATH events. We consider an "episode" anything with a peak-to-trough
-  // drawdown ≥ 10% to filter out noise.
+  // new-ATH events.
   const episodes: DrawdownEpisode[] = [];
   let episodeAthIdx = 0;
   let episodeTroughIdx = 0;
   for (let i = 1; i < series.length; i++) {
     if (series[i].price > series[episodeAthIdx].ath - 1e-9) {
-      // A new ATH was reached: the old episode just finished if it had any
-      // meaningful drawdown.
       const troughDD = series[episodeTroughIdx].drawdown;
-      if (troughDD <= -0.1 && episodeTroughIdx > episodeAthIdx) {
+      if (troughDD <= -minEpisodeDrawdown && episodeTroughIdx > episodeAthIdx) {
         episodes.push({
           athDate: new Date(series[episodeAthIdx].t).toISOString().slice(0, 10),
           athPrice: series[episodeAthIdx].ath,
@@ -2690,7 +2688,10 @@ async function computeBtcDrawdown(): Promise<BtcDrawdownResponse> {
   }
 
   // If we're still in a drawdown right now, record the in-progress episode.
-  if (episodeTroughIdx > episodeAthIdx && series[episodeTroughIdx].drawdown <= -0.1) {
+  if (
+    episodeTroughIdx > episodeAthIdx &&
+    series[episodeTroughIdx].drawdown <= -minEpisodeDrawdown
+  ) {
     episodes.push({
       athDate: new Date(series[episodeAthIdx].t).toISOString().slice(0, 10),
       athPrice: series[episodeAthIdx].ath,
@@ -2703,7 +2704,6 @@ async function computeBtcDrawdown(): Promise<BtcDrawdownResponse> {
   }
 
   const latest = series[series.length - 1];
-  // Walk back to find when the current running ATH was first set.
   let athFirstSeenIdx = series.length - 1;
   for (let i = series.length - 1; i >= 0; i--) {
     if (series[i].price >= latest.ath - 1e-9) athFirstSeenIdx = i;
@@ -2722,12 +2722,8 @@ async function computeBtcDrawdown(): Promise<BtcDrawdownResponse> {
       ? completedEpisodes.reduce((a, e) => a + e.daysToTrough, 0) / completedEpisodes.length
       : 0;
 
-  // Downsample the series to keep the response snappy — 1500 points is
-  // plenty for a line chart spanning 10+ years.
-  const downsampled = downsample(series, 1500);
-
   return {
-    series: downsampled,
+    series,
     latest: {
       date: new Date(latest.t).toISOString().slice(0, 10),
       price: latest.price,
@@ -2742,6 +2738,21 @@ async function computeBtcDrawdown(): Promise<BtcDrawdownResponse> {
       avgBearDrawdown,
       avgDaysToTrough,
     },
+    athFirstSeenIdx,
+  };
+}
+
+async function computeBtcDrawdown(): Promise<BtcDrawdownResponse> {
+  const prices = await fetchBtcHistory();
+  if (prices.length < 30) {
+    throw new Error(`Insufficient BTC history (got ${prices.length} points)`);
+  }
+  const { series, latest, episodes, stats } = computeDrawdownFromPrices(prices);
+  return {
+    series: downsample(series, 1500),
+    latest,
+    episodes,
+    stats,
     fetchedAt: Date.now(),
     source: 'yahoo',
   };
@@ -2751,6 +2762,48 @@ async function computeBtcDrawdown(): Promise<BtcDrawdownResponse> {
 // Fear & Greed Index — alternative.me free JSON API, no key. Daily values
 // back to 2018-02-01. We cache 1h; the upstream only updates once per day.
 // ---------------------------------------------------------------------------
+
+/** Pure helper — parse alternative.me raw response rows into a sorted
+ *  oldest-first `FearGreedSample[]`. Drops rows with non-finite values. */
+export function parseFearGreedHistory(
+  raw: { value: string; value_classification: string; timestamp: string }[]
+): FearGreedSample[] {
+  return raw
+    .map((r) => ({
+      t: Number(r.timestamp) * 1000,
+      value: Number(r.value),
+      classification: r.value_classification,
+    }))
+    .filter((s) => Number.isFinite(s.value) && Number.isFinite(s.t))
+    .sort((a, b) => a.t - b.t);
+}
+
+/** Pure helper — given a sorted oldest-first fear/greed history, compute
+ *  moving averages and the 365-day high/low. Exported for unit testing. */
+export function computeFearGreedStats(history: FearGreedSample[]): {
+  latest: FearGreedSample;
+  ma30: number;
+  ma90: number;
+  highest365: FearGreedSample | null;
+  lowest365: FearGreedSample | null;
+} {
+  if (history.length === 0) {
+    throw new Error('computeFearGreedStats: empty history');
+  }
+  const latest = history[history.length - 1];
+  const last30 = history.slice(-30);
+  const last90 = history.slice(-90);
+  const ma30 = last30.reduce((a, s) => a + s.value, 0) / last30.length;
+  const ma90 = last90.reduce((a, s) => a + s.value, 0) / last90.length;
+  const last365 = history.filter((s) => s.t >= latest.t - 365 * DAY_MS);
+  const highest365 = last365.length
+    ? last365.reduce((best, s) => (s.value > best.value ? s : best), last365[0])
+    : null;
+  const lowest365 = last365.length
+    ? last365.reduce((worst, s) => (s.value < worst.value ? s : worst), last365[0])
+    : null;
+  return { latest, ma30, ma90, highest365, lowest365 };
+}
 
 async function computeFearGreed(): Promise<FearGreedResponse> {
   const res = await fetch('https://api.alternative.me/fng/?limit=0&format=json');
@@ -2764,30 +2817,8 @@ async function computeFearGreed(): Promise<FearGreedResponse> {
   if (raw.length === 0) {
     throw new Error('alternative.me returned empty data');
   }
-  // API returns newest-first — reverse to oldest-first for plotting.
-  const history: FearGreedSample[] = raw
-    .map((r) => ({
-      t: Number(r.timestamp) * 1000,
-      value: Number(r.value),
-      classification: r.value_classification,
-    }))
-    .filter((s) => Number.isFinite(s.value) && Number.isFinite(s.t))
-    .sort((a, b) => a.t - b.t);
-
-  const latest = history[history.length - 1];
-  const last30 = history.slice(-30);
-  const last90 = history.slice(-90);
-  const ma30 = last30.reduce((a, s) => a + s.value, 0) / last30.length;
-  const ma90 = last90.reduce((a, s) => a + s.value, 0) / last90.length;
-
-  const last365 = history.filter((s) => s.t >= latest.t - 365 * DAY_MS);
-  const highest365 = last365.length
-    ? last365.reduce((best, s) => (s.value > best.value ? s : best), last365[0])
-    : null;
-  const lowest365 = last365.length
-    ? last365.reduce((worst, s) => (s.value < worst.value ? s : worst), last365[0])
-    : null;
-
+  const history = parseFearGreedHistory(raw);
+  const { latest, ma30, ma90, highest365, lowest365 } = computeFearGreedStats(history);
   return {
     history,
     latest,
@@ -2829,41 +2860,44 @@ async function fetchYahooDailyCloses(
     .filter((p) => p.price > 0);
 }
 
-async function computeFlippening(): Promise<FlippeningResponse> {
-  const [btc, eth] = await Promise.all([
-    fetchYahooDailyCloses('BTC-USD', '2017-01-01'),
-    fetchYahooDailyCloses('ETH-USD', '2017-01-01'),
-  ]);
-  if (btc.length < 30 || eth.length < 30) {
-    throw new Error(`Insufficient history: btc=${btc.length} eth=${eth.length}`);
-  }
-
-  // Join on date so we only keep days with both prices.
-  const btcByDate = new Map(btc.map((p) => [new Date(p.t).toISOString().slice(0, 10), p.price]));
-  const series: FlippeningPoint[] = [];
-  for (const e of eth) {
-    const dk = new Date(e.t).toISOString().slice(0, 10);
-    const b = btcByDate.get(dk);
-    if (b != null && b > 0) {
-      series.push({ t: e.t, ethPrice: e.price, btcPrice: b, ratio: e.price / b });
+/** Pure helper — join two daily-close price series on calendar date.
+ *  Returns the intersection with the numerator's ratio over the denominator.
+ *  Days present in only one series are dropped. Exported for testing. */
+export function joinPricesOnDate(
+  numerator: { t: number; price: number }[],
+  denominator: { t: number; price: number }[]
+): { t: number; numPrice: number; denPrice: number; ratio: number }[] {
+  const denByDate = new Map(
+    denominator.map((p) => [new Date(p.t).toISOString().slice(0, 10), p.price])
+  );
+  const out: { t: number; numPrice: number; denPrice: number; ratio: number }[] = [];
+  for (const n of numerator) {
+    const dk = new Date(n.t).toISOString().slice(0, 10);
+    const d = denByDate.get(dk);
+    if (d != null && d > 0) {
+      out.push({ t: n.t, numPrice: n.price, denPrice: d, ratio: n.price / d });
     }
   }
-  if (series.length < 30) {
-    throw new Error(`Insufficient joined history (${series.length} points)`);
-  }
+  return out;
+}
 
+/** Pure helper — given a joined ETH/BTC series (oldest → newest), compute
+ *  the latest + stats + progress-to-flippening. */
+export function computeFlippeningFromJoined(
+  series: FlippeningPoint[],
+  btcSupply = BTC_CIRCULATING,
+  ethSupply = ETH_CIRCULATING
+): Omit<FlippeningResponse, 'fetchedAt' | 'source'> {
+  if (series.length < 2) {
+    throw new Error(`computeFlippeningFromJoined: need at least 2 points (got ${series.length})`);
+  }
   const latest = series[series.length - 1];
-  // ratio at which ETH market cap would equal BTC market cap:
-  //   eth_price × eth_supply = btc_price × btc_supply
-  //   eth_price / btc_price = btc_supply / eth_supply
-  const ratioAtFlippening = BTC_CIRCULATING / ETH_CIRCULATING;
+  const ratioAtFlippening = btcSupply / ethSupply;
   const progressToFlippening = latest.ratio / ratioAtFlippening;
 
-  // Stats
   const ratioAthPoint = series.reduce((a, b) => (b.ratio > a.ratio ? b : a), series[0]);
   const daysAgo = (days: number) => {
     const target = latest.t - days * DAY_MS;
-    // Walk back to the closest observation at-or-before target.
     for (let i = series.length - 1; i >= 0; i--) {
       if (series[i].t <= target) return series[i];
     }
@@ -2873,7 +2907,7 @@ async function computeFlippening(): Promise<FlippeningResponse> {
   const r365 = daysAgo(365);
 
   return {
-    series: downsample(series, 1500),
+    series,
     latest: {
       date: new Date(latest.t).toISOString().slice(0, 10),
       ethPrice: latest.ethPrice,
@@ -2884,9 +2918,38 @@ async function computeFlippening(): Promise<FlippeningResponse> {
     stats: {
       ratioAth: ratioAthPoint.ratio,
       ratioAthDate: new Date(ratioAthPoint.t).toISOString().slice(0, 10),
-      ratio90dReturn: (latest.ratio - r90.ratio) / r90.ratio,
-      ratio365dReturn: (latest.ratio - r365.ratio) / r365.ratio,
+      ratio90dReturn: r90.ratio > 0 ? (latest.ratio - r90.ratio) / r90.ratio : 0,
+      ratio365dReturn: r365.ratio > 0 ? (latest.ratio - r365.ratio) / r365.ratio : 0,
     },
+  };
+}
+
+async function computeFlippening(): Promise<FlippeningResponse> {
+  const [btc, eth] = await Promise.all([
+    fetchYahooDailyCloses('BTC-USD', '2017-01-01'),
+    fetchYahooDailyCloses('ETH-USD', '2017-01-01'),
+  ]);
+  if (btc.length < 30 || eth.length < 30) {
+    throw new Error(`Insufficient history: btc=${btc.length} eth=${eth.length}`);
+  }
+
+  // Join ETH (numerator) over BTC (denominator).
+  const joined = joinPricesOnDate(eth, btc).map(
+    (p): FlippeningPoint => ({
+      t: p.t,
+      ethPrice: p.numPrice,
+      btcPrice: p.denPrice,
+      ratio: p.ratio,
+    })
+  );
+  if (joined.length < 30) {
+    throw new Error(`Insufficient joined history (${joined.length} points)`);
+  }
+
+  const computed = computeFlippeningFromJoined(joined);
+  return {
+    ...computed,
+    series: downsample(computed.series, 1500),
     fetchedAt: Date.now(),
     source: 'yahoo',
   };
@@ -2898,6 +2961,58 @@ async function computeFlippening(): Promise<FlippeningResponse> {
 // primary macro regime signal: rising real rates = risk-off for crypto.
 // ---------------------------------------------------------------------------
 
+/** Pure helper — join a FRED nominal yield series and a breakeven-inflation
+ *  series on their `date` strings, producing real-rate points (nominal −
+ *  breakeven). Rows with missing breakevens are dropped. Exported for
+ *  testing. */
+export function joinFredPair(
+  nominal: FredObservation[],
+  breakeven: FredObservation[]
+): RealRatePoint[] {
+  const bMap = new Map(breakeven.map((b) => [b.date, b.value]));
+  const out: RealRatePoint[] = [];
+  for (const n of nominal) {
+    const be = bMap.get(n.date);
+    if (be != null && Number.isFinite(be)) {
+      out.push({ t: n.t, nominal: n.value, breakeven: be, real: n.value - be });
+    }
+  }
+  return out;
+}
+
+/** Pure helper — given a joined real-rate series (sorted oldest → newest),
+ *  compute the 10-year percentile of the most recent reading and the
+ *  52-week change. Takes a cutoff offset so tests can use shorter windows. */
+export function computeRealRateStats(
+  ten: RealRatePoint[],
+  now: number
+): { tenYearPercentile10y: number; tenYearChange52w: number } {
+  if (ten.length === 0) {
+    return { tenYearPercentile10y: 0, tenYearChange52w: 0 };
+  }
+  const latest = ten[ten.length - 1];
+  const tenYrCutoff = now - 10 * 365 * DAY_MS;
+  const recent10y = ten.filter((p) => p.t >= tenYrCutoff).map((p) => p.real);
+  const sorted = [...recent10y].sort((a, b) => a - b);
+  let belowCount = 0;
+  for (const v of sorted) {
+    if (v <= latest.real) belowCount++;
+    else break;
+  }
+  const tenYearPercentile10y = sorted.length > 0 ? belowCount / sorted.length : 0;
+
+  const target52w = now - 365 * DAY_MS;
+  let prior52w: RealRatePoint | undefined;
+  for (let i = ten.length - 1; i >= 0; i--) {
+    if (ten[i].t <= target52w) {
+      prior52w = ten[i];
+      break;
+    }
+  }
+  const tenYearChange52w = prior52w ? latest.real - prior52w.real : 0;
+  return { tenYearPercentile10y, tenYearChange52w };
+}
+
 async function computeRealRates(apiKey: string): Promise<RealRatesResponse> {
   const [dgs10, dgs5, t10yie, t5yie] = await Promise.all([
     fetchFredSeries('DGS10', apiKey, '2003-01-01'),
@@ -2906,52 +3021,15 @@ async function computeRealRates(apiKey: string): Promise<RealRatesResponse> {
     fetchFredSeries('T5YIE', apiKey, '2003-01-01'),
   ]);
 
-  // Join each nominal+breakeven pair on date.
-  const joinOnDate = (
-    nominal: FredObservation[],
-    breakeven: FredObservation[]
-  ): RealRatePoint[] => {
-    const bMap = new Map(breakeven.map((b) => [b.date, b.value]));
-    const out: RealRatePoint[] = [];
-    for (const n of nominal) {
-      const be = bMap.get(n.date);
-      if (be != null && Number.isFinite(be)) {
-        out.push({ t: n.t, nominal: n.value, breakeven: be, real: n.value - be });
-      }
-    }
-    return out;
-  };
-
-  const ten = joinOnDate(dgs10, t10yie);
-  const five = joinOnDate(dgs5, t5yie);
+  const ten = joinFredPair(dgs10, t10yie);
+  const five = joinFredPair(dgs5, t5yie);
   if (ten.length === 0 || five.length === 0) {
     throw new Error(`Insufficient real-rate data (ten=${ten.length}, five=${five.length})`);
   }
 
   const latestTen = ten[ten.length - 1];
   const latestFive = five[five.length - 1];
-
-  // 10-year percentile of the 10Y real rate
-  const tenYrCutoff = latestTen.t - 10 * 365 * DAY_MS;
-  const recent10y = ten.filter((p) => p.t >= tenYrCutoff).map((p) => p.real);
-  const sorted = [...recent10y].sort((a, b) => a - b);
-  let belowCount = 0;
-  for (const v of sorted) {
-    if (v <= latestTen.real) belowCount++;
-    else break;
-  }
-  const tenYearPercentile10y = sorted.length > 0 ? belowCount / sorted.length : 0;
-
-  // 52-week change in 10Y real rate
-  const target52w = latestTen.t - 365 * DAY_MS;
-  let prior52w: RealRatePoint | undefined;
-  for (let i = ten.length - 1; i >= 0; i--) {
-    if (ten[i].t <= target52w) {
-      prior52w = ten[i];
-      break;
-    }
-  }
-  const tenYearChange52w = prior52w ? latestTen.real - prior52w.real : 0;
+  const { tenYearPercentile10y, tenYearChange52w } = computeRealRateStats(ten, latestTen.t);
 
   return {
     ten: downsample(ten, 1500),
@@ -2985,39 +3063,24 @@ async function computeRealRates(apiKey: string): Promise<RealRatesResponse> {
 // an excellent buy signal.
 // ---------------------------------------------------------------------------
 
-async function computeHashRate(): Promise<HashRateResponse> {
-  const res = await fetch(
-    'https://api.blockchain.info/charts/hash-rate?timespan=all&format=json&cors=true'
-  );
-  if (!res.ok) {
-    throw new Error(`blockchain.info hash-rate ${res.status}`);
-  }
-  const json = (await res.json()) as {
-    values?: { x: number; y: number }[];
-  };
-  const raw = json.values ?? [];
-  if (raw.length === 0) {
-    throw new Error('blockchain.info returned empty values');
-  }
-  // Already oldest-first; x is unix seconds.
-  const rates = raw
-    .map((p) => ({ t: p.x * 1000, hashRate: p.y }))
-    .filter((p) => Number.isFinite(p.hashRate) && p.hashRate > 0);
-
-  // Compute 30d + 60d SMAs (in the underlying daily samples).
+/** Pure helper — given a raw `{t, hashRate}` series, compute 30d and 60d
+ *  SMAs and attach them to each point. */
+export function buildHashRateSeries(rates: { t: number; hashRate: number }[]): HashRatePoint[] {
   const values = rates.map((r) => r.hashRate);
   const sma30Arr = sma(values, 30);
   const sma60Arr = sma(values, 60);
-
-  const series: HashRatePoint[] = rates.map((r, i) => ({
+  return rates.map((r, i) => ({
     t: r.t,
     hashRate: r.hashRate,
     sma30: sma30Arr[i] ?? null,
     sma60: sma60Arr[i] ?? null,
   }));
+}
 
-  // Detect crossovers: capitulation = 30d dips below 60d; recovery = 30d
-  // rises back above 60d.
+/** Pure helper — detect Hash Ribbon events (sma30 × sma60 crossovers) on
+ *  a series where each point has optional sma30/sma60 fields. Exported for
+ *  unit testing. */
+export function detectHashRibbonEvents(series: HashRatePoint[]): HashRibbonEvent[] {
   const events: HashRibbonEvent[] = [];
   for (let i = 1; i < series.length; i++) {
     const prev = series[i - 1];
@@ -3041,6 +3104,30 @@ async function computeHashRate(): Promise<HashRateResponse> {
       });
     }
   }
+  return events;
+}
+
+async function computeHashRate(): Promise<HashRateResponse> {
+  const res = await fetch(
+    'https://api.blockchain.info/charts/hash-rate?timespan=all&format=json&cors=true'
+  );
+  if (!res.ok) {
+    throw new Error(`blockchain.info hash-rate ${res.status}`);
+  }
+  const json = (await res.json()) as {
+    values?: { x: number; y: number }[];
+  };
+  const raw = json.values ?? [];
+  if (raw.length === 0) {
+    throw new Error('blockchain.info returned empty values');
+  }
+  // Already oldest-first; x is unix seconds.
+  const rates = raw
+    .map((p) => ({ t: p.x * 1000, hashRate: p.y }))
+    .filter((p) => Number.isFinite(p.hashRate) && p.hashRate > 0);
+
+  const series = buildHashRateSeries(rates);
+  const events = detectHashRibbonEvents(series);
 
   const latest = series[series.length - 1];
   const regime: 'bullish' | 'bearish' | 'unknown' =

@@ -18,7 +18,23 @@ import {
   classifyYieldCurveRegime,
   detectCrossovers,
   batchWithConcurrency,
+  computeDrawdownFromPrices,
+  parseFearGreedHistory,
+  computeFearGreedStats,
+  joinPricesOnDate,
+  computeFlippeningFromJoined,
+  joinFredPair,
+  computeRealRateStats,
+  buildHashRateSeries,
+  detectHashRibbonEvents,
+  INFLATION_SERIES,
+  BUSINESS_CYCLE_SERIES,
+  FINANCIAL_CONDITIONS_SERIES,
   type DailyBar,
+  type FearGreedSample,
+  type FlippeningPoint,
+  type FredObservation,
+  type HashRatePoint,
 } from './quant.js';
 
 // ---------------------------------------------------------------------------
@@ -834,5 +850,511 @@ describe('classifyYieldCurveRegime', () => {
 
   test('null returns normal (non-breaking default)', () => {
     expect(classifyYieldCurveRegime(null)).toBe('normal');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeDrawdownFromPrices (BTC Drawdown chart)
+// ---------------------------------------------------------------------------
+
+/** Build a price series from an array of prices where index i = day i
+ *  (oldest first), ending on a fixed date. Each point has a real epoch
+ *  timestamp so day-math works. */
+function makePriceSeries(prices: number[], endDate = new Date('2026-04-15T00:00:00Z')) {
+  return prices.map((price, i) => ({
+    t: endDate.getTime() - (prices.length - 1 - i) * DAY_MS,
+    price,
+  }));
+}
+
+describe('computeDrawdownFromPrices', () => {
+  test('monotonic uptrend has zero drawdown throughout', () => {
+    const prices = makePriceSeries([10, 20, 30, 40, 50]);
+    const result = computeDrawdownFromPrices(prices);
+    expect(result.series.every((p) => p.drawdown === 0)).toBe(true);
+    expect(result.latest.drawdown).toBe(0);
+    expect(result.episodes.length).toBe(0);
+  });
+
+  test('single 50% drawdown → 0 episodes when not yet recovered, -0.5 worst', () => {
+    // 100 → 50 → 60 → 70 — never reclaims 100 within the series.
+    const prices = makePriceSeries([100, 90, 75, 50, 60, 70]);
+    const result = computeDrawdownFromPrices(prices);
+    expect(result.stats.worstDrawdown).toBeCloseTo(-0.5, 5);
+    // In-progress episode should be recorded with null recovery.
+    expect(result.episodes.length).toBe(1);
+    expect(result.episodes[0].daysToRecovery).toBe(null);
+    expect(result.episodes[0].maxDrawdown).toBeCloseTo(-0.5, 5);
+    expect(result.episodes[0].athPrice).toBe(100);
+    expect(result.episodes[0].troughPrice).toBe(50);
+  });
+
+  test('single recovered episode → 1 completed episode with correct days', () => {
+    // 100 (ATH) → 80 → 60 (trough) → 80 → 110 (new ATH)
+    const prices = makePriceSeries([100, 80, 60, 80, 110]);
+    const result = computeDrawdownFromPrices(prices);
+    expect(result.episodes.length).toBe(1);
+    const e = result.episodes[0];
+    expect(e.athPrice).toBe(100);
+    expect(e.troughPrice).toBe(60);
+    expect(e.maxDrawdown).toBeCloseTo(-0.4, 5);
+    // Day indices: ATH=0, trough=2, recovery=4
+    expect(e.daysToTrough).toBe(2);
+    expect(e.daysToRecovery).toBe(2);
+  });
+
+  test('two separate recovered episodes', () => {
+    const prices = makePriceSeries([
+      100,
+      70,
+      110, // episode 1: 100 → 70 → 110
+      80,
+      120, // episode 2: 110 → 80 → 120
+    ]);
+    const result = computeDrawdownFromPrices(prices);
+    expect(result.episodes.length).toBe(2);
+    expect(result.episodes[0].maxDrawdown).toBeCloseTo(-0.3, 5);
+    expect(result.episodes[1].athPrice).toBe(110);
+    // (80 - 110) / 110 = -0.2727…
+    expect(result.episodes[1].maxDrawdown).toBeCloseTo(-(30 / 110), 3);
+  });
+
+  test('≤10% dip is filtered out of episodes (default threshold)', () => {
+    // 100 → 95 → 100 → 108 → 120 — the -5% blip shouldn't create an episode.
+    const prices = makePriceSeries([100, 95, 100, 108, 120]);
+    const result = computeDrawdownFromPrices(prices);
+    expect(result.episodes.length).toBe(0);
+  });
+
+  test('custom threshold includes smaller dips', () => {
+    const prices = makePriceSeries([100, 95, 100, 108, 120]);
+    const result = computeDrawdownFromPrices(prices, 0.04); // 4% threshold
+    expect(result.episodes.length).toBe(1);
+    expect(result.episodes[0].maxDrawdown).toBeCloseTo(-0.05, 5);
+  });
+
+  test('latest.daysSinceAth is 0 when still at ATH', () => {
+    const prices = makePriceSeries([10, 20, 30, 40, 50]);
+    const result = computeDrawdownFromPrices(prices);
+    expect(result.latest.daysSinceAth).toBe(0);
+    expect(result.latest.ath).toBe(50);
+    expect(result.latest.drawdown).toBe(0);
+  });
+
+  test('latest.daysSinceAth counts days from the ATH', () => {
+    // ATH on day 0 (100), then drop. Series has 5 days total.
+    const prices = makePriceSeries([100, 90, 80, 70, 60]);
+    const result = computeDrawdownFromPrices(prices);
+    expect(result.latest.ath).toBe(100);
+    expect(result.latest.daysSinceAth).toBe(4);
+  });
+
+  test('pctDaysInBearZone matches hand-computed ratio', () => {
+    // ATH=100, then 60 → 70 → 80 → 90 → 100. Days in bear (≤ -20%) are
+    // indices 1 (-40%), 2 (-30%), 3 (-20% exactly — still counts). 3/6.
+    const prices = makePriceSeries([100, 60, 70, 80, 90, 100]);
+    const result = computeDrawdownFromPrices(prices);
+    expect(result.stats.pctDaysInBearZone).toBeCloseTo(3 / 6, 5);
+  });
+
+  test('worstDrawdown reflects the deepest historical dip', () => {
+    const prices = makePriceSeries([100, 30, 80, 200, 120, 210]);
+    const result = computeDrawdownFromPrices(prices);
+    // Worst was 30 vs ATH 100 = -70%.
+    expect(result.stats.worstDrawdown).toBeCloseTo(-0.7, 5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseFearGreedHistory / computeFearGreedStats
+// ---------------------------------------------------------------------------
+
+describe('parseFearGreedHistory', () => {
+  test('parses a typical alternative.me payload and sorts oldest-first', () => {
+    // alternative.me returns newest-first
+    const raw = [
+      { value: '72', value_classification: 'Greed', timestamp: '1712102400' }, // Apr 3
+      { value: '45', value_classification: 'Fear', timestamp: '1711843200' }, // Mar 31
+      { value: '25', value_classification: 'Extreme Fear', timestamp: '1711670400' }, // Mar 29
+    ];
+    const parsed = parseFearGreedHistory(raw);
+    expect(parsed.length).toBe(3);
+    // Sorted oldest-first by timestamp
+    expect(parsed[0].t).toBeLessThan(parsed[1].t);
+    expect(parsed[1].t).toBeLessThan(parsed[2].t);
+    expect(parsed[0].value).toBe(25);
+    expect(parsed[2].value).toBe(72);
+    expect(parsed[0].classification).toBe('Extreme Fear');
+  });
+
+  test('drops rows with non-finite values', () => {
+    const raw = [
+      { value: '50', value_classification: 'Neutral', timestamp: '1711670400' },
+      { value: 'NaN', value_classification: 'garbage', timestamp: '1711843200' },
+      { value: '60', value_classification: 'Greed', timestamp: '1712102400' },
+    ];
+    const parsed = parseFearGreedHistory(raw);
+    expect(parsed.length).toBe(2);
+    expect(parsed.every((s) => Number.isFinite(s.value))).toBe(true);
+  });
+
+  test('handles an empty array', () => {
+    expect(parseFearGreedHistory([])).toEqual([]);
+  });
+});
+
+describe('computeFearGreedStats', () => {
+  /** Build a FearGreedSample history with `days` values ending today. */
+  function makeHistory(values: number[]): FearGreedSample[] {
+    const end = new Date('2026-04-15T00:00:00Z').getTime();
+    return values.map((value, i) => ({
+      t: end - (values.length - 1 - i) * DAY_MS,
+      value,
+      classification: '',
+    }));
+  }
+
+  test('ma30 averages the last 30 values', () => {
+    const history = makeHistory(Array.from({ length: 60 }, (_, i) => i + 1));
+    // Last 30 values are 31..60, mean = 45.5
+    const stats = computeFearGreedStats(history);
+    expect(stats.ma30).toBeCloseTo(45.5, 1);
+  });
+
+  test('ma90 averages the last 90 values (or fewer if history is shorter)', () => {
+    const history = makeHistory(Array.from({ length: 50 }, () => 40));
+    const stats = computeFearGreedStats(history);
+    // Only 50 samples — ma90 should equal the full mean (40)
+    expect(stats.ma90).toBe(40);
+  });
+
+  test('latest is the final entry', () => {
+    const history = makeHistory([10, 20, 30, 40, 50]);
+    expect(computeFearGreedStats(history).latest.value).toBe(50);
+  });
+
+  test('highest365 and lowest365 find the extremes within 365 days', () => {
+    const history = makeHistory([30, 80, 20, 60, 45]);
+    const stats = computeFearGreedStats(history);
+    expect(stats.highest365?.value).toBe(80);
+    expect(stats.lowest365?.value).toBe(20);
+  });
+
+  test('throws on empty history', () => {
+    expect(() => computeFearGreedStats([])).toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// joinPricesOnDate / computeFlippeningFromJoined (Flippening)
+// ---------------------------------------------------------------------------
+
+describe('joinPricesOnDate', () => {
+  test('keeps only dates present in both series', () => {
+    const end = new Date('2026-04-15T00:00:00Z').getTime();
+    const a = [
+      { t: end - 2 * DAY_MS, price: 100 },
+      { t: end - 1 * DAY_MS, price: 110 },
+      { t: end, price: 120 },
+    ];
+    const b = [
+      { t: end - 1 * DAY_MS, price: 50 },
+      { t: end, price: 60 },
+    ];
+    const joined = joinPricesOnDate(a, b);
+    expect(joined.length).toBe(2);
+    expect(joined[0].ratio).toBeCloseTo(110 / 50, 5);
+    expect(joined[1].ratio).toBeCloseTo(120 / 60, 5);
+  });
+
+  test('drops rows where denominator is zero or missing', () => {
+    const end = new Date('2026-04-15T00:00:00Z').getTime();
+    const a = [{ t: end, price: 100 }];
+    const b = [{ t: end, price: 0 }];
+    expect(joinPricesOnDate(a, b)).toEqual([]);
+  });
+
+  test('empty inputs return empty', () => {
+    expect(joinPricesOnDate([], [])).toEqual([]);
+  });
+});
+
+describe('computeFlippeningFromJoined', () => {
+  function makeJoinedSeries(pairs: { eth: number; btc: number }[]): FlippeningPoint[] {
+    const end = new Date('2026-04-15T00:00:00Z').getTime();
+    return pairs.map((p, i) => ({
+      t: end - (pairs.length - 1 - i) * DAY_MS,
+      ethPrice: p.eth,
+      btcPrice: p.btc,
+      ratio: p.eth / p.btc,
+    }));
+  }
+
+  test('progressToFlippening = 1.0 when ratio equals BTC/ETH supply ratio', () => {
+    // Pick ratio = 0.5, use supplies of 100 and 200 so ratioAtFlippening = 0.5.
+    const series = makeJoinedSeries(Array.from({ length: 5 }, () => ({ eth: 500, btc: 1000 })));
+    const result = computeFlippeningFromJoined(series, 100, 200);
+    expect(result.latest.progressToFlippening).toBeCloseTo(1.0, 5);
+  });
+
+  test('progress < 1 when ETH lags BTC on a cap basis', () => {
+    const series = makeJoinedSeries(Array.from({ length: 5 }, () => ({ eth: 200, btc: 1000 })));
+    // ratio=0.2, supplies 100/200 → ratioAtFlippening=0.5 → progress=0.4
+    const result = computeFlippeningFromJoined(series, 100, 200);
+    expect(result.latest.progressToFlippening).toBeCloseTo(0.4, 5);
+  });
+
+  test('identifies ratio ATH correctly', () => {
+    const series = makeJoinedSeries([
+      { eth: 100, btc: 1000 }, // 0.10
+      { eth: 200, btc: 1000 }, // 0.20 ← ATH
+      { eth: 150, btc: 1000 }, // 0.15
+      { eth: 180, btc: 1000 }, // 0.18
+    ]);
+    const result = computeFlippeningFromJoined(series);
+    expect(result.stats.ratioAth).toBeCloseTo(0.2, 5);
+  });
+
+  test('throws on under 2 points', () => {
+    expect(() => computeFlippeningFromJoined([])).toThrow();
+    expect(() => computeFlippeningFromJoined(makeJoinedSeries([{ eth: 1, btc: 1 }]))).toThrow();
+  });
+
+  test('90d / 365d returns are zero when series is too short', () => {
+    // With 2 points 1 day apart, daysAgo(90) and daysAgo(365) both fall back
+    // to index 0. 90d and 365d returns are then equal to (latest-first)/first.
+    const series = makeJoinedSeries([
+      { eth: 100, btc: 1000 },
+      { eth: 110, btc: 1000 },
+    ]);
+    const result = computeFlippeningFromJoined(series);
+    expect(result.stats.ratio90dReturn).toBeCloseTo(0.1, 5);
+    expect(result.stats.ratio365dReturn).toBeCloseTo(0.1, 5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// joinFredPair / computeRealRateStats (Real Interest Rates)
+// ---------------------------------------------------------------------------
+
+describe('joinFredPair', () => {
+  /** Build a FRED observation series from an array of values keyed by date. */
+  function makeFred(values: { date: string; value: number }[]): FredObservation[] {
+    return values.map(({ date, value }) => ({
+      date,
+      value,
+      t: new Date(date + 'T00:00:00Z').getTime(),
+    }));
+  }
+
+  test('joins a nominal and breakeven series on the date string', () => {
+    const nominal = makeFred([
+      { date: '2026-01-01', value: 4.0 },
+      { date: '2026-01-02', value: 4.1 },
+      { date: '2026-01-03', value: 4.2 },
+    ]);
+    const breakeven = makeFred([
+      { date: '2026-01-01', value: 2.0 },
+      { date: '2026-01-03', value: 2.5 },
+    ]);
+    const joined = joinFredPair(nominal, breakeven);
+    expect(joined.length).toBe(2);
+    expect(joined[0].real).toBeCloseTo(2.0, 5); // 4.0 − 2.0
+    expect(joined[1].real).toBeCloseTo(1.7, 5); // 4.2 − 2.5
+  });
+
+  test('drops rows where breakeven is non-finite', () => {
+    const nominal = makeFred([{ date: '2026-01-01', value: 4.0 }]);
+    const breakeven: FredObservation[] = [
+      { date: '2026-01-01', value: NaN, t: new Date('2026-01-01T00:00:00Z').getTime() },
+    ];
+    expect(joinFredPair(nominal, breakeven)).toEqual([]);
+  });
+
+  test('empty inputs produce empty output', () => {
+    expect(joinFredPair([], [])).toEqual([]);
+  });
+});
+
+describe('computeRealRateStats', () => {
+  /** Build a real-rate series with the given real values, one per day,
+   *  ending on `end`. */
+  function makeTen(reals: number[], end = new Date('2026-04-15T00:00:00Z').getTime()) {
+    return reals.map((real, i) => ({
+      t: end - (reals.length - 1 - i) * DAY_MS,
+      nominal: real + 2.5,
+      breakeven: 2.5,
+      real,
+    }));
+  }
+
+  test('percentile is 100% when the latest is the highest in the window', () => {
+    const ten = makeTen([0, 0.5, 1.0, 1.5, 2.0]);
+    const stats = computeRealRateStats(ten, ten[ten.length - 1].t);
+    expect(stats.tenYearPercentile10y).toBeCloseTo(1.0, 5);
+  });
+
+  test('percentile is 0% when the latest is the lowest in the window', () => {
+    const ten = makeTen([2.0, 1.5, 1.0, 0.5, 0]);
+    const stats = computeRealRateStats(ten, ten[ten.length - 1].t);
+    // The latest value (0) appears once at the bottom — percentile = 1/5
+    expect(stats.tenYearPercentile10y).toBeCloseTo(0.2, 5);
+  });
+
+  test('52w change is zero when priors are all within 52 weeks', () => {
+    // 5 daily points, all within a week — no prior52w exists
+    const ten = makeTen([1.0, 1.2, 1.4, 1.6, 1.8]);
+    const stats = computeRealRateStats(ten, ten[ten.length - 1].t);
+    expect(stats.tenYearChange52w).toBe(0);
+  });
+
+  test('52w change captures the real-rate delta from exactly 52 weeks ago', () => {
+    // Build 800 days of data: real rate climbs from 0 to 2.0 linearly
+    const reals = Array.from({ length: 800 }, (_, i) => i * (2.0 / 799));
+    const ten = makeTen(reals);
+    const stats = computeRealRateStats(ten, ten[ten.length - 1].t);
+    // Latest is ~2.0; 365 days ago (index 434) is ~1.087. Change ≈ 0.913.
+    expect(stats.tenYearChange52w).toBeGreaterThan(0.8);
+    expect(stats.tenYearChange52w).toBeLessThan(1.0);
+  });
+
+  test('empty series returns zeros', () => {
+    const stats = computeRealRateStats([], Date.now());
+    expect(stats.tenYearPercentile10y).toBe(0);
+    expect(stats.tenYearChange52w).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildHashRateSeries / detectHashRibbonEvents
+// ---------------------------------------------------------------------------
+
+describe('buildHashRateSeries', () => {
+  test('attaches nulls for pre-window entries', () => {
+    const rates = Array.from({ length: 10 }, (_, i) => ({
+      t: Date.UTC(2026, 0, i + 1),
+      hashRate: 100 + i,
+    }));
+    const series = buildHashRateSeries(rates);
+    // sma30 needs 30 points to fill, sma60 needs 60.
+    expect(series.every((s) => s.sma30 === null)).toBe(true);
+    expect(series.every((s) => s.sma60 === null)).toBe(true);
+  });
+
+  test('sma30 fills after 30 points and matches rolling-window mean', () => {
+    const rates = Array.from({ length: 70 }, (_, i) => ({
+      t: Date.UTC(2026, 0, i + 1),
+      hashRate: i + 1, // 1..70
+    }));
+    const series = buildHashRateSeries(rates);
+    // Last sma30 = avg(41..70) = 55.5
+    expect(series[69].sma30).toBeCloseTo(55.5, 5);
+    // Last sma60 = avg(11..70) = 40.5
+    expect(series[69].sma60).toBeCloseTo(40.5, 5);
+  });
+});
+
+describe('detectHashRibbonEvents', () => {
+  function makeHashPoints(sma30: (number | null)[], sma60: (number | null)[]): HashRatePoint[] {
+    return sma30.map((s30, i) => ({
+      t: Date.UTC(2026, 0, i + 1),
+      hashRate: 100,
+      sma30: s30,
+      sma60: sma60[i],
+    }));
+  }
+
+  test('no events when SMAs never cross', () => {
+    const series = makeHashPoints([10, 11, 12, 13, 14], [5, 5, 5, 5, 5]);
+    expect(detectHashRibbonEvents(series)).toEqual([]);
+  });
+
+  test('single capitulation when sma30 drops below sma60', () => {
+    const series = makeHashPoints([10, 8, 6, 4, 3], [7, 7, 7, 7, 7]);
+    const events = detectHashRibbonEvents(series);
+    expect(events.length).toBe(1);
+    expect(events[0].type).toBe('capitulation');
+    // First crossover is at index 2 (sma30 = 6 < sma60 = 7).
+    expect(events[0].t).toBe(series[2].t);
+  });
+
+  test('capitulation then recovery', () => {
+    // 30 starts above 60, drops below, then climbs back.
+    const series = makeHashPoints([10, 8, 5, 4, 7, 9], [7, 7, 7, 7, 7, 7]);
+    const events = detectHashRibbonEvents(series);
+    expect(events.length).toBe(2);
+    expect(events[0].type).toBe('capitulation');
+    expect(events[1].type).toBe('recovery');
+  });
+
+  test('skips points with null SMAs', () => {
+    const series = makeHashPoints([null, null, 5, 4, 9], [null, null, 7, 7, 7]);
+    const events = detectHashRibbonEvents(series);
+    // Still detects the crossover in the non-null region.
+    expect(events.length).toBeGreaterThan(0);
+  });
+
+  test('equal values count as "above" so no crossover at the exact touch', () => {
+    // Using >= for "above" — so equal values are still classified as above.
+    // Going from 7 > 5 to 7 == 5 should NOT fire, but 7 == 5 to 4 < 5 should.
+    const series = makeHashPoints([7, 5, 4], [5, 5, 5]);
+    const events = detectHashRibbonEvents(series);
+    expect(events.length).toBe(1);
+    expect(events[0].type).toBe('capitulation');
+  });
+
+  test('empty series has no events', () => {
+    expect(detectHashRibbonEvents([])).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FRED series spec sanity — make sure we don't ship a malformed MacroSeriesSpec
+// ---------------------------------------------------------------------------
+
+describe('MacroSeriesSpec catalogs', () => {
+  const catalogs = {
+    INFLATION_SERIES,
+    BUSINESS_CYCLE_SERIES,
+    FINANCIAL_CONDITIONS_SERIES,
+  };
+
+  for (const [name, spec] of Object.entries(catalogs)) {
+    test(`${name} has 1+ series and each has required fields`, () => {
+      expect(spec.length).toBeGreaterThan(0);
+      for (const s of spec) {
+        // FRED ids are uppercase alphanumerics
+        expect(s.id).toMatch(/^[A-Z0-9]+$/);
+        expect(s.label.length).toBeGreaterThan(0);
+        expect(s.description.length).toBeGreaterThan(0);
+        expect(typeof s.decimals).toBe('number');
+        expect(s.decimals).toBeGreaterThanOrEqual(0);
+        // start must parse as a valid ISO date
+        expect(Number.isNaN(new Date(s.start).getTime())).toBe(false);
+      }
+    });
+
+    test(`${name} has unique FRED ids`, () => {
+      const ids = spec.map((s) => s.id);
+      expect(new Set(ids).size).toBe(ids.length);
+    });
+  }
+
+  test('INFLATION_SERIES contains the canonical CPI + WALCL series', () => {
+    const ids = INFLATION_SERIES.map((s) => s.id);
+    expect(ids).toContain('CPIAUCSL');
+    expect(ids).toContain('WALCL');
+  });
+
+  test('BUSINESS_CYCLE_SERIES contains Sahm Rule + recession probability', () => {
+    const ids = BUSINESS_CYCLE_SERIES.map((s) => s.id);
+    expect(ids).toContain('SAHMREALTIME');
+    expect(ids).toContain('RECPROUSM156N');
+  });
+
+  test('FINANCIAL_CONDITIONS_SERIES contains NFCI and stress indices', () => {
+    const ids = FINANCIAL_CONDITIONS_SERIES.map((s) => s.id);
+    expect(ids).toContain('NFCI');
+    expect(ids).toContain('STLFSI4');
   });
 });
