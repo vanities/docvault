@@ -11,6 +11,7 @@ import {
   Upload,
   FileArchive,
   CheckCircle2,
+  PlayCircle,
   RefreshCcw,
   Loader2,
   AlertCircle,
@@ -150,6 +151,8 @@ export function PersonDetail({ person }: PersonDetailProps) {
   };
 
   const hasExports = exports.length > 0;
+  const hasParsedExport = exports.some((e) => e.parsed);
+  const needsParseGuidance = hasExports && !hasParsedExport && !busyMessage && !summary;
   const busy = busyMessage !== null;
 
   return (
@@ -173,6 +176,31 @@ export function PersonDetail({ person }: PersonDetailProps) {
               <div className="text-xs text-surface-700 mt-0.5">
                 The ~1 GB XML is streamed through the parser — usually 30–60 seconds total.
               </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* "Your export is ready to parse" — shown when zips exist but nothing
+          has been parsed yet. This is the state you land in on a fresh install
+          if a zip was rsynced/copied onto the NAS before the UI saw it. */}
+      {needsParseGuidance && (
+        <Card className="p-5 border-accent-500/30 bg-accent-500/5">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-lg bg-accent-500/15 flex items-center justify-center flex-shrink-0">
+              <PlayCircle className="w-5 h-5 text-accent-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-medium text-surface-950">
+                Your export is ready — click Re-parse to see the dashboard
+              </h3>
+              <p className="text-xs text-surface-700 mt-1 leading-relaxed">
+                There&apos;s an <code className="font-mono text-[11px]">export.zip</code> for this
+                person on disk but it hasn&apos;t been parsed yet. Click the{' '}
+                <strong>Re-parse</strong> button on the row below — the server will unarchive and
+                stream through the XML (~30–60 seconds on a NAS), then the daily summary table and
+                workout list will render here.
+              </p>
             </div>
           </div>
         </Card>
