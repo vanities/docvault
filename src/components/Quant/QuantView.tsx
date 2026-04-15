@@ -28,6 +28,9 @@ import { InflationDashboardChart } from './InflationDashboardChart';
 import { FinancialConditionsChart } from './FinancialConditionsChart';
 import { BtcDrawdownChart } from './BtcDrawdownChart';
 import { FearGreedChart } from './FearGreedChart';
+import { FlippeningChart } from './FlippeningChart';
+import { RealRatesChart } from './RealRatesChart';
+import { HashRateChart } from './HashRateChart';
 import { useQuantRefresh } from './useQuantData';
 
 /** Four top-level tabs — an overview snapshot plus Cowen's 3 categories. */
@@ -263,12 +266,20 @@ export function QuantView() {
             <FearGreedChart />
           </ChartGroup>
 
+          <ChartGroup title="Flippening Index" subtitle="ETH / BTC ratio + progress-to-flip">
+            <FlippeningChart />
+          </ChartGroup>
+
+          <ChartGroup title="Hash Rate + Hash Ribbons" subtitle="30d × 60d SMA crossovers">
+            <HashRateChart />
+          </ChartGroup>
+
           <ChartGroup title="Coming next">
             <EmptyCategoryCard
               category="crypto"
               comingSoon={[
-                'Flippening Index',
-                'Hash Rate / Hash Ribbons',
+                'BTC Rainbow Chart (log regression rainbow)',
+                'BTC Volatility (30/60/180d rolling)',
                 'MVRV Z-Score (needs on-chain data)',
                 'Puell Multiple (needs on-chain data)',
               ]}
@@ -313,14 +324,18 @@ export function QuantView() {
             <FinancialConditionsChart />
           </ChartGroup>
 
+          <ChartGroup title="Real Interest Rates" subtitle="DGS10 − T10YIE and DGS5 − T5YIE">
+            <RealRatesChart />
+          </ChartGroup>
+
           <ChartGroup title="Coming next">
             <EmptyCategoryCard
               category="macro"
               comingSoon={[
                 'ISM Manufacturing PMI',
                 '2Y Treasury (DGS2)',
-                'Real interest rates',
                 'Composite Leading Indicator',
+                'Housing starts / mortgage rates',
               ]}
             />
           </ChartGroup>

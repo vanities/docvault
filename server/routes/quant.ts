@@ -34,6 +34,9 @@ const TTL = {
   financialConditions: DAY_MS, // weekly Fed stress indices
   btcDrawdown: 6 * 60 * 60 * 1000, // follows cached BTC prices
   fearGreed: 60 * 60 * 1000, // alternative.me updates daily, 1h cache
+  flippening: 6 * 60 * 60 * 1000, // ETH/BTC ratio — follows cached prices
+  realRates: DAY_MS, // FRED daily release for yields + breakevens
+  hashRate: DAY_MS, // blockchain.info daily hash rate
 };
 
 interface CacheEntry<T> {
@@ -60,6 +63,9 @@ type QuantCache = {
   financialConditions?: CacheEntry<MacroDashboardResponse>;
   btcDrawdown?: CacheEntry<BtcDrawdownResponse>;
   fearGreed?: CacheEntry<FearGreedResponse>;
+  flippening?: CacheEntry<FlippeningResponse>;
+  realRates?: CacheEntry<RealRatesResponse>;
+  hashRate?: CacheEntry<HashRateResponse>;
 };
 
 async function loadCache(): Promise<QuantCache> {
@@ -174,6 +180,12 @@ const CACHE = {
   btcDrawdown: { maxAge: 3600, swr: 6 * 3600 },
   // Fear & Greed — 30m + 6h SWR, alternative.me updates daily.
   fearGreed: { maxAge: 30 * 60, swr: 6 * 3600 },
+  // Flippening (ETH/BTC ratio) — 1h + 6h SWR.
+  flippening: { maxAge: 3600, swr: 6 * 3600 },
+  // Real interest rates — 2h + 12h SWR (FRED daily yields).
+  realRates: { maxAge: 2 * 3600, swr: 12 * 3600 },
+  // Hash rate — 4h + 24h SWR (blockchain.info updates daily).
+  hashRate: { maxAge: 4 * 3600, swr: 24 * 3600 },
   // Snapshots grow one row per day; short cache so new snapshots appear fast.
   snapshots: { maxAge: 300, swr: 3600 },
 };
@@ -995,6 +1007,103 @@ export interface FearGreedResponse {
   lowest365: FearGreedSample | null;
   fetchedAt: number;
   source: 'alternative.me';
+}
+
+/** One daily ETH/BTC ratio observation. */
+export interface FlippeningPoint {
+  t: number;
+  ethPrice: number;
+  btcPrice: number;
+  /** ETH USD price divided by BTC USD price. */
+  ratio: number;
+}
+
+export interface FlippeningResponse {
+  series: FlippeningPoint[];
+  latest: {
+    date: string;
+    ethPrice: number;
+    btcPrice: number;
+    ratio: number;
+    /** How close we are to "flippening" (ETH market cap overtaking BTC's).
+     *  Approximated as ratio / ratioAtFlippening, where ratioAtFlippening
+     *  is derived from current circulating supplies. Returns a 0-1 decimal. */
+    progressToFlippening: number;
+  };
+  stats: {
+    /** All-time high ETH/BTC ratio. */
+    ratioAth: number;
+    ratioAthDate: string;
+    /** 90-day return of the ratio (positive = ETH outperforming BTC). */
+    ratio90dReturn: number;
+    /** 365-day return of the ratio. */
+    ratio365dReturn: number;
+  };
+  fetchedAt: number;
+  source: 'yahoo';
+}
+
+/** One daily real-rate observation: nominal Treasury yield minus breakeven
+ *  inflation at the same maturity. Positive = positive real rates. */
+export interface RealRatePoint {
+  t: number;
+  nominal: number;
+  breakeven: number;
+  real: number;
+}
+
+export interface RealRatesResponse {
+  /** 10Y real rate = DGS10 − T10YIE. */
+  ten: RealRatePoint[];
+  /** 5Y real rate = DGS5 − T5YIE (we use 5Y TIPS reference since DGS2 has
+   *  no matching breakeven series on FRED). */
+  five: RealRatePoint[];
+  latest: {
+    date: string;
+    tenYear: { nominal: number; breakeven: number; real: number };
+    fiveYear: { nominal: number; breakeven: number; real: number };
+  };
+  stats: {
+    /** Percentile of the current 10Y real rate over the last 10 years. */
+    tenYearPercentile10y: number;
+    /** 52-week change in the 10Y real rate (percentage points). */
+    tenYearChange52w: number;
+  };
+  fetchedAt: number;
+  source: 'fred';
+}
+
+/** One daily hash-rate observation. Values are reported in TH/s. */
+export interface HashRatePoint {
+  t: number;
+  hashRate: number;
+  sma30: number | null;
+  sma60: number | null;
+}
+
+/** A detected hash-ribbon event. 'capitulation' = sma30 crosses below sma60;
+ *  'recovery' = sma30 crosses back above sma60 (the "buy" signal). */
+export interface HashRibbonEvent {
+  t: number;
+  date: string;
+  type: 'capitulation' | 'recovery';
+}
+
+export interface HashRateResponse {
+  series: HashRatePoint[];
+  events: HashRibbonEvent[];
+  latest: {
+    date: string;
+    hashRate: number;
+    sma30: number | null;
+    sma60: number | null;
+    /** Current regime based on sma30 vs sma60. */
+    regime: 'bullish' | 'bearish' | 'unknown';
+    /** Days since the most recent 'recovery' signal (null if none). */
+    daysSinceRecovery: number | null;
+  };
+  fetchedAt: number;
+  source: 'blockchain.info';
 }
 
 /** Major non-stablecoin crypto tickers on Yahoo Finance. Curated by market
@@ -2692,6 +2801,276 @@ async function computeFearGreed(): Promise<FearGreedResponse> {
 }
 
 // ---------------------------------------------------------------------------
+// Flippening Index — ETH/BTC price ratio over time. The proper ITC definition
+// uses market caps (ETH cap / BTC cap) but price ratio tracks that closely
+// since neither supply schedule changes fast. We additionally estimate the
+// "progress to flippening" using current circulating supply assumptions.
+// ---------------------------------------------------------------------------
+
+// Current BTC supply (~19.9M) and ETH supply (~120.5M). These shift slowly
+// so hard-coding them gives a stable progressToFlippening reading that's
+// close enough without fetching live supply on every request.
+const BTC_CIRCULATING = 19_900_000;
+const ETH_CIRCULATING = 120_500_000;
+
+async function fetchYahooDailyCloses(
+  ticker: string,
+  startIso: string
+): Promise<{ t: number; price: number }[]> {
+  const result = await yahooFinance.chart(ticker, {
+    period1: new Date(startIso),
+    period2: new Date(),
+    interval: '1d',
+  });
+  const quotes = result.quotes ?? [];
+  return quotes
+    .filter((q) => q.close != null && q.date != null)
+    .map((q) => ({ t: new Date(q.date as Date).getTime(), price: q.close as number }))
+    .filter((p) => p.price > 0);
+}
+
+async function computeFlippening(): Promise<FlippeningResponse> {
+  const [btc, eth] = await Promise.all([
+    fetchYahooDailyCloses('BTC-USD', '2017-01-01'),
+    fetchYahooDailyCloses('ETH-USD', '2017-01-01'),
+  ]);
+  if (btc.length < 30 || eth.length < 30) {
+    throw new Error(`Insufficient history: btc=${btc.length} eth=${eth.length}`);
+  }
+
+  // Join on date so we only keep days with both prices.
+  const btcByDate = new Map(btc.map((p) => [new Date(p.t).toISOString().slice(0, 10), p.price]));
+  const series: FlippeningPoint[] = [];
+  for (const e of eth) {
+    const dk = new Date(e.t).toISOString().slice(0, 10);
+    const b = btcByDate.get(dk);
+    if (b != null && b > 0) {
+      series.push({ t: e.t, ethPrice: e.price, btcPrice: b, ratio: e.price / b });
+    }
+  }
+  if (series.length < 30) {
+    throw new Error(`Insufficient joined history (${series.length} points)`);
+  }
+
+  const latest = series[series.length - 1];
+  // ratio at which ETH market cap would equal BTC market cap:
+  //   eth_price × eth_supply = btc_price × btc_supply
+  //   eth_price / btc_price = btc_supply / eth_supply
+  const ratioAtFlippening = BTC_CIRCULATING / ETH_CIRCULATING;
+  const progressToFlippening = latest.ratio / ratioAtFlippening;
+
+  // Stats
+  const ratioAthPoint = series.reduce((a, b) => (b.ratio > a.ratio ? b : a), series[0]);
+  const daysAgo = (days: number) => {
+    const target = latest.t - days * DAY_MS;
+    // Walk back to the closest observation at-or-before target.
+    for (let i = series.length - 1; i >= 0; i--) {
+      if (series[i].t <= target) return series[i];
+    }
+    return series[0];
+  };
+  const r90 = daysAgo(90);
+  const r365 = daysAgo(365);
+
+  return {
+    series: downsample(series, 1500),
+    latest: {
+      date: new Date(latest.t).toISOString().slice(0, 10),
+      ethPrice: latest.ethPrice,
+      btcPrice: latest.btcPrice,
+      ratio: latest.ratio,
+      progressToFlippening,
+    },
+    stats: {
+      ratioAth: ratioAthPoint.ratio,
+      ratioAthDate: new Date(ratioAthPoint.t).toISOString().slice(0, 10),
+      ratio90dReturn: (latest.ratio - r90.ratio) / r90.ratio,
+      ratio365dReturn: (latest.ratio - r365.ratio) / r365.ratio,
+    },
+    fetchedAt: Date.now(),
+    source: 'yahoo',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Real Interest Rates — nominal yield minus market-implied breakeven
+// inflation at the same maturity. Cowen leans on the 10Y real rate as a
+// primary macro regime signal: rising real rates = risk-off for crypto.
+// ---------------------------------------------------------------------------
+
+async function computeRealRates(apiKey: string): Promise<RealRatesResponse> {
+  const [dgs10, dgs5, t10yie, t5yie] = await Promise.all([
+    fetchFredSeries('DGS10', apiKey, '2003-01-01'),
+    fetchFredSeries('DGS5', apiKey, '2003-01-01'),
+    fetchFredSeries('T10YIE', apiKey, '2003-01-01'),
+    fetchFredSeries('T5YIE', apiKey, '2003-01-01'),
+  ]);
+
+  // Join each nominal+breakeven pair on date.
+  const joinOnDate = (
+    nominal: FredObservation[],
+    breakeven: FredObservation[]
+  ): RealRatePoint[] => {
+    const bMap = new Map(breakeven.map((b) => [b.date, b.value]));
+    const out: RealRatePoint[] = [];
+    for (const n of nominal) {
+      const be = bMap.get(n.date);
+      if (be != null && Number.isFinite(be)) {
+        out.push({ t: n.t, nominal: n.value, breakeven: be, real: n.value - be });
+      }
+    }
+    return out;
+  };
+
+  const ten = joinOnDate(dgs10, t10yie);
+  const five = joinOnDate(dgs5, t5yie);
+  if (ten.length === 0 || five.length === 0) {
+    throw new Error(`Insufficient real-rate data (ten=${ten.length}, five=${five.length})`);
+  }
+
+  const latestTen = ten[ten.length - 1];
+  const latestFive = five[five.length - 1];
+
+  // 10-year percentile of the 10Y real rate
+  const tenYrCutoff = latestTen.t - 10 * 365 * DAY_MS;
+  const recent10y = ten.filter((p) => p.t >= tenYrCutoff).map((p) => p.real);
+  const sorted = [...recent10y].sort((a, b) => a - b);
+  let belowCount = 0;
+  for (const v of sorted) {
+    if (v <= latestTen.real) belowCount++;
+    else break;
+  }
+  const tenYearPercentile10y = sorted.length > 0 ? belowCount / sorted.length : 0;
+
+  // 52-week change in 10Y real rate
+  const target52w = latestTen.t - 365 * DAY_MS;
+  let prior52w: RealRatePoint | undefined;
+  for (let i = ten.length - 1; i >= 0; i--) {
+    if (ten[i].t <= target52w) {
+      prior52w = ten[i];
+      break;
+    }
+  }
+  const tenYearChange52w = prior52w ? latestTen.real - prior52w.real : 0;
+
+  return {
+    ten: downsample(ten, 1500),
+    five: downsample(five, 1500),
+    latest: {
+      date: new Date(latestTen.t).toISOString().slice(0, 10),
+      tenYear: {
+        nominal: latestTen.nominal,
+        breakeven: latestTen.breakeven,
+        real: latestTen.real,
+      },
+      fiveYear: {
+        nominal: latestFive.nominal,
+        breakeven: latestFive.breakeven,
+        real: latestFive.real,
+      },
+    },
+    stats: {
+      tenYearPercentile10y,
+      tenYearChange52w,
+    },
+    fetchedAt: Date.now(),
+    source: 'fred',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// BTC Hash Rate + Hash Ribbons — blockchain.info free API. Hash Ribbons is
+// Charles Edwards' indicator: when the 30-day SMA of hash rate crosses back
+// *above* the 60-day SMA after a capitulation dip, it has historically been
+// an excellent buy signal.
+// ---------------------------------------------------------------------------
+
+async function computeHashRate(): Promise<HashRateResponse> {
+  const res = await fetch(
+    'https://api.blockchain.info/charts/hash-rate?timespan=all&format=json&cors=true'
+  );
+  if (!res.ok) {
+    throw new Error(`blockchain.info hash-rate ${res.status}`);
+  }
+  const json = (await res.json()) as {
+    values?: { x: number; y: number }[];
+  };
+  const raw = json.values ?? [];
+  if (raw.length === 0) {
+    throw new Error('blockchain.info returned empty values');
+  }
+  // Already oldest-first; x is unix seconds.
+  const rates = raw
+    .map((p) => ({ t: p.x * 1000, hashRate: p.y }))
+    .filter((p) => Number.isFinite(p.hashRate) && p.hashRate > 0);
+
+  // Compute 30d + 60d SMAs (in the underlying daily samples).
+  const values = rates.map((r) => r.hashRate);
+  const sma30Arr = sma(values, 30);
+  const sma60Arr = sma(values, 60);
+
+  const series: HashRatePoint[] = rates.map((r, i) => ({
+    t: r.t,
+    hashRate: r.hashRate,
+    sma30: sma30Arr[i] ?? null,
+    sma60: sma60Arr[i] ?? null,
+  }));
+
+  // Detect crossovers: capitulation = 30d dips below 60d; recovery = 30d
+  // rises back above 60d.
+  const events: HashRibbonEvent[] = [];
+  for (let i = 1; i < series.length; i++) {
+    const prev = series[i - 1];
+    const curr = series[i];
+    if (prev.sma30 == null || prev.sma60 == null || curr.sma30 == null || curr.sma60 == null) {
+      continue;
+    }
+    const wasAbove = prev.sma30 >= prev.sma60;
+    const isAbove = curr.sma30 >= curr.sma60;
+    if (wasAbove && !isAbove) {
+      events.push({
+        t: curr.t,
+        date: new Date(curr.t).toISOString().slice(0, 10),
+        type: 'capitulation',
+      });
+    } else if (!wasAbove && isAbove) {
+      events.push({
+        t: curr.t,
+        date: new Date(curr.t).toISOString().slice(0, 10),
+        type: 'recovery',
+      });
+    }
+  }
+
+  const latest = series[series.length - 1];
+  const regime: 'bullish' | 'bearish' | 'unknown' =
+    latest.sma30 != null && latest.sma60 != null
+      ? latest.sma30 >= latest.sma60
+        ? 'bullish'
+        : 'bearish'
+      : 'unknown';
+  const latestRecovery = [...events].reverse().find((e) => e.type === 'recovery');
+  const daysSinceRecovery = latestRecovery
+    ? Math.round((latest.t - latestRecovery.t) / DAY_MS)
+    : null;
+
+  return {
+    series: downsample(series, 1500),
+    events,
+    latest: {
+      date: new Date(latest.t).toISOString().slice(0, 10),
+      hashRate: latest.hashRate,
+      sma30: latest.sma30,
+      sma60: latest.sma60,
+      regime,
+      daysSinceRecovery,
+    },
+    fetchedAt: Date.now(),
+    source: 'blockchain.info',
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Fed Policy — effective fed funds rate + target range with rate change
 // events. Uses DFEDTARU + DFEDTARL (target upper/lower, 2008+) or DFEDTAR
 // (pre-2008 point target). Detects rate changes by walking the history.
@@ -3376,6 +3755,86 @@ export async function handleQuantRoutes(
         );
       }
       return jsonResponse({ error: `Fear & Greed fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/btc/flippening — ETH/BTC price ratio + progress to flip
+  if (pathname === '/api/quant/btc/flippening' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.flippening, TTL.flippening)) {
+      return cachedJsonResponse(req, { ...cache.flippening!.data, cached: true }, CACHE.flippening);
+    }
+    try {
+      const data = await computeFlippening();
+      cache.flippening = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.flippening);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.flippening) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.flippening.data, cached: true, stale: true, fetchError: msg },
+          CACHE.flippening
+        );
+      }
+      return jsonResponse({ error: `Flippening fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/macro/real-rates — DGS10 − T10YIE and DGS5 − T5YIE
+  if (pathname === '/api/quant/macro/real-rates' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.realRates, TTL.realRates)) {
+      return cachedJsonResponse(req, { ...cache.realRates!.data, cached: true }, CACHE.realRates);
+    }
+    try {
+      const settings = await loadSettings();
+      const fredKey = settings.fredApiKey;
+      if (!fredKey) {
+        return jsonResponse(
+          { error: 'FRED API key not configured. Add one in Settings → Quant.' },
+          400
+        );
+      }
+      const data = await computeRealRates(fredKey);
+      cache.realRates = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.realRates);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.realRates) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.realRates.data, cached: true, stale: true, fetchError: msg },
+          CACHE.realRates
+        );
+      }
+      return jsonResponse({ error: `Real rates fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/btc/hash-rate — blockchain.info hash rate + hash ribbons
+  if (pathname === '/api/quant/btc/hash-rate' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.hashRate, TTL.hashRate)) {
+      return cachedJsonResponse(req, { ...cache.hashRate!.data, cached: true }, CACHE.hashRate);
+    }
+    try {
+      const data = await computeHashRate();
+      cache.hashRate = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.hashRate);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.hashRate) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.hashRate.data, cached: true, stale: true, fetchError: msg },
+          CACHE.hashRate
+        );
+      }
+      return jsonResponse({ error: `Hash rate fetch failed: ${msg}` }, 502);
     }
   }
 
