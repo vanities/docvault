@@ -1,5 +1,5 @@
 import { useState, useEffect, type ReactNode } from 'react';
-import { LineChart, Bitcoin, Landmark, Building2, RefreshCw } from 'lucide-react';
+import { LineChart, Bitcoin, Landmark, Building2, RefreshCw, Grid3x3 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -12,6 +12,8 @@ import { PiCycleChart } from './PiCycleChart';
 import { GoldenDeathCrossChart } from './GoldenDeathCrossChart';
 import { BtcDominanceChart } from './BtcDominanceChart';
 import { BtcDerivativesChart } from './BtcDerivativesChart';
+import { AltcoinSeasonChart } from './AltcoinSeasonChart';
+import { OverviewPanel } from './OverviewPanel';
 import { CowenCorridorChart } from './CowenCorridorChart';
 import { SectorRotationChart } from './SectorRotationChart';
 import { ShillerValuationChart } from './ShillerValuationChart';
@@ -21,8 +23,8 @@ import { YieldCurveChart } from './YieldCurveChart';
 import { MacroDashboardChart } from './MacroDashboardChart';
 import { useQuantRefresh } from './useQuantData';
 
-/** Three top-level categories inspired by Into The Cryptoverse's own layout. */
-type QuantCategory = 'crypto' | 'macro' | 'tradfi';
+/** Four top-level tabs — an overview snapshot plus Cowen's 3 categories. */
+type QuantCategory = 'overview' | 'crypto' | 'macro' | 'tradfi';
 
 const STORAGE_KEY = 'docvault.quant.category';
 
@@ -30,6 +32,13 @@ const CATEGORY_META: Record<
   QuantCategory,
   { label: string; accent: string; icon: typeof LineChart; description: string }
 > = {
+  overview: {
+    label: 'Overview',
+    accent: 'text-cyan-300',
+    icon: Grid3x3,
+    description:
+      'Every signal in one view. Click any card to jump into the detailed chart for that category.',
+  },
   crypto: {
     label: 'Crypto',
     accent: 'text-amber-400',
@@ -116,10 +125,10 @@ function EmptyCategoryCard({
 
 export function QuantView() {
   const [category, setCategory] = useState<QuantCategory>(() => {
-    if (typeof window === 'undefined') return 'tradfi';
+    if (typeof window === 'undefined') return 'overview';
     const stored = localStorage.getItem(STORAGE_KEY);
-    const valid: QuantCategory[] = ['crypto', 'macro', 'tradfi'];
-    return valid.includes(stored as QuantCategory) ? (stored as QuantCategory) : 'tradfi';
+    const valid: QuantCategory[] = ['overview', 'crypto', 'macro', 'tradfi'];
+    return valid.includes(stored as QuantCategory) ? (stored as QuantCategory) : 'overview';
   });
 
   useEffect(() => {
@@ -179,6 +188,14 @@ export function QuantView() {
           })}
         </TabsList>
 
+        {/* ── Overview ───────────────────────────────────── */}
+        <TabsContent value="overview">
+          <p className="text-[12px] text-surface-600 mb-6 leading-relaxed">
+            {CATEGORY_META.overview.description}
+          </p>
+          <OverviewPanel onJumpTo={(cat) => setCategory(cat)} />
+        </TabsContent>
+
         {/* ── Crypto ─────────────────────────────────────── */}
         <TabsContent value="crypto">
           <p className="text-[12px] text-surface-600 mb-6 leading-relaxed">
@@ -224,13 +241,20 @@ export function QuantView() {
             <BtcDerivativesChart />
           </ChartGroup>
 
+          <ChartGroup
+            title="Altcoin Season Index"
+            subtitle="top 50 alts outperforming BTC over 90d"
+          >
+            <AltcoinSeasonChart />
+          </ChartGroup>
+
           <ChartGroup title="Coming next">
             <EmptyCategoryCard
               category="crypto"
               comingSoon={[
-                'Altcoin Season Index',
                 'Flippening Index',
                 'MVRV Z-Score (needs on-chain data)',
+                'Puell Multiple (needs on-chain data)',
               ]}
             />
           </ChartGroup>

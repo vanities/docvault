@@ -17,6 +17,7 @@ import {
   parseFredObservations,
   classifyYieldCurveRegime,
   detectCrossovers,
+  batchWithConcurrency,
   type DailyBar,
 } from './quant.js';
 
@@ -679,6 +680,51 @@ describe('detectCrossovers', () => {
 
   test('throws on length mismatch', () => {
     expect(() => detectCrossovers([1, 2], [1, 2, 3])).toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// batchWithConcurrency
+// ---------------------------------------------------------------------------
+
+describe('batchWithConcurrency', () => {
+  test('processes every item in the input order', async () => {
+    const result = await batchWithConcurrency([1, 2, 3, 4, 5], 2, async (x) => x * 10);
+    expect(result).toEqual([10, 20, 30, 40, 50]);
+  });
+
+  test('respects the concurrency limit', async () => {
+    let inFlight = 0;
+    let peakInFlight = 0;
+    const work = (_x: number): Promise<number> =>
+      new Promise((resolve) => {
+        inFlight++;
+        peakInFlight = Math.max(peakInFlight, inFlight);
+        setTimeout(() => {
+          inFlight--;
+          resolve(_x);
+        }, 20);
+      });
+    await batchWithConcurrency([1, 2, 3, 4, 5, 6, 7, 8], 3, work);
+    expect(peakInFlight).toBeLessThanOrEqual(3);
+  });
+
+  test('handles empty input', async () => {
+    const result = await batchWithConcurrency([], 5, async (x) => x);
+    expect(result).toEqual([]);
+  });
+
+  test('throws on non-positive concurrency', async () => {
+    await expect(batchWithConcurrency([1, 2], 0, async (x) => x)).rejects.toThrow();
+  });
+
+  test('propagates exceptions from the worker function', async () => {
+    await expect(
+      batchWithConcurrency([1, 2, 3], 2, async (x) => {
+        if (x === 2) throw new Error('boom');
+        return x;
+      })
+    ).rejects.toThrow('boom');
   });
 });
 

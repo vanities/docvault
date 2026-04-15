@@ -16,6 +16,29 @@ export interface PresidentialCycleData {
   fetchError?: string;
 }
 
+export interface AltCoinEntryData {
+  symbol: string;
+  name: string;
+  price: number;
+  return90d: number;
+  outperformance: number;
+  beatsBtc: boolean;
+}
+
+export interface AltcoinSeasonData {
+  indexValue: number;
+  regime: 'bitcoin-season' | 'neutral' | 'altcoin-season';
+  btcReturn90d: number;
+  coins: AltCoinEntryData[];
+  outperformerCount: number;
+  totalCounted: number;
+  skipped: string[];
+  fetchedAt: number;
+  source: 'yahoo';
+  cached?: boolean;
+  stale?: boolean;
+}
+
 export interface BtcDerivativesData {
   currentFundingRate: number;
   annualizedFundingRate: number;
@@ -434,6 +457,11 @@ export function useBtcDominance() {
 export function useBtcDerivatives() {
   const bump = useQuantRefreshBump();
   return useQuantFetch<BtcDerivativesData>(`${API_BASE}/quant/btc/derivatives?_=${bump}`);
+}
+
+export function useAltcoinSeason() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<AltcoinSeasonData>(`${API_BASE}/quant/btc/altcoin-season?_=${bump}`);
 }
 
 export function useMacroDashboard() {
