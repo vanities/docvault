@@ -156,7 +156,7 @@ export function BtcDominanceChart() {
                   <div className="text-[10px] text-surface-700 uppercase font-medium">
                     Total Market Cap
                   </div>
-                  <div className="text-[14px] font-bold text-surface-200">
+                  <div className="text-[14px] font-bold text-surface-950">
                     ${(data.totalMarketCapUsd / 1e12).toFixed(2)}T
                   </div>
                   <div

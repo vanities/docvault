@@ -185,7 +185,7 @@ export function YieldCurveChart() {
         <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
           10Y − 2Y and 10Y − 3M Treasury spreads from FRED. Inverted periods (spread &lt; 0) are
           shaded <span className="text-rose-400 font-semibold">rose</span>; actual{' '}
-          <span className="text-surface-400 font-semibold">NBER recessions</span> (FRED USREC) are
+          <span className="text-surface-800 font-semibold">NBER recessions</span> (FRED USREC) are
           shaded gray. Every US recession since 1970 has been preceded by a T10Y2Y inversion,
           typically 6–18 months before recession onset.
         </p>

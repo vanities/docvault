@@ -186,7 +186,7 @@ export function MidtermDrawdownChart() {
               <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Avg at Same Offset
               </div>
-              <div className="text-[16px] font-bold text-surface-300 mt-0.5">
+              <div className="text-[16px] font-bold text-surface-800 mt-0.5">
                 {stats.avgAtOffset != null ? `${stats.avgAtOffset.toFixed(2)}%` : '—'}
               </div>
               <div className="text-[10px] text-surface-700 mt-0.5">Historical baseline</div>

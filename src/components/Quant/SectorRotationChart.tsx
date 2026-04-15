@@ -255,7 +255,7 @@ export function SectorRotationChart() {
     align?: 'left' | 'right';
   }) => (
     <th
-      className={`px-2 py-2 text-[10px] font-semibold text-surface-700 uppercase tracking-wider cursor-pointer hover:text-surface-300 select-none ${
+      className={`px-2 py-2 text-[10px] font-semibold text-surface-700 uppercase tracking-wider cursor-pointer hover:text-surface-800 select-none ${
         align === 'right' ? 'text-right' : 'text-left'
       }`}
       onClick={() => handleSort(k)}
@@ -386,9 +386,9 @@ export function SectorRotationChart() {
                     key={s.ticker}
                     className="border-b border-border/20 hover:bg-surface-200/20 transition-colors"
                   >
-                    <td className="px-2 py-2 font-mono font-bold text-surface-100">{s.ticker}</td>
+                    <td className="px-2 py-2 font-mono font-bold text-surface-950">{s.ticker}</td>
                     <td className="px-2 py-2 text-surface-800">{s.name}</td>
-                    <td className="px-2 py-2 text-right font-mono text-surface-300">
+                    <td className="px-2 py-2 text-right font-mono text-surface-800">
                       ${s.price.toFixed(2)}
                     </td>
                     <td className="px-2 py-2 text-right">
@@ -403,10 +403,10 @@ export function SectorRotationChart() {
                     <td className="px-2 py-2 text-right">
                       <ReturnCell value={s.returns.m6} />
                     </td>
-                    <td className="px-2 py-2 text-right font-mono text-surface-200">
+                    <td className="px-2 py-2 text-right font-mono text-surface-950">
                       {s.rsRatio != null ? s.rsRatio.toFixed(1) : '—'}
                     </td>
-                    <td className="px-2 py-2 text-right font-mono text-surface-200">
+                    <td className="px-2 py-2 text-right font-mono text-surface-950">
                       {s.momentum != null ? s.momentum.toFixed(1) : '—'}
                     </td>
                     <td className="px-2 py-2 text-right">
@@ -422,7 +422,7 @@ export function SectorRotationChart() {
                   <td className="px-2 py-2 text-surface-700 italic">
                     {data.benchmark.name} (baseline)
                   </td>
-                  <td className="px-2 py-2 text-right font-mono text-surface-400">
+                  <td className="px-2 py-2 text-right font-mono text-surface-800">
                     ${data.benchmark.price.toFixed(2)}
                   </td>
                   <td className="px-2 py-2 text-right">

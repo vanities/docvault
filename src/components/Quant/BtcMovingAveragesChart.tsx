@@ -182,7 +182,7 @@ export function BtcMovingAveragesChart() {
               <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Mayer Multiple
               </div>
-              <div className="text-[16px] font-bold text-surface-200 mt-0.5">
+              <div className="text-[16px] font-bold text-surface-950 mt-0.5">
                 {data.risk.latest.components.mayerMultiple != null
                   ? `${data.risk.latest.components.mayerMultiple.toFixed(2)}×`
                   : '—'}

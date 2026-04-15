@@ -170,7 +170,7 @@ export function PiCycleChart() {
               <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Ratio (111 / 350×2)
               </div>
-              <div className="text-[16px] font-bold text-surface-200 mt-0.5">
+              <div className="text-[16px] font-bold text-surface-950 mt-0.5">
                 {data.piCycle.latest.ratio != null ? data.piCycle.latest.ratio.toFixed(3) : '—'}
               </div>
               <div className="text-[10px] text-surface-700 mt-0.5">1.0 = crossover</div>

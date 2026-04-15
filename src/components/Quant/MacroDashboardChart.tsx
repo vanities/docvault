@@ -68,7 +68,7 @@ function MiniChart({ series }: { series: MacroSeriesData }) {
     <div className="p-3 rounded-xl border border-border/40 bg-surface-100/20">
       <div className="flex items-baseline justify-between mb-1">
         <div>
-          <div className="text-[11px] font-semibold text-surface-200">{series.label}</div>
+          <div className="text-[11px] font-semibold text-surface-950">{series.label}</div>
           <div className="text-[9px] text-surface-700 leading-tight">
             FRED: <span className="font-mono">{series.id}</span>
           </div>

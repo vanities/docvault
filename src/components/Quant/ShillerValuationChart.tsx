@@ -199,7 +199,7 @@ export function ShillerValuationChart() {
               <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 CAPE Percentile
               </div>
-              <div className="text-[16px] font-bold text-surface-200 mt-0.5">
+              <div className="text-[16px] font-bold text-surface-950 mt-0.5">
                 {data.capePercentile != null ? `${data.capePercentile.toFixed(1)}th` : '—'}
               </div>
               <div className="text-[10px] text-surface-700 mt-0.5">vs. 155 years</div>

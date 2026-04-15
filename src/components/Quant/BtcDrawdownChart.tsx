@@ -144,7 +144,7 @@ export function BtcDrawdownChart() {
               <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Days Since ATH
               </div>
-              <div className="text-[22px] font-bold text-surface-200 mt-0.5">
+              <div className="text-[22px] font-bold text-surface-950 mt-0.5">
                 {data.latest.daysSinceAth}d
               </div>
               <div className="text-[11px] text-surface-700">ATH {fmtUsd(data.latest.ath)}</div>
@@ -213,18 +213,18 @@ export function BtcDrawdownChart() {
                       key={`${e.athDate}-${i}`}
                       className="border-b border-border/20 hover:bg-surface-100/30"
                     >
-                      <td className="px-2 py-2 font-mono text-surface-300">{e.athDate}</td>
-                      <td className="px-2 py-2 text-right font-mono text-surface-300">
+                      <td className="px-2 py-2 font-mono text-surface-800">{e.athDate}</td>
+                      <td className="px-2 py-2 text-right font-mono text-surface-800">
                         {fmtUsd(e.athPrice)}
                       </td>
-                      <td className="px-2 py-2 font-mono text-surface-300">{e.troughDate}</td>
+                      <td className="px-2 py-2 font-mono text-surface-800">{e.troughDate}</td>
                       <td className="px-2 py-2 text-right font-mono font-bold text-rose-400">
                         {fmtPct(e.maxDrawdown)}
                       </td>
-                      <td className="px-2 py-2 text-right font-mono text-surface-300">
+                      <td className="px-2 py-2 text-right font-mono text-surface-800">
                         {e.daysToTrough}d
                       </td>
-                      <td className="px-2 py-2 text-right font-mono text-surface-300">
+                      <td className="px-2 py-2 text-right font-mono text-surface-800">
                         {e.daysToRecovery != null ? (
                           `${e.daysToRecovery}d`
                         ) : (

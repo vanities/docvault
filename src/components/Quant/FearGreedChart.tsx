@@ -203,7 +203,7 @@ export function FearGreedChart() {
               <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 1y Range
               </div>
-              <div className="text-[15px] font-bold text-surface-200 mt-0.5">
+              <div className="text-[15px] font-bold text-surface-950 mt-0.5">
                 {data.lowest365?.value ?? '—'} → {data.highest365?.value ?? '—'}
               </div>
               <div className="text-[11px] text-surface-700">
