@@ -27,6 +27,8 @@ const TTL = {
   sp500RiskMetric: 7 * DAY_MS, // Shiller monthly — weekly refresh
   btcDerivatives: 30 * 60 * 1000, // 30 min — funding rate updates 3x/day
   altcoinSeason: 6 * 60 * 60 * 1000, // 6h — 90d return doesn't shift much hour-to-hour
+  jobsDashboard: DAY_MS, // FRED labor data updates monthly
+  fedPolicy: DAY_MS, // target range only moves on FOMC meetings
 };
 
 interface CacheEntry<T> {
@@ -46,6 +48,8 @@ type QuantCache = {
   sp500RiskMetric?: CacheEntry<SP500RiskResponse>;
   btcDerivatives?: CacheEntry<BtcDerivativesResponse>;
   altcoinSeason?: CacheEntry<AltcoinSeasonResponse>;
+  jobsDashboard?: CacheEntry<MacroDashboardResponse>;
+  fedPolicy?: CacheEntry<FedPolicyResponse>;
 };
 
 async function loadCache(): Promise<QuantCache> {
@@ -146,6 +150,10 @@ const CACHE = {
   btcDerivatives: { maxAge: 600, swr: 2 * 3600 },
   // Altcoin season = 90d returns via yahoo — 2h + 12h SWR.
   altcoinSeason: { maxAge: 2 * 3600, swr: 12 * 3600 },
+  // Jobs dashboard — 2h + 12h SWR.
+  jobsDashboard: { maxAge: 2 * 3600, swr: 12 * 3600 },
+  // Fed policy — 2h + 24h SWR (target moves only on FOMC meetings).
+  fedPolicy: { maxAge: 2 * 3600, swr: 24 * 3600 },
   // Snapshots grow one row per day; short cache so new snapshots appear fast.
   snapshots: { maxAge: 300, swr: 3600 },
 };
@@ -2094,9 +2102,11 @@ export interface MacroDashboardResponse {
   source: 'fred';
 }
 
-const MACRO_SERIES: Array<
-  Omit<MacroSeries, 'points' | 'latest' | 'yoyChange'> & { start: string }
-> = [
+type MacroSeriesSpec = Omit<MacroSeries, 'points' | 'latest' | 'yoyChange'> & {
+  start: string;
+};
+
+const MACRO_SERIES: MacroSeriesSpec[] = [
   {
     id: 'DGS10',
     label: '10Y Treasury',
@@ -2139,6 +2149,57 @@ const MACRO_SERIES: Array<
   },
 ];
 
+const JOBS_SERIES: MacroSeriesSpec[] = [
+  {
+    id: 'UNRATE',
+    label: 'Unemployment Rate',
+    description: 'Headline U-3 unemployment rate',
+    unit: '%',
+    decimals: 1,
+    start: '1990-01-01',
+  },
+  {
+    id: 'PAYEMS',
+    label: 'Nonfarm Payrolls',
+    description: 'Total nonfarm employment (thousands)',
+    unit: 'k',
+    decimals: 0,
+    start: '1990-01-01',
+  },
+  {
+    id: 'ICSA',
+    label: 'Initial Claims',
+    description: 'Weekly initial jobless claims',
+    unit: '',
+    decimals: 0,
+    start: '1990-01-01',
+  },
+  {
+    id: 'JTSJOL',
+    label: 'Job Openings (JOLTS)',
+    description: 'Total nonfarm job openings (thousands)',
+    unit: 'k',
+    decimals: 0,
+    start: '2000-12-01',
+  },
+  {
+    id: 'CES0500000003',
+    label: 'Avg Hourly Earnings',
+    description: 'Avg hourly earnings of all private employees (USD)',
+    unit: '',
+    decimals: 2,
+    start: '2006-03-01',
+  },
+  {
+    id: 'CIVPART',
+    label: 'Labor Force Participation',
+    description: 'Civilian labor force participation rate',
+    unit: '%',
+    decimals: 1,
+    start: '1990-01-01',
+  },
+];
+
 /** Downsample a points array to ~N points using uniform stride selection. */
 function downsample<T>(arr: T[], maxPoints: number): T[] {
   if (arr.length <= maxPoints) return arr;
@@ -2150,9 +2211,12 @@ function downsample<T>(arr: T[], maxPoints: number): T[] {
   return out;
 }
 
-async function computeMacroDashboard(apiKey: string): Promise<MacroDashboardResponse> {
+async function computeMacroSeriesList(
+  apiKey: string,
+  specs: MacroSeriesSpec[]
+): Promise<MacroDashboardResponse> {
   const results = await Promise.all(
-    MACRO_SERIES.map(async (meta) => {
+    specs.map(async (meta) => {
       try {
         const obs = await fetchFredSeries(meta.id, apiKey, meta.start);
         // YoY change: find the observation closest to exactly 1 year before
@@ -2206,6 +2270,118 @@ async function computeMacroDashboard(apiKey: string): Promise<MacroDashboardResp
   return {
     series: results,
     fetchedAt: Date.now(),
+    source: 'fred',
+  };
+}
+
+async function computeMacroDashboard(apiKey: string): Promise<MacroDashboardResponse> {
+  return computeMacroSeriesList(apiKey, MACRO_SERIES);
+}
+
+async function computeJobsDashboard(apiKey: string): Promise<MacroDashboardResponse> {
+  return computeMacroSeriesList(apiKey, JOBS_SERIES);
+}
+
+// ---------------------------------------------------------------------------
+// Fed Policy — effective fed funds rate + target range with rate change
+// events. Uses DFEDTARU + DFEDTARL (target upper/lower, 2008+) or DFEDTAR
+// (pre-2008 point target). Detects rate changes by walking the history.
+// ---------------------------------------------------------------------------
+
+export interface FedRateChange {
+  /** Unix ms */
+  t: number;
+  /** New rate after the change */
+  newRate: number;
+  /** Change in basis points (positive = hike, negative = cut) */
+  changeBps: number;
+  /** 'hike' | 'cut' | 'hold-change' for edge cases */
+  type: 'hike' | 'cut';
+}
+
+export interface FedPolicyResponse {
+  /** Effective federal funds rate history */
+  effectiveRate: { t: number; rate: number }[];
+  /** Target range upper bound (2008+) */
+  targetUpper: { t: number; rate: number }[];
+  /** Target range lower bound (2008+) */
+  targetLower: { t: number; rate: number }[];
+  /** Detected rate change events from the target range */
+  rateChanges: FedRateChange[];
+  latest: {
+    date: string;
+    effectiveRate: number;
+    targetUpper: number;
+    targetLower: number;
+    /** Classification: 'cutting' if recent trend is cuts, 'hiking' if hikes, 'hold' if flat */
+    stance: 'cutting' | 'hiking' | 'hold';
+    /** Days since last rate change */
+    daysSinceLastChange: number;
+  };
+  dataRange: { from: string; to: string };
+  source: 'fred';
+}
+
+async function computeFedPolicy(apiKey: string): Promise<FedPolicyResponse> {
+  const [dff, upper, lower] = await Promise.all([
+    fetchFredSeries('DFF', apiKey, '2008-01-01'),
+    fetchFredSeries('DFEDTARU', apiKey, '2008-01-01'),
+    fetchFredSeries('DFEDTARL', apiKey, '2008-01-01'),
+  ]);
+
+  if (upper.length < 10) {
+    throw new Error(`Insufficient Fed target history (got ${upper.length})`);
+  }
+
+  // Detect rate changes by walking the upper target. Any day where upper
+  // differs from the prior non-null upper is a rate change event.
+  const rateChanges: FedRateChange[] = [];
+  let lastUpper: number | null = null;
+  for (const obs of upper) {
+    if (lastUpper != null && obs.value !== lastUpper) {
+      const changeBps = Math.round((obs.value - lastUpper) * 100);
+      rateChanges.push({
+        t: obs.t,
+        newRate: obs.value,
+        changeBps,
+        type: changeBps > 0 ? 'hike' : 'cut',
+      });
+    }
+    lastUpper = obs.value;
+  }
+
+  // Determine current stance: look at last 5 rate changes
+  const recent = rateChanges.slice(-5);
+  const hikes = recent.filter((c) => c.type === 'hike').length;
+  const cuts = recent.filter((c) => c.type === 'cut').length;
+  let stance: 'cutting' | 'hiking' | 'hold' = 'hold';
+  if (cuts > hikes && cuts >= 2) stance = 'cutting';
+  else if (hikes > cuts && hikes >= 2) stance = 'hiking';
+
+  const lastChange = rateChanges[rateChanges.length - 1];
+  const daysSinceLastChange = lastChange ? Math.floor((Date.now() - lastChange.t) / DAY_MS) : 0;
+
+  const lastUpperObs = upper[upper.length - 1];
+  const lastLowerObs = lower[lower.length - 1];
+  const lastDff = dff[dff.length - 1];
+
+  return {
+    effectiveRate: dff.map((o) => ({ t: o.t, rate: o.value })),
+    targetUpper: upper.map((o) => ({ t: o.t, rate: o.value })),
+    targetLower: lower.map((o) => ({ t: o.t, rate: o.value })),
+    rateChanges,
+    latest: {
+      date: lastUpperObs.date,
+      effectiveRate: lastDff?.value ?? 0,
+      targetUpper: lastUpperObs.value,
+      targetLower: lastLowerObs.value,
+      stance,
+      daysSinceLastChange,
+    },
+    dataRange: {
+      from: upper[0].date,
+      to: lastUpperObs.date,
+    },
     source: 'fred',
   };
 }
@@ -2635,6 +2811,74 @@ export async function handleQuantRoutes(
         );
       }
       return jsonResponse({ error: `Presidential cycle fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/macro/jobs — labor dashboard from FRED
+  if (pathname === '/api/quant/macro/jobs' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.jobsDashboard, TTL.jobsDashboard)) {
+      return cachedJsonResponse(
+        req,
+        { ...cache.jobsDashboard!.data, cached: true },
+        CACHE.jobsDashboard
+      );
+    }
+    try {
+      const settings = await loadSettings();
+      const fredKey = settings.fredApiKey;
+      if (!fredKey) {
+        return jsonResponse(
+          { error: 'FRED API key not configured. Add one in Settings → Quant.' },
+          400
+        );
+      }
+      const data = await computeJobsDashboard(fredKey);
+      cache.jobsDashboard = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.jobsDashboard);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.jobsDashboard) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.jobsDashboard.data, cached: true, stale: true, fetchError: msg },
+          CACHE.jobsDashboard
+        );
+      }
+      return jsonResponse({ error: `Jobs dashboard fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/macro/fed-policy — DFF + target range + rate change events
+  if (pathname === '/api/quant/macro/fed-policy' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.fedPolicy, TTL.fedPolicy)) {
+      return cachedJsonResponse(req, { ...cache.fedPolicy!.data, cached: true }, CACHE.fedPolicy);
+    }
+    try {
+      const settings = await loadSettings();
+      const fredKey = settings.fredApiKey;
+      if (!fredKey) {
+        return jsonResponse(
+          { error: 'FRED API key not configured. Add one in Settings → Quant.' },
+          400
+        );
+      }
+      const data = await computeFedPolicy(fredKey);
+      cache.fedPolicy = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.fedPolicy);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.fedPolicy) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.fedPolicy.data, cached: true, stale: true, fetchError: msg },
+          CACHE.fedPolicy
+        );
+      }
+      return jsonResponse({ error: `Fed policy fetch failed: ${msg}` }, 502);
     }
   }
 
