@@ -101,6 +101,8 @@ function getCategoryLabel(category: ExpenseCategory): string {
     education: 'education',
     'home-improvement': 'home-improvement',
     'taxes-licenses': 'taxes',
+    feed: 'feed',
+    livestock: 'livestock',
     other: 'expense',
   };
   return categoryMap[category] || 'expense';

@@ -22,7 +22,14 @@ import {
   Upload,
   Shield,
   Landmark,
+  LayoutGrid,
+  Sliders,
+  KeyRound,
+  Banknote,
+  LineChart,
+  Archive,
 } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { SyncStatus, CryptoExchangeId, CryptoChain } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
@@ -55,6 +62,8 @@ interface SettingsData {
   claudeModel?: string;
   hasGeoapifyKey?: boolean;
   geoapifyKeyHint?: string;
+  hasFredKey?: boolean;
+  fredKeyHint?: string;
 }
 
 function formatRelativeTime(isoStr: string): string {
@@ -295,6 +304,21 @@ export function SettingsView() {
   const { confirm, ConfirmDialog } = useConfirmDialog();
   const { addToast } = useToast();
 
+  // Active settings tab (persisted in localStorage)
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    if (typeof window === 'undefined') return 'all';
+    return localStorage.getItem('docvault.settings.activeTab') || 'all';
+  });
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('docvault.settings.activeTab', activeTab);
+  }, [activeTab]);
+
+  // Returns true when the current tab should show content tagged with one of `tabs`.
+  // The "all" tab always shows everything. Decorative section headers pass `['all']`
+  // so they only appear in the All view.
+  const showIn = (tabs: string[]) => activeTab === 'all' || tabs.includes(activeTab);
+
   // API Key state
   const [anthropicKey, setAnthropicKey] = useState('');
   const [showKey, setShowKey] = useState(false);
@@ -310,6 +334,11 @@ export function SettingsView() {
   const [hasGeoapifyKey, setHasGeoapifyKey] = useState(false);
   const [geoapifyKeyHint, setGeoapifyKeyHint] = useState<string | undefined>();
   const [newGeoapifyKey, setNewGeoapifyKey] = useState('');
+
+  // FRED (Federal Reserve Economic Data) API Key state — used by Quant macro charts
+  const [hasFredKey, setHasFredKey] = useState(false);
+  const [fredKeyHint, setFredKeyHint] = useState<string | undefined>();
+  const [newFredKey, setNewFredKey] = useState('');
 
   // Sync status state
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
@@ -427,6 +456,8 @@ export function SettingsView() {
       setAnthropicKey('');
       setHasGeoapifyKey(data.hasGeoapifyKey || false);
       setGeoapifyKeyHint(data.geoapifyKeyHint);
+      setHasFredKey(data.hasFredKey || false);
+      setFredKeyHint(data.fredKeyHint);
     } catch (err) {
       console.error('Failed to load settings:', err);
     } finally {
@@ -519,6 +550,46 @@ export function SettingsView() {
       }
     } catch {
       addToast('Failed to remove Geoapify key', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveFredKey = async () => {
+    if (!newFredKey) return;
+    setIsSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fredApiKey: newFredKey.trim() }),
+      });
+      if ((await res.json()).ok) {
+        addToast('FRED key saved', 'success');
+        setNewFredKey('');
+        void loadSettings();
+      }
+    } catch {
+      addToast('Failed to save FRED key', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRemoveFredKey = async () => {
+    setIsSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fredApiKey: '' }),
+      });
+      if ((await res.json()).ok) {
+        addToast('FRED key removed', 'success');
+        void loadSettings();
+      }
+    } catch {
+      addToast('Failed to remove FRED key', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -1020,227 +1091,1559 @@ export function SettingsView() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 md:px-6 py-8">
-      <h2 className="text-2xl font-bold text-surface-950 mb-8">Settings</h2>
+      <h2 className="text-2xl font-bold text-surface-950 mb-6">Settings</h2>
 
-      {/* ── Display ────────────────────────────────────── */}
-      <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
-        Display
-      </p>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="gap-6">
+        <TabsList className="mb-2">
+          <TabsTrigger value="all">
+            <LayoutGrid className="w-3.5 h-3.5" />
+            All
+          </TabsTrigger>
+          <TabsTrigger value="general">
+            <Sliders className="w-3.5 h-3.5" />
+            General
+          </TabsTrigger>
+          <TabsTrigger value="keys">
+            <KeyRound className="w-3.5 h-3.5" />
+            Keys
+          </TabsTrigger>
+          <TabsTrigger value="sync">
+            <RefreshCw className="w-3.5 h-3.5" />
+            Sync
+          </TabsTrigger>
+          <TabsTrigger value="banking">
+            <Banknote className="w-3.5 h-3.5" />
+            Banking
+          </TabsTrigger>
+          <TabsTrigger value="crypto">
+            <Bitcoin className="w-3.5 h-3.5" />
+            Crypto
+          </TabsTrigger>
+          <TabsTrigger value="quant">
+            <LineChart className="w-3.5 h-3.5" />
+            Quant
+          </TabsTrigger>
+          <TabsTrigger value="backup">
+            <Archive className="w-3.5 h-3.5" />
+            Backup
+          </TabsTrigger>
+        </TabsList>
 
-      <Card variant="glass" className="p-6 mb-8">
-        <h3 className="text-lg font-semibold text-surface-950 mb-4">Preferences</h3>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[13px] font-medium text-surface-800">Blur financial numbers</p>
-            <p className="text-[12px] text-surface-600 mt-0.5">
-              Blur all dollar amounts and financial values for privacy
+        {showIn(['general']) && (
+          <>
+            {/* ── Display ────────────────────────────────────── */}
+            <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
+              Display
             </p>
-          </div>
-          <button
-            onClick={() => setBlurNumbers(!blurNumbers)}
-            className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-              blurNumbers ? 'bg-accent-500' : 'bg-surface-300'
-            }`}
-            role="switch"
-            aria-checked={blurNumbers}
-          >
-            <span
-              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ${
-                blurNumbers ? 'translate-x-4' : 'translate-x-0'
-              }`}
-            />
-          </button>
-        </div>
-      </Card>
 
-      {/* ── AI & API Keys ──────────────────────────────── */}
-      <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
-        AI & API Keys
-      </p>
-
-      <Card variant="glass" className="p-6 mb-8">
-        <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
-          <Key className="w-5 h-5" />
-          API Configuration
-        </h3>
-
-        {isLoading ? (
-          <div className="text-center py-4 text-surface-600">Loading...</div>
-        ) : (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-[13px] font-medium text-surface-800 mb-2">
-                Anthropic API Key
-              </label>
-
-              {hasKey && keySource === 'settings' ? (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-                    <CheckCircle className="w-5 h-5 text-emerald-400" />
-                    <div className="flex-1">
-                      <span className="text-[13px] text-emerald-400 font-medium">
-                        Custom API key
-                      </span>
-                      {keyHint && (
-                        <span className="text-[13px] text-emerald-400/70 ml-2 font-mono">
-                          --------{keyHint}
-                        </span>
-                      )}
-                    </div>
-                    <Button
-                      variant="ghost-danger"
-                      size="xs"
-                      onClick={handleClearKey}
-                      disabled={isSaving}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                </div>
-              ) : hasKey && keySource === 'env' ? (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 p-3 bg-info-500/10 border border-info-500/20 rounded-xl">
-                    <CheckCircle className="w-5 h-5 text-info-400" />
-                    <div className="flex-1">
-                      <span className="text-[13px] text-info-400 font-medium">
-                        Environment variable
-                      </span>
-                      {keyHint && (
-                        <span className="text-[13px] text-info-400/70 ml-2 font-mono">
-                          --------{keyHint}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="relative">
-                    <Input
-                      type={showKey ? 'text' : 'password'}
-                      value={anthropicKey}
-                      onChange={(e) => setAnthropicKey(e.target.value)}
-                      placeholder="Enter key to override..."
-                      className="pr-10 text-[13px] font-mono"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={() => setShowKey(!showKey)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2"
-                    >
-                      {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="relative">
-                    <Input
-                      type={showKey ? 'text' : 'password'}
-                      value={anthropicKey}
-                      onChange={(e) => setAnthropicKey(e.target.value)}
-                      placeholder="sk-ant-..."
-                      className="pr-10 text-[13px] font-mono"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={() => setShowKey(!showKey)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2"
-                    >
-                      {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </Button>
-                  </div>
-                  <p className="text-[11px] text-surface-600">
-                    Get your API key at{' '}
-                    <a
-                      href="https://console.anthropic.com/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-accent-400 hover:underline"
-                    >
-                      console.anthropic.com
-                    </a>
+            <Card variant="glass" className="p-6 mb-8">
+              <h3 className="text-lg font-semibold text-surface-950 mb-4">Preferences</h3>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[13px] font-medium text-surface-800">Blur financial numbers</p>
+                  <p className="text-[12px] text-surface-600 mt-0.5">
+                    Blur all dollar amounts and financial values for privacy
                   </p>
                 </div>
+                <button
+                  onClick={() => setBlurNumbers(!blurNumbers)}
+                  className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                    blurNumbers ? 'bg-accent-500' : 'bg-surface-300'
+                  }`}
+                  role="switch"
+                  aria-checked={blurNumbers}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ${
+                      blurNumbers ? 'translate-x-4' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            </Card>
+          </>
+        )}
+
+        {showIn(['keys']) && (
+          <>
+            {/* ── AI & API Keys ──────────────────────────────── */}
+            <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
+              AI & API Keys
+            </p>
+
+            <Card variant="glass" className="p-6 mb-8">
+              <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
+                <Key className="w-5 h-5" />
+                API Configuration
+              </h3>
+
+              {isLoading ? (
+                <div className="text-center py-4 text-surface-600">Loading...</div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-[13px] font-medium text-surface-800 mb-2">
+                      Anthropic API Key
+                    </label>
+
+                    {hasKey && keySource === 'settings' ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                          <CheckCircle className="w-5 h-5 text-emerald-400" />
+                          <div className="flex-1">
+                            <span className="text-[13px] text-emerald-400 font-medium">
+                              Custom API key
+                            </span>
+                            {keyHint && (
+                              <span className="text-[13px] text-emerald-400/70 ml-2 font-mono">
+                                --------{keyHint}
+                              </span>
+                            )}
+                          </div>
+                          <Button
+                            variant="ghost-danger"
+                            size="xs"
+                            onClick={handleClearKey}
+                            disabled={isSaving}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
+                    ) : hasKey && keySource === 'env' ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 p-3 bg-info-500/10 border border-info-500/20 rounded-xl">
+                          <CheckCircle className="w-5 h-5 text-info-400" />
+                          <div className="flex-1">
+                            <span className="text-[13px] text-info-400 font-medium">
+                              Environment variable
+                            </span>
+                            {keyHint && (
+                              <span className="text-[13px] text-info-400/70 ml-2 font-mono">
+                                --------{keyHint}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="relative">
+                          <Input
+                            type={showKey ? 'text' : 'password'}
+                            value={anthropicKey}
+                            onChange={(e) => setAnthropicKey(e.target.value)}
+                            placeholder="Enter key to override..."
+                            className="pr-10 text-[13px] font-mono"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={() => setShowKey(!showKey)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2"
+                          >
+                            {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="relative">
+                          <Input
+                            type={showKey ? 'text' : 'password'}
+                            value={anthropicKey}
+                            onChange={(e) => setAnthropicKey(e.target.value)}
+                            placeholder="sk-ant-..."
+                            className="pr-10 text-[13px] font-mono"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={() => setShowKey(!showKey)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2"
+                          >
+                            {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </Button>
+                        </div>
+                        <p className="text-[11px] text-surface-600">
+                          Get your API key at{' '}
+                          <a
+                            href="https://console.anthropic.com/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-accent-400 hover:underline"
+                          >
+                            console.anthropic.com
+                          </a>
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Save button */}
+                  {anthropicKey && (
+                    <Button onClick={handleSaveKey} disabled={isSaving}>
+                      <Save className="w-4 h-4" />
+                      {isSaving ? 'Saving...' : 'Save'}
+                    </Button>
+                  )}
+
+                  {/* Status messages */}
+                  {saveStatus === 'success' && (
+                    <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                      <CheckCircle className="w-5 h-5 text-emerald-400" />
+                      <span className="text-[13px] text-emerald-400">
+                        Settings saved successfully
+                      </span>
+                    </div>
+                  )}
+                  {saveStatus === 'error' && (
+                    <div className="flex items-center gap-2 p-3 bg-danger-500/10 border border-danger-500/20 rounded-xl">
+                      <AlertCircle className="w-5 h-5 text-danger-400" />
+                      <span className="text-[13px] text-danger-400">Failed to save settings</span>
+                    </div>
+                  )}
+
+                  {/* Model Selector */}
+                  <div className="pt-2 border-t border-border/30">
+                    <label className="block text-[13px] font-medium text-surface-800 mb-2">
+                      Claude Model
+                    </label>
+                    <Input
+                      type="text"
+                      value={claudeModel}
+                      onChange={(e) => setClaudeModel(e.target.value)}
+                      onBlur={() => handleSaveModel(claudeModel)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void handleSaveModel(claudeModel);
+                      }}
+                      placeholder="claude-sonnet-4-6"
+                      className="text-[13px] font-mono"
+                    />
+                    <p className="text-[11px] text-surface-500 mt-1">
+                      Used for document parsing and filename suggestions. Saves on blur or Enter.
+                    </p>
+                  </div>
+
+                  {/* Geoapify API Key */}
+                  <div className="pt-2 border-t border-border/30">
+                    <label className="block text-[13px] font-medium text-surface-800 mb-2">
+                      Geoapify API Key{' '}
+                      <span className="text-surface-500 font-normal">
+                        (for mileage address autocomplete &mdash;{' '}
+                        <a
+                          href="https://myprojects.geoapify.com/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-accent-400 hover:underline"
+                        >
+                          get one free
+                        </a>
+                        )
+                      </span>
+                    </label>
+                    {hasGeoapifyKey ? (
+                      <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                        <CheckCircle className="w-4 h-4 text-emerald-400" />
+                        <span className="text-[13px] text-emerald-400 font-medium flex-1">
+                          Key set
+                          {geoapifyKeyHint && (
+                            <span className="text-emerald-400/70 ml-2 font-mono">
+                              ****{geoapifyKeyHint}
+                            </span>
+                          )}
+                        </span>
+                        <Button
+                          variant="ghost-danger"
+                          size="xs"
+                          onClick={handleRemoveGeoapifyKey}
+                          disabled={isSaving}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Input
+                          type="password"
+                          value={newGeoapifyKey}
+                          onChange={(e) => setNewGeoapifyKey(e.target.value)}
+                          placeholder="Geoapify API key..."
+                          className="flex-1 text-[13px] font-mono"
+                        />
+                        <Button
+                          onClick={handleSaveGeoapifyKey}
+                          disabled={isSaving || !newGeoapifyKey}
+                        >
+                          Save
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
-            </div>
+            </Card>
+          </>
+        )}
 
-            {/* Save button */}
-            {anthropicKey && (
-              <Button onClick={handleSaveKey} disabled={isSaving}>
-                <Save className="w-4 h-4" />
-                {isSaving ? 'Saving...' : 'Save'}
-              </Button>
-            )}
+        {showIn(['all']) && (
+          <>
+            {/* ── Sync & Scheduling ─────────────────────────── */}
+            <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
+              Sync & Scheduling
+            </p>
+          </>
+        )}
 
-            {/* Status messages */}
-            {saveStatus === 'success' && (
-              <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-                <CheckCircle className="w-5 h-5 text-emerald-400" />
-                <span className="text-[13px] text-emerald-400">Settings saved successfully</span>
+        {showIn(['sync']) && (
+          <>
+            {/* Sync Status */}
+            <Card variant="glass" className="p-6 mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-surface-950 flex items-center gap-2">
+                  <RefreshCw className="w-5 h-5" />
+                  Sync Status
+                </h3>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => {
+                    void loadSyncStatus();
+                    void loadCacheStatus();
+                  }}
+                  title="Refresh all"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </Button>
               </div>
-            )}
-            {saveStatus === 'error' && (
-              <div className="flex items-center gap-2 p-3 bg-danger-500/10 border border-danger-500/20 rounded-xl">
-                <AlertCircle className="w-5 h-5 text-danger-400" />
-                <span className="text-[13px] text-danger-400">Failed to save settings</span>
-              </div>
-            )}
 
-            {/* Model Selector */}
-            <div className="pt-2 border-t border-border/30">
-              <label className="block text-[13px] font-medium text-surface-800 mb-2">
-                Claude Model
-              </label>
-              <Input
-                type="text"
-                value={claudeModel}
-                onChange={(e) => setClaudeModel(e.target.value)}
-                onBlur={() => handleSaveModel(claudeModel)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void handleSaveModel(claudeModel);
-                }}
-                placeholder="claude-sonnet-4-6"
-                className="text-[13px] font-mono"
-              />
-              <p className="text-[11px] text-surface-500 mt-1">
-                Used for document parsing and filename suggestions. Saves on blur or Enter.
+              <div className="space-y-3">
+                {/* Dropbox Sync */}
+                <div
+                  className={`flex items-center gap-3 p-4 rounded-xl border ${
+                    syncStatus === null || syncStatus.status === 'unknown'
+                      ? 'bg-surface-200/30 border-surface-400/20'
+                      : syncStatus.status === 'ok'
+                        ? 'bg-emerald-500/8 border-emerald-500/20'
+                        : syncStatus.status === 'syncing'
+                          ? 'bg-blue-500/8 border-blue-500/20'
+                          : syncStatus.status === 'error'
+                            ? 'bg-red-500/10 border-red-500/25'
+                            : 'bg-surface-200/30 border-surface-400/20'
+                  }`}
+                >
+                  <Cloud className="w-4 h-4 flex-shrink-0 text-surface-600" />
+                  <div
+                    className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                      syncStatus === null || syncStatus.status === 'unknown'
+                        ? 'bg-surface-500'
+                        : syncStatus.status === 'ok'
+                          ? 'bg-emerald-400'
+                          : syncStatus.status === 'syncing'
+                            ? 'bg-blue-400 animate-pulse'
+                            : syncStatus.status === 'error'
+                              ? 'bg-red-400'
+                              : 'bg-surface-500'
+                    }`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-medium text-surface-900">Dropbox</p>
+                    <p className="text-[11px] text-surface-600">
+                      {syncStatus === null || syncStatus.status === 'unknown'
+                        ? 'Not configured'
+                        : syncStatus.status === 'syncing'
+                          ? 'Syncing...'
+                          : syncStatus.status === 'error'
+                            ? `${syncStatus.errors} error${syncStatus.errors !== 1 ? 's' : ''}`
+                            : syncStatus.lastSync
+                              ? formatRelativeTime(syncStatus.lastSync)
+                              : 'No sync yet'}
+                      {syncStatus?.status === 'ok' && syncStatus.entitiesSynced > 0 && (
+                        <span className="text-surface-500">
+                          {' '}
+                          · {syncStatus.entitiesSynced} entities
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  {syncStatus?.nextSync && (
+                    <p className="text-[11px] text-surface-500 flex-shrink-0">
+                      Next: {formatRelativeTime(syncStatus.nextSync)}
+                    </p>
+                  )}
+                </div>
+
+                {/* Crypto Sync */}
+                <div
+                  className={`flex items-center gap-3 p-4 rounded-xl border ${
+                    cryptoLastUpdated
+                      ? 'bg-emerald-500/8 border-emerald-500/20'
+                      : 'bg-surface-200/30 border-surface-400/20'
+                  }`}
+                >
+                  <Bitcoin className="w-4 h-4 flex-shrink-0 text-surface-600" />
+                  <div
+                    className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                      cryptoLastUpdated ? 'bg-emerald-400' : 'bg-surface-500'
+                    }`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-medium text-surface-900">Crypto</p>
+                    <p className="text-[11px] text-surface-600">
+                      {cryptoLastUpdated ? formatRelativeTime(cryptoLastUpdated) : 'Never fetched'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Broker Sync */}
+                <div
+                  className={`flex items-center gap-3 p-4 rounded-xl border ${
+                    brokerLastUpdated
+                      ? 'bg-emerald-500/8 border-emerald-500/20'
+                      : 'bg-surface-200/30 border-surface-400/20'
+                  }`}
+                >
+                  <Building2 className="w-4 h-4 flex-shrink-0 text-surface-600" />
+                  <div
+                    className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                      brokerLastUpdated ? 'bg-emerald-400' : 'bg-surface-500'
+                    }`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-medium text-surface-900">Brokers</p>
+                    <p className="text-[11px] text-surface-600">
+                      {brokerLastUpdated ? formatRelativeTime(brokerLastUpdated) : 'Never fetched'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Bank Account Sync */}
+                <div
+                  className={`flex items-center gap-3 p-4 rounded-xl border ${
+                    bankLastUpdated
+                      ? 'bg-emerald-500/8 border-emerald-500/20'
+                      : 'bg-surface-200/30 border-surface-400/20'
+                  }`}
+                >
+                  <Landmark className="w-4 h-4 flex-shrink-0 text-surface-600" />
+                  <div
+                    className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                      bankLastUpdated ? 'bg-emerald-400' : 'bg-surface-500'
+                    }`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-medium text-surface-900">Bank Accounts</p>
+                    <p className="text-[11px] text-surface-600">
+                      {bankLastUpdated ? formatRelativeTime(bankLastUpdated) : 'Not connected'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            {/* Scheduled Tasks */}
+            <Card variant="glass" className="p-6 mb-8">
+              <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
+                <RefreshCw className="w-5 h-5" />
+                Scheduled Tasks
+              </h3>
+              <p className="text-[13px] text-surface-600 mb-4">
+                Configure automatic portfolio snapshots and Dropbox sync intervals. Changes take
+                effect immediately.
               </p>
-            </div>
 
-            {/* Geoapify API Key */}
-            <div className="pt-2 border-t border-border/30">
-              <label className="block text-[13px] font-medium text-surface-800 mb-2">
-                Geoapify API Key{' '}
-                <span className="text-surface-500 font-normal">
-                  (for mileage address autocomplete &mdash;{' '}
-                  <a
-                    href="https://myprojects.geoapify.com/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-accent-400 hover:underline"
+              <div className="space-y-4">
+                {/* Portfolio Snapshots */}
+                <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="text-[13px] font-medium text-surface-900">
+                        Portfolio Snapshots
+                      </p>
+                      <p className="text-[11px] text-surface-500">
+                        Saves daily portfolio value for the history chart
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setSnapshotEnabled(!snapshotEnabled)}
+                      className={`relative w-10 h-5 rounded-full transition-colors ${snapshotEnabled ? 'bg-violet-500' : 'bg-surface-400'}`}
+                    >
+                      <span
+                        className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${snapshotEnabled ? 'left-5.5 translate-x-0' : 'left-0.5'}`}
+                        style={{ left: snapshotEnabled ? 22 : 2 }}
+                      />
+                    </button>
+                  </div>
+                  {snapshotEnabled && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-[12px] text-surface-600">Every</label>
+                      <Select
+                        value={String(snapshotInterval)}
+                        onValueChange={(val) => setSnapshotInterval(Number(val))}
+                      >
+                        <SelectTrigger className="text-[13px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="60">1 hour</SelectItem>
+                          <SelectItem value="360">6 hours</SelectItem>
+                          <SelectItem value="720">12 hours</SelectItem>
+                          <SelectItem value="1440">24 hours</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+
+                {/* Dropbox Sync */}
+                <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="text-[13px] font-medium text-surface-900">Dropbox Sync</p>
+                      <p className="text-[11px] text-surface-500">
+                        Runs sync-to-dropbox.sh via rclone
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setDropboxSyncEnabled(!dropboxSyncEnabled)}
+                      className={`relative w-10 h-5 rounded-full transition-colors ${dropboxSyncEnabled ? 'bg-violet-500' : 'bg-surface-400'}`}
+                    >
+                      <span
+                        className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
+                        style={{ left: dropboxSyncEnabled ? 22 : 2 }}
+                      />
+                    </button>
+                  </div>
+                  {dropboxSyncEnabled && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-[12px] text-surface-600">Every</label>
+                      <Select
+                        value={String(dropboxSyncInterval)}
+                        onValueChange={(val) => setDropboxSyncInterval(Number(val))}
+                      >
+                        <SelectTrigger className="text-[13px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="5">5 minutes</SelectItem>
+                          <SelectItem value="15">15 minutes</SelectItem>
+                          <SelectItem value="30">30 minutes</SelectItem>
+                          <SelectItem value="60">1 hour</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+
+                {/* Encrypted Config Backup */}
+                <div className="border-t border-border pt-4">
+                  <p className="text-[13px] font-medium text-surface-900 mb-1">
+                    Encrypted Config Backup
+                  </p>
+                  <p className="text-[11px] text-surface-500 mb-3">
+                    Encrypts all config files and pushes to Dropbox on each sync.
+                    {autoBackupPasswordSet && !autoBackupPassword && (
+                      <span className="text-green-500 ml-1">Password configured.</span>
+                    )}
+                  </p>
+                  <input
+                    type="password"
+                    placeholder={
+                      autoBackupPasswordSet
+                        ? '••••••••  (leave blank to keep)'
+                        : 'Set backup password...'
+                    }
+                    value={autoBackupPassword}
+                    onChange={(e) => setAutoBackupPassword(e.target.value)}
+                    className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                  />
+                </div>
+
+                <Button
+                  onClick={handleSaveSchedules}
+                  disabled={isScheduleSaving}
+                  className="bg-violet-500 hover:bg-violet-400"
+                >
+                  {scheduleSaved ? (
+                    <>
+                      <CheckCircle className="w-4 h-4" />
+                      Saved
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      {isScheduleSaving ? 'Saving...' : 'Save Schedules'}
+                    </>
+                  )}
+                </Button>
+              </div>
+            </Card>
+          </>
+        )}
+
+        {showIn(['all']) && (
+          <>
+            {/* ── Integrations ─────────────────────────────────── */}
+            <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
+              Integrations
+            </p>
+          </>
+        )}
+
+        {showIn(['sync']) && (
+          <>
+            {/* Dropbox Connection */}
+            <DropboxConnectionSection />
+          </>
+        )}
+
+        {showIn(['banking']) && (
+          <>
+            {/* SimpleFIN Bank Accounts */}
+            <Card variant="glass" className="p-6 mb-8">
+              <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
+                <Landmark className="w-5 h-5" />
+                Bank Accounts (SimpleFIN)
+              </h3>
+              <p className="text-[13px] text-surface-600 mb-4">
+                Connect bank accounts (checking, savings, credit cards) via SimpleFIN Bridge.
+                $15/year, supports 16,000+ US institutions. Get a setup token at{' '}
+                <a
+                  href="https://beta-bridge.simplefin.org/simplefin/create"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent-400 hover:underline inline-flex items-center gap-1"
+                >
+                  beta-bridge.simplefin.org
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </p>
+
+              {simplefinConfigured ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 p-4 bg-emerald-500/8 border border-emerald-500/20 rounded-xl">
+                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                    <div className="flex-1">
+                      <p className="text-[13px] font-medium text-emerald-400">Connected</p>
+                      <p className="text-[11px] text-surface-600">
+                        SimpleFIN Bridge is active. View balances in the Banks tab.
+                      </p>
+                    </div>
+                  </div>
+                  <Button variant="ghost-danger" size="xs" onClick={handleRemoveSimplefin}>
+                    Remove SimpleFIN
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <label className="text-[12px] font-medium text-surface-700">Setup Token</label>
+                    <input
+                      type="text"
+                      value={simplefinToken}
+                      onChange={(e) => setSimplefinToken(e.target.value)}
+                      placeholder="Paste your SimpleFIN setup token"
+                      className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-xl text-[13px] text-surface-900 placeholder-surface-500 outline-none focus:ring-2 focus:ring-accent-500/30 font-mono"
+                    />
+                    <p className="text-[11px] text-surface-500">
+                      1. Sign up at beta-bridge.simplefin.org ($15/year) 2. Connect your banks 3.
+                      Create a setup token and paste it here
+                    </p>
+                  </div>
+                  <Button
+                    onClick={handleSaveSimplefin}
+                    disabled={isSimplefinSaving || !simplefinToken}
+                    className="w-full"
                   >
-                    get one free
-                  </a>
-                  )
-                </span>
+                    {isSimplefinSaving ? 'Connecting...' : 'Connect SimpleFIN'}
+                  </Button>
+                </div>
+              )}
+            </Card>
+
+            {/* SnapTrade Brokerage Connection */}
+            <Card variant="glass" className="p-6 mb-8">
+              <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
+                <Key className="w-5 h-5" />
+                Brokerage Sync (SnapTrade)
+              </h3>
+              <p className="text-[13px] text-surface-600 mb-4">
+                Connect brokerage accounts (Vanguard, Fidelity, Robinhood, Chase, etc.) via
+                SnapTrade to auto-sync holdings. Free tier supports 5 connections. Get API keys at{' '}
+                <a
+                  href="https://dashboard.snaptrade.com/signup"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent-400 hover:underline inline-flex items-center gap-1"
+                >
+                  dashboard.snaptrade.com
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </p>
+
+              {snapTradeStatus?.configured ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 p-4 bg-emerald-500/8 border border-emerald-500/20 rounded-xl">
+                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                    <div className="flex-1">
+                      <p className="text-[13px] font-medium text-emerald-400">Connected</p>
+                      <p className="text-[11px] text-surface-600">
+                        SnapTrade is active. Manage linked brokerages in the Brokers tab.
+                      </p>
+                    </div>
+                  </div>
+                  <Button variant="ghost-danger" size="xs" onClick={handleRemoveSnapTrade}>
+                    Disconnect SnapTrade
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <label className="text-[12px] font-medium text-surface-700">Client ID</label>
+                    <input
+                      type="text"
+                      value={snapTradeClientId}
+                      onChange={(e) => setSnapTradeClientId(e.target.value)}
+                      placeholder="Your SnapTrade Client ID"
+                      className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-xl text-[13px] text-surface-900 placeholder-surface-500 outline-none focus:ring-2 focus:ring-accent-500/30 font-mono"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[12px] font-medium text-surface-700">Consumer Key</label>
+                    <input
+                      type="password"
+                      value={snapTradeConsumerKey}
+                      onChange={(e) => setSnapTradeConsumerKey(e.target.value)}
+                      placeholder="Your SnapTrade Consumer Key"
+                      className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-xl text-[13px] text-surface-900 placeholder-surface-500 outline-none focus:ring-2 focus:ring-accent-500/30 font-mono"
+                    />
+                  </div>
+                  <Button
+                    onClick={handleSnapTradeSetup}
+                    disabled={isSnapTradeSaving || !snapTradeClientId || !snapTradeConsumerKey}
+                    className="w-full"
+                  >
+                    {isSnapTradeSaving ? 'Connecting...' : 'Connect SnapTrade'}
+                  </Button>
+                </div>
+              )}
+            </Card>
+          </>
+        )}
+
+        {showIn(['crypto']) && (
+          <>
+            {/* Crypto Settings Section */}
+            <Card variant="glass" className="p-6 mb-8">
+              <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
+                <Bitcoin className="w-5 h-5" />
+                Crypto Tracking
+              </h3>
+              <p className="text-[13px] text-surface-600 mb-4">
+                Connect exchanges and wallets to track balances in the Crypto view.
+              </p>
+
+              {/* Exchanges */}
+              <div className="mb-6">
+                <h4 className="text-[13px] font-semibold text-surface-800 mb-3 flex items-center gap-2">
+                  <Key className="w-3.5 h-3.5" />
+                  Exchange API Keys
+                </h4>
+
+                <button
+                  onClick={() => setShowExchangeHelp(!showExchangeHelp)}
+                  className="flex items-center gap-1.5 text-[12px] text-accent-400 hover:text-accent-300 mb-3 transition-colors"
+                >
+                  {showExchangeHelp ? (
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  ) : (
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  )}
+                  Where to get API keys
+                </button>
+                {showExchangeHelp && (
+                  <div className="p-3 bg-surface-200/20 border border-border rounded-xl mb-3 space-y-2.5">
+                    <div className="flex items-start gap-2">
+                      <span className="text-[12px] font-medium text-surface-800 min-w-[70px]">
+                        Coinbase
+                      </span>
+                      <a
+                        href="https://www.coinbase.com/settings/api"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[12px] text-accent-400 hover:underline flex items-center gap-1"
+                      >
+                        coinbase.com/settings/api
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                    <p className="text-[11px] text-surface-500 ml-[78px] -mt-1">
+                      Create a CDP API key. You&apos;ll get an{' '}
+                      <span className="font-medium">API Key Name</span> and{' '}
+                      <span className="font-medium">Private Key</span> (PEM). Select view
+                      permissions only.
+                    </p>
+                    <div className="flex items-start gap-2">
+                      <span className="text-[12px] font-medium text-surface-800 min-w-[70px]">
+                        Gemini
+                      </span>
+                      <a
+                        href="https://exchange.gemini.com/settings/api"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[12px] text-accent-400 hover:underline flex items-center gap-1"
+                      >
+                        exchange.gemini.com/settings/api
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                    <p className="text-[11px] text-surface-500 ml-[78px] -mt-1">
+                      Create a new API key. Select <span className="font-medium">Auditor</span> role
+                      for read-only access.
+                    </p>
+                    <div className="flex items-start gap-2">
+                      <span className="text-[12px] font-medium text-surface-800 min-w-[70px]">
+                        Kraken
+                      </span>
+                      <a
+                        href="https://pro.kraken.com/app/settings/api"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[12px] text-accent-400 hover:underline flex items-center gap-1"
+                      >
+                        pro.kraken.com/app/settings/api
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                    <p className="text-[11px] text-surface-500 ml-[78px] -mt-1">
+                      Generate a new key with only <span className="font-medium">
+                        Query Funds
+                      </span>{' '}
+                      permission. No trading needed.
+                    </p>
+                  </div>
+                )}
+
+                {cryptoExchanges.length > 0 && (
+                  <div className="space-y-2 mb-3">
+                    {(showAllExchanges ? cryptoExchanges : cryptoExchanges.slice(0, 3)).map(
+                      (ex) => (
+                        <div
+                          key={ex.id}
+                          className="flex items-center justify-between p-3 bg-surface-200/30 border border-surface-400/20 rounded-xl"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div
+                              className={`w-2 h-2 rounded-full ${ex.enabled ? 'bg-emerald-400' : 'bg-surface-500'}`}
+                            />
+                            <span className="text-[13px] font-medium text-surface-900 capitalize">
+                              {ex.id}
+                            </span>
+                            {ex.keyHint && (
+                              <span className="text-[11px] text-surface-500 font-mono">
+                                ****{ex.keyHint}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => handleRemoveExchange(ex.id)}
+                            disabled={isCryptoSaving}
+                            className="p-1.5 text-surface-600 hover:text-danger-400 hover:bg-danger-500/10 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )
+                    )}
+                    {cryptoExchanges.length > 3 && (
+                      <button
+                        onClick={() => setShowAllExchanges(!showAllExchanges)}
+                        className="flex items-center gap-1.5 text-[12px] text-accent-400 hover:text-accent-300 transition-colors"
+                      >
+                        {showAllExchanges ? (
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        ) : (
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        )}
+                        {showAllExchanges ? 'Show less' : `Show ${cryptoExchanges.length - 3} more`}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {showAddExchange ? (
+                  <div className="p-4 bg-surface-200/20 border border-border rounded-xl space-y-3">
+                    <div>
+                      <label className="block text-[11px] font-medium text-surface-600 mb-1">
+                        Exchange
+                      </label>
+                      <Select
+                        value={newExchangeId}
+                        onValueChange={(val) => setNewExchangeId(val as CryptoExchangeId)}
+                      >
+                        <SelectTrigger className="w-full text-[13px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="coinbase">Coinbase</SelectItem>
+                          <SelectItem value="gemini">Gemini</SelectItem>
+                          <SelectItem value="kraken">Kraken</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-medium text-surface-600 mb-1">
+                        {newExchangeId === 'coinbase' ? 'API Key Name' : 'API Key'}
+                      </label>
+                      <input
+                        type="password"
+                        value={newExchangeKey}
+                        onChange={(e) => setNewExchangeKey(e.target.value)}
+                        placeholder={
+                          newExchangeId === 'coinbase' ? 'organizations/…/apiKeys/…' : 'API key...'
+                        }
+                        className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 font-mono placeholder:text-surface-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-medium text-surface-600 mb-1">
+                        {newExchangeId === 'coinbase' ? 'Private Key' : 'API Secret'}
+                      </label>
+                      <Textarea
+                        value={newExchangeSecret}
+                        onChange={(e) => setNewExchangeSecret(e.target.value)}
+                        placeholder={
+                          newExchangeId === 'coinbase'
+                            ? '-----BEGIN EC PRIVATE KEY-----\n...'
+                            : 'API secret...'
+                        }
+                        rows={newExchangeId === 'coinbase' ? 4 : 1}
+                        className="text-[13px] font-mono resize-none"
+                      />
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setShowAddExchange(false);
+                          setNewExchangeKey('');
+                          setNewExchangeSecret('');
+                          setNewExchangePassphrase('');
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleAddExchange}
+                        disabled={isCryptoSaving || !newExchangeKey || !newExchangeSecret}
+                      >
+                        {isCryptoSaving ? 'Saving...' : 'Add Exchange'}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button variant="ghost" onClick={() => setShowAddExchange(true)}>
+                    <Plus className="w-3.5 h-3.5" />
+                    Add Exchange
+                  </Button>
+                )}
+              </div>
+
+              {/* Wallets */}
+              <div>
+                <h4 className="text-[13px] font-semibold text-surface-800 mb-3 flex items-center gap-2">
+                  <Wallet className="w-3.5 h-3.5" />
+                  Wallet Addresses
+                </h4>
+
+                <button
+                  onClick={() => setShowWalletHelp(!showWalletHelp)}
+                  className="flex items-center gap-1.5 text-[12px] text-accent-400 hover:text-accent-300 mb-3 transition-colors"
+                >
+                  {showWalletHelp ? (
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  ) : (
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  )}
+                  How to find your wallet address
+                </button>
+                {showWalletHelp && (
+                  <div className="p-3 bg-surface-200/20 border border-border rounded-xl mb-3 space-y-2.5">
+                    <div>
+                      <p className="text-[12px] font-medium text-surface-800 mb-1">Bitcoin (BTC)</p>
+                      <p className="text-[11px] text-surface-600">
+                        Your BTC address starts with <span className="font-mono">bc1q...</span>,{' '}
+                        <span className="font-mono">1...</span>, or{' '}
+                        <span className="font-mono">3...</span>. Find it in your wallet app under
+                        &quot;Receive&quot;. You can verify it on{' '}
+                        <a
+                          href="https://blockstream.info/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-accent-400 hover:underline inline-flex items-center gap-0.5"
+                        >
+                          blockstream.info
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[12px] font-medium text-surface-800 mb-1">
+                        Ethereum (ETH)
+                      </p>
+                      <p className="text-[11px] text-surface-600">
+                        Your ETH address starts with <span className="font-mono">0x...</span> (42
+                        characters). Find it in MetaMask, Ledger, or any Ethereum wallet. Verify on{' '}
+                        <a
+                          href="https://etherscan.io/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-accent-400 hover:underline inline-flex items-center gap-0.5"
+                        >
+                          etherscan.io
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      </p>
+                    </div>
+                    <p className="text-[11px] text-surface-500 italic">
+                      Wallet queries are read-only — no private keys needed. Blockchain data is
+                      public.
+                    </p>
+                  </div>
+                )}
+
+                {cryptoWallets.length > 0 && (
+                  <div className="space-y-2 mb-3">
+                    {(showAllWallets ? cryptoWallets : cryptoWallets.slice(0, 3)).map((w) => (
+                      <div
+                        key={w.id}
+                        className="flex items-center justify-between p-3 bg-surface-200/30 border border-surface-400/20 rounded-xl"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-mono font-bold text-surface-700 uppercase">
+                              {w.chain}
+                            </span>
+                            <span className="text-[13px] font-medium text-surface-900">
+                              {w.label}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-surface-500 font-mono truncate">
+                            {w.address}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleRemoveWallet(w.id)}
+                          disabled={isCryptoSaving}
+                          className="p-1.5 text-surface-600 hover:text-danger-400 hover:bg-danger-500/10 rounded-lg transition-colors flex-shrink-0 ml-2"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                    {cryptoWallets.length > 3 && (
+                      <button
+                        onClick={() => setShowAllWallets(!showAllWallets)}
+                        className="flex items-center gap-1.5 text-[12px] text-accent-400 hover:text-accent-300 transition-colors"
+                      >
+                        {showAllWallets ? (
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        ) : (
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        )}
+                        {showAllWallets ? 'Show less' : `Show ${cryptoWallets.length - 3} more`}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {showAddWallet ? (
+                  <div className="p-4 bg-surface-200/20 border border-border rounded-xl space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-medium text-surface-600 mb-1">
+                          Chain
+                        </label>
+                        <Select
+                          value={newWalletChain}
+                          onValueChange={(val) => setNewWalletChain(val as CryptoChain)}
+                        >
+                          <SelectTrigger className="w-full text-[13px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="btc">Bitcoin (BTC)</SelectItem>
+                            <SelectItem value="eth">Ethereum (ETH)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-surface-600 mb-1">
+                          Label
+                        </label>
+                        <input
+                          type="text"
+                          value={newWalletLabel}
+                          onChange={(e) => setNewWalletLabel(e.target.value)}
+                          placeholder="e.g. Cold storage"
+                          className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 placeholder:text-surface-500"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-medium text-surface-600 mb-1">
+                        Address
+                      </label>
+                      <input
+                        type="text"
+                        value={newWalletAddress}
+                        onChange={(e) => setNewWalletAddress(e.target.value)}
+                        placeholder={newWalletChain === 'btc' ? 'bc1q... or 1A1zP1...' : '0x...'}
+                        className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 font-mono placeholder:text-surface-500"
+                      />
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setShowAddWallet(false);
+                          setNewWalletAddress('');
+                          setNewWalletLabel('');
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleAddWallet}
+                        disabled={isCryptoSaving || !newWalletAddress}
+                      >
+                        {isCryptoSaving ? 'Saving...' : 'Add Wallet'}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button variant="ghost" onClick={() => setShowAddWallet(true)}>
+                    <Plus className="w-3.5 h-3.5" />
+                    Add Wallet
+                  </Button>
+                )}
+
+                {/* Etherscan API Key */}
+                <div className="mt-4 pt-4 border-t border-border">
+                  <label className="block text-[11px] font-medium text-surface-600 mb-2">
+                    Etherscan API Key{' '}
+                    <span className="text-surface-500 font-normal">
+                      (for ERC-20 token balances &mdash;{' '}
+                      <a
+                        href="https://etherscan.io/myapikey"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-accent-400 hover:underline"
+                      >
+                        get one free
+                      </a>
+                      )
+                    </span>
+                  </label>
+                  {hasEtherscanKey ? (
+                    <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                      <CheckCircle className="w-4 h-4 text-emerald-400" />
+                      <span className="text-[13px] text-emerald-400 font-medium flex-1">
+                        Key set
+                        {etherscanKeyHint && (
+                          <span className="text-emerald-400/70 ml-2 font-mono">
+                            ****{etherscanKeyHint}
+                          </span>
+                        )}
+                      </span>
+                      <Button
+                        variant="ghost-danger"
+                        size="xs"
+                        onClick={handleRemoveEtherscanKey}
+                        disabled={isCryptoSaving}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Input
+                        type="password"
+                        value={newEtherscanKey}
+                        onChange={(e) => setNewEtherscanKey(e.target.value)}
+                        placeholder="Etherscan API key..."
+                        className="flex-1 text-[13px] font-mono"
+                      />
+                      <Button
+                        onClick={handleSaveEtherscanKey}
+                        disabled={isCryptoSaving || !newEtherscanKey}
+                      >
+                        Save
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Card>
+          </>
+        )}
+
+        {showIn(['all']) && (
+          <>
+            {/* ── Data Management ──────────────────────────────── */}
+            <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
+              Data Management
+            </p>
+          </>
+        )}
+
+        {showIn(['general']) && (
+          <>
+            {/* Entity Management Section */}
+            <Card variant="glass" className="p-6 mb-8">
+              <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
+                <Building2 className="w-5 h-5" />
+                Entity Management
+              </h3>
+              <p className="text-[13px] text-surface-600 mb-4">
+                Manage your tax entities (personal, LLCs, etc.)
+              </p>
+
+              <div className="space-y-3">
+                {(showAllEntities ? entities : entities.slice(0, 3)).map((entity) => {
+                  const Icon = getEntityIcon(entity);
+                  const colors = COLOR_MAP[entity.color] || COLOR_MAP.blue;
+                  const isEditing = editingEntity?.id === entity.id;
+                  const isPersonal = entity.id === 'personal';
+
+                  return (
+                    <div
+                      key={entity.id}
+                      className={`p-4 rounded-xl border ${isEditing ? 'border-accent-400/30 bg-accent-500/5' : `${colors.border} ${colors.bg}`}`}
+                    >
+                      {isEditing ? (
+                        <div className="space-y-4">
+                          {/* Edit Name */}
+                          <div>
+                            <label className="block text-[11px] font-medium text-surface-600 mb-1">
+                              Name
+                            </label>
+                            <input
+                              type="text"
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                              className="w-full px-3 py-2.5 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900"
+                            />
+                          </div>
+
+                          {/* Edit Description */}
+                          <div>
+                            <label className="block text-[11px] font-medium text-surface-600 mb-1">
+                              Description
+                            </label>
+                            <Textarea
+                              value={editDescription}
+                              onChange={(e) => setEditDescription(e.target.value)}
+                              placeholder="What documents does this entity contain? Notes for tax planning..."
+                              rows={2}
+                              className="text-[13px] resize-none"
+                            />
+                          </div>
+
+                          {/* Edit Icon */}
+                          <div>
+                            <label className="block text-[11px] font-medium text-surface-600 mb-2">
+                              Icon
+                            </label>
+                            <div className="flex flex-wrap gap-2">
+                              {AVAILABLE_ICONS.map(({ id, icon: IconComp, label }) => {
+                                const iconColors = COLOR_MAP[editColor] || COLOR_MAP.blue;
+                                return (
+                                  <button
+                                    key={id}
+                                    onClick={() => setEditIcon(id)}
+                                    title={label}
+                                    className={`p-2 rounded-lg border-2 transition-all ${
+                                      editIcon === id
+                                        ? `${iconColors.bg} ${iconColors.border} ${iconColors.text}`
+                                        : 'bg-surface-200/30 border-border text-surface-600 hover:border-surface-500'
+                                    }`}
+                                  >
+                                    <IconComp className="w-4 h-4" />
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Edit Color */}
+                          <div>
+                            <label className="block text-[11px] font-medium text-surface-600 mb-2">
+                              Color
+                            </label>
+                            <div className="flex gap-2.5">
+                              {AVAILABLE_COLORS.map((color) => {
+                                const colorStyles = COLOR_MAP[color];
+                                return (
+                                  <button
+                                    key={color}
+                                    onClick={() => setEditColor(color)}
+                                    className={`w-8 h-8 rounded-full ${colorStyles.bg} ${colorStyles.border} border-2 transition-all duration-150 ${
+                                      editColor === color
+                                        ? 'ring-2 ring-offset-2 ring-offset-surface-100 ' +
+                                          colorStyles.ring
+                                        : ''
+                                    }`}
+                                  />
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Edit Actions */}
+                          <div className="flex gap-2 pt-2">
+                            <Button variant="ghost" onClick={handleCancelEdit}>
+                              Cancel
+                            </Button>
+                            <Button onClick={handleSaveEntity} disabled={isEntitySaving}>
+                              {isEntitySaving ? 'Saving...' : 'Save Changes'}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-lg ${colors.bg}`}>
+                              <Icon className={`w-5 h-5 ${colors.text}`} />
+                            </div>
+                            <div>
+                              <p className={`font-medium ${colors.text}`}>{entity.name}</p>
+                              <p className="text-[11px] text-surface-600">{entity.id}</p>
+                              {entity.description && (
+                                <p className="text-[11px] text-surface-500 mt-0.5">
+                                  {entity.description}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {isPersonal && (
+                              <span className="text-[11px] text-surface-500 italic mr-2">
+                                Default
+                              </span>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => handleEditEntity(entity)}
+                              title="Edit entity"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                            {!isPersonal && (
+                              <Button
+                                variant="ghost-danger"
+                                size="icon-sm"
+                                onClick={() => handleRemoveEntity(entity)}
+                                title="Remove entity"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {entities.length > 3 && (
+                  <button
+                    onClick={() => setShowAllEntities(!showAllEntities)}
+                    className="flex items-center gap-1.5 text-[12px] text-accent-400 hover:text-accent-300 transition-colors mt-2"
+                  >
+                    {showAllEntities ? (
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    )}
+                    {showAllEntities ? 'Show less' : `Show ${entities.length - 3} more`}
+                  </button>
+                )}
+              </div>
+            </Card>
+          </>
+        )}
+
+        {showIn(['backup']) && (
+          <>
+            {/* Backup & Restore */}
+            <Card variant="glass" className="p-6 mb-8">
+              <h3 className="text-lg font-semibold text-surface-950 mb-2 flex items-center gap-2">
+                <Shield className="w-5 h-5" />
+                Encrypted Backup
+              </h3>
+              <p className="text-[13px] text-surface-600 mb-5">
+                AES-256 encrypted backup of all settings, API keys, cached data, and portfolio
+                snapshots.{' '}
+                {autoBackupPasswordSet ? (
+                  <span className="text-green-500">
+                    Auto-backup is enabled and syncs to Dropbox every cycle.
+                  </span>
+                ) : (
+                  <span className="text-surface-500">
+                    Set a backup password in Schedules above to auto-sync encrypted backups to
+                    Dropbox.
+                  </span>
+                )}
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Download Latest Auto-Backup */}
+                <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30 flex flex-col">
+                  <h4 className="text-[13px] font-semibold text-surface-900 mb-3 flex items-center gap-1.5">
+                    <Cloud className="w-4 h-4" />
+                    Download Latest
+                  </h4>
+                  <p className="text-[11px] text-surface-500 mb-3">
+                    Download the most recent auto-generated backup. Uses the password set in
+                    Schedules.
+                  </p>
+                  <div className="mt-auto">
+                    <Button
+                      onClick={handleDownloadLatestBackup}
+                      disabled={isDownloadingLatest}
+                      className="w-full bg-violet-500 hover:bg-violet-400"
+                    >
+                      <Download className="w-4 h-4" />
+                      {isDownloadingLatest ? 'Downloading...' : 'Download Latest'}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Manual Backup */}
+                <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30 flex flex-col">
+                  <h4 className="text-[13px] font-semibold text-surface-900 mb-3 flex items-center gap-1.5">
+                    <Download className="w-4 h-4" />
+                    Manual Backup
+                  </h4>
+                  <div className="space-y-2 mt-auto">
+                    <Input
+                      type="password"
+                      value={backupPassword}
+                      onChange={(e) => setBackupPassword(e.target.value)}
+                      placeholder="Encryption password (min 4 chars)"
+                      className="text-[13px] rounded-lg"
+                    />
+                    <Button
+                      onClick={handleBackup}
+                      disabled={isBackingUp || backupPassword.length < 4}
+                      className="w-full bg-violet-500 hover:bg-violet-400"
+                    >
+                      <Download className="w-4 h-4" />
+                      {isBackingUp ? 'Encrypting...' : 'Create & Download'}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Restore */}
+                <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30 flex flex-col">
+                  <h4 className="text-[13px] font-semibold text-surface-900 mb-3 flex items-center gap-1.5">
+                    <Upload className="w-4 h-4" />
+                    Restore Backup
+                  </h4>
+                  <div className="space-y-2 mt-auto">
+                    <input
+                      type="file"
+                      accept=".enc"
+                      onChange={(e) => setRestoreFile(e.target.files?.[0] || null)}
+                      className="w-full text-[12px] text-surface-700 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[12px] file:font-medium file:bg-surface-200/50 file:text-surface-700 hover:file:bg-surface-300/50"
+                    />
+                    <Input
+                      type="password"
+                      value={restorePassword}
+                      onChange={(e) => setRestorePassword(e.target.value)}
+                      placeholder="Backup password"
+                      className="text-[13px] rounded-lg"
+                    />
+                    <Button
+                      onClick={handleRestore}
+                      disabled={isRestoring || !restoreFile || !restorePassword}
+                      className="w-full bg-amber-500 hover:bg-amber-400"
+                    >
+                      <Upload className="w-4 h-4" />
+                      {isRestoring ? 'Restoring...' : 'Restore from Backup'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </>
+        )}
+
+        {showIn(['quant']) && (
+          <>
+            <Card variant="glass" className="p-6 mb-8">
+              <h3 className="text-lg font-semibold text-surface-950 mb-1 flex items-center gap-2">
+                <LineChart className="w-5 h-5 text-cyan-400" />
+                FRED API Key
+              </h3>
+              <p className="text-[13px] text-surface-600 mb-4 leading-relaxed">
+                Federal Reserve Economic Data (FRED) is the source for long-history macro series
+                used by the Quant section: treasury yields, unemployment, CPI, M2, fed funds rate,
+                DXY. The key is free and issued instantly.
+              </p>
+
+              <div className="mb-4 p-3 rounded-xl border border-border/40 bg-surface-100/40 text-[12px] text-surface-700 space-y-1.5">
+                <div className="font-semibold text-surface-900">How to get one (30 seconds):</div>
+                <ol className="list-decimal list-inside space-y-0.5">
+                  <li>
+                    Open{' '}
+                    <a
+                      href="https://fred.stlouisfed.org/docs/api/api_key.html"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-cyan-400 hover:underline"
+                    >
+                      fred.stlouisfed.org/docs/api/api_key.html
+                    </a>
+                  </li>
+                  <li>
+                    Click &ldquo;Request API Key&rdquo; and sign in (free account, ~20 seconds)
+                  </li>
+                  <li>
+                    App name: anything (e.g. <code className="text-cyan-400">docvault-quant</code>)
+                  </li>
+                  <li>
+                    App description:{' '}
+                    <em>
+                      &ldquo;Personal financial analysis dashboard for charting historical S&amp;P
+                      500, treasury yields, and macro indicators.&rdquo;
+                    </em>
+                  </li>
+                  <li>Submit — your 32-char key is issued instantly. Paste it below.</li>
+                </ol>
+                <div className="text-surface-500 text-[11px] pt-1">
+                  Free tier: 120 requests/minute. Rate limits don&apos;t apply to our cached
+                  endpoints.
+                </div>
+              </div>
+
+              <label className="block text-[13px] font-medium text-surface-800 mb-2">
+                FRED API Key
               </label>
-              {hasGeoapifyKey ? (
+              {hasFredKey ? (
                 <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
                   <CheckCircle className="w-4 h-4 text-emerald-400" />
                   <span className="text-[13px] text-emerald-400 font-medium flex-1">
                     Key set
-                    {geoapifyKeyHint && (
-                      <span className="text-emerald-400/70 ml-2 font-mono">
-                        ****{geoapifyKeyHint}
-                      </span>
+                    {fredKeyHint && (
+                      <span className="text-emerald-400/70 ml-2 font-mono">****{fredKeyHint}</span>
                     )}
                   </span>
                   <Button
                     variant="ghost-danger"
                     size="xs"
-                    onClick={handleRemoveGeoapifyKey}
+                    onClick={handleRemoveFredKey}
                     disabled={isSaving}
                   >
                     Remove
@@ -1250,1149 +2653,35 @@ export function SettingsView() {
                 <div className="flex gap-2">
                   <Input
                     type="password"
-                    value={newGeoapifyKey}
-                    onChange={(e) => setNewGeoapifyKey(e.target.value)}
-                    placeholder="Geoapify API key..."
+                    value={newFredKey}
+                    onChange={(e) => setNewFredKey(e.target.value)}
+                    placeholder="FRED API key (32 hex chars)..."
                     className="flex-1 text-[13px] font-mono"
                   />
-                  <Button onClick={handleSaveGeoapifyKey} disabled={isSaving || !newGeoapifyKey}>
+                  <Button onClick={handleSaveFredKey} disabled={isSaving || !newFredKey}>
+                    <Save className="w-4 h-4" />
                     Save
                   </Button>
                 </div>
               )}
-            </div>
-          </div>
-        )}
-      </Card>
 
-      {/* ── Sync & Scheduling ─────────────────────────── */}
-      <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
-        Sync & Scheduling
-      </p>
-
-      {/* Sync Status */}
-      <Card variant="glass" className="p-6 mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-surface-950 flex items-center gap-2">
-            <RefreshCw className="w-5 h-5" />
-            Sync Status
-          </h3>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={() => {
-              void loadSyncStatus();
-              void loadCacheStatus();
-            }}
-            title="Refresh all"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-          </Button>
-        </div>
-
-        <div className="space-y-3">
-          {/* Dropbox Sync */}
-          <div
-            className={`flex items-center gap-3 p-4 rounded-xl border ${
-              syncStatus === null || syncStatus.status === 'unknown'
-                ? 'bg-surface-200/30 border-surface-400/20'
-                : syncStatus.status === 'ok'
-                  ? 'bg-emerald-500/8 border-emerald-500/20'
-                  : syncStatus.status === 'syncing'
-                    ? 'bg-blue-500/8 border-blue-500/20'
-                    : syncStatus.status === 'error'
-                      ? 'bg-red-500/10 border-red-500/25'
-                      : 'bg-surface-200/30 border-surface-400/20'
-            }`}
-          >
-            <Cloud className="w-4 h-4 flex-shrink-0 text-surface-600" />
-            <div
-              className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                syncStatus === null || syncStatus.status === 'unknown'
-                  ? 'bg-surface-500'
-                  : syncStatus.status === 'ok'
-                    ? 'bg-emerald-400'
-                    : syncStatus.status === 'syncing'
-                      ? 'bg-blue-400 animate-pulse'
-                      : syncStatus.status === 'error'
-                        ? 'bg-red-400'
-                        : 'bg-surface-500'
-              }`}
-            />
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-medium text-surface-900">Dropbox</p>
-              <p className="text-[11px] text-surface-600">
-                {syncStatus === null || syncStatus.status === 'unknown'
-                  ? 'Not configured'
-                  : syncStatus.status === 'syncing'
-                    ? 'Syncing...'
-                    : syncStatus.status === 'error'
-                      ? `${syncStatus.errors} error${syncStatus.errors !== 1 ? 's' : ''}`
-                      : syncStatus.lastSync
-                        ? formatRelativeTime(syncStatus.lastSync)
-                        : 'No sync yet'}
-                {syncStatus?.status === 'ok' && syncStatus.entitiesSynced > 0 && (
-                  <span className="text-surface-500"> · {syncStatus.entitiesSynced} entities</span>
-                )}
-              </p>
-            </div>
-            {syncStatus?.nextSync && (
-              <p className="text-[11px] text-surface-500 flex-shrink-0">
-                Next: {formatRelativeTime(syncStatus.nextSync)}
-              </p>
-            )}
-          </div>
-
-          {/* Crypto Sync */}
-          <div
-            className={`flex items-center gap-3 p-4 rounded-xl border ${
-              cryptoLastUpdated
-                ? 'bg-emerald-500/8 border-emerald-500/20'
-                : 'bg-surface-200/30 border-surface-400/20'
-            }`}
-          >
-            <Bitcoin className="w-4 h-4 flex-shrink-0 text-surface-600" />
-            <div
-              className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                cryptoLastUpdated ? 'bg-emerald-400' : 'bg-surface-500'
-              }`}
-            />
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-medium text-surface-900">Crypto</p>
-              <p className="text-[11px] text-surface-600">
-                {cryptoLastUpdated ? formatRelativeTime(cryptoLastUpdated) : 'Never fetched'}
-              </p>
-            </div>
-          </div>
-
-          {/* Broker Sync */}
-          <div
-            className={`flex items-center gap-3 p-4 rounded-xl border ${
-              brokerLastUpdated
-                ? 'bg-emerald-500/8 border-emerald-500/20'
-                : 'bg-surface-200/30 border-surface-400/20'
-            }`}
-          >
-            <Building2 className="w-4 h-4 flex-shrink-0 text-surface-600" />
-            <div
-              className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                brokerLastUpdated ? 'bg-emerald-400' : 'bg-surface-500'
-              }`}
-            />
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-medium text-surface-900">Brokers</p>
-              <p className="text-[11px] text-surface-600">
-                {brokerLastUpdated ? formatRelativeTime(brokerLastUpdated) : 'Never fetched'}
-              </p>
-            </div>
-          </div>
-
-          {/* Bank Account Sync */}
-          <div
-            className={`flex items-center gap-3 p-4 rounded-xl border ${
-              bankLastUpdated
-                ? 'bg-emerald-500/8 border-emerald-500/20'
-                : 'bg-surface-200/30 border-surface-400/20'
-            }`}
-          >
-            <Landmark className="w-4 h-4 flex-shrink-0 text-surface-600" />
-            <div
-              className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                bankLastUpdated ? 'bg-emerald-400' : 'bg-surface-500'
-              }`}
-            />
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-medium text-surface-900">Bank Accounts</p>
-              <p className="text-[11px] text-surface-600">
-                {bankLastUpdated ? formatRelativeTime(bankLastUpdated) : 'Not connected'}
-              </p>
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      {/* Scheduled Tasks */}
-      <Card variant="glass" className="p-6 mb-8">
-        <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
-          <RefreshCw className="w-5 h-5" />
-          Scheduled Tasks
-        </h3>
-        <p className="text-[13px] text-surface-600 mb-4">
-          Configure automatic portfolio snapshots and Dropbox sync intervals. Changes take effect
-          immediately.
-        </p>
-
-        <div className="space-y-4">
-          {/* Portfolio Snapshots */}
-          <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <p className="text-[13px] font-medium text-surface-900">Portfolio Snapshots</p>
-                <p className="text-[11px] text-surface-500">
-                  Saves daily portfolio value for the history chart
-                </p>
-              </div>
-              <button
-                onClick={() => setSnapshotEnabled(!snapshotEnabled)}
-                className={`relative w-10 h-5 rounded-full transition-colors ${snapshotEnabled ? 'bg-violet-500' : 'bg-surface-400'}`}
-              >
-                <span
-                  className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${snapshotEnabled ? 'left-5.5 translate-x-0' : 'left-0.5'}`}
-                  style={{ left: snapshotEnabled ? 22 : 2 }}
-                />
-              </button>
-            </div>
-            {snapshotEnabled && (
-              <div className="flex items-center gap-2">
-                <label className="text-[12px] text-surface-600">Every</label>
-                <Select
-                  value={String(snapshotInterval)}
-                  onValueChange={(val) => setSnapshotInterval(Number(val))}
-                >
-                  <SelectTrigger className="text-[13px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="60">1 hour</SelectItem>
-                    <SelectItem value="360">6 hours</SelectItem>
-                    <SelectItem value="720">12 hours</SelectItem>
-                    <SelectItem value="1440">24 hours</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-
-          {/* Dropbox Sync */}
-          <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <p className="text-[13px] font-medium text-surface-900">Dropbox Sync</p>
-                <p className="text-[11px] text-surface-500">Runs sync-to-dropbox.sh via rclone</p>
-              </div>
-              <button
-                onClick={() => setDropboxSyncEnabled(!dropboxSyncEnabled)}
-                className={`relative w-10 h-5 rounded-full transition-colors ${dropboxSyncEnabled ? 'bg-violet-500' : 'bg-surface-400'}`}
-              >
-                <span
-                  className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
-                  style={{ left: dropboxSyncEnabled ? 22 : 2 }}
-                />
-              </button>
-            </div>
-            {dropboxSyncEnabled && (
-              <div className="flex items-center gap-2">
-                <label className="text-[12px] text-surface-600">Every</label>
-                <Select
-                  value={String(dropboxSyncInterval)}
-                  onValueChange={(val) => setDropboxSyncInterval(Number(val))}
-                >
-                  <SelectTrigger className="text-[13px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="5">5 minutes</SelectItem>
-                    <SelectItem value="15">15 minutes</SelectItem>
-                    <SelectItem value="30">30 minutes</SelectItem>
-                    <SelectItem value="60">1 hour</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-
-          {/* Encrypted Config Backup */}
-          <div className="border-t border-border pt-4">
-            <p className="text-[13px] font-medium text-surface-900 mb-1">Encrypted Config Backup</p>
-            <p className="text-[11px] text-surface-500 mb-3">
-              Encrypts all config files and pushes to Dropbox on each sync.
-              {autoBackupPasswordSet && !autoBackupPassword && (
-                <span className="text-green-500 ml-1">Password configured.</span>
-              )}
-            </p>
-            <input
-              type="password"
-              placeholder={
-                autoBackupPasswordSet ? '••••••••  (leave blank to keep)' : 'Set backup password...'
-              }
-              value={autoBackupPassword}
-              onChange={(e) => setAutoBackupPassword(e.target.value)}
-              className="w-full px-3 py-2 bg-surface-200/30 border border-border rounded-lg text-[13px] text-surface-950 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
-            />
-          </div>
-
-          <Button
-            onClick={handleSaveSchedules}
-            disabled={isScheduleSaving}
-            className="bg-violet-500 hover:bg-violet-400"
-          >
-            {scheduleSaved ? (
-              <>
-                <CheckCircle className="w-4 h-4" />
-                Saved
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4" />
-                {isScheduleSaving ? 'Saving...' : 'Save Schedules'}
-              </>
-            )}
-          </Button>
-        </div>
-      </Card>
-
-      {/* ── Integrations ─────────────────────────────────── */}
-      <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
-        Integrations
-      </p>
-
-      {/* Dropbox Connection */}
-      <DropboxConnectionSection />
-
-      {/* SimpleFIN Bank Accounts */}
-      <Card variant="glass" className="p-6 mb-8">
-        <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
-          <Landmark className="w-5 h-5" />
-          Bank Accounts (SimpleFIN)
-        </h3>
-        <p className="text-[13px] text-surface-600 mb-4">
-          Connect bank accounts (checking, savings, credit cards) via SimpleFIN Bridge. $15/year,
-          supports 16,000+ US institutions. Get a setup token at{' '}
-          <a
-            href="https://beta-bridge.simplefin.org/simplefin/create"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-accent-400 hover:underline inline-flex items-center gap-1"
-          >
-            beta-bridge.simplefin.org
-            <ExternalLink className="w-3 h-3" />
-          </a>
-        </p>
-
-        {simplefinConfigured ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-3 p-4 bg-emerald-500/8 border border-emerald-500/20 rounded-xl">
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-              <div className="flex-1">
-                <p className="text-[13px] font-medium text-emerald-400">Connected</p>
-                <p className="text-[11px] text-surface-600">
-                  SimpleFIN Bridge is active. View balances in the Banks tab.
-                </p>
-              </div>
-            </div>
-            <Button variant="ghost-danger" size="xs" onClick={handleRemoveSimplefin}>
-              Remove SimpleFIN
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="space-y-2">
-              <label className="text-[12px] font-medium text-surface-700">Setup Token</label>
-              <input
-                type="text"
-                value={simplefinToken}
-                onChange={(e) => setSimplefinToken(e.target.value)}
-                placeholder="Paste your SimpleFIN setup token"
-                className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-xl text-[13px] text-surface-900 placeholder-surface-500 outline-none focus:ring-2 focus:ring-accent-500/30 font-mono"
-              />
-              <p className="text-[11px] text-surface-500">
-                1. Sign up at beta-bridge.simplefin.org ($15/year) 2. Connect your banks 3. Create a
-                setup token and paste it here
-              </p>
-            </div>
-            <Button
-              onClick={handleSaveSimplefin}
-              disabled={isSimplefinSaving || !simplefinToken}
-              className="w-full"
-            >
-              {isSimplefinSaving ? 'Connecting...' : 'Connect SimpleFIN'}
-            </Button>
-          </div>
-        )}
-      </Card>
-
-      {/* SnapTrade Brokerage Connection */}
-      <Card variant="glass" className="p-6 mb-8">
-        <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
-          <Key className="w-5 h-5" />
-          Brokerage Sync (SnapTrade)
-        </h3>
-        <p className="text-[13px] text-surface-600 mb-4">
-          Connect brokerage accounts (Vanguard, Fidelity, Robinhood, Chase, etc.) via SnapTrade to
-          auto-sync holdings. Free tier supports 5 connections. Get API keys at{' '}
-          <a
-            href="https://dashboard.snaptrade.com/signup"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-accent-400 hover:underline inline-flex items-center gap-1"
-          >
-            dashboard.snaptrade.com
-            <ExternalLink className="w-3 h-3" />
-          </a>
-        </p>
-
-        {snapTradeStatus?.configured ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-3 p-4 bg-emerald-500/8 border border-emerald-500/20 rounded-xl">
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-              <div className="flex-1">
-                <p className="text-[13px] font-medium text-emerald-400">Connected</p>
-                <p className="text-[11px] text-surface-600">
-                  SnapTrade is active. Manage linked brokerages in the Brokers tab.
-                </p>
-              </div>
-            </div>
-            <Button variant="ghost-danger" size="xs" onClick={handleRemoveSnapTrade}>
-              Disconnect SnapTrade
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="space-y-2">
-              <label className="text-[12px] font-medium text-surface-700">Client ID</label>
-              <input
-                type="text"
-                value={snapTradeClientId}
-                onChange={(e) => setSnapTradeClientId(e.target.value)}
-                placeholder="Your SnapTrade Client ID"
-                className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-xl text-[13px] text-surface-900 placeholder-surface-500 outline-none focus:ring-2 focus:ring-accent-500/30 font-mono"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[12px] font-medium text-surface-700">Consumer Key</label>
-              <input
-                type="password"
-                value={snapTradeConsumerKey}
-                onChange={(e) => setSnapTradeConsumerKey(e.target.value)}
-                placeholder="Your SnapTrade Consumer Key"
-                className="w-full px-3 py-2.5 bg-surface-100 border border-border rounded-xl text-[13px] text-surface-900 placeholder-surface-500 outline-none focus:ring-2 focus:ring-accent-500/30 font-mono"
-              />
-            </div>
-            <Button
-              onClick={handleSnapTradeSetup}
-              disabled={isSnapTradeSaving || !snapTradeClientId || !snapTradeConsumerKey}
-              className="w-full"
-            >
-              {isSnapTradeSaving ? 'Connecting...' : 'Connect SnapTrade'}
-            </Button>
-          </div>
-        )}
-      </Card>
-
-      {/* Crypto Settings Section */}
-      <Card variant="glass" className="p-6 mb-8">
-        <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
-          <Bitcoin className="w-5 h-5" />
-          Crypto Tracking
-        </h3>
-        <p className="text-[13px] text-surface-600 mb-4">
-          Connect exchanges and wallets to track balances in the Crypto view.
-        </p>
-
-        {/* Exchanges */}
-        <div className="mb-6">
-          <h4 className="text-[13px] font-semibold text-surface-800 mb-3 flex items-center gap-2">
-            <Key className="w-3.5 h-3.5" />
-            Exchange API Keys
-          </h4>
-
-          <button
-            onClick={() => setShowExchangeHelp(!showExchangeHelp)}
-            className="flex items-center gap-1.5 text-[12px] text-accent-400 hover:text-accent-300 mb-3 transition-colors"
-          >
-            {showExchangeHelp ? (
-              <ChevronDown className="w-3.5 h-3.5" />
-            ) : (
-              <ChevronRight className="w-3.5 h-3.5" />
-            )}
-            Where to get API keys
-          </button>
-          {showExchangeHelp && (
-            <div className="p-3 bg-surface-200/20 border border-border rounded-xl mb-3 space-y-2.5">
-              <div className="flex items-start gap-2">
-                <span className="text-[12px] font-medium text-surface-800 min-w-[70px]">
-                  Coinbase
-                </span>
+              <p className="text-[11px] text-surface-500 mt-3">
+                S&amp;P 500 price data itself comes from the{' '}
                 <a
-                  href="https://www.coinbase.com/settings/api"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[12px] text-accent-400 hover:underline flex items-center gap-1"
-                >
-                  coinbase.com/settings/api
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
-              <p className="text-[11px] text-surface-500 ml-[78px] -mt-1">
-                Create a CDP API key. You&apos;ll get an{' '}
-                <span className="font-medium">API Key Name</span> and{' '}
-                <span className="font-medium">Private Key</span> (PEM). Select view permissions
-                only.
-              </p>
-              <div className="flex items-start gap-2">
-                <span className="text-[12px] font-medium text-surface-800 min-w-[70px]">
-                  Gemini
-                </span>
-                <a
-                  href="https://exchange.gemini.com/settings/api"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[12px] text-accent-400 hover:underline flex items-center gap-1"
-                >
-                  exchange.gemini.com/settings/api
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
-              <p className="text-[11px] text-surface-500 ml-[78px] -mt-1">
-                Create a new API key. Select <span className="font-medium">Auditor</span> role for
-                read-only access.
-              </p>
-              <div className="flex items-start gap-2">
-                <span className="text-[12px] font-medium text-surface-800 min-w-[70px]">
-                  Kraken
-                </span>
-                <a
-                  href="https://pro.kraken.com/app/settings/api"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[12px] text-accent-400 hover:underline flex items-center gap-1"
-                >
-                  pro.kraken.com/app/settings/api
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
-              <p className="text-[11px] text-surface-500 ml-[78px] -mt-1">
-                Generate a new key with only <span className="font-medium">Query Funds</span>{' '}
-                permission. No trading needed.
-              </p>
-            </div>
-          )}
-
-          {cryptoExchanges.length > 0 && (
-            <div className="space-y-2 mb-3">
-              {(showAllExchanges ? cryptoExchanges : cryptoExchanges.slice(0, 3)).map((ex) => (
-                <div
-                  key={ex.id}
-                  className="flex items-center justify-between p-3 bg-surface-200/30 border border-surface-400/20 rounded-xl"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div
-                      className={`w-2 h-2 rounded-full ${ex.enabled ? 'bg-emerald-400' : 'bg-surface-500'}`}
-                    />
-                    <span className="text-[13px] font-medium text-surface-900 capitalize">
-                      {ex.id}
-                    </span>
-                    {ex.keyHint && (
-                      <span className="text-[11px] text-surface-500 font-mono">
-                        ****{ex.keyHint}
-                      </span>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => handleRemoveExchange(ex.id)}
-                    disabled={isCryptoSaving}
-                    className="p-1.5 text-surface-600 hover:text-danger-400 hover:bg-danger-500/10 rounded-lg transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-              {cryptoExchanges.length > 3 && (
-                <button
-                  onClick={() => setShowAllExchanges(!showAllExchanges)}
-                  className="flex items-center gap-1.5 text-[12px] text-accent-400 hover:text-accent-300 transition-colors"
-                >
-                  {showAllExchanges ? (
-                    <ChevronUp className="w-3.5 h-3.5" />
-                  ) : (
-                    <ChevronDown className="w-3.5 h-3.5" />
-                  )}
-                  {showAllExchanges ? 'Show less' : `Show ${cryptoExchanges.length - 3} more`}
-                </button>
-              )}
-            </div>
-          )}
-
-          {showAddExchange ? (
-            <div className="p-4 bg-surface-200/20 border border-border rounded-xl space-y-3">
-              <div>
-                <label className="block text-[11px] font-medium text-surface-600 mb-1">
-                  Exchange
-                </label>
-                <Select
-                  value={newExchangeId}
-                  onValueChange={(val) => setNewExchangeId(val as CryptoExchangeId)}
-                >
-                  <SelectTrigger className="w-full text-[13px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="coinbase">Coinbase</SelectItem>
-                    <SelectItem value="gemini">Gemini</SelectItem>
-                    <SelectItem value="kraken">Kraken</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-surface-600 mb-1">
-                  {newExchangeId === 'coinbase' ? 'API Key Name' : 'API Key'}
-                </label>
-                <input
-                  type="password"
-                  value={newExchangeKey}
-                  onChange={(e) => setNewExchangeKey(e.target.value)}
-                  placeholder={
-                    newExchangeId === 'coinbase' ? 'organizations/…/apiKeys/…' : 'API key...'
-                  }
-                  className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 font-mono placeholder:text-surface-500"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-surface-600 mb-1">
-                  {newExchangeId === 'coinbase' ? 'Private Key' : 'API Secret'}
-                </label>
-                <Textarea
-                  value={newExchangeSecret}
-                  onChange={(e) => setNewExchangeSecret(e.target.value)}
-                  placeholder={
-                    newExchangeId === 'coinbase'
-                      ? '-----BEGIN EC PRIVATE KEY-----\n...'
-                      : 'API secret...'
-                  }
-                  rows={newExchangeId === 'coinbase' ? 4 : 1}
-                  className="text-[13px] font-mono resize-none"
-                />
-              </div>
-              <div className="flex gap-2 pt-1">
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setShowAddExchange(false);
-                    setNewExchangeKey('');
-                    setNewExchangeSecret('');
-                    setNewExchangePassphrase('');
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleAddExchange}
-                  disabled={isCryptoSaving || !newExchangeKey || !newExchangeSecret}
-                >
-                  {isCryptoSaving ? 'Saving...' : 'Add Exchange'}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <Button variant="ghost" onClick={() => setShowAddExchange(true)}>
-              <Plus className="w-3.5 h-3.5" />
-              Add Exchange
-            </Button>
-          )}
-        </div>
-
-        {/* Wallets */}
-        <div>
-          <h4 className="text-[13px] font-semibold text-surface-800 mb-3 flex items-center gap-2">
-            <Wallet className="w-3.5 h-3.5" />
-            Wallet Addresses
-          </h4>
-
-          <button
-            onClick={() => setShowWalletHelp(!showWalletHelp)}
-            className="flex items-center gap-1.5 text-[12px] text-accent-400 hover:text-accent-300 mb-3 transition-colors"
-          >
-            {showWalletHelp ? (
-              <ChevronDown className="w-3.5 h-3.5" />
-            ) : (
-              <ChevronRight className="w-3.5 h-3.5" />
-            )}
-            How to find your wallet address
-          </button>
-          {showWalletHelp && (
-            <div className="p-3 bg-surface-200/20 border border-border rounded-xl mb-3 space-y-2.5">
-              <div>
-                <p className="text-[12px] font-medium text-surface-800 mb-1">Bitcoin (BTC)</p>
-                <p className="text-[11px] text-surface-600">
-                  Your BTC address starts with <span className="font-mono">bc1q...</span>,{' '}
-                  <span className="font-mono">1...</span>, or{' '}
-                  <span className="font-mono">3...</span>. Find it in your wallet app under
-                  &quot;Receive&quot;. You can verify it on{' '}
-                  <a
-                    href="https://blockstream.info/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-accent-400 hover:underline inline-flex items-center gap-0.5"
-                  >
-                    blockstream.info
-                    <ExternalLink className="w-2.5 h-2.5" />
-                  </a>
-                </p>
-              </div>
-              <div>
-                <p className="text-[12px] font-medium text-surface-800 mb-1">Ethereum (ETH)</p>
-                <p className="text-[11px] text-surface-600">
-                  Your ETH address starts with <span className="font-mono">0x...</span> (42
-                  characters). Find it in MetaMask, Ledger, or any Ethereum wallet. Verify on{' '}
-                  <a
-                    href="https://etherscan.io/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-accent-400 hover:underline inline-flex items-center gap-0.5"
-                  >
-                    etherscan.io
-                    <ExternalLink className="w-2.5 h-2.5" />
-                  </a>
-                </p>
-              </div>
-              <p className="text-[11px] text-surface-500 italic">
-                Wallet queries are read-only — no private keys needed. Blockchain data is public.
-              </p>
-            </div>
-          )}
-
-          {cryptoWallets.length > 0 && (
-            <div className="space-y-2 mb-3">
-              {(showAllWallets ? cryptoWallets : cryptoWallets.slice(0, 3)).map((w) => (
-                <div
-                  key={w.id}
-                  className="flex items-center justify-between p-3 bg-surface-200/30 border border-surface-400/20 rounded-xl"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-mono font-bold text-surface-700 uppercase">
-                        {w.chain}
-                      </span>
-                      <span className="text-[13px] font-medium text-surface-900">{w.label}</span>
-                    </div>
-                    <p className="text-[11px] text-surface-500 font-mono truncate">{w.address}</p>
-                  </div>
-                  <button
-                    onClick={() => handleRemoveWallet(w.id)}
-                    disabled={isCryptoSaving}
-                    className="p-1.5 text-surface-600 hover:text-danger-400 hover:bg-danger-500/10 rounded-lg transition-colors flex-shrink-0 ml-2"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-              {cryptoWallets.length > 3 && (
-                <button
-                  onClick={() => setShowAllWallets(!showAllWallets)}
-                  className="flex items-center gap-1.5 text-[12px] text-accent-400 hover:text-accent-300 transition-colors"
-                >
-                  {showAllWallets ? (
-                    <ChevronUp className="w-3.5 h-3.5" />
-                  ) : (
-                    <ChevronDown className="w-3.5 h-3.5" />
-                  )}
-                  {showAllWallets ? 'Show less' : `Show ${cryptoWallets.length - 3} more`}
-                </button>
-              )}
-            </div>
-          )}
-
-          {showAddWallet ? (
-            <div className="p-4 bg-surface-200/20 border border-border rounded-xl space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-medium text-surface-600 mb-1">
-                    Chain
-                  </label>
-                  <Select
-                    value={newWalletChain}
-                    onValueChange={(val) => setNewWalletChain(val as CryptoChain)}
-                  >
-                    <SelectTrigger className="w-full text-[13px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="btc">Bitcoin (BTC)</SelectItem>
-                      <SelectItem value="eth">Ethereum (ETH)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="block text-[11px] font-medium text-surface-600 mb-1">
-                    Label
-                  </label>
-                  <input
-                    type="text"
-                    value={newWalletLabel}
-                    onChange={(e) => setNewWalletLabel(e.target.value)}
-                    placeholder="e.g. Cold storage"
-                    className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 placeholder:text-surface-500"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-surface-600 mb-1">
-                  Address
-                </label>
-                <input
-                  type="text"
-                  value={newWalletAddress}
-                  onChange={(e) => setNewWalletAddress(e.target.value)}
-                  placeholder={newWalletChain === 'btc' ? 'bc1q... or 1A1zP1...' : '0x...'}
-                  className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 font-mono placeholder:text-surface-500"
-                />
-              </div>
-              <div className="flex gap-2 pt-1">
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setShowAddWallet(false);
-                    setNewWalletAddress('');
-                    setNewWalletLabel('');
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button onClick={handleAddWallet} disabled={isCryptoSaving || !newWalletAddress}>
-                  {isCryptoSaving ? 'Saving...' : 'Add Wallet'}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <Button variant="ghost" onClick={() => setShowAddWallet(true)}>
-              <Plus className="w-3.5 h-3.5" />
-              Add Wallet
-            </Button>
-          )}
-
-          {/* Etherscan API Key */}
-          <div className="mt-4 pt-4 border-t border-border">
-            <label className="block text-[11px] font-medium text-surface-600 mb-2">
-              Etherscan API Key{' '}
-              <span className="text-surface-500 font-normal">
-                (for ERC-20 token balances &mdash;{' '}
-                <a
-                  href="https://etherscan.io/myapikey"
+                  href="https://github.com/datasets/s-and-p-500"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-accent-400 hover:underline"
                 >
-                  get one free
-                </a>
-                )
-              </span>
-            </label>
-            {hasEtherscanKey ? (
-              <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-                <CheckCircle className="w-4 h-4 text-emerald-400" />
-                <span className="text-[13px] text-emerald-400 font-medium flex-1">
-                  Key set
-                  {etherscanKeyHint && (
-                    <span className="text-emerald-400/70 ml-2 font-mono">
-                      ****{etherscanKeyHint}
-                    </span>
-                  )}
-                </span>
-                <Button
-                  variant="ghost-danger"
-                  size="xs"
-                  onClick={handleRemoveEtherscanKey}
-                  disabled={isCryptoSaving}
-                >
-                  Remove
-                </Button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <Input
-                  type="password"
-                  value={newEtherscanKey}
-                  onChange={(e) => setNewEtherscanKey(e.target.value)}
-                  placeholder="Etherscan API key..."
-                  className="flex-1 text-[13px] font-mono"
-                />
-                <Button
-                  onClick={handleSaveEtherscanKey}
-                  disabled={isCryptoSaving || !newEtherscanKey}
-                >
-                  Save
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
-      </Card>
+                  Shiller dataset on GitHub
+                </a>{' '}
+                (monthly back to 1871, no key needed). FRED powers the macro overlays.
+              </p>
+            </Card>
+          </>
+        )}
+      </Tabs>
 
-      {/* ── Data Management ──────────────────────────────── */}
-      <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
-        Data Management
-      </p>
-
-      {/* Entity Management Section */}
-      <Card variant="glass" className="p-6 mb-8">
-        <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
-          <Building2 className="w-5 h-5" />
-          Entity Management
-        </h3>
-        <p className="text-[13px] text-surface-600 mb-4">
-          Manage your tax entities (personal, LLCs, etc.)
-        </p>
-
-        <div className="space-y-3">
-          {(showAllEntities ? entities : entities.slice(0, 3)).map((entity) => {
-            const Icon = getEntityIcon(entity);
-            const colors = COLOR_MAP[entity.color] || COLOR_MAP.blue;
-            const isEditing = editingEntity?.id === entity.id;
-            const isPersonal = entity.id === 'personal';
-
-            return (
-              <div
-                key={entity.id}
-                className={`p-4 rounded-xl border ${isEditing ? 'border-accent-400/30 bg-accent-500/5' : `${colors.border} ${colors.bg}`}`}
-              >
-                {isEditing ? (
-                  <div className="space-y-4">
-                    {/* Edit Name */}
-                    <div>
-                      <label className="block text-[11px] font-medium text-surface-600 mb-1">
-                        Name
-                      </label>
-                      <input
-                        type="text"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        className="w-full px-3 py-2.5 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900"
-                      />
-                    </div>
-
-                    {/* Edit Description */}
-                    <div>
-                      <label className="block text-[11px] font-medium text-surface-600 mb-1">
-                        Description
-                      </label>
-                      <Textarea
-                        value={editDescription}
-                        onChange={(e) => setEditDescription(e.target.value)}
-                        placeholder="What documents does this entity contain? Notes for tax planning..."
-                        rows={2}
-                        className="text-[13px] resize-none"
-                      />
-                    </div>
-
-                    {/* Edit Icon */}
-                    <div>
-                      <label className="block text-[11px] font-medium text-surface-600 mb-2">
-                        Icon
-                      </label>
-                      <div className="flex flex-wrap gap-2">
-                        {AVAILABLE_ICONS.map(({ id, icon: IconComp, label }) => {
-                          const iconColors = COLOR_MAP[editColor] || COLOR_MAP.blue;
-                          return (
-                            <button
-                              key={id}
-                              onClick={() => setEditIcon(id)}
-                              title={label}
-                              className={`p-2 rounded-lg border-2 transition-all ${
-                                editIcon === id
-                                  ? `${iconColors.bg} ${iconColors.border} ${iconColors.text}`
-                                  : 'bg-surface-200/30 border-border text-surface-600 hover:border-surface-500'
-                              }`}
-                            >
-                              <IconComp className="w-4 h-4" />
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Edit Color */}
-                    <div>
-                      <label className="block text-[11px] font-medium text-surface-600 mb-2">
-                        Color
-                      </label>
-                      <div className="flex gap-2.5">
-                        {AVAILABLE_COLORS.map((color) => {
-                          const colorStyles = COLOR_MAP[color];
-                          return (
-                            <button
-                              key={color}
-                              onClick={() => setEditColor(color)}
-                              className={`w-8 h-8 rounded-full ${colorStyles.bg} ${colorStyles.border} border-2 transition-all duration-150 ${
-                                editColor === color
-                                  ? 'ring-2 ring-offset-2 ring-offset-surface-100 ' +
-                                    colorStyles.ring
-                                  : ''
-                              }`}
-                            />
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Edit Actions */}
-                    <div className="flex gap-2 pt-2">
-                      <Button variant="ghost" onClick={handleCancelEdit}>
-                        Cancel
-                      </Button>
-                      <Button onClick={handleSaveEntity} disabled={isEntitySaving}>
-                        {isEntitySaving ? 'Saving...' : 'Save Changes'}
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-lg ${colors.bg}`}>
-                        <Icon className={`w-5 h-5 ${colors.text}`} />
-                      </div>
-                      <div>
-                        <p className={`font-medium ${colors.text}`}>{entity.name}</p>
-                        <p className="text-[11px] text-surface-600">{entity.id}</p>
-                        {entity.description && (
-                          <p className="text-[11px] text-surface-500 mt-0.5">
-                            {entity.description}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {isPersonal && (
-                        <span className="text-[11px] text-surface-500 italic mr-2">Default</span>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => handleEditEntity(entity)}
-                        title="Edit entity"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                      {!isPersonal && (
-                        <Button
-                          variant="ghost-danger"
-                          size="icon-sm"
-                          onClick={() => handleRemoveEntity(entity)}
-                          title="Remove entity"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          {entities.length > 3 && (
-            <button
-              onClick={() => setShowAllEntities(!showAllEntities)}
-              className="flex items-center gap-1.5 text-[12px] text-accent-400 hover:text-accent-300 transition-colors mt-2"
-            >
-              {showAllEntities ? (
-                <ChevronUp className="w-3.5 h-3.5" />
-              ) : (
-                <ChevronDown className="w-3.5 h-3.5" />
-              )}
-              {showAllEntities ? 'Show less' : `Show ${entities.length - 3} more`}
-            </button>
-          )}
-        </div>
-      </Card>
-
-      {/* Backup & Restore */}
-      <Card variant="glass" className="p-6 mb-8">
-        <h3 className="text-lg font-semibold text-surface-950 mb-2 flex items-center gap-2">
-          <Shield className="w-5 h-5" />
-          Encrypted Backup
-        </h3>
-        <p className="text-[13px] text-surface-600 mb-5">
-          AES-256 encrypted backup of all settings, API keys, cached data, and portfolio snapshots.{' '}
-          {autoBackupPasswordSet ? (
-            <span className="text-green-500">
-              Auto-backup is enabled and syncs to Dropbox every cycle.
-            </span>
-          ) : (
-            <span className="text-surface-500">
-              Set a backup password in Schedules above to auto-sync encrypted backups to Dropbox.
-            </span>
-          )}
-        </p>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Download Latest Auto-Backup */}
-          <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30 flex flex-col">
-            <h4 className="text-[13px] font-semibold text-surface-900 mb-3 flex items-center gap-1.5">
-              <Cloud className="w-4 h-4" />
-              Download Latest
-            </h4>
-            <p className="text-[11px] text-surface-500 mb-3">
-              Download the most recent auto-generated backup. Uses the password set in Schedules.
-            </p>
-            <div className="mt-auto">
-              <Button
-                onClick={handleDownloadLatestBackup}
-                disabled={isDownloadingLatest}
-                className="w-full bg-violet-500 hover:bg-violet-400"
-              >
-                <Download className="w-4 h-4" />
-                {isDownloadingLatest ? 'Downloading...' : 'Download Latest'}
-              </Button>
-            </div>
-          </div>
-
-          {/* Manual Backup */}
-          <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30 flex flex-col">
-            <h4 className="text-[13px] font-semibold text-surface-900 mb-3 flex items-center gap-1.5">
-              <Download className="w-4 h-4" />
-              Manual Backup
-            </h4>
-            <div className="space-y-2 mt-auto">
-              <Input
-                type="password"
-                value={backupPassword}
-                onChange={(e) => setBackupPassword(e.target.value)}
-                placeholder="Encryption password (min 4 chars)"
-                className="text-[13px] rounded-lg"
-              />
-              <Button
-                onClick={handleBackup}
-                disabled={isBackingUp || backupPassword.length < 4}
-                className="w-full bg-violet-500 hover:bg-violet-400"
-              >
-                <Download className="w-4 h-4" />
-                {isBackingUp ? 'Encrypting...' : 'Create & Download'}
-              </Button>
-            </div>
-          </div>
-
-          {/* Restore */}
-          <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30 flex flex-col">
-            <h4 className="text-[13px] font-semibold text-surface-900 mb-3 flex items-center gap-1.5">
-              <Upload className="w-4 h-4" />
-              Restore Backup
-            </h4>
-            <div className="space-y-2 mt-auto">
-              <input
-                type="file"
-                accept=".enc"
-                onChange={(e) => setRestoreFile(e.target.files?.[0] || null)}
-                className="w-full text-[12px] text-surface-700 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[12px] file:font-medium file:bg-surface-200/50 file:text-surface-700 hover:file:bg-surface-300/50"
-              />
-              <Input
-                type="password"
-                value={restorePassword}
-                onChange={(e) => setRestorePassword(e.target.value)}
-                placeholder="Backup password"
-                className="text-[13px] rounded-lg"
-              />
-              <Button
-                onClick={handleRestore}
-                disabled={isRestoring || !restoreFile || !restorePassword}
-                className="w-full bg-amber-500 hover:bg-amber-400"
-              >
-                <Upload className="w-4 h-4" />
-                {isRestoring ? 'Restoring...' : 'Restore from Backup'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </Card>
       <ConfirmDialog />
     </div>
   );

@@ -132,6 +132,7 @@ export { getClaudeModel, getAnthropicKey } from './data.js';
 import { handleFinancialSnapshotRoutes } from './routes/financial-snapshot.js';
 import { handleDownloadRoutes } from './routes/downloads.js';
 import { handleCryptoRoutes } from './routes/crypto.js';
+import { handleQuantRoutes } from './routes/quant.js';
 import { handleBrokersRoutes } from './routes/brokers.js';
 import { handleSalesRoutes } from './routes/sales.js';
 import { handleMileageRoutes } from './routes/mileage.js';
@@ -231,6 +232,8 @@ async function handleRequest(req: Request): Promise<Response> {
       claudeModel: settings.claudeModel || DEFAULT_MODEL,
       hasGeoapifyKey: !!settings.geoapifyApiKey,
       geoapifyKeyHint: settings.geoapifyApiKey ? settings.geoapifyApiKey.slice(-4) : undefined,
+      hasFredKey: !!settings.fredApiKey,
+      fredKeyHint: settings.fredApiKey ? settings.fredApiKey.slice(-4) : undefined,
     });
   }
 
@@ -258,6 +261,14 @@ async function handleRequest(req: Request): Promise<Response> {
         settings.geoapifyApiKey = body.geoapifyApiKey;
       } else {
         delete settings.geoapifyApiKey;
+      }
+    }
+
+    if (body.fredApiKey !== undefined) {
+      if (body.fredApiKey) {
+        settings.fredApiKey = body.fredApiKey;
+      } else {
+        delete settings.fredApiKey;
       }
     }
 
@@ -423,6 +434,9 @@ async function handleRequest(req: Request): Promise<Response> {
   // brokers routes (extracted to routes/brokers.ts)
   const brokersResponse = await handleBrokersRoutes(req, url, pathname);
   if (brokersResponse) return brokersResponse;
+  // quant routes (extracted to routes/quant.ts)
+  const quantResponse = await handleQuantRoutes(req, url, pathname);
+  if (quantResponse) return quantResponse;
 
   // =========================================================================
   // Portfolio Snapshots
