@@ -138,6 +138,20 @@ export function BtcDominanceChart() {
                     Cowen's risk-off dominance gauge
                   </div>
                 </div>
+                <div className="p-2 rounded-lg border border-cyan-500/30 bg-cyan-500/5 col-span-2">
+                  <div className="text-[10px] text-cyan-500 uppercase font-medium">
+                    Stablecoin Supply Ratio (SSR)
+                  </div>
+                  <div className="text-[16px] font-bold text-cyan-300">{data.ssr.toFixed(2)}×</div>
+                  <div className="text-[9px] text-surface-500 mt-0.5">
+                    BTC mcap ÷ stables mcap ·{' '}
+                    {data.ssr < 3
+                      ? 'Dry powder on the sidelines'
+                      : data.ssr < 6
+                        ? 'Neutral deployment'
+                        : 'Money already deployed'}
+                  </div>
+                </div>
                 <div className="p-2 rounded-lg border border-border/40 bg-surface-100/20 col-span-2">
                   <div className="text-[10px] text-surface-500 uppercase font-medium">
                     Total Market Cap

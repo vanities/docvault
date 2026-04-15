@@ -11,6 +11,7 @@ import { BmsbChart } from './BmsbChart';
 import { PiCycleChart } from './PiCycleChart';
 import { GoldenDeathCrossChart } from './GoldenDeathCrossChart';
 import { BtcDominanceChart } from './BtcDominanceChart';
+import { BtcDerivativesChart } from './BtcDerivativesChart';
 import { CowenCorridorChart } from './CowenCorridorChart';
 import { SectorRotationChart } from './SectorRotationChart';
 import { ShillerValuationChart } from './ShillerValuationChart';
@@ -212,14 +213,25 @@ export function QuantView() {
             <GoldenDeathCrossChart />
           </ChartGroup>
 
-          <ChartGroup title="Bitcoin Dominance" subtitle="BTC.D + flight to safety">
+          <ChartGroup
+            title="Bitcoin Dominance + SSR"
+            subtitle="BTC.D + flight to safety + stablecoin supply ratio"
+          >
             <BtcDominanceChart />
+          </ChartGroup>
+
+          <ChartGroup title="BTC Derivatives" subtitle="OKX funding rate + OI + long/short">
+            <BtcDerivativesChart />
           </ChartGroup>
 
           <ChartGroup title="Coming next">
             <EmptyCategoryCard
               category="crypto"
-              comingSoon={['Altcoin Season Index', 'Flippening Index', 'Stablecoin Supply Ratio']}
+              comingSoon={[
+                'Altcoin Season Index',
+                'Flippening Index',
+                'MVRV Z-Score (needs on-chain data)',
+              ]}
             />
           </ChartGroup>
         </TabsContent>

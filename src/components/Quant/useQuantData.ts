@@ -16,6 +16,20 @@ export interface PresidentialCycleData {
   fetchError?: string;
 }
 
+export interface BtcDerivativesData {
+  currentFundingRate: number;
+  annualizedFundingRate: number;
+  currentOpenInterestUsd: number;
+  currentLongShortRatio: number | null;
+  fundingHistory: { t: number; rate: number }[];
+  openInterestHistory: { t: number; oiUsd: number }[];
+  longShortHistory: { t: number; ratio: number }[];
+  fetchedAt: number;
+  source: 'okx';
+  cached?: boolean;
+  stale?: boolean;
+}
+
 export interface BtcDominanceData {
   btcDominance: number;
   ethDominance: number;
@@ -23,6 +37,7 @@ export interface BtcDominanceData {
   flightToSafety: number;
   totalMarketCapUsd: number;
   totalMarketCapChange24h: number;
+  ssr: number;
   fetchedAt: number;
   source: 'coingecko';
   cached?: boolean;
@@ -65,6 +80,7 @@ export interface YieldCurveData {
   };
   inversionStreak: number;
   lastInversionStart: string | null;
+  recessions: { start: number; end: number }[];
   dataRange: { from: string; to: string };
   source: 'fred';
   cached?: boolean;
@@ -413,6 +429,11 @@ export function useYieldCurve() {
 export function useBtcDominance() {
   const bump = useQuantRefreshBump();
   return useQuantFetch<BtcDominanceData>(`${API_BASE}/quant/btc/dominance?_=${bump}`);
+}
+
+export function useBtcDerivatives() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<BtcDerivativesData>(`${API_BASE}/quant/btc/derivatives?_=${bump}`);
 }
 
 export function useMacroDashboard() {
