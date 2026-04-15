@@ -26,6 +26,7 @@ const TTL = {
   midtermDrawdowns: 7 * DAY_MS, // Shiller monthly — weekly refresh
   sp500RiskMetric: 7 * DAY_MS, // Shiller monthly — weekly refresh
   btcDerivatives: 30 * 60 * 1000, // 30 min — funding rate updates 3x/day
+  altcoinSeason: 6 * 60 * 60 * 1000, // 6h — 90d return doesn't shift much hour-to-hour
 };
 
 interface CacheEntry<T> {
@@ -44,6 +45,7 @@ type QuantCache = {
   midtermDrawdowns?: CacheEntry<MidtermDrawdownResponse>;
   sp500RiskMetric?: CacheEntry<SP500RiskResponse>;
   btcDerivatives?: CacheEntry<BtcDerivativesResponse>;
+  altcoinSeason?: CacheEntry<AltcoinSeasonResponse>;
 };
 
 async function loadCache(): Promise<QuantCache> {
@@ -61,6 +63,29 @@ async function saveCache(cache: QuantCache): Promise<void> {
 
 function isFresh(entry: CacheEntry<unknown> | undefined, ttl: number): boolean {
   return !!entry && Date.now() - entry.fetchedAt < ttl;
+}
+
+/** Run `fn` on every item in `items` with at most `concurrency` calls in
+ *  flight at once. Respects upstream rate limits (yahoo-finance2, CoinGecko,
+ *  etc.) and avoids tripping WAFs with burst traffic. Order of results
+ *  matches input order. */
+export async function batchWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  if (concurrency <= 0) throw new Error('concurrency must be positive');
+  const out: R[] = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (true) {
+      const i = cursor++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return out;
 }
 
 /** gzip + Cache-Control wrapper for quant GET responses. Browsers will serve
@@ -119,6 +144,8 @@ const CACHE = {
   sp500RiskMetric: { maxAge: 6 * 3600, swr: 24 * 3600 },
   // BTC derivatives = OKX funding/OI — 10 min + 2h SWR.
   btcDerivatives: { maxAge: 600, swr: 2 * 3600 },
+  // Altcoin season = 90d returns via yahoo — 2h + 12h SWR.
+  altcoinSeason: { maxAge: 2 * 3600, swr: 12 * 3600 },
   // Snapshots grow one row per day; short cache so new snapshots appear fast.
   snapshots: { maxAge: 300, swr: 3600 },
 };
@@ -833,6 +860,181 @@ async function computeBtcLogRegression(): Promise<BtcLogRegressionResponse> {
         },
       },
     },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Altcoin Season Index (Crypto) — how many of the top 50 alts have
+// outperformed BTC over the past 90 days.
+// ---------------------------------------------------------------------------
+//
+// Per ITC: "If the Altcoin Season Index is larger than 75 then it is altcoin
+// season. Lower than 25 it is Bitcoin season." We hardcode a list of major
+// non-stablecoin crypto tickers on Yahoo Finance and fetch 90d price history
+// for each. CoinGecko's free tier dropped 90d returns in early 2024, so
+// Yahoo is the reliable free source.
+
+export interface AltCoinEntry {
+  symbol: string;
+  name: string;
+  price: number;
+  return90d: number;
+  /** Outperformance vs BTC in percentage points */
+  outperformance: number;
+  beatsBtc: boolean;
+}
+
+export interface AltcoinSeasonResponse {
+  /** Index value 0-100. Per ITC: >75 = altseason, <25 = bitcoin season */
+  indexValue: number;
+  regime: 'bitcoin-season' | 'neutral' | 'altcoin-season';
+  /** BTC's own 90d return as a decimal (e.g. -0.20 = -20%) */
+  btcReturn90d: number;
+  /** Per-coin breakdown, sorted by outperformance descending */
+  coins: AltCoinEntry[];
+  outperformerCount: number;
+  totalCounted: number;
+  /** Tickers we couldn't fetch (for diagnostics) */
+  skipped: string[];
+  fetchedAt: number;
+  source: 'yahoo';
+}
+
+/** Major non-stablecoin crypto tickers on Yahoo Finance. Curated by market
+ *  cap with wrapped/staked/stablecoin variants filtered out. Tickers with
+ *  numeric suffixes (e.g. `TON11419-USD`) are Yahoo's way of disambiguating
+ *  coins that share a symbol with older/different assets. */
+const ALT_TICKERS: { yahoo: string; symbol: string; name: string }[] = [
+  { yahoo: 'ETH-USD', symbol: 'ETH', name: 'Ethereum' },
+  { yahoo: 'XRP-USD', symbol: 'XRP', name: 'XRP' },
+  { yahoo: 'BNB-USD', symbol: 'BNB', name: 'BNB' },
+  { yahoo: 'SOL-USD', symbol: 'SOL', name: 'Solana' },
+  { yahoo: 'DOGE-USD', symbol: 'DOGE', name: 'Dogecoin' },
+  { yahoo: 'ADA-USD', symbol: 'ADA', name: 'Cardano' },
+  { yahoo: 'TRX-USD', symbol: 'TRX', name: 'TRON' },
+  { yahoo: 'LINK-USD', symbol: 'LINK', name: 'Chainlink' },
+  { yahoo: 'AVAX-USD', symbol: 'AVAX', name: 'Avalanche' },
+  { yahoo: 'SHIB-USD', symbol: 'SHIB', name: 'Shiba Inu' },
+  { yahoo: 'DOT-USD', symbol: 'DOT', name: 'Polkadot' },
+  { yahoo: 'HBAR-USD', symbol: 'HBAR', name: 'Hedera' },
+  { yahoo: 'TON11419-USD', symbol: 'TON', name: 'Toncoin' },
+  { yahoo: 'BCH-USD', symbol: 'BCH', name: 'Bitcoin Cash' },
+  { yahoo: 'LTC-USD', symbol: 'LTC', name: 'Litecoin' },
+  { yahoo: 'NEAR-USD', symbol: 'NEAR', name: 'NEAR Protocol' },
+  { yahoo: 'SUI20947-USD', symbol: 'SUI', name: 'Sui' },
+  { yahoo: 'XLM-USD', symbol: 'XLM', name: 'Stellar' },
+  { yahoo: 'APT21794-USD', symbol: 'APT', name: 'Aptos' },
+  { yahoo: 'ATOM-USD', symbol: 'ATOM', name: 'Cosmos' },
+  { yahoo: 'ICP-USD', symbol: 'ICP', name: 'Internet Computer' },
+  { yahoo: 'FIL-USD', symbol: 'FIL', name: 'Filecoin' },
+  { yahoo: 'XMR-USD', symbol: 'XMR', name: 'Monero' },
+  { yahoo: 'IMX10603-USD', symbol: 'IMX', name: 'Immutable' },
+  { yahoo: 'KAS-USD', symbol: 'KAS', name: 'Kaspa' },
+  { yahoo: 'ARB11841-USD', symbol: 'ARB', name: 'Arbitrum' },
+  { yahoo: 'OP-USD', symbol: 'OP', name: 'Optimism' },
+  { yahoo: 'VET-USD', symbol: 'VET', name: 'VeChain' },
+  { yahoo: 'MKR-USD', symbol: 'MKR', name: 'Maker' },
+  { yahoo: 'STX4847-USD', symbol: 'STX', name: 'Stacks' },
+  { yahoo: 'INJ-USD', symbol: 'INJ', name: 'Injective' },
+  { yahoo: 'TIA22861-USD', symbol: 'TIA', name: 'Celestia' },
+  { yahoo: 'RNDR-USD', symbol: 'RNDR', name: 'Render' },
+  { yahoo: 'LDO-USD', symbol: 'LDO', name: 'Lido DAO' },
+  { yahoo: 'GRT6719-USD', symbol: 'GRT', name: 'The Graph' },
+  { yahoo: 'AAVE-USD', symbol: 'AAVE', name: 'Aave' },
+  { yahoo: 'FTM-USD', symbol: 'FTM', name: 'Fantom' },
+  { yahoo: 'ALGO-USD', symbol: 'ALGO', name: 'Algorand' },
+  { yahoo: 'FLOW-USD', symbol: 'FLOW', name: 'Flow' },
+  { yahoo: 'EGLD-USD', symbol: 'EGLD', name: 'MultiversX' },
+  { yahoo: 'MATIC-USD', symbol: 'MATIC', name: 'Polygon' },
+  { yahoo: 'THETA-USD', symbol: 'THETA', name: 'Theta' },
+  { yahoo: 'SAND-USD', symbol: 'SAND', name: 'The Sandbox' },
+  { yahoo: 'AXS-USD', symbol: 'AXS', name: 'Axie Infinity' },
+  { yahoo: 'XTZ-USD', symbol: 'XTZ', name: 'Tezos' },
+  { yahoo: 'SEI-USD', symbol: 'SEI', name: 'Sei' },
+  { yahoo: 'ETC-USD', symbol: 'ETC', name: 'Ethereum Classic' },
+  { yahoo: 'MANA-USD', symbol: 'MANA', name: 'Decentraland' },
+  { yahoo: 'CHZ-USD', symbol: 'CHZ', name: 'Chiliz' },
+  { yahoo: 'SNX-USD', symbol: 'SNX', name: 'Synthetix' },
+];
+
+async function fetchYahoo90dReturn(yahooSym: string): Promise<{
+  return90d: number | null;
+  currentPrice: number;
+}> {
+  const period2 = new Date();
+  const period1 = new Date(period2.getTime() - 130 * DAY_MS);
+  try {
+    const result = await yahooFinance.chart(yahooSym, {
+      period1,
+      period2,
+      interval: '1d',
+    });
+    const quotes = result.quotes ?? [];
+    const closes = quotes
+      .filter((q) => q.close != null && (q.close as number) > 0)
+      .map((q) => q.close as number);
+    if (closes.length < 60) return { return90d: null, currentPrice: 0 };
+    const current = closes[closes.length - 1];
+    // 90 calendar days for crypto (trades 7 days/week) → 90 bars
+    const ago = closes.length >= 90 ? closes[closes.length - 90] : closes[0];
+    if (!ago || ago <= 0) return { return90d: null, currentPrice: current };
+    return { return90d: (current - ago) / ago, currentPrice: current };
+  } catch {
+    return { return90d: null, currentPrice: 0 };
+  }
+}
+
+async function computeAltcoinSeasonIndex(): Promise<AltcoinSeasonResponse> {
+  // Fetch BTC baseline first — single request
+  const btcResult = await fetchYahoo90dReturn('BTC-USD');
+  if (btcResult.return90d == null) {
+    throw new Error('Failed to fetch BTC 90d baseline');
+  }
+  const btcReturn90d = btcResult.return90d;
+
+  // Then fetch the 50 alts with a concurrency cap to respect yahoo-finance2
+  // rate limits. Total is 50 fetches across ~6 waves of 8 ≈ 3-5 seconds.
+  const altResults = await batchWithConcurrency(ALT_TICKERS, 8, async (t) =>
+    fetchYahoo90dReturn(t.yahoo)
+  );
+
+  const coins: AltCoinEntry[] = [];
+  const skipped: string[] = [];
+  altResults.forEach((r, i) => {
+    const t = ALT_TICKERS[i];
+    if (r.return90d == null) {
+      skipped.push(t.symbol);
+      return;
+    }
+    const outperformance = (r.return90d - btcReturn90d) * 100;
+    coins.push({
+      symbol: t.symbol,
+      name: t.name,
+      price: r.currentPrice,
+      return90d: r.return90d,
+      outperformance,
+      beatsBtc: r.return90d > btcReturn90d,
+    });
+  });
+
+  coins.sort((a, b) => b.outperformance - a.outperformance);
+  const outperformerCount = coins.filter((c) => c.beatsBtc).length;
+  const totalCounted = coins.length;
+  const indexValue = totalCounted > 0 ? (outperformerCount / totalCounted) * 100 : 0;
+
+  const regime: AltcoinSeasonResponse['regime'] =
+    indexValue >= 75 ? 'altcoin-season' : indexValue <= 25 ? 'bitcoin-season' : 'neutral';
+
+  return {
+    indexValue,
+    regime,
+    btcReturn90d,
+    coins,
+    outperformerCount,
+    totalCounted,
+    skipped,
+    fetchedAt: Date.now(),
+    source: 'yahoo',
   };
 }
 
@@ -2665,6 +2867,34 @@ export async function handleQuantRoutes(
         );
       }
       return jsonResponse({ error: `Sector rotation fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/btc/altcoin-season — Altcoin Season Index
+  if (pathname === '/api/quant/btc/altcoin-season' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.altcoinSeason, TTL.altcoinSeason)) {
+      return cachedJsonResponse(
+        req,
+        { ...cache.altcoinSeason!.data, cached: true },
+        CACHE.altcoinSeason
+      );
+    }
+    try {
+      const data = await computeAltcoinSeasonIndex();
+      cache.altcoinSeason = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.altcoinSeason);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.altcoinSeason) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.altcoinSeason.data, cached: true, stale: true, fetchError: msg },
+          CACHE.altcoinSeason
+        );
+      }
+      return jsonResponse({ error: `Altcoin season fetch failed: ${msg}` }, 502);
     }
   }
 
