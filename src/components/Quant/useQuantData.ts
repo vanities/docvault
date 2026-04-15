@@ -72,6 +72,71 @@ export interface YieldCurveData {
   fetchedAt?: number;
 }
 
+export interface SP500RiskData {
+  points: { date: string; t: number; price: number }[];
+  metric: (number | null)[];
+  components: {
+    mayerLike12m: (number | null)[];
+    sma24mDistance: (number | null)[];
+    regressionSigma: (number | null)[];
+    rsi14m: (number | null)[];
+    drawdownFromAth: (number | null)[];
+  };
+  normalized: {
+    mayerLike12m: (number | null)[];
+    sma24mDistance: (number | null)[];
+    regressionSigma: (number | null)[];
+    rsi14m: (number | null)[];
+    drawdownFromAth: (number | null)[];
+  };
+  latest: {
+    date: string;
+    price: number;
+    metric: number | null;
+    components: {
+      mayerLike12m: number | null;
+      sma24mDistance: number | null;
+      regressionSigma: number | null;
+      rsi14m: number | null;
+      drawdownFromAth: number | null;
+    };
+    normalized: {
+      mayerLike12m: number | null;
+      sma24mDistance: number | null;
+      regressionSigma: number | null;
+      rsi14m: number | null;
+      drawdownFromAth: number | null;
+    };
+  };
+  dataRange: { from: string; to: string };
+  source: 'shiller';
+  cached?: boolean;
+  stale?: boolean;
+}
+
+export interface MidtermCurvePoint {
+  offsetMonths: number;
+  drawdown: number;
+}
+
+export interface MidtermCurveData {
+  midtermYear: number;
+  label: string;
+  isCurrent: boolean;
+  points: MidtermCurvePoint[];
+  peakClose: number;
+  peakDate: string;
+}
+
+export interface MidtermDrawdownData {
+  curves: MidtermCurveData[];
+  averageCurve: MidtermCurvePoint[];
+  dataRange: { from: string; to: string };
+  source: 'shiller';
+  cached?: boolean;
+  stale?: boolean;
+}
+
 export interface ShillerValuationPoint {
   date: string;
   t: number;
@@ -144,6 +209,23 @@ export interface BtcLogRegressionData {
     price: number;
     fitted: number;
     residualSigma: number;
+  };
+  movingAverages: {
+    sma50d: (number | null)[];
+    sma200d: (number | null)[];
+    sma200w: (number | null)[];
+    mayerBandMultipliers: number[];
+    latest: {
+      sma50d: number | null;
+      sma200d: number | null;
+      sma200w: number | null;
+      priceVs200w: number | null;
+    };
+  };
+  goldenDeathCrosses: {
+    events: { t: number; type: 'golden' | 'death' }[];
+    currentRegime: 'bullish' | 'bearish' | 'unknown';
+    latestEvent: { t: number; type: 'golden' | 'death' } | null;
   };
   corridor: {
     sma20w: (number | null)[];
@@ -336,6 +418,16 @@ export function useBtcDominance() {
 export function useMacroDashboard() {
   const bump = useQuantRefreshBump();
   return useQuantFetch<MacroDashboardData>(`${API_BASE}/quant/macro/dashboard?_=${bump}`);
+}
+
+export function useMidtermDrawdowns() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<MidtermDrawdownData>(`${API_BASE}/quant/tradfi/midterm-drawdowns?_=${bump}`);
+}
+
+export function useSP500RiskMetric() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<SP500RiskData>(`${API_BASE}/quant/tradfi/sp500-risk-metric?_=${bump}`);
 }
 
 export function useQuantSnapshots(days = 365) {
