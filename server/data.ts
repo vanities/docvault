@@ -73,6 +73,10 @@ export interface Settings {
   snaptrade?: SnapTradeConfig;
   simplefin?: SimplefinConfig;
   geoapifyApiKey?: string;
+  /** FRED (Federal Reserve Economic Data) API key — used by the Quant section
+   *  for long-history SP500, treasury yields, macro series. Free at
+   *  https://fred.stlouisfed.org/docs/api/api_key.html */
+  fredApiKey?: string;
   schedules?: {
     snapshotIntervalMinutes?: number; // default 1440 (24h)
     dropboxSyncIntervalMinutes?: number; // default 15
@@ -576,6 +580,7 @@ export const MILEAGE_FILE = path.join(DATA_DIR, '.docvault-mileage.json');
 export const GOLD_FILE = path.join(DATA_DIR, '.docvault-gold.json');
 export const PROPERTY_FILE = path.join(DATA_DIR, '.docvault-property.json');
 export const CRYPTO_CACHE_FILE = path.join(DATA_DIR, '.docvault-crypto-cache.json');
+export const QUANT_SNAPSHOTS_FILE = path.join(DATA_DIR, '.docvault-quant-snapshots.json');
 export const BROKER_CACHE_FILE = path.join(DATA_DIR, '.docvault-broker-cache.json');
 export const SIMPLEFIN_CACHE_FILE = path.join(DATA_DIR, '.docvault-simplefin-cache.json');
 export const INCOME_FILE = path.join(DATA_DIR, '.docvault-income.json');

@@ -30,7 +30,8 @@ export type NavView =
   | 'mileage'
   | 'gold'
   | 'property'
-  | 'income';
+  | 'income'
+  | 'quant';
 
 // Tab types for tax year view
 export type TabType = 'documents' | 'income' | 'expenses' | 'invoices' | 'statements';
@@ -218,6 +219,7 @@ export function AppProvider({ children }: AppProviderProps) {
     'federal-tax',
     'property',
     'income',
+    'quant',
   ]);
 
   const viewFromHash = (): NavView | null => {

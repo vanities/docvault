@@ -23,6 +23,7 @@ import { IncomeView } from '../Income/IncomeView';
 import { Solo401kView } from '../Solo401k/Solo401kView';
 import { EstimatedTaxView } from '../EstimatedTax/EstimatedTaxView';
 import { FederalTaxView } from '../FederalTax/FederalTaxView';
+import { QuantView } from '../Quant/QuantView';
 import { AddEntityModal } from '../Settings/AddEntityModal';
 import { SearchResultsView } from '../Search/SearchResultsView';
 
@@ -110,6 +111,8 @@ export function Layout() {
         return <PropertyView />;
       case 'income':
         return <IncomeView />;
+      case 'quant':
+        return <QuantView />;
       default:
         return <TaxYearView />;
     }

@@ -21,6 +21,7 @@ import type { Settings, PortfolioSnapshot } from './data.js';
 import { fetchAllBalances } from './crypto.js';
 import { buildPortfolio, fetchAllSnapTradeHoldings } from './brokers.js';
 import { fetchBalances as fetchSimplefinBalances } from './simplefin.js';
+import { refreshAllQuantData } from './routes/quant.js';
 import { createLogger } from './logger.js';
 
 // Scheduler — built-in cron-like recurring tasks
@@ -32,15 +33,18 @@ const logSnapTrade = createLogger('SnapTrade');
 const logSimpleFIN = createLogger('SimpleFIN');
 const logDropbox = createLogger('Dropbox');
 const logGold = createLogger('Gold');
+const logQuant = createLogger('Quant');
 
 const DEFAULT_SNAPSHOT_INTERVAL = 1440; // 24 hours in minutes
 const DEFAULT_DROPBOX_SYNC_INTERVAL = 15; // 15 minutes
+const DEFAULT_QUANT_REFRESH_INTERVAL = 1440; // 24 hours in minutes
 const SYNC_SCRIPT_PATH = path.join(__dirname, '..', 'scripts', 'sync-to-dropbox.sh');
 const SYNC_SCRIPT_DATA_PATH = path.join(DATA_DIR, 'sync-to-dropbox.sh');
 const RCLONE_CONFIG_PATH = path.join(DATA_DIR, '.rclone.conf');
 
 let snapshotTimer: ReturnType<typeof setInterval> | null = null;
 let dropboxSyncTimer: ReturnType<typeof setInterval> | null = null;
+let quantRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
 export async function takePortfolioSnapshot(): Promise<void> {
   try {
@@ -274,6 +278,24 @@ async function createEncryptedConfigBackup(password: string): Promise<string | n
   }
 }
 
+/** Daily quant refresh — re-fetches Shiller SP500 + BTC-USD, writes to the
+ *  quant cache, and appends a snapshot row to the history file so we can
+ *  plot trend sparklines. Idempotent per day. */
+export async function runQuantRefresh(): Promise<void> {
+  try {
+    logQuant.info('Starting quant data refresh...');
+    const result = await refreshAllQuantData();
+    if (result.errors.length > 0) {
+      logQuant.warn(`Refresh had errors: ${result.errors.join('; ')}`);
+    }
+    logQuant.info(
+      `Quant refresh complete (btc=${result.btc ? 'ok' : 'fail'}, spxCycle=${result.spxCycle ? 'ok' : 'fail'})`
+    );
+  } catch (err) {
+    logQuant.error('Quant refresh failed:', String(err));
+  }
+}
+
 export async function runDropboxSync(): Promise<void> {
   try {
     // Create encrypted config backup before syncing (if password is configured)
@@ -322,14 +344,19 @@ export function startScheduler(schedules: Settings['schedules'] = {}): void {
   // Clear existing timers
   if (snapshotTimer) clearInterval(snapshotTimer);
   if (dropboxSyncTimer) clearInterval(dropboxSyncTimer);
+  if (quantRefreshTimer) clearInterval(quantRefreshTimer);
   snapshotTimer = null;
   dropboxSyncTimer = null;
+  quantRefreshTimer = null;
 
   const snapshotEnabled = schedules?.snapshotEnabled !== false; // default on
   const snapshotMinutes = schedules?.snapshotIntervalMinutes || DEFAULT_SNAPSHOT_INTERVAL;
 
   const dropboxEnabled = schedules?.dropboxSyncEnabled !== false; // default on
   const dropboxMinutes = schedules?.dropboxSyncIntervalMinutes || DEFAULT_DROPBOX_SYNC_INTERVAL;
+
+  // Quant refresh defaults to on (no setting yet — always daily).
+  const quantMinutes = DEFAULT_QUANT_REFRESH_INTERVAL;
 
   if (snapshotEnabled) {
     snapshotTimer = setInterval(takePortfolioSnapshot, snapshotMinutes * 60 * 1000);
@@ -344,6 +371,9 @@ export function startScheduler(schedules: Settings['schedules'] = {}): void {
   } else {
     logScheduler.info('Dropbox sync: disabled');
   }
+
+  quantRefreshTimer = setInterval(runQuantRefresh, quantMinutes * 60 * 1000);
+  logScheduler.info(`Quant refresh: every ${quantMinutes}m`);
 }
 
 // Initialize scheduler on startup — take an immediate snapshot then start intervals
@@ -353,6 +383,9 @@ loadSettings()
     // Run first snapshot immediately so we don't wait 24h after container start
     logScheduler.info('Taking initial snapshot on startup...');
     await takePortfolioSnapshot();
+    // Warm the quant cache + seed the snapshot file on first boot
+    logScheduler.info('Taking initial quant refresh on startup...');
+    void runQuantRefresh();
   })
   .catch(() => {
     startScheduler();
