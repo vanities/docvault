@@ -79,10 +79,10 @@ function ChartGroup({
   return (
     <div className="mb-8">
       <div className="mb-3 flex items-baseline gap-3">
-        <h3 className="text-[11px] font-semibold text-surface-500 uppercase tracking-[0.15em]">
+        <h3 className="text-[11px] font-semibold text-surface-700 uppercase tracking-[0.15em]">
           {title}
         </h3>
-        {subtitle && <span className="text-[11px] text-surface-500/70">{subtitle}</span>}
+        {subtitle && <span className="text-[11px] text-surface-700/70">{subtitle}</span>}
       </div>
       <div className="space-y-6">{children}</div>
     </div>
@@ -107,7 +107,7 @@ function EmptyCategoryCard({
           <Icon className={`w-6 h-6 ${meta.accent}`} />
         </div>
         <h3 className="text-lg font-semibold text-surface-950">No {meta.label} charts yet</h3>
-        <p className="text-[13px] text-surface-600 max-w-xl leading-relaxed">{meta.description}</p>
+        <p className="text-[13px] text-surface-800 max-w-xl leading-relaxed">{meta.description}</p>
         <div className="mt-2 flex flex-wrap justify-center gap-2">
           {comingSoon.map((name) => (
             <span
@@ -118,7 +118,7 @@ function EmptyCategoryCard({
             </span>
           ))}
         </div>
-        <div className="text-[11px] text-surface-500 mt-1">
+        <div className="text-[11px] text-surface-700 mt-1">
           Roadmap: see <code className="text-cyan-400 font-mono">docs/quant-charts-plan.md</code>
         </div>
       </div>
@@ -149,7 +149,7 @@ export function QuantView() {
             <LineChart className="w-6 h-6 text-cyan-400" />
             Quant
           </h2>
-          <p className="text-[13px] text-surface-600 mt-1">
+          <p className="text-[13px] text-surface-800 mt-1">
             Market cycle analysis organized into three categories — Crypto, Macro, and TradFi —
             inspired by Benjamin Cowen's Into The Cryptoverse.
           </p>
@@ -160,7 +160,7 @@ export function QuantView() {
             {refreshing ? 'Refreshing...' : 'Refresh now'}
           </Button>
           {lastRefresh && (
-            <span className="text-[10px] text-surface-500">
+            <span className="text-[10px] text-surface-700">
               Refreshed {new Date(lastRefresh).toLocaleTimeString()}
             </span>
           )}
@@ -168,7 +168,7 @@ export function QuantView() {
             <span className="text-[10px] text-danger-400 max-w-xs text-right">{refreshError}</span>
           )}
           {!lastRefresh && !refreshError && (
-            <span className="text-[10px] text-surface-500">Auto-refreshes daily</span>
+            <span className="text-[10px] text-surface-700">Auto-refreshes daily</span>
           )}
         </div>
       </div>
@@ -193,7 +193,7 @@ export function QuantView() {
 
         {/* ── Overview ───────────────────────────────────── */}
         <TabsContent value="overview">
-          <p className="text-[12px] text-surface-600 mb-6 leading-relaxed">
+          <p className="text-[12px] text-surface-800 mb-6 leading-relaxed">
             {CATEGORY_META.overview.description}
           </p>
           <OverviewPanel onJumpTo={(cat) => setCategory(cat)} />
@@ -201,7 +201,7 @@ export function QuantView() {
 
         {/* ── Crypto ─────────────────────────────────────── */}
         <TabsContent value="crypto">
-          <p className="text-[12px] text-surface-600 mb-6 leading-relaxed">
+          <p className="text-[12px] text-surface-800 mb-6 leading-relaxed">
             {CATEGORY_META.crypto.description}
           </p>
 
@@ -265,7 +265,7 @@ export function QuantView() {
 
         {/* ── Macro ──────────────────────────────────────── */}
         <TabsContent value="macro">
-          <p className="text-[12px] text-surface-600 mb-6 leading-relaxed">
+          <p className="text-[12px] text-surface-800 mb-6 leading-relaxed">
             {CATEGORY_META.macro.description}
           </p>
 
@@ -305,7 +305,7 @@ export function QuantView() {
 
         {/* ── TradFi ─────────────────────────────────────── */}
         <TabsContent value="tradfi">
-          <p className="text-[12px] text-surface-600 mb-6 leading-relaxed">
+          <p className="text-[12px] text-surface-800 mb-6 leading-relaxed">
             {CATEGORY_META.tradfi.description}
           </p>
 

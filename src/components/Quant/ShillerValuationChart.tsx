@@ -147,7 +147,7 @@ export function ShillerValuationChart() {
           <Scale className="w-5 h-5 text-amber-400" />
           Shiller CAPE &amp; SP500 Dividend Yield
         </h3>
-        <p className="text-[13px] text-surface-600 mt-1 leading-relaxed">
+        <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
           Cyclically-adjusted PE (CAPE) = S&amp;P 500 price ÷ 10-year average of real earnings.
           Dividend yield = trailing 12m dividends ÷ price. Both back to <strong>1871</strong> (155
           years) from Shiller's dataset. High CAPE and low DY historically precede poor 10-year
@@ -156,7 +156,7 @@ export function ShillerValuationChart() {
       </div>
 
       {loading && (
-        <div className="h-[480px] flex items-center justify-center text-surface-500 text-[13px]">
+        <div className="h-[480px] flex items-center justify-center text-surface-700 text-[13px]">
           Loading Shiller valuation history (1871–present)...
         </div>
       )}
@@ -165,7 +165,7 @@ export function ShillerValuationChart() {
         <div className="h-[480px] flex flex-col items-center justify-center gap-2 text-danger-400">
           <AlertCircle className="w-5 h-5" />
           <div className="text-[13px] font-medium">Failed to load Shiller valuation</div>
-          <div className="text-[11px] text-surface-500 max-w-md text-center">{error}</div>
+          <div className="text-[11px] text-surface-700 max-w-md text-center">{error}</div>
         </div>
       )}
 
@@ -174,46 +174,46 @@ export function ShillerValuationChart() {
           {/* Stats header */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Current CAPE
               </div>
               <div className="text-[16px] font-bold text-amber-400 mt-0.5">
                 {data.latest.cape != null ? data.latest.cape.toFixed(2) : '—'}
               </div>
-              <div className="text-[10px] text-surface-500 mt-0.5">
+              <div className="text-[10px] text-surface-700 mt-0.5">
                 Median: {data.medians.cape.toFixed(1)}
               </div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Dividend Yield
               </div>
               <div className="text-[16px] font-bold text-cyan-400 mt-0.5">
                 {data.latest.divYield != null ? `${data.latest.divYield.toFixed(2)}%` : '—'}
               </div>
-              <div className="text-[10px] text-surface-500 mt-0.5">
+              <div className="text-[10px] text-surface-700 mt-0.5">
                 Median: {data.medians.divYield.toFixed(2)}%
               </div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 CAPE Percentile
               </div>
               <div className="text-[16px] font-bold text-surface-200 mt-0.5">
                 {data.capePercentile != null ? `${data.capePercentile.toFixed(1)}th` : '—'}
               </div>
-              <div className="text-[10px] text-surface-500 mt-0.5">vs. 155 years</div>
+              <div className="text-[10px] text-surface-700 mt-0.5">vs. 155 years</div>
             </div>
             <div className="p-3 rounded-xl border border-cyan-500/40 bg-cyan-500/5">
               <div className="text-[10px] text-cyan-500 uppercase tracking-wider font-medium">
                 Zone
               </div>
               <div
-                className={`text-[16px] font-bold mt-0.5 ${capeZone?.color ?? 'text-surface-500'}`}
+                className={`text-[16px] font-bold mt-0.5 ${capeZone?.color ?? 'text-surface-700'}`}
               >
                 {capeZone?.label ?? '—'}
               </div>
-              <div className="text-[10px] text-surface-500 mt-0.5">Valuation regime</div>
+              <div className="text-[10px] text-surface-700 mt-0.5">Valuation regime</div>
             </div>
           </div>
 
@@ -226,9 +226,9 @@ export function ShillerValuationChart() {
           />
 
           {/* Footer */}
-          <div className="mt-3 flex flex-wrap gap-4 text-[10px] text-surface-500 items-center justify-between">
+          <div className="mt-3 flex flex-wrap gap-4 text-[10px] text-surface-700 items-center justify-between">
             <div>
-              <span className="text-surface-600 font-medium">Source:</span>{' '}
+              <span className="text-surface-800 font-medium">Source:</span>{' '}
               <a
                 href="https://github.com/datasets/s-and-p-500"
                 target="_blank"
@@ -238,10 +238,10 @@ export function ShillerValuationChart() {
                 Shiller SP500 (GitHub datasets/s-and-p-500)
               </a>
               {' · '}
-              <span className="text-surface-600 font-medium">Data as of:</span>{' '}
+              <span className="text-surface-800 font-medium">Data as of:</span>{' '}
               <span className="text-surface-900">{data.latest.date}</span>
             </div>
-            <div className="text-surface-500">
+            <div className="text-surface-700">
               Range: {data.dataRange.from} → {data.dataRange.to} ({data.points.length} months)
             </div>
           </div>

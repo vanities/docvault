@@ -140,7 +140,7 @@ export function MidtermDrawdownChart() {
           <TrendingDown className="w-5 h-5 text-cyan-400" />
           Midterm Drawdown Overlay
         </h3>
-        <p className="text-[13px] text-surface-600 mt-1 leading-relaxed">
+        <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
           Every midterm year since 1871 as a normalized drawdown curve from its pre-midterm peak
           through Year 3 (pre-election). The{' '}
           <span className="text-cyan-400 font-semibold">2026 curve</span> is tracked live. The
@@ -150,7 +150,7 @@ export function MidtermDrawdownChart() {
       </div>
 
       {loading && (
-        <div className="h-[480px] flex items-center justify-center text-surface-500 text-[13px]">
+        <div className="h-[480px] flex items-center justify-center text-surface-700 text-[13px]">
           Loading 155 years of Shiller data...
         </div>
       )}
@@ -178,36 +178,36 @@ export function MidtermDrawdownChart() {
                   ? `${stats.liveDd >= 0 ? '+' : ''}${stats.liveDd.toFixed(2)}%`
                   : '—'}
               </div>
-              <div className="text-[10px] text-surface-500 mt-0.5">
+              <div className="text-[10px] text-surface-700 mt-0.5">
                 {stats.liveOffset != null ? `Month ${stats.liveOffset}` : 'No data'}
               </div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Avg at Same Offset
               </div>
               <div className="text-[16px] font-bold text-surface-300 mt-0.5">
                 {stats.avgAtOffset != null ? `${stats.avgAtOffset.toFixed(2)}%` : '—'}
               </div>
-              <div className="text-[10px] text-surface-500 mt-0.5">Historical baseline</div>
+              <div className="text-[10px] text-surface-700 mt-0.5">Historical baseline</div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Avg Bottom
               </div>
               <div className="text-[16px] font-bold text-rose-400 mt-0.5">
                 {stats.avgBottom != null ? `${stats.avgBottom.toFixed(2)}%` : '—'}
               </div>
-              <div className="text-[10px] text-surface-500 mt-0.5">
+              <div className="text-[10px] text-surface-700 mt-0.5">
                 Across {stats.historicalCount} midterms
               </div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 2026 Peak
               </div>
               <div className="text-[13px] font-bold text-amber-400 mt-0.5">{stats.peakDate}</div>
-              <div className="text-[10px] text-surface-500 mt-0.5">Reference high</div>
+              <div className="text-[10px] text-surface-700 mt-0.5">Reference high</div>
             </div>
           </div>
 
@@ -218,7 +218,7 @@ export function MidtermDrawdownChart() {
             notMerge
           />
 
-          <div className="mt-3 text-[10px] text-surface-500 text-center">
+          <div className="mt-3 text-[10px] text-surface-700 text-center">
             Source: Shiller SP500 dataset. {data.curves.filter((c) => !c.isCurrent).length} complete
             historical midterms (thin gray) + historical average (dashed) + 2026 live (cyan). Only
             midterms where the peak occurred in the first half of the Y1-Y3 window are included, to

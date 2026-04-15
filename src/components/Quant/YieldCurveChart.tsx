@@ -182,7 +182,7 @@ export function YieldCurveChart() {
           <TrendingUp className="w-5 h-5 text-cyan-400" />
           Yield Curve Inversion
         </h3>
-        <p className="text-[13px] text-surface-600 mt-1 leading-relaxed">
+        <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
           10Y − 2Y and 10Y − 3M Treasury spreads from FRED. Inverted periods (spread &lt; 0) are
           shaded <span className="text-rose-400 font-semibold">rose</span>; actual{' '}
           <span className="text-surface-400 font-semibold">NBER recessions</span> (FRED USREC) are
@@ -192,7 +192,7 @@ export function YieldCurveChart() {
       </div>
 
       {loading && (
-        <div className="h-[480px] flex items-center justify-center text-surface-500 text-[13px]">
+        <div className="h-[480px] flex items-center justify-center text-surface-700 text-[13px]">
           Loading 50 years of FRED data...
         </div>
       )}
@@ -201,7 +201,7 @@ export function YieldCurveChart() {
         <div className="h-[480px] flex flex-col items-center justify-center gap-2 text-danger-400 p-6 text-center">
           <AlertCircle className="w-5 h-5" />
           <div className="text-[13px] font-medium">Yield curve not available</div>
-          <div className="text-[11px] text-surface-500 max-w-md">{error}</div>
+          <div className="text-[11px] text-surface-700 max-w-md">{error}</div>
           {error.toLowerCase().includes('fred api key') && (
             <div className="text-[11px] text-cyan-400 mt-2">
               Go to <strong>Settings → Quant</strong> to add your free FRED API key.
@@ -215,7 +215,7 @@ export function YieldCurveChart() {
           {/* Stats header */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 10Y − 2Y Spread
               </div>
               <div
@@ -229,7 +229,7 @@ export function YieldCurveChart() {
               </div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 10Y − 3M Spread
               </div>
               <div
@@ -243,7 +243,7 @@ export function YieldCurveChart() {
               </div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Inversion Streak
               </div>
               <div
@@ -255,7 +255,7 @@ export function YieldCurveChart() {
                   ? `${data.inversionStreak}d inverted`
                   : `${Math.abs(data.inversionStreak)}d normal`}
               </div>
-              <div className="text-[10px] text-surface-500 mt-0.5">
+              <div className="text-[10px] text-surface-700 mt-0.5">
                 {data.lastInversionStart
                   ? `Since ${data.lastInversionStart}`
                   : 'Post-inversion recovery'}
@@ -266,7 +266,7 @@ export function YieldCurveChart() {
                 Regime
               </div>
               <div className={`text-[16px] font-bold mt-0.5 ${meta.color}`}>{meta.label}</div>
-              <div className="text-[10px] text-surface-600 mt-0.5 leading-tight">{meta.blurb}</div>
+              <div className="text-[10px] text-surface-800 mt-0.5 leading-tight">{meta.blurb}</div>
             </div>
           </div>
 
@@ -279,9 +279,9 @@ export function YieldCurveChart() {
           />
 
           {/* Footer */}
-          <div className="mt-3 flex flex-wrap gap-4 text-[10px] text-surface-500 items-center justify-between">
+          <div className="mt-3 flex flex-wrap gap-4 text-[10px] text-surface-700 items-center justify-between">
             <div>
-              <span className="text-surface-600 font-medium">Source:</span>{' '}
+              <span className="text-surface-800 font-medium">Source:</span>{' '}
               <a
                 href="https://fred.stlouisfed.org/series/T10Y2Y"
                 target="_blank"
@@ -291,12 +291,12 @@ export function YieldCurveChart() {
                 FRED (T10Y2Y + T10Y3M)
               </a>
               {' · '}
-              <span className="text-surface-600 font-medium">Range:</span>{' '}
+              <span className="text-surface-800 font-medium">Range:</span>{' '}
               <span className="text-surface-900">
                 {data.dataRange.from} → {data.dataRange.to}
               </span>
               {' · '}
-              <span className="text-surface-600">
+              <span className="text-surface-800">
                 {data.points.length.toLocaleString()} daily bars
               </span>
             </div>

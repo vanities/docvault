@@ -301,7 +301,7 @@ export function BtcRiskMetricChart() {
           <Gauge className="w-5 h-5 text-cyan-400" />
           BTC Risk Metric (Composite 0–1)
         </h3>
-        <p className="text-[13px] text-surface-600 mt-1 leading-relaxed">
+        <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
           Cowen-style 0–1 risk scalar blending 5 indicators: Mayer multiple, 20W SMA distance,
           log-regression σ, RSI-14, and drawdown from ATH. Each input percentile-ranked over a
           rolling 5-year window and averaged.{' '}
@@ -311,7 +311,7 @@ export function BtcRiskMetricChart() {
       </div>
 
       {loading && (
-        <div className="h-[560px] flex items-center justify-center text-surface-500 text-[13px]">
+        <div className="h-[560px] flex items-center justify-center text-surface-700 text-[13px]">
           Loading BTC history...
         </div>
       )}
@@ -320,7 +320,7 @@ export function BtcRiskMetricChart() {
         <div className="h-[560px] flex flex-col items-center justify-center gap-2 text-danger-400">
           <AlertCircle className="w-5 h-5" />
           <div className="text-[13px] font-medium">Failed to load risk metric</div>
-          <div className="text-[11px] text-surface-500 max-w-md text-center">{error}</div>
+          <div className="text-[11px] text-surface-700 max-w-md text-center">{error}</div>
         </div>
       )}
 
@@ -329,7 +329,7 @@ export function BtcRiskMetricChart() {
           {/* Gauge + Zone */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div className="p-4 rounded-xl border border-border/40 bg-surface-100/20">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium mb-2">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium mb-2">
                 Current Risk Metric
               </div>
               {gaugeOption && (
@@ -343,14 +343,14 @@ export function BtcRiskMetricChart() {
               {zone && (
                 <div className="mt-2 text-center">
                   <div className={`text-[18px] font-bold ${zone.color}`}>{zone.label}</div>
-                  <div className="text-[11px] text-surface-600 mt-1">{zone.tip}</div>
+                  <div className="text-[11px] text-surface-800 mt-1">{zone.tip}</div>
                 </div>
               )}
             </div>
 
             {/* Component breakdown */}
             <div className="p-4 rounded-xl border border-border/40 bg-surface-100/20">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium mb-2">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium mb-2">
                 Component Percentile Breakdown
               </div>
               {breakdownOption && (
@@ -361,7 +361,7 @@ export function BtcRiskMetricChart() {
                   notMerge
                 />
               )}
-              <div className="text-[10px] text-surface-500 mt-2 text-center">
+              <div className="text-[10px] text-surface-700 mt-2 text-center">
                 Each bar = that indicator's 5yr rolling percentile (0 = cheap, 1 = expensive)
               </div>
             </div>
@@ -377,7 +377,7 @@ export function BtcRiskMetricChart() {
                 data.risk.latest.normalized[key as keyof typeof data.risk.latest.normalized];
               return (
                 <div key={key} className="p-2 rounded-lg border border-border/40 bg-surface-100/20">
-                  <div className="text-[9px] text-surface-500 uppercase tracking-wider font-medium">
+                  <div className="text-[9px] text-surface-700 uppercase tracking-wider font-medium">
                     {meta.label}
                   </div>
                   <div className="text-[14px] font-bold text-surface-200 mt-0.5">
@@ -399,7 +399,7 @@ export function BtcRiskMetricChart() {
             notMerge
           />
 
-          <div className="mt-3 text-[10px] text-surface-500 text-center">
+          <div className="mt-3 text-[10px] text-surface-700 text-center">
             Historical risk metric (cyan, right axis) overlaid on BTC price (orange, log scale).
             Green shading = low-risk (≤ 0.25), rose shading = high-risk (≥ 0.75).
           </div>

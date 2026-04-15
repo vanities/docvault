@@ -122,7 +122,7 @@ export function GoldenDeathCrossChart() {
           <Crosshair className="w-5 h-5 text-emerald-400" />
           Golden / Death Cross
         </h3>
-        <p className="text-[13px] text-surface-600 mt-1 leading-relaxed">
+        <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
           50-day SMA crossing the 200-day SMA. Per ITC:{' '}
           <em>
             &ldquo;A golden cross indicates a long-term bull market going forward. A death cross
@@ -134,7 +134,7 @@ export function GoldenDeathCrossChart() {
       </div>
 
       {loading && (
-        <div className="h-[360px] flex items-center justify-center text-surface-500 text-[13px]">
+        <div className="h-[360px] flex items-center justify-center text-surface-700 text-[13px]">
           Loading...
         </div>
       )}
@@ -150,7 +150,7 @@ export function GoldenDeathCrossChart() {
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 50D SMA
               </div>
               <div className="text-[15px] font-bold text-emerald-400 mt-0.5">
@@ -160,7 +160,7 @@ export function GoldenDeathCrossChart() {
               </div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 200D SMA
               </div>
               <div className="text-[15px] font-bold text-rose-400 mt-0.5">
@@ -194,12 +194,12 @@ export function GoldenDeathCrossChart() {
               >
                 {data.goldenDeathCrosses.currentRegime === 'bullish' ? 'Bullish' : 'Bearish'}
               </div>
-              <div className="text-[10px] text-surface-500 mt-0.5">
+              <div className="text-[10px] text-surface-700 mt-0.5">
                 50D {data.goldenDeathCrosses.currentRegime === 'bullish' ? '>' : '<'} 200D
               </div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Last Cross
               </div>
               <div
@@ -215,7 +215,7 @@ export function GoldenDeathCrossChart() {
                     : 'Death Cross'
                   : '—'}
               </div>
-              <div className="text-[10px] text-surface-500 mt-0.5">
+              <div className="text-[10px] text-surface-700 mt-0.5">
                 {data.goldenDeathCrosses.latestEvent
                   ? new Date(data.goldenDeathCrosses.latestEvent.t).toISOString().slice(0, 10)
                   : ''}
@@ -229,7 +229,7 @@ export function GoldenDeathCrossChart() {
             style={{ height: '360px' }}
           />
 
-          <div className="mt-3 text-[10px] text-surface-500 text-center">
+          <div className="mt-3 text-[10px] text-surface-700 text-center">
             {data.goldenDeathCrosses.events.length} historical cross events
           </div>
         </>

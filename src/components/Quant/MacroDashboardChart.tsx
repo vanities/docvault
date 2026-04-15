@@ -69,7 +69,7 @@ function MiniChart({ series }: { series: MacroSeriesData }) {
       <div className="flex items-baseline justify-between mb-1">
         <div>
           <div className="text-[11px] font-semibold text-surface-200">{series.label}</div>
-          <div className="text-[9px] text-surface-500 leading-tight">
+          <div className="text-[9px] text-surface-700 leading-tight">
             FRED: <span className="font-mono">{series.id}</span>
           </div>
         </div>
@@ -97,7 +97,7 @@ function MiniChart({ series }: { series: MacroSeriesData }) {
         opts={{ renderer: 'canvas' }}
         notMerge
       />
-      <div className="text-[9px] text-surface-500 mt-1 leading-tight">{series.description}</div>
+      <div className="text-[9px] text-surface-700 mt-1 leading-tight">{series.description}</div>
     </div>
   );
 }
@@ -115,7 +115,7 @@ export function MacroDashboardChart() {
           <Landmark className="w-5 h-5 text-cyan-400" />
           Macro Dashboard
         </h3>
-        <p className="text-[13px] text-surface-600 mt-1 leading-relaxed">
+        <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
           Five FRED series capturing the macro regime: 10Y Treasury yield, Fed Funds Rate, M2 money
           supply, Dollar Index, and Core CPI. Cowen uses these as a <strong>
             regime filter
@@ -125,7 +125,7 @@ export function MacroDashboardChart() {
       </div>
 
       {loading && (
-        <div className="h-[320px] flex items-center justify-center text-surface-500 text-[13px]">
+        <div className="h-[320px] flex items-center justify-center text-surface-700 text-[13px]">
           Loading 5 FRED series in parallel...
         </div>
       )}
@@ -134,7 +134,7 @@ export function MacroDashboardChart() {
         <div className="h-[320px] flex flex-col items-center justify-center gap-2 text-danger-400 text-center p-6">
           <AlertCircle className="w-5 h-5" />
           <div className="text-[13px] font-medium">Macro dashboard not available</div>
-          <div className="text-[11px] text-surface-500 max-w-md">{error}</div>
+          <div className="text-[11px] text-surface-700 max-w-md">{error}</div>
           {error.toLowerCase().includes('fred api key') && (
             <div className="text-[11px] text-cyan-400 mt-2">
               Add your free FRED API key in <strong>Settings → Quant</strong>.
@@ -150,7 +150,7 @@ export function MacroDashboardChart() {
               <MiniChart key={s.id} series={s} />
             ))}
           </div>
-          <div className="mt-3 text-[10px] text-surface-500 text-center">
+          <div className="mt-3 text-[10px] text-surface-700 text-center">
             Source:{' '}
             <a
               href="https://fred.stlouisfed.org/"

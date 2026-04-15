@@ -273,7 +273,7 @@ export function SP500RiskMetricChart() {
           <Gauge className="w-5 h-5 text-cyan-400" />
           SP500 Risk Metric (Composite 0–1)
         </h3>
-        <p className="text-[13px] text-surface-600 mt-1 leading-relaxed">
+        <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
           Cowen-style 0–1 risk scalar adapted for the monthly Shiller SP500 dataset (1871–present).
           Five inputs percentile-ranked over a rolling 50-year window, then averaged.{' '}
           <span className="text-emerald-400 font-semibold">0 = generational low</span>,{' '}
@@ -283,7 +283,7 @@ export function SP500RiskMetricChart() {
       </div>
 
       {loading && (
-        <div className="h-[560px] flex items-center justify-center text-surface-500 text-[13px]">
+        <div className="h-[560px] flex items-center justify-center text-surface-700 text-[13px]">
           Loading 155 years of Shiller data...
         </div>
       )}
@@ -299,7 +299,7 @@ export function SP500RiskMetricChart() {
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div className="p-4 rounded-xl border border-border/40 bg-surface-100/20">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium mb-2">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium mb-2">
                 Current Risk Metric
               </div>
               {gaugeOption && (
@@ -313,12 +313,12 @@ export function SP500RiskMetricChart() {
               {zone && (
                 <div className="mt-2 text-center">
                   <div className={`text-[18px] font-bold ${zone.color}`}>{zone.label}</div>
-                  <div className="text-[11px] text-surface-600 mt-1">{zone.tip}</div>
+                  <div className="text-[11px] text-surface-800 mt-1">{zone.tip}</div>
                 </div>
               )}
             </div>
             <div className="p-4 rounded-xl border border-border/40 bg-surface-100/20">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium mb-2">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium mb-2">
                 Component Percentile Breakdown
               </div>
               {breakdownOption && (
@@ -329,7 +329,7 @@ export function SP500RiskMetricChart() {
                   notMerge
                 />
               )}
-              <div className="text-[10px] text-surface-500 mt-2 text-center">
+              <div className="text-[10px] text-surface-700 mt-2 text-center">
                 Each bar = 50yr rolling percentile (0 = cheap, 1 = expensive)
               </div>
             </div>
@@ -342,7 +342,7 @@ export function SP500RiskMetricChart() {
               const norm = data.latest.normalized[key as keyof typeof data.latest.normalized];
               return (
                 <div key={key} className="p-2 rounded-lg border border-border/40 bg-surface-100/20">
-                  <div className="text-[9px] text-surface-500 uppercase tracking-wider font-medium">
+                  <div className="text-[9px] text-surface-700 uppercase tracking-wider font-medium">
                     {meta.label}
                   </div>
                   <div className="text-[14px] font-bold text-surface-200 mt-0.5">
@@ -363,7 +363,7 @@ export function SP500RiskMetricChart() {
             notMerge
           />
 
-          <div className="mt-3 text-[10px] text-surface-500 text-center">
+          <div className="mt-3 text-[10px] text-surface-700 text-center">
             Historical risk metric (cyan, right axis) overlaid on SP500 price (green, log). Source:
             Shiller dataset (1871–present).
           </div>

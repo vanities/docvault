@@ -180,7 +180,7 @@ export function BtcLogRegressionChart() {
           <Activity className="w-5 h-5 text-amber-400" />
           BTC Log Regression Bands
         </h3>
-        <p className="text-[13px] text-surface-600 mt-1 leading-relaxed">
+        <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
           Log-log OLS fit of Bitcoin price vs. days since genesis, with ±1 and ±2 stdev bands. The
           classic &ldquo;rainbow chart&rdquo; math — current position relative to the trend tells
           you whether BTC is in accumulation, fair value, or euphoria.
@@ -188,7 +188,7 @@ export function BtcLogRegressionChart() {
       </div>
 
       {loading && (
-        <div className="h-[480px] flex items-center justify-center text-surface-500 text-[13px]">
+        <div className="h-[480px] flex items-center justify-center text-surface-700 text-[13px]">
           Loading BTC history...
         </div>
       )}
@@ -197,7 +197,7 @@ export function BtcLogRegressionChart() {
         <div className="h-[480px] flex flex-col items-center justify-center gap-2 text-danger-400">
           <AlertCircle className="w-5 h-5" />
           <div className="text-[13px] font-medium">Failed to load BTC data</div>
-          <div className="text-[11px] text-surface-500 max-w-md text-center">{error}</div>
+          <div className="text-[11px] text-surface-700 max-w-md text-center">{error}</div>
         </div>
       )}
 
@@ -212,7 +212,7 @@ export function BtcLogRegressionChart() {
           {/* Stats row */}
           <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Current Price
               </div>
               <div className="text-[16px] font-bold text-amber-400 mt-0.5">
@@ -220,7 +220,7 @@ export function BtcLogRegressionChart() {
               </div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Fair Value (Fit)
               </div>
               <div className="text-[16px] font-bold text-surface-200 mt-0.5">
@@ -228,7 +228,7 @@ export function BtcLogRegressionChart() {
               </div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Residual σ
               </div>
               <div
@@ -251,13 +251,13 @@ export function BtcLogRegressionChart() {
           </div>
 
           {/* Legend */}
-          <div className="mt-3 flex flex-wrap gap-4 text-[11px] text-surface-500">
+          <div className="mt-3 flex flex-wrap gap-4 text-[11px] text-surface-700">
             <LegendSwatch color="#f59e0b" label="BTC Price" />
             <LegendSwatch color="#f1f5f9" label="Trend (OLS fit)" />
             <LegendSwatch color="rgba(239, 68, 68, 0.8)" label="±1σ Upper" dashed />
             <LegendSwatch color="rgba(34, 197, 94, 0.8)" label="±1σ Lower" dashed />
             <LegendSwatch color="rgba(239, 68, 68, 0.5)" label="±2σ Outer" />
-            <span className="ml-auto text-surface-500">
+            <span className="ml-auto text-surface-700">
               Slope: <span className="text-surface-300 font-mono">{data.slope.toFixed(3)}</span>
               {' · '}
               σ: <span className="text-surface-300 font-mono">{data.stdev.toFixed(3)}</span>

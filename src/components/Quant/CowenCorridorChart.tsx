@@ -138,7 +138,7 @@ export function CowenCorridorChart() {
           <GitBranch className="w-5 h-5 text-cyan-400" />
           Cowen Corridor
         </h3>
-        <p className="text-[13px] text-surface-600 mt-1 leading-relaxed">
+        <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
           BTC price against multiples of the 20-week moving average. Per ITC:{' '}
           <em>
             &ldquo;A corridor which are multiples of the 20WMA made such that it acted as support
@@ -149,7 +149,7 @@ export function CowenCorridorChart() {
       </div>
 
       {loading && (
-        <div className="h-[480px] flex items-center justify-center text-surface-500 text-[13px]">
+        <div className="h-[480px] flex items-center justify-center text-surface-700 text-[13px]">
           Loading BTC history...
         </div>
       )}
@@ -158,7 +158,7 @@ export function CowenCorridorChart() {
         <div className="h-[480px] flex flex-col items-center justify-center gap-2 text-danger-400">
           <AlertCircle className="w-5 h-5" />
           <div className="text-[13px] font-medium">Failed to load BTC data</div>
-          <div className="text-[11px] text-surface-500 max-w-md text-center">{error}</div>
+          <div className="text-[11px] text-surface-700 max-w-md text-center">{error}</div>
         </div>
       )}
 
@@ -173,7 +173,7 @@ export function CowenCorridorChart() {
           {/* Stats row */}
           <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 BTC Price
               </div>
               <div className="text-[16px] font-bold text-amber-400 mt-0.5">
@@ -181,7 +181,7 @@ export function CowenCorridorChart() {
               </div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 20W SMA
               </div>
               <div className="text-[16px] font-bold text-surface-200 mt-0.5">
@@ -191,7 +191,7 @@ export function CowenCorridorChart() {
               </div>
             </div>
             <div className="p-3 rounded-xl border border-border/40 bg-surface-100/30">
-              <div className="text-[10px] text-surface-500 uppercase tracking-wider font-medium">
+              <div className="text-[10px] text-surface-700 uppercase tracking-wider font-medium">
                 Corridor Multiple
               </div>
               <div className="text-[16px] font-bold text-cyan-400 mt-0.5">
@@ -204,13 +204,13 @@ export function CowenCorridorChart() {
               <div className="text-[10px] text-cyan-500 uppercase tracking-wider font-medium">
                 Zone
               </div>
-              <div className={`text-[16px] font-bold mt-0.5 ${zone?.color ?? 'text-surface-500'}`}>
+              <div className={`text-[16px] font-bold mt-0.5 ${zone?.color ?? 'text-surface-700'}`}>
                 {zone?.label ?? '—'}
               </div>
             </div>
           </div>
 
-          <div className="mt-3 text-[10px] text-surface-500">
+          <div className="mt-3 text-[10px] text-surface-700">
             Note: ITC's actual corridor multipliers are proprietary — these are reasonable picks
             (0.4/0.6/1.0/1.6/2.5/4.0) that historically aligned with BTC cycle levels.
           </div>
