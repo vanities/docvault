@@ -184,7 +184,7 @@ export function useAnalytics(
     return () => {
       cancelled = true;
     };
-  }, [entity, year, refreshKey]);
+  }, [entity, year, refreshKey, includeHidden]);
 
   const emptyInvoices: InvoiceSummaryData = {
     entity,
