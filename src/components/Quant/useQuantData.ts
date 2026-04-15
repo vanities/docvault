@@ -479,6 +479,11 @@ export function useBusinessCycle() {
   return useQuantFetch<MacroDashboardData>(`${API_BASE}/quant/macro/business-cycle?_=${bump}`);
 }
 
+export function useInflationDashboard() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<MacroDashboardData>(`${API_BASE}/quant/macro/inflation?_=${bump}`);
+}
+
 export interface FedRateChange {
   t: number;
   newRate: number;
