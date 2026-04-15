@@ -389,8 +389,8 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
       setActiveView('tax-year');
     } else if (activeView === 'settings') {
       setActiveView(entity.type === 'docs' ? 'all-files' : 'tax-year');
-    } else if (activeView === 'health') {
-      // Coming from Health to any entity — pick a sensible default
+    } else if (activeView.startsWith('health')) {
+      // Coming from any Health view to a non-health entity — pick a sensible default
       setActiveView(entity.type === 'docs' ? 'all-files' : 'tax-year');
     } else if (entity.type === 'docs' && activeView !== 'all-files') {
       setActiveView('all-files');

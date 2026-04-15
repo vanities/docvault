@@ -23,6 +23,7 @@ import {
 import type { HealthPerson } from '../../hooks/useFileSystemServer';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { useAppContext } from '../../contexts/AppContext';
 import { useHealthApi } from './useHealthApi';
 import { PeopleList } from './PeopleList';
 import { AddPersonModal } from './AddPersonModal';
@@ -31,12 +32,17 @@ import { PersonDetail } from './PersonDetail';
 
 export function HealthView() {
   const api = useHealthApi();
+  const { selectedHealthPersonId, setSelectedHealthPersonId } = useAppContext();
   const [people, setPeople] = useState<HealthPerson[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingPerson, setEditingPerson] = useState<HealthPerson | null>(null);
+
+  // Drill-in person is mirrored from the global selectedHealthPersonId
+  // so clicking a person here sets the context that segment views read.
+  const selectedPersonId = selectedHealthPersonId;
+  const setSelectedPersonId = setSelectedHealthPersonId;
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -78,12 +84,15 @@ export function HealthView() {
     async (id: string, mode: 'archive' | 'delete') => {
       try {
         await api.deletePerson(id, mode);
+        // If we just removed the globally-selected person, clear it so
+        // segment views fall back to the picker rather than 404ing.
+        if (selectedPersonId === id) setSelectedPersonId(null);
         await refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
     },
-    [api, refresh]
+    [api, refresh, selectedPersonId, setSelectedPersonId]
   );
 
   const handleEditSave = useCallback(

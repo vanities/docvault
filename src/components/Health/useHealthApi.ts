@@ -3,7 +3,29 @@
 import { useCallback, useMemo } from 'react';
 import type { HealthPerson } from '../../hooks/useFileSystemServer';
 import { API_BASE } from '../../constants';
-import type { AppleHealthSummary, ExportInfo } from './types';
+import type {
+  ActivitySnapshot,
+  AppleHealthSummary,
+  BodySnapshot,
+  ExportInfo,
+  HealthSegment,
+  HeartSnapshot,
+  PersonSnapshots,
+  SleepSnapshot,
+  WorkoutsSnapshot,
+} from './types';
+
+type SnapshotFor<S extends HealthSegment | 'all'> = S extends 'activity'
+  ? ActivitySnapshot
+  : S extends 'heart'
+    ? HeartSnapshot
+    : S extends 'sleep'
+      ? SleepSnapshot
+      : S extends 'workouts'
+        ? WorkoutsSnapshot
+        : S extends 'body'
+          ? BodySnapshot
+          : PersonSnapshots;
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   // Normalize caller-provided headers to a plain object before merging.
@@ -131,6 +153,27 @@ export function useHealthApi() {
     []
   );
 
+  /**
+   * Fetch a single segment snapshot for this person's latest parsed export.
+   * Returns the cached snapshot from .docvault-health.json, or backfills
+   * on-demand if the summary exists but snapshots haven't been computed yet.
+   */
+  const getSnapshot = useCallback(
+    async <S extends HealthSegment | 'all'>(
+      personId: string,
+      segment: S
+    ): Promise<SnapshotFor<S>> => {
+      const res = await request<
+        | { segment: string; generatedAt: string; sourceFilename: string; data: unknown }
+        | { snapshot: PersonSnapshots }
+      >(`${API_BASE}/health/${personId}/snapshot/${segment}`);
+      // The "all" variant returns { snapshot }, segment variants return { data }
+      if ('snapshot' in res) return res.snapshot as SnapshotFor<S>;
+      return res.data as SnapshotFor<S>;
+    },
+    []
+  );
+
   // Memoize the return object so consumers that put `api` in a useEffect
   // dependency array don't spin in an infinite loop. Without this wrapper,
   // every render of the calling component creates a fresh object literal —
@@ -146,6 +189,7 @@ export function useHealthApi() {
       parseExport,
       getSummary,
       uploadAndParseExport,
+      getSnapshot,
     }),
     [
       listPeople,
@@ -156,6 +200,7 @@ export function useHealthApi() {
       parseExport,
       getSummary,
       uploadAndParseExport,
+      getSnapshot,
     ]
   );
 }
