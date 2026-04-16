@@ -37,7 +37,55 @@ import type {
   PortfolioSnapshot,
   Contribution401k,
   IncomeSource,
+  AccountAnnotation,
 } from '../data.js';
+
+// Account categorization — uses explicit annotation.type first, falls back to
+// name heuristics. Critical for downstream consumers (LLM strategy skill) that
+// need to distinguish liquid cash from credit card / loan liabilities.
+export type AccountCategory =
+  | 'depository'
+  | 'credit-card'
+  | 'line-of-credit'
+  | 'auto-loan'
+  | 'personal-loan'
+  | 'student-loan'
+  | 'mortgage'
+  | 'other-liability';
+
+export function categorizeAccount(
+  name: string,
+  annotation: AccountAnnotation | undefined,
+  balance: number
+): AccountCategory {
+  const t = annotation?.type;
+  if (
+    t === 'credit-card' ||
+    t === 'auto-loan' ||
+    t === 'personal-loan' ||
+    t === 'student-loan' ||
+    t === 'mortgage'
+  ) {
+    return t;
+  }
+  const n = name.toLowerCase();
+  // Credit cards — match common issuer / product names
+  if (
+    /\b(visa|mastercard|discover)\b/.test(n) ||
+    /\bamex\b|american express/.test(n) ||
+    /credit card|rewards card|signature card|prime rewards/.test(n)
+  ) {
+    return 'credit-card';
+  }
+  if (/line of credit|heloc/.test(n)) return 'line-of-credit';
+  if (/mortgage/.test(n)) return 'mortgage';
+  if (/(vehicle|auto|car)\s*loan|loan.*(vehicle|auto|truck|car)/.test(n)) return 'auto-loan';
+  if (/\bloan\b/.test(n)) return 'personal-loan';
+  // Unknown negative balances should not be silently lumped into cash —
+  // flag them so they show up as needing annotation.
+  if (balance < 0) return 'other-liability';
+  return 'depository';
+}
 
 export async function handleFinancialSnapshotRoutes(
   req: Request,
@@ -229,7 +277,13 @@ export async function handleFinancialSnapshotRoutes(
             type: string;
             details?: Record<string, unknown>;
           }[];
-          expenses: { vendor: string; amount: number; category: string }[];
+          expenses: {
+            vendor: string;
+            amount: number;
+            category: string;
+            date?: string;
+            filePath?: string;
+          }[];
         }
       > = {};
 
@@ -274,6 +328,8 @@ export async function handleFinancialSnapshotRoutes(
             vendor: e.vendor,
             amount: e.amount,
             category: e.category,
+            date: e.date,
+            filePath: e.filePath,
           })),
         };
       }
@@ -518,13 +574,49 @@ export async function handleFinancialSnapshotRoutes(
         0
       );
       const cryptoTotal = cryptoCache.totalUsdValue || 0;
-      const bankTotal = simplefinCache.accounts.reduce((s, a) => s + a.balance, 0);
+
+      // Categorize each bank/credit/loan account for accurate liquid vs debt reporting
+      const categorizedAccounts = simplefinCache.accounts.map((a) => {
+        const annotation = accountAnnotations[a.id];
+        return {
+          account: a,
+          annotation,
+          category: categorizeAccount(a.name, annotation, a.balance),
+        };
+      });
+
+      const sumByCat = (cats: AccountCategory[]) =>
+        categorizedAccounts
+          .filter((c) => cats.includes(c.category))
+          .reduce((s, c) => s + c.account.balance, 0);
+
+      const liquidCash = sumByCat(['depository']);
+      const creditCardDebt = sumByCat(['credit-card', 'line-of-credit']);
+      const autoLoans = sumByCat(['auto-loan']);
+      const mortgageDebt = sumByCat(['mortgage']);
+      const otherLoans = sumByCat(['personal-loan', 'student-loan']);
+      const otherLiabilities = sumByCat(['other-liability']);
+      const totalDebt = creditCardDebt + autoLoans + mortgageDebt + otherLoans + otherLiabilities;
+      const monthlyDebtService = categorizedAccounts.reduce(
+        (s, c) => s + (c.annotation?.monthlyPayment || 0),
+        0
+      );
+      const bankTotal = liquidCash + totalDebt;
+
       const portfolioSummary = {
         brokerage: brokerTotal,
         crypto: cryptoTotal,
         preciousMetals: goldSummary.totalValue,
         property: propertySummary.totalEquity,
         bankAccounts: bankTotal,
+        liquidCash,
+        creditCardDebt,
+        autoLoans,
+        mortgageDebt,
+        otherLoans,
+        otherLiabilities,
+        totalDebt,
+        monthlyDebtService,
         totalNetWorth:
           brokerTotal +
           cryptoTotal +
@@ -647,14 +739,26 @@ export async function handleFinancialSnapshotRoutes(
         property: propertySummary,
         additionalIncome: incomeData.sources,
         bankAccounts: {
-          accounts: simplefinCache.accounts.map((a) => ({
-            name: a.name,
-            balance: a.balance,
-            currency: a.currency,
-            connectionName: a.connectionName,
-            annotation: accountAnnotations[a.id] || undefined,
+          accounts: categorizedAccounts.map((c) => ({
+            id: c.account.id,
+            name: c.account.name,
+            balance: c.account.balance,
+            currency: c.account.currency,
+            connectionName: c.account.connectionName,
+            annotation: c.annotation || undefined,
+            category: c.category,
           })),
           lastUpdated: simplefinCache.lastUpdated,
+          totals: {
+            liquidCash,
+            creditCardDebt,
+            autoLoans,
+            mortgageDebt,
+            otherLoans,
+            otherLiabilities,
+            totalDebt,
+            monthlyDebtService,
+          },
         },
         cryptoGains: cryptoGainsCache.assets
           ? {
@@ -729,13 +833,21 @@ export async function handleFinancialSnapshotRoutes(
           }
 
           if (data.expenses.length > 0) {
-            // Group expenses by category
-            const cats = new Map<string, number>();
+            // Category subtotals followed by individual receipts with vendor + date
+            const cats = new Map<string, { total: number; count: number }>();
             for (const exp of data.expenses) {
-              cats.set(exp.category, (cats.get(exp.category) || 0) + exp.amount);
+              const c = cats.get(exp.category) || { total: 0, count: 0 };
+              c.total += exp.amount;
+              c.count += 1;
+              cats.set(exp.category, c);
             }
-            for (const [cat, total] of cats) {
-              t.push(`  EXPENSE cat=${cat} amt=${$(total)}`);
+            for (const [cat, c] of cats) {
+              t.push(`  EXPENSE_CAT cat=${cat} amt=${$(c.total)} count=${c.count}`);
+            }
+            for (const exp of data.expenses) {
+              t.push(
+                `  EXPENSE vendor="${exp.vendor}" cat=${exp.category} amt=${$(exp.amount)}${exp.date ? ` date=${exp.date}` : ''}${exp.filePath ? ` file="${exp.filePath}"` : ''}`
+              );
             }
           }
         }
@@ -815,22 +927,245 @@ export async function handleFinancialSnapshotRoutes(
           t.push('');
         }
 
-        // Portfolio
-        if (portfolioSummary.totalNetWorth > 0) {
+        // Retirement contributions (401k etc.)
+        if (Object.keys(yearContributions).length > 0) {
+          let retireTotal = 0;
+          for (const entries of Object.values(yearContributions)) {
+            retireTotal += entries.reduce((s, c) => s + c.amount, 0);
+          }
+          t.push(`RETIREMENT total=${$(retireTotal)}`);
+          for (const [key, entries] of Object.entries(yearContributions)) {
+            const entityId = key.split('/')[0];
+            const subTotal = entries.reduce((s, c) => s + c.amount, 0);
+            t.push(`  ENTITY ${entityId} total=${$(subTotal)} count=${entries.length}`);
+            for (const c of entries) {
+              t.push(`    ${c.date} type=${c.type} amt=${$(c.amount)}`);
+            }
+          }
+          t.push('');
+        }
+
+        // Portfolio summary
+        if (portfolioSummary.totalNetWorth !== 0) {
           t.push(`PORTFOLIO net_worth=${$(portfolioSummary.totalNetWorth)}`);
           if (portfolioSummary.brokerage) t.push(`  brokerage=${$(portfolioSummary.brokerage)}`);
           if (portfolioSummary.crypto) t.push(`  crypto=${$(portfolioSummary.crypto)}`);
           if (portfolioSummary.preciousMetals)
             t.push(`  metals=${$(portfolioSummary.preciousMetals)}`);
-          if (portfolioSummary.property) t.push(`  property=${$(portfolioSummary.property)}`);
-          if (portfolioSummary.bankAccounts) t.push(`  bank=${$(portfolioSummary.bankAccounts)}`);
+          if (portfolioSummary.property)
+            t.push(`  property_equity=${$(portfolioSummary.property)}`);
+          if (portfolioSummary.liquidCash)
+            t.push(`  liquid_cash=${$(portfolioSummary.liquidCash)}`);
+          if (portfolioSummary.totalDebt)
+            t.push(
+              `  total_debt=${$(portfolioSummary.totalDebt)} monthly_service=${$(portfolioSummary.monthlyDebtService)}`
+            );
+          t.push('');
         }
 
-        // Sales
+        // Cash accounts (depository only)
+        const depositoryAccounts = categorizedAccounts.filter(
+          (c) => c.category === 'depository' && c.account.balance !== 0
+        );
+        if (depositoryAccounts.length > 0) {
+          t.push(`CASH liquid=${$(liquidCash)}`);
+          for (const c of depositoryAccounts) {
+            const a = c.account;
+            const conn = a.connectionName ? ` inst="${a.connectionName}"` : '';
+            t.push(`  ACCOUNT name="${a.name}" bal=${$(a.balance)}${conn}`);
+          }
+          t.push('');
+        }
+
+        // Debt accounts (credit cards, loans, mortgages, liabilities)
+        const debtAccounts = categorizedAccounts.filter(
+          (c) => c.category !== 'depository' && c.account.balance !== 0
+        );
+        if (debtAccounts.length > 0) {
+          t.push(
+            `DEBT total=${$(totalDebt)} cc=${$(creditCardDebt)} auto=${$(autoLoans)} mortgage=${$(mortgageDebt)} other_loans=${$(otherLoans)} unannotated=${$(otherLiabilities)} monthly_service=${$(monthlyDebtService)}`
+          );
+          for (const c of debtAccounts) {
+            const a = c.account;
+            const ann = c.annotation;
+            const conn = a.connectionName ? ` inst="${a.connectionName}"` : '';
+            const rate = ann?.rate !== undefined ? ` rate=${(ann.rate * 100).toFixed(2)}%` : '';
+            const pmt = ann?.monthlyPayment !== undefined ? ` pmt=${$(ann.monthlyPayment)}` : '';
+            const orig =
+              ann?.originalBalance !== undefined ? ` orig=${$(ann.originalBalance)}` : '';
+            const term = ann?.term !== undefined ? ` term=${ann.term}mo` : '';
+            const start = ann?.startDate ? ` start=${ann.startDate}` : '';
+            const note = ann?.notes ? ` note="${ann.notes}"` : '';
+            const warn = c.category === 'other-liability' ? ' NEEDS_ANNOTATION=true' : '';
+            t.push(
+              `  ${c.category.toUpperCase()} name="${a.name}" bal=${$(a.balance)}${conn}${rate}${pmt}${orig}${term}${start}${note}${warn}`
+            );
+          }
+          t.push('');
+        }
+
+        // Brokerage accounts + holdings
+        if (brokerCache.accounts.length > 0) {
+          t.push(
+            `BROKERAGE total=${$(brokerTotal)} accounts=${brokerCache.accounts.length}${brokerCache.lastUpdated ? ` updated=${brokerCache.lastUpdated}` : ''}`
+          );
+          for (const acct of brokerCache.accounts) {
+            const acctValue = acct.holdings.reduce((s, h) => s + h.marketValue, 0);
+            t.push(
+              `  ACCOUNT broker="${acct.broker}" name="${acct.name}" value=${$(acctValue)} holdings=${acct.holdings.length}`
+            );
+            for (const h of acct.holdings) {
+              const gainPct = h.gainLossPercent?.toFixed(2) ?? '0.00';
+              t.push(
+                `    ${h.ticker} shares=${h.shares} cost=${$(h.costBasis)} price=${$(h.price)} mv=${$(h.marketValue)} gain=${$(h.gainLoss)} pct=${gainPct}% type=${h.gainType}`
+              );
+            }
+          }
+          t.push('');
+        }
+
+        // Crypto sources + per-asset balances
+        if (cryptoCache.sources && cryptoCache.sources.length > 0) {
+          t.push(`CRYPTO total=${$(cryptoTotal)} sources=${cryptoCache.sources.length}`);
+          for (const src of cryptoCache.sources) {
+            t.push(
+              `  SOURCE label="${src.label}" type=${src.sourceType} total=${$(src.totalUsdValue)} updated=${src.lastUpdated}`
+            );
+            const topAssets = [...src.balances]
+              .sort((a, b) => b.usdValue - a.usdValue)
+              .filter((b) => b.usdValue > 1);
+            for (const b of topAssets) {
+              t.push(`    ${b.asset} amount=${b.amount} usd=${$(b.usdValue)}`);
+            }
+          }
+          t.push('');
+        }
+
+        // Crypto tax gains (unrealized per asset)
+        if (cryptoGainsCache.assets && cryptoGainsCache.assets.length > 0) {
+          t.push(
+            `CRYPTO_GAINS cost_basis=${$(cryptoGainsCache.totalCostBasis || 0)} current=${$(cryptoGainsCache.totalCurrentValue || 0)} unrealized=${$(cryptoGainsCache.totalUnrealizedGain || 0)} st_gain=${$(cryptoGainsCache.totalShortTermGain || 0)} lt_gain=${$(cryptoGainsCache.totalLongTermGain || 0)} trades=${cryptoGainsCache.tradeCount || 0}${cryptoGainsCache.lastUpdated ? ` updated=${cryptoGainsCache.lastUpdated}` : ''}`
+          );
+          const significant = cryptoGainsCache.assets.filter(
+            (a) => Math.abs(a.unrealizedGain) > 1 || a.totalCostBasis > 1
+          );
+          for (const a of [...significant].sort((x, y) => y.currentValue - x.currentValue)) {
+            t.push(
+              `  ${a.asset} amount=${a.totalAmount} cost=${$(a.totalCostBasis)} current=${$(a.currentValue)} gain=${$(a.unrealizedGain)} st=${$(a.shortTermGain)} lt=${$(a.longTermGain)}`
+            );
+          }
+          t.push('');
+        }
+
+        // Precious metals inventory
+        if (goldSummary.entries.length > 0) {
+          t.push(
+            `METALS total_value=${$(goldSummary.totalValue)} total_cost=${$(goldSummary.totalCost)} gain=${$(goldSummary.totalGainLoss)} spot_gold=${$(goldSummary.spotPrices.gold || 0)} spot_silver=${$(goldSummary.spotPrices.silver || 0)}${goldSummary.spotPrices.platinum ? ` spot_platinum=${$(goldSummary.spotPrices.platinum)}` : ''}${goldSummary.spotPrices.palladium ? ` spot_palladium=${$(goldSummary.spotPrices.palladium)}` : ''}`
+          );
+          for (const e of goldSummary.entries) {
+            t.push(
+              `  ${e.metal} product="${e.product}" qty=${e.quantity} oz=${e.totalOz} purch=${$(e.purchasePrice)} cost=${$(e.totalCost)} curr=${$(e.currentValue)} gain=${$(e.gainLoss)} date=${e.purchaseDate}`
+            );
+          }
+          t.push('');
+        }
+
+        // Property (real estate)
+        if (propertySummary.entries.length > 0) {
+          t.push(
+            `PROPERTY total_value=${$(propertySummary.totalValue)} total_equity=${$(propertySummary.totalEquity)} total_mortgage=${$(propertySummary.totalMortgageBalance)} annual_tax=${$(propertySummary.totalAnnualPropertyTax)}`
+          );
+          for (const p of propertySummary.entries) {
+            const acre = p.acreage ? ` acres=${p.acreage}` : '';
+            const sqft = p.squareFeet ? ` sqft=${p.squareFeet}` : '';
+            const tax = p.annualPropertyTax ? ` annual_tax=${$(p.annualPropertyTax)}` : '';
+            t.push(
+              `  ${p.type.toUpperCase()} name="${p.name}" addr="${p.address}" purch=${$(p.purchasePrice)} current=${$(p.currentValue)} equity=${$(p.equity)} apprec=${$(p.appreciation)} pct=${p.appreciationPercent.toFixed(1)}%${acre}${sqft}${tax} purchased=${p.purchaseDate}`
+            );
+            if (p.mortgage) {
+              t.push(
+                `    MORTGAGE lender="${p.mortgage.lender}" bal=${$(p.mortgage.balance)} rate=${(p.mortgage.rate * 100).toFixed(3)}% pmt=${$(p.mortgage.monthlyPayment)}`
+              );
+            }
+          }
+          t.push('');
+        }
+
+        // Physical business assets (equipment, etc.) — keyed by entity
+        const assetEntries = Object.entries(assets || {}).filter(
+          ([, items]) => (items || []).length > 0
+        );
+        if (assetEntries.length > 0) {
+          let assetsTotal = 0;
+          let assetsCount = 0;
+          for (const [, items] of assetEntries) {
+            for (const a of items) {
+              assetsTotal += a.value;
+              assetsCount += 1;
+            }
+          }
+          t.push(`ASSETS count=${assetsCount} total_value=${$(assetsTotal)}`);
+          for (const [entityId, items] of assetEntries) {
+            const subTotal = items.reduce((s, a) => s + a.value, 0);
+            t.push(`  ENTITY ${entityId} count=${items.length} total=${$(subTotal)}`);
+            for (const a of items) {
+              t.push(`    name="${a.name}" value=${$(a.value)}`);
+            }
+          }
+          t.push('');
+        }
+
+        // Portfolio history (snapshots across year)
+        if (portfolioHistory.snapshotCount > 0) {
+          t.push(`PORTFOLIO_HISTORY snapshots=${portfolioHistory.snapshotCount}`);
+          if (portfolioHistory.firstSnapshot && portfolioHistory.lastSnapshot) {
+            t.push(
+              `  start date=${portfolioHistory.firstSnapshot.date} value=${$(portfolioHistory.firstSnapshot.totalValue)}`
+            );
+            t.push(
+              `  end date=${portfolioHistory.lastSnapshot.date} value=${$(portfolioHistory.lastSnapshot.totalValue)}`
+            );
+            t.push(
+              `  change=${$(portfolioHistory.yearChange || 0)} pct=${(portfolioHistory.yearChangePercent || 0).toFixed(2)}%`
+            );
+          }
+          for (const q of portfolioHistory.quarterlySnapshots) {
+            t.push(`  ${q.quarter} date=${q.date} value=${$(q.totalValue)}`);
+          }
+          t.push('');
+        }
+
+        // Upcoming reminders (tax deadlines etc.)
+        if (yearReminders.length > 0) {
+          const pending = yearReminders.filter((r) => r.status !== 'completed');
+          t.push(`REMINDERS total=${yearReminders.length} pending=${pending.length}`);
+          for (const r of yearReminders) {
+            const entityStr = r.entityId ? ` entity=${r.entityId}` : '';
+            const recur = r.recurrence ? ` recur=${r.recurrence}` : '';
+            const notes = r.notes ? ` notes="${r.notes.replace(/"/g, '\\"')}"` : '';
+            t.push(
+              `  title="${r.title}" due=${r.dueDate} status=${r.status}${entityStr}${recur}${notes}`
+            );
+          }
+          t.push('');
+        }
+
+        // Sales (farm/product sales)
         if (snapshot.sales.totalRevenue > 0) {
+          const productLookup = new Map<string, string>();
+          for (const p of salesData.products) {
+            productLookup.set(p.id, p.name);
+          }
           t.push(
             `SALES total=${$(snapshot.sales.totalRevenue)} count=${snapshot.sales.entries.length}`
           );
+          for (const s of snapshot.sales.entries) {
+            const product = productLookup.get(s.productId) || s.productId;
+            t.push(
+              `  ${s.date} amt=${$(s.total)} qty=${s.quantity} product="${product}"${s.person ? ` person="${s.person}"` : ''}${s.entity ? ` entity=${s.entity}` : ''}`
+            );
+          }
+          t.push('');
         }
 
         // Mileage
