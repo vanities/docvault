@@ -1,8 +1,10 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Card } from '@/components/ui/card';
-import { Landmark, AlertCircle, ArrowUp, ArrowDown } from 'lucide-react';
+import { Landmark, AlertCircle, ArrowUp, ArrowDown, ChevronDown, ChevronUp } from 'lucide-react';
 import { useFedPolicy } from './useQuantData';
+
+const COLLAPSED_FOMC_COUNT = 6;
 
 const STANCE_META = {
   cutting: {
@@ -33,6 +35,7 @@ const STANCE_META = {
  *  current stance (cutting/hiking/hold) and recent FOMC decisions. */
 export function FedPolicyChart() {
   const { data, loading, error } = useFedPolicy();
+  const [fomcExpanded, setFomcExpanded] = useState(false);
   const meta = data ? STANCE_META[data.latest.stance] : null;
 
   const option = useMemo(() => {
@@ -206,7 +209,7 @@ export function FedPolicyChart() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {[...data.rateChanges]
                 .reverse()
-                .slice(0, 10)
+                .slice(0, fomcExpanded ? undefined : COLLAPSED_FOMC_COUNT)
                 .map((c, i) => {
                   const date = new Date(c.t).toISOString().slice(0, 10);
                   return (
@@ -238,6 +241,25 @@ export function FedPolicyChart() {
                   );
                 })}
             </div>
+            {data.rateChanges.length > COLLAPSED_FOMC_COUNT && (
+              <button
+                type="button"
+                onClick={() => setFomcExpanded((v) => !v)}
+                className="mt-2 flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 transition-colors mx-auto"
+              >
+                {fomcExpanded ? (
+                  <>
+                    <ChevronUp className="w-3.5 h-3.5" />
+                    Show less
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-3.5 h-3.5" />
+                    Show all {data.rateChanges.length} decisions
+                  </>
+                )}
+              </button>
+            )}
           </div>
 
           <div className="mt-3 text-[10px] text-surface-700 text-center">

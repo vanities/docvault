@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Card } from '@/components/ui/card';
-import { TrendingDown, AlertCircle } from 'lucide-react';
+import { TrendingDown, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { useBtcDrawdown } from './useQuantData';
 
 const fmtPct = (v: number) => `${(v * 100).toFixed(1)}%`;
@@ -11,8 +11,11 @@ const fmtUsd = (v: number) => (v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v.
  *  = below ATH) plus every completed bear episode's peak-to-trough depth and
  *  recovery timing. Cowen frequently uses this as a bear-market progress
  *  tracker: "how deep are we compared to past cycles?" */
+const COLLAPSED_EPISODE_COUNT = 5;
+
 export function BtcDrawdownChart() {
   const { data, loading, error } = useBtcDrawdown();
+  const [episodesExpanded, setEpisodesExpanded] = useState(false);
 
   const option = useMemo(() => {
     if (!data) return null;
@@ -208,34 +211,56 @@ export function BtcDrawdownChart() {
                   </tr>
                 </thead>
                 <tbody>
-                  {[...data.episodes].reverse().map((e, i) => (
-                    <tr
-                      key={`${e.athDate}-${i}`}
-                      className="border-b border-border/20 hover:bg-surface-100/30"
-                    >
-                      <td className="px-2 py-2 font-mono text-surface-800">{e.athDate}</td>
-                      <td className="px-2 py-2 text-right font-mono text-surface-800">
-                        {fmtUsd(e.athPrice)}
-                      </td>
-                      <td className="px-2 py-2 font-mono text-surface-800">{e.troughDate}</td>
-                      <td className="px-2 py-2 text-right font-mono font-bold text-rose-400">
-                        {fmtPct(e.maxDrawdown)}
-                      </td>
-                      <td className="px-2 py-2 text-right font-mono text-surface-800">
-                        {e.daysToTrough}d
-                      </td>
-                      <td className="px-2 py-2 text-right font-mono text-surface-800">
-                        {e.daysToRecovery != null ? (
-                          `${e.daysToRecovery}d`
-                        ) : (
-                          <span className="text-amber-400 italic">in progress</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {[...data.episodes]
+                    .reverse()
+                    .slice(0, episodesExpanded ? undefined : COLLAPSED_EPISODE_COUNT)
+                    .map((e, i) => (
+                      <tr
+                        key={`${e.athDate}-${i}`}
+                        className="border-b border-border/20 hover:bg-surface-100/30"
+                      >
+                        <td className="px-2 py-2 font-mono text-surface-800">{e.athDate}</td>
+                        <td className="px-2 py-2 text-right font-mono text-surface-800">
+                          {fmtUsd(e.athPrice)}
+                        </td>
+                        <td className="px-2 py-2 font-mono text-surface-800">{e.troughDate}</td>
+                        <td className="px-2 py-2 text-right font-mono font-bold text-rose-400">
+                          {fmtPct(e.maxDrawdown)}
+                        </td>
+                        <td className="px-2 py-2 text-right font-mono text-surface-800">
+                          {e.daysToTrough}d
+                        </td>
+                        <td className="px-2 py-2 text-right font-mono text-surface-800">
+                          {e.daysToRecovery != null ? (
+                            `${e.daysToRecovery}d`
+                          ) : (
+                            <span className="text-amber-400 italic">in progress</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>
+            {data.episodes.length > COLLAPSED_EPISODE_COUNT && (
+              <button
+                type="button"
+                onClick={() => setEpisodesExpanded((v) => !v)}
+                className="mt-2 flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 transition-colors mx-auto"
+              >
+                {episodesExpanded ? (
+                  <>
+                    <ChevronUp className="w-3.5 h-3.5" />
+                    Show less
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-3.5 h-3.5" />
+                    Show all {data.episodes.length} episodes
+                  </>
+                )}
+              </button>
+            )}
           </div>
 
           <div className="mt-3 text-[10px] text-surface-700 text-center">
