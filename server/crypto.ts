@@ -8,7 +8,7 @@
 
 import crypto from 'crypto';
 import { encodeFunctionData, decodeFunctionResult } from 'viem';
-import { createLogger } from './logger.js';
+import { createLogger, type Logger } from './logger.js';
 
 // -----------------------------------------------------------------------------
 // Types
@@ -590,6 +590,69 @@ export function setEtherscanApiKey(key: string | undefined): void {
   etherscanApiKey = key;
 }
 
+// Etherscan quirk: the API returns HTTP 200 even when it rate-limits or
+// transiently fails — the failure lives in the JSON body as `{status:"0"}`
+// (message usually "NOTOK" or "Max rate limit reached"). A single 5-req/s
+// burst collision is common during the multi-chain balance sweep, so this
+// helper retries both HTTP-level AND body-level failures with exponential
+// backoff. "No transactions found" is returned as-is — it's a valid
+// terminal response, not an error.
+async function etherscanFetch(
+  url: string,
+  label: string,
+  log: Logger
+): Promise<{ status: string; message?: string; result?: unknown } | null> {
+  const MAX_ATTEMPTS = 6;
+  const PER_ATTEMPT_TIMEOUT_MS = 15_000;
+  let lastErr: Error | null = null;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(PER_ATTEMPT_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        // 4xx (other than 429) won't recover — fail fast by returning null.
+        if (res.status >= 400 && res.status < 500 && res.status !== 429) {
+          log.warn(`${label} HTTP ${res.status} (non-retryable)`);
+          return null;
+        }
+        lastErr = new Error(`HTTP ${res.status}`);
+      } else {
+        const data = (await res.json()) as {
+          status: string;
+          message?: string;
+          result?: unknown;
+        };
+        if (data.status === '0') {
+          const msg = String(data.message ?? data.result ?? '');
+          // Expected terminal cases — don't burn retries on them.
+          if (msg === 'No transactions found' || msg === 'No records found') {
+            return data;
+          }
+          lastErr = new Error(`status=0: ${msg}`);
+        } else {
+          return data;
+        }
+      }
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+    }
+    if (attempt < MAX_ATTEMPTS) {
+      // Start at 1s and back off — Etherscan's per-second bucket needs time
+      // to drain, and tight retries just compete with the next token in the
+      // sweep for the same limit. Cap at 30s with ±500ms jitter.
+      const delay = Math.min(30_000, 1_000 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 500);
+      log.warn(
+        `${label} attempt ${attempt}/${MAX_ATTEMPTS} failed (${lastErr?.message ?? 'unknown'}); retrying in ${delay}ms`
+      );
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  log.warn(`${label} gave up after ${MAX_ATTEMPTS} attempts: ${lastErr?.message ?? 'unknown'}`);
+  return null;
+}
+
 // L2 token lists — native tokens on their home chains
 export const ARBITRUM_TOKENS: { contract: string; symbol: string; decimals: number }[] = [
   { contract: '0x912CE59144191C1204E64559FE8253a0e49E6548', symbol: 'ARB', decimals: 18 },
@@ -648,21 +711,21 @@ async function fetchChainlinkStakedBalance(address: string): Promise<number> {
         args: [address as `0x${string}`],
       });
 
-      const res = await fetch(
-        `${ETHERSCAN_API}?chainid=1&module=proxy&action=eth_call&to=${pool.address}&data=${data}&tag=latest${apiKeyParam}`
+      const json = await etherscanFetch(
+        `${ETHERSCAN_API}?chainid=1&module=proxy&action=eth_call&to=${pool.address}&data=${data}&tag=latest${apiKeyParam}`,
+        pool.label,
+        logChainlink
       );
-      if (!res.ok) {
-        logChainlink.warn(`${pool.label}: HTTP ${res.status}`);
-        continue;
-      }
-      const json = await res.json();
+      if (!json) continue;
       logChainlink.debug(`${pool.label} raw result: ${JSON.stringify(json).slice(0, 200)}`);
-      if (!json.result || json.result === '0x' || !/^0x[0-9a-fA-F]+$/.test(json.result)) continue;
+      const result = json.result;
+      if (typeof result !== 'string' || result === '0x' || !/^0x[0-9a-fA-F]+$/.test(result))
+        continue;
 
       const principal = decodeFunctionResult({
         abi: GET_STAKER_PRINCIPAL_ABI,
         functionName: 'getStakerPrincipal',
-        data: json.result,
+        data: result as `0x${string}`,
       }) as bigint;
 
       total += Number(principal) / 1e18;
@@ -742,19 +805,16 @@ export async function fetchChainBalances(
 
   // Native balance
   try {
-    const res = await fetch(
-      `${base}&module=account&action=balance&address=${address}&tag=latest${apiKeyParam}`
+    const data = await etherscanFetch(
+      `${base}&module=account&action=balance&address=${address}&tag=latest${apiKeyParam}`,
+      `Native ${nativeSymbol}`,
+      log
     );
-    if (res.ok) {
-      const data = await res.json();
-      if (data.status === '1' && data.result) {
-        const amount = parseInt(data.result, 10) / 1e18;
-        if (amount > 0) {
-          log.info(`${nativeSymbol}: ${amount.toFixed(6)}`);
-          balances.push({ asset: nativeSymbol, amount });
-        }
-      } else if (data.status === '0') {
-        log.warn(`Native balance status=0: ${data.message || data.result}`);
+    if (data && data.status === '1' && typeof data.result === 'string') {
+      const amount = parseInt(data.result, 10) / 1e18;
+      if (amount > 0) {
+        log.info(`${nativeSymbol}: ${amount.toFixed(6)}`);
+        balances.push({ asset: nativeSymbol, amount });
       }
     }
   } catch (err) {
@@ -766,20 +826,17 @@ export async function fetchChainBalances(
   for (const token of tokens) {
     try {
       await new Promise((r) => setTimeout(r, rateDelay));
-      const res = await fetch(
-        `${base}&module=account&action=tokenbalance&contractaddress=${token.contract}&address=${address}&tag=latest${apiKeyParam}`
+      const data = await etherscanFetch(
+        `${base}&module=account&action=tokenbalance&contractaddress=${token.contract}&address=${address}&tag=latest${apiKeyParam}`,
+        token.symbol,
+        log
       );
-      if (res.ok) {
-        const data = await res.json();
-        if (data.status === '1' && data.result && data.result !== '0') {
-          const amount = parseInt(data.result, 10) / Math.pow(10, token.decimals);
-          if (amount > 0.001) {
-            log.info(`${token.symbol}: ${amount.toFixed(4)}`);
-            tokenHits++;
-            balances.push({ asset: token.symbol, amount });
-          }
-        } else if (data.status === '0' && data.message !== 'No transactions found') {
-          log.warn(`${token.symbol} status=0: ${data.message || data.result}`);
+      if (data && data.status === '1' && typeof data.result === 'string' && data.result !== '0') {
+        const amount = parseInt(data.result, 10) / Math.pow(10, token.decimals);
+        if (amount > 0.001) {
+          log.info(`${token.symbol}: ${amount.toFixed(4)}`);
+          tokenHits++;
+          balances.push({ asset: token.symbol, amount });
         }
       }
     } catch (err) {
