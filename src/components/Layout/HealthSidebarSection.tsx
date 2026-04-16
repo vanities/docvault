@@ -3,7 +3,15 @@
 // one is, clicking a segment routes straight into the Activity/Heart/etc.
 // view for that person.
 
-import { Heart, Activity as ActivityIcon, HeartPulse, Moon, Dumbbell, Scale } from 'lucide-react';
+import {
+  Heart,
+  Activity as ActivityIcon,
+  HeartPulse,
+  Moon,
+  Dumbbell,
+  Scale,
+  ClipboardList,
+} from 'lucide-react';
 import type { NavView } from '../../contexts/AppContext';
 import { useAppContext } from '../../contexts/AppContext';
 
@@ -75,6 +83,15 @@ export function HealthSidebarSection({
           view="health-body"
           label="Body"
           icon={Scale}
+          activeView={activeView}
+          isProcessing={isProcessing}
+          disabled={!hasPerson}
+          onClick={onClick}
+        />
+        <HealthNavButton
+          view="health-records"
+          label="Records"
+          icon={ClipboardList}
           activeView={activeView}
           isProcessing={isProcessing}
           disabled={!hasPerson}

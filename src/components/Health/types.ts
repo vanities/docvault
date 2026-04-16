@@ -321,3 +321,137 @@ export interface PersonSnapshots {
 
 /** Segment identifier. Used by the API path + NavView routing. */
 export type HealthSegment = 'activity' | 'heart' | 'sleep' | 'workouts' | 'body';
+
+// ===========================================================================
+// Clinical summary shapes (mirror of server/parsers/apple-health-clinical.ts).
+// Kept in sync by hand — change the server module, change this too.
+// ===========================================================================
+
+export interface Coding {
+  system?: string;
+  code?: string;
+  display?: string;
+}
+
+export interface LabResult {
+  id: string;
+  loinc: string | null;
+  name: string;
+  codings: Coding[];
+  value: number | null;
+  valueString: string | null;
+  unit: string | null;
+  refLow: number | null;
+  refHigh: number | null;
+  refText: string | null;
+  date: string | null;
+  effectiveAt: string | null;
+  status: string | null;
+  interpretation: string | null;
+  derivedFlag: 'low' | 'high' | 'normal' | null;
+  panelId: string | null;
+}
+
+export interface LabPanel {
+  id: string;
+  name: string;
+  category: string | null;
+  date: string | null;
+  effectiveAt: string | null;
+  issuedAt: string | null;
+  status: string | null;
+  conclusion: string | null;
+  resultIds: string[];
+}
+
+export interface LabTrend {
+  loinc: string | null;
+  name: string;
+  unit: string | null;
+  points: LabResult[];
+  latest: LabResult | null;
+  latestFlag: 'low' | 'high' | 'normal' | null;
+  refLow: number | null;
+  refHigh: number | null;
+}
+
+export interface ClinicalCondition {
+  id: string;
+  name: string;
+  icd10: string | null;
+  clinicalStatus: string | null;
+  verificationStatus: string | null;
+  onsetDate: string | null;
+  recordedDate: string | null;
+  abatementDate: string | null;
+}
+
+export interface ClinicalMedication {
+  id: string;
+  name: string;
+  status: string | null;
+  authoredOn: string | null;
+  dosageText: string | null;
+  route: string | null;
+  startDate: string | null;
+  endDate: string | null;
+}
+
+export interface ClinicalImmunization {
+  id: string;
+  name: string;
+  cvx: string | null;
+  status: string | null;
+  date: string | null;
+  primarySource: boolean | null;
+}
+
+export interface ClinicalAllergy {
+  id: string;
+  name: string;
+  clinicalStatus: string | null;
+  recordedDate: string | null;
+  reactions: string[];
+}
+
+export interface ClinicalProcedure {
+  id: string;
+  name: string;
+  cpt: string | null;
+  status: string | null;
+  date: string | null;
+}
+
+export interface ClinicalDocumentRef {
+  id: string;
+  name: string;
+  category: string | null;
+  date: string | null;
+  description: string | null;
+}
+
+export interface ClinicalSummary {
+  schemaVersion: 1;
+  recordCount: number;
+  dateRange: { start: string | null; end: string | null };
+  labsByTest: LabTrend[];
+  labPanels: LabPanel[];
+  vitals: LabResult[];
+  conditions: ClinicalCondition[];
+  medications: ClinicalMedication[];
+  immunizations: ClinicalImmunization[];
+  allergies: ClinicalAllergy[];
+  procedures: ClinicalProcedure[];
+  documents: ClinicalDocumentRef[];
+  generatedAt: string;
+}
+
+/** The clinical-section sub-views accessible from the Health sidebar. */
+export type ClinicalSection =
+  | 'labs'
+  | 'vitals'
+  | 'conditions'
+  | 'medications'
+  | 'immunizations'
+  | 'allergies'
+  | 'procedures';

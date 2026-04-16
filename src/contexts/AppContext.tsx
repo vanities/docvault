@@ -38,7 +38,8 @@ export type NavView =
   | 'health-heart'
   | 'health-sleep'
   | 'health-workouts'
-  | 'health-body';
+  | 'health-body'
+  | 'health-records';
 
 // Tab types for tax year view
 export type TabType = 'documents' | 'income' | 'expenses' | 'invoices' | 'statements';
@@ -244,6 +245,7 @@ export function AppProvider({ children }: AppProviderProps) {
     'health-sleep',
     'health-workouts',
     'health-body',
+    'health-records',
   ]);
 
   const viewFromHash = (): NavView | null => {
