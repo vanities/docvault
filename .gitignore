@@ -47,6 +47,8 @@ scripts/
 **/*.spec.tsx
 # Exception: quant math tests are pure computation, no personal data
 !server/routes/quant.test.ts
+# Exception: crypto-keys tests are pure crypto primitives, no personal data
+!server/crypto-keys.test.ts
 
 # Internal design docs
 docs/PRD-shadcn-migration.md
