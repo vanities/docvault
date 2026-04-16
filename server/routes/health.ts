@@ -458,7 +458,15 @@ export async function handleHealthRoutes(
     let rawBody: string | undefined;
     try {
       rawBody = await req.text();
-      body = JSON.parse(rawBody) as Partial<DeltaFile & { raw?: boolean }>;
+      // Shortcuts interpolates health sample values as multiline text with
+      // raw newlines inside JSON string values, e.g. "StepCount": "234\n567".
+      // These literal newlines break JSON parsing. Fix: inside quoted strings,
+      // replace raw newlines with \n escape sequences.
+      const fixedBody = rawBody.replace(
+        /"([^"]*?)"/g,
+        (_match, content: string) => `"${content.replace(/\n/g, '\\n')}"`
+      );
+      body = JSON.parse(fixedBody) as Partial<DeltaFile & { raw?: boolean }>;
     } catch (parseErr) {
       const preview = rawBody ? rawBody.slice(0, 500) : '(empty)';
       log.error(
