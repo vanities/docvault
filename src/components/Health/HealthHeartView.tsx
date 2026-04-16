@@ -2,12 +2,13 @@
 
 import { HeartPulse, TrendingDown, TrendingUp, Minus, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { Card } from '@/components/ui/card';
 import { SegmentViewShell } from './SegmentViewShell';
 import { HealthChart } from './HealthChart';
 import { InsightsRow } from './InsightsRow';
 import { CollapsibleTable } from './CollapsibleTable';
 import { TimePeriodSummary } from './TimePeriodSummary';
+import { StatTile } from './StatTile';
+import { ChartCard } from './ChartCard';
 import { formatBpm, formatDecimal1 } from './healthFormatters';
 
 export function HealthHeartView() {
@@ -48,7 +49,7 @@ export function HealthHeartView() {
 
         return (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               <StatTile
                 icon={HeartPulse}
                 label="Current resting HR"
@@ -94,40 +95,31 @@ export function HealthHeartView() {
             </div>
 
             <TimePeriodSummary periods={data.periods} />
-
             <InsightsRow insights={data.insights} />
 
-            <Card className="p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <HeartPulse className="w-4 h-4 text-rose-400" />
-                <h3 className="font-medium text-surface-950">Resting heart rate</h3>
-              </div>
+            <ChartCard icon={HeartPulse} title="Resting heart rate" color="text-rose-400">
               <HealthChart
                 data={data.daily}
                 lines={[{ key: 'restingHR', label: 'Resting HR', color: '#f43f5e' }]}
                 valueFormatter={formatBpm}
                 defaultRange="6M"
               />
-            </Card>
+            </ChartCard>
 
-            <Card className="p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <Zap className="w-4 h-4 text-violet-400" />
-                <h3 className="font-medium text-surface-950">Heart rate variability (SDNN)</h3>
-              </div>
+            <ChartCard icon={Zap} title="Heart rate variability (SDNN)" color="text-violet-400">
               <HealthChart
                 data={data.daily}
                 lines={[{ key: 'hrv', label: 'HRV', color: '#a855f7' }]}
                 valueFormatter={(v) => `${v.toFixed(1)} ms`}
                 defaultRange="6M"
               />
-            </Card>
+            </ChartCard>
 
-            <Card className="p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <HeartPulse className="w-4 h-4 text-rose-400" />
-                <h3 className="font-medium text-surface-950">Daily HR range (min / avg / max)</h3>
-              </div>
+            <ChartCard
+              icon={HeartPulse}
+              title="Daily HR range (min / avg / max)"
+              color="text-rose-400"
+            >
               <HealthChart
                 data={data.daily}
                 lines={[
@@ -139,7 +131,7 @@ export function HealthHeartView() {
                 defaultRange="1M"
                 defaultMode="line"
               />
-            </Card>
+            </ChartCard>
 
             {(() => {
               const recentDays = data.daily.slice().reverse();
@@ -149,30 +141,33 @@ export function HealthHeartView() {
                   totalRows={recentDays.length}
                   head={
                     <tr className="text-left text-[11px] uppercase text-surface-600 tracking-wide border-b border-border">
-                      <th className="py-2 pr-3">Date</th>
-                      <th className="py-2 pr-3 text-right">Resting HR</th>
-                      <th className="py-2 pr-3 text-right">Avg HR</th>
-                      <th className="py-2 pr-3 text-right">Min HR</th>
-                      <th className="py-2 pr-3 text-right">Max HR</th>
-                      <th className="py-2 pr-3 text-right">HRV</th>
+                      <th className="py-2 px-4">Date</th>
+                      <th className="py-2 px-3 text-right">Resting HR</th>
+                      <th className="py-2 px-3 text-right">Avg HR</th>
+                      <th className="py-2 px-3 text-right">Min HR</th>
+                      <th className="py-2 px-3 text-right">Max HR</th>
+                      <th className="py-2 px-3 text-right">HRV</th>
                     </tr>
                   }
                   rows={recentDays.map((d) => (
-                    <tr key={d.date} className="border-b border-border/30 hover:bg-surface-100/30">
-                      <td className="py-1.5 pr-3 text-surface-700 font-mono text-xs">{d.date}</td>
-                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                    <tr
+                      key={d.date}
+                      className="border-b border-border/20 hover:bg-surface-100/30 transition-colors"
+                    >
+                      <td className="py-1.5 px-4 text-surface-700 font-mono text-xs">{d.date}</td>
+                      <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                         {d.restingHR !== null ? Math.round(d.restingHR) : '—'}
                       </td>
-                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                      <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                         {d.avgHR !== null ? Math.round(d.avgHR) : '—'}
                       </td>
-                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                      <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                         {d.minHR !== null ? Math.round(d.minHR) : '—'}
                       </td>
-                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                      <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                         {d.maxHR !== null ? Math.round(d.maxHR) : '—'}
                       </td>
-                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                      <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                         {d.hrv !== null ? d.hrv.toFixed(1) : '—'}
                       </td>
                     </tr>
@@ -184,32 +179,5 @@ export function HealthHeartView() {
         );
       }}
     </SegmentViewShell>
-  );
-}
-
-function StatTile({
-  icon: Icon,
-  label,
-  value,
-  color,
-  caption,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-  color: string;
-  caption?: string;
-}) {
-  return (
-    <Card className="p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <Icon className={`w-4 h-4 ${color}`} />
-        <div className="text-[10px] uppercase tracking-wide text-surface-600">{label}</div>
-      </div>
-      <div className="font-mono text-xl text-surface-950 tabular-nums">{value}</div>
-      {caption && (
-        <div className={`text-[10px] mt-0.5 uppercase tracking-wide ${color}`}>{caption}</div>
-      )}
-    </Card>
   );
 }
