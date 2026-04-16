@@ -1,0 +1,45 @@
+{
+  "anthropicKey": "",
+  "claudeModel": "claude-sonnet-4-6",
+  "crypto": {
+    "exchanges": [
+      { "id": "kraken", "apiKey": "demo", "apiSecret": "demo", "enabled": true },
+      { "id": "coinbase", "apiKey": "demo", "apiSecret": "demo", "enabled": true }
+    ],
+    "wallets": [
+      {
+        "id": "demo-eth",
+        "address": "0x0000000000000000000000000000000000000001",
+        "chain": "eth",
+        "label": "Demo ETH Wallet"
+      }
+    ],
+    "etherscanKey": "demo"
+  },
+  "brokers": {
+    "accounts": [
+      {
+        "id": "acct-demo-taxable",
+        "name": "Demo Taxable Brokerage",
+        "broker": "DemoBroker",
+        "connection": "",
+        "authorizationId": ""
+      },
+      {
+        "id": "acct-demo-roth",
+        "name": "Demo Roth IRA",
+        "broker": "DemoBroker",
+        "connection": "",
+        "authorizationId": ""
+      }
+    ]
+  },
+  "simplefin": {
+    "accessUrl": "https://demo:demo@bridge.example/simplefin"
+  },
+  "schedules": {
+    "snapshotEnabled": false,
+    "dropboxSyncEnabled": false,
+    "quantRefreshEnabled": false
+  }
+}

@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import Markdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { Card } from '@/components/ui/card';
 import { Brain, Terminal, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { API_BASE } from '../../constants';
+import { BlurredMarkdown } from '../common/BlurredMarkdown';
 
 interface StrategySignals {
   btcPrice?: number;
@@ -157,7 +156,7 @@ function StrategyCard({
       {expanded && (
         <div className="mt-3 pt-3 border-t border-border/30">
           <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_h2]:text-[15px] [&_h2]:font-bold [&_h2]:text-surface-950 [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-[14px] [&_h3]:font-semibold [&_h3]:text-surface-950 [&_h3]:mt-3 [&_h3]:mb-1 [&_p]:text-surface-800 [&_p]:mb-2 [&_ul]:text-surface-800 [&_ul]:mb-2 [&_li]:mb-1 [&_strong]:text-surface-950 [&_code]:text-cyan-400 [&_code]:bg-surface-100/40 [&_code]:px-1 [&_code]:rounded [&_table]:w-full [&_table]:text-[12px] [&_table]:border-collapse [&_table]:my-3 [&_th]:text-left [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-surface-700 [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-wider [&_th]:text-[10px] [&_th]:border-b [&_th]:border-border/40 [&_td]:px-2 [&_td]:py-1.5 [&_td]:text-surface-800 [&_td]:border-b [&_td]:border-border/20 [&_tr:hover]:bg-surface-100/20">
-            <Markdown remarkPlugins={[remarkGfm]}>{entry.body}</Markdown>
+            <BlurredMarkdown>{entry.body}</BlurredMarkdown>
           </div>
         </div>
       )}

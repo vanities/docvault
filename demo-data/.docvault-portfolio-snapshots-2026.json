@@ -1,0 +1,958 @@
+[
+  {
+    "date": "2026-01-01",
+    "totalValue": 326549,
+    "brokerValue": 166211,
+    "cryptoValue": 96218,
+    "bankValue": 42039,
+    "longTermGains": 19945,
+    "shortTermGains": 4986
+  },
+  {
+    "date": "2026-01-02",
+    "totalValue": 327801,
+    "brokerValue": 166623,
+    "cryptoValue": 97126,
+    "bankValue": 42047,
+    "longTermGains": 19995,
+    "shortTermGains": 4999
+  },
+  {
+    "date": "2026-01-03",
+    "totalValue": 329685,
+    "brokerValue": 167388,
+    "cryptoValue": 98245,
+    "bankValue": 42064,
+    "longTermGains": 20087,
+    "shortTermGains": 5022
+  },
+  {
+    "date": "2026-01-04",
+    "totalValue": 332407,
+    "brokerValue": 168253,
+    "cryptoValue": 99952,
+    "bankValue": 42106,
+    "longTermGains": 20190,
+    "shortTermGains": 5048
+  },
+  {
+    "date": "2026-01-05",
+    "totalValue": 330868,
+    "brokerValue": 167713,
+    "cryptoValue": 98844,
+    "bankValue": 42119,
+    "longTermGains": 20126,
+    "shortTermGains": 5031
+  },
+  {
+    "date": "2026-01-06",
+    "totalValue": 330253,
+    "brokerValue": 167126,
+    "cryptoValue": 98811,
+    "bankValue": 42103,
+    "longTermGains": 20055,
+    "shortTermGains": 5014
+  },
+  {
+    "date": "2026-01-07",
+    "totalValue": 329602,
+    "brokerValue": 167813,
+    "cryptoValue": 97390,
+    "bankValue": 42107,
+    "longTermGains": 20138,
+    "shortTermGains": 5034
+  },
+  {
+    "date": "2026-01-08",
+    "totalValue": 330737,
+    "brokerValue": 167904,
+    "cryptoValue": 98353,
+    "bankValue": 42075,
+    "longTermGains": 20148,
+    "shortTermGains": 5037
+  },
+  {
+    "date": "2026-01-09",
+    "totalValue": 329973,
+    "brokerValue": 168102,
+    "cryptoValue": 97407,
+    "bankValue": 42107,
+    "longTermGains": 20172,
+    "shortTermGains": 5043
+  },
+  {
+    "date": "2026-01-10",
+    "totalValue": 330795,
+    "brokerValue": 167961,
+    "cryptoValue": 98470,
+    "bankValue": 42089,
+    "longTermGains": 20155,
+    "shortTermGains": 5039
+  },
+  {
+    "date": "2026-01-11",
+    "totalValue": 331480,
+    "brokerValue": 169430,
+    "cryptoValue": 97552,
+    "bankValue": 42102,
+    "longTermGains": 20332,
+    "shortTermGains": 5083
+  },
+  {
+    "date": "2026-01-12",
+    "totalValue": 331823,
+    "brokerValue": 169199,
+    "cryptoValue": 98238,
+    "bankValue": 42066,
+    "longTermGains": 20304,
+    "shortTermGains": 5076
+  },
+  {
+    "date": "2026-01-13",
+    "totalValue": 333042,
+    "brokerValue": 169254,
+    "cryptoValue": 99375,
+    "bankValue": 42098,
+    "longTermGains": 20310,
+    "shortTermGains": 5078
+  },
+  {
+    "date": "2026-01-14",
+    "totalValue": 332328,
+    "brokerValue": 169489,
+    "cryptoValue": 98342,
+    "bankValue": 42135,
+    "longTermGains": 20339,
+    "shortTermGains": 5085
+  },
+  {
+    "date": "2026-01-15",
+    "totalValue": 332520,
+    "brokerValue": 169299,
+    "cryptoValue": 98631,
+    "bankValue": 42140,
+    "longTermGains": 20316,
+    "shortTermGains": 5079
+  },
+  {
+    "date": "2026-01-16",
+    "totalValue": 334093,
+    "brokerValue": 169738,
+    "cryptoValue": 99710,
+    "bankValue": 42181,
+    "longTermGains": 20369,
+    "shortTermGains": 5092
+  },
+  {
+    "date": "2026-01-17",
+    "totalValue": 334237,
+    "brokerValue": 170329,
+    "cryptoValue": 99213,
+    "bankValue": 42192,
+    "longTermGains": 20439,
+    "shortTermGains": 5110
+  },
+  {
+    "date": "2026-01-18",
+    "totalValue": 333728,
+    "brokerValue": 169799,
+    "cryptoValue": 99356,
+    "bankValue": 42151,
+    "longTermGains": 20376,
+    "shortTermGains": 5094
+  },
+  {
+    "date": "2026-01-19",
+    "totalValue": 333738,
+    "brokerValue": 169966,
+    "cryptoValue": 99092,
+    "bankValue": 42133,
+    "longTermGains": 20396,
+    "shortTermGains": 5099
+  },
+  {
+    "date": "2026-01-20",
+    "totalValue": 332433,
+    "brokerValue": 169118,
+    "cryptoValue": 98621,
+    "bankValue": 42124,
+    "longTermGains": 20294,
+    "shortTermGains": 5074
+  },
+  {
+    "date": "2026-01-21",
+    "totalValue": 331968,
+    "brokerValue": 169572,
+    "cryptoValue": 97720,
+    "bankValue": 42090,
+    "longTermGains": 20349,
+    "shortTermGains": 5087
+  },
+  {
+    "date": "2026-01-22",
+    "totalValue": 332341,
+    "brokerValue": 170500,
+    "cryptoValue": 97144,
+    "bankValue": 42083,
+    "longTermGains": 20460,
+    "shortTermGains": 5115
+  },
+  {
+    "date": "2026-01-23",
+    "totalValue": 333790,
+    "brokerValue": 170669,
+    "cryptoValue": 98468,
+    "bankValue": 42117,
+    "longTermGains": 20480,
+    "shortTermGains": 5120
+  },
+  {
+    "date": "2026-01-24",
+    "totalValue": 332694,
+    "brokerValue": 170030,
+    "cryptoValue": 97932,
+    "bankValue": 42115,
+    "longTermGains": 20404,
+    "shortTermGains": 5101
+  },
+  {
+    "date": "2026-01-25",
+    "totalValue": 331071,
+    "brokerValue": 169364,
+    "cryptoValue": 96912,
+    "bankValue": 42080,
+    "longTermGains": 20324,
+    "shortTermGains": 5081
+  },
+  {
+    "date": "2026-01-26",
+    "totalValue": 331790,
+    "brokerValue": 169603,
+    "cryptoValue": 97250,
+    "bankValue": 42106,
+    "longTermGains": 20352,
+    "shortTermGains": 5088
+  },
+  {
+    "date": "2026-01-27",
+    "totalValue": 332375,
+    "brokerValue": 170044,
+    "cryptoValue": 97330,
+    "bankValue": 42134,
+    "longTermGains": 20405,
+    "shortTermGains": 5101
+  },
+  {
+    "date": "2026-01-28",
+    "totalValue": 332763,
+    "brokerValue": 169671,
+    "cryptoValue": 98021,
+    "bankValue": 42170,
+    "longTermGains": 20361,
+    "shortTermGains": 5090
+  },
+  {
+    "date": "2026-01-29",
+    "totalValue": 332766,
+    "brokerValue": 170736,
+    "cryptoValue": 96860,
+    "bankValue": 42195,
+    "longTermGains": 20488,
+    "shortTermGains": 5122
+  },
+  {
+    "date": "2026-01-30",
+    "totalValue": 332930,
+    "brokerValue": 171031,
+    "cryptoValue": 96670,
+    "bankValue": 42220,
+    "longTermGains": 20524,
+    "shortTermGains": 5131
+  },
+  {
+    "date": "2026-01-31",
+    "totalValue": 333890,
+    "brokerValue": 171994,
+    "cryptoValue": 96668,
+    "bankValue": 42232,
+    "longTermGains": 20639,
+    "shortTermGains": 5160
+  },
+  {
+    "date": "2026-02-01",
+    "totalValue": 332207,
+    "brokerValue": 171235,
+    "cryptoValue": 95796,
+    "bankValue": 42233,
+    "longTermGains": 20548,
+    "shortTermGains": 5137
+  },
+  {
+    "date": "2026-02-02",
+    "totalValue": 333700,
+    "brokerValue": 171857,
+    "cryptoValue": 96706,
+    "bankValue": 42197,
+    "longTermGains": 20623,
+    "shortTermGains": 5156
+  },
+  {
+    "date": "2026-02-03",
+    "totalValue": 332948,
+    "brokerValue": 171784,
+    "cryptoValue": 95890,
+    "bankValue": 42226,
+    "longTermGains": 20614,
+    "shortTermGains": 5154
+  },
+  {
+    "date": "2026-02-04",
+    "totalValue": 332133,
+    "brokerValue": 170812,
+    "cryptoValue": 95917,
+    "bankValue": 42239,
+    "longTermGains": 20497,
+    "shortTermGains": 5124
+  },
+  {
+    "date": "2026-02-05",
+    "totalValue": 331664,
+    "brokerValue": 171378,
+    "cryptoValue": 94819,
+    "bankValue": 42222,
+    "longTermGains": 20565,
+    "shortTermGains": 5141
+  },
+  {
+    "date": "2026-02-06",
+    "totalValue": 333024,
+    "brokerValue": 172170,
+    "cryptoValue": 95311,
+    "bankValue": 42202,
+    "longTermGains": 20660,
+    "shortTermGains": 5165
+  },
+  {
+    "date": "2026-02-07",
+    "totalValue": 333101,
+    "brokerValue": 171747,
+    "cryptoValue": 95731,
+    "bankValue": 42232,
+    "longTermGains": 20610,
+    "shortTermGains": 5152
+  },
+  {
+    "date": "2026-02-08",
+    "totalValue": 331702,
+    "brokerValue": 171021,
+    "cryptoValue": 95112,
+    "bankValue": 42204,
+    "longTermGains": 20523,
+    "shortTermGains": 5131
+  },
+  {
+    "date": "2026-02-09",
+    "totalValue": 331384,
+    "brokerValue": 171156,
+    "cryptoValue": 94559,
+    "bankValue": 42205,
+    "longTermGains": 20539,
+    "shortTermGains": 5135
+  },
+  {
+    "date": "2026-02-10",
+    "totalValue": 330782,
+    "brokerValue": 171188,
+    "cryptoValue": 93771,
+    "bankValue": 42231,
+    "longTermGains": 20543,
+    "shortTermGains": 5136
+  },
+  {
+    "date": "2026-02-11",
+    "totalValue": 333060,
+    "brokerValue": 172217,
+    "cryptoValue": 94969,
+    "bankValue": 42215,
+    "longTermGains": 20666,
+    "shortTermGains": 5167
+  },
+  {
+    "date": "2026-02-12",
+    "totalValue": 334354,
+    "brokerValue": 171883,
+    "cryptoValue": 96572,
+    "bankValue": 42198,
+    "longTermGains": 20626,
+    "shortTermGains": 5156
+  },
+  {
+    "date": "2026-02-13",
+    "totalValue": 332490,
+    "brokerValue": 171415,
+    "cryptoValue": 95163,
+    "bankValue": 42169,
+    "longTermGains": 20570,
+    "shortTermGains": 5142
+  },
+  {
+    "date": "2026-02-14",
+    "totalValue": 332328,
+    "brokerValue": 171247,
+    "cryptoValue": 95126,
+    "bankValue": 42164,
+    "longTermGains": 20550,
+    "shortTermGains": 5137
+  },
+  {
+    "date": "2026-02-15",
+    "totalValue": 332694,
+    "brokerValue": 172351,
+    "cryptoValue": 94329,
+    "bankValue": 42143,
+    "longTermGains": 20682,
+    "shortTermGains": 5171
+  },
+  {
+    "date": "2026-02-16",
+    "totalValue": 333288,
+    "brokerValue": 172146,
+    "cryptoValue": 95175,
+    "bankValue": 42151,
+    "longTermGains": 20658,
+    "shortTermGains": 5164
+  },
+  {
+    "date": "2026-02-17",
+    "totalValue": 334477,
+    "brokerValue": 172114,
+    "cryptoValue": 96352,
+    "bankValue": 42124,
+    "longTermGains": 20654,
+    "shortTermGains": 5163
+  },
+  {
+    "date": "2026-02-18",
+    "totalValue": 336731,
+    "brokerValue": 173137,
+    "cryptoValue": 97482,
+    "bankValue": 42088,
+    "longTermGains": 20776,
+    "shortTermGains": 5194
+  },
+  {
+    "date": "2026-02-19",
+    "totalValue": 338243,
+    "brokerValue": 173100,
+    "cryptoValue": 99011,
+    "bankValue": 42110,
+    "longTermGains": 20772,
+    "shortTermGains": 5193
+  },
+  {
+    "date": "2026-02-20",
+    "totalValue": 339300,
+    "brokerValue": 173686,
+    "cryptoValue": 99445,
+    "bankValue": 42087,
+    "longTermGains": 20842,
+    "shortTermGains": 5211
+  },
+  {
+    "date": "2026-02-21",
+    "totalValue": 340117,
+    "brokerValue": 174824,
+    "cryptoValue": 99001,
+    "bankValue": 42078,
+    "longTermGains": 20979,
+    "shortTermGains": 5245
+  },
+  {
+    "date": "2026-02-22",
+    "totalValue": 338785,
+    "brokerValue": 173987,
+    "cryptoValue": 98395,
+    "bankValue": 42065,
+    "longTermGains": 20878,
+    "shortTermGains": 5220
+  },
+  {
+    "date": "2026-02-23",
+    "totalValue": 339418,
+    "brokerValue": 174810,
+    "cryptoValue": 98296,
+    "bankValue": 42043,
+    "longTermGains": 20977,
+    "shortTermGains": 5244
+  },
+  {
+    "date": "2026-02-24",
+    "totalValue": 340143,
+    "brokerValue": 175381,
+    "cryptoValue": 98431,
+    "bankValue": 42078,
+    "longTermGains": 21046,
+    "shortTermGains": 5261
+  },
+  {
+    "date": "2026-02-25",
+    "totalValue": 339505,
+    "brokerValue": 174518,
+    "cryptoValue": 98617,
+    "bankValue": 42119,
+    "longTermGains": 20942,
+    "shortTermGains": 5236
+  },
+  {
+    "date": "2026-02-26",
+    "totalValue": 337905,
+    "brokerValue": 174319,
+    "cryptoValue": 97092,
+    "bankValue": 42152,
+    "longTermGains": 20918,
+    "shortTermGains": 5230
+  },
+  {
+    "date": "2026-02-27",
+    "totalValue": 340751,
+    "brokerValue": 175382,
+    "cryptoValue": 98800,
+    "bankValue": 42133,
+    "longTermGains": 21046,
+    "shortTermGains": 5261
+  },
+  {
+    "date": "2026-02-28",
+    "totalValue": 339094,
+    "brokerValue": 174397,
+    "cryptoValue": 98112,
+    "bankValue": 42123,
+    "longTermGains": 20928,
+    "shortTermGains": 5232
+  },
+  {
+    "date": "2026-03-01",
+    "totalValue": 336815,
+    "brokerValue": 173658,
+    "cryptoValue": 96575,
+    "bankValue": 42150,
+    "longTermGains": 20839,
+    "shortTermGains": 5210
+  },
+  {
+    "date": "2026-03-02",
+    "totalValue": 335830,
+    "brokerValue": 172797,
+    "cryptoValue": 96335,
+    "bankValue": 42122,
+    "longTermGains": 20736,
+    "shortTermGains": 5184
+  },
+  {
+    "date": "2026-03-03",
+    "totalValue": 335574,
+    "brokerValue": 173340,
+    "cryptoValue": 95437,
+    "bankValue": 42095,
+    "longTermGains": 20801,
+    "shortTermGains": 5200
+  },
+  {
+    "date": "2026-03-04",
+    "totalValue": 335243,
+    "brokerValue": 174283,
+    "cryptoValue": 94169,
+    "bankValue": 42113,
+    "longTermGains": 20914,
+    "shortTermGains": 5228
+  },
+  {
+    "date": "2026-03-05",
+    "totalValue": 334364,
+    "brokerValue": 173428,
+    "cryptoValue": 94119,
+    "bankValue": 42091,
+    "longTermGains": 20811,
+    "shortTermGains": 5203
+  },
+  {
+    "date": "2026-03-06",
+    "totalValue": 336237,
+    "brokerValue": 173661,
+    "cryptoValue": 95825,
+    "bankValue": 42054,
+    "longTermGains": 20839,
+    "shortTermGains": 5210
+  },
+  {
+    "date": "2026-03-07",
+    "totalValue": 339056,
+    "brokerValue": 175033,
+    "cryptoValue": 97266,
+    "bankValue": 42032,
+    "longTermGains": 21004,
+    "shortTermGains": 5251
+  },
+  {
+    "date": "2026-03-08",
+    "totalValue": 340362,
+    "brokerValue": 175252,
+    "cryptoValue": 98414,
+    "bankValue": 42003,
+    "longTermGains": 21030,
+    "shortTermGains": 5258
+  },
+  {
+    "date": "2026-03-09",
+    "totalValue": 339554,
+    "brokerValue": 175075,
+    "cryptoValue": 97796,
+    "bankValue": 42018,
+    "longTermGains": 21009,
+    "shortTermGains": 5252
+  },
+  {
+    "date": "2026-03-10",
+    "totalValue": 338023,
+    "brokerValue": 174749,
+    "cryptoValue": 96584,
+    "bankValue": 41982,
+    "longTermGains": 20970,
+    "shortTermGains": 5242
+  },
+  {
+    "date": "2026-03-11",
+    "totalValue": 338418,
+    "brokerValue": 176239,
+    "cryptoValue": 95409,
+    "bankValue": 41990,
+    "longTermGains": 21149,
+    "shortTermGains": 5287
+  },
+  {
+    "date": "2026-03-12",
+    "totalValue": 340581,
+    "brokerValue": 177310,
+    "cryptoValue": 96440,
+    "bankValue": 42006,
+    "longTermGains": 21277,
+    "shortTermGains": 5319
+  },
+  {
+    "date": "2026-03-13",
+    "totalValue": 340541,
+    "brokerValue": 177515,
+    "cryptoValue": 96225,
+    "bankValue": 42036,
+    "longTermGains": 21302,
+    "shortTermGains": 5325
+  },
+  {
+    "date": "2026-03-14",
+    "totalValue": 338643,
+    "brokerValue": 176967,
+    "cryptoValue": 94868,
+    "bankValue": 42014,
+    "longTermGains": 21236,
+    "shortTermGains": 5309
+  },
+  {
+    "date": "2026-03-15",
+    "totalValue": 338071,
+    "brokerValue": 177428,
+    "cryptoValue": 93702,
+    "bankValue": 42038,
+    "longTermGains": 21291,
+    "shortTermGains": 5323
+  },
+  {
+    "date": "2026-03-16",
+    "totalValue": 337534,
+    "brokerValue": 176886,
+    "cryptoValue": 93595,
+    "bankValue": 42019,
+    "longTermGains": 21226,
+    "shortTermGains": 5307
+  },
+  {
+    "date": "2026-03-17",
+    "totalValue": 338160,
+    "brokerValue": 178020,
+    "cryptoValue": 93065,
+    "bankValue": 42036,
+    "longTermGains": 21362,
+    "shortTermGains": 5341
+  },
+  {
+    "date": "2026-03-18",
+    "totalValue": 339653,
+    "brokerValue": 177768,
+    "cryptoValue": 94717,
+    "bankValue": 42047,
+    "longTermGains": 21332,
+    "shortTermGains": 5333
+  },
+  {
+    "date": "2026-03-19",
+    "totalValue": 340280,
+    "brokerValue": 176971,
+    "cryptoValue": 96064,
+    "bankValue": 42088,
+    "longTermGains": 21237,
+    "shortTermGains": 5309
+  },
+  {
+    "date": "2026-03-20",
+    "totalValue": 340711,
+    "brokerValue": 177328,
+    "cryptoValue": 96206,
+    "bankValue": 42105,
+    "longTermGains": 21279,
+    "shortTermGains": 5320
+  },
+  {
+    "date": "2026-03-21",
+    "totalValue": 340068,
+    "brokerValue": 178039,
+    "cryptoValue": 94692,
+    "bankValue": 42136,
+    "longTermGains": 21365,
+    "shortTermGains": 5341
+  },
+  {
+    "date": "2026-03-22",
+    "totalValue": 341106,
+    "brokerValue": 179261,
+    "cryptoValue": 94424,
+    "bankValue": 42150,
+    "longTermGains": 21511,
+    "shortTermGains": 5378
+  },
+  {
+    "date": "2026-03-23",
+    "totalValue": 342221,
+    "brokerValue": 180827,
+    "cryptoValue": 94014,
+    "bankValue": 42182,
+    "longTermGains": 21699,
+    "shortTermGains": 5425
+  },
+  {
+    "date": "2026-03-24",
+    "totalValue": 343373,
+    "brokerValue": 180623,
+    "cryptoValue": 95481,
+    "bankValue": 42156,
+    "longTermGains": 21675,
+    "shortTermGains": 5419
+  },
+  {
+    "date": "2026-03-25",
+    "totalValue": 343417,
+    "brokerValue": 179899,
+    "cryptoValue": 96058,
+    "bankValue": 42196,
+    "longTermGains": 21588,
+    "shortTermGains": 5397
+  },
+  {
+    "date": "2026-03-26",
+    "totalValue": 344611,
+    "brokerValue": 181080,
+    "cryptoValue": 96078,
+    "bankValue": 42231,
+    "longTermGains": 21730,
+    "shortTermGains": 5432
+  },
+  {
+    "date": "2026-03-27",
+    "totalValue": 345713,
+    "brokerValue": 182562,
+    "cryptoValue": 95607,
+    "bankValue": 42210,
+    "longTermGains": 21907,
+    "shortTermGains": 5477
+  },
+  {
+    "date": "2026-03-28",
+    "totalValue": 345632,
+    "brokerValue": 183091,
+    "cryptoValue": 95049,
+    "bankValue": 42216,
+    "longTermGains": 21971,
+    "shortTermGains": 5493
+  },
+  {
+    "date": "2026-03-29",
+    "totalValue": 346890,
+    "brokerValue": 184098,
+    "cryptoValue": 95378,
+    "bankValue": 42214,
+    "longTermGains": 22092,
+    "shortTermGains": 5523
+  },
+  {
+    "date": "2026-03-30",
+    "totalValue": 348007,
+    "brokerValue": 183535,
+    "cryptoValue": 96910,
+    "bankValue": 42232,
+    "longTermGains": 22024,
+    "shortTermGains": 5506
+  },
+  {
+    "date": "2026-03-31",
+    "totalValue": 348021,
+    "brokerValue": 184926,
+    "cryptoValue": 95446,
+    "bankValue": 42201,
+    "longTermGains": 22191,
+    "shortTermGains": 5548
+  },
+  {
+    "date": "2026-04-01",
+    "totalValue": 347495,
+    "brokerValue": 185028,
+    "cryptoValue": 94849,
+    "bankValue": 42177,
+    "longTermGains": 22203,
+    "shortTermGains": 5551
+  },
+  {
+    "date": "2026-04-02",
+    "totalValue": 348269,
+    "brokerValue": 185980,
+    "cryptoValue": 94551,
+    "bankValue": 42156,
+    "longTermGains": 22318,
+    "shortTermGains": 5579
+  },
+  {
+    "date": "2026-04-03",
+    "totalValue": 349422,
+    "brokerValue": 186916,
+    "cryptoValue": 94696,
+    "bankValue": 42142,
+    "longTermGains": 22430,
+    "shortTermGains": 5607
+  },
+  {
+    "date": "2026-04-04",
+    "totalValue": 349321,
+    "brokerValue": 187237,
+    "cryptoValue": 94167,
+    "bankValue": 42167,
+    "longTermGains": 22468,
+    "shortTermGains": 5617
+  },
+  {
+    "date": "2026-04-05",
+    "totalValue": 348570,
+    "brokerValue": 186823,
+    "cryptoValue": 93770,
+    "bankValue": 42170,
+    "longTermGains": 22419,
+    "shortTermGains": 5605
+  },
+  {
+    "date": "2026-04-06",
+    "totalValue": 349361,
+    "brokerValue": 187808,
+    "cryptoValue": 93530,
+    "bankValue": 42198,
+    "longTermGains": 22537,
+    "shortTermGains": 5634
+  },
+  {
+    "date": "2026-04-07",
+    "totalValue": 349667,
+    "brokerValue": 188557,
+    "cryptoValue": 92948,
+    "bankValue": 42232,
+    "longTermGains": 22627,
+    "shortTermGains": 5657
+  },
+  {
+    "date": "2026-04-08",
+    "totalValue": 349779,
+    "brokerValue": 188534,
+    "cryptoValue": 93059,
+    "bankValue": 42209,
+    "longTermGains": 22624,
+    "shortTermGains": 5656
+  },
+  {
+    "date": "2026-04-09",
+    "totalValue": 350085,
+    "brokerValue": 189153,
+    "cryptoValue": 92682,
+    "bankValue": 42190,
+    "longTermGains": 22698,
+    "shortTermGains": 5675
+  },
+  {
+    "date": "2026-04-10",
+    "totalValue": 351891,
+    "brokerValue": 189603,
+    "cryptoValue": 94089,
+    "bankValue": 42165,
+    "longTermGains": 22752,
+    "shortTermGains": 5688
+  },
+  {
+    "date": "2026-04-11",
+    "totalValue": 353309,
+    "brokerValue": 190818,
+    "cryptoValue": 94223,
+    "bankValue": 42206,
+    "longTermGains": 22898,
+    "shortTermGains": 5725
+  },
+  {
+    "date": "2026-04-12",
+    "totalValue": 350723,
+    "brokerValue": 189688,
+    "cryptoValue": 92844,
+    "bankValue": 42194,
+    "longTermGains": 22763,
+    "shortTermGains": 5691
+  },
+  {
+    "date": "2026-04-13",
+    "totalValue": 353245,
+    "brokerValue": 190992,
+    "cryptoValue": 93954,
+    "bankValue": 42181,
+    "longTermGains": 22919,
+    "shortTermGains": 5730
+  },
+  {
+    "date": "2026-04-14",
+    "totalValue": 351230,
+    "brokerValue": 190492,
+    "cryptoValue": 92526,
+    "bankValue": 42181,
+    "longTermGains": 22859,
+    "shortTermGains": 5715
+  },
+  {
+    "date": "2026-04-15",
+    "totalValue": 350751,
+    "brokerValue": 190997,
+    "cryptoValue": 91513,
+    "bankValue": 42201,
+    "longTermGains": 22920,
+    "shortTermGains": 5730
+  },
+  {
+    "date": "2026-04-16",
+    "totalValue": 542163.5700000001,
+    "cryptoValue": 118450,
+    "brokerValue": 0,
+    "bankValue": 49610.87,
+    "goldValue": 30002.7,
+    "propertyValue": 344100,
+    "shortTermGains": 0,
+    "longTermGains": 0
+  }
+]

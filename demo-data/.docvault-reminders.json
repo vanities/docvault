@@ -1,0 +1,29 @@
+[
+  {
+    "id": "rem-demo-1",
+    "title": "Q2 Estimated Taxes",
+    "dueDate": "2026-06-15",
+    "status": "pending",
+    "entityId": "personal",
+    "recurring": "yearly",
+    "notes": "Form 1040-ES Q2 payment."
+  },
+  {
+    "id": "rem-demo-2",
+    "title": "Rental Property Insurance Renewal",
+    "dueDate": "2026-05-01",
+    "status": "pending",
+    "entityId": "rental-property",
+    "recurring": "yearly",
+    "notes": ""
+  },
+  {
+    "id": "rem-demo-3",
+    "title": "File 2025 Form 1120-S",
+    "dueDate": "2026-03-15",
+    "status": "completed",
+    "entityId": "acme-consulting",
+    "recurring": "yearly",
+    "notes": "Filed on time."
+  }
+]

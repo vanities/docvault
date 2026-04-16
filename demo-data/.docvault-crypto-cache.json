@@ -1,0 +1,49 @@
+{
+  "lastUpdated": "2026-04-15T18:00:00.000Z",
+  "totalUsdValue": 118450,
+  "byAsset": [
+    { "asset": "BTC", "amount": 1.12, "usdValue": 74200 },
+    { "asset": "ETH", "amount": 8.5, "usdValue": 27200 },
+    { "asset": "SOL", "amount": 48.0, "usdValue": 9120 },
+    { "asset": "LINK", "amount": 220.0, "usdValue": 4180 },
+    { "asset": "USDC", "amount": 3750.0, "usdValue": 3750 }
+  ],
+  "sources": [
+    {
+      "sourceId": "demo-kraken",
+      "sourceType": "kraken",
+      "label": "Demo Kraken",
+      "lastUpdated": "2026-04-15T18:00:00.000Z",
+      "totalUsdValue": 78200,
+      "balances": [
+        { "asset": "BTC", "amount": 0.92, "usdValue": 60900 },
+        { "asset": "ETH", "amount": 4.8, "usdValue": 15300 },
+        { "asset": "USDC", "amount": 2000, "usdValue": 2000 }
+      ]
+    },
+    {
+      "sourceId": "demo-coinbase",
+      "sourceType": "coinbase",
+      "label": "Demo Coinbase",
+      "lastUpdated": "2026-04-15T18:00:00.000Z",
+      "totalUsdValue": 34400,
+      "balances": [
+        { "asset": "BTC", "amount": 0.2, "usdValue": 13300 },
+        { "asset": "ETH", "amount": 3.7, "usdValue": 11900 },
+        { "asset": "SOL", "amount": 48.0, "usdValue": 9120 },
+        { "asset": "USDC", "amount": 80, "usdValue": 80 }
+      ]
+    },
+    {
+      "sourceId": "demo-ethscan",
+      "sourceType": "etherscan",
+      "label": "Demo ETH Wallet",
+      "lastUpdated": "2026-04-15T18:00:00.000Z",
+      "totalUsdValue": 5850,
+      "balances": [
+        { "asset": "LINK", "amount": 220.0, "usdValue": 4180 },
+        { "asset": "USDC", "amount": 1670, "usdValue": 1670 }
+      ]
+    }
+  ]
+}

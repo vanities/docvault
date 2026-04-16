@@ -1,0 +1,49 @@
+{
+  "entries": [
+    {
+      "id": "gold-demo-1",
+      "metal": "gold",
+      "productId": "AGE-1oz",
+      "customDescription": "American Gold Eagle 1 oz",
+      "dealer": "Demo Dealer",
+      "purchaseDate": "2024-06-15",
+      "purchasePrice": 2350.0,
+      "quantity": 4,
+      "size": "1 oz",
+      "weightOz": 1.0,
+      "purity": "22k",
+      "notes": "",
+      "createdAt": "2024-06-15T12:00:00.000Z"
+    },
+    {
+      "id": "gold-demo-2",
+      "metal": "gold",
+      "productId": "ABC-1-10oz",
+      "customDescription": "Gold bar 1/10 oz",
+      "dealer": "Demo Dealer",
+      "purchaseDate": "2025-02-10",
+      "purchasePrice": 260.0,
+      "quantity": 6,
+      "size": "1/10 oz",
+      "weightOz": 0.1,
+      "purity": "24k",
+      "notes": "",
+      "createdAt": "2025-02-10T12:00:00.000Z"
+    },
+    {
+      "id": "silver-demo-1",
+      "metal": "silver",
+      "productId": "ASE-1oz",
+      "customDescription": "American Silver Eagle 1 oz",
+      "dealer": "Demo Dealer",
+      "purchaseDate": "2023-11-20",
+      "purchasePrice": 32.0,
+      "quantity": 100,
+      "size": "1 oz",
+      "weightOz": 1.0,
+      "purity": ".999",
+      "notes": "",
+      "createdAt": "2023-11-20T12:00:00.000Z"
+    }
+  ]
+}
