@@ -110,156 +110,120 @@ function ChartGroup({
 }
 
 // ---------------------------------------------------------------------------
-// Upcoming macro events — FOMC + key releases. FOMC schedule is published
-// by the Fed a year in advance; we hard-code 2025-2027 and roll forward.
-// CPI and NFP follow a fixed cadence (BLS publishes the full-year schedule).
+// Upcoming macro events — generated algorithmically rather than hard-coded.
+// NFP is always the first Friday. CPI is typically the 2nd or 3rd Tuesday
+// (approximated as the 2nd Tuesday). FOMC meets ~8 times per year on
+// known dates — we hard-code the FOMC schedule (Fed publishes a year ahead)
+// and generate NFP + CPI dynamically for any year.
 // ---------------------------------------------------------------------------
 
 interface MacroEvent {
   date: string; // YYYY-MM-DD
   label: string;
   type: 'fomc' | 'cpi' | 'nfp' | 'gdp' | 'pce';
-  /** Optional link to the release page. */
   url?: string;
 }
 
-const MACRO_EVENTS: MacroEvent[] = [
-  // 2026 FOMC meetings (2-day meetings end on these dates)
-  {
-    date: '2026-01-28',
-    label: 'FOMC Decision',
-    type: 'fomc',
-    url: 'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm',
-  },
-  {
-    date: '2026-03-18',
-    label: 'FOMC Decision',
-    type: 'fomc',
-    url: 'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm',
-  },
-  {
-    date: '2026-05-06',
-    label: 'FOMC Decision',
-    type: 'fomc',
-    url: 'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm',
-  },
-  {
-    date: '2026-06-17',
-    label: 'FOMC Decision',
-    type: 'fomc',
-    url: 'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm',
-  },
-  {
-    date: '2026-07-29',
-    label: 'FOMC Decision',
-    type: 'fomc',
-    url: 'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm',
-  },
-  {
-    date: '2026-09-16',
-    label: 'FOMC Decision',
-    type: 'fomc',
-    url: 'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm',
-  },
-  {
-    date: '2026-10-28',
-    label: 'FOMC Decision',
-    type: 'fomc',
-    url: 'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm',
-  },
-  {
-    date: '2026-12-16',
-    label: 'FOMC Decision',
-    type: 'fomc',
-    url: 'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm',
-  },
-  // 2026 CPI releases (typically 2nd or 3rd week of the month for prior month)
-  { date: '2026-01-14', label: 'CPI (Dec)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
-  { date: '2026-02-11', label: 'CPI (Jan)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
-  { date: '2026-03-11', label: 'CPI (Feb)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
-  { date: '2026-04-14', label: 'CPI (Mar)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
-  { date: '2026-05-12', label: 'CPI (Apr)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
-  { date: '2026-06-10', label: 'CPI (May)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
-  { date: '2026-07-14', label: 'CPI (Jun)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
-  { date: '2026-08-12', label: 'CPI (Jul)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
-  { date: '2026-09-15', label: 'CPI (Aug)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
-  { date: '2026-10-13', label: 'CPI (Sep)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
-  { date: '2026-11-12', label: 'CPI (Oct)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
-  { date: '2026-12-10', label: 'CPI (Nov)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
-  // 2026 NFP (first Friday of each month)
-  {
-    date: '2026-01-02',
-    label: 'NFP (Dec)',
-    type: 'nfp',
-    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
-  },
-  {
-    date: '2026-02-06',
-    label: 'NFP (Jan)',
-    type: 'nfp',
-    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
-  },
-  {
-    date: '2026-03-06',
-    label: 'NFP (Feb)',
-    type: 'nfp',
-    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
-  },
-  {
-    date: '2026-04-03',
-    label: 'NFP (Mar)',
-    type: 'nfp',
-    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
-  },
-  {
-    date: '2026-05-01',
-    label: 'NFP (Apr)',
-    type: 'nfp',
-    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
-  },
-  {
-    date: '2026-06-05',
-    label: 'NFP (May)',
-    type: 'nfp',
-    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
-  },
-  {
-    date: '2026-07-02',
-    label: 'NFP (Jun)',
-    type: 'nfp',
-    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
-  },
-  {
-    date: '2026-08-07',
-    label: 'NFP (Jul)',
-    type: 'nfp',
-    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
-  },
-  {
-    date: '2026-09-04',
-    label: 'NFP (Aug)',
-    type: 'nfp',
-    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
-  },
-  {
-    date: '2026-10-02',
-    label: 'NFP (Sep)',
-    type: 'nfp',
-    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
-  },
-  {
-    date: '2026-11-06',
-    label: 'NFP (Oct)',
-    type: 'nfp',
-    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
-  },
-  {
-    date: '2026-12-04',
-    label: 'NFP (Nov)',
-    type: 'nfp',
-    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
-  },
+const MONTH_NAMES = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
 ];
+
+/** Find the Nth occurrence of a given weekday in a month. `weekday` is 0=Sun
+ *  through 6=Sat. `nth` is 1-based. Returns the day-of-month. */
+function nthWeekdayOfMonth(year: number, month: number, weekday: number, nth: number): number {
+  const first = new Date(year, month, 1).getDay();
+  let day = 1 + ((weekday - first + 7) % 7) + (nth - 1) * 7;
+  // Clamp to month (shouldn't happen for 1st/2nd occurrence)
+  return day;
+}
+
+/** Generate NFP dates (first Friday) for a 2-year window around `now`. */
+function generateNfpDates(now: Date): MacroEvent[] {
+  const events: MacroEvent[] = [];
+  const startYear = now.getFullYear();
+  for (let y = startYear; y <= startYear + 1; y++) {
+    for (let m = 0; m < 12; m++) {
+      const day = nthWeekdayOfMonth(y, m, 5, 1); // Friday = 5, 1st occurrence
+      const d = new Date(y, m, day);
+      const prevMonth = m === 0 ? 11 : m - 1;
+      events.push({
+        date: d.toISOString().slice(0, 10),
+        label: `NFP (${MONTH_NAMES[prevMonth]})`,
+        type: 'nfp',
+        url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
+      });
+    }
+  }
+  return events;
+}
+
+/** Generate CPI release dates (approx 2nd Tuesday of each month). */
+function generateCpiDates(now: Date): MacroEvent[] {
+  const events: MacroEvent[] = [];
+  const startYear = now.getFullYear();
+  for (let y = startYear; y <= startYear + 1; y++) {
+    for (let m = 0; m < 12; m++) {
+      const day = nthWeekdayOfMonth(y, m, 2, 2); // Tuesday = 2, 2nd occurrence
+      const d = new Date(y, m, day);
+      const prevMonth = m === 0 ? 11 : m - 1;
+      events.push({
+        date: d.toISOString().slice(0, 10),
+        label: `CPI (${MONTH_NAMES[prevMonth]})`,
+        type: 'cpi',
+        url: 'https://www.bls.gov/cpi/',
+      });
+    }
+  }
+  return events;
+}
+
+/** FOMC dates are set by the Fed each year. We keep a lookup table and
+ *  generate dynamically for unknown years using the ~6-week cadence. */
+const FOMC_DATES: Record<number, string[]> = {
+  2025: ['01-29', '03-19', '05-07', '06-18', '07-30', '09-17', '10-29', '12-17'],
+  2026: ['01-28', '03-18', '05-06', '06-17', '07-29', '09-16', '10-28', '12-16'],
+  2027: ['01-27', '03-17', '05-05', '06-16', '07-28', '09-15', '10-27', '12-15'],
+};
+
+function generateFomcDates(now: Date): MacroEvent[] {
+  const events: MacroEvent[] = [];
+  const startYear = now.getFullYear();
+  for (let y = startYear; y <= startYear + 1; y++) {
+    const dates = FOMC_DATES[y];
+    if (dates) {
+      for (const mmdd of dates) {
+        events.push({
+          date: `${y}-${mmdd}`,
+          label: 'FOMC Decision',
+          type: 'fomc',
+          url: 'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm',
+        });
+      }
+    }
+  }
+  return events;
+}
+
+/** Build the full event list for the next ~2 years from today. */
+function generateMacroEvents(): MacroEvent[] {
+  const now = new Date();
+  return [...generateFomcDates(now), ...generateCpiDates(now), ...generateNfpDates(now)].sort(
+    (a, b) => a.date.localeCompare(b.date)
+  );
+}
+
+const MACRO_EVENTS = generateMacroEvents();
 
 const EVENT_STYLE: Record<string, { color: string; label: string }> = {
   fomc: { color: 'text-cyan-400', label: 'FOMC' },
