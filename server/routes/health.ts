@@ -44,6 +44,7 @@ import {
   type PersonSnapshots,
   type HealthSegment,
 } from '../parsers/apple-health-snapshots.js';
+import { buildHealthShortcut } from './shortcut-generator.js';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('Health');
@@ -321,9 +322,13 @@ export async function handleHealthRoutes(
     const proto = req.headers.get('x-forwarded-proto') ?? 'http';
     const ingestUrl = `${proto}://${host}/api/health/${personId}/ingest`;
 
+    // Also include the download URL for the generated .shortcut file
+    const shortcutDownloadUrl = `${proto}://${host}/api/health/${personId}/shortcut.shortcut`;
+
     return jsonResponse({
       personId,
       ingestUrl,
+      shortcutDownloadUrl,
       authHeader: 'X-Docvault-Auth',
       authToken: token,
       scheduleTime: '06:00', // 6 AM user-local, configurable
@@ -353,6 +358,49 @@ export async function handleHealthRoutes(
         },
       ],
     });
+  }
+
+  // GET /api/health/:personId/shortcut.shortcut — generate and serve a
+  // .shortcut binary plist file that the user can open on their iPhone to
+  // import the pre-configured "Sync Health → DocVault" shortcut.
+  //
+  // The file is unsigned — on iOS 15+ this may fail to import. The manual
+  // walkthrough remains the reliable fallback.
+  const shortcutFileMatch = pathname.match(/^\/api\/health\/([^/]+)\/shortcut\.shortcut$/);
+  if (shortcutFileMatch && req.method === 'GET') {
+    const personId = shortcutFileMatch[1];
+    await requirePerson(personId);
+    const token = await getOrCreateHealthIngestToken();
+    const host = req.headers.get('host') ?? 'docvault.local';
+    const proto = req.headers.get('x-forwarded-proto') ?? 'http';
+    const ingestUrl = `${proto}://${host}/api/health/${personId}/ingest`;
+
+    try {
+      const shortcutBuffer = buildHealthShortcut({
+        ingestUrl,
+        authToken: token,
+        personId,
+        shortcutName: 'Sync Health → DocVault',
+      });
+
+      return new Response(shortcutBuffer, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/x-apple-shortcut',
+          'Content-Disposition': 'attachment; filename="Sync-Health-DocVault.shortcut"',
+          'Content-Length': String(shortcutBuffer.length),
+          ...Object.fromEntries(
+            Object.entries({
+              'Access-Control-Allow-Origin': '*',
+            })
+          ),
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error(`Shortcut generation failed: ${msg}`);
+      return jsonResponse({ error: 'Shortcut generation failed', details: msg }, 500);
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -404,12 +452,44 @@ export async function handleHealthRoutes(
       return jsonResponse({ error: 'Missing or invalid `metrics` object' }, 400);
     }
 
+    // If `raw: true`, the shortcut sent newline-separated value strings
+    // instead of pre-aggregated {sum, avg, ...} objects. Parse + aggregate
+    // them into DeltaMetric objects before storing. This keeps the stored
+    // delta format consistent regardless of whether the data came from a
+    // shortcut (raw text) or a manual curl (pre-aggregated).
+    let metrics = body.metrics;
+    if (body.raw === true && metrics) {
+      const parsed: Record<
+        string,
+        { sum?: number; avg?: number; min?: number; max?: number; count?: number; last?: number }
+      > = {};
+      for (const [key, rawValue] of Object.entries(metrics)) {
+        if (typeof rawValue === 'string') {
+          // Parse newline-separated numeric values
+          const nums = rawValue
+            .split('\n')
+            .map((s: string) => Number(s.trim()))
+            .filter((n: number) => Number.isFinite(n) && !Number.isNaN(n));
+          if (nums.length === 0) continue;
+          const sum = nums.reduce((a: number, b: number) => a + b, 0);
+          const avg = sum / nums.length;
+          const min = Math.min(...nums);
+          const max = Math.max(...nums);
+          parsed[key] = { sum, avg, min, max, count: nums.length, last: nums[nums.length - 1] };
+        } else if (typeof rawValue === 'object' && rawValue !== null) {
+          // Already structured — pass through
+          parsed[key] = rawValue as Record<string, number>;
+        }
+      }
+      metrics = parsed;
+    }
+
     // Normalize the stored shape so merge logic can rely on known fields
     const normalized: DeltaFile = {
       date,
       source: body.source ?? 'unknown',
       receivedAt: new Date().toISOString(),
-      metrics: body.metrics,
+      metrics: metrics as DeltaFile['metrics'],
     };
 
     const dir = getPersonDeltasDir(personId);

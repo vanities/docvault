@@ -23,6 +23,7 @@ interface ShortcutMetric {
 interface ShortcutConfig {
   personId: string;
   ingestUrl: string;
+  shortcutDownloadUrl: string;
   authHeader: string;
   authToken: string;
   scheduleTime: string;
@@ -137,6 +138,46 @@ ${config.metrics
         values on top of the bulk export so you always see the freshest data without re-exporting
         and re-uploading.
       </p>
+
+      {/* Download .shortcut file — experimental */}
+      <Card className="p-4 mb-5 border-accent-500/20 bg-accent-500/5">
+        <div className="flex items-start gap-3">
+          <Smartphone className="w-5 h-5 text-accent-400 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <div className="font-medium text-surface-950 mb-1">
+              Try: download the pre-built shortcut
+            </div>
+            <p className="text-xs text-surface-700 mb-2">
+              Open this link <strong>on your iPhone</strong> to import a pre-configured shortcut
+              with all 8 metrics, the ingest URL, and auth token already baked in. If iOS blocks the
+              import (unsigned shortcuts can be rejected on iOS 15+), follow the manual steps below
+              instead.
+            </p>
+            <div className="flex items-center gap-3">
+              <a
+                href={config.shortcutDownloadUrl}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-500/15 text-accent-400 text-sm font-medium hover:bg-accent-500/25 transition-colors"
+              >
+                <Smartphone className="w-3.5 h-3.5" />
+                Download .shortcut file
+              </a>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 gap-1"
+                onClick={() => copy(config.shortcutDownloadUrl, 'shortcut-url')}
+              >
+                {copied === 'shortcut-url' ? (
+                  <Check className="w-3.5 h-3.5" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+                Copy URL
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Card>
 
       {/* Quick-reference config panel */}
       <div className="space-y-2 mb-5">
