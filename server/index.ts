@@ -56,6 +56,7 @@ import {
   saveConfig,
   loadSettings,
   saveSettings,
+  migrateSettingsEncryption,
   loadParsedData,
   saveParsedData,
   setParsedDataForFile,
@@ -319,15 +320,25 @@ async function handleRequest(req: Request): Promise<Response> {
         return jsonResponse({ error: 'Password must be at least 4 characters' }, 400);
       }
 
-      // Collect all .docvault-* files from the data dir
-      const filesToBackup: Record<string, string> = {};
+      // Collect files for backup. Binary-safe: store raw Buffers keyed by
+      // relative path. The restore handler keys off these paths to write them
+      // back in the right place.
+      //
+      // What we capture:
+      //   1. Every .docvault-*.json file at the data-dir root (structured state)
+      //   2. Everything under data/health/ recursively — raw Apple Health
+      //      zip/XML exports + iOS Shortcut daily deltas. These are NAS-only
+      //      today (health/ is not in the Dropbox rclone map), so the
+      //      encrypted backup is their only off-site copy.
+      const filesToBackup: Record<string, Uint8Array> = {};
 
       try {
-        const files = await fs.readdir(DATA_DIR);
-        for (const name of files) {
+        const entries = await fs.readdir(DATA_DIR);
+        for (const name of entries) {
           if (name.startsWith('.docvault-') && name.endsWith('.json')) {
             try {
-              filesToBackup[name] = await fs.readFile(path.join(DATA_DIR, name), 'utf-8');
+              const buf = await fs.readFile(path.join(DATA_DIR, name));
+              filesToBackup[name] = new Uint8Array(buf);
             } catch {
               /* skip unreadable files */
             }
@@ -337,12 +348,32 @@ async function handleRequest(req: Request): Promise<Response> {
         /* data dir not readable */
       }
 
-      // Create zip
-      const zipData: Record<string, Uint8Array> = {};
-      for (const [name, content] of Object.entries(filesToBackup)) {
-        zipData[name] = new TextEncoder().encode(content);
+      // Recursively collect health/ subdirectory contents (binary-safe).
+      async function collectDir(absDir: string, relDir: string): Promise<void> {
+        let subEntries;
+        try {
+          subEntries = await fs.readdir(absDir, { withFileTypes: true });
+        } catch {
+          return;
+        }
+        for (const entry of subEntries) {
+          const absChild = path.join(absDir, entry.name);
+          const relChild = relDir ? `${relDir}/${entry.name}` : entry.name;
+          if (entry.isDirectory()) {
+            await collectDir(absChild, relChild);
+          } else if (entry.isFile()) {
+            try {
+              const buf = await fs.readFile(absChild);
+              filesToBackup[relChild] = new Uint8Array(buf);
+            } catch {
+              /* skip unreadable files */
+            }
+          }
+        }
       }
-      const zipped = zipSync(zipData);
+      await collectDir(path.join(DATA_DIR, 'health'), 'health');
+
+      const zipped = zipSync(filesToBackup);
 
       // Encrypt with AES-256-GCM
       const { createCipheriv, randomBytes, scryptSync } = await import('crypto');
@@ -407,23 +438,38 @@ async function handleRequest(req: Request): Promise<Response> {
       const unzipped = unzipSync(new Uint8Array(decrypted));
 
       const restored: string[] = [];
+      // Guard against path traversal in maliciously crafted zips.
+      const dataDirResolved = path.resolve(DATA_DIR);
+      const safeWriteUnder = async (relPath: string, data: Uint8Array) => {
+        const target = path.resolve(path.join(DATA_DIR, relPath));
+        if (target !== dataDirResolved && !target.startsWith(dataDirResolved + path.sep)) {
+          return; // refuse paths that escape the data dir
+        }
+        await fs.mkdir(path.dirname(target), { recursive: true });
+        await fs.writeFile(target, data);
+      };
+
       for (const [name, data] of Object.entries(unzipped)) {
-        const content = new TextDecoder().decode(data);
         // Current format: .docvault-*.json files at root of zip
         if (name.startsWith('.docvault-') && name.endsWith('.json')) {
-          await fs.writeFile(path.join(DATA_DIR, name), content);
+          await safeWriteUnder(name, data);
+          restored.push(name);
+        }
+        // Current format: health/ subtree (Apple Health exports + Shortcut deltas)
+        else if (name.startsWith('health/')) {
+          await safeWriteUnder(name, data);
           restored.push(name);
         }
         // Legacy format: settings.json / config.json / data/* from older backups
         else if (name === 'settings.json') {
-          await fs.writeFile(SETTINGS_PATH, content);
+          await safeWriteUnder(path.basename(SETTINGS_PATH), data);
           restored.push(name);
         } else if (name === 'config.json') {
-          await fs.writeFile(CONFIG_PATH, content);
+          await safeWriteUnder(path.basename(CONFIG_PATH), data);
           restored.push(name);
         } else if (name.startsWith('data/')) {
           const fileName = name.replace('data/', '');
-          await fs.writeFile(path.join(DATA_DIR, fileName), content);
+          await safeWriteUnder(fileName, data);
           restored.push(fileName);
         }
       }
@@ -2404,6 +2450,27 @@ import { getRecentLogs } from './logger.js';
 // Start server using Bun's native server
 // ============================================================================
 
+const logServer = createLogger('Server');
+
+// Fail-closed: refuse to start if the master key is missing or too weak.
+// We'd rather crash loudly at boot than silently fall back to plaintext.
+try {
+  const { assertMasterKeyConfigured } = await import('./crypto-keys.js');
+  assertMasterKeyConfigured();
+} catch (err) {
+  logServer.error(String(err instanceof Error ? err.message : err));
+  logServer.error('Refusing to start without a master key. See README for setup.');
+  process.exit(1);
+}
+
+// Migrate any legacy plaintext sensitive fields to encrypted form. Idempotent.
+try {
+  await migrateSettingsEncryption();
+} catch (err) {
+  logServer.error(`Settings encryption migration failed: ${err}`);
+  process.exit(1);
+}
+
 const server = Bun.serve({
   port: PORT,
   fetch: handleRequest,
@@ -2411,6 +2478,5 @@ const server = Bun.serve({
   maxRequestBodySize: 1024 * 1024 * 1024, // 1 GB — large PDFs, manuals, etc.
 });
 
-const logServer = createLogger('Server');
 logServer.info(`DocVault API running on http://localhost:${server.port}`);
 logServer.info(`Data directory: ${DATA_DIR}`);
