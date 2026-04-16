@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card';
 import { SegmentViewShell } from './SegmentViewShell';
 import { HealthChart } from './HealthChart';
 import { InsightsRow } from './InsightsRow';
-import { formatInt, formatMinutes } from './healthFormatters';
+import { formatInt, formatMinutes, humanizeTypeName } from './healthFormatters';
 
 function formatStart(iso: string): string {
   const d = new Date(iso.replace(' ', 'T'));
@@ -54,7 +54,9 @@ export function HealthWorkoutsView() {
             <StatTile
               icon={Dumbbell}
               label="Favorite type"
-              value={data.headline.favoriteType ?? '—'}
+              value={
+                data.headline.favoriteType ? humanizeTypeName(data.headline.favoriteType) : '—'
+              }
               color="text-sky-400"
             />
           </div>
@@ -112,7 +114,9 @@ export function HealthWorkoutsView() {
                 <tbody>
                   {data.byType.map((t) => (
                     <tr key={t.type} className="border-b border-border/30 hover:bg-surface-100/30">
-                      <td className="py-1.5 pr-3 font-medium text-surface-950">{t.type}</td>
+                      <td className="py-1.5 pr-3 font-medium text-surface-950">
+                        {humanizeTypeName(t.type)}
+                      </td>
                       <td className="py-1.5 pr-3 text-right font-mono tabular-nums">{t.count}</td>
                       <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
                         {formatMinutes(t.totalDurationMinutes)}
@@ -158,7 +162,9 @@ export function HealthWorkoutsView() {
                       key={`${w.start}-${i}`}
                       className="border-b border-border/30 hover:bg-surface-100/30"
                     >
-                      <td className="py-1.5 pr-3 font-medium text-surface-950">{w.type}</td>
+                      <td className="py-1.5 pr-3 font-medium text-surface-950">
+                        {humanizeTypeName(w.type)}
+                      </td>
                       <td className="py-1.5 pr-3 text-surface-700 font-mono text-xs">
                         {formatStart(w.start)}
                       </td>
@@ -205,7 +211,9 @@ function StatTile({
         <Icon className={`w-4 h-4 ${color}`} />
         <div className="text-[10px] uppercase tracking-wide text-surface-600">{label}</div>
       </div>
-      <div className="font-mono text-xl text-surface-950 tabular-nums">{value}</div>
+      {/* `break-words` gives long values (e.g. "Traditional Strength Training")
+          a safe fallback if humanizeTypeName doesn't split them enough. */}
+      <div className="font-mono text-xl text-surface-950 tabular-nums break-words">{value}</div>
       {caption && (
         <div className="text-[10px] mt-0.5 uppercase tracking-wide text-surface-600">{caption}</div>
       )}
