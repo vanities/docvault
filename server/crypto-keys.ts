@@ -76,6 +76,42 @@ export function decryptWithKey(value: string | undefined, key: Buffer): string |
 }
 
 // ============================================================================
+// Binary-bytes variant (for file-sized payloads)
+// ============================================================================
+//
+// encryptBytes / decryptBytes are the same AES-256-GCM primitive but operate
+// on Buffers directly and return raw packed bytes (no "enc:v1:" tag, no
+// base64). Use these for whole-file encryption where the ~33% base64 overhead
+// matters (e.g., DNA raw text and results blobs).
+//
+// Pack layout on disk: iv(12) || authTag(16) || ciphertext — the same layout
+// the backup bundle uses internally.
+
+export function encryptBytes(plaintext: Buffer, key: Buffer): Buffer {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  const ct = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([iv, tag, ct]);
+}
+
+export function decryptBytes(packed: Buffer, key: Buffer): Buffer {
+  if (packed.length < 28) {
+    throw new Error('Invalid encrypted payload: shorter than header (12+16 bytes)');
+  }
+  const iv = packed.subarray(0, 12);
+  const tag = packed.subarray(12, 28);
+  const ct = packed.subarray(28);
+  const decipher = createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(tag);
+  try {
+    return Buffer.concat([decipher.update(ct), decipher.final()]);
+  } catch {
+    throw new Error(`Failed to decrypt bytes — wrong ${MASTER_KEY_ENV} or corrupted data`);
+  }
+}
+
+// ============================================================================
 // Server wrappers — use env-derived key (cached)
 // ============================================================================
 
@@ -117,6 +153,17 @@ export function encryptField(plaintext: string | undefined): string | undefined 
 
 export function decryptField(value: string | undefined): string | undefined {
   return decryptWithKey(value, envDerivedKey());
+}
+
+// Master-key variants of the binary-bytes primitives.
+// Use these for file-sized payloads that should be encrypted at rest with
+// the server's env-provided master key (e.g., DNA raw data + results).
+export function encryptBytesWithMasterKey(plaintext: Buffer): Buffer {
+  return encryptBytes(plaintext, envDerivedKey());
+}
+
+export function decryptBytesWithMasterKey(packed: Buffer): Buffer {
+  return decryptBytes(packed, envDerivedKey());
 }
 
 // ============================================================================

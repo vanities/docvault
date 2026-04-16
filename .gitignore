@@ -52,6 +52,8 @@ scripts/
 !server/crypto-keys.test.ts
 # Exception: backup tests use synthetic tmpdir fixtures, no personal data
 !server/backup.test.ts
+# Exception: dna-traits tests use synthetic SNP fixtures, no personal genomic data
+!server/parsers/dna-traits.test.ts
 # Exception: apple-health clinical parser tests use fabricated FHIR fixtures, no personal data
 !server/parsers/apple-health-clinical.test.ts
 

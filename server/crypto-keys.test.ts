@@ -133,9 +133,15 @@ describe('decryptWithKey — wrong key rejected', () => {
 
   test('tampered ciphertext throws', () => {
     const key = deriveKey('tamper-detection-test-key');
-    const ct = encryptWithKey('confidential', key)!;
-    // Flip a bit near the end of the base64 payload. GCM auth tag must catch.
-    const mutated = ct.slice(0, -3) + (ct.slice(-3, -2) === 'A' ? 'B' : 'A') + ct.slice(-2);
+    const ct = encryptWithKey('confidential payload worth a few bytes', key)!;
+    // Flip a character in the middle of the base64 payload (away from end
+    // padding) — GCM auth tag must catch any mutation to iv/tag/ciphertext.
+    const prefix = ct.slice(0, 'enc:v1:'.length);
+    const body = ct.slice('enc:v1:'.length);
+    const midIdx = Math.floor(body.length / 2);
+    const swapped = body[midIdx] === 'A' ? 'B' : 'A';
+    const mutated = prefix + body.slice(0, midIdx) + swapped + body.slice(midIdx + 1);
+    expect(mutated).not.toBe(ct); // sanity: we actually changed something
     expect(() => decryptWithKey(mutated, key)).toThrow();
   });
 
@@ -148,6 +154,37 @@ describe('decryptWithKey — wrong key rejected', () => {
 // ============================================================================
 // Env-derived wrappers
 // ============================================================================
+
+describe('encryptBytes + decryptBytes round-trip', () => {
+  const key = deriveKey('bytes-test-key-long-enough');
+
+  test('round-trips a text payload as Buffer', async () => {
+    const { encryptBytes, decryptBytes } = await import('./crypto-keys.js');
+    const plaintext = Buffer.from('hello DNA traits', 'utf-8');
+    const ct = encryptBytes(plaintext, key);
+    expect(ct.length).toBeGreaterThan(28); // at least iv(12) + tag(16)
+    expect(decryptBytes(ct, key).equals(plaintext)).toBe(true);
+  });
+
+  test('preserves binary fidelity (non-UTF-8 bytes)', async () => {
+    const { encryptBytes, decryptBytes } = await import('./crypto-keys.js');
+    const binary = Buffer.from([0x00, 0xff, 0x42, 0xca, 0xfe, 0xba, 0xbe, 0xde, 0xad]);
+    const ct = encryptBytes(binary, key);
+    expect(decryptBytes(ct, key).equals(binary)).toBe(true);
+  });
+
+  test('wrong key rejected', async () => {
+    const { encryptBytes, decryptBytes } = await import('./crypto-keys.js');
+    const wrongKey = deriveKey('a-different-bytes-key');
+    const ct = encryptBytes(Buffer.from('secret'), key);
+    expect(() => decryptBytes(ct, wrongKey)).toThrow(/Failed to decrypt bytes/);
+  });
+
+  test('truncated payload throws', async () => {
+    const { decryptBytes } = await import('./crypto-keys.js');
+    expect(() => decryptBytes(Buffer.alloc(10), key)).toThrow(/shorter than header/);
+  });
+});
 
 describe('env-based wrappers', () => {
   const TEST_MASTER_KEY = 'x'.repeat(32);
