@@ -146,6 +146,10 @@ export interface WorkoutsSnapshot {
     favoriteType: string | null;
   };
   insights: InsightItem[];
+  /** Unit (e.g. "mi", "km") for workout distance stats. Derived from the
+   * first workout with a distance value, since all workouts for one person
+   * use the same unit system. Null if no workouts have distance data. */
+  distanceUnit: string | null;
 }
 
 export interface WeightPoint {
@@ -1049,12 +1053,28 @@ export function computeWorkoutsSnapshot(
     });
   }
 
+  // Derive a distance unit from the first workout that has one. All
+  // workouts for a single person use the same unit system (mi or km).
+  let distanceUnit: string | null = null;
+  for (const w of workouts) {
+    const wrUnit = w.statistics.DistanceWalkingRunning?.unit;
+    const cyUnit = w.statistics.DistanceCycling?.unit;
+    if (wrUnit) {
+      distanceUnit = wrUnit;
+      break;
+    }
+    if (cyUnit) {
+      distanceUnit = cyUnit;
+      break;
+    }
+  }
+
   // Biggest distance total across all running/walking/cycling
   const totalDist = byType.reduce((a, t) => a + (t.totalDistance ?? 0), 0);
   if (totalDist > 0) {
     insights.push({
       label: 'Total distance covered',
-      value: `${totalDist.toFixed(1)}`,
+      value: `${totalDist.toFixed(1)} ${distanceUnit ?? ''}`.trim(),
       caption: 'running + cycling',
       tone: 'neutral',
     });
@@ -1073,6 +1093,7 @@ export function computeWorkoutsSnapshot(
       favoriteType: byType.length > 0 ? byType[0].type : null,
     },
     insights,
+    distanceUnit,
   };
 }
 

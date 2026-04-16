@@ -14,6 +14,11 @@ function formatStart(iso: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+/** "1 session" / "2 sessions" / "0 sessions". */
+function plural(n: number, singular: string): string {
+  return `${n.toLocaleString()} ${singular}${n === 1 ? '' : 's'}`;
+}
+
 export function HealthWorkoutsView() {
   return (
     <SegmentViewShell
@@ -35,15 +40,15 @@ export function HealthWorkoutsView() {
             <StatTile
               icon={CalendarClock}
               label="This week"
-              value={`${data.headline.thisWeekCount} sessions`}
+              value={plural(data.headline.thisWeekCount, 'session')}
               caption={formatMinutes(data.headline.thisWeekMinutes)}
               color="text-emerald-400"
             />
             <StatTile
               icon={Flame}
               label="Longest streak"
-              value={`${data.headline.longestStreakDays} days`}
-              caption={`current: ${data.headline.currentStreakDays}`}
+              value={plural(data.headline.longestStreakDays, 'day')}
+              caption={`current: ${plural(data.headline.currentStreakDays, 'day')}`}
               color="text-rose-400"
             />
             <StatTile

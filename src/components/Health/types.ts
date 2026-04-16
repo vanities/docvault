@@ -226,6 +226,7 @@ export interface WorkoutsSnapshot {
     favoriteType: string | null;
   };
   insights: InsightItem[];
+  distanceUnit: string | null;
 }
 
 export interface WeightPoint {

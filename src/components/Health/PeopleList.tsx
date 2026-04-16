@@ -281,7 +281,9 @@ function PersonOverviewCard({
             icon={Moon}
             label="Avg sleep"
             value={formatHours(snapshot.sleep.headline.avgSleepHours90d)}
-            caption={`${snapshot.sleep.headline.nightsWith7Plus} nights 7+ hrs`}
+            caption={`${snapshot.sleep.headline.nightsWith7Plus.toLocaleString()} night${
+              snapshot.sleep.headline.nightsWith7Plus === 1 ? '' : 's'
+            } 7+ hrs`}
             color="text-violet-400"
             onClick={() => gotoSegment('health-sleep')}
           />
@@ -307,7 +309,9 @@ function PersonOverviewCard({
             }
             caption={
               snapshot.body.weightHistory.length > 0
-                ? `${snapshot.body.weightHistory.length} measurements`
+                ? `${snapshot.body.weightHistory.length.toLocaleString()} measurement${
+                    snapshot.body.weightHistory.length === 1 ? '' : 's'
+                  }`
                 : 'no data'
             }
             color="text-sky-400"

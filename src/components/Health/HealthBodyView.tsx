@@ -111,7 +111,8 @@ export function HealthBodyView() {
 
             <Card className="p-5">
               <h3 className="font-medium text-surface-950 mb-3">
-                Weight history ({data.weightHistory.length} measurements)
+                Weight history ({data.weightHistory.length.toLocaleString()} measurement
+                {data.weightHistory.length === 1 ? '' : 's'})
               </h3>
               {data.weightHistory.length === 0 ? (
                 <div className="text-sm text-surface-600 py-4">No measurements yet.</div>
