@@ -188,13 +188,16 @@ async function getDeltasDirMtime(personId: string): Promise<string> {
   }
 }
 
-/** Is `date` within ±1 calendar day of the server's local date? */
+/** Is `date` within ±2 calendar days of the server's local date?
+ *  Widened from ±1 because timezone differences between the phone
+ *  (CST) and the server's UTC-based Date can push "yesterday" to
+ *  2 days apart in UTC terms. */
 function isDateWithinRange(date: string, now: Date = new Date()): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
   const target = new Date(`${date}T00:00:00Z`);
   const today = new Date(`${now.toISOString().slice(0, 10)}T00:00:00Z`);
   const deltaDays = Math.abs(target.getTime() - today.getTime()) / 86_400_000;
-  return deltaDays <= 1;
+  return deltaDays <= 2;
 }
 
 // ---------------------------------------------------------------------------
