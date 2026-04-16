@@ -322,7 +322,7 @@ export interface SleepQualityScore {
  *   - HRV depressed (< baseline - 1.5 SD)
  *   - Steps significantly below normal (< baseline - 1.5 SD)
  *   - Respiratory rate elevated (> baseline + 1.5 SD, if available)
- *   - Wrist temperature deviation positive (> 0.5°C, if available)
+ *   - Wrist temperature elevated (> baseline + 1.5 SD, if available)
  *
  * A day is flagged when 2+ signals fire. Consecutive flagged days are
  * merged into a single period.
@@ -1018,10 +1018,18 @@ export function detectIllnessPeriods(
       }
     }
 
-    // Wrist temperature positive deviation
+    // Wrist temperature — use rolling baseline comparison like all other
+    // metrics. The raw field may be a small deviation (±1°C) or an absolute
+    // reading (97°F) depending on the Apple Watch model/firmware. Rolling
+    // baseline handles both formats correctly.
     const wristTemp = wristTempSeries[i];
-    if (wristTemp !== null && wristTemp !== undefined && wristTemp > 0.5) {
-      signals.push(`Wrist temp elevated (+${wristTemp.toFixed(1)}°C)`);
+    if (wristTemp !== null && wristTemp !== undefined) {
+      const stats = rollingStats(wristTempSeries, WINDOW, i);
+      if (stats.count >= 5 && stats.sd > 0 && wristTemp > stats.mean + THRESHOLD * stats.sd) {
+        signals.push(
+          `Wrist temp elevated (${wristTemp.toFixed(1)} vs ${stats.mean.toFixed(1)} avg)`
+        );
+      }
     }
 
     if (signals.length >= 2) {
