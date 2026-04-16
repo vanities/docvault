@@ -96,6 +96,14 @@ export interface ExportInfo {
 // Snapshot shapes (produced by apple-health-snapshots.ts)
 // ===========================================================================
 
+/** A computed insight (not a raw metric) — rendered as a stat tile. */
+export interface InsightItem {
+  label: string;
+  value: string;
+  caption?: string;
+  tone?: 'good' | 'warn' | 'neutral';
+}
+
 /** One day in the Activity segment. */
 export interface ActivityDay {
   date: string;
@@ -122,6 +130,7 @@ export interface ActivitySnapshot {
     ringCompletionPct: number | null;
     mostActiveDay: { date: string; steps: number } | null;
   };
+  insights: InsightItem[];
   distanceUnit: string; // "mi" or "km"
 }
 
@@ -147,6 +156,7 @@ export interface HeartSnapshot {
     avgHRV90d: number | null;
     hrvTrend: 'up' | 'flat' | 'down' | 'unknown';
   };
+  insights: InsightItem[];
 }
 
 /** One day in the Sleep segment. */
@@ -172,6 +182,7 @@ export interface SleepSnapshot {
     nightsWith5Plus: number;
     nightsWith7Plus: number;
   };
+  insights: InsightItem[];
 }
 
 /** Workouts aggregated by activity type. */
@@ -214,6 +225,7 @@ export interface WorkoutsSnapshot {
     longestStreakDays: number;
     favoriteType: string | null;
   };
+  insights: InsightItem[];
 }
 
 export interface WeightPoint {
@@ -232,6 +244,7 @@ export interface BodySnapshot {
     change30d: number | null; // kg
     change1y: number | null; // kg
   };
+  insights: InsightItem[];
 }
 
 /** The full set of snapshots for one parsed export. */

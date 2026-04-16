@@ -10,7 +10,21 @@
 import type { AppleHealthSummary, DailySummary, WorkoutEntry } from './apple-health.js';
 
 export const SNAPSHOT_SCHEMA_VERSION = 1;
-export const SNAPSHOT_VERSION = '1.0.0';
+
+/**
+ * A single computed insight about a segment. Rendered as a stat tile in
+ * the segment view. Segments add whatever insights their data supports —
+ * there's no rigid schema for what "Activity insights" should contain.
+ *
+ * `tone` steers visual styling: "good" is greenish, "warn" is amberish,
+ * "neutral" is the default.
+ */
+export interface InsightItem {
+  label: string;
+  value: string;
+  caption?: string;
+  tone?: 'good' | 'warn' | 'neutral';
+}
 
 // ===========================================================================
 // Exported types (kept in sync with src/components/Health/types.ts by hand)
@@ -41,6 +55,7 @@ export interface ActivitySnapshot {
     ringCompletionPct: number | null;
     mostActiveDay: { date: string; steps: number } | null;
   };
+  insights: InsightItem[];
   distanceUnit: string;
 }
 
@@ -65,6 +80,7 @@ export interface HeartSnapshot {
     avgHRV90d: number | null;
     hrvTrend: 'up' | 'flat' | 'down' | 'unknown';
   };
+  insights: InsightItem[];
 }
 
 export interface SleepDay {
@@ -89,6 +105,7 @@ export interface SleepSnapshot {
     nightsWith5Plus: number;
     nightsWith7Plus: number;
   };
+  insights: InsightItem[];
 }
 
 export interface WorkoutTypeAgg {
@@ -128,6 +145,7 @@ export interface WorkoutsSnapshot {
     longestStreakDays: number;
     favoriteType: string | null;
   };
+  insights: InsightItem[];
 }
 
 export interface WeightPoint {
@@ -146,6 +164,7 @@ export interface BodySnapshot {
     change30d: number | null;
     change1y: number | null;
   };
+  insights: InsightItem[];
 }
 
 export interface PersonSnapshots {
@@ -335,6 +354,109 @@ export function minutesBetween(startStr: string, endStr: string): number {
 }
 
 // ===========================================================================
+// Insight helpers — reused across segments
+// ===========================================================================
+
+/**
+ * Return the 0-based day-of-week for a YYYY-MM-DD local-date string,
+ * with Monday=0 ... Sunday=6 (ISO convention).
+ */
+export function dayOfWeekMondayZero(dateStr: string): number {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  return (d.getUTCDay() + 6) % 7;
+}
+
+/** Split numeric values into weekday (Mon-Fri) and weekend (Sat-Sun) buckets. */
+export function weekdayWeekendSplit(
+  rows: ReadonlyArray<{ date: string; value: number | null | undefined }>
+): { weekdayMean: number; weekendMean: number; weekdayCount: number; weekendCount: number } {
+  let wdSum = 0;
+  let wdCount = 0;
+  let weSum = 0;
+  let weCount = 0;
+  for (const row of rows) {
+    if (row.value === null || row.value === undefined || !Number.isFinite(row.value)) continue;
+    const dow = dayOfWeekMondayZero(row.date);
+    if (dow >= 5) {
+      weSum += row.value;
+      weCount += 1;
+    } else {
+      wdSum += row.value;
+      wdCount += 1;
+    }
+  }
+  return {
+    weekdayMean: wdCount > 0 ? wdSum / wdCount : 0,
+    weekendMean: weCount > 0 ? weSum / weCount : 0,
+    weekdayCount: wdCount,
+    weekendCount: weCount,
+  };
+}
+
+/**
+ * Longest streak of consecutive days where a predicate returns true.
+ * Input is assumed sorted ascending by date. Returns 0 if empty.
+ */
+export function maxConsecutiveDays<T extends { date: string }>(
+  rows: readonly T[],
+  predicate: (row: T) => boolean
+): number {
+  let best = 0;
+  let current = 0;
+  let lastDate: string | null = null;
+  for (const row of rows) {
+    if (!predicate(row)) {
+      current = 0;
+      lastDate = row.date;
+      continue;
+    }
+    if (lastDate === null) {
+      current = 1;
+    } else {
+      // Is this row the day AFTER lastDate?
+      const prev = new Date(`${lastDate}T00:00:00Z`);
+      const curr = new Date(`${row.date}T00:00:00Z`);
+      const delta = Math.round((curr.getTime() - prev.getTime()) / 86_400_000);
+      current = delta === 1 ? current + 1 : 1;
+    }
+    if (current > best) best = current;
+    lastDate = row.date;
+  }
+  return best;
+}
+
+/** Coefficient of variation (stddev/mean × 100) — "how variable is this series". */
+export function coefficientOfVariation(
+  values: readonly (number | null | undefined)[]
+): number | null {
+  const nums = values.filter(
+    (v): v is number => v !== null && v !== undefined && Number.isFinite(v)
+  );
+  if (nums.length < 2) return null;
+  const mean = nums.reduce((a, b) => a + b, 0) / nums.length;
+  if (mean === 0) return null;
+  const variance = nums.reduce((a, b) => a + (b - mean) ** 2, 0) / nums.length;
+  return (Math.sqrt(variance) / mean) * 100;
+}
+
+/** Format a number with sign prefix, e.g. "+1,234" or "-500". */
+export function formatSigned(n: number): string {
+  if (!Number.isFinite(n)) return '—';
+  const rounded = Math.round(n);
+  return rounded >= 0 ? `+${rounded.toLocaleString()}` : rounded.toLocaleString();
+}
+
+/** Pretty-format minutes as "Xh Ym". */
+export function formatDuration(minutes: number): string {
+  if (!Number.isFinite(minutes) || minutes <= 0) return '—';
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
+// ===========================================================================
 // Metric accessors — pull a single value out of a DailySummary safely
 // ===========================================================================
 
@@ -448,6 +570,78 @@ export function computeActivitySnapshot(summary: AppleHealthSummary): ActivitySn
     days.find((d) => unitOf(d, 'DistanceCycling'))?.numeric.DistanceCycling?.unit ??
     'mi';
 
+  // -----------------------------------------------------------------------
+  // Insights
+  // -----------------------------------------------------------------------
+  const insights: InsightItem[] = [];
+
+  // Weekday vs weekend step patterns (how much more/less active on weekends?)
+  const split = weekdayWeekendSplit(daily.map((d) => ({ date: d.date, value: d.steps })));
+  if (split.weekdayCount > 0 && split.weekendCount > 0) {
+    const delta = split.weekendMean - split.weekdayMean;
+    const pct = split.weekdayMean > 0 ? (delta / split.weekdayMean) * 100 : 0;
+    insights.push({
+      label: 'Weekend vs weekday',
+      value: `${formatSigned(Math.round(delta))} steps`,
+      caption: `${pct >= 0 ? '+' : ''}${Math.round(pct)}% on weekends`,
+      tone: delta >= 0 ? 'good' : 'neutral',
+    });
+  }
+
+  // 10k-step day count + percentage
+  const tenKDays = daily.filter((d) => d.steps >= 10_000).length;
+  if (daily.length > 0) {
+    insights.push({
+      label: '10,000-step days',
+      value: `${tenKDays.toLocaleString()}`,
+      caption: `${Math.round((tenKDays / daily.length) * 100)}% of tracked days`,
+      tone: 'neutral',
+    });
+  }
+
+  // Longest 10k-step streak
+  const tenKStreak = maxConsecutiveDays(daily, (d) => d.steps >= 10_000);
+  if (tenKStreak > 0) {
+    insights.push({
+      label: 'Longest 10k streak',
+      value: `${tenKStreak} days`,
+      tone: 'good',
+    });
+  }
+
+  // Most active day of the week (avg steps by DOW over last year)
+  const last365 = takeLast(daily, 365);
+  if (last365.length >= 14) {
+    const dowSums = new Array<number>(7).fill(0);
+    const dowCounts = new Array<number>(7).fill(0);
+    for (const d of last365) {
+      const dow = dayOfWeekMondayZero(d.date);
+      dowSums[dow] += d.steps;
+      dowCounts[dow] += 1;
+    }
+    const dowAvgs = dowSums.map((s, i) => (dowCounts[i] > 0 ? s / dowCounts[i] : 0));
+    let bestDow = 0;
+    for (let i = 1; i < 7; i++) if (dowAvgs[i] > dowAvgs[bestDow]) bestDow = i;
+    const dowNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    insights.push({
+      label: 'Most active weekday',
+      value: dowNames[bestDow],
+      caption: `${Math.round(dowAvgs[bestDow]).toLocaleString()} avg steps`,
+      tone: 'neutral',
+    });
+  }
+
+  // Flights climbed lifetime
+  const totalFlights = daily.reduce((a, d) => a + d.flightsClimbed, 0);
+  if (totalFlights > 0) {
+    insights.push({
+      label: 'Flights climbed',
+      value: totalFlights.toLocaleString(),
+      caption: 'lifetime',
+      tone: 'neutral',
+    });
+  }
+
   return {
     daily,
     headline: {
@@ -459,6 +653,7 @@ export function computeActivitySnapshot(summary: AppleHealthSummary): ActivitySn
       ringCompletionPct,
       mostActiveDay,
     },
+    insights,
     distanceUnit,
   };
 }
@@ -481,6 +676,75 @@ export function computeHeartSnapshot(summary: AppleHealthSummary): HeartSnapshot
   const restingSeries90 = last90.map((d) => d.restingHR);
   const hrvSeries90 = last90.map((d) => d.hrv);
 
+  // -----------------------------------------------------------------------
+  // Insights
+  // -----------------------------------------------------------------------
+  const insights: InsightItem[] = [];
+
+  // All-time resting HR range
+  const allResting = daily
+    .map((d) => d.restingHR)
+    .filter((v): v is number => v !== null && Number.isFinite(v));
+  if (allResting.length > 0) {
+    const min = Math.min(...allResting);
+    const max = Math.max(...allResting);
+    insights.push({
+      label: 'All-time resting HR range',
+      value: `${Math.round(min)}–${Math.round(max)} bpm`,
+      caption: `${allResting.length.toLocaleString()} days tracked`,
+      tone: 'neutral',
+    });
+  }
+
+  // HRV variability — high CV means erratic recovery; low means steady
+  const hrvCv = coefficientOfVariation(hrvSeries90);
+  if (hrvCv !== null) {
+    insights.push({
+      label: 'HRV variability (90d)',
+      value: `${hrvCv.toFixed(0)}%`,
+      caption:
+        hrvCv < 20 ? 'steady recovery' : hrvCv < 35 ? 'moderate variation' : 'highly variable',
+      tone: hrvCv < 20 ? 'good' : hrvCv < 35 ? 'neutral' : 'warn',
+    });
+  }
+
+  // Max observed HR
+  const allMaxHR = daily
+    .map((d) => d.maxHR)
+    .filter((v): v is number => v !== null && Number.isFinite(v));
+  if (allMaxHR.length > 0) {
+    const peak = Math.max(...allMaxHR);
+    insights.push({
+      label: 'Peak heart rate',
+      value: `${Math.round(peak)} bpm`,
+      caption: 'highest ever recorded',
+      tone: 'neutral',
+    });
+  }
+
+  // Improvement since earliest tracked resting HR (when at least 180d of data)
+  if (daily.length >= 180) {
+    const earlyRestingHRs = daily
+      .slice(0, 30)
+      .map((d) => d.restingHR)
+      .filter((v): v is number => v !== null);
+    const recentRestingHRs = daily
+      .slice(-30)
+      .map((d) => d.restingHR)
+      .filter((v): v is number => v !== null);
+    if (earlyRestingHRs.length >= 5 && recentRestingHRs.length >= 5) {
+      const earlyAvg = earlyRestingHRs.reduce((a, b) => a + b, 0) / earlyRestingHRs.length;
+      const recentAvg = recentRestingHRs.reduce((a, b) => a + b, 0) / recentRestingHRs.length;
+      const delta = recentAvg - earlyAvg;
+      insights.push({
+        label: 'Resting HR since start',
+        value: `${delta >= 0 ? '+' : ''}${delta.toFixed(1)} bpm`,
+        caption: `${earlyAvg.toFixed(0)} → ${recentAvg.toFixed(0)}`,
+        tone: delta < -2 ? 'good' : delta > 2 ? 'warn' : 'neutral',
+      });
+    }
+  }
+
   return {
     daily,
     headline: {
@@ -492,6 +756,7 @@ export function computeHeartSnapshot(summary: AppleHealthSummary): HeartSnapshot
       avgHRV90d: nanMean(hrvSeries90) > 0 ? Math.round(nanMean(hrvSeries90) * 10) / 10 : null,
       hrvTrend: classifyHRVTrend(hrvSeries90),
     },
+    insights,
   };
 }
 
@@ -551,6 +816,72 @@ export function computeSleepSnapshot(summary: AppleHealthSummary): SleepSnapshot
     }
   }
 
+  // -----------------------------------------------------------------------
+  // Insights
+  // -----------------------------------------------------------------------
+  const insights: InsightItem[] = [];
+
+  // Weekday vs weekend sleep — "do you sleep in on weekends?"
+  const sleepSplit = weekdayWeekendSplit(
+    daily.map((d) => ({ date: d.date, value: d.asleepMinutes }))
+  );
+  if (sleepSplit.weekdayCount > 0 && sleepSplit.weekendCount > 0) {
+    const delta = sleepSplit.weekendMean - sleepSplit.weekdayMean;
+    insights.push({
+      label: 'Weekend vs weekday',
+      value: `${delta >= 0 ? '+' : ''}${Math.round(delta)} min`,
+      caption: `${Math.round(sleepSplit.weekendMean / 60)}h weekend vs ${Math.round(sleepSplit.weekdayMean / 60)}h weekday`,
+      tone: 'neutral',
+    });
+  }
+
+  // NOTE: Sleep efficiency (asleep / in-bed) is deliberately NOT computed
+  // right now — Apple's sleep records have overlapping periods where
+  // `InBed` wraps the entire block and `AsleepCore/Deep/REM` slices are
+  // nested inside. Naively summing both gives a ratio around 50% that
+  // looks like terrible sleep when it's actually a double-counting bug.
+  // To fix properly we need wall-clock interval math at the session level,
+  // which requires preserving individual record start/end timestamps in
+  // the parser rather than collapsing them to per-day durations. TODO.
+
+  // Longest streak of 7+ hour nights
+  const goodSleepStreak = maxConsecutiveDays(daily, (d) => d.asleepMinutes >= 7 * 60);
+  if (goodSleepStreak > 0) {
+    insights.push({
+      label: 'Longest 7+ hour streak',
+      value: `${goodSleepStreak} nights`,
+      tone: 'good',
+    });
+  }
+
+  // Average deep sleep share (when stages are available)
+  const nightsWithDeep = daily.filter((d) => d.deepMinutes !== null && d.asleepMinutes > 0);
+  if (nightsWithDeep.length >= 7) {
+    const avgDeepPct =
+      nightsWithDeep.reduce((a, d) => a + (d.deepMinutes ?? 0) / d.asleepMinutes, 0) /
+      nightsWithDeep.length;
+    insights.push({
+      label: 'Avg deep sleep share',
+      value: `${Math.round(avgDeepPct * 100)}%`,
+      caption: `${Math.round(avgDeepPct * avgSleep90Min)}m typical night`,
+      tone: avgDeepPct >= 0.13 ? 'good' : 'neutral',
+    });
+  }
+
+  // Average overnight respiratory rate
+  const respValues = daily
+    .map((d) => d.respiratoryRate)
+    .filter((v): v is number => v !== null && v > 0);
+  if (respValues.length >= 7) {
+    const avg = respValues.reduce((a, b) => a + b, 0) / respValues.length;
+    insights.push({
+      label: 'Avg respiratory rate',
+      value: `${avg.toFixed(1)} br/min`,
+      caption: 'overnight',
+      tone: 'neutral',
+    });
+  }
+
   return {
     daily,
     headline: {
@@ -561,6 +892,7 @@ export function computeSleepSnapshot(summary: AppleHealthSummary): SleepSnapshot
       nightsWith5Plus: daily.filter((d) => d.asleepMinutes >= 5 * 60).length,
       nightsWith7Plus: daily.filter((d) => d.asleepMinutes >= 7 * 60).length,
     },
+    insights,
   };
 }
 
@@ -658,6 +990,76 @@ export function computeWorkoutsSnapshot(
     }
   }
 
+  // -----------------------------------------------------------------------
+  // Insights
+  // -----------------------------------------------------------------------
+  const insights: InsightItem[] = [];
+
+  // Total lifetime workout hours
+  const totalLifetimeMin = byType.reduce((a, t) => a + t.totalDurationMinutes, 0);
+  if (totalLifetimeMin > 0) {
+    insights.push({
+      label: 'Lifetime workout time',
+      value: formatDuration(totalLifetimeMin),
+      caption: `${workouts.length.toLocaleString()} sessions`,
+      tone: 'neutral',
+    });
+  }
+
+  // Average per-week (over the spanned weeks)
+  if (weekly.length > 0) {
+    const avgPerWeek = weekly.reduce((a, w) => a + w.count, 0) / weekly.length;
+    insights.push({
+      label: 'Average per week',
+      value: `${avgPerWeek.toFixed(1)} sessions`,
+      caption: `over ${weekly.length.toLocaleString()} weeks`,
+      tone: 'neutral',
+    });
+  }
+
+  // Best week ever (by count)
+  if (weekly.length > 0) {
+    const best = weekly.reduce((a, b) => (b.count > a.count ? b : a));
+    insights.push({
+      label: 'Best week',
+      value: `${best.count} workouts`,
+      caption: `week of ${best.weekStart}`,
+      tone: 'good',
+    });
+  }
+
+  // Most versatile — how many distinct workout types?
+  if (byType.length > 0) {
+    insights.push({
+      label: 'Activity types tried',
+      value: byType.length.toString(),
+      caption: `most: ${byType[0].type}`,
+      tone: 'neutral',
+    });
+  }
+
+  // Top 3 by time (distinct from favorite-by-count)
+  if (byType.length > 0) {
+    const byTime = [...byType].sort((a, b) => b.totalDurationMinutes - a.totalDurationMinutes);
+    insights.push({
+      label: 'Most time spent on',
+      value: byTime[0].type,
+      caption: formatDuration(byTime[0].totalDurationMinutes),
+      tone: 'neutral',
+    });
+  }
+
+  // Biggest distance total across all running/walking/cycling
+  const totalDist = byType.reduce((a, t) => a + (t.totalDistance ?? 0), 0);
+  if (totalDist > 0) {
+    insights.push({
+      label: 'Total distance covered',
+      value: `${totalDist.toFixed(1)}`,
+      caption: 'running + cycling',
+      tone: 'neutral',
+    });
+  }
+
   return {
     byType,
     weekly,
@@ -670,6 +1072,7 @@ export function computeWorkoutsSnapshot(
       longestStreakDays,
       favoriteType: byType.length > 0 ? byType[0].type : null,
     },
+    insights,
   };
 }
 
@@ -732,11 +1135,66 @@ export function computeBodySnapshot(summary: AppleHealthSummary): BodySnapshot {
     change1y = w365 !== null ? Math.round((currentKg - w365) * 100) / 100 : null;
   }
 
+  // -----------------------------------------------------------------------
+  // Insights
+  // -----------------------------------------------------------------------
+  const insights: InsightItem[] = [];
+
+  if (weightHistory.length > 0) {
+    // Min and max weight observed
+    const minWeight = weightHistory.reduce((a, b) => (b.lb < a.lb ? b : a));
+    const maxWeight = weightHistory.reduce((a, b) => (b.lb > a.lb ? b : a));
+    if (minWeight.date !== maxWeight.date) {
+      insights.push({
+        label: 'Observed weight range',
+        value: `${minWeight.lb.toFixed(1)}–${maxWeight.lb.toFixed(1)} lb`,
+        caption: `${(maxWeight.lb - minWeight.lb).toFixed(1)} lb spread`,
+        tone: 'neutral',
+      });
+    }
+
+    // Span of tracking (first to last measurement)
+    const first = weightHistory[0];
+    const last = weightHistory[weightHistory.length - 1];
+    const daysSpan = Math.round(
+      (new Date(`${last.date}T00:00:00Z`).getTime() -
+        new Date(`${first.date}T00:00:00Z`).getTime()) /
+        86_400_000
+    );
+    const yearsSpan = daysSpan / 365.25;
+    insights.push({
+      label: 'Weight tracking span',
+      value: yearsSpan >= 1 ? `${yearsSpan.toFixed(1)} years` : `${daysSpan} days`,
+      caption: `${weightHistory.length.toLocaleString()} measurement${weightHistory.length === 1 ? '' : 's'}`,
+      tone: 'neutral',
+    });
+
+    // Net change over the entire history
+    const netDelta = last.lb - first.lb;
+    insights.push({
+      label: 'Net change since start',
+      value: `${netDelta >= 0 ? '+' : ''}${netDelta.toFixed(1)} lb`,
+      caption: `${first.lb.toFixed(1)} → ${last.lb.toFixed(1)} lb`,
+      tone: Math.abs(netDelta) < 2 ? 'good' : 'neutral',
+    });
+  }
+
+  if (heightCm !== null && currentKg !== null) {
+    const bmi = currentKg / Math.pow(heightCm / 100, 2);
+    insights.push({
+      label: 'Current BMI',
+      value: bmi.toFixed(1),
+      caption: bmi < 18.5 ? 'underweight' : bmi < 25 ? 'normal' : bmi < 30 ? 'overweight' : 'obese',
+      tone: bmi >= 18.5 && bmi < 25 ? 'good' : 'neutral',
+    });
+  }
+
   return {
     weightHistory,
     heightCm: heightCm !== null ? Math.round(heightCm * 10) / 10 : null,
     heightIn: heightIn !== null ? Math.round(heightIn * 10) / 10 : null,
     headline: { currentKg, currentLb, change30d, change1y },
+    insights,
   };
 }
 
@@ -747,6 +1205,10 @@ export function computeBodySnapshot(summary: AppleHealthSummary): BodySnapshot {
 /**
  * Compute all snapshots for a parsed summary. Pure — call this whenever
  * the source summary changes, or backfill existing summaries in the store.
+ *
+ * The returned snapshot inherits `parserVersion` from the source summary
+ * so the UI can detect when a cached snapshot was produced by an older
+ * parser (and therefore may be missing data a newer parser would capture).
  */
 export function computeSnapshots(
   summary: AppleHealthSummary,
@@ -757,7 +1219,7 @@ export function computeSnapshots(
     schemaVersion: SNAPSHOT_SCHEMA_VERSION,
     generatedAt: now.toISOString(),
     sourceFilename,
-    parserVersion: SNAPSHOT_VERSION,
+    parserVersion: summary.parserVersion,
     activity: computeActivitySnapshot(summary),
     heart: computeHeartSnapshot(summary),
     sleep: computeSleepSnapshot(summary),

@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { SegmentViewShell } from './SegmentViewShell';
 import { HealthChart } from './HealthChart';
+import { InsightsRow } from './InsightsRow';
 import { formatInt, formatMinutes } from './healthFormatters';
 
 function formatStart(iso: string): string {
@@ -52,6 +53,8 @@ export function HealthWorkoutsView() {
               color="text-sky-400"
             />
           </div>
+
+          <InsightsRow insights={data.insights} />
 
           <Card className="p-5">
             <div className="flex items-center gap-2 mb-3">
