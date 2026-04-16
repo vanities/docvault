@@ -98,6 +98,13 @@ export interface Settings {
     snapshotEnabled?: boolean;
     backupPassword?: string; // if set, encrypted config backup is pushed to Dropbox on sync
   };
+  /**
+   * Shared secret used by iOS Shortcuts (or any other client) to POST daily
+   * Health data to `/api/health/:personId/ingest`. Generated on first use
+   * via `getOrCreateHealthIngestToken`. Rotate by clearing this field and
+   * calling the getter again.
+   */
+  healthIngestToken?: string;
 }
 
 export interface FileInfo {
@@ -168,6 +175,29 @@ export async function getAnthropicKey(): Promise<string | undefined> {
   }
   // Fall back to environment variable
   return process.env.ANTHROPIC_API_KEY;
+}
+
+/**
+ * Get the Health ingest token, generating a fresh 32-char random token on
+ * first call and persisting it to .docvault-settings.json. Used to auth
+ * Shortcut → DocVault POSTs on `/api/health/:personId/ingest`.
+ */
+export async function getOrCreateHealthIngestToken(): Promise<string> {
+  const settings = await loadSettings();
+  if (settings.healthIngestToken && settings.healthIngestToken.length >= 16) {
+    return settings.healthIngestToken;
+  }
+  // Generate: 32 url-safe chars. Use crypto.getRandomValues for quality.
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  const token = Buffer.from(bytes)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+  settings.healthIngestToken = token;
+  await saveSettings(settings);
+  return token;
 }
 
 // ============================================================================
