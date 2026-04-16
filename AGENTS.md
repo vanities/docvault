@@ -81,6 +81,35 @@ These commands map to their corresponding tools. For example, `vp dev --port 300
 
 Document organization web app for managing tax documents, records, and files across multiple entities.
 
+## CRITICAL — Open Source / Privacy
+
+**DocVault is an open-source, public repository.** It is used by the maintainer against a private NAS containing real tax, financial, medical, and identity records. Personal data MUST NEVER be committed.
+
+Do not commit any of the following into the public repo, regardless of whether it "looks like test data":
+
+- **Real names** (the user's, family members, clients, employers, business partners)
+- **Real account numbers / IDs** (bank account last-4, credit card last-4, SimpleFIN IDs, SSN fragments, EINs, routing numbers, loan numbers)
+- **Real dollar amounts** tied to the user's household (income, balances, mortgage amounts, specific transaction totals)
+- **Real addresses, phone numbers, emails** — none, including the maintainer's
+- **Real vendor/payer names** from invoices or 1099s
+- **Real health/medical data** (Apple Health exports, diagnoses, dates of visits)
+
+**Where this data may legitimately live:**
+
+- `data/` directory — gitignored (`data/`, `data-backup`)
+- Test files (`**/*.test.ts`, `**/*.test.tsx`, `**/*.spec.*`) — gitignored with exception for `server/routes/quant.test.ts` (pure math, no personal data)
+- `tax-plan/`, `scripts/`, `server/parsers/fixtures/` — gitignored
+- `.docvault-*.json` files — gitignored as part of `data/`
+
+**When writing code or tests that need realistic fixtures:** fabricate obviously-fake data (`Acme Bank`, `$1,234.56`, `John Doe`). If you must use real data to verify, put it in a gitignored test file (`*.test.ts`) — the `.gitignore` already handles the whole pattern.
+
+**Before every commit, run `git status` and `git diff --cached`** and visually scan for any of the categories above. If in doubt, move the content to a gitignored location.
+
+**When adding a new file that might contain personal data,** either:
+
+1. Place it under an already-gitignored path, OR
+2. Extend `.gitignore` in the same commit.
+
 ## Tech Stack
 
 - **Frontend:** Vite + React + TypeScript + Tailwind CSS
@@ -112,6 +141,18 @@ Example safe pattern:
 ```bash
 ssh nas 'node -e "const fs=require(\"fs\"); const d=JSON.parse(fs.readFileSync(\"/path/to/file.json\",\"utf8\")); /* modify d */ fs.writeFileSync(\"/path/to/file.json\",JSON.stringify(d,null,2));"'
 ```
+
+## Important Conventions
+
+**Sidebar navigation:** When adding a new view to the sidebar (`Sidebar.tsx` → `NavButton`), you MUST also:
+
+1. Add the view name to the `NavView` union type in `src/contexts/AppContext.tsx`
+2. Add the view name to the `validViews` Set in `src/contexts/AppContext.tsx` (around line 221)
+3. Add the `case 'your-view':` to the view switch in `src/components/Layout/Layout.tsx`
+
+Missing any of these causes the sidebar click to reload the page instead of navigating.
+
+**Package installs:** This project uses both pnpm and bun. After adding a dependency with `pnpm add <pkg>`, always run `bun install` to sync `bun.lock`, then commit both `package.json` and `bun.lock`. The Docker build uses `bun install --frozen-lockfile` so an out-of-sync `bun.lock` breaks CI. `pnpm-lock.yaml` is gitignored.
 
 ## Architecture
 
