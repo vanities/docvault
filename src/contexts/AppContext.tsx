@@ -237,6 +237,7 @@ export function AppProvider({ children }: AppProviderProps) {
     'property',
     'income',
     'quant',
+    'strategy',
     'health',
     'health-activity',
     'health-heart',
