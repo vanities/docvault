@@ -454,21 +454,39 @@ export async function handleHealthRoutes(
       return jsonResponse({ error: 'Person not found' }, 404);
     }
 
-    let body: Partial<DeltaFile>;
+    let body: Partial<DeltaFile & { raw?: boolean }>;
+    let rawBody: string | undefined;
     try {
-      body = (await req.json()) as Partial<DeltaFile>;
-    } catch {
-      return jsonResponse({ error: 'Invalid JSON body' }, 400);
+      rawBody = await req.text();
+      body = JSON.parse(rawBody) as Partial<DeltaFile & { raw?: boolean }>;
+    } catch (parseErr) {
+      const preview = rawBody ? rawBody.slice(0, 500) : '(empty)';
+      log.error(
+        `Ingest JSON parse failed for ${personId}: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`
+      );
+      log.error(`Raw body preview: ${preview}`);
+      return jsonResponse({ error: 'Invalid JSON body', preview }, 400);
     }
+
+    log.info(
+      `Ingest body for ${personId}: date=${body.date}, source=${body.source}, ` +
+        `raw=${(body as Record<string, unknown>).raw}, ` +
+        `metricKeys=${body.metrics ? Object.keys(body.metrics).join(',') : 'none'}`
+    );
 
     const date = body.date;
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      log.warn(`Ingest rejected for ${personId}: bad date "${date}"`);
       return jsonResponse({ error: 'Missing or invalid `date` — expected YYYY-MM-DD' }, 400);
     }
     if (!isDateWithinRange(date)) {
-      return jsonResponse({ error: `Date "${date}" is not within ±1 day of server time` }, 400);
+      log.warn(
+        `Ingest rejected for ${personId}: date "${date}" out of range (server: ${new Date().toISOString()})`
+      );
+      return jsonResponse({ error: `Date "${date}" is not within ±2 days of server time` }, 400);
     }
     if (!body.metrics || typeof body.metrics !== 'object') {
+      log.warn(`Ingest rejected for ${personId}: missing metrics`);
       return jsonResponse({ error: 'Missing or invalid `metrics` object' }, 400);
     }
 
