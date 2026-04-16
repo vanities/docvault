@@ -1,0 +1,33 @@
+{
+  "entries": [
+    {
+      "id": "strategy-demo-1",
+      "createdAt": "2026-04-14T16:30:00.000Z",
+      "author": "Claude Code",
+      "title": "Hold + Measured DCA — Accumulation Zone, Cooling Macro",
+      "body": "## Regime Summary\n\nMid-cycle pause. BTC is in a normal correction (−35% from highs, ~120 days), Fed is holding, real yields sit elevated at 4.2%. Recession probability has crept up to 22% but the Sahm Rule hasn't triggered. Gold up 18% YoY — investors rotating defensive.\n\n## Framework Read\n\n- **BTC risk metric 0.42** — accumulation zone. Every prior cycle printed higher lows while risk sat in the 0.35–0.55 band.\n- **Fear & Greed at 28** — classic dip-buyer territory.\n- **NFCI at −0.3** — financial plumbing is loose, not a 2008 setup.\n\n## Suggested Allocation\n\n| Bucket          | Current | Target | Delta                          |\n|-----------------|---------|--------|--------------------------------|\n| Crypto          | 62%     | 55%    | rotate ~$12,000 into index     |\n| Cash / T-Bills  | 8%      | 14%    | raise to 6 months expenses     |\n| Index (SPX/QQQ) | 20%     | 25%    | DCA weekly                     |\n| Gold            | 10%     | 6%     | trim 4% after 18% run          |\n\n## Actions This Month\n\n- Deploy **$2,500/week** into BTC on Mondays while risk stays under 0.50.\n- Move **$8,500** from brokerage into SGOV for a cash ladder.\n- Keep **$15,000** in money market as dry powder for a deeper flush.\n- Next review: when BTC risk crosses 0.50 or drawdown deepens past 45%.",
+      "signals": {
+        "btcPrice": 62400,
+        "btcRisk": 0.42,
+        "btcDrawdown": -0.35,
+        "fearGreed": 28,
+        "recessionProb": 0.22,
+        "tenYearReal": 4.2,
+        "nfci": -0.3,
+        "fedStance": "Pause",
+        "goldYoy": 18.0,
+        "vix": 17.5,
+        "sp500Risk": 0.48,
+        "hashRibbonRegime": "recovery"
+      },
+      "portfolio": {
+        "totalValue": 425000,
+        "crypto": 118000,
+        "brokers": 184000,
+        "banks": 50000,
+        "gold": 25000,
+        "realEstate": 48000
+      }
+    }
+  ]
+}

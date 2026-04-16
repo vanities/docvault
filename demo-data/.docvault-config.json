@@ -1,0 +1,48 @@
+{
+  "entities": [
+    {
+      "id": "personal",
+      "name": "Personal",
+      "color": "blue",
+      "path": "personal",
+      "icon": "user",
+      "type": "tax",
+      "description": "Personal tax documents — W-2s, 1099s, investment income, deductions.",
+      "metadata": {
+        "dependentCount": "1",
+        "filingStatus": "Single"
+      }
+    },
+    {
+      "id": "acme-consulting",
+      "name": "Acme Consulting LLC",
+      "color": "green",
+      "path": "acme-consulting",
+      "icon": "building",
+      "type": "tax",
+      "description": "Single-member LLC — consulting income (Schedule C) and business expenses.",
+      "metadata": {
+        "ein": "00-0000000",
+        "address": "123 Demo Street, Anytown, USA"
+      }
+    },
+    {
+      "id": "rental-property",
+      "name": "Rental Property",
+      "color": "amber",
+      "path": "rental-property",
+      "icon": "home",
+      "type": "tax",
+      "description": "Rental real estate — Schedule E income and expenses."
+    },
+    {
+      "id": "medical",
+      "name": "Medical Records",
+      "color": "pink",
+      "path": "medical",
+      "icon": "heart",
+      "type": "docs",
+      "description": "Lab results, imaging, and provider records."
+    }
+  ]
+}

@@ -1,0 +1,124 @@
+{
+  "lastUpdated": "2026-04-15T18:00:00.000Z",
+  "totalValue": 184200,
+  "totalCostBasis": 142800,
+  "totalGainLoss": 41400,
+  "longTermGains": 32400,
+  "shortTermGains": 9000,
+  "accounts": [
+    {
+      "id": "acct-demo-taxable",
+      "name": "Demo Taxable Brokerage",
+      "broker": "DemoBroker",
+      "totalValue": 112450,
+      "totalCostBasis": 84000,
+      "totalGainLoss": 28450,
+      "longTermGains": 22000,
+      "shortTermGains": 6450,
+      "url": "",
+      "holdings": [
+        {
+          "ticker": "VTI",
+          "label": "US Total Market ETF",
+          "shares": 180,
+          "price": 265.5,
+          "marketValue": 47790,
+          "costBasis": 36000,
+          "gainLoss": 11790,
+          "gainLossPercent": 32.7,
+          "gainType": "long"
+        },
+        {
+          "ticker": "VXUS",
+          "label": "Total International ETF",
+          "shares": 350,
+          "price": 68.2,
+          "marketValue": 23870,
+          "costBasis": 20000,
+          "gainLoss": 3870,
+          "gainLossPercent": 19.4,
+          "gainType": "long"
+        },
+        {
+          "ticker": "SGOV",
+          "label": "US Treasury 0-3 Month",
+          "shares": 220,
+          "price": 100.4,
+          "marketValue": 22088,
+          "costBasis": 22000,
+          "gainLoss": 88,
+          "gainLossPercent": 0.4,
+          "gainType": "short"
+        },
+        {
+          "ticker": "BND",
+          "label": "Total Bond Market ETF",
+          "shares": 120,
+          "price": 74.1,
+          "marketValue": 8892,
+          "costBasis": 9000,
+          "gainLoss": -108,
+          "gainLossPercent": -1.2,
+          "gainType": "long"
+        },
+        {
+          "ticker": "AAPL",
+          "label": "Apple Inc.",
+          "shares": 48,
+          "price": 205.0,
+          "marketValue": 9840,
+          "costBasis": 4800,
+          "gainLoss": 5040,
+          "gainLossPercent": 105.0,
+          "gainType": "long"
+        }
+      ]
+    },
+    {
+      "id": "acct-demo-roth",
+      "name": "Demo Roth IRA",
+      "broker": "DemoBroker",
+      "totalValue": 71750,
+      "totalCostBasis": 58800,
+      "totalGainLoss": 12950,
+      "longTermGains": 10400,
+      "shortTermGains": 2550,
+      "url": "",
+      "holdings": [
+        {
+          "ticker": "VOO",
+          "label": "S&P 500 ETF",
+          "shares": 120,
+          "price": 495.0,
+          "marketValue": 59400,
+          "costBasis": 48000,
+          "gainLoss": 11400,
+          "gainLossPercent": 23.8,
+          "gainType": "long"
+        },
+        {
+          "ticker": "QQQ",
+          "label": "Nasdaq-100 ETF",
+          "shares": 22,
+          "price": 475.0,
+          "marketValue": 10450,
+          "costBasis": 8800,
+          "gainLoss": 1650,
+          "gainLossPercent": 18.8,
+          "gainType": "long"
+        },
+        {
+          "ticker": "SCHD",
+          "label": "Schwab US Dividend",
+          "shares": 25,
+          "price": 78.0,
+          "marketValue": 1950,
+          "costBasis": 2000,
+          "gainLoss": -50,
+          "gainLossPercent": -2.5,
+          "gainType": "long"
+        }
+      ]
+    }
+  ]
+}

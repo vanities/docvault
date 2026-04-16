@@ -1,0 +1,45 @@
+{
+  "lastUpdated": "2026-04-15T18:00:00.000Z",
+  "accounts": [
+    {
+      "id": "demo-checking",
+      "name": "Demo Checking",
+      "connId": "demo-bank-1",
+      "connectionName": "Demo Bank",
+      "currency": "USD",
+      "balance": 8450.32,
+      "availableBalance": 8450.32,
+      "balanceDate": "2026-04-15T18:00:00.000Z"
+    },
+    {
+      "id": "demo-hysa",
+      "name": "Demo High-Yield Savings",
+      "connId": "demo-bank-1",
+      "connectionName": "Demo Bank",
+      "currency": "USD",
+      "balance": 24800.0,
+      "availableBalance": 24800.0,
+      "balanceDate": "2026-04-15T18:00:00.000Z"
+    },
+    {
+      "id": "demo-savings",
+      "name": "Demo Savings",
+      "connId": "demo-bank-2",
+      "connectionName": "Demo Credit Union",
+      "currency": "USD",
+      "balance": 12150.0,
+      "availableBalance": 12150.0,
+      "balanceDate": "2026-04-15T18:00:00.000Z"
+    },
+    {
+      "id": "demo-business",
+      "name": "Demo Business Checking (Acme LLC)",
+      "connId": "demo-bank-1",
+      "connectionName": "Demo Bank",
+      "currency": "USD",
+      "balance": 4210.55,
+      "availableBalance": 4210.55,
+      "balanceDate": "2026-04-15T18:00:00.000Z"
+    }
+  ]
+}

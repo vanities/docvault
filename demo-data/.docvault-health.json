@@ -1,0 +1,2650 @@
+{
+  "version": 1,
+  "people": [
+    {
+      "id": "person-demo",
+      "name": "Demo Person",
+      "color": "blue",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "archivedAt": null
+    }
+  ],
+  "snapshots": {
+    "person-demo/export.zip": {
+      "schemaVersion": 5,
+      "parserVersion": "1.1.0",
+      "generatedAt": "2026-04-16T12:00:00.000Z",
+      "sourceFilename": "export.zip",
+      "activity": {
+        "headline": {
+          "avgDailySteps90d": 10275,
+          "totalSteps": 616519,
+          "totalDistance": 440.4,
+          "totalActiveEnergy": 37382,
+          "totalExerciseMinutes": 3018,
+          "ringCompletionPct": 68.4,
+          "mostActiveDay": {
+            "date": "2026-04-10",
+            "steps": 14998,
+            "steps7dAvg": 10980,
+            "distance": 10.71,
+            "activeEnergy": 542,
+            "activeEnergy7dAvg": 637,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 53,
+            "exerciseMinutes7dAvg": 50,
+            "flightsClimbed": 14,
+            "standHours": 9
+          }
+        },
+        "insights": [
+          {
+            "label": "Weekday vs weekend",
+            "value": "+11% weekday",
+            "caption": "You move more on weekdays",
+            "tone": "good"
+          },
+          {
+            "label": "Longest streak",
+            "value": "22 days",
+            "caption": "closing all three rings",
+            "tone": "good"
+          },
+          {
+            "label": "Best month",
+            "value": "February",
+            "caption": "11.8K avg daily steps",
+            "tone": "neutral"
+          }
+        ],
+        "periods": [
+          {
+            "name": "Last 7 days",
+            "start": "2026-04-09",
+            "end": "2026-04-15",
+            "stats": {}
+          },
+          {
+            "name": "Last 30 days",
+            "start": "2026-03-17",
+            "end": "2026-04-15",
+            "stats": {}
+          },
+          {
+            "name": "Last 90 days",
+            "start": "2026-02-15",
+            "end": "2026-04-15",
+            "stats": {}
+          }
+        ],
+        "daily": [
+          {
+            "date": "2026-02-15",
+            "steps": 9964,
+            "steps7dAvg": 9964,
+            "distance": 7.12,
+            "activeEnergy": 303,
+            "activeEnergy7dAvg": 303,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 39,
+            "exerciseMinutes7dAvg": 39,
+            "flightsClimbed": 6,
+            "standHours": 11
+          },
+          {
+            "date": "2026-02-16",
+            "steps": 13805,
+            "steps7dAvg": 11885,
+            "distance": 9.86,
+            "activeEnergy": 707,
+            "activeEnergy7dAvg": 505,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 52,
+            "exerciseMinutes7dAvg": 46,
+            "flightsClimbed": 11,
+            "standHours": 10
+          },
+          {
+            "date": "2026-02-17",
+            "steps": 13803,
+            "steps7dAvg": 12524,
+            "distance": 9.86,
+            "activeEnergy": 751,
+            "activeEnergy7dAvg": 587,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 63,
+            "exerciseMinutes7dAvg": 51,
+            "flightsClimbed": 9,
+            "standHours": 10
+          },
+          {
+            "date": "2026-02-18",
+            "steps": 12235,
+            "steps7dAvg": 12452,
+            "distance": 8.74,
+            "activeEnergy": 797,
+            "activeEnergy7dAvg": 640,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 54,
+            "exerciseMinutes7dAvg": 52,
+            "flightsClimbed": 9,
+            "standHours": 11
+          },
+          {
+            "date": "2026-02-19",
+            "steps": 8066,
+            "steps7dAvg": 11575,
+            "distance": 5.76,
+            "activeEnergy": 679,
+            "activeEnergy7dAvg": 647,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 39,
+            "exerciseMinutes7dAvg": 49,
+            "flightsClimbed": 15,
+            "standHours": 12
+          },
+          {
+            "date": "2026-02-20",
+            "steps": 9749,
+            "steps7dAvg": 11270,
+            "distance": 6.96,
+            "activeEnergy": 708,
+            "activeEnergy7dAvg": 658,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 58,
+            "exerciseMinutes7dAvg": 51,
+            "flightsClimbed": 9,
+            "standHours": 13
+          },
+          {
+            "date": "2026-02-21",
+            "steps": 8176,
+            "steps7dAvg": 10828,
+            "distance": 5.84,
+            "activeEnergy": 394,
+            "activeEnergy7dAvg": 620,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 30,
+            "exerciseMinutes7dAvg": 48,
+            "flightsClimbed": 18,
+            "standHours": 11
+          },
+          {
+            "date": "2026-02-22",
+            "steps": 7642,
+            "steps7dAvg": 10497,
+            "distance": 5.46,
+            "activeEnergy": 804,
+            "activeEnergy7dAvg": 691,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 44,
+            "exerciseMinutes7dAvg": 49,
+            "flightsClimbed": 8,
+            "standHours": 11
+          },
+          {
+            "date": "2026-02-23",
+            "steps": 10630,
+            "steps7dAvg": 10043,
+            "distance": 7.59,
+            "activeEnergy": 662,
+            "activeEnergy7dAvg": 685,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 47,
+            "exerciseMinutes7dAvg": 48,
+            "flightsClimbed": 14,
+            "standHours": 12
+          },
+          {
+            "date": "2026-02-24",
+            "steps": 14105,
+            "steps7dAvg": 10086,
+            "distance": 10.07,
+            "activeEnergy": 950,
+            "activeEnergy7dAvg": 713,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 58,
+            "exerciseMinutes7dAvg": 47,
+            "flightsClimbed": 14,
+            "standHours": 14
+          },
+          {
+            "date": "2026-02-25",
+            "steps": 7541,
+            "steps7dAvg": 9416,
+            "distance": 5.39,
+            "activeEnergy": 520,
+            "activeEnergy7dAvg": 674,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 56,
+            "exerciseMinutes7dAvg": 47,
+            "flightsClimbed": 15,
+            "standHours": 15
+          },
+          {
+            "date": "2026-02-26",
+            "steps": 12247,
+            "steps7dAvg": 10013,
+            "distance": 8.75,
+            "activeEnergy": 801,
+            "activeEnergy7dAvg": 691,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 42,
+            "exerciseMinutes7dAvg": 48,
+            "flightsClimbed": 12,
+            "standHours": 10
+          },
+          {
+            "date": "2026-02-27",
+            "steps": 12474,
+            "steps7dAvg": 10402,
+            "distance": 8.91,
+            "activeEnergy": 549,
+            "activeEnergy7dAvg": 669,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 45,
+            "exerciseMinutes7dAvg": 46,
+            "flightsClimbed": 17,
+            "standHours": 16
+          },
+          {
+            "date": "2026-02-28",
+            "steps": 9109,
+            "steps7dAvg": 10535,
+            "distance": 6.51,
+            "activeEnergy": 497,
+            "activeEnergy7dAvg": 683,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 25,
+            "exerciseMinutes7dAvg": 45,
+            "flightsClimbed": 15,
+            "standHours": 9
+          },
+          {
+            "date": "2026-03-01",
+            "steps": 11617,
+            "steps7dAvg": 11103,
+            "distance": 8.3,
+            "activeEnergy": 407,
+            "activeEnergy7dAvg": 627,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 29,
+            "exerciseMinutes7dAvg": 43,
+            "flightsClimbed": 17,
+            "standHours": 10
+          },
+          {
+            "date": "2026-03-02",
+            "steps": 9091,
+            "steps7dAvg": 10883,
+            "distance": 6.49,
+            "activeEnergy": 702,
+            "activeEnergy7dAvg": 632,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 72,
+            "exerciseMinutes7dAvg": 47,
+            "flightsClimbed": 13,
+            "standHours": 14
+          },
+          {
+            "date": "2026-03-03",
+            "steps": 9678,
+            "steps7dAvg": 10251,
+            "distance": 6.91,
+            "activeEnergy": 574,
+            "activeEnergy7dAvg": 579,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 54,
+            "exerciseMinutes7dAvg": 46,
+            "flightsClimbed": 8,
+            "standHours": 10
+          },
+          {
+            "date": "2026-03-04",
+            "steps": 7703,
+            "steps7dAvg": 10274,
+            "distance": 5.5,
+            "activeEnergy": 788,
+            "activeEnergy7dAvg": 617,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 67,
+            "exerciseMinutes7dAvg": 48,
+            "flightsClimbed": 15,
+            "standHours": 7
+          },
+          {
+            "date": "2026-03-05",
+            "steps": 13287,
+            "steps7dAvg": 10423,
+            "distance": 9.49,
+            "activeEnergy": 589,
+            "activeEnergy7dAvg": 587,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 54,
+            "exerciseMinutes7dAvg": 49,
+            "flightsClimbed": 6,
+            "standHours": 10
+          },
+          {
+            "date": "2026-03-06",
+            "steps": 12262,
+            "steps7dAvg": 10392,
+            "distance": 8.76,
+            "activeEnergy": 566,
+            "activeEnergy7dAvg": 589,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 62,
+            "exerciseMinutes7dAvg": 52,
+            "flightsClimbed": 8,
+            "standHours": 10
+          },
+          {
+            "date": "2026-03-07",
+            "steps": 12732,
+            "steps7dAvg": 10910,
+            "distance": 9.09,
+            "activeEnergy": 567,
+            "activeEnergy7dAvg": 599,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 14,
+            "exerciseMinutes7dAvg": 50,
+            "flightsClimbed": 18,
+            "standHours": 9
+          },
+          {
+            "date": "2026-03-08",
+            "steps": 6784,
+            "steps7dAvg": 10220,
+            "distance": 4.85,
+            "activeEnergy": 584,
+            "activeEnergy7dAvg": 624,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 45,
+            "exerciseMinutes7dAvg": 53,
+            "flightsClimbed": 18,
+            "standHours": 9
+          },
+          {
+            "date": "2026-03-09",
+            "steps": 11588,
+            "steps7dAvg": 10576,
+            "distance": 8.28,
+            "activeEnergy": 659,
+            "activeEnergy7dAvg": 618,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 65,
+            "exerciseMinutes7dAvg": 52,
+            "flightsClimbed": 9,
+            "standHours": 8
+          },
+          {
+            "date": "2026-03-10",
+            "steps": 11261,
+            "steps7dAvg": 10802,
+            "distance": 8.04,
+            "activeEnergy": 781,
+            "activeEnergy7dAvg": 648,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 48,
+            "exerciseMinutes7dAvg": 51,
+            "flightsClimbed": 17,
+            "standHours": 9
+          },
+          {
+            "date": "2026-03-11",
+            "steps": 12123,
+            "steps7dAvg": 11434,
+            "distance": 8.66,
+            "activeEnergy": 573,
+            "activeEnergy7dAvg": 617,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 74,
+            "exerciseMinutes7dAvg": 52,
+            "flightsClimbed": 10,
+            "standHours": 10
+          },
+          {
+            "date": "2026-03-12",
+            "steps": 7374,
+            "steps7dAvg": 10589,
+            "distance": 5.27,
+            "activeEnergy": 495,
+            "activeEnergy7dAvg": 604,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 49,
+            "exerciseMinutes7dAvg": 51,
+            "flightsClimbed": 11,
+            "standHours": 9
+          },
+          {
+            "date": "2026-03-13",
+            "steps": 8193,
+            "steps7dAvg": 10008,
+            "distance": 5.85,
+            "activeEnergy": 610,
+            "activeEnergy7dAvg": 610,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 37,
+            "exerciseMinutes7dAvg": 47,
+            "flightsClimbed": 10,
+            "standHours": 15
+          },
+          {
+            "date": "2026-03-14",
+            "steps": 11070,
+            "steps7dAvg": 9770,
+            "distance": 7.91,
+            "activeEnergy": 591,
+            "activeEnergy7dAvg": 613,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 43,
+            "exerciseMinutes7dAvg": 52,
+            "flightsClimbed": 17,
+            "standHours": 11
+          },
+          {
+            "date": "2026-03-15",
+            "steps": 10322,
+            "steps7dAvg": 10276,
+            "distance": 7.37,
+            "activeEnergy": 377,
+            "activeEnergy7dAvg": 584,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 56,
+            "exerciseMinutes7dAvg": 53,
+            "flightsClimbed": 9,
+            "standHours": 13
+          },
+          {
+            "date": "2026-03-16",
+            "steps": 12278,
+            "steps7dAvg": 10374,
+            "distance": 8.77,
+            "activeEnergy": 631,
+            "activeEnergy7dAvg": 580,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 28,
+            "exerciseMinutes7dAvg": 48,
+            "flightsClimbed": 14,
+            "standHours": 9
+          },
+          {
+            "date": "2026-03-17",
+            "steps": 12618,
+            "steps7dAvg": 10568,
+            "distance": 9.01,
+            "activeEnergy": 605,
+            "activeEnergy7dAvg": 555,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 74,
+            "exerciseMinutes7dAvg": 52,
+            "flightsClimbed": 16,
+            "standHours": 11
+          },
+          {
+            "date": "2026-03-18",
+            "steps": 8587,
+            "steps7dAvg": 10063,
+            "distance": 6.13,
+            "activeEnergy": 663,
+            "activeEnergy7dAvg": 567,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 85,
+            "exerciseMinutes7dAvg": 53,
+            "flightsClimbed": 15,
+            "standHours": 11
+          },
+          {
+            "date": "2026-03-19",
+            "steps": 11748,
+            "steps7dAvg": 10688,
+            "distance": 8.39,
+            "activeEnergy": 638,
+            "activeEnergy7dAvg": 588,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 71,
+            "exerciseMinutes7dAvg": 56,
+            "flightsClimbed": 10,
+            "standHours": 14
+          },
+          {
+            "date": "2026-03-20",
+            "steps": 12050,
+            "steps7dAvg": 11239,
+            "distance": 8.61,
+            "activeEnergy": 577,
+            "activeEnergy7dAvg": 583,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 56,
+            "exerciseMinutes7dAvg": 59,
+            "flightsClimbed": 11,
+            "standHours": 13
+          },
+          {
+            "date": "2026-03-21",
+            "steps": 6928,
+            "steps7dAvg": 10647,
+            "distance": 4.95,
+            "activeEnergy": 634,
+            "activeEnergy7dAvg": 589,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 23,
+            "exerciseMinutes7dAvg": 56,
+            "flightsClimbed": 21,
+            "standHours": 10
+          },
+          {
+            "date": "2026-03-22",
+            "steps": 8455,
+            "steps7dAvg": 10381,
+            "distance": 6.04,
+            "activeEnergy": 330,
+            "activeEnergy7dAvg": 583,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 38,
+            "exerciseMinutes7dAvg": 54,
+            "flightsClimbed": 7,
+            "standHours": 10
+          },
+          {
+            "date": "2026-03-23",
+            "steps": 9381,
+            "steps7dAvg": 9967,
+            "distance": 6.7,
+            "activeEnergy": 688,
+            "activeEnergy7dAvg": 591,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 58,
+            "exerciseMinutes7dAvg": 58,
+            "flightsClimbed": 9,
+            "standHours": 12
+          },
+          {
+            "date": "2026-03-24",
+            "steps": 6335,
+            "steps7dAvg": 9069,
+            "distance": 4.53,
+            "activeEnergy": 717,
+            "activeEnergy7dAvg": 607,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 48,
+            "exerciseMinutes7dAvg": 54,
+            "flightsClimbed": 9,
+            "standHours": 7
+          },
+          {
+            "date": "2026-03-25",
+            "steps": 11890,
+            "steps7dAvg": 9541,
+            "distance": 8.49,
+            "activeEnergy": 658,
+            "activeEnergy7dAvg": 606,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 51,
+            "exerciseMinutes7dAvg": 49,
+            "flightsClimbed": 12,
+            "standHours": 11
+          },
+          {
+            "date": "2026-03-26",
+            "steps": 7940,
+            "steps7dAvg": 8997,
+            "distance": 5.67,
+            "activeEnergy": 637,
+            "activeEnergy7dAvg": 606,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 43,
+            "exerciseMinutes7dAvg": 45,
+            "flightsClimbed": 15,
+            "standHours": 11
+          },
+          {
+            "date": "2026-03-27",
+            "steps": 10793,
+            "steps7dAvg": 8817,
+            "distance": 7.71,
+            "activeEnergy": 537,
+            "activeEnergy7dAvg": 600,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 50,
+            "exerciseMinutes7dAvg": 44,
+            "flightsClimbed": 10,
+            "standHours": 11
+          },
+          {
+            "date": "2026-03-28",
+            "steps": 9106,
+            "steps7dAvg": 9129,
+            "distance": 6.5,
+            "activeEnergy": 388,
+            "activeEnergy7dAvg": 565,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 14,
+            "exerciseMinutes7dAvg": 43,
+            "flightsClimbed": 4,
+            "standHours": 14
+          },
+          {
+            "date": "2026-03-29",
+            "steps": 10032,
+            "steps7dAvg": 9354,
+            "distance": 7.17,
+            "activeEnergy": 553,
+            "activeEnergy7dAvg": 597,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 40,
+            "exerciseMinutes7dAvg": 43,
+            "flightsClimbed": 18,
+            "standHours": 9
+          },
+          {
+            "date": "2026-03-30",
+            "steps": 9337,
+            "steps7dAvg": 9348,
+            "distance": 6.67,
+            "activeEnergy": 719,
+            "activeEnergy7dAvg": 601,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 87,
+            "exerciseMinutes7dAvg": 48,
+            "flightsClimbed": 13,
+            "standHours": 13
+          },
+          {
+            "date": "2026-03-31",
+            "steps": 10708,
+            "steps7dAvg": 9972,
+            "distance": 7.65,
+            "activeEnergy": 831,
+            "activeEnergy7dAvg": 618,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 59,
+            "exerciseMinutes7dAvg": 49,
+            "flightsClimbed": 5,
+            "standHours": 13
+          },
+          {
+            "date": "2026-04-01",
+            "steps": 7546,
+            "steps7dAvg": 9352,
+            "distance": 5.39,
+            "activeEnergy": 356,
+            "activeEnergy7dAvg": 574,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 52,
+            "exerciseMinutes7dAvg": 49,
+            "flightsClimbed": 10,
+            "standHours": 11
+          },
+          {
+            "date": "2026-04-02",
+            "steps": 9587,
+            "steps7dAvg": 9587,
+            "distance": 6.85,
+            "activeEnergy": 748,
+            "activeEnergy7dAvg": 590,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 50,
+            "exerciseMinutes7dAvg": 50,
+            "flightsClimbed": 11,
+            "standHours": 11
+          },
+          {
+            "date": "2026-04-03",
+            "steps": 10812,
+            "steps7dAvg": 9590,
+            "distance": 7.72,
+            "activeEnergy": 797,
+            "activeEnergy7dAvg": 627,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 55,
+            "exerciseMinutes7dAvg": 51,
+            "flightsClimbed": 11,
+            "standHours": 12
+          },
+          {
+            "date": "2026-04-04",
+            "steps": 11252,
+            "steps7dAvg": 9896,
+            "distance": 8.04,
+            "activeEnergy": 573,
+            "activeEnergy7dAvg": 654,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 33,
+            "exerciseMinutes7dAvg": 54,
+            "flightsClimbed": 15,
+            "standHours": 12
+          },
+          {
+            "date": "2026-04-05",
+            "steps": 7601,
+            "steps7dAvg": 9549,
+            "distance": 5.43,
+            "activeEnergy": 533,
+            "activeEnergy7dAvg": 651,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 36,
+            "exerciseMinutes7dAvg": 53,
+            "flightsClimbed": 11,
+            "standHours": 11
+          },
+          {
+            "date": "2026-04-06",
+            "steps": 8757,
+            "steps7dAvg": 9466,
+            "distance": 6.25,
+            "activeEnergy": 639,
+            "activeEnergy7dAvg": 640,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 60,
+            "exerciseMinutes7dAvg": 49,
+            "flightsClimbed": 8,
+            "standHours": 13
+          },
+          {
+            "date": "2026-04-07",
+            "steps": 11241,
+            "steps7dAvg": 9542,
+            "distance": 8.03,
+            "activeEnergy": 802,
+            "activeEnergy7dAvg": 635,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 79,
+            "exerciseMinutes7dAvg": 52,
+            "flightsClimbed": 6,
+            "standHours": 14
+          },
+          {
+            "date": "2026-04-08",
+            "steps": 11594,
+            "steps7dAvg": 10121,
+            "distance": 8.28,
+            "activeEnergy": 896,
+            "activeEnergy7dAvg": 713,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 19,
+            "exerciseMinutes7dAvg": 47,
+            "flightsClimbed": 6,
+            "standHours": 6
+          },
+          {
+            "date": "2026-04-09",
+            "steps": 11417,
+            "steps7dAvg": 10382,
+            "distance": 8.15,
+            "activeEnergy": 475,
+            "activeEnergy7dAvg": 674,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 68,
+            "exerciseMinutes7dAvg": 50,
+            "flightsClimbed": 10,
+            "standHours": 8
+          },
+          {
+            "date": "2026-04-10",
+            "steps": 14998,
+            "steps7dAvg": 10980,
+            "distance": 10.71,
+            "activeEnergy": 542,
+            "activeEnergy7dAvg": 637,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 53,
+            "exerciseMinutes7dAvg": 50,
+            "flightsClimbed": 14,
+            "standHours": 9
+          },
+          {
+            "date": "2026-04-11",
+            "steps": 8591,
+            "steps7dAvg": 10600,
+            "distance": 6.14,
+            "activeEnergy": 488,
+            "activeEnergy7dAvg": 625,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 45,
+            "exerciseMinutes7dAvg": 51,
+            "flightsClimbed": 10,
+            "standHours": 12
+          },
+          {
+            "date": "2026-04-12",
+            "steps": 5380,
+            "steps7dAvg": 10283,
+            "distance": 3.84,
+            "activeEnergy": 563,
+            "activeEnergy7dAvg": 629,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 61,
+            "exerciseMinutes7dAvg": 55,
+            "flightsClimbed": 12,
+            "standHours": 12
+          },
+          {
+            "date": "2026-04-13",
+            "steps": 12733,
+            "steps7dAvg": 10851,
+            "distance": 9.1,
+            "activeEnergy": 719,
+            "activeEnergy7dAvg": 641,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 65,
+            "exerciseMinutes7dAvg": 56,
+            "flightsClimbed": 12,
+            "standHours": 8
+          },
+          {
+            "date": "2026-04-14",
+            "steps": 12070,
+            "steps7dAvg": 10969,
+            "distance": 8.62,
+            "activeEnergy": 721,
+            "activeEnergy7dAvg": 629,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 58,
+            "exerciseMinutes7dAvg": 53,
+            "flightsClimbed": 16,
+            "standHours": 8
+          },
+          {
+            "date": "2026-04-15",
+            "steps": 10123,
+            "steps7dAvg": 10759,
+            "distance": 7.23,
+            "activeEnergy": 739,
+            "activeEnergy7dAvg": 607,
+            "basalEnergy": 1720,
+            "exerciseMinutes": 38,
+            "exerciseMinutes7dAvg": 55,
+            "flightsClimbed": 11,
+            "standHours": 14
+          }
+        ],
+        "distanceUnit": "mi",
+        "recoveryScores": [
+          {
+            "date": "2026-04-02",
+            "score": 83
+          },
+          {
+            "date": "2026-04-03",
+            "score": 80
+          },
+          {
+            "date": "2026-04-04",
+            "score": 59
+          },
+          {
+            "date": "2026-04-05",
+            "score": 59
+          },
+          {
+            "date": "2026-04-06",
+            "score": 65
+          },
+          {
+            "date": "2026-04-07",
+            "score": 63
+          },
+          {
+            "date": "2026-04-08",
+            "score": 62
+          },
+          {
+            "date": "2026-04-09",
+            "score": 75
+          },
+          {
+            "date": "2026-04-10",
+            "score": 72
+          },
+          {
+            "date": "2026-04-11",
+            "score": 87
+          },
+          {
+            "date": "2026-04-12",
+            "score": 58
+          },
+          {
+            "date": "2026-04-13",
+            "score": 76
+          },
+          {
+            "date": "2026-04-14",
+            "score": 62
+          },
+          {
+            "date": "2026-04-15",
+            "score": 66
+          }
+        ]
+      },
+      "heart": {
+        "headline": {
+          "avgRestingHR": 56,
+          "avgHRV": 63,
+          "avgRecovery": 33
+        },
+        "insights": [
+          {
+            "label": "Resting HR trend",
+            "value": "-2 bpm",
+            "caption": "vs 30-day avg",
+            "tone": "good"
+          },
+          {
+            "label": "HRV trend",
+            "value": "+4 ms",
+            "caption": "trending up",
+            "tone": "good"
+          }
+        ],
+        "periods": [],
+        "daily": [
+          {
+            "date": "2026-02-15",
+            "restingHR": 61,
+            "avgHR": 75,
+            "minHR": 51,
+            "maxHR": 180,
+            "walkingHR": 86,
+            "hrv": 67.4,
+            "hrRecovery1min": 41.4
+          },
+          {
+            "date": "2026-02-16",
+            "restingHR": 57,
+            "avgHR": 78,
+            "minHR": 52,
+            "maxHR": 151,
+            "walkingHR": 98,
+            "hrv": 78.3,
+            "hrRecovery1min": 27.1
+          },
+          {
+            "date": "2026-02-17",
+            "restingHR": 55,
+            "avgHR": 72,
+            "minHR": 45,
+            "maxHR": 177,
+            "walkingHR": 97,
+            "hrv": 70.4,
+            "hrRecovery1min": 28.6
+          },
+          {
+            "date": "2026-02-18",
+            "restingHR": 56,
+            "avgHR": 73,
+            "minHR": 46,
+            "maxHR": 178,
+            "walkingHR": 92,
+            "hrv": 55.3,
+            "hrRecovery1min": 30.1
+          },
+          {
+            "date": "2026-02-19",
+            "restingHR": 58,
+            "avgHR": 71,
+            "minHR": 46,
+            "maxHR": 171,
+            "walkingHR": 92,
+            "hrv": 51,
+            "hrRecovery1min": 30.1
+          },
+          {
+            "date": "2026-02-20",
+            "restingHR": 55,
+            "avgHR": 72,
+            "minHR": 49,
+            "maxHR": 174,
+            "walkingHR": 87,
+            "hrv": 74.4,
+            "hrRecovery1min": 35.9
+          },
+          {
+            "date": "2026-02-21",
+            "restingHR": 56,
+            "avgHR": 75,
+            "minHR": 55,
+            "maxHR": 171,
+            "walkingHR": 92,
+            "hrv": 60.5,
+            "hrRecovery1min": 30.3
+          },
+          {
+            "date": "2026-02-22",
+            "restingHR": 51,
+            "avgHR": 69,
+            "minHR": 53,
+            "maxHR": 153,
+            "walkingHR": 81,
+            "hrv": 50.4,
+            "hrRecovery1min": 35.6
+          },
+          {
+            "date": "2026-02-23",
+            "restingHR": 57,
+            "avgHR": 78,
+            "minHR": 48,
+            "maxHR": 180,
+            "walkingHR": 98,
+            "hrv": 54.9,
+            "hrRecovery1min": 41.6
+          },
+          {
+            "date": "2026-02-24",
+            "restingHR": 60,
+            "avgHR": 76,
+            "minHR": 46,
+            "maxHR": 180,
+            "walkingHR": 89,
+            "hrv": 60,
+            "hrRecovery1min": 35.4
+          },
+          {
+            "date": "2026-02-25",
+            "restingHR": 59,
+            "avgHR": 71,
+            "minHR": 47,
+            "maxHR": 171,
+            "walkingHR": 94,
+            "hrv": 45,
+            "hrRecovery1min": 40.8
+          },
+          {
+            "date": "2026-02-26",
+            "restingHR": 53,
+            "avgHR": 78,
+            "minHR": 50,
+            "maxHR": 135,
+            "walkingHR": 88,
+            "hrv": 59.6,
+            "hrRecovery1min": 35.4
+          },
+          {
+            "date": "2026-02-27",
+            "restingHR": 59,
+            "avgHR": 70,
+            "minHR": 49,
+            "maxHR": 179,
+            "walkingHR": 102,
+            "hrv": 63.1,
+            "hrRecovery1min": 31.2
+          },
+          {
+            "date": "2026-02-28",
+            "restingHR": 58,
+            "avgHR": 67,
+            "minHR": 46,
+            "maxHR": 154,
+            "walkingHR": 101,
+            "hrv": 70.3,
+            "hrRecovery1min": 33
+          },
+          {
+            "date": "2026-03-01",
+            "restingHR": 59,
+            "avgHR": 76,
+            "minHR": 48,
+            "maxHR": 141,
+            "walkingHR": 94,
+            "hrv": 73.6,
+            "hrRecovery1min": 37.9
+          },
+          {
+            "date": "2026-03-02",
+            "restingHR": 55,
+            "avgHR": 71,
+            "minHR": 53,
+            "maxHR": 176,
+            "walkingHR": 100,
+            "hrv": 37.2,
+            "hrRecovery1min": 31.6
+          },
+          {
+            "date": "2026-03-03",
+            "restingHR": 59,
+            "avgHR": 77,
+            "minHR": 50,
+            "maxHR": 160,
+            "walkingHR": 95,
+            "hrv": 65.9,
+            "hrRecovery1min": 21.7
+          },
+          {
+            "date": "2026-03-04",
+            "restingHR": 55,
+            "avgHR": 72,
+            "minHR": 50,
+            "maxHR": 164,
+            "walkingHR": 89,
+            "hrv": 90.3,
+            "hrRecovery1min": 29.7
+          },
+          {
+            "date": "2026-03-05",
+            "restingHR": 54,
+            "avgHR": 78,
+            "minHR": 49,
+            "maxHR": 159,
+            "walkingHR": 95,
+            "hrv": 51.3,
+            "hrRecovery1min": 34.5
+          },
+          {
+            "date": "2026-03-06",
+            "restingHR": 50,
+            "avgHR": 68,
+            "minHR": 46,
+            "maxHR": 180,
+            "walkingHR": 100,
+            "hrv": 63.2,
+            "hrRecovery1min": 32
+          },
+          {
+            "date": "2026-03-07",
+            "restingHR": 49,
+            "avgHR": 64,
+            "minHR": 55,
+            "maxHR": 165,
+            "walkingHR": 94,
+            "hrv": 73.3,
+            "hrRecovery1min": 30.8
+          },
+          {
+            "date": "2026-03-08",
+            "restingHR": 56,
+            "avgHR": 70,
+            "minHR": 49,
+            "maxHR": 171,
+            "walkingHR": 90,
+            "hrv": 63,
+            "hrRecovery1min": 31
+          },
+          {
+            "date": "2026-03-09",
+            "restingHR": 58,
+            "avgHR": 75,
+            "minHR": 47,
+            "maxHR": 167,
+            "walkingHR": 88,
+            "hrv": 71.8,
+            "hrRecovery1min": 31.3
+          },
+          {
+            "date": "2026-03-10",
+            "restingHR": 53,
+            "avgHR": 75,
+            "minHR": 49,
+            "maxHR": 161,
+            "walkingHR": 83,
+            "hrv": 65.4,
+            "hrRecovery1min": 38.6
+          },
+          {
+            "date": "2026-03-11",
+            "restingHR": 57,
+            "avgHR": 80,
+            "minHR": 49,
+            "maxHR": 155,
+            "walkingHR": 99,
+            "hrv": 76.2,
+            "hrRecovery1min": 32.5
+          },
+          {
+            "date": "2026-03-12",
+            "restingHR": 56,
+            "avgHR": 63,
+            "minHR": 48,
+            "maxHR": 184,
+            "walkingHR": 101,
+            "hrv": 81.6,
+            "hrRecovery1min": 36.1
+          },
+          {
+            "date": "2026-03-13",
+            "restingHR": 52,
+            "avgHR": 81,
+            "minHR": 47,
+            "maxHR": 164,
+            "walkingHR": 93,
+            "hrv": 67.6,
+            "hrRecovery1min": 30.1
+          },
+          {
+            "date": "2026-03-14",
+            "restingHR": 56,
+            "avgHR": 69,
+            "minHR": 47,
+            "maxHR": 147,
+            "walkingHR": 107,
+            "hrv": 86.1,
+            "hrRecovery1min": 35.2
+          },
+          {
+            "date": "2026-03-15",
+            "restingHR": 60,
+            "avgHR": 71,
+            "minHR": 44,
+            "maxHR": 180,
+            "walkingHR": 95,
+            "hrv": 73.3,
+            "hrRecovery1min": 28.7
+          },
+          {
+            "date": "2026-03-16",
+            "restingHR": 58,
+            "avgHR": 77,
+            "minHR": 52,
+            "maxHR": 160,
+            "walkingHR": 90,
+            "hrv": 54.4,
+            "hrRecovery1min": 36.5
+          },
+          {
+            "date": "2026-03-17",
+            "restingHR": 54,
+            "avgHR": 70,
+            "minHR": 49,
+            "maxHR": 148,
+            "walkingHR": 95,
+            "hrv": 62.6,
+            "hrRecovery1min": 24.1
+          },
+          {
+            "date": "2026-03-18",
+            "restingHR": 58,
+            "avgHR": 78,
+            "minHR": 47,
+            "maxHR": 160,
+            "walkingHR": 99,
+            "hrv": 67.3,
+            "hrRecovery1min": 30.2
+          },
+          {
+            "date": "2026-03-19",
+            "restingHR": 55,
+            "avgHR": 69,
+            "minHR": 46,
+            "maxHR": 172,
+            "walkingHR": 97,
+            "hrv": 42.6,
+            "hrRecovery1min": 41.9
+          },
+          {
+            "date": "2026-03-20",
+            "restingHR": 56,
+            "avgHR": 74,
+            "minHR": 40,
+            "maxHR": 157,
+            "walkingHR": 92,
+            "hrv": 58,
+            "hrRecovery1min": 37.7
+          },
+          {
+            "date": "2026-03-21",
+            "restingHR": 51,
+            "avgHR": 79,
+            "minHR": 49,
+            "maxHR": 172,
+            "walkingHR": 88,
+            "hrv": 64.2,
+            "hrRecovery1min": 32.9
+          },
+          {
+            "date": "2026-03-22",
+            "restingHR": 55,
+            "avgHR": 78,
+            "minHR": 44,
+            "maxHR": 145,
+            "walkingHR": 87,
+            "hrv": 53.7,
+            "hrRecovery1min": 37.3
+          },
+          {
+            "date": "2026-03-23",
+            "restingHR": 60,
+            "avgHR": 76,
+            "minHR": 50,
+            "maxHR": 184,
+            "walkingHR": 101,
+            "hrv": 65.3,
+            "hrRecovery1min": 34.5
+          },
+          {
+            "date": "2026-03-24",
+            "restingHR": 56,
+            "avgHR": 72,
+            "minHR": 47,
+            "maxHR": 167,
+            "walkingHR": 89,
+            "hrv": 73,
+            "hrRecovery1min": 32.8
+          },
+          {
+            "date": "2026-03-25",
+            "restingHR": 56,
+            "avgHR": 81,
+            "minHR": 50,
+            "maxHR": 163,
+            "walkingHR": 95,
+            "hrv": 73,
+            "hrRecovery1min": 33.4
+          },
+          {
+            "date": "2026-03-26",
+            "restingHR": 60,
+            "avgHR": 70,
+            "minHR": 48,
+            "maxHR": 162,
+            "walkingHR": 92,
+            "hrv": 36.2,
+            "hrRecovery1min": 27.9
+          },
+          {
+            "date": "2026-03-27",
+            "restingHR": 61,
+            "avgHR": 72,
+            "minHR": 46,
+            "maxHR": 177,
+            "walkingHR": 87,
+            "hrv": 57,
+            "hrRecovery1min": 21
+          },
+          {
+            "date": "2026-03-28",
+            "restingHR": 57,
+            "avgHR": 74,
+            "minHR": 48,
+            "maxHR": 192,
+            "walkingHR": 92,
+            "hrv": 58.9,
+            "hrRecovery1min": 34.8
+          },
+          {
+            "date": "2026-03-29",
+            "restingHR": 56,
+            "avgHR": 69,
+            "minHR": 48,
+            "maxHR": 196,
+            "walkingHR": 83,
+            "hrv": 65.8,
+            "hrRecovery1min": 38.6
+          },
+          {
+            "date": "2026-03-30",
+            "restingHR": 54,
+            "avgHR": 77,
+            "minHR": 51,
+            "maxHR": 136,
+            "walkingHR": 86,
+            "hrv": 66.4,
+            "hrRecovery1min": 35.9
+          },
+          {
+            "date": "2026-03-31",
+            "restingHR": 52,
+            "avgHR": 70,
+            "minHR": 50,
+            "maxHR": 158,
+            "walkingHR": 104,
+            "hrv": 53.9,
+            "hrRecovery1min": 23.6
+          },
+          {
+            "date": "2026-04-01",
+            "restingHR": 54,
+            "avgHR": 66,
+            "minHR": 43,
+            "maxHR": 163,
+            "walkingHR": 102,
+            "hrv": 42.8,
+            "hrRecovery1min": 30.1
+          },
+          {
+            "date": "2026-04-02",
+            "restingHR": 57,
+            "avgHR": 72,
+            "minHR": 46,
+            "maxHR": 177,
+            "walkingHR": 82,
+            "hrv": 73.8,
+            "hrRecovery1min": 34.4
+          },
+          {
+            "date": "2026-04-03",
+            "restingHR": 53,
+            "avgHR": 73,
+            "minHR": 49,
+            "maxHR": 148,
+            "walkingHR": 92,
+            "hrv": 49.6,
+            "hrRecovery1min": 21.2
+          },
+          {
+            "date": "2026-04-04",
+            "restingHR": 54,
+            "avgHR": 75,
+            "minHR": 48,
+            "maxHR": 174,
+            "walkingHR": 78,
+            "hrv": 57.8,
+            "hrRecovery1min": 33.7
+          },
+          {
+            "date": "2026-04-05",
+            "restingHR": 56,
+            "avgHR": 75,
+            "minHR": 44,
+            "maxHR": 170,
+            "walkingHR": 99,
+            "hrv": 58.8,
+            "hrRecovery1min": 42.2
+          },
+          {
+            "date": "2026-04-06",
+            "restingHR": 58,
+            "avgHR": 82,
+            "minHR": 51,
+            "maxHR": 176,
+            "walkingHR": 80,
+            "hrv": 75.4,
+            "hrRecovery1min": 32.5
+          },
+          {
+            "date": "2026-04-07",
+            "restingHR": 52,
+            "avgHR": 64,
+            "minHR": 50,
+            "maxHR": 139,
+            "walkingHR": 98,
+            "hrv": 45.1,
+            "hrRecovery1min": 28.1
+          },
+          {
+            "date": "2026-04-08",
+            "restingHR": 56,
+            "avgHR": 68,
+            "minHR": 52,
+            "maxHR": 166,
+            "walkingHR": 88,
+            "hrv": 75.9,
+            "hrRecovery1min": 38.4
+          },
+          {
+            "date": "2026-04-09",
+            "restingHR": 56,
+            "avgHR": 67,
+            "minHR": 44,
+            "maxHR": 183,
+            "walkingHR": 95,
+            "hrv": 59.3,
+            "hrRecovery1min": 35.1
+          },
+          {
+            "date": "2026-04-10",
+            "restingHR": 56,
+            "avgHR": 82,
+            "minHR": 47,
+            "maxHR": 161,
+            "walkingHR": 93,
+            "hrv": 57.2,
+            "hrRecovery1min": 30.2
+          },
+          {
+            "date": "2026-04-11",
+            "restingHR": 52,
+            "avgHR": 72,
+            "minHR": 50,
+            "maxHR": 167,
+            "walkingHR": 97,
+            "hrv": 79,
+            "hrRecovery1min": 26.5
+          },
+          {
+            "date": "2026-04-12",
+            "restingHR": 57,
+            "avgHR": 72,
+            "minHR": 45,
+            "maxHR": 165,
+            "walkingHR": 85,
+            "hrv": 58.2,
+            "hrRecovery1min": 26
+          },
+          {
+            "date": "2026-04-13",
+            "restingHR": 55,
+            "avgHR": 82,
+            "minHR": 52,
+            "maxHR": 159,
+            "walkingHR": 92,
+            "hrv": 69.8,
+            "hrRecovery1min": 31
+          },
+          {
+            "date": "2026-04-14",
+            "restingHR": 56,
+            "avgHR": 74,
+            "minHR": 48,
+            "maxHR": 159,
+            "walkingHR": 88,
+            "hrv": 64.7,
+            "hrRecovery1min": 29.8
+          },
+          {
+            "date": "2026-04-15",
+            "restingHR": 55,
+            "avgHR": 78,
+            "minHR": 52,
+            "maxHR": 167,
+            "walkingHR": 92,
+            "hrv": 38.2,
+            "hrRecovery1min": 30.9
+          }
+        ]
+      },
+      "sleep": {
+        "headline": {
+          "avgAsleepMinutes": 416,
+          "avgDeepMinutes": 77,
+          "avgRemMinutes": 93
+        },
+        "insights": [
+          {
+            "label": "Sleep consistency",
+            "value": "86%",
+            "caption": "of nights within 30 min of avg",
+            "tone": "good"
+          },
+          {
+            "label": "Deep sleep share",
+            "value": "18%",
+            "caption": "healthy range",
+            "tone": "good"
+          }
+        ],
+        "periods": [],
+        "daily": [
+          {
+            "date": "2026-02-15",
+            "inBedMinutes": 498,
+            "asleepMinutes": 461,
+            "awakeMinutes": 37,
+            "deepMinutes": 70,
+            "remMinutes": 74,
+            "coreMinutes": 297,
+            "respiratoryRate": 14.48,
+            "wristTempDeviationC": 0.063
+          },
+          {
+            "date": "2026-02-16",
+            "inBedMinutes": 473,
+            "asleepMinutes": 454,
+            "awakeMinutes": 19,
+            "deepMinutes": 80,
+            "remMinutes": 73,
+            "coreMinutes": 281,
+            "respiratoryRate": 14.44,
+            "wristTempDeviationC": -0.068
+          },
+          {
+            "date": "2026-02-17",
+            "inBedMinutes": 471,
+            "asleepMinutes": 461,
+            "awakeMinutes": 10,
+            "deepMinutes": 118,
+            "remMinutes": 114,
+            "coreMinutes": 209,
+            "respiratoryRate": 15,
+            "wristTempDeviationC": -0.136
+          },
+          {
+            "date": "2026-02-18",
+            "inBedMinutes": 440,
+            "asleepMinutes": 413,
+            "awakeMinutes": 27,
+            "deepMinutes": 76,
+            "remMinutes": 74,
+            "coreMinutes": 243,
+            "respiratoryRate": 14.11,
+            "wristTempDeviationC": 0.092
+          },
+          {
+            "date": "2026-02-19",
+            "inBedMinutes": 434,
+            "asleepMinutes": 405,
+            "awakeMinutes": 29,
+            "deepMinutes": 77,
+            "remMinutes": 77,
+            "coreMinutes": 231,
+            "respiratoryRate": 15.28,
+            "wristTempDeviationC": 0.005
+          },
+          {
+            "date": "2026-02-20",
+            "inBedMinutes": 499,
+            "asleepMinutes": 465,
+            "awakeMinutes": 34,
+            "deepMinutes": 75,
+            "remMinutes": 99,
+            "coreMinutes": 271,
+            "respiratoryRate": 14.82,
+            "wristTempDeviationC": 0.023
+          },
+          {
+            "date": "2026-02-21",
+            "inBedMinutes": 367,
+            "asleepMinutes": 357,
+            "awakeMinutes": 10,
+            "deepMinutes": 48,
+            "remMinutes": 105,
+            "coreMinutes": 184,
+            "respiratoryRate": 15.36,
+            "wristTempDeviationC": -0.287
+          },
+          {
+            "date": "2026-02-22",
+            "inBedMinutes": 458,
+            "asleepMinutes": 437,
+            "awakeMinutes": 21,
+            "deepMinutes": 73,
+            "remMinutes": 110,
+            "coreMinutes": 234,
+            "respiratoryRate": 15.56,
+            "wristTempDeviationC": -0.035
+          },
+          {
+            "date": "2026-02-23",
+            "inBedMinutes": 433,
+            "asleepMinutes": 403,
+            "awakeMinutes": 30,
+            "deepMinutes": 92,
+            "remMinutes": 98,
+            "coreMinutes": 193,
+            "respiratoryRate": 14.57,
+            "wristTempDeviationC": -0.109
+          },
+          {
+            "date": "2026-02-24",
+            "inBedMinutes": 478,
+            "asleepMinutes": 445,
+            "awakeMinutes": 33,
+            "deepMinutes": 80,
+            "remMinutes": 91,
+            "coreMinutes": 254,
+            "respiratoryRate": 15.8,
+            "wristTempDeviationC": -0.026
+          },
+          {
+            "date": "2026-02-25",
+            "inBedMinutes": 484,
+            "asleepMinutes": 461,
+            "awakeMinutes": 23,
+            "deepMinutes": 97,
+            "remMinutes": 118,
+            "coreMinutes": 226,
+            "respiratoryRate": 14.46,
+            "wristTempDeviationC": 0.052
+          },
+          {
+            "date": "2026-02-26",
+            "inBedMinutes": 364,
+            "asleepMinutes": 345,
+            "awakeMinutes": 19,
+            "deepMinutes": 67,
+            "remMinutes": 77,
+            "coreMinutes": 181,
+            "respiratoryRate": 14.3,
+            "wristTempDeviationC": -0.191
+          },
+          {
+            "date": "2026-02-27",
+            "inBedMinutes": 391,
+            "asleepMinutes": 367,
+            "awakeMinutes": 24,
+            "deepMinutes": 71,
+            "remMinutes": 78,
+            "coreMinutes": 198,
+            "respiratoryRate": 15.17,
+            "wristTempDeviationC": -0.031
+          },
+          {
+            "date": "2026-02-28",
+            "inBedMinutes": 361,
+            "asleepMinutes": 350,
+            "awakeMinutes": 11,
+            "deepMinutes": 64,
+            "remMinutes": 87,
+            "coreMinutes": 179,
+            "respiratoryRate": 15.9,
+            "wristTempDeviationC": -0.049
+          },
+          {
+            "date": "2026-03-01",
+            "inBedMinutes": 461,
+            "asleepMinutes": 431,
+            "awakeMinutes": 30,
+            "deepMinutes": 64,
+            "remMinutes": 127,
+            "coreMinutes": 220,
+            "respiratoryRate": 14.31,
+            "wristTempDeviationC": -0.053
+          },
+          {
+            "date": "2026-03-02",
+            "inBedMinutes": 378,
+            "asleepMinutes": 369,
+            "awakeMinutes": 9,
+            "deepMinutes": 77,
+            "remMinutes": 95,
+            "coreMinutes": 177,
+            "respiratoryRate": 14.51,
+            "wristTempDeviationC": 0.018
+          },
+          {
+            "date": "2026-03-03",
+            "inBedMinutes": 422,
+            "asleepMinutes": 401,
+            "awakeMinutes": 21,
+            "deepMinutes": 98,
+            "remMinutes": 78,
+            "coreMinutes": 205,
+            "respiratoryRate": 15.93,
+            "wristTempDeviationC": 0.109
+          },
+          {
+            "date": "2026-03-04",
+            "inBedMinutes": 426,
+            "asleepMinutes": 403,
+            "awakeMinutes": 23,
+            "deepMinutes": 98,
+            "remMinutes": 71,
+            "coreMinutes": 214,
+            "respiratoryRate": 15.1,
+            "wristTempDeviationC": -0.112
+          },
+          {
+            "date": "2026-03-05",
+            "inBedMinutes": 549,
+            "asleepMinutes": 527,
+            "awakeMinutes": 22,
+            "deepMinutes": 111,
+            "remMinutes": 118,
+            "coreMinutes": 278,
+            "respiratoryRate": 14.17,
+            "wristTempDeviationC": -0.155
+          },
+          {
+            "date": "2026-03-06",
+            "inBedMinutes": 354,
+            "asleepMinutes": 331,
+            "awakeMinutes": 23,
+            "deepMinutes": 55,
+            "remMinutes": 70,
+            "coreMinutes": 186,
+            "respiratoryRate": 14.73,
+            "wristTempDeviationC": -0.014
+          },
+          {
+            "date": "2026-03-07",
+            "inBedMinutes": 457,
+            "asleepMinutes": 423,
+            "awakeMinutes": 34,
+            "deepMinutes": 86,
+            "remMinutes": 69,
+            "coreMinutes": 248,
+            "respiratoryRate": 13.3,
+            "wristTempDeviationC": -0.034
+          },
+          {
+            "date": "2026-03-08",
+            "inBedMinutes": 395,
+            "asleepMinutes": 374,
+            "awakeMinutes": 21,
+            "deepMinutes": 64,
+            "remMinutes": 87,
+            "coreMinutes": 203,
+            "respiratoryRate": 14.67,
+            "wristTempDeviationC": -0.179
+          },
+          {
+            "date": "2026-03-09",
+            "inBedMinutes": 545,
+            "asleepMinutes": 495,
+            "awakeMinutes": 50,
+            "deepMinutes": 62,
+            "remMinutes": 101,
+            "coreMinutes": 312,
+            "respiratoryRate": 15.7,
+            "wristTempDeviationC": 0.089
+          },
+          {
+            "date": "2026-03-10",
+            "inBedMinutes": 371,
+            "asleepMinutes": 349,
+            "awakeMinutes": 22,
+            "deepMinutes": 62,
+            "remMinutes": 77,
+            "coreMinutes": 190,
+            "respiratoryRate": 14.18,
+            "wristTempDeviationC": -0.027
+          },
+          {
+            "date": "2026-03-11",
+            "inBedMinutes": 393,
+            "asleepMinutes": 377,
+            "awakeMinutes": 16,
+            "deepMinutes": 56,
+            "remMinutes": 105,
+            "coreMinutes": 196,
+            "respiratoryRate": 15.63,
+            "wristTempDeviationC": 0.118
+          },
+          {
+            "date": "2026-03-12",
+            "inBedMinutes": 421,
+            "asleepMinutes": 398,
+            "awakeMinutes": 23,
+            "deepMinutes": 75,
+            "remMinutes": 92,
+            "coreMinutes": 211,
+            "respiratoryRate": 15.46,
+            "wristTempDeviationC": -0.164
+          },
+          {
+            "date": "2026-03-13",
+            "inBedMinutes": 491,
+            "asleepMinutes": 475,
+            "awakeMinutes": 16,
+            "deepMinutes": 90,
+            "remMinutes": 85,
+            "coreMinutes": 280,
+            "respiratoryRate": 15.82,
+            "wristTempDeviationC": -0.001
+          },
+          {
+            "date": "2026-03-14",
+            "inBedMinutes": 487,
+            "asleepMinutes": 474,
+            "awakeMinutes": 13,
+            "deepMinutes": 81,
+            "remMinutes": 115,
+            "coreMinutes": 258,
+            "respiratoryRate": 15.15,
+            "wristTempDeviationC": 0.007
+          },
+          {
+            "date": "2026-03-15",
+            "inBedMinutes": 437,
+            "asleepMinutes": 418,
+            "awakeMinutes": 19,
+            "deepMinutes": 73,
+            "remMinutes": 87,
+            "coreMinutes": 238,
+            "respiratoryRate": 15.05,
+            "wristTempDeviationC": -0.038
+          },
+          {
+            "date": "2026-03-16",
+            "inBedMinutes": 495,
+            "asleepMinutes": 464,
+            "awakeMinutes": 31,
+            "deepMinutes": 98,
+            "remMinutes": 100,
+            "coreMinutes": 246,
+            "respiratoryRate": 14.8,
+            "wristTempDeviationC": 0.028
+          },
+          {
+            "date": "2026-03-17",
+            "inBedMinutes": 385,
+            "asleepMinutes": 384,
+            "awakeMinutes": 1,
+            "deepMinutes": 81,
+            "remMinutes": 93,
+            "coreMinutes": 190,
+            "respiratoryRate": 15.17,
+            "wristTempDeviationC": 0.082
+          },
+          {
+            "date": "2026-03-18",
+            "inBedMinutes": 440,
+            "asleepMinutes": 424,
+            "awakeMinutes": 16,
+            "deepMinutes": 78,
+            "remMinutes": 119,
+            "coreMinutes": 207,
+            "respiratoryRate": 14.83,
+            "wristTempDeviationC": -0.111
+          },
+          {
+            "date": "2026-03-19",
+            "inBedMinutes": 456,
+            "asleepMinutes": 446,
+            "awakeMinutes": 10,
+            "deepMinutes": 74,
+            "remMinutes": 84,
+            "coreMinutes": 268,
+            "respiratoryRate": 14.89,
+            "wristTempDeviationC": -0.125
+          },
+          {
+            "date": "2026-03-20",
+            "inBedMinutes": 413,
+            "asleepMinutes": 387,
+            "awakeMinutes": 26,
+            "deepMinutes": 65,
+            "remMinutes": 88,
+            "coreMinutes": 214,
+            "respiratoryRate": 14.52,
+            "wristTempDeviationC": -0.003
+          },
+          {
+            "date": "2026-03-21",
+            "inBedMinutes": 477,
+            "asleepMinutes": 459,
+            "awakeMinutes": 18,
+            "deepMinutes": 64,
+            "remMinutes": 86,
+            "coreMinutes": 289,
+            "respiratoryRate": 14.51,
+            "wristTempDeviationC": 0.184
+          },
+          {
+            "date": "2026-03-22",
+            "inBedMinutes": 422,
+            "asleepMinutes": 406,
+            "awakeMinutes": 16,
+            "deepMinutes": 81,
+            "remMinutes": 92,
+            "coreMinutes": 213,
+            "respiratoryRate": 14.89,
+            "wristTempDeviationC": 0.077
+          },
+          {
+            "date": "2026-03-23",
+            "inBedMinutes": 464,
+            "asleepMinutes": 453,
+            "awakeMinutes": 11,
+            "deepMinutes": 88,
+            "remMinutes": 100,
+            "coreMinutes": 245,
+            "respiratoryRate": 13.79,
+            "wristTempDeviationC": 0.016
+          },
+          {
+            "date": "2026-03-24",
+            "inBedMinutes": 468,
+            "asleepMinutes": 439,
+            "awakeMinutes": 29,
+            "deepMinutes": 106,
+            "remMinutes": 107,
+            "coreMinutes": 206,
+            "respiratoryRate": 15.18,
+            "wristTempDeviationC": 0.09
+          },
+          {
+            "date": "2026-03-25",
+            "inBedMinutes": 411,
+            "asleepMinutes": 389,
+            "awakeMinutes": 22,
+            "deepMinutes": 84,
+            "remMinutes": 92,
+            "coreMinutes": 193,
+            "respiratoryRate": 15.48,
+            "wristTempDeviationC": 0.016
+          },
+          {
+            "date": "2026-03-26",
+            "inBedMinutes": 403,
+            "asleepMinutes": 398,
+            "awakeMinutes": 5,
+            "deepMinutes": 71,
+            "remMinutes": 117,
+            "coreMinutes": 190,
+            "respiratoryRate": 14.64,
+            "wristTempDeviationC": 0.076
+          },
+          {
+            "date": "2026-03-27",
+            "inBedMinutes": 425,
+            "asleepMinutes": 393,
+            "awakeMinutes": 32,
+            "deepMinutes": 83,
+            "remMinutes": 87,
+            "coreMinutes": 203,
+            "respiratoryRate": 13.96,
+            "wristTempDeviationC": 0.106
+          },
+          {
+            "date": "2026-03-28",
+            "inBedMinutes": 421,
+            "asleepMinutes": 403,
+            "awakeMinutes": 18,
+            "deepMinutes": 63,
+            "remMinutes": 88,
+            "coreMinutes": 232,
+            "respiratoryRate": 15.33,
+            "wristTempDeviationC": -0.206
+          },
+          {
+            "date": "2026-03-29",
+            "inBedMinutes": 437,
+            "asleepMinutes": 405,
+            "awakeMinutes": 32,
+            "deepMinutes": 96,
+            "remMinutes": 88,
+            "coreMinutes": 201,
+            "respiratoryRate": 14.91,
+            "wristTempDeviationC": -0.223
+          },
+          {
+            "date": "2026-03-30",
+            "inBedMinutes": 444,
+            "asleepMinutes": 415,
+            "awakeMinutes": 29,
+            "deepMinutes": 82,
+            "remMinutes": 85,
+            "coreMinutes": 228,
+            "respiratoryRate": 13.79,
+            "wristTempDeviationC": -0.157
+          },
+          {
+            "date": "2026-03-31",
+            "inBedMinutes": 436,
+            "asleepMinutes": 416,
+            "awakeMinutes": 20,
+            "deepMinutes": 85,
+            "remMinutes": 98,
+            "coreMinutes": 213,
+            "respiratoryRate": 14.29,
+            "wristTempDeviationC": 0.253
+          },
+          {
+            "date": "2026-04-01",
+            "inBedMinutes": 453,
+            "asleepMinutes": 437,
+            "awakeMinutes": 16,
+            "deepMinutes": 80,
+            "remMinutes": 118,
+            "coreMinutes": 219,
+            "respiratoryRate": 15.39,
+            "wristTempDeviationC": -0.006
+          },
+          {
+            "date": "2026-04-02",
+            "inBedMinutes": 419,
+            "asleepMinutes": 399,
+            "awakeMinutes": 20,
+            "deepMinutes": 69,
+            "remMinutes": 79,
+            "coreMinutes": 231,
+            "respiratoryRate": 15.02,
+            "wristTempDeviationC": -0.126
+          },
+          {
+            "date": "2026-04-03",
+            "inBedMinutes": 467,
+            "asleepMinutes": 458,
+            "awakeMinutes": 9,
+            "deepMinutes": 102,
+            "remMinutes": 101,
+            "coreMinutes": 235,
+            "respiratoryRate": 15.78,
+            "wristTempDeviationC": 0.116
+          },
+          {
+            "date": "2026-04-04",
+            "inBedMinutes": 349,
+            "asleepMinutes": 332,
+            "awakeMinutes": 17,
+            "deepMinutes": 51,
+            "remMinutes": 86,
+            "coreMinutes": 175,
+            "respiratoryRate": 14.83,
+            "wristTempDeviationC": -0.163
+          },
+          {
+            "date": "2026-04-05",
+            "inBedMinutes": 435,
+            "asleepMinutes": 427,
+            "awakeMinutes": 8,
+            "deepMinutes": 69,
+            "remMinutes": 79,
+            "coreMinutes": 259,
+            "respiratoryRate": 13.72,
+            "wristTempDeviationC": -0.07
+          },
+          {
+            "date": "2026-04-06",
+            "inBedMinutes": 439,
+            "asleepMinutes": 405,
+            "awakeMinutes": 34,
+            "deepMinutes": 60,
+            "remMinutes": 115,
+            "coreMinutes": 210,
+            "respiratoryRate": 15.08,
+            "wristTempDeviationC": -0.049
+          },
+          {
+            "date": "2026-04-07",
+            "inBedMinutes": 374,
+            "asleepMinutes": 343,
+            "awakeMinutes": 31,
+            "deepMinutes": 54,
+            "remMinutes": 62,
+            "coreMinutes": 207,
+            "respiratoryRate": 14.67,
+            "wristTempDeviationC": 0.003
+          },
+          {
+            "date": "2026-04-08",
+            "inBedMinutes": 372,
+            "asleepMinutes": 364,
+            "awakeMinutes": 8,
+            "deepMinutes": 71,
+            "remMinutes": 96,
+            "coreMinutes": 177,
+            "respiratoryRate": 13.83,
+            "wristTempDeviationC": 0.083
+          },
+          {
+            "date": "2026-04-09",
+            "inBedMinutes": 527,
+            "asleepMinutes": 497,
+            "awakeMinutes": 30,
+            "deepMinutes": 104,
+            "remMinutes": 91,
+            "coreMinutes": 282,
+            "respiratoryRate": 13.95,
+            "wristTempDeviationC": 0.107
+          },
+          {
+            "date": "2026-04-10",
+            "inBedMinutes": 449,
+            "asleepMinutes": 425,
+            "awakeMinutes": 24,
+            "deepMinutes": 61,
+            "remMinutes": 101,
+            "coreMinutes": 243,
+            "respiratoryRate": 14.5,
+            "wristTempDeviationC": -0.131
+          },
+          {
+            "date": "2026-04-11",
+            "inBedMinutes": 426,
+            "asleepMinutes": 398,
+            "awakeMinutes": 28,
+            "deepMinutes": 59,
+            "remMinutes": 90,
+            "coreMinutes": 229,
+            "respiratoryRate": 14.71,
+            "wristTempDeviationC": 0.133
+          },
+          {
+            "date": "2026-04-12",
+            "inBedMinutes": 438,
+            "asleepMinutes": 420,
+            "awakeMinutes": 18,
+            "deepMinutes": 97,
+            "remMinutes": 72,
+            "coreMinutes": 231,
+            "respiratoryRate": 14.61,
+            "wristTempDeviationC": 0.207
+          },
+          {
+            "date": "2026-04-13",
+            "inBedMinutes": 388,
+            "asleepMinutes": 359,
+            "awakeMinutes": 29,
+            "deepMinutes": 67,
+            "remMinutes": 108,
+            "coreMinutes": 164,
+            "respiratoryRate": 14.81,
+            "wristTempDeviationC": -0.158
+          },
+          {
+            "date": "2026-04-14",
+            "inBedMinutes": 476,
+            "asleepMinutes": 451,
+            "awakeMinutes": 25,
+            "deepMinutes": 78,
+            "remMinutes": 122,
+            "coreMinutes": 231,
+            "respiratoryRate": 14.28,
+            "wristTempDeviationC": 0.008
+          },
+          {
+            "date": "2026-04-15",
+            "inBedMinutes": 502,
+            "asleepMinutes": 471,
+            "awakeMinutes": 31,
+            "deepMinutes": 65,
+            "remMinutes": 104,
+            "coreMinutes": 282,
+            "respiratoryRate": 14.63,
+            "wristTempDeviationC": -0.018
+          }
+        ],
+        "qualityScores": [
+          {
+            "date": "2026-04-02",
+            "score": 82
+          },
+          {
+            "date": "2026-04-03",
+            "score": 91
+          },
+          {
+            "date": "2026-04-04",
+            "score": 77
+          },
+          {
+            "date": "2026-04-05",
+            "score": 82
+          },
+          {
+            "date": "2026-04-06",
+            "score": 70
+          },
+          {
+            "date": "2026-04-07",
+            "score": 103
+          },
+          {
+            "date": "2026-04-08",
+            "score": 68
+          },
+          {
+            "date": "2026-04-09",
+            "score": 72
+          },
+          {
+            "date": "2026-04-10",
+            "score": 85
+          },
+          {
+            "date": "2026-04-11",
+            "score": 82
+          },
+          {
+            "date": "2026-04-12",
+            "score": 77
+          },
+          {
+            "date": "2026-04-13",
+            "score": 63
+          },
+          {
+            "date": "2026-04-14",
+            "score": 73
+          },
+          {
+            "date": "2026-04-15",
+            "score": 78
+          }
+        ]
+      },
+      "body": {
+        "headline": {
+          "latestWeightLb": 175,
+          "heightIn": 70,
+          "bmi": 25.1
+        },
+        "insights": [
+          {
+            "label": "30-day weight change",
+            "value": "-1.2 lb",
+            "caption": "trending down",
+            "tone": "good"
+          }
+        ],
+        "periods": [],
+        "weightHistory": [
+          {
+            "date": "2026-03-17",
+            "weightLb": 173.9
+          },
+          {
+            "date": "2026-03-18",
+            "weightLb": 176.3
+          },
+          {
+            "date": "2026-03-19",
+            "weightLb": 173.9
+          },
+          {
+            "date": "2026-03-20",
+            "weightLb": 175.8
+          },
+          {
+            "date": "2026-03-21",
+            "weightLb": 173.2
+          },
+          {
+            "date": "2026-03-22",
+            "weightLb": 174.3
+          },
+          {
+            "date": "2026-03-23",
+            "weightLb": 175.2
+          },
+          {
+            "date": "2026-03-24",
+            "weightLb": 175.1
+          },
+          {
+            "date": "2026-03-25",
+            "weightLb": 176.2
+          },
+          {
+            "date": "2026-03-26",
+            "weightLb": 175.3
+          },
+          {
+            "date": "2026-03-27",
+            "weightLb": 176.4
+          },
+          {
+            "date": "2026-03-28",
+            "weightLb": 173.7
+          },
+          {
+            "date": "2026-03-29",
+            "weightLb": 176.7
+          },
+          {
+            "date": "2026-03-30",
+            "weightLb": 173.5
+          },
+          {
+            "date": "2026-03-31",
+            "weightLb": 176.2
+          },
+          {
+            "date": "2026-04-01",
+            "weightLb": 176.3
+          },
+          {
+            "date": "2026-04-02",
+            "weightLb": 177.2
+          },
+          {
+            "date": "2026-04-03",
+            "weightLb": 174.2
+          },
+          {
+            "date": "2026-04-04",
+            "weightLb": 176.5
+          },
+          {
+            "date": "2026-04-05",
+            "weightLb": 175.2
+          },
+          {
+            "date": "2026-04-06",
+            "weightLb": 175
+          },
+          {
+            "date": "2026-04-07",
+            "weightLb": 175.1
+          },
+          {
+            "date": "2026-04-08",
+            "weightLb": 175.1
+          },
+          {
+            "date": "2026-04-09",
+            "weightLb": 176.1
+          },
+          {
+            "date": "2026-04-10",
+            "weightLb": 174
+          },
+          {
+            "date": "2026-04-11",
+            "weightLb": 177.5
+          },
+          {
+            "date": "2026-04-12",
+            "weightLb": 174.8
+          },
+          {
+            "date": "2026-04-13",
+            "weightLb": 175.2
+          },
+          {
+            "date": "2026-04-14",
+            "weightLb": 175.2
+          },
+          {
+            "date": "2026-04-15",
+            "weightLb": 177.4
+          }
+        ],
+        "heightCm": 177.8,
+        "heightIn": 70
+      },
+      "workouts": {
+        "headline": {
+          "totalWorkouts": 36,
+          "totalMinutes": 5200,
+          "totalEnergy": 41000,
+          "favoriteType": "TraditionalStrengthTraining"
+        },
+        "insights": [
+          {
+            "label": "Weekly average",
+            "value": "5.1 sessions",
+            "caption": "this month",
+            "tone": "good"
+          },
+          {
+            "label": "Top workout",
+            "value": "Strength",
+            "caption": "86 sessions",
+            "tone": "neutral"
+          }
+        ],
+        "periods": [],
+        "recent": [
+          {
+            "start": "2026-04-14T12:30:00Z",
+            "type": "TraditionalStrengthTraining",
+            "durationMinutes": 42,
+            "energy": 310,
+            "distance": null,
+            "avgHR": 118
+          },
+          {
+            "start": "2026-04-13T08:15:00Z",
+            "type": "Running",
+            "durationMinutes": 32,
+            "energy": 395,
+            "distance": 5.1,
+            "avgHR": 152
+          },
+          {
+            "start": "2026-04-12T15:45:00Z",
+            "type": "Cycling",
+            "durationMinutes": 58,
+            "energy": 520,
+            "distance": 18.4,
+            "avgHR": 135
+          },
+          {
+            "start": "2026-04-11T12:00:00Z",
+            "type": "TraditionalStrengthTraining",
+            "durationMinutes": 45,
+            "energy": 325,
+            "distance": null,
+            "avgHR": 121
+          },
+          {
+            "start": "2026-04-10T07:30:00Z",
+            "type": "Running",
+            "durationMinutes": 28,
+            "energy": 340,
+            "distance": 4.3,
+            "avgHR": 148
+          },
+          {
+            "start": "2026-04-09T18:00:00Z",
+            "type": "Yoga",
+            "durationMinutes": 40,
+            "energy": 150,
+            "distance": null,
+            "avgHR": 90
+          }
+        ],
+        "weekly": [
+          {
+            "weekStart": "2026-02-19",
+            "weekEnd": "2026-02-25",
+            "count": 4,
+            "totalMinutes": 227,
+            "totalEnergy": 1639
+          },
+          {
+            "weekStart": "2026-02-26",
+            "weekEnd": "2026-03-04",
+            "count": 5,
+            "totalMinutes": 216,
+            "totalEnergy": 2032
+          },
+          {
+            "weekStart": "2026-03-05",
+            "weekEnd": "2026-03-11",
+            "count": 6,
+            "totalMinutes": 202,
+            "totalEnergy": 1405
+          },
+          {
+            "weekStart": "2026-03-12",
+            "weekEnd": "2026-03-18",
+            "count": 6,
+            "totalMinutes": 203,
+            "totalEnergy": 1866
+          },
+          {
+            "weekStart": "2026-03-19",
+            "weekEnd": "2026-03-25",
+            "count": 4,
+            "totalMinutes": 261,
+            "totalEnergy": 1579
+          },
+          {
+            "weekStart": "2026-03-26",
+            "weekEnd": "2026-04-01",
+            "count": 5,
+            "totalMinutes": 226,
+            "totalEnergy": 2195
+          },
+          {
+            "weekStart": "2026-04-02",
+            "weekEnd": "2026-04-08",
+            "count": 5,
+            "totalMinutes": 227,
+            "totalEnergy": 2045
+          },
+          {
+            "weekStart": "2026-04-09",
+            "weekEnd": "2026-04-15",
+            "count": 6,
+            "totalMinutes": 285,
+            "totalEnergy": 1798
+          }
+        ],
+        "byType": {
+          "0": {
+            "type": "TraditionalStrengthTraining",
+            "count": 86,
+            "totalDurationMinutes": 3612,
+            "totalDistance": null,
+            "totalEnergy": 20640,
+            "avgDurationMinutes": 42,
+            "lastWorkout": "2026-04-14 12:30:00"
+          },
+          "1": {
+            "type": "Running",
+            "count": 42,
+            "totalDurationMinutes": 1344,
+            "totalDistance": 214.5,
+            "totalEnergy": 15960,
+            "avgDurationMinutes": 32,
+            "lastWorkout": "2026-04-13 08:15:00"
+          },
+          "2": {
+            "type": "Cycling",
+            "count": 18,
+            "totalDurationMinutes": 1044,
+            "totalDistance": 348,
+            "totalEnergy": 9720,
+            "avgDurationMinutes": 58,
+            "lastWorkout": "2026-04-12 15:45:00"
+          },
+          "3": {
+            "type": "Yoga",
+            "count": 12,
+            "totalDurationMinutes": 480,
+            "totalDistance": null,
+            "totalEnergy": 1800,
+            "avgDurationMinutes": 40,
+            "lastWorkout": "2026-04-09 18:00:00"
+          }
+        },
+        "distanceUnit": "mi"
+      },
+      "illnessPeriods": [
+        {
+          "startDate": "2026-02-10",
+          "endDate": "2026-02-14",
+          "durationDays": 4,
+          "confidence": 0.72,
+          "signals": ["wrist temperature elevated", "HRV below baseline", "resting HR elevated"],
+          "peakSignals": {
+            "maxWristTempC": 0.42,
+            "minHrv": 38,
+            "maxRestingHR": 64
+          }
+        }
+      ]
+    }
+  },
+  "summaries": {
+    "person-demo/export.zip": {
+      "schemaVersion": 5,
+      "parserVersion": "1.1.0",
+      "exportDate": "2026-04-16T00:00:00Z",
+      "parseDurationMs": 1200,
+      "profile": {
+        "name": "Demo Person",
+        "heightCm": 177.8,
+        "dateOfBirth": null,
+        "biologicalSex": null
+      },
+      "dateRange": {
+        "start": "2026-02-15",
+        "end": "2026-04-15"
+      },
+      "typesSeen": [
+        "HKQuantityTypeIdentifierStepCount",
+        "HKQuantityTypeIdentifierHeartRate",
+        "HKCategoryTypeIdentifierSleepAnalysis"
+      ],
+      "recordCounts": {
+        "total": 125000,
+        "workouts": 36
+      },
+      "dailySummaries": {
+        "count": 60
+      },
+      "activitySummaries": {
+        "count": 60
+      },
+      "workouts": {
+        "count": 36
+      }
+    }
+  }
+}

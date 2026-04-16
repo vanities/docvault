@@ -1,0 +1,52 @@
+{
+  "entries": [
+    {
+      "id": "property-demo-1",
+      "name": "Rental Duplex",
+      "type": "rental",
+      "address": "456 Elm Street, Demo City, USA",
+      "purchaseDate": "2022-04-01",
+      "purchasePrice": 285000,
+      "currentValue": 345000,
+      "currentValueDate": "2026-04-01",
+      "squareFeet": 2100,
+      "acreage": 0.15,
+      "annualPropertyTax": 3450,
+      "mortgage": {
+        "principal": 225000,
+        "balance": 201400,
+        "rate": 3.25,
+        "termYears": 30,
+        "startDate": "2022-04-01",
+        "monthlyPayment": 980
+      },
+      "lastAmortizationDate": "2026-04-01",
+      "notes": "Long-term tenants, annual rent increase schedule.",
+      "createdAt": "2022-04-01T12:00:00.000Z"
+    },
+    {
+      "id": "property-demo-2",
+      "name": "Primary Residence",
+      "type": "primary",
+      "address": "789 Oak Lane, Demo Town, USA",
+      "purchaseDate": "2019-07-15",
+      "purchasePrice": 320000,
+      "currentValue": 415000,
+      "currentValueDate": "2026-04-01",
+      "squareFeet": 1850,
+      "acreage": 0.22,
+      "annualPropertyTax": 4100,
+      "mortgage": {
+        "principal": 256000,
+        "balance": 214500,
+        "rate": 3.75,
+        "termYears": 30,
+        "startDate": "2019-07-15",
+        "monthlyPayment": 1185
+      },
+      "lastAmortizationDate": "2026-04-01",
+      "notes": "",
+      "createdAt": "2019-07-15T12:00:00.000Z"
+    }
+  ]
+}

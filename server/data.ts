@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import type { BrokerAccount, SnapTradeConfig } from './brokers.js';
 import type { SimplefinConfig } from './simplefin.js';
 import { createLogger } from './logger.js';
+import { decryptField, encryptField, walkSensitiveFields } from './crypto-keys.js';
 
 const logFiles = createLogger('Files');
 const logMigration = createLogger('Migration');
@@ -27,7 +28,7 @@ export const RCLONE_CONFIG_PATH = path.join(DATA_DIR, '.rclone.conf');
 export const SYNC_SCRIPT_PATH = path.join(__dirname, '..', 'scripts', 'sync-to-dropbox.sh');
 export const SYNC_SCRIPT_DATA_PATH = path.join(DATA_DIR, 'sync-to-dropbox.sh');
 export const SCHEDULE_STATUS_FILE = path.join(DATA_DIR, '.docvault-schedule-status.json');
-export const PORT = 3005;
+export const PORT = Number(process.env.DOCVAULT_PORT) || 3005;
 
 // ============================================================================
 // Types
@@ -156,14 +157,56 @@ export async function saveConfig(config: Config): Promise<void> {
 export async function loadSettings(): Promise<Settings> {
   try {
     const content = await fs.readFile(SETTINGS_PATH, 'utf-8');
-    return JSON.parse(content);
+    const raw = JSON.parse(content) as Settings;
+    return walkSensitiveFields(raw, decryptField);
   } catch {
     return {};
   }
 }
 
 export async function saveSettings(settings: Settings): Promise<void> {
-  await fs.writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2));
+  const toPersist = walkSensitiveFields(settings, encryptField);
+  await fs.writeFile(SETTINGS_PATH, JSON.stringify(toPersist, null, 2));
+}
+
+// One-shot migration: read the settings file, re-save it. Because saveSettings
+// now encrypts sensitive fields and encryptField is idempotent (values already
+// tagged "enc:v1:" pass through), running this after an upgrade converts any
+// legacy plaintext values in place. Safe to call on every boot.
+export async function migrateSettingsEncryption(): Promise<{
+  encrypted: number;
+  skipped: number;
+}> {
+  const logMig = createLogger('CryptoMigration');
+  let rawContent: string;
+  try {
+    rawContent = await fs.readFile(SETTINGS_PATH, 'utf-8');
+  } catch {
+    return { encrypted: 0, skipped: 0 };
+  }
+  const raw = JSON.parse(rawContent) as Settings;
+
+  // Count plaintext sensitive fields before migration
+  let plaintextCount = 0;
+  let encryptedCount = 0;
+  walkSensitiveFields(raw, (v) => {
+    if (typeof v === 'string' && v.length > 0) {
+      if (v.startsWith('enc:v1:')) encryptedCount++;
+      else plaintextCount++;
+    }
+    return v;
+  });
+
+  if (plaintextCount === 0) {
+    return { encrypted: 0, skipped: encryptedCount };
+  }
+
+  const encrypted = walkSensitiveFields(raw, encryptField);
+  await fs.writeFile(SETTINGS_PATH, JSON.stringify(encrypted, null, 2));
+  logMig.info(
+    `Migrated ${plaintextCount} sensitive field(s) to encrypted form (${encryptedCount} were already encrypted)`
+  );
+  return { encrypted: plaintextCount, skipped: encryptedCount };
 }
 
 // Get the Claude model
