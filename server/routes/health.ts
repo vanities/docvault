@@ -468,11 +468,10 @@ export async function handleHealthRoutes(
       );
       body = JSON.parse(fixedBody) as Partial<DeltaFile & { raw?: boolean }>;
     } catch (parseErr) {
-      const preview = rawBody ? rawBody.slice(0, 500) : '(empty)';
+      const preview = rawBody ? rawBody.slice(0, 1000).replace(/\n/g, '↵') : '(empty)';
       log.error(
-        `Ingest JSON parse failed for ${personId}: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`
+        `Ingest JSON parse failed for ${personId}: ${parseErr instanceof Error ? parseErr.message : String(parseErr)} | len=${rawBody?.length ?? 0} | body: ${preview}`
       );
-      log.error(`Raw body preview: ${preview}`);
       return jsonResponse({ error: 'Invalid JSON body', preview }, 400);
     }
 
