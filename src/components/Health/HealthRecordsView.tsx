@@ -25,6 +25,7 @@ import {
   ShieldAlert,
   Scissors,
   ClipboardList,
+  RefreshCw,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -33,7 +34,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import type { HealthPerson } from '../../hooks/useFileSystemServer';
 import { useAppContext } from '../../contexts/AppContext';
 import { useHealthApi } from './useHealthApi';
-import type { ClinicalSummary } from './types';
+import type { ClinicalSummary, ExportInfo } from './types';
 import { LabsTab } from './Records/LabsTab';
 import { VitalsTab } from './Records/VitalsTab';
 import { ConditionsTab } from './Records/ConditionsTab';
@@ -138,6 +139,8 @@ export function HealthRecordsView() {
   const [error, setError] = useState<string | null>(null);
   const [noClinicalData, setNoClinicalData] = useState(false);
   const [people, setPeople] = useState<HealthPerson[]>([]);
+  const [exports, setExports] = useState<ExportInfo[]>([]);
+  const [reparsing, setReparsing] = useState(false);
   const [tab, setTabState] = useState<RecordsTab>(() => readStoredTab());
 
   const setTab = useCallback((next: RecordsTab) => {
@@ -190,6 +193,40 @@ export function HealthRecordsView() {
     void fetchClinical();
   }, [fetchClinical]);
 
+  // Load exports so the "no clinical data" state can offer a one-click
+  // re-parse when the person already has a parsed HealthKit summary — that
+  // means the zip on disk has clinical-records the old parse pipeline
+  // ignored, and one re-parse under the new pipeline will backfill them.
+  useEffect(() => {
+    if (!selectedHealthPersonId) {
+      setExports([]);
+      return;
+    }
+    void api
+      .listExports(selectedHealthPersonId)
+      .then(setExports)
+      .catch(() => setExports([]));
+  }, [api, selectedHealthPersonId]);
+
+  const handleReparse = useCallback(async () => {
+    if (!selectedHealthPersonId) return;
+    const parsedZips = exports
+      .filter((e) => e.parsed)
+      .sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
+    const target = parsedZips[0] ?? exports[0];
+    if (!target) return;
+    setReparsing(true);
+    setError(null);
+    try {
+      await api.parseExport(selectedHealthPersonId, target.filename);
+      await fetchClinical();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReparsing(false);
+    }
+  }, [api, selectedHealthPersonId, exports, fetchClinical]);
+
   // ─── Guard rails ────────────────────────────────────────────────
 
   if (!selectedHealthPersonId) {
@@ -233,6 +270,8 @@ export function HealthRecordsView() {
   }
 
   if (noClinicalData || !summary) {
+    const parsedExport = exports.find((e) => e.parsed);
+    const hasReparsableZip = parsedExport !== undefined;
     return (
       <Shell>
         <RecordsHeader person={person} />
@@ -241,15 +280,45 @@ export function HealthRecordsView() {
             <FileWarning className="w-5 h-5 text-amber-400" />
           </div>
           <h2 className="font-display italic text-lg text-surface-950 mb-1">
-            No clinical records in this export
+            {hasReparsableZip
+              ? 'Clinical records not yet parsed from this export'
+              : 'No clinical records in this export'}
           </h2>
           <p className="text-sm text-surface-600 max-w-md mx-auto leading-relaxed">
-            Clinical records come from providers you&apos;ve linked in iOS Settings → Health →
-            Health Records. If you&apos;ve added providers since this zip was exported, do a new{' '}
-            <strong>Export All Health Data</strong> and re-upload — clinical records will be parsed
-            automatically.
+            {hasReparsableZip ? (
+              <>
+                Your <code className="font-mono text-[11.5px]">{parsedExport.filename}</code> was
+                parsed before clinical-records support was added. Re-parse the zip already on disk
+                to backfill labs, panels, conditions, medications, immunizations, allergies, and
+                procedures — no re-upload needed.
+              </>
+            ) : (
+              <>
+                Clinical records come from providers you&apos;ve linked in iOS Settings → Health →
+                Health Records. If you&apos;ve added providers since this zip was exported, do a new{' '}
+                <strong>Export All Health Data</strong> and re-upload — clinical records will be
+                parsed automatically.
+              </>
+            )}
           </p>
-          <div className="text-[10.5px] text-surface-500 mt-4 italic leading-relaxed max-w-md mx-auto">
+          {hasReparsableZip && (
+            <div className="mt-5">
+              <Button onClick={() => void handleReparse()} disabled={reparsing} className="gap-1.5">
+                {reparsing ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Re-parsing… (30–60s)
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Re-parse {parsedExport.filename}
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+          <div className="text-[10.5px] text-surface-500 mt-5 italic leading-relaxed max-w-md mx-auto">
             Note: clinical records (labs, conditions, etc.) can&apos;t be streamed via iOS Shortcuts
             — Apple locks them behind a native API. The bulk export zip is the only pipe.
           </div>
