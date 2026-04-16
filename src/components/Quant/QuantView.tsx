@@ -31,6 +31,10 @@ import { FlippeningChart } from './FlippeningChart';
 import { RealRatesChart } from './RealRatesChart';
 import { HashRateChart } from './HashRateChart';
 import { RunningRoiChart } from './RunningRoiChart';
+import { HousingDashboardChart } from './HousingDashboardChart';
+import { GdpGrowthChart } from './GdpGrowthChart';
+import { CommoditiesChart } from './CommoditiesChart';
+import { VixTermStructureChart } from './VixTermStructureChart';
 import { useQuantRefresh } from './useQuantData';
 
 /** Four top-level tabs — an overview snapshot plus Cowen's 3 categories. */
@@ -282,6 +286,17 @@ export function QuantView() {
           <ChartGroup title="Real Interest Rates" subtitle="DGS10 − T10YIE and DGS5 − T5YIE">
             <RealRatesChart />
           </ChartGroup>
+
+          <ChartGroup
+            title="GDP & Growth"
+            subtitle="Real GDP + industrial production + leading index"
+          >
+            <GdpGrowthChart />
+          </ChartGroup>
+
+          <ChartGroup title="Housing Market" subtitle="Case-Shiller + mortgage rates + starts">
+            <HousingDashboardChart />
+          </ChartGroup>
         </TabsContent>
 
         {/* ── TradFi ─────────────────────────────────────── */}
@@ -315,6 +330,14 @@ export function QuantView() {
             subtitle="1y / 3y / 5y / 10y rolling holds, 1871+"
           >
             <RunningRoiChart asset="spx" />
+          </ChartGroup>
+
+          <ChartGroup title="VIX Term Structure" subtitle="30d / 3mo / 6mo + VXN">
+            <VixTermStructureChart />
+          </ChartGroup>
+
+          <ChartGroup title="Commodities" subtitle="Gold, Silver, Oil, Copper, Nat Gas, Platinum">
+            <CommoditiesChart />
           </ChartGroup>
         </TabsContent>
       </Tabs>

@@ -38,6 +38,10 @@ const TTL = {
   realRates: DAY_MS, // FRED daily release for yields + breakevens
   hashRate: DAY_MS, // blockchain.info daily hash rate
   runningRoi: DAY_MS, // derived from cached BTC + Shiller
+  housing: DAY_MS, // FRED housing indicators, monthly
+  gdpGrowth: DAY_MS, // FRED GDP + growth series
+  commodities: DAY_MS, // yahoo futures tickers
+  vixTermStructure: 6 * 60 * 60 * 1000, // yahoo VIX variants
 };
 
 interface CacheEntry<T> {
@@ -68,6 +72,10 @@ type QuantCache = {
   realRates?: CacheEntry<RealRatesResponse>;
   hashRate?: CacheEntry<HashRateResponse>;
   runningRoi?: CacheEntry<RunningRoiResponse>;
+  housing?: CacheEntry<MacroDashboardResponse>;
+  gdpGrowth?: CacheEntry<MacroDashboardResponse>;
+  commodities?: CacheEntry<MacroDashboardResponse>;
+  vixTermStructure?: CacheEntry<MacroDashboardResponse>;
 };
 
 async function loadCache(): Promise<QuantCache> {
@@ -190,6 +198,14 @@ const CACHE = {
   hashRate: { maxAge: 4 * 3600, swr: 24 * 3600 },
   // Running ROI — derived, no upstream fetch cost. 2h + 12h SWR.
   runningRoi: { maxAge: 2 * 3600, swr: 12 * 3600 },
+  // Housing — monthly FRED releases, 2h + 12h SWR.
+  housing: { maxAge: 2 * 3600, swr: 12 * 3600 },
+  // GDP & Growth — quarterly FRED releases, 2h + 12h SWR.
+  gdpGrowth: { maxAge: 2 * 3600, swr: 12 * 3600 },
+  // Commodities — yahoo futures EOD, 1h + 12h SWR.
+  commodities: { maxAge: 3600, swr: 12 * 3600 },
+  // VIX Term Structure — yahoo EOD, 1h + 12h SWR.
+  vixTermStructure: { maxAge: 3600, swr: 12 * 3600 },
   // Snapshots grow one row per day; short cache so new snapshots appear fast.
   snapshots: { maxAge: 300, swr: 3600 },
 };
@@ -2583,6 +2599,108 @@ export const FINANCIAL_CONDITIONS_SERIES: MacroSeriesSpec[] = [
   },
 ];
 
+export const HOUSING_SERIES: MacroSeriesSpec[] = [
+  {
+    id: 'CSUSHPISA',
+    label: 'Case-Shiller Home Price',
+    description: 'S&P/Case-Shiller 20-city composite home price index (seasonally adjusted).',
+    unit: '',
+    decimals: 1,
+    start: '1990-01-01',
+  },
+  {
+    id: 'MORTGAGE30US',
+    label: '30Y Mortgage Rate',
+    description: 'Freddie Mac 30-year fixed-rate mortgage average (weekly).',
+    unit: '%',
+    decimals: 2,
+    start: '1990-01-01',
+  },
+  {
+    id: 'HOUST',
+    label: 'Housing Starts',
+    description: 'New privately-owned housing units started (thousands, SAAR).',
+    unit: 'k',
+    decimals: 0,
+    start: '1990-01-01',
+  },
+  {
+    id: 'HSN1F',
+    label: 'New Home Sales',
+    description: 'New one-family houses sold (thousands, SAAR).',
+    unit: 'k',
+    decimals: 0,
+    start: '1990-01-01',
+  },
+  {
+    id: 'MSPUS',
+    label: 'Median New Home Price',
+    description: 'Median sales price of new houses sold (USD, quarterly).',
+    unit: '',
+    decimals: 0,
+    start: '1990-01-01',
+  },
+  {
+    id: 'RRVRUSQ156N',
+    label: 'Rental Vacancy Rate',
+    description: 'US rental vacancy rate (quarterly).',
+    unit: '%',
+    decimals: 1,
+    start: '1990-01-01',
+  },
+];
+
+export const GDP_GROWTH_SERIES: MacroSeriesSpec[] = [
+  {
+    id: 'GDPC1',
+    label: 'Real GDP',
+    description: 'Real Gross Domestic Product (billions of chained 2017 dollars, quarterly).',
+    unit: '',
+    decimals: 0,
+    start: '1990-01-01',
+  },
+  {
+    id: 'GDP',
+    label: 'Nominal GDP',
+    description: 'Gross Domestic Product (billions USD, quarterly).',
+    unit: '',
+    decimals: 0,
+    start: '1990-01-01',
+  },
+  {
+    id: 'INDPRO',
+    label: 'Industrial Production',
+    description: 'Industrial production index (2017 = 100). Coincident growth indicator.',
+    unit: '',
+    decimals: 1,
+    start: '1990-01-01',
+  },
+  {
+    id: 'RSAFS',
+    label: 'Retail Sales',
+    description: 'Advance retail and food services sales (millions USD).',
+    unit: 'M',
+    decimals: 0,
+    start: '1992-01-01',
+  },
+  {
+    id: 'TCU',
+    label: 'Capacity Utilization',
+    description: 'Total industry capacity utilization (%).',
+    unit: '%',
+    decimals: 1,
+    start: '1990-01-01',
+  },
+  {
+    id: 'USSLIND',
+    label: 'Leading Index',
+    description: 'Philly Fed Leading Index, 6-month growth forecast.',
+    unit: '',
+    decimals: 2,
+    start: '1990-01-01',
+  },
+];
+
 const JOBS_SERIES: MacroSeriesSpec[] = [
   {
     id: 'UNRATE',
@@ -2726,6 +2844,174 @@ async function computeInflationDashboard(apiKey: string): Promise<MacroDashboard
 
 async function computeFinancialConditions(apiKey: string): Promise<MacroDashboardResponse> {
   return computeMacroSeriesList(apiKey, FINANCIAL_CONDITIONS_SERIES);
+}
+
+async function computeHousingDashboard(apiKey: string): Promise<MacroDashboardResponse> {
+  return computeMacroSeriesList(apiKey, HOUSING_SERIES);
+}
+
+async function computeGdpGrowthDashboard(apiKey: string): Promise<MacroDashboardResponse> {
+  return computeMacroSeriesList(apiKey, GDP_GROWTH_SERIES);
+}
+
+// ---------------------------------------------------------------------------
+// Yahoo-backed mini dashboards — commodities futures and VIX term structure.
+// These reuse the MacroDashboardResponse / MacroSeries shape so the frontend
+// can use the same MiniChart grid component as the FRED dashboards.
+// ---------------------------------------------------------------------------
+
+interface YahooSeriesSpec {
+  id: string;
+  label: string;
+  description: string;
+  unit: string;
+  decimals: number;
+}
+
+async function computeYahooDashboard(
+  specs: YahooSeriesSpec[],
+  startIso: string
+): Promise<MacroDashboardResponse> {
+  const results = await batchWithConcurrency(specs, 4, async (spec) => {
+    try {
+      const closes = await fetchYahooDailyCloses(spec.id, startIso);
+      if (closes.length === 0) {
+        throw new Error('empty closes');
+      }
+      const last = closes[closes.length - 1];
+      // YoY change: walk back to the point closest to 365d ago
+      const targetTime = last.t - 365 * DAY_MS;
+      let yearAgo: { t: number; price: number } | undefined;
+      for (let i = closes.length - 1; i >= 0; i--) {
+        if (closes[i].t <= targetTime) {
+          yearAgo = closes[i];
+          break;
+        }
+      }
+      const yoyChange =
+        yearAgo && yearAgo.price !== 0
+          ? ((last.price - yearAgo.price) / yearAgo.price) * 100
+          : null;
+      const points = downsample(
+        closes.map((c) => ({ t: c.t, value: c.price })),
+        1500
+      );
+      return {
+        id: spec.id,
+        label: spec.label,
+        description: spec.description,
+        unit: spec.unit,
+        decimals: spec.decimals,
+        points,
+        latest: { date: new Date(last.t).toISOString().slice(0, 10), value: last.price },
+        yoyChange,
+      } satisfies MacroSeries;
+    } catch (err) {
+      logQuant.warn(`Yahoo ${spec.id} failed: ${err instanceof Error ? err.message : err}`);
+      return {
+        id: spec.id,
+        label: spec.label,
+        description: spec.description,
+        unit: spec.unit,
+        decimals: spec.decimals,
+        points: [],
+        latest: null,
+        yoyChange: null,
+      } satisfies MacroSeries;
+    }
+  });
+  return {
+    series: results,
+    fetchedAt: Date.now(),
+    // Reuse the 'fred' source tag since MacroDashboardResponse's type is
+    // constrained to it; the description fields already explain the actual
+    // upstream.
+    source: 'fred',
+  };
+}
+
+export const COMMODITIES_SERIES: YahooSeriesSpec[] = [
+  {
+    id: 'GC=F',
+    label: 'Gold',
+    description: 'Gold front-month futures (COMEX, USD per troy ounce).',
+    unit: '',
+    decimals: 2,
+  },
+  {
+    id: 'SI=F',
+    label: 'Silver',
+    description: 'Silver front-month futures (COMEX, USD per troy ounce).',
+    unit: '',
+    decimals: 3,
+  },
+  {
+    id: 'CL=F',
+    label: 'WTI Crude',
+    description: 'WTI crude oil front-month futures (NYMEX, USD per barrel).',
+    unit: '',
+    decimals: 2,
+  },
+  {
+    id: 'HG=F',
+    label: 'Copper',
+    description: 'Copper front-month futures (COMEX, USD per pound). "Dr. Copper" — growth gauge.',
+    unit: '',
+    decimals: 3,
+  },
+  {
+    id: 'NG=F',
+    label: 'Natural Gas',
+    description: 'Natural gas front-month futures (NYMEX, USD per MMBtu).',
+    unit: '',
+    decimals: 3,
+  },
+  {
+    id: 'PL=F',
+    label: 'Platinum',
+    description: 'Platinum front-month futures (NYMEX, USD per troy ounce).',
+    unit: '',
+    decimals: 2,
+  },
+];
+
+export const VIX_TERM_SERIES: YahooSeriesSpec[] = [
+  {
+    id: '^VIX',
+    label: 'VIX (30d)',
+    description: 'CBOE Volatility Index — 30-day expected S&P 500 volatility.',
+    unit: '',
+    decimals: 2,
+  },
+  {
+    id: '^VIX3M',
+    label: 'VIX3M (3mo)',
+    description: '3-month S&P 500 implied volatility. Normal term structure is VIX < VIX3M.',
+    unit: '',
+    decimals: 2,
+  },
+  {
+    id: '^VIX6M',
+    label: 'VIX6M (6mo)',
+    description: '6-month S&P 500 implied volatility.',
+    unit: '',
+    decimals: 2,
+  },
+  {
+    id: '^VXN',
+    label: 'VXN (Nasdaq)',
+    description: 'CBOE Nasdaq-100 Volatility Index — tech-sector volatility.',
+    unit: '',
+    decimals: 2,
+  },
+];
+
+async function computeCommodities(): Promise<MacroDashboardResponse> {
+  return computeYahooDashboard(COMMODITIES_SERIES, '2000-01-01');
+}
+
+async function computeVixTermStructure(): Promise<MacroDashboardResponse> {
+  return computeYahooDashboard(VIX_TERM_SERIES, '2010-01-01');
 }
 
 // ---------------------------------------------------------------------------
@@ -4157,6 +4443,126 @@ export async function handleQuantRoutes(
         );
       }
       return jsonResponse({ error: `Financial conditions fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/macro/housing — 6-series housing dashboard from FRED
+  if (pathname === '/api/quant/macro/housing' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.housing, TTL.housing)) {
+      return cachedJsonResponse(req, { ...cache.housing!.data, cached: true }, CACHE.housing);
+    }
+    try {
+      const settings = await loadSettings();
+      const fredKey = settings.fredApiKey;
+      if (!fredKey) {
+        return jsonResponse(
+          { error: 'FRED API key not configured. Add one in Settings → Quant.' },
+          400
+        );
+      }
+      const data = await computeHousingDashboard(fredKey);
+      cache.housing = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.housing);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.housing) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.housing.data, cached: true, stale: true, fetchError: msg },
+          CACHE.housing
+        );
+      }
+      return jsonResponse({ error: `Housing fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/macro/gdp-growth — 6-series growth dashboard from FRED
+  if (pathname === '/api/quant/macro/gdp-growth' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.gdpGrowth, TTL.gdpGrowth)) {
+      return cachedJsonResponse(req, { ...cache.gdpGrowth!.data, cached: true }, CACHE.gdpGrowth);
+    }
+    try {
+      const settings = await loadSettings();
+      const fredKey = settings.fredApiKey;
+      if (!fredKey) {
+        return jsonResponse(
+          { error: 'FRED API key not configured. Add one in Settings → Quant.' },
+          400
+        );
+      }
+      const data = await computeGdpGrowthDashboard(fredKey);
+      cache.gdpGrowth = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.gdpGrowth);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.gdpGrowth) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.gdpGrowth.data, cached: true, stale: true, fetchError: msg },
+          CACHE.gdpGrowth
+        );
+      }
+      return jsonResponse({ error: `GDP growth fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/tradfi/commodities — gold/silver/oil/copper/nat gas/platinum
+  if (pathname === '/api/quant/tradfi/commodities' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.commodities, TTL.commodities)) {
+      return cachedJsonResponse(
+        req,
+        { ...cache.commodities!.data, cached: true },
+        CACHE.commodities
+      );
+    }
+    try {
+      const data = await computeCommodities();
+      cache.commodities = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.commodities);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.commodities) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.commodities.data, cached: true, stale: true, fetchError: msg },
+          CACHE.commodities
+        );
+      }
+      return jsonResponse({ error: `Commodities fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/tradfi/vix-term — VIX, VIX3M, VIX6M, VXN
+  if (pathname === '/api/quant/tradfi/vix-term' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.vixTermStructure, TTL.vixTermStructure)) {
+      return cachedJsonResponse(
+        req,
+        { ...cache.vixTermStructure!.data, cached: true },
+        CACHE.vixTermStructure
+      );
+    }
+    try {
+      const data = await computeVixTermStructure();
+      cache.vixTermStructure = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.vixTermStructure);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (cache.vixTermStructure) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.vixTermStructure.data, cached: true, stale: true, fetchError: msg },
+          CACHE.vixTermStructure
+        );
+      }
+      return jsonResponse({ error: `VIX term structure fetch failed: ${msg}` }, 502);
     }
   }
 
