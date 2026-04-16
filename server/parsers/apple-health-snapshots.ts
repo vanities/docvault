@@ -20,8 +20,50 @@ import type { AppleHealthSummary, DailySummary, WorkoutEntry } from './apple-hea
  *   1 — initial: activity/heart/sleep/workouts/body segments
  *   2 — +insights per segment, +WorkoutsSnapshot.distanceUnit,
  *       humanizeTypeName applied to insight strings
+ *   3 — delta (iOS Shortcut) overlay support — snapshots may now include
+ *       days that come from shortcut-posted deltas rather than the bulk
+ *       summary, and existing days may have metrics replaced by deltas.
  */
-export const SNAPSHOT_SCHEMA_VERSION = 2;
+export const SNAPSHOT_SCHEMA_VERSION = 3;
+
+/**
+ * A delta file — written by the /api/health/:personId/ingest endpoint when
+ * an iOS Shortcut POSTs daily health data. Each file covers one date and
+ * contains a small subset of metrics the shortcut chose to report. The
+ * snapshot computer overlays these onto the corresponding day of the bulk
+ * parse summary at compute time, so deltas are lossless and inspectable
+ * (each one is a file on disk that can be deleted or hand-edited).
+ */
+export interface DeltaFile {
+  /** YYYY-MM-DD — the day this data covers. */
+  date: string;
+  /** Free-form identifier for where the data came from (e.g. "shortcut-v1"). */
+  source: string;
+  /** ISO timestamp the server received the POST (added by the endpoint). */
+  receivedAt?: string;
+  /**
+   * Map of HealthKit type (stripped prefix, same as parser) to a partial
+   * NumericAggregate. Each metric replaces the corresponding entry in
+   * `DailySummary.numeric[type]` entirely — it's an overwrite, not a merge.
+   */
+  metrics: Record<string, DeltaMetric>;
+}
+
+/**
+ * A metric reported by a Shortcut. All fields optional so the shortcut can
+ * send whatever it has — e.g. StepCount just needs `sum`, HeartRate wants
+ * `min`/`avg`/`max`/`count`. The overlay function converts this to a full
+ * NumericAggregate by filling in missing fields with reasonable defaults.
+ */
+export interface DeltaMetric {
+  sum?: number;
+  avg?: number;
+  min?: number;
+  max?: number;
+  count?: number;
+  last?: number;
+  unit?: string;
+}
 
 /**
  * A single computed insight about a segment. Rendered as a stat tile in
@@ -1249,27 +1291,106 @@ export function computeBodySnapshot(summary: AppleHealthSummary): BodySnapshot {
 // ===========================================================================
 
 /**
+ * Overlay a list of deltas onto a summary, returning a *new* summary with
+ * the delta metrics patched in. The original summary is not mutated.
+ *
+ * Merge rules:
+ *   - For each delta file, find the day in `dailySummaries` matching
+ *     `delta.date`. If the day doesn't exist yet (shortcut ran for a date
+ *     past the bulk export's range), create a fresh `DailySummary` for it.
+ *   - For each metric in `delta.metrics`, replace the corresponding entry
+ *     in `day.numeric[type]` entirely with a NumericAggregate built from
+ *     the delta's fields. Delta wins over the parser's baseline.
+ *   - Missing NumericAggregate fields are filled with defaults: count=1,
+ *     sum=0 (or the scalar equivalent), etc. Enough to satisfy downstream
+ *     aggregators without lying about what the shortcut actually reported.
+ */
+export function overlayDeltas(
+  summary: AppleHealthSummary,
+  deltas: readonly DeltaFile[]
+): AppleHealthSummary {
+  if (deltas.length === 0) return summary;
+
+  // Shallow-clone the dailySummaries map; we replace individual days
+  // as needed rather than deep-cloning everything up front.
+  const newDaily: Record<string, DailySummary> = { ...summary.dailySummaries };
+  const newDateRange = {
+    start: summary.dateRange.start,
+    end: summary.dateRange.end,
+  };
+  let newTotal = summary.recordCounts.totalRecords;
+
+  for (const delta of deltas) {
+    const existing = newDaily[delta.date];
+    // Clone just this day so we don't mutate the caller's summary
+    const dayCopy: DailySummary = existing
+      ? { date: delta.date, numeric: { ...existing.numeric }, category: { ...existing.category } }
+      : { date: delta.date, numeric: {}, category: {} };
+
+    for (const [type, m] of Object.entries(delta.metrics)) {
+      // Build a full NumericAggregate from whatever fields the shortcut sent.
+      // Preference order for the single-value fallback: sum, avg, last, min, max.
+      const fallback = m.sum ?? m.avg ?? m.last ?? m.min ?? m.max ?? 0;
+      const count = m.count ?? 1;
+      const sum = m.sum ?? (m.avg !== undefined ? m.avg * count : fallback);
+      dayCopy.numeric[type] = {
+        count,
+        sum,
+        min: m.min ?? fallback,
+        max: m.max ?? fallback,
+        first: m.last ?? fallback,
+        last: m.last ?? fallback,
+        unit: m.unit,
+      };
+    }
+
+    newDaily[delta.date] = dayCopy;
+
+    // Extend the date range if the delta is outside the original span
+    if (!newDateRange.start || delta.date < newDateRange.start) newDateRange.start = delta.date;
+    if (!newDateRange.end || delta.date > newDateRange.end) newDateRange.end = delta.date;
+    // Bump record count — the delta represents "at least one record worth of data"
+    if (!existing) newTotal += 1;
+  }
+
+  return {
+    ...summary,
+    dailySummaries: newDaily,
+    dateRange: newDateRange,
+    recordCounts: {
+      ...summary.recordCounts,
+      totalRecords: newTotal,
+    },
+  };
+}
+
+/**
  * Compute all snapshots for a parsed summary. Pure — call this whenever
  * the source summary changes, or backfill existing summaries in the store.
  *
  * The returned snapshot inherits `parserVersion` from the source summary
  * so the UI can detect when a cached snapshot was produced by an older
  * parser (and therefore may be missing data a newer parser would capture).
+ *
+ * @param deltas optional DeltaFile[] from shortcut-posted daily data.
+ *               Overlaid on the summary before segment computation.
  */
 export function computeSnapshots(
   summary: AppleHealthSummary,
   sourceFilename: string,
-  now: Date = new Date()
+  now: Date = new Date(),
+  deltas: readonly DeltaFile[] = []
 ): PersonSnapshots {
+  const merged = overlayDeltas(summary, deltas);
   return {
     schemaVersion: SNAPSHOT_SCHEMA_VERSION,
     generatedAt: now.toISOString(),
     sourceFilename,
-    parserVersion: summary.parserVersion,
-    activity: computeActivitySnapshot(summary),
-    heart: computeHeartSnapshot(summary),
-    sleep: computeSleepSnapshot(summary),
-    workouts: computeWorkoutsSnapshot(summary, now),
-    body: computeBodySnapshot(summary),
+    parserVersion: merged.parserVersion,
+    activity: computeActivitySnapshot(merged),
+    heart: computeHeartSnapshot(merged),
+    sleep: computeSleepSnapshot(merged),
+    workouts: computeWorkoutsSnapshot(merged, now),
+    body: computeBodySnapshot(merged),
   };
 }

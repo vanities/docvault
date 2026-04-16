@@ -28,6 +28,7 @@ import { Button } from '@/components/ui/button';
 import { useHealthApi } from './useHealthApi';
 import type { AppleHealthSummary, ExportInfo } from './types';
 import { DailySummaryTable } from './DailySummaryTable';
+import { ShortcutSetupGuide } from './ShortcutSetupGuide';
 
 interface PersonDetailProps {
   person: HealthPerson;
@@ -315,6 +316,11 @@ export function PersonDetail({ person }: PersonDetailProps) {
           <WorkoutList summary={summary} />
         </>
       )}
+
+      {/* Shortcut daily-sync setup guide. Only rendered once the person has
+          parsed data — the daily flow is additive on top of a bulk baseline,
+          so it makes no sense to offer it before there's anything to overlay. */}
+      {hasParsedExport && <ShortcutSetupGuide personId={person.id} personName={person.name} />}
     </div>
   );
 }

@@ -30,7 +30,7 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import { jsonResponse, ensureDir, DATA_DIR } from '../data.js';
+import { jsonResponse, ensureDir, getOrCreateHealthIngestToken, DATA_DIR } from '../data.js';
 import type { HealthPerson } from '../data.js';
 import {
   parseAppleHealthExport,
@@ -40,6 +40,7 @@ import {
 import {
   computeSnapshots,
   SNAPSHOT_SCHEMA_VERSION,
+  type DeltaFile,
   type PersonSnapshots,
   type HealthSegment,
 } from '../parsers/apple-health-snapshots.js';
@@ -121,6 +122,53 @@ async function requirePerson(personId: string): Promise<HealthPerson> {
 
 function getPersonExportsDir(personId: string): string {
   return path.join(HEALTH_DATA_DIR, personId, 'exports');
+}
+
+function getPersonDeltasDir(personId: string): string {
+  return path.join(HEALTH_DATA_DIR, personId, 'deltas');
+}
+
+/**
+ * Load all delta JSON files for a person. Each file is named `<YYYY-MM-DD>.json`
+ * and contains a DeltaFile body. Malformed or non-matching files are silently
+ * skipped — the caller gets only valid entries.
+ */
+async function loadPersonDeltas(personId: string): Promise<DeltaFile[]> {
+  const dir = getPersonDeltasDir(personId);
+  let entries: string[];
+  try {
+    entries = await fs.readdir(dir);
+  } catch {
+    return [];
+  }
+  const out: DeltaFile[] = [];
+  for (const name of entries) {
+    if (!/^\d{4}-\d{2}-\d{2}\.json$/.test(name)) continue;
+    try {
+      const content = await fs.readFile(path.join(dir, name), 'utf-8');
+      const parsed = JSON.parse(content) as Partial<DeltaFile>;
+      if (
+        typeof parsed.date === 'string' &&
+        /^\d{4}-\d{2}-\d{2}$/.test(parsed.date) &&
+        parsed.metrics &&
+        typeof parsed.metrics === 'object'
+      ) {
+        out.push(parsed as DeltaFile);
+      }
+    } catch {
+      // skip corrupt files silently
+    }
+  }
+  return out;
+}
+
+/** Is `date` within ±1 calendar day of the server's local date? */
+function isDateWithinRange(date: string, now: Date = new Date()): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const target = new Date(`${date}T00:00:00Z`);
+  const today = new Date(`${now.toISOString().slice(0, 10)}T00:00:00Z`);
+  const deltaDays = Math.abs(target.getTime() - today.getTime()) / 86_400_000;
+  return deltaDays <= 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -226,6 +274,149 @@ export async function handleHealthRoutes(
     }
 
     return jsonResponse({ error: 'Invalid mode (expected archive|delete)' }, 400);
+  }
+
+  // -------------------------------------------------------------------------
+  // Ingest token (for iOS Shortcuts auth)
+  // -------------------------------------------------------------------------
+
+  // GET /api/health/ingest-token — returns the stored token, generating one
+  // on first request. The standard /api/* auth layer (session cookie) already
+  // guards this route, so callers must already be logged in to DocVault.
+  if (pathname === '/api/health/ingest-token' && req.method === 'GET') {
+    const token = await getOrCreateHealthIngestToken();
+    return jsonResponse({ token });
+  }
+
+  // GET /api/health/:personId/shortcut-config — everything the iOS Shortcut
+  // needs in one response: the full ingest URL (including host), the auth
+  // token, and a structured list of metrics to capture. The UI uses this
+  // to render a copy-paste-friendly setup guide next to the Automation
+  // building steps.
+  const shortcutConfigMatch = pathname.match(/^\/api\/health\/([^/]+)\/shortcut-config$/);
+  if (shortcutConfigMatch && req.method === 'GET') {
+    const personId = shortcutConfigMatch[1];
+    await requirePerson(personId);
+    const token = await getOrCreateHealthIngestToken();
+    // Build the URL from the incoming Host header so it works whether the
+    // user is accessing DocVault via LAN IP, hostname, or Tailscale/Wireguard.
+    const host = req.headers.get('host') ?? 'docvault.local';
+    const proto = req.headers.get('x-forwarded-proto') ?? 'http';
+    const ingestUrl = `${proto}://${host}/api/health/${personId}/ingest`;
+
+    return jsonResponse({
+      personId,
+      ingestUrl,
+      authHeader: 'X-Docvault-Auth',
+      authToken: token,
+      scheduleTime: '06:00', // 6 AM user-local, configurable
+      // Metric list for the shortcut to capture. Order matters for the
+      // UI walkthrough since each is one "Find Health Samples" action.
+      metrics: [
+        { hkType: 'StepCount', healthAppName: 'Steps', aggregate: 'Sum' },
+        { hkType: 'ActiveEnergyBurned', healthAppName: 'Active Energy', aggregate: 'Sum' },
+        { hkType: 'AppleExerciseTime', healthAppName: 'Exercise Minutes', aggregate: 'Sum' },
+        { hkType: 'AppleStandHour', healthAppName: 'Stand Hours', aggregate: 'Count' },
+        {
+          hkType: 'DistanceWalkingRunning',
+          healthAppName: 'Walking + Running Distance',
+          aggregate: 'Sum',
+        },
+        { hkType: 'FlightsClimbed', healthAppName: 'Flights Climbed', aggregate: 'Sum' },
+        { hkType: 'HeartRate', healthAppName: 'Heart Rate', aggregate: 'Min/Avg/Max/Count' },
+        {
+          hkType: 'RestingHeartRate',
+          healthAppName: 'Resting Heart Rate',
+          aggregate: 'Latest Sample',
+        },
+        {
+          hkType: 'HeartRateVariabilitySDNN',
+          healthAppName: 'Heart Rate Variability',
+          aggregate: 'Average',
+        },
+      ],
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Ingest (POST daily health metrics from iOS Shortcut)
+  // -------------------------------------------------------------------------
+
+  // POST /api/health/:personId/ingest
+  //
+  // Headers: X-Docvault-Auth: <token>
+  // Body: { date, source, metrics: { <HKType>: {sum|avg|min|max|count|last|unit?} } }
+  //
+  // Writes `data/health/<personId>/deltas/<date>.json` with the raw body.
+  // Each subsequent POST for the same date overwrites the file. Snapshot is
+  // bumped via schema-version mismatch so the next read auto-heals with the
+  // new delta overlaid on the baseline summary.
+  const ingestMatch = pathname.match(/^\/api\/health\/([^/]+)\/ingest$/);
+  if (ingestMatch && req.method === 'POST') {
+    const personId = ingestMatch[1];
+
+    // Auth: header vs stored token
+    const providedToken = req.headers.get('x-docvault-auth') ?? '';
+    const expectedToken = await getOrCreateHealthIngestToken();
+    if (!providedToken || providedToken !== expectedToken) {
+      log.warn(`Ingest auth rejected for ${personId}`);
+      return jsonResponse({ error: 'Unauthorized — bad or missing X-Docvault-Auth header' }, 401);
+    }
+
+    try {
+      await requirePerson(personId);
+    } catch {
+      return jsonResponse({ error: 'Person not found' }, 404);
+    }
+
+    let body: Partial<DeltaFile>;
+    try {
+      body = (await req.json()) as Partial<DeltaFile>;
+    } catch {
+      return jsonResponse({ error: 'Invalid JSON body' }, 400);
+    }
+
+    const date = body.date;
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return jsonResponse({ error: 'Missing or invalid `date` — expected YYYY-MM-DD' }, 400);
+    }
+    if (!isDateWithinRange(date)) {
+      return jsonResponse({ error: `Date "${date}" is not within ±1 day of server time` }, 400);
+    }
+    if (!body.metrics || typeof body.metrics !== 'object') {
+      return jsonResponse({ error: 'Missing or invalid `metrics` object' }, 400);
+    }
+
+    // Normalize the stored shape so merge logic can rely on known fields
+    const normalized: DeltaFile = {
+      date,
+      source: body.source ?? 'unknown',
+      receivedAt: new Date().toISOString(),
+      metrics: body.metrics,
+    };
+
+    const dir = getPersonDeltasDir(personId);
+    await ensureDir(dir);
+    const targetPath = path.join(dir, `${date}.json`);
+    const tmp = `${targetPath}.tmp-${Date.now()}`;
+    await fs.writeFile(tmp, JSON.stringify(normalized, null, 2));
+    await fs.rename(tmp, targetPath);
+
+    // Drop the cached snapshot so the next read re-computes with the delta
+    const store = await loadHealthStore();
+    for (const k of Object.keys(store.snapshots)) {
+      if (k.startsWith(`${personId}/`)) delete store.snapshots[k];
+    }
+    await saveHealthStore(store);
+
+    log.info(
+      `Ingested ${personId}/${date} with ${Object.keys(normalized.metrics).length} metric(s) from "${normalized.source}"`
+    );
+    return jsonResponse({
+      ok: true,
+      filename: `deltas/${date}.json`,
+      updated: Object.keys(normalized.metrics),
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -439,32 +630,34 @@ export async function handleHealthRoutes(
     //   (b) snapshot's parserVersion doesn't match the summary's
     //       (summary was re-parsed with a newer parser)
     //   (c) snapshot's schemaVersion is older than the current snapshot
-    //       computer's SNAPSHOT_SCHEMA_VERSION (e.g. we added `insights`
-    //       or changed how type names are rendered in insight strings)
-    // User-gated re-parse is only needed when the SUMMARY itself is stale
-    // (case handled below via `stale` flag — see CURRENT_PARSER_VERSION).
+    //       computer's SNAPSHOT_SCHEMA_VERSION
+    // Deltas (daily Shortcut POSTs) are loaded here and passed into
+    // computeSnapshots so they overlay the bulk-parse summary. The ingest
+    // endpoint drops the cached snapshot on every POST so the first read
+    // after an ingest always falls into the backfill branch below.
     let snapshots = store.snapshots[key];
     const summary = store.summaries[key];
     const filename = key.slice(prefix.length);
+    const deltas = await loadPersonDeltas(personId);
     if (!snapshots) {
-      log.info(`Backfilling snapshot for ${key}`);
-      snapshots = computeSnapshots(summary, filename);
+      log.info(`Backfilling snapshot for ${key} (${deltas.length} delta(s) overlaid)`);
+      snapshots = computeSnapshots(summary, filename, new Date(), deltas);
       store.snapshots[key] = snapshots;
       await saveHealthStore(store);
     } else if (snapshots.parserVersion !== summary.parserVersion) {
       log.info(
         `Re-computing snapshot for ${key}: cached was v${snapshots.parserVersion}, ` +
-          `summary is v${summary.parserVersion}`
+          `summary is v${summary.parserVersion} (${deltas.length} delta(s))`
       );
-      snapshots = computeSnapshots(summary, filename);
+      snapshots = computeSnapshots(summary, filename, new Date(), deltas);
       store.snapshots[key] = snapshots;
       await saveHealthStore(store);
     } else if (snapshots.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
       log.info(
         `Re-computing snapshot for ${key}: cached schema v${snapshots.schemaVersion}, ` +
-          `current schema v${SNAPSHOT_SCHEMA_VERSION}`
+          `current schema v${SNAPSHOT_SCHEMA_VERSION} (${deltas.length} delta(s))`
       );
-      snapshots = computeSnapshots(summary, filename);
+      snapshots = computeSnapshots(summary, filename, new Date(), deltas);
       store.snapshots[key] = snapshots;
       await saveHealthStore(store);
     }
