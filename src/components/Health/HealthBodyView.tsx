@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { SegmentViewShell } from './SegmentViewShell';
 import { HealthChart } from './HealthChart';
+import { InsightsRow } from './InsightsRow';
 import { formatDecimal1 } from './healthFormatters';
 
 function trendIcon(delta: number | null): LucideIcon {
@@ -84,6 +85,8 @@ export function HealthBodyView() {
                 color="text-violet-400"
               />
             </div>
+
+            <InsightsRow insights={data.insights} />
 
             <Card className="p-5">
               <div className="flex items-center gap-2 mb-3">

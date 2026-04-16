@@ -27,6 +27,17 @@ type SnapshotFor<S extends HealthSegment | 'all'> = S extends 'activity'
           ? BodySnapshot
           : PersonSnapshots;
 
+/**
+ * Result envelope for getSnapshot. Carries both the segment data and
+ * version metadata so the UI can detect and warn about stale caches.
+ */
+export interface SnapshotResult<S extends HealthSegment | 'all'> {
+  data: SnapshotFor<S>;
+  stale: boolean;
+  cachedParserVersion: string;
+  currentParserVersion: string;
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   // Normalize caller-provided headers to a plain object before merging.
   // `HeadersInit` can be a Headers instance, [string, string][], or
@@ -157,19 +168,30 @@ export function useHealthApi() {
    * Fetch a single segment snapshot for this person's latest parsed export.
    * Returns the cached snapshot from .docvault-health.json, or backfills
    * on-demand if the summary exists but snapshots haven't been computed yet.
+   * The result also carries a `stale` flag and the current/cached parser
+   * versions — the UI uses this to prompt a re-parse when the cache was
+   * produced by an older parser.
    */
   const getSnapshot = useCallback(
     async <S extends HealthSegment | 'all'>(
       personId: string,
       segment: S
-    ): Promise<SnapshotFor<S>> => {
-      const res = await request<
-        | { segment: string; generatedAt: string; sourceFilename: string; data: unknown }
-        | { snapshot: PersonSnapshots }
-      >(`${API_BASE}/health/${personId}/snapshot/${segment}`);
-      // The "all" variant returns { snapshot }, segment variants return { data }
-      if ('snapshot' in res) return res.snapshot as SnapshotFor<S>;
-      return res.data as SnapshotFor<S>;
+    ): Promise<SnapshotResult<S>> => {
+      const res = await request<{
+        segment?: string;
+        snapshot?: PersonSnapshots;
+        data?: unknown;
+        stale: boolean;
+        cachedParserVersion: string;
+        currentParserVersion: string;
+      }>(`${API_BASE}/health/${personId}/snapshot/${segment}`);
+      const data = (res.snapshot ?? res.data) as SnapshotFor<S>;
+      return {
+        data,
+        stale: res.stale,
+        cachedParserVersion: res.cachedParserVersion,
+        currentParserVersion: res.currentParserVersion,
+      };
     },
     []
   );

@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { SegmentViewShell } from './SegmentViewShell';
 import { HealthChart } from './HealthChart';
+import { InsightsRow } from './InsightsRow';
 import { formatHours, formatMinutes } from './healthFormatters';
 
 /** Convert minutes to "Xh Ym" for labels. */
@@ -64,6 +65,8 @@ export function HealthSleepView() {
                 color="text-sky-400"
               />
             </div>
+
+            <InsightsRow insights={data.insights} />
 
             {data.headline.longestSleep && (
               <Card className="p-4 border-violet-500/30 bg-violet-500/5">

@@ -1,9 +1,26 @@
-// People list — shown when no person is selected in the Health view.
-// Click a card to drill into that person. Each card has an archive button.
+// People list — the main Overview view. Each person gets a rich dashboard
+// card with headline tiles pulled from all 5 segment snapshots plus the
+// existing Edit / Remove actions. Clicking the card (or any tile) drills
+// into the person detail + sets selectedHealthPersonId so the segment
+// views in the sidebar can load them directly.
 
-import { useState } from 'react';
-import { User, Archive, Trash2, ChevronRight, Edit3 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import {
+  User,
+  Archive,
+  Trash2,
+  ChevronRight,
+  Edit3,
+  Footprints,
+  HeartPulse,
+  Moon,
+  Dumbbell,
+  Scale,
+  Loader2,
+} from 'lucide-react';
 import type { HealthPerson } from '../../hooks/useFileSystemServer';
+import type { NavView } from '../../contexts/AppContext';
+import { useAppContext } from '../../contexts/AppContext';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,6 +31,9 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { useHealthApi } from './useHealthApi';
+import type { PersonSnapshots } from './types';
+import { formatInt, formatBpm, formatHours, formatDecimal1 } from './healthFormatters';
 
 interface PeopleListProps {
   people: HealthPerson[];
@@ -42,56 +62,16 @@ export function PeopleList({ people, onSelect, onEdit, onDelete }: PeopleListPro
 
   return (
     <>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {people.map((person) => {
-          const colors = colorFor(person.color);
-          return (
-            <Card
-              key={person.id}
-              className="p-4 cursor-pointer hover:border-accent-500/40 transition-colors"
-              onClick={() => onSelect(person)}
-            >
-              <div className="flex items-start gap-3">
-                <div
-                  className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${colors.bg}`}
-                >
-                  <User className={`w-5 h-5 ${colors.text}`} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-surface-950 truncate">{person.name}</div>
-                  <div className="text-xs text-surface-600 truncate font-mono">{person.id}</div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-surface-500 flex-shrink-0" />
-              </div>
-              <div className="flex justify-end gap-1 mt-3">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-surface-600 hover:text-surface-950 h-7 px-2 gap-1"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEdit(person);
-                  }}
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  Edit
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-surface-600 hover:text-danger-400 h-7 px-2 gap-1"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setConfirmDelete(person);
-                  }}
-                >
-                  <Archive className="w-3.5 h-3.5" />
-                  Remove
-                </Button>
-              </div>
-            </Card>
-          );
-        })}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {people.map((person) => (
+          <PersonOverviewCard
+            key={person.id}
+            person={person}
+            onSelect={() => onSelect(person)}
+            onEdit={() => onEdit(person)}
+            onRemove={() => setConfirmDelete(person)}
+          />
+        ))}
       </div>
 
       <Dialog
@@ -147,5 +127,236 @@ export function PeopleList({ people, onSelect, onEdit, onDelete }: PeopleListPro
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// One person's Overview card — header + actions + segment preview tiles
+// ---------------------------------------------------------------------------
+
+function PersonOverviewCard({
+  person,
+  onSelect,
+  onEdit,
+  onRemove,
+}: {
+  person: HealthPerson;
+  onSelect: () => void;
+  onEdit: () => void;
+  onRemove: () => void;
+}) {
+  const api = useHealthApi();
+  const { setSelectedHealthPersonId, setActiveView } = useAppContext();
+  const colors = colorFor(person.color);
+  const [snapshot, setSnapshot] = useState<PersonSnapshots | null>(null);
+  const [snapshotState, setSnapshotState] = useState<'loading' | 'loaded' | 'empty' | 'error'>(
+    'loading'
+  );
+  // Use a ref so we don't re-fetch on every render; only when the person id changes
+  const loadedFor = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (loadedFor.current === person.id) return;
+    loadedFor.current = person.id;
+    setSnapshotState('loading');
+    void api
+      .getSnapshot(person.id, 'all')
+      .then((res) => {
+        setSnapshot(res.data);
+        setSnapshotState('loaded');
+      })
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('No parsed summary')) {
+          setSnapshotState('empty');
+        } else {
+          setSnapshotState('error');
+        }
+      });
+  }, [api, person.id]);
+
+  // Click handlers for per-segment tiles
+  const gotoSegment = (view: NavView) => {
+    setSelectedHealthPersonId(person.id);
+    setActiveView(view);
+  };
+
+  return (
+    <Card className="p-5 transition-colors">
+      {/* Header row */}
+      <div className="flex items-start gap-3 mb-4">
+        <div
+          className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${colors.bg}`}
+        >
+          <User className={`w-5 h-5 ${colors.text}`} />
+        </div>
+        <button
+          type="button"
+          onClick={onSelect}
+          className="flex-1 min-w-0 text-left hover:underline"
+        >
+          <div className="font-medium text-surface-950 truncate">{person.name}</div>
+          <div className="text-xs text-surface-600 truncate font-mono">{person.id}</div>
+        </button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-surface-600 hover:text-surface-950 h-7 px-2 gap-1"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit();
+            }}
+          >
+            <Edit3 className="w-3.5 h-3.5" />
+            Edit
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-surface-600 hover:text-danger-400 h-7 px-2 gap-1"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+          >
+            <Archive className="w-3.5 h-3.5" />
+            Remove
+          </Button>
+          <ChevronRight className="w-4 h-4 text-surface-500 flex-shrink-0 ml-1" />
+        </div>
+      </div>
+
+      {/* Snapshot preview state */}
+      {snapshotState === 'loading' && (
+        <div className="flex items-center gap-2 text-sm text-surface-600 py-3">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          Loading snapshot…
+        </div>
+      )}
+
+      {snapshotState === 'empty' && (
+        <div className="text-sm text-surface-600 py-3 border-t border-border/40">
+          No parsed data yet. Click{' '}
+          <button type="button" className="text-accent-400 hover:underline" onClick={onSelect}>
+            into this person
+          </button>{' '}
+          to upload an <code className="font-mono text-[11px]">export.zip</code>.
+        </div>
+      )}
+
+      {snapshotState === 'error' && (
+        <div className="text-sm text-danger-400 py-3 border-t border-border/40">
+          Couldn&apos;t load snapshot — try refreshing.
+        </div>
+      )}
+
+      {snapshotState === 'loaded' && snapshot && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 border-t border-border/40 pt-3">
+          <PreviewTile
+            icon={Footprints}
+            label="Avg daily steps"
+            value={formatInt(snapshot.activity.headline.avgDailySteps90d)}
+            caption="last 90 days"
+            color="text-emerald-400"
+            onClick={() => gotoSegment('health-activity')}
+          />
+          <PreviewTile
+            icon={HeartPulse}
+            label="Resting HR"
+            value={
+              snapshot.heart.headline.latestRestingHR !== null
+                ? formatBpm(snapshot.heart.headline.latestRestingHR)
+                : '—'
+            }
+            caption={
+              snapshot.heart.headline.avgRestingHR90d !== null
+                ? `90d avg ${formatBpm(snapshot.heart.headline.avgRestingHR90d)}`
+                : undefined
+            }
+            color="text-rose-400"
+            onClick={() => gotoSegment('health-heart')}
+          />
+          <PreviewTile
+            icon={Moon}
+            label="Avg sleep"
+            value={formatHours(snapshot.sleep.headline.avgSleepHours90d)}
+            caption={`${snapshot.sleep.headline.nightsWith7Plus} nights 7+ hrs`}
+            color="text-violet-400"
+            onClick={() => gotoSegment('health-sleep')}
+          />
+          <PreviewTile
+            icon={Dumbbell}
+            label="Workouts"
+            value={formatInt(snapshot.workouts.headline.totalWorkouts)}
+            caption={
+              snapshot.workouts.headline.favoriteType
+                ? `fav: ${snapshot.workouts.headline.favoriteType}`
+                : 'all-time'
+            }
+            color="text-amber-400"
+            onClick={() => gotoSegment('health-workouts')}
+          />
+          <PreviewTile
+            icon={Scale}
+            label="Current weight"
+            value={
+              snapshot.body.headline.currentLb !== null
+                ? `${formatDecimal1(snapshot.body.headline.currentLb)} lb`
+                : '—'
+            }
+            caption={
+              snapshot.body.weightHistory.length > 0
+                ? `${snapshot.body.weightHistory.length} measurements`
+                : 'no data'
+            }
+            color="text-sky-400"
+            onClick={() => gotoSegment('health-body')}
+          />
+          <PreviewTile
+            icon={Footprints}
+            label="10k-step days"
+            value={formatInt(snapshot.activity.daily.filter((d) => d.steps >= 10_000).length)}
+            caption={`of ${formatInt(snapshot.activity.daily.length)} total`}
+            color="text-emerald-400"
+            onClick={() => gotoSegment('health-activity')}
+          />
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function PreviewTile({
+  icon: Icon,
+  label,
+  value,
+  caption,
+  color,
+  onClick,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  caption?: string;
+  color: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className="p-2.5 rounded-lg border border-border hover:border-accent-500/40 text-left transition-colors"
+    >
+      <div className="flex items-center gap-1.5 mb-1">
+        <Icon className={`w-3 h-3 ${color}`} />
+        <div className="text-[10px] uppercase tracking-wide text-surface-600">{label}</div>
+      </div>
+      <div className="font-mono text-base text-surface-950 tabular-nums leading-tight">{value}</div>
+      {caption && <div className="text-[10px] mt-0.5 text-surface-600">{caption}</div>}
+    </button>
   );
 }

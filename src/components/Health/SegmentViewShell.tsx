@@ -10,7 +10,7 @@
 // This keeps each segment file focused on its segment-specific rendering.
 
 import { useEffect, useState, useCallback } from 'react';
-import { ArrowLeft, AlertCircle, Loader2, User, Heart } from 'lucide-react';
+import { ArrowLeft, AlertCircle, Loader2, User, Heart, RefreshCw, Info } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { HealthPerson } from '../../hooks/useFileSystemServer';
 import { useAppContext } from '../../contexts/AppContext';
@@ -20,6 +20,11 @@ import { useHealthApi } from './useHealthApi';
 import type { HealthSegment, PersonSnapshots } from './types';
 
 type SegmentData<S extends HealthSegment> = PersonSnapshots[S];
+
+interface StaleInfo {
+  cachedParserVersion: string;
+  currentParserVersion: string;
+}
 
 interface SegmentViewShellProps<S extends HealthSegment> {
   segment: S;
@@ -45,6 +50,8 @@ export function SegmentViewShell<S extends HealthSegment>({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [people, setPeople] = useState<HealthPerson[]>([]);
+  const [staleInfo, setStaleInfo] = useState<StaleInfo | null>(null);
+  const [reparsing, setReparsing] = useState(false);
 
   // Load the people list (for picker + identifying the currently-selected person)
   useEffect(() => {
@@ -73,19 +80,49 @@ export function SegmentViewShell<S extends HealthSegment>({
     setLoading(true);
     setError(null);
     try {
-      // The generic resolves through api.getSnapshot<S> correctly at runtime,
-      // but the `setData` setter expects a concrete SegmentData<S> and
-      // tsc can't prove the fetched `snap` is assignable through the generic.
-      // Cast explicitly — the API's return type is correct.
-      const snap = (await api.getSnapshot(selectedHealthPersonId, segment)) as SegmentData<S>;
-      setData(snap);
+      const res = await api.getSnapshot(selectedHealthPersonId, segment);
+      // api.getSnapshot returns { data, stale, cachedParserVersion, currentParserVersion }
+      // — the generic can't track the concrete SegmentData<S> shape through the
+      // envelope, so we cast here.
+      setData(res.data as SegmentData<S>);
+      setStaleInfo(
+        res.stale
+          ? {
+              cachedParserVersion: res.cachedParserVersion,
+              currentParserVersion: res.currentParserVersion,
+            }
+          : null
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setData(null);
+      setStaleInfo(null);
     } finally {
       setLoading(false);
     }
   }, [api, selectedHealthPersonId, segment]);
+
+  // Re-parse this person's most recent export, then refetch the snapshot.
+  const handleReparse = useCallback(async () => {
+    if (!selectedHealthPersonId) return;
+    setReparsing(true);
+    setError(null);
+    try {
+      // Find their most recent upload
+      const exports = await api.listExports(selectedHealthPersonId);
+      const parsed = exports
+        .filter((e) => e.parsed)
+        .sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
+      const target = parsed[0] ?? exports[0];
+      if (!target) throw new Error('No exports to re-parse');
+      await api.parseExport(selectedHealthPersonId, target.filename);
+      await fetchSnapshot();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReparsing(false);
+    }
+  }, [api, selectedHealthPersonId, fetchSnapshot]);
 
   useEffect(() => {
     void fetchSnapshot();
@@ -207,6 +244,49 @@ export function SegmentViewShell<S extends HealthSegment>({
                 )}
                 <Button variant="outline" size="sm" className="mt-3" onClick={fetchSnapshot}>
                   Try again
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Staleness banner — shown above the data when the cached snapshot
+            was produced by an older parser version. Explicit re-parse button
+            so the user stays in control (parses can take 30+ seconds). */}
+        {person && !loading && !error && data && staleInfo && (
+          <Card className="p-4 mb-4 border-amber-500/30 bg-amber-500/5">
+            <div className="flex items-start gap-3">
+              <Info className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <div className="font-medium text-surface-950">
+                  Cached data is from an older parser
+                </div>
+                <div className="text-xs text-surface-700 mt-1 leading-relaxed">
+                  This snapshot was produced by parser{' '}
+                  <code className="font-mono">v{staleInfo.cachedParserVersion}</code>. The current
+                  parser is <code className="font-mono">v{staleInfo.currentParserVersion}</code> and
+                  may capture metrics the old one missed (e.g. sleep stage durations were added in
+                  1.1.0). Re-parse to refresh — it takes ~5-10 seconds since the decompressed XML is
+                  already on disk.
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3 gap-1.5"
+                  onClick={() => void handleReparse()}
+                  disabled={reparsing}
+                >
+                  {reparsing ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Re-parsing…
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      Re-parse with v{staleInfo.currentParserVersion}
+                    </>
+                  )}
                 </Button>
               </div>
             </div>

@@ -5,6 +5,7 @@ import { Activity as ActivityIcon, Footprints, Flame, Timer, Route } from 'lucid
 import { Card } from '@/components/ui/card';
 import { SegmentViewShell } from './SegmentViewShell';
 import { HealthChart } from './HealthChart';
+import { InsightsRow } from './InsightsRow';
 import { formatInt, formatDecimal1 } from './healthFormatters';
 
 export function HealthActivityView() {
@@ -45,6 +46,9 @@ export function HealthActivityView() {
               color="text-violet-400"
             />
           </div>
+
+          {/* Insights */}
+          <InsightsRow insights={data.insights} />
 
           {/* Most active day callout */}
           {data.headline.mostActiveDay && (

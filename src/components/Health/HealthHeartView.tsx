@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { SegmentViewShell } from './SegmentViewShell';
 import { HealthChart } from './HealthChart';
+import { InsightsRow } from './InsightsRow';
 import { formatBpm, formatDecimal1 } from './healthFormatters';
 
 export function HealthHeartView() {
@@ -89,6 +90,8 @@ export function HealthHeartView() {
                 caption={data.headline.hrvTrend}
               />
             </div>
+
+            <InsightsRow insights={data.insights} />
 
             <Card className="p-5">
               <div className="flex items-center gap-2 mb-3">

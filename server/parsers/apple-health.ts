@@ -133,7 +133,18 @@ export interface AppleHealthSummary {
   parserVersion: string;
 }
 
-const PARSER_VERSION = '1.1.0'; // +category duration tracking, sleep end-date attribution
+/**
+ * Parser version. Bump this whenever the parser's output shape or
+ * aggregation logic changes in a way that invalidates cached summaries
+ * — so consumers (the snapshot computer, the UI staleness banner) can
+ * detect that a re-parse is needed.
+ *
+ * History:
+ *   1.0.0 — initial release
+ *   1.1.0 — category duration tracking, sleep end-date attribution,
+ *           HKCategoryValue* prefix stripping, explicit timezone parsing
+ */
+export const PARSER_VERSION = '1.1.0';
 
 // ---------------------------------------------------------------------------
 // Internal parse state

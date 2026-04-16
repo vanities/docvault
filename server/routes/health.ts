@@ -32,7 +32,11 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { jsonResponse, ensureDir, DATA_DIR } from '../data.js';
 import type { HealthPerson } from '../data.js';
-import { parseAppleHealthExport, type AppleHealthSummary } from '../parsers/apple-health.js';
+import {
+  parseAppleHealthExport,
+  PARSER_VERSION as CURRENT_PARSER_VERSION,
+  type AppleHealthSummary,
+} from '../parsers/apple-health.js';
 import {
   computeSnapshots,
   type PersonSnapshots,
@@ -440,14 +444,28 @@ export async function handleHealthRoutes(
       await saveHealthStore(store);
     }
 
+    // Staleness: if the cached snapshot was produced by an older parser
+    // than we're currently running, the data is likely missing fields or
+    // using older aggregation rules. Flag it so the UI can prompt a re-parse.
+    const cachedParserVersion = snapshots.parserVersion;
+    const stale = cachedParserVersion !== CURRENT_PARSER_VERSION;
+
     if (segment === 'all') {
-      return jsonResponse({ snapshot: snapshots });
+      return jsonResponse({
+        snapshot: snapshots,
+        stale,
+        cachedParserVersion,
+        currentParserVersion: CURRENT_PARSER_VERSION,
+      });
     }
     return jsonResponse({
       segment,
       generatedAt: snapshots.generatedAt,
       sourceFilename: snapshots.sourceFilename,
       data: snapshots[segment as HealthSegment],
+      stale,
+      cachedParserVersion,
+      currentParserVersion: CURRENT_PARSER_VERSION,
     });
   }
 
