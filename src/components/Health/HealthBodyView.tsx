@@ -6,6 +6,8 @@ import { Card } from '@/components/ui/card';
 import { SegmentViewShell } from './SegmentViewShell';
 import { HealthChart } from './HealthChart';
 import { InsightsRow } from './InsightsRow';
+import { CollapsibleTable } from './CollapsibleTable';
+import { TimePeriodSummary } from './TimePeriodSummary';
 import { formatDecimal1 } from './healthFormatters';
 
 function trendIcon(delta: number | null): LucideIcon {
@@ -86,6 +88,8 @@ export function HealthBodyView() {
               />
             </div>
 
+            <TimePeriodSummary periods={data.periods} />
+
             <InsightsRow insights={data.insights} />
 
             <Card className="p-5">
@@ -109,62 +113,53 @@ export function HealthBodyView() {
               )}
             </Card>
 
-            <Card className="p-5">
-              <h3 className="font-medium text-surface-950 mb-3">
-                Weight history ({data.weightHistory.length.toLocaleString()} measurement
-                {data.weightHistory.length === 1 ? '' : 's'})
-              </h3>
-              {data.weightHistory.length === 0 ? (
-                <div className="text-sm text-surface-600 py-4">No measurements yet.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-[11px] uppercase text-surface-600 tracking-wide border-b border-border">
-                        <th className="py-2 pr-3">Date</th>
-                        <th className="py-2 pr-3 text-right">Weight (lb)</th>
-                        <th className="py-2 pr-3 text-right">Weight (kg)</th>
-                        <th className="py-2 pr-3 text-right">Δ from first</th>
+            {(() => {
+              const reversed = [...data.weightHistory].reverse();
+              const firstLb = data.weightHistory.length > 0 ? data.weightHistory[0].lb : 0;
+              return (
+                <CollapsibleTable
+                  title="Weight history"
+                  totalRows={reversed.length}
+                  head={
+                    <tr className="text-left text-[11px] uppercase text-surface-600 tracking-wide border-b border-border">
+                      <th className="py-2 pr-3">Date</th>
+                      <th className="py-2 pr-3 text-right">Weight (lb)</th>
+                      <th className="py-2 pr-3 text-right">Weight (kg)</th>
+                      <th className="py-2 pr-3 text-right">Δ from first</th>
+                    </tr>
+                  }
+                  rows={reversed.map((w) => {
+                    const delta = w.lb - firstLb;
+                    return (
+                      <tr
+                        key={w.date}
+                        className="border-b border-border/30 hover:bg-surface-100/30"
+                      >
+                        <td className="py-1.5 pr-3 text-surface-700 font-mono text-xs">{w.date}</td>
+                        <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                          {formatDecimal1(w.lb)}
+                        </td>
+                        <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                          {formatDecimal1(w.kg)}
+                        </td>
+                        <td
+                          className={`py-1.5 pr-3 text-right font-mono tabular-nums ${
+                            delta > 0
+                              ? 'text-amber-400'
+                              : delta < 0
+                                ? 'text-emerald-400'
+                                : 'text-surface-500'
+                          }`}
+                        >
+                          {delta > 0 ? '+' : ''}
+                          {formatDecimal1(delta)}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {[...data.weightHistory].reverse().map((w, _i, arr) => {
-                        const first = arr[arr.length - 1];
-                        const delta = w.lb - first.lb;
-                        return (
-                          <tr
-                            key={w.date}
-                            className="border-b border-border/30 hover:bg-surface-100/30"
-                          >
-                            <td className="py-1.5 pr-3 text-surface-700 font-mono text-xs">
-                              {w.date}
-                            </td>
-                            <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                              {formatDecimal1(w.lb)}
-                            </td>
-                            <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                              {formatDecimal1(w.kg)}
-                            </td>
-                            <td
-                              className={`py-1.5 pr-3 text-right font-mono tabular-nums ${
-                                delta > 0
-                                  ? 'text-amber-400'
-                                  : delta < 0
-                                    ? 'text-emerald-400'
-                                    : 'text-surface-500'
-                              }`}
-                            >
-                              {delta > 0 ? '+' : ''}
-                              {formatDecimal1(delta)}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </Card>
+                    );
+                  })}
+                />
+              );
+            })()}
           </div>
         );
       }}

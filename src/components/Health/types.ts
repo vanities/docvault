@@ -104,6 +104,46 @@ export interface InsightItem {
   tone?: 'good' | 'warn' | 'neutral';
 }
 
+/** A single period stat with optional comparison to the previous period. */
+export interface PeriodStat {
+  label: string;
+  value: number;
+  formatted: string;
+  prevValue: number | null;
+  deltaPct: number | null;
+}
+
+/** Summary for one named time period (e.g. "This Week"). */
+export interface PeriodSummary {
+  name: string;
+  start: string;
+  end: string;
+  stats: PeriodStat[];
+}
+
+/** Daily recovery score (0-100). */
+export interface DailyRecoveryScore {
+  date: string;
+  score: number;
+  components: {
+    hrv: number;
+    sleep: number;
+    restingHR: number;
+    exerciseLoad: number;
+  };
+}
+
+/** Nightly sleep quality score (0-100). */
+export interface SleepQualityScore {
+  date: string;
+  score: number;
+  components: {
+    duration: number;
+    consistency: number;
+    interruptions: number;
+  };
+}
+
 /** One day in the Activity segment. */
 export interface ActivityDay {
   date: string;
@@ -131,6 +171,8 @@ export interface ActivitySnapshot {
     mostActiveDay: { date: string; steps: number } | null;
   };
   insights: InsightItem[];
+  periods: PeriodSummary[];
+  recoveryScores: DailyRecoveryScore[];
   distanceUnit: string; // "mi" or "km"
 }
 
@@ -157,6 +199,7 @@ export interface HeartSnapshot {
     hrvTrend: 'up' | 'flat' | 'down' | 'unknown';
   };
   insights: InsightItem[];
+  periods: PeriodSummary[];
 }
 
 /** One day in the Sleep segment. */
@@ -183,6 +226,8 @@ export interface SleepSnapshot {
     nightsWith7Plus: number;
   };
   insights: InsightItem[];
+  periods: PeriodSummary[];
+  qualityScores: SleepQualityScore[];
 }
 
 /** Workouts aggregated by activity type. */
@@ -226,6 +271,7 @@ export interface WorkoutsSnapshot {
     favoriteType: string | null;
   };
   insights: InsightItem[];
+  periods: PeriodSummary[];
   distanceUnit: string | null;
 }
 
@@ -246,6 +292,7 @@ export interface BodySnapshot {
     change1y: number | null; // kg
   };
   insights: InsightItem[];
+  periods: PeriodSummary[];
 }
 
 /** The full set of snapshots for one parsed export. */

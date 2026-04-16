@@ -6,6 +6,8 @@ import { Card } from '@/components/ui/card';
 import { SegmentViewShell } from './SegmentViewShell';
 import { HealthChart } from './HealthChart';
 import { InsightsRow } from './InsightsRow';
+import { CollapsibleTable } from './CollapsibleTable';
+import { TimePeriodSummary } from './TimePeriodSummary';
 import { formatInt, formatMinutes, humanizeTypeName } from './healthFormatters';
 
 function formatStart(iso: string): string {
@@ -61,6 +63,8 @@ export function HealthWorkoutsView() {
             />
           </div>
 
+          <TimePeriodSummary periods={data.periods} />
+
           <InsightsRow insights={data.insights} />
 
           <Card className="p-5">
@@ -96,96 +100,85 @@ export function HealthWorkoutsView() {
             />
           </Card>
 
-          <Card className="p-5">
-            <h3 className="font-medium text-surface-950 mb-3">By type</h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-[11px] uppercase text-surface-600 tracking-wide border-b border-border">
-                    <th className="py-2 pr-3">Type</th>
-                    <th className="py-2 pr-3 text-right">Sessions</th>
-                    <th className="py-2 pr-3 text-right">Total time</th>
-                    <th className="py-2 pr-3 text-right">Avg time</th>
-                    <th className="py-2 pr-3 text-right">Total distance</th>
-                    <th className="py-2 pr-3 text-right">Total energy</th>
-                    <th className="py-2 pr-3">Last</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.byType.map((t) => (
-                    <tr key={t.type} className="border-b border-border/30 hover:bg-surface-100/30">
-                      <td className="py-1.5 pr-3 font-medium text-surface-950">
-                        {humanizeTypeName(t.type)}
-                      </td>
-                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">{t.count}</td>
-                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                        {formatMinutes(t.totalDurationMinutes)}
-                      </td>
-                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                        {formatMinutes(t.avgDurationMinutes)}
-                      </td>
-                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                        {t.totalDistance !== null ? t.totalDistance.toFixed(1) : '—'}
-                      </td>
-                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                        {t.totalEnergy !== null ? formatInt(t.totalEnergy) : '—'}
-                      </td>
-                      <td className="py-1.5 pr-3 text-surface-700 font-mono text-xs">
-                        {formatStart(t.lastWorkout)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+          <CollapsibleTable
+            title="By type"
+            totalRows={data.byType.length}
+            defaultRows={10}
+            head={
+              <tr className="text-left text-[11px] uppercase text-surface-600 tracking-wide border-b border-border">
+                <th className="py-2 pr-3">Type</th>
+                <th className="py-2 pr-3 text-right">Sessions</th>
+                <th className="py-2 pr-3 text-right">Total time</th>
+                <th className="py-2 pr-3 text-right">Avg time</th>
+                <th className="py-2 pr-3 text-right">Total distance</th>
+                <th className="py-2 pr-3 text-right">Total energy</th>
+                <th className="py-2 pr-3">Last</th>
+              </tr>
+            }
+            rows={data.byType.map((t) => (
+              <tr key={t.type} className="border-b border-border/30 hover:bg-surface-100/30">
+                <td className="py-1.5 pr-3 font-medium text-surface-950">
+                  {humanizeTypeName(t.type)}
+                </td>
+                <td className="py-1.5 pr-3 text-right font-mono tabular-nums">{t.count}</td>
+                <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                  {formatMinutes(t.totalDurationMinutes)}
+                </td>
+                <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                  {formatMinutes(t.avgDurationMinutes)}
+                </td>
+                <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                  {t.totalDistance !== null ? t.totalDistance.toFixed(1) : '—'}
+                </td>
+                <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                  {t.totalEnergy !== null ? formatInt(t.totalEnergy) : '—'}
+                </td>
+                <td className="py-1.5 pr-3 text-surface-700 font-mono text-xs">
+                  {formatStart(t.lastWorkout)}
+                </td>
+              </tr>
+            ))}
+          />
 
-          <Card className="p-5">
-            <h3 className="font-medium text-surface-950 mb-3">
-              Recent workouts ({data.recent.length})
-            </h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-[11px] uppercase text-surface-600 tracking-wide border-b border-border">
-                    <th className="py-2 pr-3">Type</th>
-                    <th className="py-2 pr-3">Date</th>
-                    <th className="py-2 pr-3 text-right">Duration</th>
-                    <th className="py-2 pr-3 text-right">Distance</th>
-                    <th className="py-2 pr-3 text-right">Avg HR</th>
-                    <th className="py-2 pr-3 text-right">Energy</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.recent.map((w, i) => (
-                    <tr
-                      key={`${w.start}-${i}`}
-                      className="border-b border-border/30 hover:bg-surface-100/30"
-                    >
-                      <td className="py-1.5 pr-3 font-medium text-surface-950">
-                        {humanizeTypeName(w.type)}
-                      </td>
-                      <td className="py-1.5 pr-3 text-surface-700 font-mono text-xs">
-                        {formatStart(w.start)}
-                      </td>
-                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                        {formatMinutes(w.durationMinutes)}
-                      </td>
-                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                        {w.distance !== null ? w.distance.toFixed(2) : '—'}
-                      </td>
-                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                        {w.avgHR !== null ? Math.round(w.avgHR) : '—'}
-                      </td>
-                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                        {w.energy !== null ? formatInt(w.energy) : '—'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+          <CollapsibleTable
+            title="Recent workouts"
+            totalRows={data.recent.length}
+            head={
+              <tr className="text-left text-[11px] uppercase text-surface-600 tracking-wide border-b border-border">
+                <th className="py-2 pr-3">Type</th>
+                <th className="py-2 pr-3">Date</th>
+                <th className="py-2 pr-3 text-right">Duration</th>
+                <th className="py-2 pr-3 text-right">Distance</th>
+                <th className="py-2 pr-3 text-right">Avg HR</th>
+                <th className="py-2 pr-3 text-right">Energy</th>
+              </tr>
+            }
+            rows={data.recent.map((w, i) => (
+              <tr
+                key={`${w.start}-${i}`}
+                className="border-b border-border/30 hover:bg-surface-100/30"
+              >
+                <td className="py-1.5 pr-3 font-medium text-surface-950">
+                  {humanizeTypeName(w.type)}
+                </td>
+                <td className="py-1.5 pr-3 text-surface-700 font-mono text-xs">
+                  {formatStart(w.start)}
+                </td>
+                <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                  {formatMinutes(w.durationMinutes)}
+                </td>
+                <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                  {w.distance !== null ? w.distance.toFixed(2) : '—'}
+                </td>
+                <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                  {w.avgHR !== null ? Math.round(w.avgHR) : '—'}
+                </td>
+                <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                  {w.energy !== null ? formatInt(w.energy) : '—'}
+                </td>
+              </tr>
+            ))}
+          />
         </div>
       )}
     </SegmentViewShell>

@@ -23,8 +23,11 @@ import type { AppleHealthSummary, DailySummary, WorkoutEntry } from './apple-hea
  *   3 — delta (iOS Shortcut) overlay support — snapshots may now include
  *       days that come from shortcut-posted deltas rather than the bulk
  *       summary, and existing days may have metrics replaced by deltas.
+ *   4 — +period summaries (today/week/month/year with vs-previous deltas),
+ *       +recoveryScores per day (composite 0-100), +sleepQualityScores,
+ *       collapsible-table-ready data (all days exposed, not just last 14).
  */
-export const SNAPSHOT_SCHEMA_VERSION = 3;
+export const SNAPSHOT_SCHEMA_VERSION = 4;
 
 /**
  * A delta file — written by the /api/health/:personId/ingest endpoint when
@@ -110,6 +113,8 @@ export interface ActivitySnapshot {
     mostActiveDay: { date: string; steps: number } | null;
   };
   insights: InsightItem[];
+  periods: PeriodSummary[];
+  recoveryScores: DailyRecoveryScore[];
   distanceUnit: string;
 }
 
@@ -135,6 +140,7 @@ export interface HeartSnapshot {
     hrvTrend: 'up' | 'flat' | 'down' | 'unknown';
   };
   insights: InsightItem[];
+  periods: PeriodSummary[];
 }
 
 export interface SleepDay {
@@ -160,6 +166,8 @@ export interface SleepSnapshot {
     nightsWith7Plus: number;
   };
   insights: InsightItem[];
+  periods: PeriodSummary[];
+  qualityScores: SleepQualityScore[];
 }
 
 export interface WorkoutTypeAgg {
@@ -200,6 +208,7 @@ export interface WorkoutsSnapshot {
     favoriteType: string | null;
   };
   insights: InsightItem[];
+  periods: PeriodSummary[];
   /** Unit (e.g. "mi", "km") for workout distance stats. Derived from the
    * first workout with a distance value, since all workouts for one person
    * use the same unit system. Null if no workouts have distance data. */
@@ -223,6 +232,7 @@ export interface BodySnapshot {
     change1y: number | null;
   };
   insights: InsightItem[];
+  periods: PeriodSummary[];
 }
 
 export interface PersonSnapshots {
@@ -240,6 +250,63 @@ export interface PersonSnapshots {
 }
 
 export type HealthSegment = 'activity' | 'heart' | 'sleep' | 'workouts' | 'body';
+
+// ===========================================================================
+// Period summaries — today / this week / this month / this year with deltas
+// ===========================================================================
+
+/** A single period stat with optional comparison to the previous period. */
+export interface PeriodStat {
+  label: string;
+  value: number;
+  formatted: string;
+  prevValue: number | null;
+  /** Percentage change vs previous period. Null if no prior data. */
+  deltaPct: number | null;
+}
+
+/** Summary for one named time period (e.g. "This Week"). */
+export interface PeriodSummary {
+  name: string;
+  /** Date range covered: [start, end] inclusive. */
+  start: string;
+  end: string;
+  stats: PeriodStat[];
+}
+
+/**
+ * Recovery score for a single day (0-100). Composite of:
+ *   - HRV vs 30d baseline (40%)
+ *   - Sleep duration vs 8h target (30%)
+ *   - Resting HR vs 30d baseline (20%)
+ *   - Previous day exercise load factor (10%)
+ */
+export interface DailyRecoveryScore {
+  date: string;
+  score: number;
+  components: {
+    hrv: number;
+    sleep: number;
+    restingHR: number;
+    exerciseLoad: number;
+  };
+}
+
+/**
+ * Sleep quality score for a single night (0-100). Based on Apple's formula:
+ *   - Duration: up to 50 pts (8h target)
+ *   - Consistency: up to 30 pts (deviation from personal avg bedtime)
+ *   - Interruptions: up to 20 pts (awake time / total time)
+ */
+export interface SleepQualityScore {
+  date: string;
+  score: number;
+  components: {
+    duration: number;
+    consistency: number;
+    interruptions: number;
+  };
+}
 
 // ===========================================================================
 // Helpers (exported for testing)
@@ -565,6 +632,263 @@ function unitOf(day: DailySummary, type: string): string | undefined {
 }
 
 // ===========================================================================
+// Period helpers
+// ===========================================================================
+
+/** Date-range definition for a named period. */
+interface DateRange {
+  name: string;
+  start: string; // YYYY-MM-DD inclusive
+  end: string; // YYYY-MM-DD inclusive
+}
+
+/**
+ * Build the standard time periods relative to `now`:
+ *   Today, Yesterday, This Week (Mon-Sun), Last Week,
+ *   This Month, Last Month, This Year, Last Year.
+ */
+export function buildPeriodRanges(now: Date): { current: DateRange; previous: DateRange }[] {
+  const todayStr = now.toISOString().slice(0, 10);
+  const yesterday = new Date(now);
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+  // Week boundaries (Mon-Sun)
+  const dow = (now.getUTCDay() + 6) % 7; // Mon=0
+  const thisWeekStart = new Date(now);
+  thisWeekStart.setUTCDate(thisWeekStart.getUTCDate() - dow);
+  const lastWeekStart = new Date(thisWeekStart);
+  lastWeekStart.setUTCDate(lastWeekStart.getUTCDate() - 7);
+  const lastWeekEnd = new Date(thisWeekStart);
+  lastWeekEnd.setUTCDate(lastWeekEnd.getUTCDate() - 1);
+
+  // Month boundaries
+  const thisMonthStart = `${todayStr.slice(0, 7)}-01`;
+  const lastMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  const lastMonthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0));
+
+  // Year boundaries
+  const thisYearStart = `${now.getUTCFullYear()}-01-01`;
+  const lastYearStart = `${now.getUTCFullYear() - 1}-01-01`;
+  const lastYearEnd = `${now.getUTCFullYear() - 1}-12-31`;
+
+  return [
+    {
+      current: { name: 'Today', start: todayStr, end: todayStr },
+      previous: { name: 'Yesterday', start: yesterdayStr, end: yesterdayStr },
+    },
+    {
+      current: {
+        name: 'This Week',
+        start: thisWeekStart.toISOString().slice(0, 10),
+        end: todayStr,
+      },
+      previous: {
+        name: 'Last Week',
+        start: lastWeekStart.toISOString().slice(0, 10),
+        end: lastWeekEnd.toISOString().slice(0, 10),
+      },
+    },
+    {
+      current: { name: 'This Month', start: thisMonthStart, end: todayStr },
+      previous: {
+        name: 'Last Month',
+        start: lastMonth.toISOString().slice(0, 10),
+        end: lastMonthEnd.toISOString().slice(0, 10),
+      },
+    },
+    {
+      current: { name: 'This Year', start: thisYearStart, end: todayStr },
+      previous: { name: 'Last Year', start: lastYearStart, end: lastYearEnd },
+    },
+  ];
+}
+
+/** Filter rows to a date range. */
+function inRange<T extends { date: string }>(rows: readonly T[], start: string, end: string): T[] {
+  return rows.filter((r) => r.date >= start && r.date <= end);
+}
+
+/** Compute percentage change, null if no denominator. */
+function pctChange(current: number, previous: number): number | null {
+  if (previous === 0) return current > 0 ? 100 : null;
+  return ((current - previous) / Math.abs(previous)) * 100;
+}
+
+// ===========================================================================
+// Recovery score computation
+// ===========================================================================
+
+/**
+ * Compute daily recovery scores. Uses a 30-day rolling baseline for HRV and
+ * resting HR. Score is 0-100 where 100 = fully recovered.
+ *
+ * Components (weighted):
+ *   - HRV vs 30d baseline:        40% — higher HRV = better recovery
+ *   - Sleep vs 8h target:         30% — closer to 8h = better
+ *   - Resting HR vs 30d baseline: 20% — lower HR = better recovery
+ *   - Previous day exercise load: 10% — less load yesterday = more recovery
+ */
+export function computeRecoveryScores(
+  activityDays: readonly ActivityDay[],
+  heartDays: readonly HeartDay[],
+  sleepDays: readonly SleepDay[]
+): DailyRecoveryScore[] {
+  // Index heart and sleep by date for fast lookup
+  const heartByDate = new Map(heartDays.map((d) => [d.date, d]));
+  const sleepByDate = new Map(sleepDays.map((d) => [d.date, d]));
+
+  const scores: DailyRecoveryScore[] = [];
+
+  for (let i = 0; i < activityDays.length; i++) {
+    const day = activityDays[i];
+    const heart = heartByDate.get(day.date);
+    const sleep = sleepByDate.get(day.date);
+
+    // 30-day rolling baseline for HRV and resting HR
+    const baselineStart = Math.max(0, i - 30);
+    const hrvValues: number[] = [];
+    const restingValues: number[] = [];
+    for (let j = baselineStart; j < i; j++) {
+      const h = heartByDate.get(activityDays[j].date);
+      if (h?.hrv !== null && h?.hrv !== undefined) hrvValues.push(h.hrv);
+      if (h?.restingHR !== null && h?.restingHR !== undefined) restingValues.push(h.restingHR);
+    }
+
+    const hrvBaseline =
+      hrvValues.length > 0 ? hrvValues.reduce((a, b) => a + b, 0) / hrvValues.length : null;
+    const restingBaseline =
+      restingValues.length > 0
+        ? restingValues.reduce((a, b) => a + b, 0) / restingValues.length
+        : null;
+
+    // HRV component (40%): ratio of today's HRV to baseline, capped at 0-100
+    let hrvScore = 50; // default if no data
+    if (
+      heart?.hrv !== null &&
+      heart?.hrv !== undefined &&
+      hrvBaseline !== null &&
+      hrvBaseline > 0
+    ) {
+      const ratio = heart.hrv / hrvBaseline;
+      hrvScore = Math.min(100, Math.max(0, ratio * 50 + 25)); // center at 75 when at baseline
+    }
+
+    // Sleep component (30%): how close to 8 hours
+    let sleepScore = 50;
+    if (sleep && sleep.asleepMinutes > 0) {
+      const hours = sleep.asleepMinutes / 60;
+      // Perfect at 8h, linearly drops. 6h = ~75, 4h = ~50, 10h = ~88
+      sleepScore = Math.min(100, Math.max(0, 100 - Math.abs(hours - 8) * 12.5));
+    }
+
+    // Resting HR component (20%): lower than baseline = better
+    let restingScore = 50;
+    if (
+      heart?.restingHR !== null &&
+      heart?.restingHR !== undefined &&
+      restingBaseline !== null &&
+      restingBaseline > 0
+    ) {
+      const delta = restingBaseline - heart.restingHR; // positive = good (lower than baseline)
+      restingScore = Math.min(100, Math.max(0, 75 + delta * 5)); // 5 pts per bpm below baseline
+    }
+
+    // Exercise load component (10%): yesterday's exercise minutes
+    let exerciseLoadScore = 75; // default = light recovery
+    if (i > 0) {
+      const prevExercise = activityDays[i - 1].exerciseMinutes;
+      // 0 min = 100 (full rest), 30 min = 75, 60 min = 50, 120 min = 0
+      exerciseLoadScore = Math.min(100, Math.max(0, 100 - (prevExercise / 120) * 100));
+    }
+
+    const score = Math.round(
+      hrvScore * 0.4 + sleepScore * 0.3 + restingScore * 0.2 + exerciseLoadScore * 0.1
+    );
+
+    scores.push({
+      date: day.date,
+      score: Math.min(100, Math.max(0, score)),
+      components: {
+        hrv: Math.round(hrvScore),
+        sleep: Math.round(sleepScore),
+        restingHR: Math.round(restingScore),
+        exerciseLoad: Math.round(exerciseLoadScore),
+      },
+    });
+  }
+
+  return scores;
+}
+
+// ===========================================================================
+// Sleep quality score computation
+// ===========================================================================
+
+/**
+ * Compute nightly sleep quality scores (0-100).
+ *
+ * Apple's formula (publicly documented):
+ *   - Duration: up to 50 pts — based on closeness to 8h target
+ *   - Consistency: up to 30 pts — deviation from average sleep duration
+ *   - Interruptions: up to 20 pts — awake minutes relative to total sleep
+ */
+export function computeSleepQualityScores(sleepDays: readonly SleepDay[]): SleepQualityScore[] {
+  if (sleepDays.length === 0) return [];
+
+  // Compute average sleep duration for consistency scoring
+  const validDays = sleepDays.filter((d) => d.asleepMinutes > 0);
+  const avgSleep =
+    validDays.length > 0
+      ? validDays.reduce((a, d) => a + d.asleepMinutes, 0) / validDays.length
+      : 480; // 8h default
+
+  return sleepDays.map((d) => {
+    // Duration component (50 pts): 8h target
+    const hours = d.asleepMinutes / 60;
+    let durationPts: number;
+    if (hours >= 7 && hours <= 9) {
+      durationPts = 50; // optimal range
+    } else if (hours >= 6 && hours < 7) {
+      durationPts = 35;
+    } else if (hours >= 5 && hours < 6) {
+      durationPts = 20;
+    } else if (hours > 9 && hours <= 10) {
+      durationPts = 40;
+    } else if (hours < 5) {
+      durationPts = Math.max(0, hours * 4); // ~4 pts per hour under 5h
+    } else {
+      durationPts = 30; // > 10h
+    }
+
+    // Consistency component (30 pts): deviation from personal average
+    const deviation = Math.abs(d.asleepMinutes - avgSleep);
+    const deviationHours = deviation / 60;
+    // 0h deviation = 30pts, 1h = 20pts, 2h = 10pts, 3h+ = 0pts
+    const consistencyPts = Math.max(0, 30 - deviationHours * 10);
+
+    // Interruptions component (20 pts): awake time relative to sleep time
+    const awakeMins = d.awakeMinutes ?? 0;
+    const totalTime = d.asleepMinutes + awakeMins;
+    const awakeRatio = totalTime > 0 ? awakeMins / totalTime : 0;
+    // 0% awake = 20pts, 10% = 10pts, 20%+ = 0pts
+    const interruptionPts = Math.max(0, 20 - awakeRatio * 100);
+
+    const score = Math.round(durationPts + consistencyPts + interruptionPts);
+
+    return {
+      date: d.date,
+      score: Math.min(100, Math.max(0, score)),
+      components: {
+        duration: Math.round(durationPts),
+        consistency: Math.round(consistencyPts),
+        interruptions: Math.round(interruptionPts),
+      },
+    };
+  });
+}
+
+// ===========================================================================
 // Segment computers
 // ===========================================================================
 
@@ -573,7 +897,10 @@ function sortedDays(summary: AppleHealthSummary): DailySummary[] {
   return Object.values(summary.dailySummaries).sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export function computeActivitySnapshot(summary: AppleHealthSummary): ActivitySnapshot {
+export function computeActivitySnapshot(
+  summary: AppleHealthSummary,
+  now: Date = new Date()
+): ActivitySnapshot {
   const days = sortedDays(summary);
 
   const daily: ActivityDay[] = days.map((day) => ({
@@ -713,6 +1040,59 @@ export function computeActivitySnapshot(summary: AppleHealthSummary): ActivitySn
     });
   }
 
+  // -----------------------------------------------------------------------
+  // Period summaries
+  // -----------------------------------------------------------------------
+  const periodRanges = buildPeriodRanges(now);
+  const periods: PeriodSummary[] = periodRanges.map(({ current, previous }) => {
+    const curDays = inRange(daily, current.start, current.end);
+    const prevDays = inRange(daily, previous.start, previous.end);
+
+    const curSteps =
+      curDays.length > 0 ? curDays.reduce((a, d) => a + d.steps, 0) / curDays.length : 0;
+    const prevSteps =
+      prevDays.length > 0 ? prevDays.reduce((a, d) => a + d.steps, 0) / prevDays.length : 0;
+    const curCal =
+      curDays.length > 0 ? curDays.reduce((a, d) => a + d.activeEnergy, 0) / curDays.length : 0;
+    const prevCal =
+      prevDays.length > 0 ? prevDays.reduce((a, d) => a + d.activeEnergy, 0) / prevDays.length : 0;
+    const curExercise =
+      curDays.length > 0 ? curDays.reduce((a, d) => a + d.exerciseMinutes, 0) / curDays.length : 0;
+    const prevExercise =
+      prevDays.length > 0
+        ? prevDays.reduce((a, d) => a + d.exerciseMinutes, 0) / prevDays.length
+        : 0;
+
+    return {
+      name: current.name,
+      start: current.start,
+      end: current.end,
+      stats: [
+        {
+          label: 'Avg steps',
+          value: curSteps,
+          formatted: formatSigned(curSteps).replace('+', ''),
+          prevValue: prevDays.length > 0 ? prevSteps : null,
+          deltaPct: prevDays.length > 0 ? pctChange(curSteps, prevSteps) : null,
+        },
+        {
+          label: 'Avg calories',
+          value: curCal,
+          formatted: Math.round(curCal).toLocaleString(),
+          prevValue: prevDays.length > 0 ? prevCal : null,
+          deltaPct: prevDays.length > 0 ? pctChange(curCal, prevCal) : null,
+        },
+        {
+          label: 'Avg exercise',
+          value: curExercise,
+          formatted: `${Math.round(curExercise)}m`,
+          prevValue: prevDays.length > 0 ? prevExercise : null,
+          deltaPct: prevDays.length > 0 ? pctChange(curExercise, prevExercise) : null,
+        },
+      ],
+    };
+  });
+
   return {
     daily,
     headline: {
@@ -725,11 +1105,16 @@ export function computeActivitySnapshot(summary: AppleHealthSummary): ActivitySn
       mostActiveDay,
     },
     insights,
+    periods,
+    recoveryScores: [], // filled by top-level compose (needs cross-segment data)
     distanceUnit,
   };
 }
 
-export function computeHeartSnapshot(summary: AppleHealthSummary): HeartSnapshot {
+export function computeHeartSnapshot(
+  summary: AppleHealthSummary,
+  now: Date = new Date()
+): HeartSnapshot {
   const days = sortedDays(summary);
 
   const daily: HeartDay[] = days.map((day) => ({
@@ -816,6 +1201,42 @@ export function computeHeartSnapshot(summary: AppleHealthSummary): HeartSnapshot
     }
   }
 
+  // -----------------------------------------------------------------------
+  // Period summaries
+  // -----------------------------------------------------------------------
+  const periodRanges = buildPeriodRanges(now);
+  const periods: PeriodSummary[] = periodRanges.map(({ current, previous }) => {
+    const curDays = inRange(daily, current.start, current.end);
+    const prevDays = inRange(daily, previous.start, previous.end);
+
+    const curResting = nanMean(curDays.map((d) => d.restingHR));
+    const prevResting = nanMean(prevDays.map((d) => d.restingHR));
+    const curHRV = nanMean(curDays.map((d) => d.hrv));
+    const prevHRV = nanMean(prevDays.map((d) => d.hrv));
+
+    return {
+      name: current.name,
+      start: current.start,
+      end: current.end,
+      stats: [
+        {
+          label: 'Avg resting HR',
+          value: curResting,
+          formatted: curResting > 0 ? `${Math.round(curResting)} bpm` : '—',
+          prevValue: prevDays.length > 0 && prevResting > 0 ? prevResting : null,
+          deltaPct: prevResting > 0 ? pctChange(curResting, prevResting) : null,
+        },
+        {
+          label: 'Avg HRV',
+          value: curHRV,
+          formatted: curHRV > 0 ? `${curHRV.toFixed(1)} ms` : '—',
+          prevValue: prevDays.length > 0 && prevHRV > 0 ? prevHRV : null,
+          deltaPct: prevHRV > 0 ? pctChange(curHRV, prevHRV) : null,
+        },
+      ],
+    };
+  });
+
   return {
     daily,
     headline: {
@@ -828,10 +1249,14 @@ export function computeHeartSnapshot(summary: AppleHealthSummary): HeartSnapshot
       hrvTrend: classifyHRVTrend(hrvSeries90),
     },
     insights,
+    periods,
   };
 }
 
-export function computeSleepSnapshot(summary: AppleHealthSummary): SleepSnapshot {
+export function computeSleepSnapshot(
+  summary: AppleHealthSummary,
+  now: Date = new Date()
+): SleepSnapshot {
   const days = sortedDays(summary);
 
   /**
@@ -953,6 +1378,47 @@ export function computeSleepSnapshot(summary: AppleHealthSummary): SleepSnapshot
     });
   }
 
+  // -----------------------------------------------------------------------
+  // Period summaries
+  // -----------------------------------------------------------------------
+  const periodRanges = buildPeriodRanges(now);
+  const periods: PeriodSummary[] = periodRanges.map(({ current, previous }) => {
+    const curDays = inRange(daily, current.start, current.end);
+    const prevDays = inRange(daily, previous.start, previous.end);
+
+    const curSleep =
+      curDays.length > 0 ? curDays.reduce((a, d) => a + d.asleepMinutes, 0) / curDays.length : 0;
+    const prevSleep =
+      prevDays.length > 0 ? prevDays.reduce((a, d) => a + d.asleepMinutes, 0) / prevDays.length : 0;
+    const curDeep = curDays.length > 0 ? nanMean(curDays.map((d) => d.deepMinutes)) : 0;
+    const prevDeep = prevDays.length > 0 ? nanMean(prevDays.map((d) => d.deepMinutes)) : 0;
+
+    return {
+      name: current.name,
+      start: current.start,
+      end: current.end,
+      stats: [
+        {
+          label: 'Avg sleep',
+          value: curSleep,
+          formatted: formatDuration(curSleep),
+          prevValue: prevDays.length > 0 ? prevSleep : null,
+          deltaPct: prevDays.length > 0 ? pctChange(curSleep, prevSleep) : null,
+        },
+        {
+          label: 'Avg deep',
+          value: curDeep,
+          formatted: curDeep > 0 ? formatDuration(curDeep) : '—',
+          prevValue: prevDays.length > 0 && prevDeep > 0 ? prevDeep : null,
+          deltaPct: prevDeep > 0 ? pctChange(curDeep, prevDeep) : null,
+        },
+      ],
+    };
+  });
+
+  // Sleep quality scores
+  const qualityScores = computeSleepQualityScores(daily);
+
   return {
     daily,
     headline: {
@@ -964,6 +1430,8 @@ export function computeSleepSnapshot(summary: AppleHealthSummary): SleepSnapshot
       nightsWith7Plus: daily.filter((d) => d.asleepMinutes >= 7 * 60).length,
     },
     insights,
+    periods,
+    qualityScores,
   };
 }
 
@@ -1147,6 +1615,48 @@ export function computeWorkoutsSnapshot(
     });
   }
 
+  // -----------------------------------------------------------------------
+  // Period summaries
+  // -----------------------------------------------------------------------
+  const periodRanges = buildPeriodRanges(now);
+  const periods: PeriodSummary[] = periodRanges.map(({ current, previous }) => {
+    const curWorkouts = workouts.filter((w) => {
+      const d = w.start.slice(0, 10);
+      return d >= current.start && d <= current.end;
+    });
+    const prevWorkouts = workouts.filter((w) => {
+      const d = w.start.slice(0, 10);
+      return d >= previous.start && d <= previous.end;
+    });
+
+    const curCount = curWorkouts.length;
+    const prevCount = prevWorkouts.length;
+    const curMinutes = curWorkouts.reduce((a, w) => a + (w.durationMinutes ?? 0), 0);
+    const prevMinutes = prevWorkouts.reduce((a, w) => a + (w.durationMinutes ?? 0), 0);
+
+    return {
+      name: current.name,
+      start: current.start,
+      end: current.end,
+      stats: [
+        {
+          label: 'Sessions',
+          value: curCount,
+          formatted: `${curCount}`,
+          prevValue: prevCount > 0 ? prevCount : null,
+          deltaPct: prevCount > 0 ? pctChange(curCount, prevCount) : null,
+        },
+        {
+          label: 'Total time',
+          value: curMinutes,
+          formatted: formatDuration(curMinutes),
+          prevValue: prevMinutes > 0 ? prevMinutes : null,
+          deltaPct: prevMinutes > 0 ? pctChange(curMinutes, prevMinutes) : null,
+        },
+      ],
+    };
+  });
+
   return {
     byType,
     weekly,
@@ -1160,11 +1670,15 @@ export function computeWorkoutsSnapshot(
       favoriteType: byType.length > 0 ? byType[0].type : null,
     },
     insights,
+    periods,
     distanceUnit,
   };
 }
 
-export function computeBodySnapshot(summary: AppleHealthSummary): BodySnapshot {
+export function computeBodySnapshot(
+  summary: AppleHealthSummary,
+  now: Date = new Date()
+): BodySnapshot {
   const days = sortedDays(summary);
   const LB_PER_KG = 2.20462;
 
@@ -1277,12 +1791,42 @@ export function computeBodySnapshot(summary: AppleHealthSummary): BodySnapshot {
     });
   }
 
+  // -----------------------------------------------------------------------
+  // Period summaries
+  // -----------------------------------------------------------------------
+  const periodRanges = buildPeriodRanges(now);
+  const periods: PeriodSummary[] = periodRanges.map(({ current, previous }) => {
+    const curWeights = inRange(weightHistory, current.start, current.end);
+    const prevWeights = inRange(weightHistory, previous.start, previous.end);
+
+    const curAvg =
+      curWeights.length > 0 ? curWeights.reduce((a, w) => a + w.lb, 0) / curWeights.length : 0;
+    const prevAvg =
+      prevWeights.length > 0 ? prevWeights.reduce((a, w) => a + w.lb, 0) / prevWeights.length : 0;
+
+    return {
+      name: current.name,
+      start: current.start,
+      end: current.end,
+      stats: [
+        {
+          label: 'Avg weight',
+          value: curAvg,
+          formatted: curAvg > 0 ? `${curAvg.toFixed(1)} lb` : '—',
+          prevValue: prevAvg > 0 ? prevAvg : null,
+          deltaPct: prevAvg > 0 ? pctChange(curAvg, prevAvg) : null,
+        },
+      ],
+    };
+  });
+
   return {
     weightHistory,
     heightCm: heightCm !== null ? Math.round(heightCm * 10) / 10 : null,
     heightIn: heightIn !== null ? Math.round(heightIn * 10) / 10 : null,
     headline: { currentKg, currentLb, change30d, change1y },
     insights,
+    periods,
   };
 }
 
@@ -1382,15 +1926,24 @@ export function computeSnapshots(
   deltas: readonly DeltaFile[] = []
 ): PersonSnapshots {
   const merged = overlayDeltas(summary, deltas);
+  const activity = computeActivitySnapshot(merged, now);
+  const heart = computeHeartSnapshot(merged, now);
+  const sleep = computeSleepSnapshot(merged, now);
+  const workouts = computeWorkoutsSnapshot(merged, now);
+  const body = computeBodySnapshot(merged, now);
+
+  // Cross-segment: compute recovery scores (needs activity + heart + sleep)
+  activity.recoveryScores = computeRecoveryScores(activity.daily, heart.daily, sleep.daily);
+
   return {
     schemaVersion: SNAPSHOT_SCHEMA_VERSION,
     generatedAt: now.toISOString(),
     sourceFilename,
     parserVersion: merged.parserVersion,
-    activity: computeActivitySnapshot(merged),
-    heart: computeHeartSnapshot(merged),
-    sleep: computeSleepSnapshot(merged),
-    workouts: computeWorkoutsSnapshot(merged, now),
-    body: computeBodySnapshot(merged),
+    activity,
+    heart,
+    sleep,
+    workouts,
+    body,
   };
 }
