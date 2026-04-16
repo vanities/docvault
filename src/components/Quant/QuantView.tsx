@@ -35,6 +35,7 @@ import { HousingDashboardChart } from './HousingDashboardChart';
 import { GdpGrowthChart } from './GdpGrowthChart';
 import { CommoditiesChart } from './CommoditiesChart';
 import { VixTermStructureChart } from './VixTermStructureChart';
+import { GlobalMarketsChart } from './GlobalMarketsChart';
 import { useQuantRefresh } from './useQuantData';
 
 /** Four top-level tabs — an overview snapshot plus Cowen's 3 categories. */
@@ -338,6 +339,13 @@ export function QuantView() {
 
           <ChartGroup title="Commodities" subtitle="Gold, Silver, Oil, Copper, Nat Gas, Platinum">
             <CommoditiesChart />
+          </ChartGroup>
+
+          <ChartGroup
+            title="Global Markets"
+            subtitle="FTSE, DAX, Nikkei, Hang Seng, Shanghai + EM/EAFE/FXI"
+          >
+            <GlobalMarketsChart />
           </ChartGroup>
         </TabsContent>
       </Tabs>

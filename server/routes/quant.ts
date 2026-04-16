@@ -42,6 +42,7 @@ const TTL = {
   gdpGrowth: DAY_MS, // FRED GDP + growth series
   commodities: DAY_MS, // yahoo futures tickers
   vixTermStructure: 6 * 60 * 60 * 1000, // yahoo VIX variants
+  globalMarkets: DAY_MS, // yahoo international indices
 };
 
 interface CacheEntry<T> {
@@ -76,6 +77,7 @@ type QuantCache = {
   gdpGrowth?: CacheEntry<MacroDashboardResponse>;
   commodities?: CacheEntry<MacroDashboardResponse>;
   vixTermStructure?: CacheEntry<MacroDashboardResponse>;
+  globalMarkets?: CacheEntry<MacroDashboardResponse>;
 };
 
 async function loadCache(): Promise<QuantCache> {
@@ -206,6 +208,8 @@ const CACHE = {
   commodities: { maxAge: 3600, swr: 12 * 3600 },
   // VIX Term Structure — yahoo EOD, 1h + 12h SWR.
   vixTermStructure: { maxAge: 3600, swr: 12 * 3600 },
+  // Global Markets — yahoo international indices, 2h + 12h SWR.
+  globalMarkets: { maxAge: 2 * 3600, swr: 12 * 3600 },
   // Snapshots grow one row per day; short cache so new snapshots appear fast.
   snapshots: { maxAge: 300, swr: 3600 },
 };
@@ -3014,6 +3018,69 @@ async function computeVixTermStructure(): Promise<MacroDashboardResponse> {
   return computeYahooDashboard(VIX_TERM_SERIES, '2010-01-01');
 }
 
+export const GLOBAL_MARKETS_SERIES: YahooSeriesSpec[] = [
+  {
+    id: '^FTSE',
+    label: 'FTSE 100',
+    description: 'UK blue-chip index — 100 largest London-listed companies.',
+    unit: '',
+    decimals: 0,
+  },
+  {
+    id: '^GDAXI',
+    label: 'DAX',
+    description: 'German large-cap index — export/manufacturing gauge for Europe.',
+    unit: '',
+    decimals: 0,
+  },
+  {
+    id: '^N225',
+    label: 'Nikkei 225',
+    description: 'Japan — 225 top Tokyo Stock Exchange companies.',
+    unit: '',
+    decimals: 0,
+  },
+  {
+    id: '^HSI',
+    label: 'Hang Seng',
+    description: 'Hong Kong — proxy for Chinese large-cap equities listed offshore.',
+    unit: '',
+    decimals: 0,
+  },
+  {
+    id: '^SSEC',
+    label: 'Shanghai Composite',
+    description: 'Mainland China — all A/B shares on the Shanghai Stock Exchange.',
+    unit: '',
+    decimals: 0,
+  },
+  {
+    id: 'EEM',
+    label: 'Emerging Markets ETF',
+    description: 'iShares MSCI EM ETF — broad EM (China, India, Brazil, Taiwan).',
+    unit: '',
+    decimals: 2,
+  },
+  {
+    id: 'EFA',
+    label: 'Intl Developed ETF',
+    description: 'iShares MSCI EAFE — developed ex US/Canada (Europe, Japan, Australia).',
+    unit: '',
+    decimals: 2,
+  },
+  {
+    id: 'FXI',
+    label: 'China Large Cap ETF',
+    description: 'iShares China Large-Cap ETF — 50 largest Chinese stocks.',
+    unit: '',
+    decimals: 2,
+  },
+];
+
+async function computeGlobalMarkets(): Promise<MacroDashboardResponse> {
+  return computeYahooDashboard(GLOBAL_MARKETS_SERIES, '2000-01-01');
+}
+
 // ---------------------------------------------------------------------------
 // BTC Drawdown from ATH — pure compute on cached BTC daily history. Tracks
 // the running ATH, current drawdown, days-since-ATH, and breaks the series
@@ -4581,6 +4648,36 @@ export async function handleQuantRoutes(
         );
       }
       return jsonResponse({ error: `VIX term structure fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/tradfi/global-markets — international indices + EM/EAFE ETFs
+  if (pathname === '/api/quant/tradfi/global-markets' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.globalMarkets, TTL.globalMarkets)) {
+      return cachedJsonResponse(
+        req,
+        { ...cache.globalMarkets!.data, cached: true },
+        CACHE.globalMarkets
+      );
+    }
+    try {
+      logQuant.info('global-markets — computing fresh');
+      const data = await computeGlobalMarkets();
+      cache.globalMarkets = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.globalMarkets);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('global-markets failed:', msg);
+      if (cache.globalMarkets) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.globalMarkets.data, cached: true, stale: true, fetchError: msg },
+          CACHE.globalMarkets
+        );
+      }
+      return jsonResponse({ error: `Global markets fetch failed: ${msg}` }, 502);
     }
   }
 
