@@ -1,11 +1,21 @@
 // Activity segment view — steps, energy, exercise minutes, distance.
 // Uses the Activity snapshot from the API.
 
-import { Activity as ActivityIcon, Footprints, Flame, Timer, Route } from 'lucide-react';
+import {
+  Activity as ActivityIcon,
+  Footprints,
+  Flame,
+  Timer,
+  Route,
+  ShieldCheck,
+} from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { SegmentViewShell } from './SegmentViewShell';
 import { HealthChart } from './HealthChart';
 import { InsightsRow } from './InsightsRow';
+import { CollapsibleTable } from './CollapsibleTable';
+import { TimePeriodSummary } from './TimePeriodSummary';
+import { ScoreGauge } from './ScoreGauge';
 import { formatInt, formatDecimal1 } from './healthFormatters';
 
 export function HealthActivityView() {
@@ -46,6 +56,28 @@ export function HealthActivityView() {
               color="text-violet-400"
             />
           </div>
+
+          {/* Recovery score — latest day */}
+          {data.recoveryScores.length > 0 &&
+            (() => {
+              const latest = data.recoveryScores[data.recoveryScores.length - 1];
+              return (
+                <ScoreGauge
+                  label="Recovery Score"
+                  score={latest.score}
+                  icon={ShieldCheck}
+                  components={[
+                    { label: 'HRV', value: latest.components.hrv },
+                    { label: 'Sleep', value: latest.components.sleep },
+                    { label: 'Resting HR', value: latest.components.restingHR },
+                    { label: 'Load', value: latest.components.exerciseLoad },
+                  ]}
+                />
+              );
+            })()}
+
+          {/* Period summaries */}
+          <TimePeriodSummary periods={data.periods} />
 
           {/* Insights */}
           <InsightsRow insights={data.insights} />
@@ -120,11 +152,13 @@ export function HealthActivityView() {
           </Card>
 
           {/* Recent days table */}
-          <Card className="p-5">
-            <h3 className="font-medium text-surface-950 mb-3">Last 14 days</h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
+          {(() => {
+            const recentDays = data.daily.slice().reverse();
+            return (
+              <CollapsibleTable
+                title="Daily activity"
+                totalRows={recentDays.length}
+                head={
                   <tr className="text-left text-[11px] uppercase text-surface-600 tracking-wide border-b border-border">
                     <th className="py-2 pr-3">Date</th>
                     <th className="py-2 pr-3 text-right">Steps</th>
@@ -134,41 +168,33 @@ export function HealthActivityView() {
                     <th className="py-2 pr-3 text-right">Distance</th>
                     <th className="py-2 pr-3 text-right">Flights</th>
                   </tr>
-                </thead>
-                <tbody>
-                  {data.daily
-                    .slice(-14)
-                    .reverse()
-                    .map((d) => (
-                      <tr
-                        key={d.date}
-                        className="border-b border-border/30 hover:bg-surface-100/30"
-                      >
-                        <td className="py-1.5 pr-3 text-surface-700 font-mono text-xs">{d.date}</td>
-                        <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                          {formatInt(d.steps)}
-                        </td>
-                        <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                          {formatInt(d.activeEnergy)}
-                        </td>
-                        <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                          {formatInt(d.exerciseMinutes)}m
-                        </td>
-                        <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                          {formatInt(d.standHours)}h
-                        </td>
-                        <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                          {formatDecimal1(d.distance)}
-                        </td>
-                        <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                          {formatInt(d.flightsClimbed)}
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+                }
+                rows={recentDays.map((d) => (
+                  <tr key={d.date} className="border-b border-border/30 hover:bg-surface-100/30">
+                    <td className="py-1.5 pr-3 text-surface-700 font-mono text-xs">{d.date}</td>
+                    <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                      {formatInt(d.steps)}
+                    </td>
+                    <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                      {formatInt(d.activeEnergy)}
+                    </td>
+                    <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                      {formatInt(d.exerciseMinutes)}m
+                    </td>
+                    <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                      {formatInt(d.standHours)}h
+                    </td>
+                    <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                      {formatDecimal1(d.distance)}
+                    </td>
+                    <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                      {formatInt(d.flightsClimbed)}
+                    </td>
+                  </tr>
+                ))}
+              />
+            );
+          })()}
         </div>
       )}
     </SegmentViewShell>

@@ -1,11 +1,14 @@
 // Sleep segment view — duration, stages, respiratory rate, wrist temp.
 
-import { Moon, Clock, Award, BedDouble } from 'lucide-react';
+import { Moon, Clock, Award, BedDouble, Star } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { SegmentViewShell } from './SegmentViewShell';
 import { HealthChart } from './HealthChart';
 import { InsightsRow } from './InsightsRow';
+import { CollapsibleTable } from './CollapsibleTable';
+import { TimePeriodSummary } from './TimePeriodSummary';
+import { ScoreGauge } from './ScoreGauge';
 import { formatHours, formatMinutes } from './healthFormatters';
 
 /** Convert minutes to "Xh Ym" for labels. */
@@ -66,6 +69,26 @@ export function HealthSleepView() {
               />
             </div>
 
+            {/* Sleep quality score — latest night */}
+            {data.qualityScores.length > 0 &&
+              (() => {
+                const latest = data.qualityScores[data.qualityScores.length - 1];
+                return (
+                  <ScoreGauge
+                    label="Sleep Quality Score"
+                    score={latest.score}
+                    icon={Star}
+                    components={[
+                      { label: 'Duration', value: latest.components.duration },
+                      { label: 'Consistency', value: latest.components.consistency },
+                      { label: 'Interruptions', value: latest.components.interruptions },
+                    ]}
+                  />
+                );
+              })()}
+
+            <TimePeriodSummary periods={data.periods} />
+
             <InsightsRow insights={data.insights} />
 
             {data.headline.longestSleep && (
@@ -117,11 +140,13 @@ export function HealthSleepView() {
               />
             </Card>
 
-            <Card className="p-5">
-              <h3 className="font-medium text-surface-950 mb-3">Recent 14 nights</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
+            {(() => {
+              const recentNights = data.daily.slice().reverse();
+              return (
+                <CollapsibleTable
+                  title="Nightly sleep"
+                  totalRows={recentNights.length}
+                  head={
                     <tr className="text-left text-[11px] uppercase text-surface-600 tracking-wide border-b border-border">
                       <th className="py-2 pr-3">Date</th>
                       <th className="py-2 pr-3 text-right">Total</th>
@@ -131,43 +156,33 @@ export function HealthSleepView() {
                       <th className="py-2 pr-3 text-right">Awake</th>
                       <th className="py-2 pr-3 text-right">Resp</th>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {data.daily
-                      .slice(-14)
-                      .reverse()
-                      .map((d) => (
-                        <tr
-                          key={d.date}
-                          className="border-b border-border/30 hover:bg-surface-100/30"
-                        >
-                          <td className="py-1.5 pr-3 text-surface-700 font-mono text-xs">
-                            {d.date}
-                          </td>
-                          <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                            {formatMinutes(d.asleepMinutes)}
-                          </td>
-                          <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                            {d.deepMinutes !== null ? formatMinutes(d.deepMinutes) : '—'}
-                          </td>
-                          <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                            {d.remMinutes !== null ? formatMinutes(d.remMinutes) : '—'}
-                          </td>
-                          <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                            {d.coreMinutes !== null ? formatMinutes(d.coreMinutes) : '—'}
-                          </td>
-                          <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                            {d.awakeMinutes !== null ? formatMinutes(d.awakeMinutes) : '—'}
-                          </td>
-                          <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                            {d.respiratoryRate !== null ? d.respiratoryRate.toFixed(1) : '—'}
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
+                  }
+                  rows={recentNights.map((d) => (
+                    <tr key={d.date} className="border-b border-border/30 hover:bg-surface-100/30">
+                      <td className="py-1.5 pr-3 text-surface-700 font-mono text-xs">{d.date}</td>
+                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                        {formatMinutes(d.asleepMinutes)}
+                      </td>
+                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                        {d.deepMinutes !== null ? formatMinutes(d.deepMinutes) : '—'}
+                      </td>
+                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                        {d.remMinutes !== null ? formatMinutes(d.remMinutes) : '—'}
+                      </td>
+                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                        {d.coreMinutes !== null ? formatMinutes(d.coreMinutes) : '—'}
+                      </td>
+                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                        {d.awakeMinutes !== null ? formatMinutes(d.awakeMinutes) : '—'}
+                      </td>
+                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                        {d.respiratoryRate !== null ? d.respiratoryRate.toFixed(1) : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                />
+              );
+            })()}
           </div>
         );
       }}

@@ -6,6 +6,8 @@ import { Card } from '@/components/ui/card';
 import { SegmentViewShell } from './SegmentViewShell';
 import { HealthChart } from './HealthChart';
 import { InsightsRow } from './InsightsRow';
+import { CollapsibleTable } from './CollapsibleTable';
+import { TimePeriodSummary } from './TimePeriodSummary';
 import { formatBpm, formatDecimal1 } from './healthFormatters';
 
 export function HealthHeartView() {
@@ -91,6 +93,8 @@ export function HealthHeartView() {
               />
             </div>
 
+            <TimePeriodSummary periods={data.periods} />
+
             <InsightsRow insights={data.insights} />
 
             <Card className="p-5">
@@ -137,11 +141,13 @@ export function HealthHeartView() {
               />
             </Card>
 
-            <Card className="p-5">
-              <h3 className="font-medium text-surface-950 mb-3">Last 14 days</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
+            {(() => {
+              const recentDays = data.daily.slice().reverse();
+              return (
+                <CollapsibleTable
+                  title="Daily heart metrics"
+                  totalRows={recentDays.length}
+                  head={
                     <tr className="text-left text-[11px] uppercase text-surface-600 tracking-wide border-b border-border">
                       <th className="py-2 pr-3">Date</th>
                       <th className="py-2 pr-3 text-right">Resting HR</th>
@@ -150,40 +156,30 @@ export function HealthHeartView() {
                       <th className="py-2 pr-3 text-right">Max HR</th>
                       <th className="py-2 pr-3 text-right">HRV</th>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {data.daily
-                      .slice(-14)
-                      .reverse()
-                      .map((d) => (
-                        <tr
-                          key={d.date}
-                          className="border-b border-border/30 hover:bg-surface-100/30"
-                        >
-                          <td className="py-1.5 pr-3 text-surface-700 font-mono text-xs">
-                            {d.date}
-                          </td>
-                          <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                            {d.restingHR !== null ? Math.round(d.restingHR) : '—'}
-                          </td>
-                          <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                            {d.avgHR !== null ? Math.round(d.avgHR) : '—'}
-                          </td>
-                          <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                            {d.minHR !== null ? Math.round(d.minHR) : '—'}
-                          </td>
-                          <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                            {d.maxHR !== null ? Math.round(d.maxHR) : '—'}
-                          </td>
-                          <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
-                            {d.hrv !== null ? d.hrv.toFixed(1) : '—'}
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
+                  }
+                  rows={recentDays.map((d) => (
+                    <tr key={d.date} className="border-b border-border/30 hover:bg-surface-100/30">
+                      <td className="py-1.5 pr-3 text-surface-700 font-mono text-xs">{d.date}</td>
+                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                        {d.restingHR !== null ? Math.round(d.restingHR) : '—'}
+                      </td>
+                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                        {d.avgHR !== null ? Math.round(d.avgHR) : '—'}
+                      </td>
+                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                        {d.minHR !== null ? Math.round(d.minHR) : '—'}
+                      </td>
+                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                        {d.maxHR !== null ? Math.round(d.maxHR) : '—'}
+                      </td>
+                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                        {d.hrv !== null ? d.hrv.toFixed(1) : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                />
+              );
+            })()}
           </div>
         );
       }}
