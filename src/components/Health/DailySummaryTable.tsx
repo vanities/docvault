@@ -8,8 +8,7 @@
 //   - Date range filter: "last 30 days", "last 90 days", "last year", "all"
 
 import { useState, useMemo } from 'react';
-import { Calendar, ChevronDown } from 'lucide-react';
-import { Card } from '@/components/ui/card';
+import { Calendar, ChevronDown, ChevronUp, Table2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -111,13 +110,25 @@ export function DailySummaryTable({ summary }: DailySummaryTableProps) {
     });
   };
 
+  const [expanded, setExpanded] = useState(false);
+  const defaultRowCount = 14;
+  const canExpand = days.length > defaultRowCount;
+  const visibleDays = canExpand && !expanded ? days.slice(0, defaultRowCount) : days.slice(0, 500);
+
   return (
-    <Card className="p-5">
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <h3 className="font-medium text-surface-950">Daily Summaries</h3>
+    <div className="rounded-xl border border-border/40 bg-surface-50/30 overflow-hidden">
+      {/* Header bar */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/30 flex-wrap gap-2">
+        <h3 className="text-[11px] font-semibold text-surface-600 uppercase tracking-[0.12em] flex items-center gap-1.5">
+          <Table2 className="w-3 h-3 text-surface-500" />
+          Daily summaries
+          <span className="text-surface-500 font-mono tabular-nums">
+            ({days.length.toLocaleString()})
+          </span>
+        </h3>
         <div className="flex items-center gap-2 flex-wrap">
           <Select value={range} onValueChange={(v) => setRange(v as DateRange)}>
-            <SelectTrigger className="w-[140px] h-8 text-xs">
+            <SelectTrigger className="w-[140px] h-7 text-[11px]">
               <Calendar className="w-3 h-3 mr-1" />
               <SelectValue />
             </SelectTrigger>
@@ -130,7 +141,7 @@ export function DailySummaryTable({ summary }: DailySummaryTableProps) {
             </SelectContent>
           </Select>
           <Select value={aggregation} onValueChange={(v) => setAggregation(v as Aggregation)}>
-            <SelectTrigger className="w-[110px] h-8 text-xs">
+            <SelectTrigger className="w-[100px] h-7 text-[11px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -141,20 +152,37 @@ export function DailySummaryTable({ summary }: DailySummaryTableProps) {
               ))}
             </SelectContent>
           </Select>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 text-xs"
-            onClick={() => setShowPicker((v) => !v)}
-          >
-            Metrics ({selectedMetrics.size}) <ChevronDown className="w-3 h-3 ml-1" />
+          <Button variant="outline" size="xs" onClick={() => setShowPicker((v) => !v)}>
+            Metrics ({selectedMetrics.size}){' '}
+            {showPicker ? (
+              <ChevronUp className="w-3 h-3 ml-1" />
+            ) : (
+              <ChevronDown className="w-3 h-3 ml-1" />
+            )}
           </Button>
+          {canExpand && (
+            <button
+              type="button"
+              onClick={() => setExpanded(!expanded)}
+              className="flex items-center gap-1 text-[11px] text-surface-500 hover:text-accent-400 transition-colors font-medium"
+            >
+              {expanded ? (
+                <>
+                  Collapse <ChevronUp className="w-3 h-3" />
+                </>
+              ) : (
+                <>
+                  Show all <ChevronDown className="w-3 h-3" />
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
       {/* Metric picker */}
       {showPicker && (
-        <div className="mb-3 p-3 rounded-lg border border-border bg-surface-100/40">
+        <div className="px-4 py-3 border-b border-border/30 bg-surface-100/20">
           <div className="text-[11px] uppercase text-surface-600 font-semibold mb-2">
             Numeric metrics ({summary.typesSeen.numeric.length})
           </div>
@@ -165,14 +193,11 @@ export function DailySummaryTable({ summary }: DailySummaryTableProps) {
                 <button
                   key={type}
                   onClick={() => toggleMetric(type)}
-                  className={`
-                    px-2 py-1 rounded-md text-xs font-mono transition-colors
-                    ${
-                      selected
-                        ? 'bg-accent-500/15 text-accent-400 border border-accent-500/30'
-                        : 'bg-surface-0 text-surface-700 border border-border hover:border-accent-500/20'
-                    }
-                  `}
+                  className={`px-2 py-1 rounded-md text-xs font-mono transition-colors ${
+                    selected
+                      ? 'bg-accent-500/15 text-accent-400 border border-accent-500/30'
+                      : 'bg-surface-0 text-surface-700 border border-border hover:border-accent-500/20'
+                  }`}
                 >
                   {type}
                 </button>
@@ -202,33 +227,36 @@ export function DailySummaryTable({ summary }: DailySummaryTableProps) {
       {/* Table */}
       <div className="overflow-x-auto">
         {days.length === 0 ? (
-          <div className="text-sm text-surface-600 py-4">No data in this range.</div>
+          <div className="text-sm text-surface-600 py-8 text-center">No data in this range.</div>
         ) : metricsInOrder.length === 0 ? (
-          <div className="text-sm text-surface-600 py-4">
+          <div className="text-sm text-surface-600 py-8 text-center">
             Select one or more metrics above to display.
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-[11px] uppercase text-surface-600 tracking-wide border-b border-border sticky top-0 bg-surface-0">
-                <th className="py-2 pr-3">Date</th>
+              <tr className="text-left text-[11px] uppercase text-surface-600 tracking-wide border-b border-border sticky top-0 bg-surface-50">
+                <th className="py-2 px-4">Date</th>
                 {metricsInOrder.map((m) => (
-                  <th key={m} className="py-2 pr-3 text-right font-mono normal-case">
+                  <th key={m} className="py-2 px-3 text-right font-mono normal-case">
                     {m}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {days.slice(0, 500).map((day) => (
-                <tr key={day.date} className="border-b border-border/30 hover:bg-surface-100/30">
-                  <td className="py-1.5 pr-3 text-surface-700 font-mono text-xs">{day.date}</td>
+              {visibleDays.map((day) => (
+                <tr
+                  key={day.date}
+                  className="border-b border-border/20 hover:bg-surface-100/30 transition-colors"
+                >
+                  <td className="py-1.5 px-4 text-surface-700 font-mono text-xs">{day.date}</td>
                   {metricsInOrder.map((m) => {
                     const agg = day.numeric[m];
                     return (
                       <td
                         key={m}
-                        className="py-1.5 pr-3 text-right font-mono tabular-nums text-surface-950"
+                        className="py-1.5 px-3 text-right font-mono tabular-nums text-surface-950"
                       >
                         {agg ? formatValue(extractValue(agg, aggregation)) : '—'}
                       </td>
@@ -240,12 +268,21 @@ export function DailySummaryTable({ summary }: DailySummaryTableProps) {
           </table>
         )}
       </div>
-      {days.length > 500 && (
-        <div className="text-xs text-surface-600 mt-2">
+      {canExpand && !expanded && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="w-full py-2 text-[11px] text-surface-500 hover:text-accent-400 bg-surface-100/30 border-t border-border/20 transition-colors font-medium"
+        >
+          Show all {days.length.toLocaleString()} rows
+        </button>
+      )}
+      {days.length > 500 && expanded && (
+        <div className="text-[11px] text-surface-600 px-4 py-2 border-t border-border/20">
           Showing 500 of {days.length.toLocaleString()} rows. Use a narrower date range to see older
           data.
         </div>
       )}
-    </Card>
+    </div>
   );
 }
