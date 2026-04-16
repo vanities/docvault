@@ -9,7 +9,19 @@
 
 import type { AppleHealthSummary, DailySummary, WorkoutEntry } from './apple-health.js';
 
-export const SNAPSHOT_SCHEMA_VERSION = 1;
+/**
+ * Snapshot schema / computer version. Bump this when the snapshot computer's
+ * output shape or logic changes in a way that makes older cached snapshots
+ * stale or visually wrong, even when the underlying parser didn't change.
+ * The health route compares `snapshot.schemaVersion` against this constant
+ * and auto-recomputes on mismatch.
+ *
+ * History:
+ *   1 — initial: activity/heart/sleep/workouts/body segments
+ *   2 — +insights per segment, +WorkoutsSnapshot.distanceUnit,
+ *       humanizeTypeName applied to insight strings
+ */
+export const SNAPSHOT_SCHEMA_VERSION = 2;
 
 /**
  * A single computed insight about a segment. Rendered as a stat tile in
@@ -172,7 +184,9 @@ export interface BodySnapshot {
 }
 
 export interface PersonSnapshots {
-  schemaVersion: typeof SNAPSHOT_SCHEMA_VERSION;
+  /** Persisted on disk; may be older than the current SNAPSHOT_SCHEMA_VERSION.
+   * The health route compares and recomputes on mismatch. */
+  schemaVersion: number;
   generatedAt: string;
   sourceFilename: string;
   parserVersion: string;
