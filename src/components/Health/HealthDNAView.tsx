@@ -31,8 +31,6 @@ import {
   Eye,
   Utensils,
   Zap,
-  Heart,
-  FlaskConical,
   Brain,
   Palette,
   Sparkles,
@@ -41,6 +39,16 @@ import {
   User,
   Lock,
   FileText,
+  Leaf,
+  TrendingUp,
+  Wine,
+  Pill,
+  Flame,
+  Dumbbell,
+  HeartPulse,
+  Shield,
+  Activity,
+  Bone,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -105,75 +113,188 @@ interface ResultsResponse {
 // vocabulary across nested contexts ties the whole view together.
 // ---------------------------------------------------------------------------
 
+// Category accent tokens — keyed by the EXACT category strings emitted by
+// server/parsers/dna-traits.ts. The palette clusters related categories
+// into the same hue family (Gestalt Similarity #7) so the eye reads
+// "this Skin Conditions card and this Taste & Smell card are both
+// sensory" without having to name it. Hues chosen for affective fit:
+//
+//   fuchsia  → appearance (visually observed, bright primary)
+//   rose     → outer body (skin, taste/smell, cardio, cancer — kept
+//               muted via /10 bg + /30 border so health-risk doesn't
+//               shout)
+//   orange   → activity-adjacent (inflammation, sports, digestion)
+//   amber    → substances + metabolism (alcohol, drug response, fuel)
+//   emerald  → positive-health (nutrients, longevity)
+//   cyan     → defenses (immunity, eye health, respiratory)
+//   sky      → clinical/pharmacogenomic
+//   indigo   → endocrine / physiology
+//   violet   → brain/mind (neurology, cognition, psychiatric)
+//   slate    → intentionally muted: low-confidence categories where the
+//               color itself signals "treat lightly" (#2 Visual Salience
+//               used in reverse — low salience communicates low weight)
 const CATEGORY_ACCENTS: Record<
   string,
   { text: string; bg: string; border: string; icon: LucideIcon }
 > = {
+  // — Visible / sensory / outer-body —
   Appearance: {
     text: 'text-fuchsia-400',
     bg: 'bg-fuchsia-500/10',
     border: 'border-fuchsia-500/30',
     icon: Eye,
   },
-  Metabolism: {
+  'Skin Conditions': {
+    text: 'text-rose-400',
+    bg: 'bg-rose-500/10',
+    border: 'border-rose-500/30',
+    icon: Palette,
+  },
+  'Taste & Smell': {
+    text: 'text-rose-400',
+    bg: 'bg-rose-500/10',
+    border: 'border-rose-500/30',
+    icon: Utensils,
+  },
+
+  // — Diet & metabolism —
+  'Nutrients & Vitamins': {
+    text: 'text-emerald-400',
+    bg: 'bg-emerald-500/10',
+    border: 'border-emerald-500/30',
+    icon: Leaf,
+  },
+  'Digestive & Metabolic': {
+    text: 'text-orange-400',
+    bg: 'bg-orange-500/10',
+    border: 'border-orange-500/30',
+    icon: Utensils,
+  },
+  Metabolic: {
     text: 'text-amber-400',
     bg: 'bg-amber-500/10',
     border: 'border-amber-500/30',
     icon: Zap,
   },
-  Nutrients: {
+  Longevity: {
     text: 'text-emerald-400',
     bg: 'bg-emerald-500/10',
     border: 'border-emerald-500/30',
-    icon: Utensils,
+    icon: TrendingUp,
   },
-  Nutrition: {
-    text: 'text-emerald-400',
-    bg: 'bg-emerald-500/10',
-    border: 'border-emerald-500/30',
-    icon: Utensils,
+
+  // — Substances / exercise —
+  Alcohol: {
+    text: 'text-amber-400',
+    bg: 'bg-amber-500/10',
+    border: 'border-amber-500/30',
+    icon: Wine,
   },
-  Health: {
+  'Substance Response': {
+    text: 'text-amber-400',
+    bg: 'bg-amber-500/10',
+    border: 'border-amber-500/30',
+    icon: Pill,
+  },
+  'Inflammation & Autoimmune': {
+    text: 'text-orange-400',
+    bg: 'bg-orange-500/10',
+    border: 'border-orange-500/30',
+    icon: Flame,
+  },
+  'Sports & Injury': {
+    text: 'text-orange-400',
+    bg: 'bg-orange-500/10',
+    border: 'border-orange-500/30',
+    icon: Dumbbell,
+  },
+
+  // — Cardio / cancer — kept muted on purpose (rose at /10 bg) —
+  Cardiovascular: {
     text: 'text-rose-400',
     bg: 'bg-rose-500/10',
     border: 'border-rose-500/30',
-    icon: Heart,
+    icon: HeartPulse,
   },
-  Immunity: {
-    text: 'text-cyan-400',
-    bg: 'bg-cyan-500/10',
-    border: 'border-cyan-500/30',
-    icon: FlaskConical,
+  'Cancer Markers': {
+    text: 'text-rose-400',
+    bg: 'bg-rose-500/10',
+    border: 'border-rose-500/30',
+    icon: Shield,
   },
-  Neurology: {
-    text: 'text-violet-400',
-    bg: 'bg-violet-500/10',
-    border: 'border-violet-500/30',
-    icon: Brain,
-  },
-  Behavior: {
-    text: 'text-violet-400',
-    bg: 'bg-violet-500/10',
-    border: 'border-violet-500/30',
-    icon: Brain,
-  },
+
+  // — Clinical / immune / vision / respiration —
   Pharmacogenomics: {
     text: 'text-sky-400',
     bg: 'bg-sky-500/10',
     border: 'border-sky-500/30',
-    icon: FlaskConical,
+    icon: Pill,
   },
-  Fitness: {
-    text: 'text-orange-400',
-    bg: 'bg-orange-500/10',
-    border: 'border-orange-500/30',
+  Respiratory: {
+    text: 'text-sky-400',
+    bg: 'bg-sky-500/10',
+    border: 'border-sky-500/30',
     icon: Wind,
   },
-  Sleep: {
+  'Immunity & Resistance': {
+    text: 'text-cyan-400',
+    bg: 'bg-cyan-500/10',
+    border: 'border-cyan-500/30',
+    icon: Shield,
+  },
+  'Eye Health': {
+    text: 'text-cyan-400',
+    bg: 'bg-cyan-500/10',
+    border: 'border-cyan-500/30',
+    icon: Eye,
+  },
+
+  // — Body / endocrine —
+  'Body & Physiology': {
     text: 'text-indigo-400',
     bg: 'bg-indigo-500/10',
     border: 'border-indigo-500/30',
+    icon: Activity,
+  },
+  Thyroid: {
+    text: 'text-indigo-400',
+    bg: 'bg-indigo-500/10',
+    border: 'border-indigo-500/30',
+    icon: Zap,
+  },
+
+  // — Brain / mind —
+  Neurological: {
+    text: 'text-violet-400',
+    bg: 'bg-violet-500/10',
+    border: 'border-violet-500/30',
     icon: Brain,
+  },
+  'Personality & Cognition': {
+    text: 'text-violet-400',
+    bg: 'bg-violet-500/10',
+    border: 'border-violet-500/30',
+    icon: Sparkles,
+  },
+  'Psychiatric (Polygenic)': {
+    text: 'text-violet-400',
+    bg: 'bg-violet-500/10',
+    border: 'border-violet-500/30',
+    icon: Brain,
+  },
+
+  // — Intentionally muted (slate) — low-confidence signals less weight —
+  'Bone & Aging': {
+    text: 'text-slate-400',
+    bg: 'bg-slate-500/10',
+    border: 'border-slate-500/30',
+    icon: Bone,
+  },
+  'Rare Mendelian (Low Chip Coverage)': {
+    text: 'text-slate-400',
+    bg: 'bg-slate-500/10',
+    border: 'border-slate-500/30',
+    icon: AlertCircle,
   },
 };
 
