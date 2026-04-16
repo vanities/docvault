@@ -145,6 +145,7 @@ import { handleIncomeRoutes } from './routes/income.js';
 import { handleAccountAnnotationRoutes } from './routes/account-annotations.js';
 import { handleMiscRoutes } from './routes/misc.js';
 import { handleHealthRoutes } from './routes/health.js';
+import { handleDNARoutes } from './routes/dna.js';
 import { handleStrategyRoutes } from './routes/strategy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1781,6 +1782,13 @@ async function handleRequest(req: Request): Promise<Response> {
   // account annotation routes (rates/types for SimpleFIN accounts)
   const annotationResponse = await handleAccountAnnotationRoutes(req, url, pathname);
   if (annotationResponse) return annotationResponse;
+
+  // DNA routes (ancestry/23andMe raw data — encrypted at rest with master key)
+  // Registered before health so the `/api/health/:personId/dna/*` prefix
+  // is dispatched here; health's regex doesn't touch /dna/* paths but order
+  // makes the routing intent explicit.
+  const dnaResponse = await handleDNARoutes(req, url, pathname);
+  if (dnaResponse) return dnaResponse;
 
   // health routes (Apple Health exports, people, parsed summaries)
   const healthResponse = await handleHealthRoutes(req, url, pathname);
