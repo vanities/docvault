@@ -1,4 +1,4 @@
-// Person detail — upload exports and view parsed summaries.
+// Person detail — upload exports, view parsed summaries, and health-at-a-glance charts.
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
@@ -21,14 +21,22 @@ import {
   Hash,
   ChevronDown,
   ChevronUp,
+  Footprints,
+  HeartPulse,
+  Moon,
+  ShieldCheck,
+  Star,
 } from 'lucide-react';
 import type { HealthPerson } from '../../hooks/useFileSystemServer';
 import { Button } from '@/components/ui/button';
 import { useHealthApi } from './useHealthApi';
-import type { AppleHealthSummary, ExportInfo } from './types';
+import type { AppleHealthSummary, ExportInfo, PersonSnapshots } from './types';
 import { DailySummaryTable } from './DailySummaryTable';
 import { ShortcutSetupGuide } from './ShortcutSetupGuide';
-import { humanizeTypeName } from './healthFormatters';
+import { HealthChart } from './HealthChart';
+import { ChartCard } from './ChartCard';
+import { ScoreGauge } from './ScoreGauge';
+import { humanizeTypeName, formatInt, formatHours, formatBpm } from './healthFormatters';
 
 interface PersonDetailProps {
   person: HealthPerson;
@@ -59,6 +67,7 @@ export function PersonDetail({ person }: PersonDetailProps) {
   const [error, setError] = useState<string | null>(null);
   const [busyMessage, setBusyMessage] = useState<string | null>(null);
   const [summary, setSummary] = useState<AppleHealthSummary | null>(null);
+  const [snapshot, setSnapshot] = useState<PersonSnapshots | null>(null);
   const [selectedFilename, setSelectedFilename] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -88,6 +97,14 @@ export function PersonDetail({ person }: PersonDetailProps) {
     }
   }, [api, person.id, selectedFilename]);
 
+  // Load snapshot for charts
+  useEffect(() => {
+    void api
+      .getSnapshot(person.id, 'all')
+      .then((res) => setSnapshot(res.data))
+      .catch(() => setSnapshot(null));
+  }, [api, person.id]);
+
   useEffect(() => {
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -110,6 +127,11 @@ export function PersonDetail({ person }: PersonDetailProps) {
       }
       const list = await api.listExports(person.id);
       setExports(list);
+      // Refresh snapshot for charts
+      void api
+        .getSnapshot(person.id, 'all')
+        .then((res) => setSnapshot(res.data))
+        .catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -126,6 +148,10 @@ export function PersonDetail({ person }: PersonDetailProps) {
       setSelectedFilename(filename);
       const list = await api.listExports(person.id);
       setExports(list);
+      void api
+        .getSnapshot(person.id, 'all')
+        .then((res) => setSnapshot(res.data))
+        .catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -195,10 +221,9 @@ export function PersonDetail({ person }: PersonDetailProps) {
 
       {!loading && !hasExports && !busy && <PersonEmptyState onUpload={handleUpload} />}
 
-      {/* Upload + Exports in one panel */}
+      {/* Upload + Exports panel */}
       {hasExports && (
         <div className="rounded-xl border border-border/40 bg-surface-50/30 overflow-hidden">
-          {/* Upload header */}
           <div className="flex items-center gap-4 p-4 border-b border-border/30">
             <div className="w-9 h-9 rounded-lg bg-accent-500/10 flex items-center justify-center flex-shrink-0">
               <Upload className="w-4 h-4 text-accent-400" />
@@ -231,7 +256,6 @@ export function PersonDetail({ person }: PersonDetailProps) {
             </Button>
           </div>
 
-          {/* Exports list */}
           <div className="divide-y divide-border/20">
             {exports.map((exp) => {
               const isSelected = exp.filename === selectedFilename;
@@ -253,7 +277,8 @@ export function PersonDetail({ person }: PersonDetailProps) {
                       {formatBytes(exp.size)} &middot; {formatDateTime(exp.uploadedAt)}
                     </div>
                   </div>
-                  {exp.parsed && (
+                  {/* Only show View button when multiple exports exist */}
+                  {exp.parsed && exports.filter((e) => e.parsed).length > 1 && (
                     <button
                       type="button"
                       className="text-emerald-400 flex items-center gap-1 text-[11px] font-medium hover:underline"
@@ -263,16 +288,24 @@ export function PersonDetail({ person }: PersonDetailProps) {
                       View
                     </button>
                   )}
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    onClick={() => void handleReParse(exp.filename)}
-                    disabled={busy}
-                    className="gap-1"
-                  >
-                    <RefreshCcw className="w-3 h-3" />
-                    Re-parse
-                  </Button>
+                  {exp.parsed && exports.filter((e) => e.parsed).length <= 1 && (
+                    <span className="text-emerald-400 flex items-center gap-1 text-[11px] font-medium">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Parsed
+                    </span>
+                  )}
+                  {!exp.parsed && (
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => void handleReParse(exp.filename)}
+                      disabled={busy}
+                      className="gap-1"
+                    >
+                      <RefreshCcw className="w-3 h-3" />
+                      Parse
+                    </Button>
+                  )}
                 </div>
               );
             })}
@@ -288,6 +321,10 @@ export function PersonDetail({ person }: PersonDetailProps) {
 
       {hasParsedExport && <ShortcutSetupGuide personId={person.id} personName={person.name} />}
 
+      {/* Health at a Glance — charts + scores from snapshot */}
+      {snapshot && <HealthAtAGlance snapshot={snapshot} />}
+
+      {/* Raw data */}
       {summary && (
         <>
           <SummaryStats summary={summary} />
@@ -295,6 +332,96 @@ export function PersonDetail({ person }: PersonDetailProps) {
           <WorkoutList summary={summary} />
         </>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Health at a Glance — key charts and scores from the snapshot
+// ---------------------------------------------------------------------------
+function HealthAtAGlance({ snapshot }: { snapshot: PersonSnapshots }) {
+  const latestRecovery =
+    snapshot.activity.recoveryScores.length > 0
+      ? snapshot.activity.recoveryScores[snapshot.activity.recoveryScores.length - 1]
+      : null;
+  const latestSleepQuality =
+    snapshot.sleep.qualityScores.length > 0
+      ? snapshot.sleep.qualityScores[snapshot.sleep.qualityScores.length - 1]
+      : null;
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-[11px] font-semibold text-surface-600 uppercase tracking-[0.12em] flex items-center gap-1.5">
+        <Activity className="w-3 h-3 text-accent-400" />
+        Health at a glance
+      </h3>
+
+      {/* Scores row */}
+      {(latestRecovery || latestSleepQuality) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {latestRecovery && (
+            <ScoreGauge
+              label="Recovery Score"
+              score={latestRecovery.score}
+              icon={ShieldCheck}
+              components={[
+                { label: 'HRV', value: latestRecovery.components.hrv },
+                { label: 'Sleep', value: latestRecovery.components.sleep },
+                { label: 'Resting HR', value: latestRecovery.components.restingHR },
+                { label: 'Load', value: latestRecovery.components.exerciseLoad },
+              ]}
+            />
+          )}
+          {latestSleepQuality && (
+            <ScoreGauge
+              label="Sleep Quality"
+              score={latestSleepQuality.score}
+              icon={Star}
+              components={[
+                { label: 'Duration', value: latestSleepQuality.components.duration },
+                { label: 'Consistency', value: latestSleepQuality.components.consistency },
+                { label: 'Interruptions', value: latestSleepQuality.components.interruptions },
+              ]}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Key charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <ChartCard icon={Footprints} title="Steps (30d)" color="text-emerald-400">
+          <HealthChart
+            data={snapshot.activity.daily}
+            lines={[
+              { key: 'steps', label: 'Steps', color: '#10b981' },
+              { key: 'steps7dAvg', label: '7d avg', color: '#6ee7b7' },
+            ]}
+            valueFormatter={formatInt}
+            defaultRange="1M"
+          />
+        </ChartCard>
+
+        <ChartCard icon={Moon} title="Sleep (30d)" color="text-violet-400">
+          <HealthChart
+            data={snapshot.sleep.daily.map((d) => ({
+              date: d.date,
+              hours: d.asleepMinutes / 60,
+            }))}
+            lines={[{ key: 'hours', label: 'Hours', color: '#a855f7' }]}
+            valueFormatter={(v) => formatHours(v)}
+            defaultRange="1M"
+          />
+        </ChartCard>
+
+        <ChartCard icon={HeartPulse} title="Resting HR (30d)" color="text-rose-400">
+          <HealthChart
+            data={snapshot.heart.daily}
+            lines={[{ key: 'restingHR', label: 'Resting HR', color: '#f43f5e' }]}
+            valueFormatter={formatBpm}
+            defaultRange="1M"
+          />
+        </ChartCard>
+      </div>
     </div>
   );
 }
@@ -380,7 +507,7 @@ function EmptyStep({
 }
 
 // ---------------------------------------------------------------------------
-// Summary stats — headline metrics in a polished panel
+// Summary stats
 // ---------------------------------------------------------------------------
 function SummaryStats({ summary }: { summary: AppleHealthSummary }) {
   const { recordCounts, dateRange, typesSeen, profile } = summary;
@@ -389,7 +516,7 @@ function SummaryStats({ summary }: { summary: AppleHealthSummary }) {
   return (
     <div className="rounded-xl border border-border/40 bg-surface-50/30 overflow-hidden">
       <div className="flex items-center gap-2 px-5 py-3 border-b border-border/30">
-        <Activity className="w-3.5 h-3.5 text-accent-400" />
+        <Database className="w-3.5 h-3.5 text-surface-500" />
         <h3 className="text-[11px] font-semibold text-surface-600 uppercase tracking-[0.12em]">
           Export summary
         </h3>
@@ -397,7 +524,7 @@ function SummaryStats({ summary }: { summary: AppleHealthSummary }) {
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-border/20">
         <SummaryStat
-          icon={Database}
+          icon={Activity}
           label="Records"
           value={recordCounts.totalRecords.toLocaleString()}
         />
@@ -454,7 +581,7 @@ function SummaryStat({
 }
 
 // ---------------------------------------------------------------------------
-// Workout list — using same visual pattern as CollapsibleTable
+// Workout list
 // ---------------------------------------------------------------------------
 function WorkoutList({ summary }: { summary: AppleHealthSummary }) {
   const [expanded, setExpanded] = useState(false);
