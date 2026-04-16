@@ -23,6 +23,10 @@ export const DATA_DIR =
   path.join(__dirname, '..', 'data');
 export const CONFIG_PATH = path.join(DATA_DIR, '.docvault-config.json');
 export const SETTINGS_PATH = path.join(DATA_DIR, '.docvault-settings.json');
+export const RCLONE_CONFIG_PATH = path.join(DATA_DIR, '.rclone.conf');
+export const SYNC_SCRIPT_PATH = path.join(__dirname, '..', 'scripts', 'sync-to-dropbox.sh');
+export const SYNC_SCRIPT_DATA_PATH = path.join(DATA_DIR, 'sync-to-dropbox.sh');
+export const SCHEDULE_STATUS_FILE = path.join(DATA_DIR, '.docvault-schedule-status.json');
 export const PORT = 3005;
 
 // ============================================================================
@@ -96,6 +100,8 @@ export interface Settings {
     dropboxSyncIntervalMinutes?: number; // default 15
     dropboxSyncEnabled?: boolean;
     snapshotEnabled?: boolean;
+    quantRefreshIntervalMinutes?: number; // default 1440 (24h)
+    quantRefreshEnabled?: boolean;
     backupPassword?: string; // if set, encrypted config backup is pushed to Dropbox on sync
   };
   /**
