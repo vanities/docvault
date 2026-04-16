@@ -3,7 +3,6 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import { zipSync } from 'fflate';
 import {
   DATA_DIR,
   CRYPTO_CACHE_FILE,
@@ -322,20 +321,13 @@ async function createEncryptedConfigBackup(password: string): Promise<string | n
   const t0 = Date.now();
   await updateScheduleStatus('encryptedBackup', { lastRanAt: startedAt, running: true });
   try {
-    // Collect all .docvault-*.json config files
-    const filesToBackup: Record<string, string> = {};
-    const files = await fs.readdir(DATA_DIR);
-    for (const name of files) {
-      if (name.startsWith('.docvault-') && name.endsWith('.json')) {
-        try {
-          filesToBackup[name] = await fs.readFile(path.join(DATA_DIR, name), 'utf-8');
-        } catch {
-          /* skip unreadable */
-        }
-      }
-    }
+    const { createBackupBundle, collectBackupFiles } = await import('./backup.js');
 
-    if (Object.keys(filesToBackup).length === 0) {
+    // Refuse to overwrite the existing backup with an empty one — a missing
+    // data dir should surface as an error, not silently clobber the prior
+    // good backup.
+    const files = await collectBackupFiles();
+    if (Object.keys(files).length === 0) {
       await updateScheduleStatus('encryptedBackup', {
         lastError: 'No .docvault-*.json files found',
         lastDurationMs: Date.now() - t0,
@@ -344,30 +336,11 @@ async function createEncryptedConfigBackup(password: string): Promise<string | n
       return null;
     }
 
-    // Zip
-    const zipData: Record<string, Uint8Array> = {};
-    for (const [name, content] of Object.entries(filesToBackup)) {
-      zipData[name] = new TextEncoder().encode(content);
-    }
-    const zipped = zipSync(zipData);
-
-    // Encrypt with AES-256-GCM (same format as /api/backup)
-    const { createCipheriv, randomBytes, scryptSync } = await import('crypto');
-    const salt = randomBytes(16);
-    const iv = randomBytes(12);
-    const key = scryptSync(password, salt, 32);
-    const cipher = createCipheriv('aes-256-gcm', key, iv);
-    const encrypted = Buffer.concat([cipher.update(zipped), cipher.final()]);
-    const authTag = cipher.getAuthTag();
-
-    // Pack: salt(16) + iv(12) + authTag(16) + encrypted
-    const packed = Buffer.concat([salt, iv, authTag, encrypted]);
-
-    // Write to data dir as .docvault-config-backup.enc
+    const packed = await createBackupBundle(password);
     const backupPath = path.join(DATA_DIR, '.docvault-config-backup.enc');
     await fs.writeFile(backupPath, packed);
     logScheduler.info(
-      `Encrypted config backup written (${Object.keys(filesToBackup).length} files, ${packed.length} bytes)`
+      `Encrypted config backup written (${Object.keys(files).length} files, ${packed.length} bytes)`
     );
     await updateScheduleStatus('encryptedBackup', {
       lastSuccessAt: new Date().toISOString(),

@@ -3,7 +3,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createLogger } from './logger.js';
 import { parseWithAI } from './parsers/ai.js';
-import { zipSync } from 'fflate';
 import { withAILimit } from './aiLimiter.js';
 import { fetchAllBalances, fetchSourceBalance, fetchCryptoGains } from './crypto.js';
 import {
@@ -312,81 +311,17 @@ async function handleRequest(req: Request): Promise<Response> {
 
   // POST /api/backup — create encrypted backup of all data
   // Body: { password: "..." }
-  // Returns: binary blob (AES-256-GCM encrypted zip)
+  // Returns: binary blob (AES-256-GCM encrypted zip). Bundle shape and
+  // encryption format are owned by server/backup.ts — both this endpoint
+  // and the scheduler's auto-backup task go through that module.
   if (pathname === '/api/backup' && req.method === 'POST') {
     try {
       const { password } = await req.json();
       if (!password || typeof password !== 'string' || password.length < 4) {
         return jsonResponse({ error: 'Password must be at least 4 characters' }, 400);
       }
-
-      // Collect files for backup. Binary-safe: store raw Buffers keyed by
-      // relative path. The restore handler keys off these paths to write them
-      // back in the right place.
-      //
-      // What we capture:
-      //   1. Every .docvault-*.json file at the data-dir root (structured state)
-      //   2. Everything under data/health/ recursively — raw Apple Health
-      //      zip/XML exports + iOS Shortcut daily deltas. These are NAS-only
-      //      today (health/ is not in the Dropbox rclone map), so the
-      //      encrypted backup is their only off-site copy.
-      const filesToBackup: Record<string, Uint8Array> = {};
-
-      try {
-        const entries = await fs.readdir(DATA_DIR);
-        for (const name of entries) {
-          if (name.startsWith('.docvault-') && name.endsWith('.json')) {
-            try {
-              const buf = await fs.readFile(path.join(DATA_DIR, name));
-              filesToBackup[name] = new Uint8Array(buf);
-            } catch {
-              /* skip unreadable files */
-            }
-          }
-        }
-      } catch {
-        /* data dir not readable */
-      }
-
-      // Recursively collect health/ subdirectory contents (binary-safe).
-      async function collectDir(absDir: string, relDir: string): Promise<void> {
-        let subEntries;
-        try {
-          subEntries = await fs.readdir(absDir, { withFileTypes: true });
-        } catch {
-          return;
-        }
-        for (const entry of subEntries) {
-          const absChild = path.join(absDir, entry.name);
-          const relChild = relDir ? `${relDir}/${entry.name}` : entry.name;
-          if (entry.isDirectory()) {
-            await collectDir(absChild, relChild);
-          } else if (entry.isFile()) {
-            try {
-              const buf = await fs.readFile(absChild);
-              filesToBackup[relChild] = new Uint8Array(buf);
-            } catch {
-              /* skip unreadable files */
-            }
-          }
-        }
-      }
-      await collectDir(path.join(DATA_DIR, 'health'), 'health');
-
-      const zipped = zipSync(filesToBackup);
-
-      // Encrypt with AES-256-GCM
-      const { createCipheriv, randomBytes, scryptSync } = await import('crypto');
-      const salt = randomBytes(16);
-      const iv = randomBytes(12);
-      const key = scryptSync(password, salt, 32);
-      const cipher = createCipheriv('aes-256-gcm', key, iv);
-      const encrypted = Buffer.concat([cipher.update(zipped), cipher.final()]);
-      const authTag = cipher.getAuthTag();
-
-      // Pack: salt(16) + iv(12) + authTag(16) + encrypted
-      const packed = Buffer.concat([salt, iv, authTag, encrypted]);
-
+      const { createBackupBundle } = await import('./backup.js');
+      const packed = await createBackupBundle(password);
       return new Response(packed, {
         headers: {
           'Content-Type': 'application/octet-stream',
