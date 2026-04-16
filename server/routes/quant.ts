@@ -2372,14 +2372,48 @@ async function fetchFredSeries(
   const url =
     `https://api.stlouisfed.org/fred/series/observations?series_id=${encodeURIComponent(seriesId)}` +
     `&api_key=${encodeURIComponent(apiKey)}&file_type=json&observation_start=${observationStart}`;
-  const res = await fetch(url, {
-    headers: { Accept: 'application/json', 'User-Agent': 'docvault/1.0' },
-  });
-  if (!res.ok) {
-    throw new Error(`FRED ${seriesId} ${res.status}: ${await res.text()}`);
+
+  const MAX_ATTEMPTS = 8;
+  const PER_ATTEMPT_TIMEOUT_MS = 15_000;
+  let lastErr: Error | null = null;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: { Accept: 'application/json', 'User-Agent': 'docvault/1.0' },
+        signal: AbortSignal.timeout(PER_ATTEMPT_TIMEOUT_MS),
+      });
+      if (res.ok) {
+        const json = (await res.json()) as FredRawResponse;
+        return parseFredObservations(json);
+      }
+      const body = await res.text();
+      // 4xx (bad API key, unknown series) won't recover — fail fast.
+      // 429 (rate limit) and 5xx are worth retrying.
+      if (res.status >= 400 && res.status < 500 && res.status !== 429) {
+        throw new Error(`FRED ${seriesId} ${res.status}: ${body}`);
+      }
+      lastErr = new Error(`FRED ${seriesId} ${res.status}: ${body}`);
+    } catch (err) {
+      // Non-retryable 4xx thrown above: propagate immediately.
+      if (
+        err instanceof Error &&
+        /^FRED \S+ 4\d\d:/.test(err.message) &&
+        !/ 429:/.test(err.message)
+      ) {
+        throw err;
+      }
+      lastErr = err instanceof Error ? err : new Error(String(err));
+    }
+    if (attempt < MAX_ATTEMPTS) {
+      const delay = Math.min(30_000, 500 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 250);
+      logQuant.warn(
+        `FRED ${seriesId} attempt ${attempt}/${MAX_ATTEMPTS} failed (${lastErr?.message ?? 'unknown'}); retrying in ${delay}ms`
+      );
+      await new Promise((r) => setTimeout(r, delay));
+    }
   }
-  const json = (await res.json()) as FredRawResponse;
-  return parseFredObservations(json);
+  throw lastErr ?? new Error(`FRED ${seriesId} failed after ${MAX_ATTEMPTS} attempts`);
 }
 
 // ---------------------------------------------------------------------------
