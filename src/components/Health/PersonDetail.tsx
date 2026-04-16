@@ -36,6 +36,7 @@ import { ShortcutSetupGuide } from './ShortcutSetupGuide';
 import { HealthChart } from './HealthChart';
 import { ChartCard } from './ChartCard';
 import { ScoreGauge } from './ScoreGauge';
+import { IllnessTimeline } from './IllnessTimeline';
 import { humanizeTypeName, formatInt, formatHours, formatBpm } from './healthFormatters';
 
 interface PersonDetailProps {
@@ -422,6 +423,9 @@ function HealthAtAGlance({ snapshot }: { snapshot: PersonSnapshots }) {
           />
         </ChartCard>
       </div>
+
+      {/* Illness detection */}
+      <IllnessTimeline periods={snapshot.illnessPeriods} />
     </div>
   );
 }

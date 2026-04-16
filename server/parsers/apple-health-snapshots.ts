@@ -26,8 +26,11 @@ import type { AppleHealthSummary, DailySummary, WorkoutEntry } from './apple-hea
  *   4 — +period summaries (today/week/month/year with vs-previous deltas),
  *       +recoveryScores per day (composite 0-100), +sleepQualityScores,
  *       collapsible-table-ready data (all days exposed, not just last 14).
+ *   5 — +illness detection: auto-flagged periods where multiple vitals
+ *       deviate from baseline simultaneously (elevated RHR, low HRV,
+ *       low steps, elevated respiratory rate, positive wrist temp).
  */
-export const SNAPSHOT_SCHEMA_VERSION = 4;
+export const SNAPSHOT_SCHEMA_VERSION = 5;
 
 /**
  * A delta file — written by the /api/health/:personId/ingest endpoint when
@@ -247,6 +250,8 @@ export interface PersonSnapshots {
   sleep: SleepSnapshot;
   workouts: WorkoutsSnapshot;
   body: BodySnapshot;
+  /** Auto-detected illness periods from cross-metric anomaly analysis. */
+  illnessPeriods: IllnessPeriod[];
 }
 
 export type HealthSegment = 'activity' | 'heart' | 'sleep' | 'workouts' | 'body';
@@ -306,6 +311,32 @@ export interface SleepQualityScore {
     consistency: number;
     interruptions: number;
   };
+}
+
+/**
+ * An auto-detected illness period. Flagged when multiple vital signs
+ * deviate from the 30-day rolling baseline simultaneously for 2+ days.
+ *
+ * Signals checked (all relative to 30-day personal baseline):
+ *   - Resting HR elevated (> baseline + 1.5 SD)
+ *   - HRV depressed (< baseline - 1.5 SD)
+ *   - Steps significantly below normal (< baseline - 1.5 SD)
+ *   - Respiratory rate elevated (> baseline + 1.5 SD, if available)
+ *   - Wrist temperature deviation positive (> 0.5°C, if available)
+ *
+ * A day is flagged when 2+ signals fire. Consecutive flagged days are
+ * merged into a single period.
+ */
+export interface IllnessPeriod {
+  startDate: string;
+  endDate: string;
+  durationDays: number;
+  /** Which signals fired during this period (union across all days). */
+  signals: string[];
+  /** Peak number of simultaneous signals on any day in this period. */
+  peakSignals: number;
+  /** Confidence: 'likely' (3+ signals), 'possible' (2 signals). */
+  confidence: 'likely' | 'possible';
 }
 
 // ===========================================================================
@@ -886,6 +917,186 @@ export function computeSleepQualityScores(sleepDays: readonly SleepDay[]): Sleep
       },
     };
   });
+}
+
+// ===========================================================================
+// Illness detection
+// ===========================================================================
+
+/** Rolling mean and standard deviation over a window. */
+function rollingStats(
+  values: readonly (number | null | undefined)[],
+  windowSize: number,
+  index: number
+): { mean: number; sd: number; count: number } {
+  const from = Math.max(0, index - windowSize);
+  const nums: number[] = [];
+  for (let i = from; i < index; i++) {
+    const v = values[i];
+    if (v !== null && v !== undefined && Number.isFinite(v)) nums.push(v);
+  }
+  if (nums.length < 5) return { mean: 0, sd: 0, count: 0 };
+  const mean = nums.reduce((a, b) => a + b, 0) / nums.length;
+  const variance = nums.reduce((a, b) => a + (b - mean) ** 2, 0) / nums.length;
+  return { mean, sd: Math.sqrt(variance), count: nums.length };
+}
+
+/**
+ * Detect illness periods by scanning for days where multiple vital signs
+ * deviate from their 30-day rolling baselines simultaneously.
+ */
+export function detectIllnessPeriods(
+  activityDays: readonly ActivityDay[],
+  heartDays: readonly HeartDay[],
+  sleepDays: readonly SleepDay[]
+): IllnessPeriod[] {
+  // Index by date for cross-referencing
+  const heartByDate = new Map(heartDays.map((d) => [d.date, d]));
+  const sleepByDate = new Map(sleepDays.map((d) => [d.date, d]));
+
+  // For each activity day, check signals against 30-day rolling baseline
+  const WINDOW = 30;
+  const THRESHOLD = 1.5; // standard deviations
+
+  interface FlaggedDay {
+    date: string;
+    signals: string[];
+  }
+
+  const flaggedDays: FlaggedDay[] = [];
+
+  // Build parallel series for rolling stats
+  const restingHRSeries = activityDays.map((d) => heartByDate.get(d.date)?.restingHR ?? null);
+  const hrvSeries = activityDays.map((d) => heartByDate.get(d.date)?.hrv ?? null);
+  const stepsSeries = activityDays.map((d) => d.steps as number | null);
+  const respRateSeries = activityDays.map((d) => sleepByDate.get(d.date)?.respiratoryRate ?? null);
+  const wristTempSeries = activityDays.map(
+    (d) => sleepByDate.get(d.date)?.wristTempDeviationC ?? null
+  );
+
+  for (let i = WINDOW; i < activityDays.length; i++) {
+    const day = activityDays[i];
+    const signals: string[] = [];
+
+    // Resting HR elevated
+    const rhr = restingHRSeries[i];
+    if (rhr !== null && rhr !== undefined) {
+      const stats = rollingStats(restingHRSeries, WINDOW, i);
+      if (stats.count >= 5 && stats.sd > 0 && rhr > stats.mean + THRESHOLD * stats.sd) {
+        signals.push(`Resting HR elevated (${Math.round(rhr)} vs ${Math.round(stats.mean)} avg)`);
+      }
+    }
+
+    // HRV depressed
+    const hrv = hrvSeries[i];
+    if (hrv !== null && hrv !== undefined) {
+      const stats = rollingStats(hrvSeries, WINDOW, i);
+      if (stats.count >= 5 && stats.sd > 0 && hrv < stats.mean - THRESHOLD * stats.sd) {
+        signals.push(`HRV depressed (${Math.round(hrv)} vs ${Math.round(stats.mean)} avg)`);
+      }
+    }
+
+    // Steps below normal
+    const steps = stepsSeries[i];
+    if (steps !== null && steps !== undefined) {
+      const stats = rollingStats(stepsSeries, WINDOW, i);
+      if (stats.count >= 5 && stats.sd > 0 && steps < stats.mean - THRESHOLD * stats.sd) {
+        signals.push(
+          `Steps low (${Math.round(steps).toLocaleString()} vs ${Math.round(stats.mean).toLocaleString()} avg)`
+        );
+      }
+    }
+
+    // Respiratory rate elevated
+    const resp = respRateSeries[i];
+    if (resp !== null && resp !== undefined) {
+      const stats = rollingStats(respRateSeries, WINDOW, i);
+      if (stats.count >= 5 && stats.sd > 0 && resp > stats.mean + THRESHOLD * stats.sd) {
+        signals.push(
+          `Respiratory rate elevated (${resp.toFixed(1)} vs ${stats.mean.toFixed(1)} avg)`
+        );
+      }
+    }
+
+    // Wrist temperature positive deviation
+    const wristTemp = wristTempSeries[i];
+    if (wristTemp !== null && wristTemp !== undefined && wristTemp > 0.5) {
+      signals.push(`Wrist temp elevated (+${wristTemp.toFixed(1)}°C)`);
+    }
+
+    if (signals.length >= 2) {
+      flaggedDays.push({ date: day.date, signals });
+    }
+  }
+
+  // Merge consecutive flagged days into periods
+  const periods: IllnessPeriod[] = [];
+  let currentPeriod: {
+    startDate: string;
+    endDate: string;
+    signals: Set<string>;
+    peakSignals: number;
+  } | null = null;
+
+  for (const flagged of flaggedDays) {
+    if (currentPeriod) {
+      // Check if this day is consecutive (within 2 days to allow one gap day)
+      const prevDate = new Date(`${currentPeriod.endDate}T00:00:00Z`);
+      const thisDate = new Date(`${flagged.date}T00:00:00Z`);
+      const gapDays = Math.round((thisDate.getTime() - prevDate.getTime()) / 86_400_000);
+
+      if (gapDays <= 2) {
+        // Extend the current period
+        currentPeriod.endDate = flagged.date;
+        for (const s of flagged.signals) currentPeriod.signals.add(s);
+        currentPeriod.peakSignals = Math.max(currentPeriod.peakSignals, flagged.signals.length);
+        continue;
+      }
+    }
+
+    // Finalize previous period and start new one
+    if (currentPeriod) {
+      const startD = new Date(`${currentPeriod.startDate}T00:00:00Z`);
+      const endD = new Date(`${currentPeriod.endDate}T00:00:00Z`);
+      const duration = Math.round((endD.getTime() - startD.getTime()) / 86_400_000) + 1;
+      if (duration >= 2) {
+        periods.push({
+          startDate: currentPeriod.startDate,
+          endDate: currentPeriod.endDate,
+          durationDays: duration,
+          signals: [...currentPeriod.signals],
+          peakSignals: currentPeriod.peakSignals,
+          confidence: currentPeriod.peakSignals >= 3 ? 'likely' : 'possible',
+        });
+      }
+    }
+
+    currentPeriod = {
+      startDate: flagged.date,
+      endDate: flagged.date,
+      signals: new Set(flagged.signals),
+      peakSignals: flagged.signals.length,
+    };
+  }
+
+  // Don't forget the last period
+  if (currentPeriod) {
+    const startD = new Date(`${currentPeriod.startDate}T00:00:00Z`);
+    const endD = new Date(`${currentPeriod.endDate}T00:00:00Z`);
+    const duration = Math.round((endD.getTime() - startD.getTime()) / 86_400_000) + 1;
+    if (duration >= 2) {
+      periods.push({
+        startDate: currentPeriod.startDate,
+        endDate: currentPeriod.endDate,
+        durationDays: duration,
+        signals: [...currentPeriod.signals],
+        peakSignals: currentPeriod.peakSignals,
+        confidence: currentPeriod.peakSignals >= 3 ? 'likely' : 'possible',
+      });
+    }
+  }
+
+  return periods;
 }
 
 // ===========================================================================
@@ -1935,6 +2146,9 @@ export function computeSnapshots(
   // Cross-segment: compute recovery scores (needs activity + heart + sleep)
   activity.recoveryScores = computeRecoveryScores(activity.daily, heart.daily, sleep.daily);
 
+  // Cross-segment: detect illness periods
+  const illnessPeriods = detectIllnessPeriods(activity.daily, heart.daily, sleep.daily);
+
   return {
     schemaVersion: SNAPSHOT_SCHEMA_VERSION,
     generatedAt: now.toISOString(),
@@ -1945,5 +2159,6 @@ export function computeSnapshots(
     sleep,
     workouts,
     body,
+    illnessPeriods,
   };
 }
