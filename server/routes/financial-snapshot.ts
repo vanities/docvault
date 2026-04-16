@@ -457,6 +457,7 @@ export async function handleFinancialSnapshotRoutes(
           appreciation: number;
           appreciationPercent: number;
           annualPropertyTax?: number;
+          notes?: string;
           mortgage?: {
             lender: string;
             balance: number;
@@ -496,6 +497,7 @@ export async function handleFinancialSnapshotRoutes(
           appreciation,
           appreciationPercent,
           annualPropertyTax: prop.annualPropertyTax,
+          notes: prop.notes,
           mortgage: prop.mortgage
             ? {
                 lender: prop.mortgage.lender,
@@ -1086,6 +1088,9 @@ export async function handleFinancialSnapshotRoutes(
               t.push(
                 `    MORTGAGE lender="${p.mortgage.lender}" bal=${$(p.mortgage.balance)} rate=${(p.mortgage.rate * 100).toFixed(3)}% pmt=${$(p.mortgage.monthlyPayment)}`
               );
+            }
+            if (p.notes && p.notes.trim()) {
+              t.push(`    NOTES "${p.notes.replace(/"/g, '\\"')}"`);
             }
           }
           t.push('');
