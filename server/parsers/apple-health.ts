@@ -134,17 +134,23 @@ export interface AppleHealthSummary {
 }
 
 /**
- * Parser version. Bump this whenever the parser's output shape or
- * aggregation logic changes in a way that invalidates cached summaries
- * — so consumers (the snapshot computer, the UI staleness banner) can
- * detect that a re-parse is needed.
+ * Parser version. Bump this whenever the parse *pipeline* changes in a way
+ * that invalidates cached summaries — so consumers (the snapshot computer,
+ * the UI staleness banner, the Records tab) can detect that a re-parse is
+ * needed. This tracks the whole pipeline, not just this file — bumping it
+ * for changes in sibling parsers (e.g. clinical-records) is correct because
+ * /parse-export runs the full pipeline end-to-end.
  *
  * History:
  *   1.0.0 — initial release
  *   1.1.0 — category duration tracking, sleep end-date attribution,
  *           HKCategoryValue* prefix stripping, explicit timezone parsing
+ *   1.2.0 — parse pipeline now also ingests `apple_health_export/
+ *           clinical-records/` (FHIR R4) into a parallel ClinicalSummary.
+ *           Bumped so cached summaries from 1.1.0 surface the staleness
+ *           banner and a single Re-parse click backfills clinical data.
  */
-export const PARSER_VERSION = '1.1.0';
+export const PARSER_VERSION = '1.2.0';
 
 // ---------------------------------------------------------------------------
 // Internal parse state
