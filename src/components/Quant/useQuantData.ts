@@ -695,6 +695,26 @@ export function useRunningRoi() {
   return useQuantFetch<RunningRoiData>(`${API_BASE}/quant/running-roi?_=${bump}`);
 }
 
+export function useHousingDashboard() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<MacroDashboardData>(`${API_BASE}/quant/macro/housing?_=${bump}`);
+}
+
+export function useGdpGrowthDashboard() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<MacroDashboardData>(`${API_BASE}/quant/macro/gdp-growth?_=${bump}`);
+}
+
+export function useCommodities() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<MacroDashboardData>(`${API_BASE}/quant/tradfi/commodities?_=${bump}`);
+}
+
+export function useVixTermStructure() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<MacroDashboardData>(`${API_BASE}/quant/tradfi/vix-term?_=${bump}`);
+}
+
 export interface FedRateChange {
   t: number;
   newRate: number;
