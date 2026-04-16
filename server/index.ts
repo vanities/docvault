@@ -29,6 +29,9 @@ import {
   DATA_DIR,
   CONFIG_PATH,
   SETTINGS_PATH,
+  RCLONE_CONFIG_PATH,
+  SYNC_SCRIPT_PATH,
+  SYNC_SCRIPT_DATA_PATH,
   PORT,
   DEFAULT_MODEL,
   PARSED_DATA_FILE,
@@ -2092,7 +2095,28 @@ async function handleRequest(req: Request): Promise<Response> {
       dropboxSyncEnabled: schedules.dropboxSyncEnabled !== false,
       dropboxSyncIntervalMinutes:
         schedules.dropboxSyncIntervalMinutes || DEFAULT_DROPBOX_SYNC_INTERVAL,
+      quantRefreshEnabled: schedules.quantRefreshEnabled !== false,
+      quantRefreshIntervalMinutes:
+        schedules.quantRefreshIntervalMinutes || DEFAULT_QUANT_REFRESH_INTERVAL,
       backupPasswordSet: !!schedules.backupPassword,
+    });
+  }
+
+  // GET /api/schedule-status - Per-task last-ran timestamps + last error
+  if (pathname === '/api/schedule-status' && req.method === 'GET') {
+    const status = await loadScheduleStatus();
+    return jsonResponse(status);
+  }
+
+  // GET /api/logs - Recent in-memory log entries (ring buffer)
+  //   ?level=info|warn|error|debug  — filter by level
+  //   ?limit=N                      — cap result count
+  if (pathname === '/api/logs' && req.method === 'GET') {
+    const level = url.searchParams.get('level') as 'info' | 'warn' | 'error' | 'debug' | null;
+    const limitParam = url.searchParams.get('limit');
+    const limit = limitParam ? Math.min(parseInt(limitParam, 10) || 200, 1000) : 200;
+    return jsonResponse({
+      entries: getRecentLogs({ level: level || undefined, limit }),
     });
   }
 
@@ -2107,6 +2131,9 @@ async function handleRequest(req: Request): Promise<Response> {
         dropboxSyncEnabled: body.dropboxSyncEnabled ?? true,
         dropboxSyncIntervalMinutes:
           body.dropboxSyncIntervalMinutes || DEFAULT_DROPBOX_SYNC_INTERVAL,
+        quantRefreshEnabled: body.quantRefreshEnabled ?? true,
+        quantRefreshIntervalMinutes:
+          body.quantRefreshIntervalMinutes || DEFAULT_QUANT_REFRESH_INTERVAL,
         backupPassword: body.backupPassword || settings.schedules?.backupPassword,
       };
       await saveSettings(settings);
@@ -2362,7 +2389,16 @@ Return: { "naming": {...}, "parsedData": {...} }`,
 
 // ============================================================================
 // Scheduler (extracted to scheduler.ts)
-import { startScheduler, takePortfolioSnapshot, runDropboxSync } from './scheduler.js';
+import {
+  startScheduler,
+  takePortfolioSnapshot,
+  runDropboxSync,
+  loadScheduleStatus,
+  DEFAULT_SNAPSHOT_INTERVAL,
+  DEFAULT_DROPBOX_SYNC_INTERVAL,
+  DEFAULT_QUANT_REFRESH_INTERVAL,
+} from './scheduler.js';
+import { getRecentLogs } from './logger.js';
 
 // ============================================================================
 // Start server using Bun's native server

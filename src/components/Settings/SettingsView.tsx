@@ -28,6 +28,9 @@ import {
   Banknote,
   LineChart,
   Archive,
+  Activity,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { SyncStatus, CryptoExchangeId, CryptoChain } from '../../types';
@@ -401,10 +404,33 @@ export function SettingsView() {
   const [snapshotInterval, setSnapshotInterval] = useState(1440);
   const [dropboxSyncEnabled, setDropboxSyncEnabled] = useState(true);
   const [dropboxSyncInterval, setDropboxSyncInterval] = useState(15);
+  const [quantRefreshEnabled, setQuantRefreshEnabled] = useState(true);
+  const [quantRefreshInterval, setQuantRefreshInterval] = useState(1440);
   const [autoBackupPasswordSet, setAutoBackupPasswordSet] = useState(false);
   const [autoBackupPassword, setAutoBackupPassword] = useState('');
   const [isScheduleSaving, setIsScheduleSaving] = useState(false);
   const [scheduleSaved, setScheduleSaved] = useState(false);
+
+  // System status — per-task last-ran tracking + log ring buffer
+  interface TaskStatus {
+    lastRanAt: string | null;
+    lastSuccessAt: string | null;
+    lastError: string | null;
+    lastDurationMs: number | null;
+    running: boolean;
+  }
+  const [scheduleStatus, setScheduleStatus] = useState<Record<string, TaskStatus>>({});
+  interface LogLine {
+    ts: string;
+    level: 'info' | 'warn' | 'error' | 'debug';
+    namespace: string;
+    message: string;
+  }
+  const [logs, setLogs] = useState<LogLine[]>([]);
+  const [logLevelFilter, setLogLevelFilter] = useState<'all' | LogLine['level']>('all');
+  const [logSearch, setLogSearch] = useState('');
+  const [logsCopied, setLogsCopied] = useState(false);
+  const [showLogs, setShowLogs] = useState(false);
 
   // Load settings and sync status on mount
   useEffect(() => {
@@ -415,12 +441,70 @@ export function SettingsView() {
     void loadSimplefinStatus();
     void loadSnapTradeStatus();
     void loadSchedules();
+    void loadScheduleStatus();
+    void loadLogs();
     const interval = setInterval(() => {
       void loadSyncStatus();
       void loadCacheStatus();
+      void loadScheduleStatus();
     }, 30000); // Poll every 30s
     return () => clearInterval(interval);
   }, []);
+
+  const loadScheduleStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/schedule-status`);
+      if (res.ok) setScheduleStatus(await res.json());
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const loadLogs = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/logs?limit=500`);
+      if (res.ok) {
+        const data = (await res.json()) as { entries: LogLine[] };
+        setLogs(data.entries);
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const formatLogLine = (l: LogLine): string =>
+    `${l.ts} ${l.level.toUpperCase().padEnd(5)} [${l.namespace}] ${l.message}`;
+
+  const handleCopyLogs = async () => {
+    const text = filteredLogs.map(formatLogLine).join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Fallback for non-HTTPS (e.g. Unraid over HTTP)
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    setLogsCopied(true);
+    setTimeout(() => setLogsCopied(false), 1500);
+  };
+
+  const filteredLogs = logs.filter((l) => {
+    if (logLevelFilter !== 'all' && l.level !== logLevelFilter) return false;
+    if (logSearch) {
+      const needle = logSearch.toLowerCase();
+      if (
+        !l.message.toLowerCase().includes(needle) &&
+        !l.namespace.toLowerCase().includes(needle)
+      ) {
+        return false;
+      }
+    }
+    return true;
+  });
 
   const loadSyncStatus = async () => {
     try {
@@ -822,6 +906,8 @@ export function SettingsView() {
         setSnapshotInterval(data.snapshotIntervalMinutes);
         setDropboxSyncEnabled(data.dropboxSyncEnabled);
         setDropboxSyncInterval(data.dropboxSyncIntervalMinutes);
+        setQuantRefreshEnabled(data.quantRefreshEnabled ?? true);
+        setQuantRefreshInterval(data.quantRefreshIntervalMinutes ?? 1440);
         setAutoBackupPasswordSet(data.backupPasswordSet ?? false);
       }
     } catch {
@@ -840,6 +926,8 @@ export function SettingsView() {
           snapshotIntervalMinutes: snapshotInterval,
           dropboxSyncEnabled,
           dropboxSyncIntervalMinutes: dropboxSyncInterval,
+          quantRefreshEnabled,
+          quantRefreshIntervalMinutes: quantRefreshInterval,
           ...(autoBackupPassword ? { backupPassword: autoBackupPassword } : {}),
         }),
       });
@@ -1634,6 +1722,46 @@ export function SettingsView() {
                   )}
                 </div>
 
+                {/* Quant Refresh */}
+                <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="text-[13px] font-medium text-surface-900">Quant Refresh</p>
+                      <p className="text-[11px] text-surface-500">
+                        Refreshes quant signals (SP500, yields, macro) and writes daily snapshot
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setQuantRefreshEnabled(!quantRefreshEnabled)}
+                      className={`relative w-10 h-5 rounded-full transition-colors ${quantRefreshEnabled ? 'bg-violet-500' : 'bg-surface-400'}`}
+                    >
+                      <span
+                        className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
+                        style={{ left: quantRefreshEnabled ? 22 : 2 }}
+                      />
+                    </button>
+                  </div>
+                  {quantRefreshEnabled && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-[12px] text-surface-600">Every</label>
+                      <Select
+                        value={String(quantRefreshInterval)}
+                        onValueChange={(val) => setQuantRefreshInterval(Number(val))}
+                      >
+                        <SelectTrigger className="text-[13px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="360">6 hours</SelectItem>
+                          <SelectItem value="720">12 hours</SelectItem>
+                          <SelectItem value="1440">24 hours</SelectItem>
+                          <SelectItem value="10080">7 days</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+
                 {/* Encrypted Config Backup */}
                 <div className="border-t border-border pt-4">
                   <p className="text-[13px] font-medium text-surface-900 mb-1">
@@ -1676,6 +1804,190 @@ export function SettingsView() {
                   )}
                 </Button>
               </div>
+            </Card>
+
+            {/* System Status — last-ran timestamps + log viewer */}
+            <Card variant="glass" className="p-6 mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-surface-950 flex items-center gap-2">
+                  <Activity className="w-5 h-5" />
+                  System Status
+                </h3>
+                <Button
+                  onClick={() => {
+                    void loadScheduleStatus();
+                    void loadLogs();
+                  }}
+                  className="bg-surface-200/50 hover:bg-surface-200 text-surface-700 text-[12px] px-2 py-1"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  Refresh
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+                {(
+                  [
+                    { key: 'snapshot', label: 'Portfolio Snapshot', intervalMin: snapshotInterval },
+                    { key: 'dropboxSync', label: 'Dropbox Sync', intervalMin: dropboxSyncInterval },
+                    {
+                      key: 'quantRefresh',
+                      label: 'Quant Refresh',
+                      intervalMin: quantRefreshInterval,
+                    },
+                    {
+                      key: 'encryptedBackup',
+                      label: 'Encrypted Config Backup',
+                      intervalMin: dropboxSyncInterval,
+                    },
+                  ] as const
+                ).map(({ key, label, intervalMin }) => {
+                  const s = scheduleStatus[key];
+                  const lastRan = s?.lastRanAt ? new Date(s.lastRanAt) : null;
+                  const ageMs = lastRan ? Date.now() - lastRan.getTime() : null;
+                  const staleThresholdMs = intervalMin * 60 * 1000 * 2.5;
+                  const isStale = ageMs !== null && ageMs > staleThresholdMs;
+                  const hasError = !!s?.lastError;
+                  const dotColor = s?.running
+                    ? 'bg-blue-400 animate-pulse'
+                    : hasError
+                      ? 'bg-red-400'
+                      : isStale
+                        ? 'bg-amber-400'
+                        : lastRan
+                          ? 'bg-emerald-400'
+                          : 'bg-surface-500';
+                  return (
+                    <div
+                      key={key}
+                      className="p-3 bg-surface-200/20 rounded-xl border border-border/30"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
+                        <p className="text-[13px] font-medium text-surface-900">{label}</p>
+                      </div>
+                      <p className="text-[11px] text-surface-600">
+                        {lastRan
+                          ? `Last ran ${formatRelativeTime(lastRan.toISOString())}`
+                          : 'Never ran'}
+                        {s?.lastDurationMs ? ` • ${s.lastDurationMs}ms` : ''}
+                      </p>
+                      {hasError && (
+                        <p className="text-[11px] text-red-400 mt-1 break-words">
+                          Error: {s.lastError}
+                        </p>
+                      )}
+                      {isStale && !hasError && (
+                        <p className="text-[11px] text-amber-400 mt-1">
+                          Stale — expected every {intervalMin}m
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Logs Viewer */}
+              <button
+                onClick={() => {
+                  setShowLogs(!showLogs);
+                  if (!showLogs) void loadLogs();
+                }}
+                className="flex items-center gap-2 text-[13px] font-medium text-surface-900 mb-3 hover:text-violet-400"
+              >
+                {showLogs ? (
+                  <ChevronDown className="w-4 h-4" />
+                ) : (
+                  <ChevronRight className="w-4 h-4" />
+                )}
+                Application Logs
+                <span className="text-[11px] text-surface-500 font-normal">
+                  ({logs.length} in buffer)
+                </span>
+              </button>
+
+              {showLogs && (
+                <div>
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <div className="flex gap-1">
+                      {(['all', 'info', 'warn', 'error', 'debug'] as const).map((lvl) => (
+                        <button
+                          key={lvl}
+                          onClick={() => setLogLevelFilter(lvl)}
+                          className={`px-2 py-1 rounded text-[11px] capitalize ${
+                            logLevelFilter === lvl
+                              ? 'bg-violet-500 text-white'
+                              : 'bg-surface-200/50 text-surface-700 hover:bg-surface-200'
+                          }`}
+                        >
+                          {lvl}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="text"
+                      value={logSearch}
+                      onChange={(e) => setLogSearch(e.target.value)}
+                      placeholder="Filter text..."
+                      className="flex-1 min-w-[120px] px-2 py-1 bg-surface-200/30 border border-border rounded text-[11px] text-surface-950 placeholder-surface-400 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
+                    />
+                    <Button
+                      onClick={() => void loadLogs()}
+                      className="bg-surface-200/50 hover:bg-surface-200 text-surface-700 text-[11px] px-2 py-1"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      Reload
+                    </Button>
+                    <Button
+                      onClick={handleCopyLogs}
+                      className="bg-surface-200/50 hover:bg-surface-200 text-surface-700 text-[11px] px-2 py-1"
+                      disabled={filteredLogs.length === 0}
+                    >
+                      {logsCopied ? (
+                        <>
+                          <Check className="w-3 h-3" />
+                          Copied
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3" />
+                          Copy ({filteredLogs.length})
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <pre className="max-h-[400px] overflow-auto p-3 bg-surface-950/80 text-[11px] font-mono text-surface-200 rounded-lg border border-border/30 whitespace-pre-wrap break-all select-text">
+                    {filteredLogs.length === 0 ? (
+                      'No log entries match the current filter.'
+                    ) : (
+                      <>
+                        {filteredLogs.map((l, i) => {
+                          const levelColor =
+                            l.level === 'error'
+                              ? 'text-red-400'
+                              : l.level === 'warn'
+                                ? 'text-amber-400'
+                                : l.level === 'debug'
+                                  ? 'text-surface-500'
+                                  : 'text-cyan-400';
+                          return (
+                            <div key={i}>
+                              <span className="text-surface-500">{l.ts}</span>{' '}
+                              <span className={levelColor}>{l.level.toUpperCase().padEnd(5)}</span>{' '}
+                              <span className="text-surface-400">[{l.namespace}]</span>{' '}
+                              <span>{l.message}</span>
+                            </div>
+                          );
+                        })}
+                      </>
+                    )}
+                  </pre>
+                  <p className="text-[11px] text-surface-500 mt-2">
+                    Buffer holds last 1000 entries across all namespaces. Copies plain text for
+                    pasting into issues / chat.
+                  </p>
+                </div>
+              )}
             </Card>
           </>
         )}

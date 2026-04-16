@@ -12,6 +12,46 @@
 const IS_DEBUG = process.env.LOG_LEVEL === 'debug' || !!process.env.DEBUG;
 const USE_COLOR = process.stdout?.isTTY !== false;
 
+// =============================================================================
+// In-memory ring buffer — exposes recent log lines to the UI via /api/logs
+// =============================================================================
+
+export interface LogEntry {
+  ts: string;
+  level: 'info' | 'warn' | 'error' | 'debug';
+  namespace: string;
+  message: string;
+}
+
+const LOG_BUFFER_SIZE = 1000;
+const logBuffer: LogEntry[] = [];
+
+function pushLog(entry: LogEntry): void {
+  logBuffer.push(entry);
+  if (logBuffer.length > LOG_BUFFER_SIZE) {
+    logBuffer.splice(0, logBuffer.length - LOG_BUFFER_SIZE);
+  }
+}
+
+export function getRecentLogs(opts?: { level?: LogEntry['level']; limit?: number }): LogEntry[] {
+  let result = opts?.level ? logBuffer.filter((e) => e.level === opts.level) : logBuffer.slice();
+  if (opts?.limit && result.length > opts.limit) {
+    result = result.slice(result.length - opts.limit);
+  }
+  return result;
+}
+
+function formatArg(arg: unknown): string {
+  if (arg == null) return String(arg);
+  if (typeof arg === 'string') return arg;
+  if (arg instanceof Error) return arg.stack || arg.message;
+  try {
+    return JSON.stringify(arg);
+  } catch {
+    return String(arg);
+  }
+}
+
 const C = USE_COLOR
   ? {
       reset: '\x1b[0m',
@@ -30,21 +70,30 @@ function ts(): string {
 export function createLogger(namespace: string) {
   const tag = `[${namespace}]`;
 
+  const record = (level: LogEntry['level'], msg: string, args: unknown[]) => {
+    const extra = args.length > 0 ? ' ' + args.map(formatArg).join(' ') : '';
+    pushLog({ ts: new Date().toISOString(), level, namespace, message: msg + extra });
+  };
+
   return {
     info(msg: string, ...args: unknown[]): void {
+      record('info', msg, args);
       console.log(`${C.dim}${ts()}${C.reset} ${C.cyan}INFO${C.reset}  ${tag} ${msg}`, ...args);
     },
 
     warn(msg: string, ...args: unknown[]): void {
+      record('warn', msg, args);
       console.warn(`${C.dim}${ts()}${C.reset} ${C.yellow}WARN${C.reset}  ${tag} ${msg}`, ...args);
     },
 
     error(msg: string, ...args: unknown[]): void {
+      record('error', msg, args);
       console.error(`${C.dim}${ts()}${C.reset} ${C.red}ERR ${C.reset}  ${tag} ${msg}`, ...args);
     },
 
     debug(msg: string, ...args: unknown[]): void {
       if (IS_DEBUG) {
+        record('debug', msg, args);
         console.log(`${C.dim}${ts()}${C.reset} ${C.gray}DBG ${C.reset}  ${tag} ${msg}`, ...args);
       }
     },
