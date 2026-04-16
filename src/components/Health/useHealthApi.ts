@@ -36,6 +36,8 @@ export interface SnapshotResult<S extends HealthSegment | 'all'> {
   stale: boolean;
   cachedParserVersion: string;
   currentParserVersion: string;
+  /** Illness notes — only present when segment='all'. */
+  illnessNotes?: Record<string, { note?: string; dismissed?: boolean; updatedAt: string }>;
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -184,6 +186,7 @@ export function useHealthApi() {
         stale: boolean;
         cachedParserVersion: string;
         currentParserVersion: string;
+        illnessNotes?: Record<string, { note?: string; dismissed?: boolean; updatedAt: string }>;
       }>(`${API_BASE}/health/${personId}/snapshot/${segment}`);
       const data = (res.snapshot ?? res.data) as SnapshotFor<S>;
       return {
@@ -191,6 +194,7 @@ export function useHealthApi() {
         stale: res.stale,
         cachedParserVersion: res.cachedParserVersion,
         currentParserVersion: res.currentParserVersion,
+        illnessNotes: res.illnessNotes,
       };
     },
     []
@@ -201,6 +205,19 @@ export function useHealthApi() {
   // every render of the calling component creates a fresh object literal —
   // even though the individual callbacks are stable `useCallback`s, the
   // wrapper's identity changes, which busts dep-array equality checks.
+  /** PUT /api/health/:personId/illness-notes/:key — update or delete an illness note. */
+  const updateIllnessNote = useCallback(
+    async (personId: string, key: string, data: { note?: string; dismissed?: boolean }) => {
+      const res = await fetch(`/api/health/${personId}/illness-notes/${key}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error(await res.text());
+    },
+    []
+  );
+
   return useMemo(
     () => ({
       listPeople,
@@ -212,6 +229,7 @@ export function useHealthApi() {
       getSummary,
       uploadAndParseExport,
       getSnapshot,
+      updateIllnessNote,
     }),
     [
       listPeople,
@@ -223,6 +241,7 @@ export function useHealthApi() {
       getSummary,
       uploadAndParseExport,
       getSnapshot,
+      updateIllnessNote,
     ]
   );
 }

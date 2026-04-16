@@ -64,12 +64,21 @@ const HEALTH_DATA_DIR = path.join(DATA_DIR, 'health');
 // Store — people + parsed summaries live together in .docvault-health.json
 // ---------------------------------------------------------------------------
 
+/** User annotation on an auto-detected illness period. */
+interface IllnessNote {
+  note?: string;
+  dismissed?: boolean;
+  updatedAt: string;
+}
+
 interface HealthStore {
   version: 1;
   people: HealthPerson[];
   // key format: "<personId>/<filename>"
   summaries: Record<string, AppleHealthSummary>;
   snapshots: Record<string, PersonSnapshots>;
+  /** key format: "<personId>/<startDate>-<endDate>" */
+  illnessNotes?: Record<string, IllnessNote>;
 }
 
 async function loadHealthStore(): Promise<HealthStore> {
@@ -81,9 +90,10 @@ async function loadHealthStore(): Promise<HealthStore> {
       people: parsed.people ?? [],
       summaries: parsed.summaries ?? {},
       snapshots: parsed.snapshots ?? {},
+      illnessNotes: parsed.illnessNotes ?? {},
     };
   } catch {
-    return { version: 1, people: [], summaries: {}, snapshots: {} };
+    return { version: 1, people: [], summaries: {}, snapshots: {}, illnessNotes: {} };
   }
 }
 
@@ -812,8 +822,18 @@ export async function handleHealthRoutes(
     const stale = cachedParserVersion !== CURRENT_PARSER_VERSION;
 
     if (segment === 'all') {
+      // Merge user illness notes into the snapshot response
+      const notes = store.illnessNotes ?? {};
+      const personNotes: Record<string, IllnessNote> = {};
+      const notePrefix = `${personId}/`;
+      for (const [k, v] of Object.entries(notes)) {
+        if (k.startsWith(notePrefix)) {
+          personNotes[k.slice(notePrefix.length)] = v;
+        }
+      }
       return jsonResponse({
         snapshot: snapshots,
+        illnessNotes: personNotes,
         stale,
         cachedParserVersion,
         currentParserVersion: CURRENT_PARSER_VERSION,
@@ -854,6 +874,36 @@ export async function handleHealthRoutes(
       });
     }
     return jsonResponse({ summaries });
+  }
+
+  // PUT /api/health/:personId/illness-notes/:key — add/update/delete an illness note
+  //   key format: "startDate-endDate"  (e.g. "2023-02-27-2023-02-28")
+  //   body: { note?: string, dismissed?: boolean }
+  //   To delete: send { dismissed: false, note: "" } or just re-detect will recreate
+  const illnessNoteMatch = pathname.match(/^\/api\/health\/([^/]+)\/illness-notes\/([^/]+)$/);
+  if (illnessNoteMatch && req.method === 'PUT') {
+    const personId = illnessNoteMatch[1];
+    const noteKey = illnessNoteMatch[2];
+    await requirePerson(personId);
+
+    const body = (await req.json()) as { note?: string; dismissed?: boolean };
+    const store = await loadHealthStore();
+    if (!store.illnessNotes) store.illnessNotes = {};
+    const storeKey = `${personId}/${noteKey}`;
+
+    // If both note and dismissed are empty/false, remove the entry
+    if ((!body.note || body.note.trim() === '') && !body.dismissed) {
+      delete store.illnessNotes[storeKey];
+    } else {
+      store.illnessNotes[storeKey] = {
+        note: body.note?.trim() || undefined,
+        dismissed: body.dismissed || undefined,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    await saveHealthStore(store);
+    return jsonResponse({ ok: true });
   }
 
   return null;
