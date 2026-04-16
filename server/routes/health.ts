@@ -162,6 +162,23 @@ async function loadPersonDeltas(personId: string): Promise<DeltaFile[]> {
   return out;
 }
 
+/**
+ * Get the mtime of a person's deltas directory as an ISO string. Used as a
+ * cheap "was anything added/removed from deltas since the last snapshot?"
+ * check — when the dir mtime is newer than the cached snapshot's generatedAt,
+ * the cache is invalid even if parser/schema versions both match. Returns
+ * the epoch (1970-01-01) if the directory doesn't exist yet, so newly-created
+ * deltas dirs always invalidate the cache.
+ */
+async function getDeltasDirMtime(personId: string): Promise<string> {
+  try {
+    const stat = await fs.stat(getPersonDeltasDir(personId));
+    return stat.mtime.toISOString();
+  } catch {
+    return new Date(0).toISOString();
+  }
+}
+
 /** Is `date` within ±1 calendar day of the server's local date? */
 function isDateWithinRange(date: string, now: Date = new Date()): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
@@ -625,20 +642,25 @@ export async function handleHealthRoutes(
     });
     const key = keys[0];
 
-    // Auto-heal three separate cases (all ~8ms and invisible to user):
+    // Auto-heal four separate cases (all ~8ms and invisible to user):
     //   (a) snapshot absent entirely → backfill from summary
     //   (b) snapshot's parserVersion doesn't match the summary's
     //       (summary was re-parsed with a newer parser)
     //   (c) snapshot's schemaVersion is older than the current snapshot
     //       computer's SNAPSHOT_SCHEMA_VERSION
-    // Deltas (daily Shortcut POSTs) are loaded here and passed into
-    // computeSnapshots so they overlay the bulk-parse summary. The ingest
-    // endpoint drops the cached snapshot on every POST so the first read
-    // after an ingest always falls into the backfill branch below.
+    //   (d) the person's deltas directory has an mtime newer than the
+    //       cached snapshot's generatedAt — i.e., deltas were added or
+    //       removed since the last compute. One `fs.stat` per read,
+    //       catches both new POSTs and hand-deletions uniformly.
+    // The ingest endpoint ALSO drops the cached snapshot explicitly on
+    // every POST for belt-and-suspenders — (d) handles the cases the
+    // explicit drop misses (manual file edits, out-of-band deletions).
     let snapshots = store.snapshots[key];
     const summary = store.summaries[key];
     const filename = key.slice(prefix.length);
     const deltas = await loadPersonDeltas(personId);
+    const deltasMtime = await getDeltasDirMtime(personId);
+    const deltasChanged = snapshots !== undefined && deltasMtime > snapshots.generatedAt;
     if (!snapshots) {
       log.info(`Backfilling snapshot for ${key} (${deltas.length} delta(s) overlaid)`);
       snapshots = computeSnapshots(summary, filename, new Date(), deltas);
@@ -656,6 +678,15 @@ export async function handleHealthRoutes(
       log.info(
         `Re-computing snapshot for ${key}: cached schema v${snapshots.schemaVersion}, ` +
           `current schema v${SNAPSHOT_SCHEMA_VERSION} (${deltas.length} delta(s))`
+      );
+      snapshots = computeSnapshots(summary, filename, new Date(), deltas);
+      store.snapshots[key] = snapshots;
+      await saveHealthStore(store);
+    } else if (deltasChanged) {
+      log.info(
+        `Re-computing snapshot for ${key}: deltas dir mtime ${deltasMtime} ` +
+          `newer than cached snapshot generatedAt ${snapshots.generatedAt} ` +
+          `(${deltas.length} delta(s))`
       );
       snapshots = computeSnapshots(summary, filename, new Date(), deltas);
       store.snapshots[key] = snapshots;
