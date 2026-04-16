@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import Markdown from 'react-markdown';
 import { Card } from '@/components/ui/card';
 import { Brain, Terminal, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { API_BASE } from '../../constants';
@@ -29,18 +30,70 @@ interface StrategyEntry {
   author: string;
 }
 
-function SignalChip({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | number | null | undefined;
-}) {
-  if (value == null) return null;
+/** Human-readable labels and formatting for known signal keys. */
+const SIGNAL_META: Record<string, { label: string; fmt?: (v: unknown) => string; color?: string }> =
+  {
+    btcPrice: {
+      label: 'BTC',
+      fmt: (v) => `$${Number(v).toLocaleString()}`,
+      color: 'text-amber-400',
+    },
+    btcRisk: { label: 'Risk', fmt: (v) => Number(v).toFixed(3), color: 'text-cyan-400' },
+    btcSigma: { label: 'Sigma', fmt: (v) => `${Number(v).toFixed(2)}σ` },
+    btcDrawdown: {
+      label: 'Drawdown',
+      fmt: (v) => `${(Number(v) * 100).toFixed(1)}%`,
+      color: 'text-rose-400',
+    },
+    fearGreed: { label: 'F&G', fmt: (v) => String(v), color: 'text-emerald-400' },
+    fearGreed30d: { label: 'F&G 30d' },
+    fearGreed90d: { label: 'F&G 90d' },
+    hashRibbonRegime: { label: 'Hash Ribbons' },
+    sahmRule: { label: 'Sahm', fmt: (v) => Number(v).toFixed(2) },
+    recessionProb: {
+      label: 'Recession',
+      fmt: (v) => `${(Number(v) * 100).toFixed(0)}%`,
+      color: 'text-orange-400',
+    },
+    tenYearReal: { label: '10Y Real', fmt: (v) => `${Number(v).toFixed(2)}%` },
+    tenYearRealPct: { label: '10Y Pct', fmt: (v) => `${v}th` },
+    nfci: { label: 'NFCI', fmt: (v) => Number(v).toFixed(2) },
+    fedRate: { label: 'Fed Rate' },
+    fedStance: { label: 'Fed Stance' },
+    vix: { label: 'VIX', fmt: (v) => Number(v).toFixed(1) },
+    goldYoy: {
+      label: 'Gold YoY',
+      fmt: (v) => `+${Number(v).toFixed(1)}%`,
+      color: 'text-yellow-400',
+    },
+    sp500Risk: { label: 'SPX Risk', fmt: (v) => Number(v).toFixed(3) },
+  };
+
+function SignalGrid({ signals }: { signals: StrategySignals }) {
+  const entries = Object.entries(signals).filter(([, v]) => v != null);
+  if (entries.length === 0) return null;
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-surface-100/40 border border-border/30 text-[10px] font-mono text-surface-800">
-      <span className="text-surface-700">{label}:</span> {String(value)}
-    </span>
+    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 mt-3">
+      {entries.map(([key, val]) => {
+        const meta = SIGNAL_META[key];
+        const label = meta?.label ?? key;
+        const formatted = meta?.fmt ? meta.fmt(val) : String(val);
+        const color = meta?.color ?? 'text-surface-950';
+        return (
+          <div
+            key={key}
+            className="px-2 py-1.5 rounded-lg bg-surface-100/30 border border-border/20"
+          >
+            <div className="text-[9px] text-surface-700 uppercase tracking-wider font-medium">
+              {label}
+            </div>
+            <div className={`text-[12px] font-bold font-mono leading-tight ${color}`}>
+              {formatted}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -62,8 +115,6 @@ function StrategyCard({
     hour: '2-digit',
     minute: '2-digit',
   });
-
-  const signalEntries = Object.entries(entry.signals).filter(([, v]) => v != null);
 
   return (
     <Card variant="glass" className="p-4">
@@ -96,20 +147,14 @@ function StrategyCard({
         </div>
       </div>
 
-      {/* Signal chips */}
-      {signalEntries.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-2">
-          {signalEntries.map(([k, v]) => (
-            <SignalChip key={k} label={k} value={v as string | number} />
-          ))}
-        </div>
-      )}
+      {/* Signal grid */}
+      <SignalGrid signals={entry.signals} />
 
-      {/* Expanded body */}
+      {/* Expanded markdown body */}
       {expanded && (
         <div className="mt-3 pt-3 border-t border-border/30">
-          <div className="text-[13px] text-surface-800 leading-relaxed whitespace-pre-wrap">
-            {entry.body}
+          <div className="prose prose-sm prose-invert max-w-none text-[13px] leading-relaxed [&_h2]:text-[15px] [&_h2]:font-bold [&_h2]:text-surface-950 [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-[14px] [&_h3]:font-semibold [&_h3]:text-surface-950 [&_h3]:mt-3 [&_h3]:mb-1 [&_p]:text-surface-800 [&_p]:mb-2 [&_ul]:text-surface-800 [&_ul]:mb-2 [&_li]:mb-1 [&_strong]:text-surface-950 [&_code]:text-cyan-400 [&_code]:bg-surface-100/40 [&_code]:px-1 [&_code]:rounded">
+            <Markdown>{entry.body}</Markdown>
           </div>
         </div>
       )}
