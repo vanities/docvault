@@ -715,6 +715,11 @@ export function useVixTermStructure() {
   return useQuantFetch<MacroDashboardData>(`${API_BASE}/quant/tradfi/vix-term?_=${bump}`);
 }
 
+export function useGlobalMarkets() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<MacroDashboardData>(`${API_BASE}/quant/tradfi/global-markets?_=${bump}`);
+}
+
 export interface FedRateChange {
   t: number;
   newRate: number;
