@@ -37,6 +37,7 @@ import { HealthChart } from './HealthChart';
 import { ChartCard } from './ChartCard';
 import { ScoreGauge } from './ScoreGauge';
 import { IllnessTimeline } from './IllnessTimeline';
+import type { IllnessNoteMap } from './IllnessTimeline';
 import { humanizeTypeName, formatInt, formatHours, formatBpm } from './healthFormatters';
 
 interface PersonDetailProps {
@@ -69,6 +70,7 @@ export function PersonDetail({ person }: PersonDetailProps) {
   const [busyMessage, setBusyMessage] = useState<string | null>(null);
   const [summary, setSummary] = useState<AppleHealthSummary | null>(null);
   const [snapshot, setSnapshot] = useState<PersonSnapshots | null>(null);
+  const [illnessNotes, setIllnessNotes] = useState<IllnessNoteMap>({});
   const [selectedFilename, setSelectedFilename] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -98,11 +100,14 @@ export function PersonDetail({ person }: PersonDetailProps) {
     }
   }, [api, person.id, selectedFilename]);
 
-  // Load snapshot for charts
+  // Load snapshot for charts + illness notes
   useEffect(() => {
     void api
       .getSnapshot(person.id, 'all')
-      .then((res) => setSnapshot(res.data))
+      .then((res) => {
+        setSnapshot(res.data);
+        setIllnessNotes(res.illnessNotes ?? {});
+      })
       .catch(() => setSnapshot(null));
   }, [api, person.id]);
 
@@ -323,7 +328,14 @@ export function PersonDetail({ person }: PersonDetailProps) {
       {hasParsedExport && <ShortcutSetupGuide personId={person.id} personName={person.name} />}
 
       {/* Health at a Glance — charts + scores from snapshot */}
-      {snapshot && <HealthAtAGlance snapshot={snapshot} />}
+      {snapshot && (
+        <HealthAtAGlance
+          snapshot={snapshot}
+          personId={person.id}
+          illnessNotes={illnessNotes}
+          onIllnessNotesChange={setIllnessNotes}
+        />
+      )}
 
       {/* Raw data */}
       {summary && (
@@ -340,7 +352,17 @@ export function PersonDetail({ person }: PersonDetailProps) {
 // ---------------------------------------------------------------------------
 // Health at a Glance — key charts and scores from the snapshot
 // ---------------------------------------------------------------------------
-function HealthAtAGlance({ snapshot }: { snapshot: PersonSnapshots }) {
+function HealthAtAGlance({
+  snapshot,
+  personId,
+  illnessNotes,
+  onIllnessNotesChange,
+}: {
+  snapshot: PersonSnapshots;
+  personId: string;
+  illnessNotes: IllnessNoteMap;
+  onIllnessNotesChange: (notes: IllnessNoteMap) => void;
+}) {
   const latestRecovery =
     snapshot.activity.recoveryScores.length > 0
       ? snapshot.activity.recoveryScores[snapshot.activity.recoveryScores.length - 1]
@@ -425,7 +447,12 @@ function HealthAtAGlance({ snapshot }: { snapshot: PersonSnapshots }) {
       </div>
 
       {/* Illness detection */}
-      <IllnessTimeline periods={snapshot.illnessPeriods} />
+      <IllnessTimeline
+        periods={snapshot.illnessPeriods}
+        personId={personId}
+        notes={illnessNotes}
+        onNotesChange={onIllnessNotesChange}
+      />
     </div>
   );
 }
