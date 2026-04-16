@@ -2,12 +2,13 @@
 
 import { Scale, Ruler, TrendingDown, TrendingUp, Minus } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { Card } from '@/components/ui/card';
 import { SegmentViewShell } from './SegmentViewShell';
 import { HealthChart } from './HealthChart';
 import { InsightsRow } from './InsightsRow';
 import { CollapsibleTable } from './CollapsibleTable';
 import { TimePeriodSummary } from './TimePeriodSummary';
+import { StatTile } from './StatTile';
+import { ChartCard } from './ChartCard';
 import { formatDecimal1 } from './healthFormatters';
 
 function trendIcon(delta: number | null): LucideIcon {
@@ -39,7 +40,7 @@ export function HealthBodyView() {
 
         return (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               <StatTile
                 icon={Scale}
                 label="Current weight"
@@ -89,18 +90,12 @@ export function HealthBodyView() {
             </div>
 
             <TimePeriodSummary periods={data.periods} />
-
             <InsightsRow insights={data.insights} />
 
-            <Card className="p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <Scale className="w-4 h-4 text-sky-400" />
-                <h3 className="font-medium text-surface-950">Weight trend</h3>
-              </div>
+            <ChartCard icon={Scale} title="Weight trend" color="text-sky-400">
               {data.weightHistory.length === 0 ? (
                 <div className="text-sm text-surface-600 py-8 text-center">
-                  No weight measurements in this export. Log your weight on your iPhone or an
-                  Apple-Watch-connected scale to see a trend here.
+                  No weight measurements in this export.
                 </div>
               ) : (
                 <HealthChart
@@ -111,7 +106,7 @@ export function HealthBodyView() {
                   defaultMode="line"
                 />
               )}
-            </Card>
+            </ChartCard>
 
             {(() => {
               const reversed = [...data.weightHistory].reverse();
@@ -122,10 +117,10 @@ export function HealthBodyView() {
                   totalRows={reversed.length}
                   head={
                     <tr className="text-left text-[11px] uppercase text-surface-600 tracking-wide border-b border-border">
-                      <th className="py-2 pr-3">Date</th>
-                      <th className="py-2 pr-3 text-right">Weight (lb)</th>
-                      <th className="py-2 pr-3 text-right">Weight (kg)</th>
-                      <th className="py-2 pr-3 text-right">Δ from first</th>
+                      <th className="py-2 px-4">Date</th>
+                      <th className="py-2 px-3 text-right">Weight (lb)</th>
+                      <th className="py-2 px-3 text-right">Weight (kg)</th>
+                      <th className="py-2 px-3 text-right">delta from first</th>
                     </tr>
                   }
                   rows={reversed.map((w) => {
@@ -133,23 +128,17 @@ export function HealthBodyView() {
                     return (
                       <tr
                         key={w.date}
-                        className="border-b border-border/30 hover:bg-surface-100/30"
+                        className="border-b border-border/20 hover:bg-surface-100/30 transition-colors"
                       >
-                        <td className="py-1.5 pr-3 text-surface-700 font-mono text-xs">{w.date}</td>
-                        <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                        <td className="py-1.5 px-4 text-surface-700 font-mono text-xs">{w.date}</td>
+                        <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                           {formatDecimal1(w.lb)}
                         </td>
-                        <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                        <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                           {formatDecimal1(w.kg)}
                         </td>
                         <td
-                          className={`py-1.5 pr-3 text-right font-mono tabular-nums ${
-                            delta > 0
-                              ? 'text-amber-400'
-                              : delta < 0
-                                ? 'text-emerald-400'
-                                : 'text-surface-500'
-                          }`}
+                          className={`py-1.5 px-3 text-right font-mono tabular-nums ${delta > 0 ? 'text-amber-400' : delta < 0 ? 'text-emerald-400' : 'text-surface-500'}`}
                         >
                           {delta > 0 ? '+' : ''}
                           {formatDecimal1(delta)}
@@ -164,30 +153,5 @@ export function HealthBodyView() {
         );
       }}
     </SegmentViewShell>
-  );
-}
-
-function StatTile({
-  icon: Icon,
-  label,
-  value,
-  color,
-  caption,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-  color: string;
-  caption?: string;
-}) {
-  return (
-    <Card className="p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <Icon className={`w-4 h-4 ${color}`} />
-        <div className="text-[10px] uppercase tracking-wide text-surface-600">{label}</div>
-      </div>
-      <div className="font-mono text-xl text-surface-950 tabular-nums">{value}</div>
-      {caption && <div className="text-[10px] mt-0.5 text-surface-600">{caption}</div>}
-    </Card>
   );
 }

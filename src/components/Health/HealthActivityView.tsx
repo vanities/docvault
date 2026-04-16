@@ -1,5 +1,4 @@
 // Activity segment view — steps, energy, exercise minutes, distance.
-// Uses the Activity snapshot from the API.
 
 import {
   Activity as ActivityIcon,
@@ -9,13 +8,14 @@ import {
   Route,
   ShieldCheck,
 } from 'lucide-react';
-import { Card } from '@/components/ui/card';
 import { SegmentViewShell } from './SegmentViewShell';
 import { HealthChart } from './HealthChart';
 import { InsightsRow } from './InsightsRow';
 import { CollapsibleTable } from './CollapsibleTable';
 import { TimePeriodSummary } from './TimePeriodSummary';
 import { ScoreGauge } from './ScoreGauge';
+import { StatTile } from './StatTile';
+import { ChartCard } from './ChartCard';
 import { formatInt, formatDecimal1 } from './healthFormatters';
 
 export function HealthActivityView() {
@@ -30,7 +30,7 @@ export function HealthActivityView() {
       {(data) => (
         <div className="space-y-4">
           {/* Headline tiles */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             <StatTile
               icon={Footprints}
               label="Avg daily steps (90d)"
@@ -76,36 +76,30 @@ export function HealthActivityView() {
               );
             })()}
 
-          {/* Period summaries */}
           <TimePeriodSummary periods={data.periods} />
-
-          {/* Insights */}
           <InsightsRow insights={data.insights} />
 
           {/* Most active day callout */}
           {data.headline.mostActiveDay && (
-            <Card className="p-4 border-emerald-500/30 bg-emerald-500/5">
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
               <div className="flex items-center gap-3">
-                <Footprints className="w-5 h-5 text-emerald-400" />
+                <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                  <Footprints className="w-4 h-4 text-emerald-400" />
+                </div>
                 <div>
-                  <div className="text-xs text-surface-600 uppercase tracking-wide">
+                  <div className="text-[10px] text-surface-600 uppercase tracking-[0.08em] font-medium">
                     Most active day
                   </div>
-                  <div className="font-medium text-surface-950">
+                  <div className="font-mono text-surface-950 tabular-nums">
                     {data.headline.mostActiveDay.date} —{' '}
                     {formatInt(data.headline.mostActiveDay.steps)} steps
                   </div>
                 </div>
               </div>
-            </Card>
+            </div>
           )}
 
-          {/* Steps chart */}
-          <Card className="p-5">
-            <div className="flex items-center gap-2 mb-3">
-              <Footprints className="w-4 h-4 text-emerald-400" />
-              <h3 className="font-medium text-surface-950">Daily steps</h3>
-            </div>
+          <ChartCard icon={Footprints} title="Daily steps" color="text-emerald-400">
             <HealthChart
               data={data.daily}
               lines={[
@@ -115,14 +109,9 @@ export function HealthActivityView() {
               valueFormatter={formatInt}
               defaultRange="3M"
             />
-          </Card>
+          </ChartCard>
 
-          {/* Active energy chart */}
-          <Card className="p-5">
-            <div className="flex items-center gap-2 mb-3">
-              <Flame className="w-4 h-4 text-orange-400" />
-              <h3 className="font-medium text-surface-950">Active energy (calories)</h3>
-            </div>
+          <ChartCard icon={Flame} title="Active energy (calories)" color="text-orange-400">
             <HealthChart
               data={data.daily}
               lines={[
@@ -132,14 +121,9 @@ export function HealthActivityView() {
               valueFormatter={formatInt}
               defaultRange="3M"
             />
-          </Card>
+          </ChartCard>
 
-          {/* Exercise minutes chart */}
-          <Card className="p-5">
-            <div className="flex items-center gap-2 mb-3">
-              <Timer className="w-4 h-4 text-sky-400" />
-              <h3 className="font-medium text-surface-950">Exercise minutes</h3>
-            </div>
+          <ChartCard icon={Timer} title="Exercise minutes" color="text-sky-400">
             <HealthChart
               data={data.daily}
               lines={[
@@ -149,9 +133,8 @@ export function HealthActivityView() {
               valueFormatter={formatInt}
               defaultRange="3M"
             />
-          </Card>
+          </ChartCard>
 
-          {/* Recent days table */}
           {(() => {
             const recentDays = data.daily.slice().reverse();
             return (
@@ -160,34 +143,37 @@ export function HealthActivityView() {
                 totalRows={recentDays.length}
                 head={
                   <tr className="text-left text-[11px] uppercase text-surface-600 tracking-wide border-b border-border">
-                    <th className="py-2 pr-3">Date</th>
-                    <th className="py-2 pr-3 text-right">Steps</th>
-                    <th className="py-2 pr-3 text-right">Energy</th>
-                    <th className="py-2 pr-3 text-right">Exercise</th>
-                    <th className="py-2 pr-3 text-right">Stand</th>
-                    <th className="py-2 pr-3 text-right">Distance</th>
-                    <th className="py-2 pr-3 text-right">Flights</th>
+                    <th className="py-2 px-4">Date</th>
+                    <th className="py-2 px-3 text-right">Steps</th>
+                    <th className="py-2 px-3 text-right">Energy</th>
+                    <th className="py-2 px-3 text-right">Exercise</th>
+                    <th className="py-2 px-3 text-right">Stand</th>
+                    <th className="py-2 px-3 text-right">Distance</th>
+                    <th className="py-2 px-3 text-right">Flights</th>
                   </tr>
                 }
                 rows={recentDays.map((d) => (
-                  <tr key={d.date} className="border-b border-border/30 hover:bg-surface-100/30">
-                    <td className="py-1.5 pr-3 text-surface-700 font-mono text-xs">{d.date}</td>
-                    <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                  <tr
+                    key={d.date}
+                    className="border-b border-border/20 hover:bg-surface-100/30 transition-colors"
+                  >
+                    <td className="py-1.5 px-4 text-surface-700 font-mono text-xs">{d.date}</td>
+                    <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                       {formatInt(d.steps)}
                     </td>
-                    <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                    <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                       {formatInt(d.activeEnergy)}
                     </td>
-                    <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                    <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                       {formatInt(d.exerciseMinutes)}m
                     </td>
-                    <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                    <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                       {formatInt(d.standHours)}h
                     </td>
-                    <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                    <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                       {formatDecimal1(d.distance)}
                     </td>
-                    <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                    <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                       {formatInt(d.flightsClimbed)}
                     </td>
                   </tr>
@@ -198,27 +184,5 @@ export function HealthActivityView() {
         </div>
       )}
     </SegmentViewShell>
-  );
-}
-
-function StatTile({
-  icon: Icon,
-  label,
-  value,
-  color,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  color: string;
-}) {
-  return (
-    <Card className="p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <Icon className={`w-4 h-4 ${color}`} />
-        <div className="text-[10px] uppercase tracking-wide text-surface-600">{label}</div>
-      </div>
-      <div className="font-mono text-xl text-surface-950 tabular-nums">{value}</div>
-    </Card>
   );
 }

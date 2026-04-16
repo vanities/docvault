@@ -1,14 +1,14 @@
 // Sleep segment view — duration, stages, respiratory rate, wrist temp.
 
 import { Moon, Clock, Award, BedDouble, Star } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
-import { Card } from '@/components/ui/card';
 import { SegmentViewShell } from './SegmentViewShell';
 import { HealthChart } from './HealthChart';
 import { InsightsRow } from './InsightsRow';
 import { CollapsibleTable } from './CollapsibleTable';
 import { TimePeriodSummary } from './TimePeriodSummary';
 import { ScoreGauge } from './ScoreGauge';
+import { StatTile } from './StatTile';
+import { ChartCard } from './ChartCard';
 import { formatHours, formatMinutes } from './healthFormatters';
 
 /** Convert minutes to "Xh Ym" for labels. */
@@ -29,7 +29,6 @@ export function HealthSleepView() {
       accent="violet"
     >
       {(data) => {
-        // Convert the raw minute fields into hours for the chart
         const chartData = data.daily.map((d) => ({
           date: d.date,
           asleepHours: d.asleepMinutes / 60,
@@ -42,7 +41,7 @@ export function HealthSleepView() {
 
         return (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               <StatTile
                 icon={Clock}
                 label="90-day average"
@@ -88,44 +87,37 @@ export function HealthSleepView() {
               })()}
 
             <TimePeriodSummary periods={data.periods} />
-
             <InsightsRow insights={data.insights} />
 
             {data.headline.longestSleep && (
-              <Card className="p-4 border-violet-500/30 bg-violet-500/5">
+              <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4">
                 <div className="flex items-center gap-3">
-                  <Award className="w-5 h-5 text-violet-400" />
+                  <div className="w-9 h-9 rounded-lg bg-violet-500/10 flex items-center justify-center">
+                    <Award className="w-4 h-4 text-violet-400" />
+                  </div>
                   <div>
-                    <div className="text-xs text-surface-600 uppercase tracking-wide">
+                    <div className="text-[10px] text-surface-600 uppercase tracking-[0.08em] font-medium">
                       Longest sleep
                     </div>
-                    <div className="font-medium text-surface-950">
+                    <div className="font-mono text-surface-950 tabular-nums">
                       {data.headline.longestSleep.date} —{' '}
                       {hmLabel(data.headline.longestSleep.minutes)}
                     </div>
                   </div>
                 </div>
-              </Card>
+              </div>
             )}
 
-            <Card className="p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <Moon className="w-4 h-4 text-violet-400" />
-                <h3 className="font-medium text-surface-950">Nightly sleep duration</h3>
-              </div>
+            <ChartCard icon={Moon} title="Nightly sleep duration" color="text-violet-400">
               <HealthChart
                 data={chartData}
                 lines={[{ key: 'asleepHours', label: 'Asleep', color: '#a855f7' }]}
                 valueFormatter={(v) => formatHours(v)}
                 defaultRange="3M"
               />
-            </Card>
+            </ChartCard>
 
-            <Card className="p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <BedDouble className="w-4 h-4 text-violet-400" />
-                <h3 className="font-medium text-surface-950">Sleep stages</h3>
-              </div>
+            <ChartCard icon={BedDouble} title="Sleep stages" color="text-violet-400">
               <HealthChart
                 data={chartData}
                 lines={[
@@ -138,7 +130,7 @@ export function HealthSleepView() {
                 defaultRange="1M"
                 defaultMode="line"
               />
-            </Card>
+            </ChartCard>
 
             {(() => {
               const recentNights = data.daily.slice().reverse();
@@ -148,34 +140,37 @@ export function HealthSleepView() {
                   totalRows={recentNights.length}
                   head={
                     <tr className="text-left text-[11px] uppercase text-surface-600 tracking-wide border-b border-border">
-                      <th className="py-2 pr-3">Date</th>
-                      <th className="py-2 pr-3 text-right">Total</th>
-                      <th className="py-2 pr-3 text-right">Deep</th>
-                      <th className="py-2 pr-3 text-right">REM</th>
-                      <th className="py-2 pr-3 text-right">Core</th>
-                      <th className="py-2 pr-3 text-right">Awake</th>
-                      <th className="py-2 pr-3 text-right">Resp</th>
+                      <th className="py-2 px-4">Date</th>
+                      <th className="py-2 px-3 text-right">Total</th>
+                      <th className="py-2 px-3 text-right">Deep</th>
+                      <th className="py-2 px-3 text-right">REM</th>
+                      <th className="py-2 px-3 text-right">Core</th>
+                      <th className="py-2 px-3 text-right">Awake</th>
+                      <th className="py-2 px-3 text-right">Resp</th>
                     </tr>
                   }
                   rows={recentNights.map((d) => (
-                    <tr key={d.date} className="border-b border-border/30 hover:bg-surface-100/30">
-                      <td className="py-1.5 pr-3 text-surface-700 font-mono text-xs">{d.date}</td>
-                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                    <tr
+                      key={d.date}
+                      className="border-b border-border/20 hover:bg-surface-100/30 transition-colors"
+                    >
+                      <td className="py-1.5 px-4 text-surface-700 font-mono text-xs">{d.date}</td>
+                      <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                         {formatMinutes(d.asleepMinutes)}
                       </td>
-                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                      <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                         {d.deepMinutes !== null ? formatMinutes(d.deepMinutes) : '—'}
                       </td>
-                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                      <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                         {d.remMinutes !== null ? formatMinutes(d.remMinutes) : '—'}
                       </td>
-                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                      <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                         {d.coreMinutes !== null ? formatMinutes(d.coreMinutes) : '—'}
                       </td>
-                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                      <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                         {d.awakeMinutes !== null ? formatMinutes(d.awakeMinutes) : '—'}
                       </td>
-                      <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                      <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                         {d.respiratoryRate !== null ? d.respiratoryRate.toFixed(1) : '—'}
                       </td>
                     </tr>
@@ -187,27 +182,5 @@ export function HealthSleepView() {
         );
       }}
     </SegmentViewShell>
-  );
-}
-
-function StatTile({
-  icon: Icon,
-  label,
-  value,
-  color,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-  color: string;
-}) {
-  return (
-    <Card className="p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <Icon className={`w-4 h-4 ${color}`} />
-        <div className="text-[10px] uppercase tracking-wide text-surface-600">{label}</div>
-      </div>
-      <div className="font-mono text-xl text-surface-950 tabular-nums">{value}</div>
-    </Card>
   );
 }

@@ -1,13 +1,13 @@
 // Workouts segment view — by-type aggregates, weekly frequency, recent list.
 
 import { Dumbbell, Trophy, Flame, Clock, CalendarClock } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
-import { Card } from '@/components/ui/card';
 import { SegmentViewShell } from './SegmentViewShell';
 import { HealthChart } from './HealthChart';
 import { InsightsRow } from './InsightsRow';
 import { CollapsibleTable } from './CollapsibleTable';
 import { TimePeriodSummary } from './TimePeriodSummary';
+import { StatTile } from './StatTile';
+import { ChartCard } from './ChartCard';
 import { formatInt, formatMinutes, humanizeTypeName } from './healthFormatters';
 
 function formatStart(iso: string): string {
@@ -16,7 +16,6 @@ function formatStart(iso: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-/** "1 session" / "2 sessions" / "0 sessions". */
 function plural(n: number, singular: string): string {
   return `${n.toLocaleString()} ${singular}${n === 1 ? '' : 's'}`;
 }
@@ -32,7 +31,7 @@ export function HealthWorkoutsView() {
     >
       {(data) => (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             <StatTile
               icon={Trophy}
               label="Total workouts"
@@ -64,14 +63,9 @@ export function HealthWorkoutsView() {
           </div>
 
           <TimePeriodSummary periods={data.periods} />
-
           <InsightsRow insights={data.insights} />
 
-          <Card className="p-5">
-            <div className="flex items-center gap-2 mb-3">
-              <CalendarClock className="w-4 h-4 text-amber-400" />
-              <h3 className="font-medium text-surface-950">Weekly workout count</h3>
-            </div>
+          <ChartCard icon={CalendarClock} title="Weekly workout count" color="text-amber-400">
             <HealthChart
               data={data.weekly.map((w) => ({
                 date: w.weekStart,
@@ -82,13 +76,9 @@ export function HealthWorkoutsView() {
               valueFormatter={formatInt}
               defaultRange="1Y"
             />
-          </Card>
+          </ChartCard>
 
-          <Card className="p-5">
-            <div className="flex items-center gap-2 mb-3">
-              <Clock className="w-4 h-4 text-amber-400" />
-              <h3 className="font-medium text-surface-950">Weekly workout minutes</h3>
-            </div>
+          <ChartCard icon={Clock} title="Weekly workout minutes" color="text-amber-400">
             <HealthChart
               data={data.weekly.map((w) => ({
                 date: w.weekStart,
@@ -98,7 +88,7 @@ export function HealthWorkoutsView() {
               valueFormatter={formatInt}
               defaultRange="1Y"
             />
-          </Card>
+          </ChartCard>
 
           <CollapsibleTable
             title="By type"
@@ -106,34 +96,37 @@ export function HealthWorkoutsView() {
             defaultRows={10}
             head={
               <tr className="text-left text-[11px] uppercase text-surface-600 tracking-wide border-b border-border">
-                <th className="py-2 pr-3">Type</th>
-                <th className="py-2 pr-3 text-right">Sessions</th>
-                <th className="py-2 pr-3 text-right">Total time</th>
-                <th className="py-2 pr-3 text-right">Avg time</th>
-                <th className="py-2 pr-3 text-right">Total distance</th>
-                <th className="py-2 pr-3 text-right">Total energy</th>
-                <th className="py-2 pr-3">Last</th>
+                <th className="py-2 px-4">Type</th>
+                <th className="py-2 px-3 text-right">Sessions</th>
+                <th className="py-2 px-3 text-right">Total time</th>
+                <th className="py-2 px-3 text-right">Avg time</th>
+                <th className="py-2 px-3 text-right">Total distance</th>
+                <th className="py-2 px-3 text-right">Total energy</th>
+                <th className="py-2 px-3">Last</th>
               </tr>
             }
             rows={data.byType.map((t) => (
-              <tr key={t.type} className="border-b border-border/30 hover:bg-surface-100/30">
-                <td className="py-1.5 pr-3 font-medium text-surface-950">
+              <tr
+                key={t.type}
+                className="border-b border-border/20 hover:bg-surface-100/30 transition-colors"
+              >
+                <td className="py-1.5 px-4 font-medium text-surface-950">
                   {humanizeTypeName(t.type)}
                 </td>
-                <td className="py-1.5 pr-3 text-right font-mono tabular-nums">{t.count}</td>
-                <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                <td className="py-1.5 px-3 text-right font-mono tabular-nums">{t.count}</td>
+                <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                   {formatMinutes(t.totalDurationMinutes)}
                 </td>
-                <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                   {formatMinutes(t.avgDurationMinutes)}
                 </td>
-                <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                   {t.totalDistance !== null ? t.totalDistance.toFixed(1) : '—'}
                 </td>
-                <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                   {t.totalEnergy !== null ? formatInt(t.totalEnergy) : '—'}
                 </td>
-                <td className="py-1.5 pr-3 text-surface-700 font-mono text-xs">
+                <td className="py-1.5 px-3 text-surface-700 font-mono text-xs">
                   {formatStart(t.lastWorkout)}
                 </td>
               </tr>
@@ -145,35 +138,35 @@ export function HealthWorkoutsView() {
             totalRows={data.recent.length}
             head={
               <tr className="text-left text-[11px] uppercase text-surface-600 tracking-wide border-b border-border">
-                <th className="py-2 pr-3">Type</th>
-                <th className="py-2 pr-3">Date</th>
-                <th className="py-2 pr-3 text-right">Duration</th>
-                <th className="py-2 pr-3 text-right">Distance</th>
-                <th className="py-2 pr-3 text-right">Avg HR</th>
-                <th className="py-2 pr-3 text-right">Energy</th>
+                <th className="py-2 px-4">Type</th>
+                <th className="py-2 px-3">Date</th>
+                <th className="py-2 px-3 text-right">Duration</th>
+                <th className="py-2 px-3 text-right">Distance</th>
+                <th className="py-2 px-3 text-right">Avg HR</th>
+                <th className="py-2 px-3 text-right">Energy</th>
               </tr>
             }
             rows={data.recent.map((w, i) => (
               <tr
                 key={`${w.start}-${i}`}
-                className="border-b border-border/30 hover:bg-surface-100/30"
+                className="border-b border-border/20 hover:bg-surface-100/30 transition-colors"
               >
-                <td className="py-1.5 pr-3 font-medium text-surface-950">
+                <td className="py-1.5 px-4 font-medium text-surface-950">
                   {humanizeTypeName(w.type)}
                 </td>
-                <td className="py-1.5 pr-3 text-surface-700 font-mono text-xs">
+                <td className="py-1.5 px-3 text-surface-700 font-mono text-xs">
                   {formatStart(w.start)}
                 </td>
-                <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                   {formatMinutes(w.durationMinutes)}
                 </td>
-                <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                   {w.distance !== null ? w.distance.toFixed(2) : '—'}
                 </td>
-                <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                   {w.avgHR !== null ? Math.round(w.avgHR) : '—'}
                 </td>
-                <td className="py-1.5 pr-3 text-right font-mono tabular-nums">
+                <td className="py-1.5 px-3 text-right font-mono tabular-nums">
                   {w.energy !== null ? formatInt(w.energy) : '—'}
                 </td>
               </tr>
@@ -182,34 +175,5 @@ export function HealthWorkoutsView() {
         </div>
       )}
     </SegmentViewShell>
-  );
-}
-
-function StatTile({
-  icon: Icon,
-  label,
-  value,
-  color,
-  caption,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-  color: string;
-  caption?: string;
-}) {
-  return (
-    <Card className="p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <Icon className={`w-4 h-4 ${color}`} />
-        <div className="text-[10px] uppercase tracking-wide text-surface-600">{label}</div>
-      </div>
-      {/* `break-words` gives long values (e.g. "Traditional Strength Training")
-          a safe fallback if humanizeTypeName doesn't split them enough. */}
-      <div className="font-mono text-xl text-surface-950 tabular-nums break-words">{value}</div>
-      {caption && (
-        <div className="text-[10px] mt-0.5 uppercase tracking-wide text-surface-600">{caption}</div>
-      )}
-    </Card>
   );
 }

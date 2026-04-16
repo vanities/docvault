@@ -48,17 +48,52 @@ interface PeopleListProps {
   onDelete: (id: string, mode: 'archive' | 'delete') => Promise<void>;
 }
 
-const COLOR_MAP: Record<string, { bg: string; text: string }> = {
-  rose: { bg: 'bg-rose-500/10', text: 'text-rose-400' },
-  blue: { bg: 'bg-blue-500/10', text: 'text-blue-400' },
-  emerald: { bg: 'bg-emerald-500/10', text: 'text-emerald-400' },
-  amber: { bg: 'bg-amber-500/10', text: 'text-amber-400' },
-  violet: { bg: 'bg-violet-500/10', text: 'text-violet-400' },
-  cyan: { bg: 'bg-cyan-500/10', text: 'text-cyan-400' },
-  gray: { bg: 'bg-surface-200/60', text: 'text-surface-700' },
+const COLOR_MAP: Record<string, { bg: string; text: string; border: string; glow: string }> = {
+  rose: {
+    bg: 'bg-rose-500/10',
+    text: 'text-rose-400',
+    border: 'border-l-rose-500/50',
+    glow: 'shadow-[0_0_20px_rgba(244,63,94,0.08)]',
+  },
+  blue: {
+    bg: 'bg-blue-500/10',
+    text: 'text-blue-400',
+    border: 'border-l-blue-500/50',
+    glow: 'shadow-[0_0_20px_rgba(59,130,246,0.08)]',
+  },
+  emerald: {
+    bg: 'bg-emerald-500/10',
+    text: 'text-emerald-400',
+    border: 'border-l-emerald-500/50',
+    glow: 'shadow-[0_0_20px_rgba(16,185,129,0.08)]',
+  },
+  amber: {
+    bg: 'bg-amber-500/10',
+    text: 'text-amber-400',
+    border: 'border-l-amber-500/50',
+    glow: 'shadow-[0_0_20px_rgba(245,158,11,0.08)]',
+  },
+  violet: {
+    bg: 'bg-violet-500/10',
+    text: 'text-violet-400',
+    border: 'border-l-violet-500/50',
+    glow: 'shadow-[0_0_20px_rgba(139,92,246,0.08)]',
+  },
+  cyan: {
+    bg: 'bg-cyan-500/10',
+    text: 'text-cyan-400',
+    border: 'border-l-cyan-500/50',
+    glow: 'shadow-[0_0_20px_rgba(6,182,212,0.08)]',
+  },
+  gray: {
+    bg: 'bg-surface-200/60',
+    text: 'text-surface-700',
+    border: 'border-l-surface-500/50',
+    glow: '',
+  },
 };
 
-function colorFor(color?: string): { bg: string; text: string } {
+function colorFor(color?: string) {
   return COLOR_MAP[color ?? 'rose'] ?? COLOR_MAP.gray;
 }
 
@@ -68,7 +103,7 @@ export function PeopleList({ people, onSelect, onEdit, onDelete }: PeopleListPro
 
   return (
     <>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="space-y-4">
         {people.map((person) => (
           <PersonOverviewCard
             key={person.id}
@@ -188,82 +223,93 @@ function PersonOverviewCard({
   };
 
   return (
-    <Card className="p-5 transition-colors">
+    <Card
+      className={`overflow-hidden border-l-2 ${colors.border} ${colors.glow} hover:border-l-3 transition-all`}
+    >
       {/* Header row */}
-      <div className="flex items-start gap-3 mb-4">
-        <div
-          className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${colors.bg}`}
-        >
-          <User className={`w-5 h-5 ${colors.text}`} />
-        </div>
+      <div className="flex items-start gap-3 p-5 pb-0">
         <button
           type="button"
           onClick={onSelect}
-          className="flex-1 min-w-0 text-left hover:underline"
+          className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${colors.bg} transition-transform hover:scale-105`}
         >
-          <div className="font-medium text-surface-950 truncate">{person.name}</div>
-          <div className="text-xs text-surface-600 truncate font-mono">{person.id}</div>
+          <User className={`w-5 h-5 ${colors.text}`} />
+        </button>
+        <button type="button" onClick={onSelect} className="flex-1 min-w-0 text-left group">
+          <div className="font-display text-xl italic text-surface-950 truncate group-hover:text-accent-400 transition-colors">
+            {person.name}
+          </div>
+          <div className="text-[11px] text-surface-600 font-mono mt-0.5">{person.id}</div>
         </button>
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
-            size="sm"
-            className="text-surface-600 hover:text-surface-950 h-7 px-2 gap-1"
+            size="xs"
+            className="text-surface-600 hover:text-surface-950 gap-1"
             onClick={(e) => {
               e.stopPropagation();
               onEdit();
             }}
           >
-            <Edit3 className="w-3.5 h-3.5" />
+            <Edit3 className="w-3 h-3" />
             Edit
           </Button>
           <Button
             variant="ghost"
-            size="sm"
-            className="text-surface-600 hover:text-danger-400 h-7 px-2 gap-1"
+            size="xs"
+            className="text-surface-600 hover:text-danger-400 gap-1"
             onClick={(e) => {
               e.stopPropagation();
               onRemove();
             }}
           >
-            <Archive className="w-3.5 h-3.5" />
-            Remove
+            <Archive className="w-3 h-3" />
           </Button>
-          <ChevronRight className="w-4 h-4 text-surface-500 flex-shrink-0 ml-1" />
+          <button
+            type="button"
+            onClick={onSelect}
+            className="ml-1 w-7 h-7 rounded-lg bg-surface-200/40 flex items-center justify-center hover:bg-accent-500/20 transition-colors"
+          >
+            <ChevronRight className="w-4 h-4 text-surface-500" />
+          </button>
         </div>
       </div>
 
       {/* Snapshot preview state */}
       {snapshotState === 'loading' && (
-        <div className="flex items-center gap-2 text-sm text-surface-600 py-3">
-          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          Loading snapshot…
+        <div className="flex items-center justify-center gap-2 text-sm text-surface-600 p-8">
+          <Loader2 className="w-4 h-4 animate-spin text-accent-400" />
+          <span>Loading snapshot…</span>
         </div>
       )}
 
       {snapshotState === 'empty' && (
-        <div className="text-sm text-surface-600 py-3 border-t border-border/40">
-          No parsed data yet. Click{' '}
-          <button type="button" className="text-accent-400 hover:underline" onClick={onSelect}>
-            into this person
+        <div className="text-sm text-surface-600 px-5 py-4 mt-3 mx-5 mb-5 rounded-lg bg-surface-100/50 border border-border/30">
+          No parsed data yet.{' '}
+          <button
+            type="button"
+            className="text-accent-400 hover:underline font-medium"
+            onClick={onSelect}
+          >
+            Upload an export.zip
           </button>{' '}
-          to upload an <code className="font-mono text-[11px]">export.zip</code>.
+          to see your dashboard.
         </div>
       )}
 
       {snapshotState === 'error' && (
-        <div className="text-sm text-danger-400 py-3 border-t border-border/40">
+        <div className="text-sm text-danger-400 px-5 py-4 mt-3 mx-5 mb-5 rounded-lg bg-danger-500/5 border border-danger-500/20">
           Couldn&apos;t load snapshot — try refreshing.
         </div>
       )}
 
       {snapshotState === 'loaded' && snapshot && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 border-t border-border/40 pt-3">
+        <div className="stagger grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-px bg-border/20 mt-4">
           <PreviewTile
             icon={Footprints}
-            label="Avg daily steps"
+            label="Avg steps"
             value={formatInt(snapshot.activity.headline.avgDailySteps90d)}
-            caption="last 90 days"
+            caption="90d avg"
             color="text-emerald-400"
             onClick={() => gotoSegment('health-activity')}
           />
@@ -277,7 +323,7 @@ function PersonOverviewCard({
             }
             caption={
               snapshot.heart.headline.avgRestingHR90d !== null
-                ? `90d avg ${formatBpm(snapshot.heart.headline.avgRestingHR90d)}`
+                ? `90d: ${formatBpm(snapshot.heart.headline.avgRestingHR90d)}`
                 : undefined
             }
             color="text-rose-400"
@@ -287,9 +333,7 @@ function PersonOverviewCard({
             icon={Moon}
             label="Avg sleep"
             value={formatHours(snapshot.sleep.headline.avgSleepHours90d)}
-            caption={`${snapshot.sleep.headline.nightsWith7Plus.toLocaleString()} night${
-              snapshot.sleep.headline.nightsWith7Plus === 1 ? '' : 's'
-            } 7+ hrs`}
+            caption={`${snapshot.sleep.headline.nightsWith7Plus} nights 7+h`}
             color="text-violet-400"
             onClick={() => gotoSegment('health-sleep')}
           />
@@ -299,7 +343,7 @@ function PersonOverviewCard({
             value={formatInt(snapshot.workouts.headline.totalWorkouts)}
             caption={
               snapshot.workouts.headline.favoriteType
-                ? `fav: ${humanizeTypeName(snapshot.workouts.headline.favoriteType)}`
+                ? humanizeTypeName(snapshot.workouts.headline.favoriteType)
                 : 'all-time'
             }
             color="text-amber-400"
@@ -307,7 +351,7 @@ function PersonOverviewCard({
           />
           <PreviewTile
             icon={Scale}
-            label="Current weight"
+            label="Weight"
             value={
               snapshot.body.headline.currentLb !== null
                 ? `${formatDecimal1(snapshot.body.headline.currentLb)} lb`
@@ -315,9 +359,7 @@ function PersonOverviewCard({
             }
             caption={
               snapshot.body.weightHistory.length > 0
-                ? `${snapshot.body.weightHistory.length.toLocaleString()} measurement${
-                    snapshot.body.weightHistory.length === 1 ? '' : 's'
-                  }`
+                ? `${snapshot.body.weightHistory.length} readings`
                 : 'no data'
             }
             color="text-sky-400"
@@ -325,9 +367,9 @@ function PersonOverviewCard({
           />
           <PreviewTile
             icon={Footprints}
-            label="10k-step days"
+            label="10k days"
             value={formatInt(snapshot.activity.daily.filter((d) => d.steps >= 10_000).length)}
-            caption={`of ${formatInt(snapshot.activity.daily.length)} total`}
+            caption={`of ${formatInt(snapshot.activity.daily.length)}`}
             color="text-emerald-400"
             onClick={() => gotoSegment('health-activity')}
           />
@@ -359,14 +401,18 @@ function PreviewTile({
         e.stopPropagation();
         onClick();
       }}
-      className="p-2.5 rounded-lg border border-border hover:border-accent-500/40 text-left transition-colors"
+      className="bg-surface-50 p-3.5 text-left transition-all hover:bg-surface-100/80 group"
     >
-      <div className="flex items-center gap-1.5 mb-1">
-        <Icon className={`w-3 h-3 ${color}`} />
-        <div className="text-[10px] uppercase tracking-wide text-surface-600">{label}</div>
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <Icon
+          className={`w-3.5 h-3.5 ${color} opacity-70 group-hover:opacity-100 transition-opacity`}
+        />
+        <div className="text-[10px] uppercase tracking-[0.08em] text-surface-600 font-medium">
+          {label}
+        </div>
       </div>
-      <div className="font-mono text-base text-surface-950 tabular-nums leading-tight">{value}</div>
-      {caption && <div className="text-[10px] mt-0.5 text-surface-600">{caption}</div>}
+      <div className="font-mono text-lg text-surface-950 tabular-nums leading-none">{value}</div>
+      {caption && <div className="text-[10px] mt-1.5 text-surface-600">{caption}</div>}
     </button>
   );
 }
