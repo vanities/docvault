@@ -11,6 +11,7 @@ import {
   Dumbbell,
   Scale,
   ClipboardList,
+  Dna,
 } from 'lucide-react';
 import type { NavView } from '../../contexts/AppContext';
 import { useAppContext } from '../../contexts/AppContext';
@@ -92,6 +93,15 @@ export function HealthSidebarSection({
           view="health-records"
           label="Records"
           icon={ClipboardList}
+          activeView={activeView}
+          isProcessing={isProcessing}
+          disabled={!hasPerson}
+          onClick={onClick}
+        />
+        <HealthNavButton
+          view="health-dna"
+          label="DNA"
+          icon={Dna}
           activeView={activeView}
           isProcessing={isProcessing}
           disabled={!hasPerson}

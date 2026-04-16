@@ -27,6 +27,7 @@ import { QuantView } from '../Quant/QuantView';
 import { StrategyView } from '../Strategy/StrategyView';
 import { HealthView } from '../Health/HealthView';
 import { HealthActivityView } from '../Health/HealthActivityView';
+import { HealthDNAView } from '../Health/HealthDNAView';
 import { HealthHeartView } from '../Health/HealthHeartView';
 import { HealthSleepView } from '../Health/HealthSleepView';
 import { HealthWorkoutsView } from '../Health/HealthWorkoutsView';
@@ -137,6 +138,8 @@ export function Layout() {
         return <HealthBodyView />;
       case 'health-records':
         return <HealthRecordsView />;
+      case 'health-dna':
+        return <HealthDNAView />;
       default:
         return <TaxYearView />;
     }
