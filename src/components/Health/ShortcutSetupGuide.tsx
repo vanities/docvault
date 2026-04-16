@@ -180,37 +180,9 @@ ${config.metrics
         />
       </div>
 
-      {/* Step 1 */}
+      {/* Step 1 — Open Shortcuts and create new */}
       <Step
         number={1}
-        title="Enable Allow Untrusted Shortcuts on your iPhone"
-        body={
-          <>
-            <p>
-              By default, iOS blocks shortcuts that come from outside iCloud. You need to flip one
-              switch to allow sharing shortcuts you&apos;ve built yourself across your own devices
-              (this is a one-time setting).
-            </p>
-            <ol className="list-decimal pl-5 mt-2 space-y-1 text-xs">
-              <li>
-                Open <strong>Settings</strong> → <strong>Shortcuts</strong>
-              </li>
-              <li>
-                If the toggle is grayed out, you first need to run <em>any</em> shared shortcut:
-                open Shortcuts app, tap Gallery, tap any shortcut, tap Add. Then go back to
-                Settings.
-              </li>
-              <li>
-                Enable <strong>Allow Untrusted Shortcuts</strong>. iOS will ask for your passcode.
-              </li>
-            </ol>
-          </>
-        }
-      />
-
-      {/* Step 2 */}
-      <Step
-        number={2}
         title="Open Shortcuts app and create a new shortcut"
         body={
           <>
@@ -218,13 +190,19 @@ ${config.metrics
               Tap the <strong>+</strong> button in the top right of the Shortcuts app. Name it
               something like <code className="font-mono text-[11px]">Sync Health → DocVault</code>.
             </p>
+            <p className="text-xs text-surface-600 mt-2">
+              Nothing to enable in Settings first — shortcuts you build yourself inside the app are
+              automatically trusted. The old &ldquo;Allow Untrusted Shortcuts&rdquo; toggle only
+              applied to importing shortcuts from outside iCloud, and Apple removed it in iOS 15+
+              anyway.
+            </p>
           </>
         }
       />
 
-      {/* Step 3 */}
+      {/* Step 2 — Current Date */}
       <Step
-        number={3}
+        number={2}
         title="Add a Current Date action"
         body={
           <p>
@@ -234,9 +212,9 @@ ${config.metrics
         }
       />
 
-      {/* Step 4 — one line per metric */}
+      {/* Step 3 — one line per metric */}
       <Step
-        number={4}
+        number={3}
         title={`Add a Find Health Samples action for each of the ${config.metrics.length} metrics`}
         body={
           <>
@@ -266,9 +244,9 @@ ${config.metrics
         }
       />
 
-      {/* Step 5 — build the JSON */}
+      {/* Step 4 — build the JSON */}
       <Step
-        number={5}
+        number={4}
         title="Add a Text action with the JSON body"
         body={
           <>
@@ -296,9 +274,9 @@ ${config.metrics
         }
       />
 
-      {/* Step 6 — POST */}
+      {/* Step 5 — POST */}
       <Step
-        number={6}
+        number={5}
         title="Add a Get Contents of URL action"
         body={
           <>
@@ -328,9 +306,9 @@ ${config.metrics
         }
       />
 
-      {/* Step 7 — schedule */}
+      {/* Step 6 — schedule */}
       <Step
-        number={7}
+        number={6}
         title={`Schedule it for ${config.scheduleTime} daily`}
         body={
           <>
@@ -361,9 +339,9 @@ ${config.metrics
         }
       />
 
-      {/* Step 8 — test */}
+      {/* Step 7 — test */}
       <Step
-        number={8}
+        number={7}
         title="Test it once by hand"
         body={
           <>
