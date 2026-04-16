@@ -433,21 +433,36 @@ export async function handleHealthRoutes(
     });
     const key = keys[0];
 
-    // Lazily backfill if the summary is present but the snapshot isn't
+    // Auto-heal two separate cases:
+    //   (a) snapshot is absent entirely → backfill from summary (~8ms)
+    //   (b) snapshot exists but its parserVersion doesn't match the
+    //       summary's parserVersion → recompute from summary (also ~8ms)
+    // Case (b) happens when we bump the snapshot computer's output shape
+    // (e.g. adding the `insights` field) — the summary is still current,
+    // only the rollup needs to re-run. Invisible to the user.
     let snapshots = store.snapshots[key];
+    const summary = store.summaries[key];
+    const filename = key.slice(prefix.length);
     if (!snapshots) {
-      const summary = store.summaries[key];
-      const filename = key.slice(prefix.length);
       log.info(`Backfilling snapshot for ${key}`);
+      snapshots = computeSnapshots(summary, filename);
+      store.snapshots[key] = snapshots;
+      await saveHealthStore(store);
+    } else if (snapshots.parserVersion !== summary.parserVersion) {
+      log.info(
+        `Re-computing snapshot for ${key}: cached was v${snapshots.parserVersion}, ` +
+          `summary is v${summary.parserVersion}`
+      );
       snapshots = computeSnapshots(summary, filename);
       store.snapshots[key] = snapshots;
       await saveHealthStore(store);
     }
 
-    // Staleness: if the cached snapshot was produced by an older parser
-    // than we're currently running, the data is likely missing fields or
-    // using older aggregation rules. Flag it so the UI can prompt a re-parse.
-    const cachedParserVersion = snapshots.parserVersion;
+    // Staleness = the SUMMARY itself was produced by an older parser than
+    // we're currently running. This is user-gated because re-parsing the
+    // XML takes ~20-60 seconds (unlike recomputing snapshots, which is ~8ms
+    // and happens automatically above).
+    const cachedParserVersion = summary.parserVersion;
     const stale = cachedParserVersion !== CURRENT_PARSER_VERSION;
 
     if (segment === 'all') {
