@@ -1,5 +1,13 @@
-import { useState, useEffect, type ReactNode } from 'react';
-import { LineChart, Bitcoin, Landmark, Building2, RefreshCw, Grid3x3 } from 'lucide-react';
+import { useState, useEffect, useMemo, type ReactNode } from 'react';
+import {
+  LineChart,
+  Bitcoin,
+  Landmark,
+  Building2,
+  RefreshCw,
+  Grid3x3,
+  CalendarClock,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { PresidentialCycleChart } from './PresidentialCycleChart';
@@ -101,6 +109,218 @@ function ChartGroup({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Upcoming macro events — FOMC + key releases. FOMC schedule is published
+// by the Fed a year in advance; we hard-code 2025-2027 and roll forward.
+// CPI and NFP follow a fixed cadence (BLS publishes the full-year schedule).
+// ---------------------------------------------------------------------------
+
+interface MacroEvent {
+  date: string; // YYYY-MM-DD
+  label: string;
+  type: 'fomc' | 'cpi' | 'nfp' | 'gdp' | 'pce';
+  /** Optional link to the release page. */
+  url?: string;
+}
+
+const MACRO_EVENTS: MacroEvent[] = [
+  // 2026 FOMC meetings (2-day meetings end on these dates)
+  {
+    date: '2026-01-28',
+    label: 'FOMC Decision',
+    type: 'fomc',
+    url: 'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm',
+  },
+  {
+    date: '2026-03-18',
+    label: 'FOMC Decision',
+    type: 'fomc',
+    url: 'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm',
+  },
+  {
+    date: '2026-05-06',
+    label: 'FOMC Decision',
+    type: 'fomc',
+    url: 'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm',
+  },
+  {
+    date: '2026-06-17',
+    label: 'FOMC Decision',
+    type: 'fomc',
+    url: 'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm',
+  },
+  {
+    date: '2026-07-29',
+    label: 'FOMC Decision',
+    type: 'fomc',
+    url: 'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm',
+  },
+  {
+    date: '2026-09-16',
+    label: 'FOMC Decision',
+    type: 'fomc',
+    url: 'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm',
+  },
+  {
+    date: '2026-10-28',
+    label: 'FOMC Decision',
+    type: 'fomc',
+    url: 'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm',
+  },
+  {
+    date: '2026-12-16',
+    label: 'FOMC Decision',
+    type: 'fomc',
+    url: 'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm',
+  },
+  // 2026 CPI releases (typically 2nd or 3rd week of the month for prior month)
+  { date: '2026-01-14', label: 'CPI (Dec)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
+  { date: '2026-02-11', label: 'CPI (Jan)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
+  { date: '2026-03-11', label: 'CPI (Feb)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
+  { date: '2026-04-14', label: 'CPI (Mar)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
+  { date: '2026-05-12', label: 'CPI (Apr)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
+  { date: '2026-06-10', label: 'CPI (May)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
+  { date: '2026-07-14', label: 'CPI (Jun)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
+  { date: '2026-08-12', label: 'CPI (Jul)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
+  { date: '2026-09-15', label: 'CPI (Aug)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
+  { date: '2026-10-13', label: 'CPI (Sep)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
+  { date: '2026-11-12', label: 'CPI (Oct)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
+  { date: '2026-12-10', label: 'CPI (Nov)', type: 'cpi', url: 'https://www.bls.gov/cpi/' },
+  // 2026 NFP (first Friday of each month)
+  {
+    date: '2026-01-02',
+    label: 'NFP (Dec)',
+    type: 'nfp',
+    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
+  },
+  {
+    date: '2026-02-06',
+    label: 'NFP (Jan)',
+    type: 'nfp',
+    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
+  },
+  {
+    date: '2026-03-06',
+    label: 'NFP (Feb)',
+    type: 'nfp',
+    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
+  },
+  {
+    date: '2026-04-03',
+    label: 'NFP (Mar)',
+    type: 'nfp',
+    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
+  },
+  {
+    date: '2026-05-01',
+    label: 'NFP (Apr)',
+    type: 'nfp',
+    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
+  },
+  {
+    date: '2026-06-05',
+    label: 'NFP (May)',
+    type: 'nfp',
+    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
+  },
+  {
+    date: '2026-07-02',
+    label: 'NFP (Jun)',
+    type: 'nfp',
+    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
+  },
+  {
+    date: '2026-08-07',
+    label: 'NFP (Jul)',
+    type: 'nfp',
+    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
+  },
+  {
+    date: '2026-09-04',
+    label: 'NFP (Aug)',
+    type: 'nfp',
+    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
+  },
+  {
+    date: '2026-10-02',
+    label: 'NFP (Sep)',
+    type: 'nfp',
+    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
+  },
+  {
+    date: '2026-11-06',
+    label: 'NFP (Oct)',
+    type: 'nfp',
+    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
+  },
+  {
+    date: '2026-12-04',
+    label: 'NFP (Nov)',
+    type: 'nfp',
+    url: 'https://www.bls.gov/news.release/empsit.nr0.htm',
+  },
+];
+
+const EVENT_STYLE: Record<string, { color: string; label: string }> = {
+  fomc: { color: 'text-cyan-400', label: 'FOMC' },
+  cpi: { color: 'text-amber-400', label: 'CPI' },
+  nfp: { color: 'text-emerald-400', label: 'NFP' },
+  gdp: { color: 'text-purple-400', label: 'GDP' },
+  pce: { color: 'text-rose-400', label: 'PCE' },
+};
+
+function UpcomingEventsBanner() {
+  const upcoming = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    return MACRO_EVENTS.filter((e) => e.date >= todayStr)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, 5)
+      .map((e) => {
+        const eventDate = new Date(e.date + 'T00:00:00');
+        const diffMs = eventDate.getTime() - now.getTime();
+        const daysAway = Math.ceil(diffMs / 86_400_000);
+        return { ...e, daysAway };
+      });
+  }, []);
+
+  if (upcoming.length === 0) return null;
+
+  return (
+    <div className="mb-4 p-3 rounded-xl border border-border/40 bg-surface-100/20 flex items-center gap-4 overflow-x-auto">
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        <CalendarClock className="w-4 h-4 text-surface-700" />
+        <span className="text-[10px] text-surface-700 uppercase tracking-wider font-semibold">
+          Upcoming
+        </span>
+      </div>
+      {upcoming.map((e, i) => {
+        const style = EVENT_STYLE[e.type] ?? { color: 'text-surface-800', label: '?' };
+        const isImminent = e.daysAway <= 3;
+        return (
+          <a
+            key={`${e.date}-${i}`}
+            href={e.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`flex-shrink-0 flex items-center gap-1.5 px-2 py-1 rounded-lg border transition-all hover:bg-surface-100/40 ${
+              isImminent ? 'border-amber-500/40 bg-amber-500/5' : 'border-border/30'
+            }`}
+          >
+            <span className={`text-[10px] font-bold ${style.color}`}>{style.label}</span>
+            <span className="text-[11px] text-surface-950 font-medium">{e.label}</span>
+            <span
+              className={`text-[10px] font-mono ${isImminent ? 'text-amber-400 font-bold' : 'text-surface-700'}`}
+            >
+              {e.daysAway === 0 ? 'TODAY' : e.daysAway === 1 ? 'tmw' : `${e.daysAway}d`}
+            </span>
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
 export function QuantView() {
   const [category, setCategory] = useState<QuantCategory>(() => {
     if (typeof window === 'undefined') return 'overview';
@@ -147,6 +367,8 @@ export function QuantView() {
           )}
         </div>
       </div>
+
+      <UpcomingEventsBanner />
 
       <Tabs
         value={category}

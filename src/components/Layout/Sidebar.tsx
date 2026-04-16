@@ -647,15 +647,6 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               isProcessing={isProcessing}
               onClick={handleViewClick}
             />
-          </div>
-        </div>
-
-        {/* Markets section */}
-        <div className="mb-4">
-          <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
-            Markets
-          </h3>
-          <div className="space-y-0.5">
             <NavButton
               view="quant"
               label="Quant"
