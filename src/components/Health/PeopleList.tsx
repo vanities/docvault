@@ -33,7 +33,13 @@ import {
 } from '@/components/ui/dialog';
 import { useHealthApi } from './useHealthApi';
 import type { PersonSnapshots } from './types';
-import { formatInt, formatBpm, formatHours, formatDecimal1 } from './healthFormatters';
+import {
+  formatInt,
+  formatBpm,
+  formatHours,
+  formatDecimal1,
+  humanizeTypeName,
+} from './healthFormatters';
 
 interface PeopleListProps {
   people: HealthPerson[];
@@ -293,7 +299,7 @@ function PersonOverviewCard({
             value={formatInt(snapshot.workouts.headline.totalWorkouts)}
             caption={
               snapshot.workouts.headline.favoriteType
-                ? `fav: ${snapshot.workouts.headline.favoriteType}`
+                ? `fav: ${humanizeTypeName(snapshot.workouts.headline.favoriteType)}`
                 : 'all-time'
             }
             color="text-amber-400"

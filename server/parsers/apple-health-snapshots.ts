@@ -460,6 +460,17 @@ export function formatDuration(minutes: number): string {
   return `${h}h ${m}m`;
 }
 
+/**
+ * Split a HealthKit camelCase identifier into space-separated words so
+ * "TraditionalStrengthTraining" renders as "Traditional Strength Training".
+ * Mirrors src/components/Health/healthFormatters.ts humanizeTypeName so
+ * server-side insight computation can format type names at compute time.
+ */
+export function humanizeTypeName(name: string): string {
+  if (!name) return name;
+  return name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2');
+}
+
 // ===========================================================================
 // Metric accessors — pull a single value out of a DailySummary safely
 // ===========================================================================
@@ -1037,7 +1048,7 @@ export function computeWorkoutsSnapshot(
     insights.push({
       label: 'Activity types tried',
       value: byType.length.toString(),
-      caption: `most: ${byType[0].type}`,
+      caption: `most: ${humanizeTypeName(byType[0].type)}`,
       tone: 'neutral',
     });
   }
@@ -1047,7 +1058,7 @@ export function computeWorkoutsSnapshot(
     const byTime = [...byType].sort((a, b) => b.totalDurationMinutes - a.totalDurationMinutes);
     insights.push({
       label: 'Most time spent on',
-      value: byTime[0].type,
+      value: humanizeTypeName(byTime[0].type),
       caption: formatDuration(byTime[0].totalDurationMinutes),
       tone: 'neutral',
     });
