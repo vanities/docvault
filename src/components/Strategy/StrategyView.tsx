@@ -100,11 +100,13 @@ function SignalGrid({ signals }: { signals: StrategySignals }) {
 function StrategyCard({
   entry,
   onDelete,
+  defaultExpanded = false,
 }: {
   entry: StrategyEntry;
   onDelete: (id: string) => void;
+  defaultExpanded?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const date = new Date(entry.createdAt);
   const dateStr = date.toLocaleDateString(undefined, {
     year: 'numeric',
@@ -248,8 +250,8 @@ export function StrategyView() {
 
       {!loading && entries.length > 0 && (
         <div className="space-y-4">
-          {entries.map((e) => (
-            <StrategyCard key={e.id} entry={e} onDelete={handleDelete} />
+          {entries.map((e, i) => (
+            <StrategyCard key={e.id} entry={e} onDelete={handleDelete} defaultExpanded={i === 0} />
           ))}
         </div>
       )}
