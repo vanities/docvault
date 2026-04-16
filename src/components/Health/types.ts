@@ -295,6 +295,16 @@ export interface BodySnapshot {
   periods: PeriodSummary[];
 }
 
+/** An auto-detected illness period from cross-metric anomaly analysis. */
+export interface IllnessPeriod {
+  startDate: string;
+  endDate: string;
+  durationDays: number;
+  signals: string[];
+  peakSignals: number;
+  confidence: 'likely' | 'possible';
+}
+
 /** The full set of snapshots for one parsed export. */
 export interface PersonSnapshots {
   schemaVersion: 1;
@@ -306,6 +316,7 @@ export interface PersonSnapshots {
   sleep: SleepSnapshot;
   workouts: WorkoutsSnapshot;
   body: BodySnapshot;
+  illnessPeriods: IllnessPeriod[];
 }
 
 /** Segment identifier. Used by the API path + NavView routing. */
