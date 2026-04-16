@@ -7,6 +7,7 @@ import type {
   ActivitySnapshot,
   AppleHealthSummary,
   BodySnapshot,
+  ClinicalSummary,
   ExportInfo,
   HealthSegment,
   HeartSnapshot,
@@ -205,6 +206,42 @@ export function useHealthApi() {
   // every render of the calling component creates a fresh object literal —
   // even though the individual callbacks are stable `useCallback`s, the
   // wrapper's identity changes, which busts dep-array equality checks.
+  /**
+   * Fetch the FHIR clinical summary (labs, panels, vitals, conditions, …)
+   * for this person's most recent parsed export. Returns `null` if the
+   * person has no clinical records yet (API returns 404 — caller can
+   * handle by showing an empty state).
+   */
+  const getClinical = useCallback(
+    async (
+      personId: string
+    ): Promise<{
+      clinical: ClinicalSummary;
+      sourceFilename: string;
+      stale: boolean;
+    } | null> => {
+      const res = await fetch(`${API_BASE}/health/${personId}/clinical`);
+      if (res.status === 404) return null;
+      if (!res.ok) {
+        let msg = `${res.status} ${res.statusText}`;
+        try {
+          const body = (await res.json()) as { error?: string; details?: string };
+          if (body.error) msg = body.error + (body.details ? `: ${body.details}` : '');
+        } catch {
+          // ignore
+        }
+        throw new Error(msg);
+      }
+      const body = (await res.json()) as {
+        clinical: ClinicalSummary;
+        sourceFilename: string;
+        stale: boolean;
+      };
+      return body;
+    },
+    []
+  );
+
   /** PUT /api/health/:personId/illness-notes/:key — update or delete an illness note. */
   const updateIllnessNote = useCallback(
     async (personId: string, key: string, data: { note?: string; dismissed?: boolean }) => {
@@ -229,6 +266,7 @@ export function useHealthApi() {
       getSummary,
       uploadAndParseExport,
       getSnapshot,
+      getClinical,
       updateIllnessNote,
     }),
     [
@@ -241,6 +279,7 @@ export function useHealthApi() {
       getSummary,
       uploadAndParseExport,
       getSnapshot,
+      getClinical,
       updateIllnessNote,
     ]
   );

@@ -26,11 +26,21 @@ import {
   Moon,
   ShieldCheck,
   Star,
+  Beaker,
+  AlertTriangle,
+  FileText,
+  Pill,
+  Syringe,
+  ShieldAlert,
+  ArrowRight,
+  ClipboardList,
+  Stethoscope,
 } from 'lucide-react';
 import type { HealthPerson } from '../../hooks/useFileSystemServer';
 import { Button } from '@/components/ui/button';
+import { useAppContext } from '../../contexts/AppContext';
 import { useHealthApi } from './useHealthApi';
-import type { AppleHealthSummary, ExportInfo, PersonSnapshots } from './types';
+import type { AppleHealthSummary, ClinicalSummary, ExportInfo, PersonSnapshots } from './types';
 import { DailySummaryTable } from './DailySummaryTable';
 import { ShortcutSetupGuide } from './ShortcutSetupGuide';
 import { HealthChart } from './HealthChart';
@@ -70,6 +80,7 @@ export function PersonDetail({ person }: PersonDetailProps) {
   const [busyMessage, setBusyMessage] = useState<string | null>(null);
   const [summary, setSummary] = useState<AppleHealthSummary | null>(null);
   const [snapshot, setSnapshot] = useState<PersonSnapshots | null>(null);
+  const [clinical, setClinical] = useState<ClinicalSummary | null>(null);
   const [illnessNotes, setIllnessNotes] = useState<IllnessNoteMap>({});
   const [selectedFilename, setSelectedFilename] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -111,6 +122,15 @@ export function PersonDetail({ person }: PersonDetailProps) {
       .catch(() => setSnapshot(null));
   }, [api, person.id]);
 
+  // Load clinical summary (FHIR records) — 404 is expected when the user
+  // hasn't linked providers, so fall back to null silently.
+  useEffect(() => {
+    void api
+      .getClinical(person.id)
+      .then((res) => setClinical(res?.clinical ?? null))
+      .catch(() => setClinical(null));
+  }, [api, person.id]);
+
   useEffect(() => {
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -133,10 +153,14 @@ export function PersonDetail({ person }: PersonDetailProps) {
       }
       const list = await api.listExports(person.id);
       setExports(list);
-      // Refresh snapshot for charts
+      // Refresh snapshot + clinical for the at-a-glance sections
       void api
         .getSnapshot(person.id, 'all')
         .then((res) => setSnapshot(res.data))
+        .catch(() => {});
+      void api
+        .getClinical(person.id)
+        .then((res) => setClinical(res?.clinical ?? null))
         .catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -157,6 +181,10 @@ export function PersonDetail({ person }: PersonDetailProps) {
       void api
         .getSnapshot(person.id, 'all')
         .then((res) => setSnapshot(res.data))
+        .catch(() => {});
+      void api
+        .getClinical(person.id)
+        .then((res) => setClinical(res?.clinical ?? null))
         .catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -337,6 +365,9 @@ export function PersonDetail({ person }: PersonDetailProps) {
         />
       )}
 
+      {/* Clinical at a Glance — FHIR records summary with link to Records tab */}
+      {clinical && <ClinicalAtAGlance clinical={clinical} />}
+
       {/* Raw data */}
       {summary && (
         <>
@@ -453,6 +484,185 @@ function HealthAtAGlance({
         notes={illnessNotes}
         onNotesChange={onIllnessNotesChange}
       />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Clinical at a Glance — compact summary of FHIR records with a deep link
+// into the Records tab. Rendered below HealthAtAGlance when the parse
+// captured any clinical-records.
+// ---------------------------------------------------------------------------
+function ClinicalAtAGlance({ clinical }: { clinical: ClinicalSummary }) {
+  const { setActiveView } = useAppContext();
+
+  const outOfRange = clinical.labsByTest.filter(
+    (t) => t.latestFlag && t.latestFlag !== 'normal'
+  ).length;
+  const activeConditions = clinical.conditions.filter(
+    (c) => c.clinicalStatus?.toLowerCase() === 'active'
+  ).length;
+  const activeMeds = clinical.medications.filter(
+    (m) => m.status?.toLowerCase() === 'active'
+  ).length;
+  const latestPanel = clinical.labPanels[0];
+  const latestPanelDate = latestPanel?.effectiveAt ?? latestPanel?.issuedAt ?? null;
+  const formattedLatestPanel = latestPanelDate
+    ? new Date(latestPanelDate).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : '—';
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-[11px] font-semibold text-surface-600 uppercase tracking-[0.12em] flex items-center gap-1.5">
+          <ClipboardList className="w-3 h-3 text-amber-400" />
+          Clinical at a glance
+        </h3>
+        <Button
+          variant="ghost"
+          size="xs"
+          onClick={() => setActiveView('health-records')}
+          className="gap-1 text-[11px] text-amber-400 hover:text-amber-300"
+        >
+          View full records
+          <ArrowRight className="w-3 h-3" />
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+        <ClinicalStat
+          icon={Beaker}
+          label="Labs"
+          value={clinical.labsByTest.length.toString()}
+          color="text-amber-400"
+          caption={`${clinical.labPanels.length} panel${clinical.labPanels.length === 1 ? '' : 's'}`}
+        />
+        <ClinicalStat
+          icon={AlertTriangle}
+          label="Out of range"
+          value={outOfRange.toString()}
+          color={outOfRange > 0 ? 'text-rose-400' : 'text-emerald-400'}
+          caption={outOfRange > 0 ? 'latest readings' : 'all in range'}
+        />
+        <ClinicalStat
+          icon={Stethoscope}
+          label="Vitals"
+          value={clinical.vitals.length.toString()}
+          color="text-sky-400"
+          caption="clinical-only"
+        />
+        <ClinicalStat
+          icon={AlertCircle}
+          label="Conditions"
+          value={activeConditions.toString()}
+          color={activeConditions > 0 ? 'text-rose-400' : 'text-emerald-400'}
+          caption={`${clinical.conditions.length} total`}
+        />
+        <ClinicalStat
+          icon={Pill}
+          label="Meds"
+          value={activeMeds.toString()}
+          color="text-violet-400"
+          caption={`${clinical.medications.length} total`}
+        />
+        <ClinicalStat
+          icon={Syringe}
+          label="Immunizations"
+          value={clinical.immunizations.length.toString()}
+          color="text-emerald-400"
+        />
+      </div>
+
+      {outOfRange > 0 && (
+        <button
+          type="button"
+          onClick={() => setActiveView('health-records')}
+          className="w-full text-left rounded-xl border border-rose-500/30 bg-rose-500/5 p-3 hover:bg-rose-500/10 transition-colors group"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-rose-500/15 flex items-center justify-center flex-shrink-0">
+              <AlertTriangle className="w-4 h-4 text-rose-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-surface-950">
+                {outOfRange} test{outOfRange === 1 ? '' : 's'} outside reference range
+              </div>
+              <div className="text-[11px] text-surface-700 mt-0.5">
+                Latest draw: {formattedLatestPanel} · Click to review in Records
+              </div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-rose-400/60 group-hover:text-rose-400 group-hover:translate-x-0.5 transition-all" />
+          </div>
+        </button>
+      )}
+
+      {clinical.allergies.length > 0 && (
+        <div className="rounded-xl border border-border/40 bg-surface-50/30 p-3">
+          <div className="flex items-start gap-2.5">
+            <ShieldAlert className="w-3.5 h-3.5 text-orange-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <div className="text-[10.5px] uppercase tracking-[0.12em] font-semibold text-surface-600 mb-1">
+                Known allergies
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {clinical.allergies.map((a) => (
+                  <span
+                    key={a.id}
+                    className="text-[11px] font-medium px-2 py-0.5 rounded bg-orange-500/10 text-orange-400"
+                  >
+                    {a.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10.5px] text-surface-600">
+        <span className="inline-flex items-center gap-1.5">
+          <FileText className="w-3 h-3 text-surface-500" />
+          {clinical.recordCount} FHIR resource{clinical.recordCount === 1 ? '' : 's'}
+        </span>
+        {clinical.dateRange.start && clinical.dateRange.end && (
+          <span className="font-mono tabular-nums text-surface-700">
+            {clinical.dateRange.start} → {clinical.dateRange.end}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ClinicalStat({
+  icon: Icon,
+  label,
+  value,
+  color,
+  caption,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  color: string;
+  caption?: string;
+}) {
+  return (
+    <div className="rounded-lg border border-border/30 bg-surface-50/40 p-3">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <Icon className={`w-3 h-3 ${color} opacity-80`} />
+        <div className="text-[9.5px] uppercase tracking-[0.1em] text-surface-600 font-semibold">
+          {label}
+        </div>
+      </div>
+      <div className="font-mono text-lg text-surface-950 tabular-nums leading-none">{value}</div>
+      {caption && (
+        <div className={`text-[9.5px] mt-1 ${color} opacity-70 lowercase`}>{caption}</div>
+      )}
     </div>
   );
 }

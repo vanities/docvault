@@ -15,11 +15,13 @@
 //   GET    /api/health/:personId/summaries               — list all parsed summaries for a person
 //   GET    /api/health/:personId/snapshot/:segment       — read a single segment snapshot for this person's latest upload
 //     (segment = activity|heart|sleep|workouts|body|all)
+//   GET    /api/health/:personId/clinical                 — FHIR clinical summary (labs, panels, vitals, conditions, …)
 //
 // Storage:
-//   data/health/<personId>/exports/<name>.zip   — uploaded source exports (never deleted)
-//   data/health/<personId>/exports/<name>.xml   — decompressed XML (persistent cache, backed up)
-//   data/.docvault-health.json                  — people list + parsed summaries + computed snapshots
+//   data/health/<personId>/exports/<name>.zip          — uploaded source exports (never deleted)
+//   data/health/<personId>/exports/<name>.xml          — decompressed XML (persistent cache, backed up)
+//   data/health/<personId>/clinical-records/*.json     — extracted FHIR resources from the zip (backed up)
+//   data/.docvault-health.json                         — people list + parsed summaries + snapshots + clinical
 //
 // Health is NOT an entity — it's a global sidebar section. People, summaries,
 // and snapshots all live together in .docvault-health.json and are decoupled
@@ -44,6 +46,11 @@ import {
   type PersonSnapshots,
   type HealthSegment,
 } from '../parsers/apple-health-snapshots.js';
+import {
+  parseClinicalFromZip,
+  CLINICAL_SCHEMA_VERSION,
+  type ClinicalSummary,
+} from '../parsers/apple-health-clinical.js';
 // Lazy import — bplist-creator may not be in the Docker image
 let buildHealthShortcut: typeof import('./shortcut-generator.js').buildHealthShortcut | null = null;
 import('./shortcut-generator.js')
@@ -77,6 +84,8 @@ interface HealthStore {
   // key format: "<personId>/<filename>"
   summaries: Record<string, AppleHealthSummary>;
   snapshots: Record<string, PersonSnapshots>;
+  /** Clinical (FHIR) summary per uploaded export. Same key format as summaries. */
+  clinical?: Record<string, ClinicalSummary>;
   /** key format: "<personId>/<startDate>-<endDate>" */
   illnessNotes?: Record<string, IllnessNote>;
 }
@@ -90,10 +99,18 @@ async function loadHealthStore(): Promise<HealthStore> {
       people: parsed.people ?? [],
       summaries: parsed.summaries ?? {},
       snapshots: parsed.snapshots ?? {},
+      clinical: parsed.clinical ?? {},
       illnessNotes: parsed.illnessNotes ?? {},
     };
   } catch {
-    return { version: 1, people: [], summaries: {}, snapshots: {}, illnessNotes: {} };
+    return {
+      version: 1,
+      people: [],
+      summaries: {},
+      snapshots: {},
+      clinical: {},
+      illnessNotes: {},
+    };
   }
 }
 
@@ -145,6 +162,17 @@ function getPersonExportsDir(personId: string): string {
 
 function getPersonDeltasDir(personId: string): string {
   return path.join(HEALTH_DATA_DIR, personId, 'deltas');
+}
+
+/**
+ * Where we extract `apple_health_export/clinical-records/*.json` to on disk.
+ * Kept under the person's directory so the data-dir backup captures them
+ * automatically (server/index.ts recursively grabs everything under
+ * `data/health/`). Inspectable: `ls data/health/<personId>/clinical-records/`
+ * shows one JSON per FHIR resource (Observation, DiagnosticReport, etc.).
+ */
+function getPersonClinicalDir(personId: string): string {
+  return path.join(HEALTH_DATA_DIR, personId, 'clinical-records');
 }
 
 /**
@@ -294,7 +322,7 @@ export async function handleHealthRoutes(
     }
 
     if (mode === 'delete') {
-      // Remove from store and drop their summaries in one write
+      // Remove from store and drop their summaries + clinical in one write
       const store = await loadHealthStore();
       store.people = store.people.filter((p) => p.id !== personId);
       const filtered: Record<string, AppleHealthSummary> = {};
@@ -302,6 +330,13 @@ export async function handleHealthRoutes(
         if (!k.startsWith(`${personId}/`)) filtered[k] = v;
       }
       store.summaries = filtered;
+      if (store.clinical) {
+        const filteredClinical: Record<string, ClinicalSummary> = {};
+        for (const [k, v] of Object.entries(store.clinical)) {
+          if (!k.startsWith(`${personId}/`)) filteredClinical[k] = v;
+        }
+        store.clinical = filteredClinical;
+      }
       await saveHealthStore(store);
 
       // Remove all files on disk for this person
@@ -625,10 +660,35 @@ export async function handleHealthRoutes(
       const summary = await parseAppleHealthExport(zipPath);
       const snapshots = computeSnapshots(summary, filename);
 
+      // Clinical records live in a different subtree of the zip
+      // (`apple_health_export/clinical-records/`). Parse them in parallel
+      // so we get both HealthKit aggregates AND FHIR resources from one
+      // re-parse click. Clinical extraction is cheap (few MB of JSON)
+      // compared to the ~1 GB XML parse.
+      let clinical: ClinicalSummary | null = null;
+      try {
+        clinical = await parseClinicalFromZip(zipPath, getPersonClinicalDir(personId));
+        log.info(
+          `Clinical ${personId}/${filename}: ${clinical.recordCount} FHIR resources, ` +
+            `${clinical.labsByTest.length} lab tests, ${clinical.labPanels.length} panels, ` +
+            `${clinical.conditions.length} conditions`
+        );
+      } catch (clinicalErr) {
+        // Non-fatal: clinical-records is optional (user may have no linked
+        // providers). Fall through and save the HealthKit summary anyway.
+        log.warn(
+          `Clinical parse skipped for ${personId}/${filename}: ${clinicalErr instanceof Error ? clinicalErr.message : String(clinicalErr)}`
+        );
+      }
+
       // Persist to store
       const store = await loadHealthStore();
       store.summaries[storeKey(personId, filename)] = summary;
       store.snapshots[storeKey(personId, filename)] = snapshots;
+      if (clinical) {
+        if (!store.clinical) store.clinical = {};
+        store.clinical[storeKey(personId, filename)] = clinical;
+      }
       await saveHealthStore(store);
 
       log.info(
@@ -686,10 +746,30 @@ export async function handleHealthRoutes(
       // 3. Compute segment snapshots (pure, ~8ms for 8 years of data)
       const snapshots = computeSnapshots(summary, filename);
 
-      // 4. Persist summary + snapshots to store in a single write
+      // 4. Clinical records (FHIR) — extracted to clinical-records/ and parsed.
+      //    Non-fatal: if the zip has no clinical subtree (user hasn't linked
+      //    any Health Records providers) we skip silently.
+      let clinical: ClinicalSummary | null = null;
+      try {
+        clinical = await parseClinicalFromZip(zipPath, getPersonClinicalDir(personId));
+        log.info(
+          `Clinical ${personId}/${filename}: ${clinical.recordCount} FHIR resources, ` +
+            `${clinical.labsByTest.length} lab tests, ${clinical.labPanels.length} panels`
+        );
+      } catch (clinicalErr) {
+        log.warn(
+          `Clinical parse skipped for ${personId}/${filename}: ${clinicalErr instanceof Error ? clinicalErr.message : String(clinicalErr)}`
+        );
+      }
+
+      // 5. Persist summary + snapshots + clinical to store in a single write
       const store = await loadHealthStore();
       store.summaries[storeKey(personId, filename)] = summary;
       store.snapshots[storeKey(personId, filename)] = snapshots;
+      if (clinical) {
+        if (!store.clinical) store.clinical = {};
+        store.clinical[storeKey(personId, filename)] = clinical;
+      }
       await saveHealthStore(store);
 
       log.info(
@@ -847,6 +927,47 @@ export async function handleHealthRoutes(
       stale,
       cachedParserVersion,
       currentParserVersion: CURRENT_PARSER_VERSION,
+    });
+  }
+
+  // GET /api/health/:personId/clinical
+  //
+  // Returns the FHIR clinical summary for this person's most recent upload:
+  // lab trends (grouped by LOINC), panels, vitals, conditions, medications,
+  // immunizations, allergies, procedures, documents.
+  //
+  // Auto-heals on schema-version mismatch the same way /snapshot/ does for
+  // the HealthKit snapshots. On parser version mismatch we don't re-parse
+  // here (the user explicitly triggers /parse-export for that); instead we
+  // surface `stale: true` so the UI can prompt.
+  const clinicalMatch = pathname.match(/^\/api\/health\/([^/]+)\/clinical$/);
+  if (clinicalMatch && req.method === 'GET') {
+    const personId = clinicalMatch[1];
+    await requirePerson(personId);
+
+    const store = await loadHealthStore();
+    const prefix = `${personId}/`;
+    const clinical = store.clinical ?? {};
+    const keys = Object.keys(clinical).filter((k) => k.startsWith(prefix));
+    if (keys.length === 0) {
+      return jsonResponse({ error: 'No clinical records parsed for this person yet' }, 404);
+    }
+    // Pick the newest by generatedAt timestamp (tiebreaker: key ordering).
+    keys.sort((a, b) => {
+      const ga = clinical[a]?.generatedAt ?? '';
+      const gb = clinical[b]?.generatedAt ?? '';
+      if (ga !== gb) return gb.localeCompare(ga);
+      return b.localeCompare(a);
+    });
+    const key = keys[0];
+    const data = clinical[key];
+    const stale = data.schemaVersion !== CLINICAL_SCHEMA_VERSION;
+    return jsonResponse({
+      clinical: data,
+      sourceFilename: key.slice(prefix.length),
+      stale,
+      cachedSchemaVersion: data.schemaVersion,
+      currentSchemaVersion: CLINICAL_SCHEMA_VERSION,
     });
   }
 
