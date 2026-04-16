@@ -26,6 +26,7 @@ dist-ssr
 # Environment files
 .env
 .env.local
+.env.deploy
 
 # Data symlinks and parsed data (local paths)
 data/
