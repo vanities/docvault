@@ -4259,6 +4259,8 @@ export async function handleQuantRoutes(
   url: URL,
   pathname: string
 ): Promise<Response | null> {
+  logQuant.info(`${req.method} ${pathname}`);
+
   // POST /api/quant/refresh — force re-fetch all quant data now
   if (pathname === '/api/quant/refresh' && req.method === 'POST') {
     const result = await refreshAllQuantData();
@@ -4314,6 +4316,7 @@ export async function handleQuantRoutes(
       );
     }
     try {
+      logQuant.info('presidential-cycle — computing fresh');
       const data = await computePresidentialCycle();
       cache.presidentialCycle = { fetchedAt: Date.now(), data };
       await saveCache(cache);
@@ -4324,6 +4327,7 @@ export async function handleQuantRoutes(
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('presidential-cycle failed:', msg);
       // Fall back to stale cache if a fetch fails
       if (cache.presidentialCycle) {
         return cachedJsonResponse(
@@ -4353,6 +4357,7 @@ export async function handleQuantRoutes(
       );
     }
     try {
+      logQuant.info('business-cycle — computing fresh');
       const settings = await loadSettings();
       const fredKey = settings.fredApiKey;
       if (!fredKey) {
@@ -4367,6 +4372,7 @@ export async function handleQuantRoutes(
       return cachedJsonResponse(req, { ...data, cached: false }, CACHE.businessCycle);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('business-cycle failed:', msg);
       if (cache.businessCycle) {
         return cachedJsonResponse(
           req,
@@ -4385,6 +4391,7 @@ export async function handleQuantRoutes(
       return cachedJsonResponse(req, { ...cache.inflation!.data, cached: true }, CACHE.inflation);
     }
     try {
+      logQuant.info('inflation — computing fresh');
       const settings = await loadSettings();
       const fredKey = settings.fredApiKey;
       if (!fredKey) {
@@ -4399,6 +4406,7 @@ export async function handleQuantRoutes(
       return cachedJsonResponse(req, { ...data, cached: false }, CACHE.inflation);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('inflation failed:', msg);
       if (cache.inflation) {
         return cachedJsonResponse(
           req,
@@ -4421,6 +4429,7 @@ export async function handleQuantRoutes(
       );
     }
     try {
+      logQuant.info('financial-conditions — computing fresh');
       const settings = await loadSettings();
       const fredKey = settings.fredApiKey;
       if (!fredKey) {
@@ -4435,6 +4444,7 @@ export async function handleQuantRoutes(
       return cachedJsonResponse(req, { ...data, cached: false }, CACHE.financialConditions);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('financial-conditions failed:', msg);
       if (cache.financialConditions) {
         return cachedJsonResponse(
           req,
@@ -4453,6 +4463,7 @@ export async function handleQuantRoutes(
       return cachedJsonResponse(req, { ...cache.housing!.data, cached: true }, CACHE.housing);
     }
     try {
+      logQuant.info('housing — computing fresh');
       const settings = await loadSettings();
       const fredKey = settings.fredApiKey;
       if (!fredKey) {
@@ -4467,6 +4478,7 @@ export async function handleQuantRoutes(
       return cachedJsonResponse(req, { ...data, cached: false }, CACHE.housing);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('housing failed:', msg);
       if (cache.housing) {
         return cachedJsonResponse(
           req,
@@ -4485,6 +4497,7 @@ export async function handleQuantRoutes(
       return cachedJsonResponse(req, { ...cache.gdpGrowth!.data, cached: true }, CACHE.gdpGrowth);
     }
     try {
+      logQuant.info('gdp-growth — computing fresh');
       const settings = await loadSettings();
       const fredKey = settings.fredApiKey;
       if (!fredKey) {
@@ -4499,6 +4512,7 @@ export async function handleQuantRoutes(
       return cachedJsonResponse(req, { ...data, cached: false }, CACHE.gdpGrowth);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('gdp-growth failed:', msg);
       if (cache.gdpGrowth) {
         return cachedJsonResponse(
           req,
@@ -4521,12 +4535,14 @@ export async function handleQuantRoutes(
       );
     }
     try {
+      logQuant.info('commodities — computing fresh');
       const data = await computeCommodities();
       cache.commodities = { fetchedAt: Date.now(), data };
       await saveCache(cache);
       return cachedJsonResponse(req, { ...data, cached: false }, CACHE.commodities);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('commodities failed:', msg);
       if (cache.commodities) {
         return cachedJsonResponse(
           req,
@@ -4549,12 +4565,14 @@ export async function handleQuantRoutes(
       );
     }
     try {
+      logQuant.info('vix-term — computing fresh');
       const data = await computeVixTermStructure();
       cache.vixTermStructure = { fetchedAt: Date.now(), data };
       await saveCache(cache);
       return cachedJsonResponse(req, { ...data, cached: false }, CACHE.vixTermStructure);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('vix-term failed:', msg);
       if (cache.vixTermStructure) {
         return cachedJsonResponse(
           req,
@@ -4577,12 +4595,14 @@ export async function handleQuantRoutes(
       );
     }
     try {
+      logQuant.info('btc-drawdown — computing fresh');
       const data = await computeBtcDrawdown();
       cache.btcDrawdown = { fetchedAt: Date.now(), data };
       await saveCache(cache);
       return cachedJsonResponse(req, { ...data, cached: false }, CACHE.btcDrawdown);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('btc-drawdown failed:', msg);
       if (cache.btcDrawdown) {
         return cachedJsonResponse(
           req,
@@ -4601,12 +4621,14 @@ export async function handleQuantRoutes(
       return cachedJsonResponse(req, { ...cache.fearGreed!.data, cached: true }, CACHE.fearGreed);
     }
     try {
+      logQuant.info('fear-greed — computing fresh');
       const data = await computeFearGreed();
       cache.fearGreed = { fetchedAt: Date.now(), data };
       await saveCache(cache);
       return cachedJsonResponse(req, { ...data, cached: false }, CACHE.fearGreed);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('fear-greed failed:', msg);
       if (cache.fearGreed) {
         return cachedJsonResponse(
           req,
@@ -4625,12 +4647,14 @@ export async function handleQuantRoutes(
       return cachedJsonResponse(req, { ...cache.flippening!.data, cached: true }, CACHE.flippening);
     }
     try {
+      logQuant.info('flippening — computing fresh');
       const data = await computeFlippening();
       cache.flippening = { fetchedAt: Date.now(), data };
       await saveCache(cache);
       return cachedJsonResponse(req, { ...data, cached: false }, CACHE.flippening);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('flippening failed:', msg);
       if (cache.flippening) {
         return cachedJsonResponse(
           req,
@@ -4649,6 +4673,7 @@ export async function handleQuantRoutes(
       return cachedJsonResponse(req, { ...cache.realRates!.data, cached: true }, CACHE.realRates);
     }
     try {
+      logQuant.info('real-rates — computing fresh');
       const settings = await loadSettings();
       const fredKey = settings.fredApiKey;
       if (!fredKey) {
@@ -4663,6 +4688,7 @@ export async function handleQuantRoutes(
       return cachedJsonResponse(req, { ...data, cached: false }, CACHE.realRates);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('real-rates failed:', msg);
       if (cache.realRates) {
         return cachedJsonResponse(
           req,
@@ -4681,12 +4707,14 @@ export async function handleQuantRoutes(
       return cachedJsonResponse(req, { ...cache.hashRate!.data, cached: true }, CACHE.hashRate);
     }
     try {
+      logQuant.info('hash-rate — computing fresh');
       const data = await computeHashRate();
       cache.hashRate = { fetchedAt: Date.now(), data };
       await saveCache(cache);
       return cachedJsonResponse(req, { ...data, cached: false }, CACHE.hashRate);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('hash-rate failed:', msg);
       if (cache.hashRate) {
         return cachedJsonResponse(
           req,
@@ -4705,12 +4733,14 @@ export async function handleQuantRoutes(
       return cachedJsonResponse(req, { ...cache.runningRoi!.data, cached: true }, CACHE.runningRoi);
     }
     try {
+      logQuant.info('running-roi — computing fresh');
       const data = await computeRunningRoi();
       cache.runningRoi = { fetchedAt: Date.now(), data };
       await saveCache(cache);
       return cachedJsonResponse(req, { ...data, cached: false }, CACHE.runningRoi);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('running-roi failed:', msg);
       if (cache.runningRoi) {
         return cachedJsonResponse(
           req,
@@ -4733,6 +4763,7 @@ export async function handleQuantRoutes(
       );
     }
     try {
+      logQuant.info('jobs — computing fresh');
       const settings = await loadSettings();
       const fredKey = settings.fredApiKey;
       if (!fredKey) {
@@ -4747,6 +4778,7 @@ export async function handleQuantRoutes(
       return cachedJsonResponse(req, { ...data, cached: false }, CACHE.jobsDashboard);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('jobs failed:', msg);
       if (cache.jobsDashboard) {
         return cachedJsonResponse(
           req,
@@ -4765,6 +4797,7 @@ export async function handleQuantRoutes(
       return cachedJsonResponse(req, { ...cache.fedPolicy!.data, cached: true }, CACHE.fedPolicy);
     }
     try {
+      logQuant.info('fed-policy — computing fresh');
       const settings = await loadSettings();
       const fredKey = settings.fredApiKey;
       if (!fredKey) {
@@ -4779,6 +4812,7 @@ export async function handleQuantRoutes(
       return cachedJsonResponse(req, { ...data, cached: false }, CACHE.fedPolicy);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('fed-policy failed:', msg);
       if (cache.fedPolicy) {
         return cachedJsonResponse(
           req,
@@ -4801,6 +4835,7 @@ export async function handleQuantRoutes(
       );
     }
     try {
+      logQuant.info('macro-dashboard — computing fresh');
       const settings = await loadSettings();
       const fredKey = settings.fredApiKey;
       if (!fredKey) {
@@ -4818,6 +4853,7 @@ export async function handleQuantRoutes(
       return cachedJsonResponse(req, { ...data, cached: false }, CACHE.macroDashboard);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('macro-dashboard failed:', msg);
       if (cache.macroDashboard) {
         return cachedJsonResponse(
           req,
@@ -4844,6 +4880,7 @@ export async function handleQuantRoutes(
       );
     }
     try {
+      logQuant.info('yield-curve — computing fresh');
       const settings = await loadSettings();
       const fredKey = settings.fredApiKey;
       if (!fredKey) {
@@ -4865,6 +4902,7 @@ export async function handleQuantRoutes(
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('yield-curve failed:', msg);
       if (cache.yieldCurve) {
         return cachedJsonResponse(
           req,
@@ -4893,12 +4931,14 @@ export async function handleQuantRoutes(
       );
     }
     try {
+      logQuant.info('sp500-risk-metric — computing fresh');
       const data = await computeSP500RiskMetric();
       cache.sp500RiskMetric = { fetchedAt: Date.now(), data };
       await saveCache(cache);
       return cachedJsonResponse(req, { ...data, cached: false }, CACHE.sp500RiskMetric);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('sp500-risk-metric failed:', msg);
       if (cache.sp500RiskMetric) {
         return cachedJsonResponse(
           req,
@@ -4921,12 +4961,14 @@ export async function handleQuantRoutes(
       );
     }
     try {
+      logQuant.info('midterm-drawdowns — computing fresh');
       const data = await computeMidtermDrawdowns();
       cache.midtermDrawdowns = { fetchedAt: Date.now(), data };
       await saveCache(cache);
       return cachedJsonResponse(req, { ...data, cached: false }, CACHE.midtermDrawdowns);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('midterm-drawdowns failed:', msg);
       if (cache.midtermDrawdowns) {
         return cachedJsonResponse(
           req,
@@ -4953,6 +4995,7 @@ export async function handleQuantRoutes(
       );
     }
     try {
+      logQuant.info('shiller-valuation — computing fresh');
       const data = await computeShillerValuation();
       cache.shillerValuation = { fetchedAt: Date.now(), data };
       await saveCache(cache);
@@ -4963,6 +5006,7 @@ export async function handleQuantRoutes(
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('shiller-valuation failed:', msg);
       if (cache.shillerValuation) {
         return cachedJsonResponse(
           req,
@@ -4995,6 +5039,7 @@ export async function handleQuantRoutes(
       );
     }
     try {
+      logQuant.info('sector-rotation — computing fresh');
       const data = await computeSectorRotation();
       cache.sectorRotation = { fetchedAt: Date.now(), data };
       await saveCache(cache);
@@ -5005,6 +5050,7 @@ export async function handleQuantRoutes(
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('sector-rotation failed:', msg);
       if (cache.sectorRotation) {
         return cachedJsonResponse(
           req,
@@ -5033,12 +5079,14 @@ export async function handleQuantRoutes(
       );
     }
     try {
+      logQuant.info('altcoin-season — computing fresh');
       const data = await computeAltcoinSeasonIndex();
       cache.altcoinSeason = { fetchedAt: Date.now(), data };
       await saveCache(cache);
       return cachedJsonResponse(req, { ...data, cached: false }, CACHE.altcoinSeason);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('altcoin-season failed:', msg);
       if (cache.altcoinSeason) {
         return cachedJsonResponse(
           req,
@@ -5061,12 +5109,14 @@ export async function handleQuantRoutes(
       );
     }
     try {
+      logQuant.info('btc-derivatives — computing fresh');
       const data = await computeBtcDerivatives();
       cache.btcDerivatives = { fetchedAt: Date.now(), data };
       await saveCache(cache);
       return cachedJsonResponse(req, { ...data, cached: false }, CACHE.btcDerivatives);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('btc-derivatives failed:', msg);
       if (cache.btcDerivatives) {
         return cachedJsonResponse(
           req,
@@ -5089,12 +5139,14 @@ export async function handleQuantRoutes(
       );
     }
     try {
+      logQuant.info('btc-dominance — computing fresh');
       const data = await fetchBtcDominance();
       cache.btcDominance = { fetchedAt: Date.now(), data };
       await saveCache(cache);
       return cachedJsonResponse(req, { ...data, cached: false }, CACHE.btcDominance);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('btc-dominance failed:', msg);
       if (cache.btcDominance) {
         return cachedJsonResponse(
           req,
@@ -5121,6 +5173,7 @@ export async function handleQuantRoutes(
       );
     }
     try {
+      logQuant.info('btc-log-regression — computing fresh');
       const data = await computeBtcLogRegression();
       cache.btcLogRegression = { fetchedAt: Date.now(), data };
       await saveCache(cache);
@@ -5131,6 +5184,7 @@ export async function handleQuantRoutes(
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('btc-log-regression failed:', msg);
       if (cache.btcLogRegression) {
         return cachedJsonResponse(
           req,
