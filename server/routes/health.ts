@@ -39,6 +39,7 @@ import {
 } from '../parsers/apple-health.js';
 import {
   computeSnapshots,
+  SNAPSHOT_SCHEMA_VERSION,
   type PersonSnapshots,
   type HealthSegment,
 } from '../parsers/apple-health-snapshots.js';
@@ -433,13 +434,15 @@ export async function handleHealthRoutes(
     });
     const key = keys[0];
 
-    // Auto-heal two separate cases:
-    //   (a) snapshot is absent entirely → backfill from summary (~8ms)
-    //   (b) snapshot exists but its parserVersion doesn't match the
-    //       summary's parserVersion → recompute from summary (also ~8ms)
-    // Case (b) happens when we bump the snapshot computer's output shape
-    // (e.g. adding the `insights` field) — the summary is still current,
-    // only the rollup needs to re-run. Invisible to the user.
+    // Auto-heal three separate cases (all ~8ms and invisible to user):
+    //   (a) snapshot absent entirely → backfill from summary
+    //   (b) snapshot's parserVersion doesn't match the summary's
+    //       (summary was re-parsed with a newer parser)
+    //   (c) snapshot's schemaVersion is older than the current snapshot
+    //       computer's SNAPSHOT_SCHEMA_VERSION (e.g. we added `insights`
+    //       or changed how type names are rendered in insight strings)
+    // User-gated re-parse is only needed when the SUMMARY itself is stale
+    // (case handled below via `stale` flag — see CURRENT_PARSER_VERSION).
     let snapshots = store.snapshots[key];
     const summary = store.summaries[key];
     const filename = key.slice(prefix.length);
@@ -452,6 +455,14 @@ export async function handleHealthRoutes(
       log.info(
         `Re-computing snapshot for ${key}: cached was v${snapshots.parserVersion}, ` +
           `summary is v${summary.parserVersion}`
+      );
+      snapshots = computeSnapshots(summary, filename);
+      store.snapshots[key] = snapshots;
+      await saveHealthStore(store);
+    } else if (snapshots.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
+      log.info(
+        `Re-computing snapshot for ${key}: cached schema v${snapshots.schemaVersion}, ` +
+          `current schema v${SNAPSHOT_SCHEMA_VERSION}`
       );
       snapshots = computeSnapshots(summary, filename);
       store.snapshots[key] = snapshots;
