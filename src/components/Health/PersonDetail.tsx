@@ -308,6 +308,11 @@ export function PersonDetail({ person }: PersonDetailProps) {
         </Card>
       )}
 
+      {/* Shortcut daily-sync setup guide — right after exports so users
+          see how to set up automated daily sync. Only shown once there's
+          at least one parsed export (daily sync overlays on top of bulk). */}
+      {hasParsedExport && <ShortcutSetupGuide personId={person.id} personName={person.name} />}
+
       {/* Summary — stats + daily table + workouts */}
       {summary && (
         <>
@@ -316,11 +321,6 @@ export function PersonDetail({ person }: PersonDetailProps) {
           <WorkoutList summary={summary} />
         </>
       )}
-
-      {/* Shortcut daily-sync setup guide. Only rendered once the person has
-          parsed data — the daily flow is additive on top of a bulk baseline,
-          so it makes no sense to offer it before there's anything to overlay. */}
-      {hasParsedExport && <ShortcutSetupGuide personId={person.id} personName={person.name} />}
     </div>
   );
 }

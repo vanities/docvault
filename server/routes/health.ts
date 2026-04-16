@@ -347,7 +347,7 @@ export async function handleHealthRoutes(
       // UI walkthrough since each is one "Find Health Samples" action.
       metrics: [
         { hkType: 'StepCount', healthAppName: 'Steps', aggregate: 'Sum' },
-        { hkType: 'ActiveEnergyBurned', healthAppName: 'Active Energy', aggregate: 'Sum' },
+        { hkType: 'ActiveEnergyBurned', healthAppName: 'Active Calories', aggregate: 'Sum' },
         { hkType: 'AppleExerciseTime', healthAppName: 'Exercise Minutes', aggregate: 'Sum' },
         { hkType: 'AppleStandHour', healthAppName: 'Stand Hours', aggregate: 'Count' },
         {
@@ -387,21 +387,11 @@ export async function handleHealthRoutes(
     const ingestUrl = `${proto}://${host}/api/health/${personId}/ingest`;
 
     try {
-      if (!buildHealthShortcut) {
-        return jsonResponse(
-          {
-            error:
-              'Shortcut generation unavailable — bplist-creator not installed in this environment',
-          },
-          501
-        );
-      }
-      const shortcutBuffer = buildHealthShortcut({
-        ingestUrl,
-        authToken: token,
-        personId,
-        shortcutName: 'Sync Health → DocVault',
-      });
+      // Serve the pre-built signed .shortcut file. Users edit the URL +
+      // token in the Shortcuts editor after importing.
+      const shortcutDir = path.dirname(new URL(import.meta.url).pathname);
+      const staticPath = path.join(shortcutDir, 'Sync-Health-DocVault.shortcut');
+      const shortcutBuffer = await fs.readFile(staticPath);
 
       return new Response(shortcutBuffer, {
         status: 200,
@@ -409,17 +399,13 @@ export async function handleHealthRoutes(
           'Content-Type': 'application/x-apple-shortcut',
           'Content-Disposition': 'attachment; filename="Sync-Health-DocVault.shortcut"',
           'Content-Length': String(shortcutBuffer.length),
-          ...Object.fromEntries(
-            Object.entries({
-              'Access-Control-Allow-Origin': '*',
-            })
-          ),
+          'Access-Control-Allow-Origin': '*',
         },
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      log.error(`Shortcut generation failed: ${msg}`);
-      return jsonResponse({ error: 'Shortcut generation failed', details: msg }, 500);
+      log.error(`Shortcut file not found: ${msg}`);
+      return jsonResponse({ error: 'Shortcut file not available', details: msg }, 404);
     }
   }
 

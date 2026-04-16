@@ -1,22 +1,23 @@
-// Apple Shortcuts `.shortcut` file generator — v2.
+// Apple Shortcuts `.shortcut` file generator — v10 (working).
 //
-// Rebuilt from decompiled ground truth: the "Health Data Export" shortcut
-// from Heartbridge (mm/heartbridge) was extracted from the local macOS
-// Shortcuts.sqlite database and inspected with plutil. Every action ID
-// and parameter structure below is copied from a KNOWN WORKING shortcut,
-// not guessed from documentation.
+// Produces a binary plist that:
+//   1. Gets current date + formats as yyyy-MM-dd
+//   2. Subtracts 1 day → yesterday (for the JSON date field)
+//   3. Finds Health Samples for 8 metrics, filtered yesterday→today
+//   4. Builds a JSON body as a Text action with .Value Aggrandizements
+//   5. POSTs to the DocVault ingest endpoint with auth header
+//   6. Shows result
 //
-// Action IDs confirmed from the real shortcut:
-//   - is.workflow.actions.filter.health.quantity  (NOT findhealthsamples)
-//   - is.workflow.actions.properties.health.quantity
-//   - is.workflow.actions.calculatestatistics
-//   - is.workflow.actions.format.date  (NOT formatdate)
-//   - is.workflow.actions.dictionary
-//   - is.workflow.actions.setvalueforkey
-//   - is.workflow.actions.downloadurl
-//   - is.workflow.actions.gettext
-//   - is.workflow.actions.date
-//   - is.workflow.actions.showresult
+// Action IDs are confirmed from decompiling a real shortcut on the user's
+// Mac via Shortcuts.sqlite → plutil. The Text-based JSON approach avoids
+// the Dictionary action crash that plagued earlier versions.
+//
+// The generated file must be:
+//   1. Converted from bplist-creator output → XML plist (plutil -convert xml1)
+//   2. Converted back to binary (plutil -convert binary1)
+//   3. Signed (shortcuts sign --mode anyone)
+// Steps 2-3 require macOS. The server endpoint serves unsigned files that
+// may not import on iOS 15+ without the signing step.
 
 import bplistCreator from 'bplist-creator';
 
@@ -36,35 +37,78 @@ function uuid(): string {
     .toUpperCase();
 }
 
-// Placeholder character for variable references in text strings
 const PH = '\uFFFC';
 
-// ---------------------------------------------------------------------------
-// Action builders — all modeled after the decompiled Heartbridge shortcut
-// ---------------------------------------------------------------------------
+const METRICS = [
+  { name: 'Steps', key: 'StepCount' },
+  { name: 'Active Calories', key: 'ActiveEnergyBurned' },
+  { name: 'Exercise Minutes', key: 'AppleExerciseTime' },
+  { name: 'Walking + Running Distance', key: 'DistanceWalkingRunning' },
+  { name: 'Flights Climbed', key: 'FlightsClimbed' },
+  { name: 'Heart Rate', key: 'HeartRate' },
+  { name: 'Resting Heart Rate', key: 'RestingHeartRate' },
+  { name: 'Heart Rate Variability', key: 'HeartRateVariabilitySDNN' },
+];
 
-function commentAction(text: string) {
-  return {
-    WFWorkflowActionIdentifier: 'is.workflow.actions.comment',
-    WFWorkflowActionParameters: { WFCommentActionText: text },
-  };
-}
+export function buildHealthShortcut(opts: ShortcutOptions): Buffer {
+  const actions: Record<string, unknown>[] = [];
 
-function dateAction(outputUuid: string) {
-  return {
+  // 1. Current Date
+  const dateUuid = uuid();
+  actions.push({
     WFWorkflowActionIdentifier: 'is.workflow.actions.date',
-    WFWorkflowActionParameters: {
-      UUID: outputUuid,
-      WFDateActionMode: 'Current Date',
-    },
-  };
-}
+    WFWorkflowActionParameters: { UUID: dateUuid, WFDateActionMode: 'Current Date' },
+  });
 
-function formatDateAction(inputUuid: string, inputName: string, outputUuid: string) {
-  return {
+  // 2. Format today as yyyy-MM-dd
+  const todayStrUuid = uuid();
+  actions.push({
     WFWorkflowActionIdentifier: 'is.workflow.actions.format.date',
     WFWorkflowActionParameters: {
-      UUID: outputUuid,
+      UUID: todayStrUuid,
+      WFDateFormat: 'yyyy-MM-dd',
+      WFDateFormatStyle: 'Custom',
+      WFISO8601IncludeTime: false,
+      WFDate: {
+        Value: {
+          attachmentsByRange: {
+            '{0, 1}': { OutputName: 'Current Date', OutputUUID: dateUuid, Type: 'ActionOutput' },
+          },
+          string: PH,
+        },
+        WFSerializationType: 'WFTextTokenString',
+      },
+    },
+  });
+
+  // 3. Adjust Date: subtract 86400 seconds (1 day) from Formatted Date
+  const yesterdayUuid = uuid();
+  actions.push({
+    WFWorkflowActionIdentifier: 'is.workflow.actions.adjustdate',
+    WFWorkflowActionParameters: {
+      UUID: yesterdayUuid,
+      WFAdjustOperation: 'Subtract',
+      WFDate: {
+        Value: {
+          OutputName: 'Formatted Date',
+          OutputUUID: todayStrUuid,
+          Type: 'ActionOutput',
+        },
+        WFSerializationType: 'WFTextTokenAttachment',
+      },
+      WFDuration: {
+        Value: { Unit: 4, Magnitude: 86400 },
+        WFSerializationType: 'WFQuantityFieldValue',
+      },
+    },
+  });
+
+  // 4. Format yesterday as yyyy-MM-dd (for the JSON date field)
+  const yesterdayStrUuid = uuid();
+  actions.push({
+    WFWorkflowActionIdentifier: 'is.workflow.actions.format.date',
+    WFWorkflowActionParameters: {
+      UUID: yesterdayStrUuid,
       WFDateFormat: 'yyyy-MM-dd',
       WFDateFormatStyle: 'Custom',
       WFISO8601IncludeTime: false,
@@ -72,8 +116,8 @@ function formatDateAction(inputUuid: string, inputName: string, outputUuid: stri
         Value: {
           attachmentsByRange: {
             '{0, 1}': {
-              OutputName: inputName,
-              OutputUUID: inputUuid,
+              OutputName: 'Adjusted Date',
+              OutputUUID: yesterdayUuid,
               Type: 'ActionOutput',
             },
           },
@@ -82,187 +126,129 @@ function formatDateAction(inputUuid: string, inputName: string, outputUuid: stri
         WFSerializationType: 'WFTextTokenString',
       },
     },
-  };
-}
+  });
 
-/**
- * Find Health Samples — the REAL action ID is filter.health.quantity.
- * Uses a content filter to select samples by Type, filtered to "today".
- */
-function findHealthSamplesAction(healthTypeName: string, outputUuid: string) {
-  return {
-    WFWorkflowActionIdentifier: 'is.workflow.actions.filter.health.quantity',
-    WFWorkflowActionParameters: {
-      UUID: outputUuid,
-      WFContentItemFilter: {
-        Value: {
-          WFActionParameterFilterPrefix: 1,
-          WFContentPredicateBoundedDate: false,
-          WFActionParameterFilterTemplates: [
-            {
-              Bounded: true,
-              Operator: 4, // "is"
-              Property: 'Type',
-              Removable: false,
-              Values: {
-                Enumeration: {
-                  Value: healthTypeName,
-                  WFSerializationType: 'WFStringSubstitutableState',
-                },
-              },
-            },
-            {
-              Bounded: true,
-              Operator: 4, // "is today"
-              Property: 'Start Date',
-              Removable: false,
-              Values: {
-                Date: {
-                  Value: { Type: 'CurrentDate' },
-                  WFSerializationType: 'WFTextTokenAttachment',
-                },
-              },
-              Unit: 4, // day
-            },
-          ],
-        },
-        WFSerializationType: 'WFContentPredicateTableTemplate',
-      },
-      WFContentItemInputParameter: 'Library',
-      WFContentItemLimitEnabled: false,
-      WFContentItemSortOrder: 'Latest First',
-      WFContentItemSortProperty: 'Start Date',
-    },
-  };
-}
-
-/**
- * Calculate Statistics — sum, average, etc. on a list of health samples.
- */
-function calculateStatisticsAction(
-  inputUuid: string,
-  inputName: string,
-  operation: string,
-  outputUuid: string
-) {
-  return {
-    WFWorkflowActionIdentifier: 'is.workflow.actions.calculatestatistics',
-    WFWorkflowActionParameters: {
-      UUID: outputUuid,
-      WFStatisticsOperation: operation,
-      WFInput: {
-        Value: {
-          OutputName: inputName,
-          OutputUUID: inputUuid,
-          Type: 'ActionOutput',
-        },
-        WFSerializationType: 'WFTextTokenAttachment',
-      },
-    },
-  };
-}
-
-/** Build a dictionary with initial key-value pairs. */
-function dictionaryAction(
-  items: Array<{
-    key: string;
-    value: string | { uuid: string; name: string };
-    type?: number; // 0=text, 1=number
-  }>,
-  outputUuid: string
-) {
-  return {
-    WFWorkflowActionIdentifier: 'is.workflow.actions.dictionary',
-    WFWorkflowActionParameters: {
-      UUID: outputUuid,
-      WFItems: {
-        Value: {
-          WFDictionaryFieldValueItems: items.map((item) => {
-            const isRef = typeof item.value === 'object';
-            return {
-              WFItemType: item.type ?? 0,
-              WFKey: {
-                Value: { string: item.key },
-                WFSerializationType: 'WFTextTokenString',
-              },
-              WFValue: isRef
-                ? {
-                    Value: {
-                      attachmentsByRange: {
-                        '{0, 1}': {
-                          OutputName: (item.value as { name: string }).name,
-                          OutputUUID: (item.value as { uuid: string }).uuid,
-                          Type: 'ActionOutput',
-                        },
-                      },
-                      string: PH,
-                    },
-                    WFSerializationType: 'WFTextTokenString',
-                  }
-                : {
-                    Value: { string: item.value as string },
-                    WFSerializationType: 'WFTextTokenString',
+  // 5. Find Health Samples × 8 — filtered yesterday→today
+  const sampleUuids: Array<{ key: string; uuid: string }> = [];
+  for (const m of METRICS) {
+    const samplesUuid = uuid();
+    actions.push({
+      WFWorkflowActionIdentifier: 'is.workflow.actions.filter.health.quantity',
+      WFWorkflowActionParameters: {
+        UUID: samplesUuid,
+        WFContentItemFilter: {
+          Value: {
+            WFActionParameterFilterPrefix: 1,
+            WFContentPredicateBoundedDate: false,
+            WFActionParameterFilterTemplates: [
+              {
+                Bounded: true,
+                Operator: 4,
+                Property: 'Type',
+                Removable: false,
+                Values: {
+                  Enumeration: {
+                    Value: m.name,
+                    WFSerializationType: 'WFStringSubstitutableState',
                   },
-            };
-          }),
-        },
-        WFSerializationType: 'WFDictionaryFieldValue',
-      },
-    },
-  };
-}
-
-/** Set a key on an existing dictionary. */
-function setValueForKeyAction(
-  dictUuid: string,
-  dictName: string,
-  key: string,
-  valueRef: { uuid: string; name: string },
-  outputUuid: string
-) {
-  return {
-    WFWorkflowActionIdentifier: 'is.workflow.actions.setvalueforkey',
-    WFWorkflowActionParameters: {
-      UUID: outputUuid,
-      WFDictionary: {
-        Value: {
-          OutputName: dictName,
-          OutputUUID: dictUuid,
-          Type: 'ActionOutput',
-        },
-        WFSerializationType: 'WFTextTokenAttachment',
-      },
-      WFDictionaryKey: key,
-      WFDictionaryValue: {
-        Value: {
-          attachmentsByRange: {
-            '{0, 1}': {
-              OutputName: valueRef.name,
-              OutputUUID: valueRef.uuid,
-              Type: 'ActionOutput',
-            },
+                },
+              },
+              {
+                Bounded: true,
+                Operator: 1003,
+                Property: 'Start Date',
+                Removable: false,
+                Values: {
+                  Date: {
+                    Value: {
+                      OutputName: 'Current Date',
+                      OutputUUID: dateUuid,
+                      Type: 'ActionOutput',
+                    },
+                    WFSerializationType: 'WFTextTokenAttachment',
+                  },
+                  AnotherDate: {
+                    Value: {
+                      OutputName: 'Adjusted Date',
+                      OutputUUID: yesterdayUuid,
+                      Type: 'ActionOutput',
+                    },
+                    WFSerializationType: 'WFTextTokenAttachment',
+                  },
+                  Number: '1',
+                  Unit: 16,
+                },
+              },
+            ],
           },
-          string: PH,
+          WFSerializationType: 'WFContentPredicateTableTemplate',
         },
+        WFContentItemInputParameter: 'Library',
+        WFContentItemLimitEnabled: false,
+        WFContentItemSortOrder: 'Latest First',
+        WFContentItemSortProperty: 'Start Date',
+      },
+    });
+    sampleUuids.push({ key: m.key, uuid: samplesUuid });
+  }
+
+  // 6. Build JSON body as Text with variable interpolation + .Value Aggrandizements
+  let template =
+    '{\\n  "date": "' + PH + '",\\n  "source": "shortcut-v1",\\n  "raw": true,\\n  "metrics": {\\n';
+  const refs: Array<{
+    uuid: string;
+    name: string;
+    aggr: boolean;
+  }> = [{ uuid: yesterdayStrUuid, name: 'Formatted Date', aggr: false }];
+
+  for (let i = 0; i < sampleUuids.length; i++) {
+    const s = sampleUuids[i];
+    const comma = i < sampleUuids.length - 1 ? ',' : '';
+    template += '    "' + s.key + '": "' + PH + '"' + comma + '\\n';
+    refs.push({ uuid: s.uuid, name: 'Health Samples', aggr: true });
+  }
+  template += '  }\\n}';
+
+  // Character offsets (not byte offsets!)
+  const attachmentsByRange: Record<string, Record<string, unknown>> = {};
+  let charOffset = 0;
+  let refIndex = 0;
+  for (let i = 0; i < template.length; i++) {
+    if (template[i] === PH) {
+      const ref = refs[refIndex];
+      const attachment: Record<string, unknown> = {
+        OutputName: ref.name,
+        OutputUUID: ref.uuid,
+        Type: 'ActionOutput',
+      };
+      if (ref.aggr) {
+        attachment.Aggrandizements = [
+          { PropertyName: 'Value', Type: 'WFPropertyVariableAggrandizement' },
+        ];
+      }
+      attachmentsByRange[`{${charOffset}, 1}`] = attachment;
+      refIndex++;
+    }
+    charOffset++;
+  }
+
+  const bodyUuid = uuid();
+  actions.push({
+    WFWorkflowActionIdentifier: 'is.workflow.actions.gettext',
+    WFWorkflowActionParameters: {
+      UUID: bodyUuid,
+      WFTextActionText: {
+        Value: { string: template, attachmentsByRange },
         WFSerializationType: 'WFTextTokenString',
       },
     },
-  };
-}
+  });
 
-/** POST a dictionary as JSON to a URL with custom headers. */
-function postAction(
-  url: string,
-  authToken: string,
-  bodyUuid: string,
-  bodyName: string,
-  outputUuid: string
-) {
-  return {
+  // 7. POST to DocVault
+  actions.push({
     WFWorkflowActionIdentifier: 'is.workflow.actions.downloadurl',
     WFWorkflowActionParameters: {
-      UUID: outputUuid,
-      WFURL: url,
+      WFURL: opts.ingestUrl,
       WFHTTPMethod: 'POST',
       WFHTTPBodyType: 'File',
       ShowHeaders: true,
@@ -287,7 +273,7 @@ function postAction(
                 WFSerializationType: 'WFTextTokenString',
               },
               WFValue: {
-                Value: { string: authToken },
+                Value: { string: opts.authToken },
                 WFSerializationType: 'WFTextTokenString',
               },
             },
@@ -297,142 +283,21 @@ function postAction(
       },
       WFRequestVariable: {
         Value: {
-          OutputName: bodyName,
+          OutputName: 'Text',
           OutputUUID: bodyUuid,
           Type: 'ActionOutput',
         },
         WFSerializationType: 'WFTextTokenAttachment',
       },
     },
-  };
-}
+  });
 
-function showResultAction(text: string) {
-  return {
+  // 8. Show result
+  actions.push({
     WFWorkflowActionIdentifier: 'is.workflow.actions.showresult',
-    WFWorkflowActionParameters: { Text: text },
-  };
-}
+    WFWorkflowActionParameters: { Text: 'DocVault sync complete' },
+  });
 
-// ---------------------------------------------------------------------------
-// Metrics
-// ---------------------------------------------------------------------------
-
-interface MetricDef {
-  healthName: string; // Shortcuts "Type" dropdown value
-  jsonKey: string; // key in our ingest JSON
-  stat: string; // Sum, Average, Minimum, Maximum
-  jsonField: string; // sum, avg, min, max, last
-}
-
-const METRICS: MetricDef[] = [
-  { healthName: 'Steps', jsonKey: 'StepCount', stat: 'Sum', jsonField: 'sum' },
-  { healthName: 'Active Energy', jsonKey: 'ActiveEnergyBurned', stat: 'Sum', jsonField: 'sum' },
-  { healthName: 'Exercise Minutes', jsonKey: 'AppleExerciseTime', stat: 'Sum', jsonField: 'sum' },
-  {
-    healthName: 'Walking + Running Distance',
-    jsonKey: 'DistanceWalkingRunning',
-    stat: 'Sum',
-    jsonField: 'sum',
-  },
-  { healthName: 'Flights Climbed', jsonKey: 'FlightsClimbed', stat: 'Sum', jsonField: 'sum' },
-  { healthName: 'Heart Rate', jsonKey: 'HeartRate', stat: 'Average', jsonField: 'avg' },
-  {
-    healthName: 'Resting Heart Rate',
-    jsonKey: 'RestingHeartRate',
-    stat: 'Average',
-    jsonField: 'last',
-  },
-  {
-    healthName: 'Heart Rate Variability',
-    jsonKey: 'HeartRateVariabilitySDNN',
-    stat: 'Average',
-    jsonField: 'avg',
-  },
-];
-
-// ---------------------------------------------------------------------------
-// Build the complete shortcut
-// ---------------------------------------------------------------------------
-
-export function buildHealthShortcut(opts: ShortcutOptions): Buffer {
-  const actions: Record<string, unknown>[] = [];
-
-  // Comment header
-  actions.push(
-    commentAction(
-      'DocVault Health Sync — auto-generated shortcut.\n' +
-        'Reads 8 health metrics from today, aggregates them, and POSTs to DocVault.\n' +
-        `Target: ${opts.ingestUrl}`
-    )
-  );
-
-  // Step 1: Current Date
-  const dateUuid = uuid();
-  actions.push(dateAction(dateUuid));
-
-  // Step 2: Format as yyyy-MM-dd
-  const dateStrUuid = uuid();
-  actions.push(formatDateAction(dateUuid, 'Current Date', dateStrUuid));
-
-  // Steps 3-N: For each metric → Find Health Samples → Calculate Statistics
-  const statRefs: Array<{ jsonKey: string; jsonField: string; uuid: string }> = [];
-  for (const metric of METRICS) {
-    const samplesUuid = uuid();
-    const statUuid = uuid();
-    actions.push(findHealthSamplesAction(metric.healthName, samplesUuid));
-    actions.push(calculateStatisticsAction(samplesUuid, 'Health Samples', metric.stat, statUuid));
-    statRefs.push({ jsonKey: metric.jsonKey, jsonField: metric.jsonField, uuid: statUuid });
-  }
-
-  // Build the payload dictionary: {date, source, metrics: {<key>: {<field>: <value>}}}
-  // Start with the outer dict: date + source
-  const outerDictUuid = uuid();
-  actions.push(
-    dictionaryAction(
-      [
-        { key: 'date', value: { uuid: dateStrUuid, name: 'Formatted Date' } },
-        { key: 'source', value: 'shortcut-v1' },
-      ],
-      outerDictUuid
-    )
-  );
-
-  // Build a metrics sub-dictionary with one key per metric
-  const metricsDictUuid = uuid();
-  actions.push(
-    dictionaryAction(
-      statRefs.map((r) => ({
-        key: `${r.jsonKey}.${r.jsonField}`,
-        value: { uuid: r.uuid, name: 'Statistics' },
-        type: 1, // number
-      })),
-      metricsDictUuid
-    )
-  );
-
-  // Set "metrics" key on the outer dict
-  const finalDictUuid = uuid();
-  actions.push(
-    setValueForKeyAction(
-      outerDictUuid,
-      'Dictionary',
-      'metrics',
-      { uuid: metricsDictUuid, name: 'Dictionary' },
-      finalDictUuid
-    )
-  );
-
-  // POST to DocVault
-  const responseUuid = uuid();
-  actions.push(
-    postAction(opts.ingestUrl, opts.authToken, finalDictUuid, 'Dictionary', responseUuid)
-  );
-
-  // Show result
-  actions.push(showResultAction('DocVault sync complete'));
-
-  // Assemble workflow
   const workflow = {
     WFWorkflowClientVersion: '2607.0.4',
     WFWorkflowClientRelease: '2.2.2',
@@ -445,7 +310,7 @@ export function buildHealthShortcut(opts: ShortcutOptions): Buffer {
     },
     WFWorkflowImportQuestions: [],
     WFWorkflowTypes: [],
-    WFWorkflowInputContentItemClasses: ['WFStringContentItem', 'WFGenericFileContentItem'],
+    WFWorkflowInputContentItemClasses: ['WFStringContentItem'],
     WFWorkflowHasOutputFallback: false,
     WFWorkflowHasShortcutInputVariables: false,
     WFWorkflowActions: actions,
