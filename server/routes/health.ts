@@ -44,7 +44,15 @@ import {
   type PersonSnapshots,
   type HealthSegment,
 } from '../parsers/apple-health-snapshots.js';
-import { buildHealthShortcut } from './shortcut-generator.js';
+// Lazy import — bplist-creator may not be in the Docker image
+let buildHealthShortcut: typeof import('./shortcut-generator.js').buildHealthShortcut | null = null;
+import('./shortcut-generator.js')
+  .then((m) => {
+    buildHealthShortcut = m.buildHealthShortcut;
+  })
+  .catch(() => {
+    /* shortcut generation unavailable in this environment */
+  });
 import { createLogger } from '../logger.js';
 
 const log = createLogger('Health');
@@ -376,6 +384,15 @@ export async function handleHealthRoutes(
     const ingestUrl = `${proto}://${host}/api/health/${personId}/ingest`;
 
     try {
+      if (!buildHealthShortcut) {
+        return jsonResponse(
+          {
+            error:
+              'Shortcut generation unavailable — bplist-creator not installed in this environment',
+          },
+          501
+        );
+      }
       const shortcutBuffer = buildHealthShortcut({
         ingestUrl,
         authToken: token,
