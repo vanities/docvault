@@ -1199,6 +1199,10 @@ export function SettingsView() {
             <RefreshCw className="w-3.5 h-3.5" />
             Sync
           </TabsTrigger>
+          <TabsTrigger value="status">
+            <Activity className="w-3.5 h-3.5" />
+            Status
+          </TabsTrigger>
           <TabsTrigger value="banking">
             <Banknote className="w-3.5 h-3.5" />
             Banking
@@ -1805,6 +1809,15 @@ export function SettingsView() {
                 </Button>
               </div>
             </Card>
+          </>
+        )}
+
+        {showIn(['status']) && (
+          <>
+            {/* ── System Status ─────────────────────────────── */}
+            <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
+              System Status
+            </p>
 
             {/* System Status — last-ran timestamps + log viewer */}
             <Card variant="glass" className="p-6 mb-8">
