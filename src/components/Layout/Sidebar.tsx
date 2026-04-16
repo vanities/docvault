@@ -22,6 +22,7 @@ import {
   Receipt,
   Scale,
   LineChart,
+  Brain,
 } from 'lucide-react';
 import { useAppContext, type NavView } from '../../contexts/AppContext';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
@@ -653,6 +654,16 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               icon={LineChart}
               activeColor="bg-cyan-500/10"
               activeTextColor="text-cyan-400"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
+            <NavButton
+              view="strategy"
+              label="Strategy"
+              icon={Brain}
+              activeColor="bg-purple-500/10"
+              activeTextColor="text-purple-400"
               activeView={activeView}
               isProcessing={isProcessing}
               onClick={handleViewClick}

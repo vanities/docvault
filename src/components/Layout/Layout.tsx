@@ -24,6 +24,7 @@ import { Solo401kView } from '../Solo401k/Solo401kView';
 import { EstimatedTaxView } from '../EstimatedTax/EstimatedTaxView';
 import { FederalTaxView } from '../FederalTax/FederalTaxView';
 import { QuantView } from '../Quant/QuantView';
+import { StrategyView } from '../Strategy/StrategyView';
 import { HealthView } from '../Health/HealthView';
 import { HealthActivityView } from '../Health/HealthActivityView';
 import { HealthHeartView } from '../Health/HealthHeartView';
@@ -119,6 +120,8 @@ export function Layout() {
         return <IncomeView />;
       case 'quant':
         return <QuantView />;
+      case 'strategy':
+        return <StrategyView />;
       case 'health':
         return <HealthView />;
       case 'health-activity':
