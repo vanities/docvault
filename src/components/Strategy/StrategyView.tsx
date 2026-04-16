@@ -1,0 +1,213 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Card } from '@/components/ui/card';
+import { Brain, Terminal, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { API_BASE } from '../../constants';
+
+interface StrategySignals {
+  btcPrice?: number;
+  btcRisk?: number | null;
+  btcDrawdown?: number;
+  fearGreed?: number;
+  sahmRule?: number | null;
+  recessionProb?: number | null;
+  tenYearReal?: number;
+  yieldCurveRegime?: string;
+  nfci?: number | null;
+  fedStance?: string;
+  sp500Risk?: number | null;
+  hashRibbonRegime?: string;
+  [key: string]: unknown;
+}
+
+interface StrategyEntry {
+  id: string;
+  createdAt: string;
+  title: string;
+  body: string;
+  signals: StrategySignals;
+  portfolio?: Record<string, unknown>;
+  author: string;
+}
+
+function SignalChip({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number | null | undefined;
+}) {
+  if (value == null) return null;
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-surface-100/40 border border-border/30 text-[10px] font-mono text-surface-800">
+      <span className="text-surface-700">{label}:</span> {String(value)}
+    </span>
+  );
+}
+
+function StrategyCard({
+  entry,
+  onDelete,
+}: {
+  entry: StrategyEntry;
+  onDelete: (id: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const date = new Date(entry.createdAt);
+  const dateStr = date.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+  const timeStr = date.toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const signalEntries = Object.entries(entry.signals).filter(([, v]) => v != null);
+
+  return (
+    <Card variant="glass" className="p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[10px] font-mono text-surface-700">
+              {dateStr} {timeStr}
+            </span>
+            <span className="text-[10px] text-surface-700">by {entry.author}</span>
+          </div>
+          <h4 className="text-[14px] font-semibold text-surface-950 leading-snug">{entry.title}</h4>
+        </div>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => onDelete(entry.id)}
+            className="p-1.5 rounded-lg text-surface-700 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+            title="Delete"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="p-1.5 rounded-lg text-surface-700 hover:text-cyan-400 hover:bg-cyan-500/10 transition-colors"
+          >
+            {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Signal chips */}
+      {signalEntries.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {signalEntries.map(([k, v]) => (
+            <SignalChip key={k} label={k} value={v as string | number} />
+          ))}
+        </div>
+      )}
+
+      {/* Expanded body */}
+      {expanded && (
+        <div className="mt-3 pt-3 border-t border-border/30">
+          <div className="text-[13px] text-surface-800 leading-relaxed whitespace-pre-wrap">
+            {entry.body}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** Strategy History — displays AI-generated investment strategy analyses.
+ *  Entries are created via Claude Code's /strategy skill which fetches
+ *  portfolio + quant signals and pushes a recommendation to the API. */
+export function StrategyView() {
+  const [entries, setEntries] = useState<StrategyEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchEntries = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/strategy`);
+      const json = (await res.json()) as { entries?: StrategyEntry[] };
+      setEntries(json.entries ?? []);
+    } catch {
+      // Silently fail — empty list
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchEntries();
+  }, [fetchEntries]);
+
+  const handleDelete = async (id: string) => {
+    try {
+      await fetch(`${API_BASE}/strategy/${id}`, { method: 'DELETE' });
+      setEntries((prev) => prev.filter((e) => e.id !== id));
+    } catch {
+      // ignore
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 md:px-6 py-8">
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-surface-950 flex items-center gap-2">
+          <Brain className="w-6 h-6 text-purple-400" />
+          Strategy
+        </h2>
+        <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
+          AI-generated investment strategy analyses that combine your portfolio data with live quant
+          signals. Each entry is a snapshot of the reasoning at a point in time.
+        </p>
+      </div>
+
+      {/* How-to banner */}
+      <Card variant="glass" className="p-4 mb-6">
+        <div className="flex items-start gap-3">
+          <Terminal className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+          <div>
+            <div className="text-[13px] font-semibold text-surface-950 mb-1">
+              Generate a new strategy
+            </div>
+            <p className="text-[12px] text-surface-800 leading-relaxed">
+              Open <span className="font-mono text-cyan-400">Claude Code</span> in the docvault
+              project and use the{' '}
+              <span className="font-mono text-cyan-400 font-semibold">/strategy</span> skill. Claude
+              will fetch your portfolio + all quant signals, analyze the current regime, and propose
+              a strategy. When you agree on one, it gets saved here automatically.
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      {loading && (
+        <div className="h-40 flex items-center justify-center text-surface-700 text-[13px]">
+          Loading strategy history...
+        </div>
+      )}
+
+      {!loading && entries.length === 0 && (
+        <Card variant="glass" className="p-8">
+          <div className="flex flex-col items-center text-center gap-2">
+            <Brain className="w-10 h-10 text-surface-700 opacity-40" />
+            <h3 className="text-lg font-semibold text-surface-950">No strategies yet</h3>
+            <p className="text-[13px] text-surface-800 max-w-md">
+              Run <span className="font-mono text-cyan-400">/strategy</span> in Claude Code to
+              generate your first analysis. It&apos;ll pull your portfolio data and current market
+              signals to build a personalized recommendation.
+            </p>
+          </div>
+        </Card>
+      )}
+
+      {!loading && entries.length > 0 && (
+        <div className="space-y-4">
+          {entries.map((e) => (
+            <StrategyCard key={e.id} entry={e} onDelete={handleDelete} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

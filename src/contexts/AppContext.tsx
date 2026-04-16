@@ -32,6 +32,7 @@ export type NavView =
   | 'property'
   | 'income'
   | 'quant'
+  | 'strategy'
   | 'health'
   | 'health-activity'
   | 'health-heart'
