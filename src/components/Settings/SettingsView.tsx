@@ -425,6 +425,8 @@ export function SettingsView() {
     level: 'info' | 'warn' | 'error' | 'debug';
     namespace: string;
     message: string;
+    /** Absent on entries written by pre-bootId server versions. */
+    bootId?: string;
   }
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [logLevelFilter, setLogLevelFilter] = useState<'all' | LogLine['level']>('all');
@@ -2031,8 +2033,25 @@ export function SettingsView() {
                                 : l.level === 'debug'
                                   ? 'text-surface-500'
                                   : 'text-cyan-400';
+                          // Restart divider — when adjacent entries have
+                          // different bootIds, the server has restarted between
+                          // them. Skip on i===0 since "first entry" isn't a
+                          // restart relative to anything visible.
+                          const prev = i > 0 ? filteredLogs[i - 1] : null;
+                          const showRestart =
+                            !!prev && !!prev.bootId && !!l.bootId && prev.bootId !== l.bootId;
+                          const restartTime = l.ts.slice(11, 19); // HH:MM:SS
                           return (
                             <div key={i}>
+                              {showRestart && (
+                                <div className="flex items-center gap-2 my-2 text-amber-400/80">
+                                  <span className="flex-1 border-t border-amber-400/30" />
+                                  <span className="text-[10px] uppercase tracking-wider">
+                                    ↻ Server restart · {restartTime}
+                                  </span>
+                                  <span className="flex-1 border-t border-amber-400/30" />
+                                </div>
+                              )}
                               <span className="text-surface-500">{l.ts}</span>{' '}
                               <span className={levelColor}>{l.level.toUpperCase().padEnd(5)}</span>{' '}
                               <span className="text-surface-400">[{l.namespace}]</span>{' '}

@@ -182,15 +182,17 @@ export function EstimatedTaxView() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="p-2.5 bg-red-500/10 rounded-xl">
+      {/* Header — mirrors Health-section masthead */}
+      <div className="flex items-end gap-4 pb-2">
+        <div className="p-2.5 bg-red-500/10 rounded-xl shrink-0">
           <Receipt className="w-6 h-6 text-red-400" />
         </div>
-        <div>
-          <h1 className="font-display text-xl text-surface-950">Estimated Tax Payments</h1>
-          <p className="text-[12px] text-surface-600">
-            {selectedYear} · 1040-ES quarterly payments
+        <div className="min-w-0">
+          <h1 className="font-display italic text-2xl sm:text-3xl leading-tight text-surface-950">
+            Estimated Tax Payments
+          </h1>
+          <p className="text-xs text-surface-500 mt-0.5">
+            {selectedYear} <span className="text-surface-400">· 1040-ES quarterly ledger</span>
           </p>
         </div>
       </div>

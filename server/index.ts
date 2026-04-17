@@ -2444,7 +2444,7 @@ import {
   DEFAULT_DROPBOX_SYNC_INTERVAL,
   DEFAULT_QUANT_REFRESH_INTERVAL,
 } from './scheduler.js';
-import { getRecentLogs, listLogDates, readLogsForDate } from './logger.js';
+import { getRecentLogs, listLogDates, readLogsForDate, SERVER_BOOT_ID } from './logger.js';
 import { readRecentAiCalls, summarizeUsage } from './ai/usage-log.js';
 
 // ============================================================================
@@ -2452,6 +2452,12 @@ import { readRecentAiCalls, summarizeUsage } from './ai/usage-log.js';
 // ============================================================================
 
 const logServer = createLogger('Server');
+
+// Distinct boot marker — anchors the bootId transition in the UI log view.
+// The UI divides on bootId changes between adjacent rows, but this line
+// also gives a readable "what just happened" message for the first entry
+// after the transition.
+logServer.info(`═══ Server boot · bootId=${SERVER_BOOT_ID.slice(0, 8)} ═══`);
 
 // Fail-closed: refuse to start if the master key is missing or too weak.
 // We'd rather crash loudly at boot than silently fall back to plaintext.

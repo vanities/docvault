@@ -304,7 +304,7 @@ export function QuantView() {
     <div className="max-w-6xl mx-auto px-4 md:px-6 py-8">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-surface-950 flex items-center gap-2">
+          <h2 className="font-display italic text-2xl text-surface-950 flex items-center gap-2">
             <LineChart className="w-6 h-6 text-cyan-400" />
             Quant
           </h2>

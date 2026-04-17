@@ -596,7 +596,7 @@ export function GoldView() {
             <Coins className="w-6 h-6 text-yellow-500" />
           </div>
           <div>
-            <h1 className="font-display text-xl text-surface-950">Precious Metals</h1>
+            <h1 className="font-display italic text-2xl text-surface-950">Precious Metals</h1>
             <p className="text-sm text-surface-600 hidden sm:block">
               Track physical gold, silver &amp; platinum
             </p>
