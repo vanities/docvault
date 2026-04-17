@@ -314,9 +314,22 @@ RULES:
 // ---------------------------------------------------------------------------
 
 /**
+ * Claude Vision's image-input hard limit. Base64 encoding inflates bytes by
+ * ~33%, so a 3.75 MB raw image becomes ~5 MB base64 — roughly the ceiling.
+ * We reject at 3.5 MB raw to leave headroom and give the user a clean error
+ * instead of a 400 from the API several seconds later.
+ */
+const MAX_RAW_IMAGE_BYTES = 3.5 * 1024 * 1024;
+
+/**
  * Parse a nutrition-label image into structured data. Accepts a raw image
- * buffer + its MIME type. Returns null on parse failure (caller can retry
- * or show an error to the user).
+ * buffer + its MIME type.
+ *
+ * Returns null only when Claude responded successfully but the response
+ * didn't contain the expected tool_use block (rare — usually means the
+ * model decided the image wasn't a nutrition label). Throws on everything
+ * else so the caller can surface the real error to the user (API failures,
+ * image size limits, auth issues, network timeouts, rate-limit exhaustion).
  *
  * Supported media types: image/png, image/jpeg, image/gif, image/webp.
  */
@@ -324,45 +337,48 @@ export async function parseNutritionLabel(
   imageBuffer: Buffer,
   mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'
 ): Promise<ParsedNutritionLabel | null> {
-  try {
-    const fileContent: FileContentBlock = {
-      type: 'image' as const,
-      source: {
-        type: 'base64' as const,
-        media_type: mediaType,
-        data: imageBuffer.toString('base64'),
+  if (imageBuffer.length > MAX_RAW_IMAGE_BYTES) {
+    const mb = (imageBuffer.length / 1024 / 1024).toFixed(1);
+    throw new Error(
+      `Image too large: ${mb} MB exceeds the 3.5 MB limit for Claude Vision. ` +
+        `Resize in Preview (Export → Quality 85%) or use a JPEG instead of PNG, then re-upload.`
+    );
+  }
+
+  const fileContent: FileContentBlock = {
+    type: 'image' as const,
+    source: {
+      type: 'base64' as const,
+      media_type: mediaType,
+      data: imageBuffer.toString('base64'),
+    },
+  };
+
+  log.info(`Parsing nutrition label (${mediaType}, ${imageBuffer.length} bytes)`);
+
+  const response = await callClaude({
+    system: SYSTEM_PROMPT,
+    userContent: [
+      fileContent,
+      {
+        type: 'text',
+        text: 'Extract all data from this nutrition/supplement label using the extract_nutrition_label tool.',
       },
-    };
+    ],
+    maxTokens: 4096,
+    tools: [LABEL_TOOL],
+    toolChoice: { type: 'tool', name: 'extract_nutrition_label' },
+  });
 
-    log.info(`Parsing nutrition label (${mediaType}, ${imageBuffer.length} bytes)`);
-
-    const response = await callClaude({
-      system: SYSTEM_PROMPT,
-      userContent: [
-        fileContent,
-        {
-          type: 'text',
-          text: 'Extract all data from this nutrition/supplement label using the extract_nutrition_label tool.',
-        },
-      ],
-      maxTokens: 4096,
-      tools: [LABEL_TOOL],
-      toolChoice: { type: 'tool', name: 'extract_nutrition_label' },
-    });
-
-    const result = extractToolResult(response) as Record<string, unknown> | null;
-    if (!result) {
-      log.error('No tool result from Claude');
-      return null;
-    }
-
-    return {
-      ...result,
-      schemaVersion: 1,
-      parserVersion: NUTRITION_PARSER_VERSION,
-    } as ParsedNutritionLabel;
-  } catch (err) {
-    log.error('Parse failed:', String(err));
+  const result = extractToolResult(response) as Record<string, unknown> | null;
+  if (!result) {
+    log.warn('No tool result from Claude — likely not a nutrition label');
     return null;
   }
+
+  return {
+    ...result,
+    schemaVersion: 1,
+    parserVersion: NUTRITION_PARSER_VERSION,
+  } as ParsedNutritionLabel;
 }
