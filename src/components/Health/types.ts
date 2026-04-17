@@ -455,3 +455,106 @@ export type ClinicalSection =
   | 'immunizations'
   | 'allergies'
   | 'procedures';
+
+// ===========================================================================
+// Nutrition (produced by server/parsers/nutrition-label.ts)
+// Mirror of server/routes/nutrition.ts NutritionEntry + ParsedNutritionLabel.
+// Kept in sync manually.
+// ===========================================================================
+
+export type NutritionStatus = 'considering' | 'active' | 'past' | 'never';
+
+export type NutritionCategory =
+  | 'multivitamin'
+  | 'vitamin'
+  | 'mineral'
+  | 'fish-oil'
+  | 'omega-3'
+  | 'fiber'
+  | 'psyllium'
+  | 'electrolyte'
+  | 'sports-drink'
+  | 'protein'
+  | 'creatine'
+  | 'amino-acid'
+  | 'herbal'
+  | 'adaptogen'
+  | 'probiotic'
+  | 'other';
+
+export interface NutrientEntry {
+  name: string;
+  amount?: number;
+  unit?: string;
+  dv?: number;
+  form?: string;
+  notes?: string;
+}
+
+export interface MacroBlock {
+  calories?: number;
+  totalFat?: NutrientEntry;
+  saturatedFat?: NutrientEntry;
+  transFat?: NutrientEntry;
+  cholesterol?: NutrientEntry;
+  sodium?: NutrientEntry;
+  totalCarbohydrate?: NutrientEntry;
+  dietaryFiber?: NutrientEntry;
+  solubleFiber?: NutrientEntry;
+  insolubleFiber?: NutrientEntry;
+  totalSugars?: NutrientEntry;
+  addedSugars?: NutrientEntry;
+  sugarAlcohols?: NutrientEntry;
+  protein?: NutrientEntry;
+}
+
+export interface ProprietaryBlend {
+  name: string;
+  totalAmount?: { amount: number; unit: string };
+  ingredients?: string[];
+}
+
+export interface ParsedNutritionLabel {
+  schemaVersion: 1;
+  parserVersion: string;
+  productName?: string;
+  brandName?: string;
+  category?: NutritionCategory;
+  servingSize?: { amount: number; unit: string; description?: string };
+  servingsPerContainer?: number | string;
+  macros?: MacroBlock;
+  vitamins?: NutrientEntry[];
+  minerals?: NutrientEntry[];
+  otherActive?: NutrientEntry[];
+  proprietaryBlends?: ProprietaryBlend[];
+  ingredients?: string[];
+  allergenInfo?: string[];
+  directions?: string;
+  warnings?: string[];
+  confidence?: number;
+  parserNotes?: string;
+}
+
+export interface NutritionDose {
+  amount?: number;
+  unit?: string;
+  frequency?: 'daily' | 'twice-daily' | 'as-needed' | 'weekly' | 'custom';
+  frequencyCustom?: string;
+  timeOfDay?: 'morning' | 'midday' | 'evening' | 'bedtime' | 'pre-workout' | 'post-workout';
+}
+
+export interface NutritionEntry {
+  id: string;
+  personId: string;
+  filename: string | null;
+  imagePath: string;
+  imageMediaType: string;
+  uploadedAt: string;
+  parsedAt: string | null;
+  parsed: ParsedNutritionLabel | null;
+  parseError: string | null;
+  status: NutritionStatus;
+  dose?: NutritionDose;
+  notes?: string;
+  lastUpdated: string;
+}

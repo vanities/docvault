@@ -147,6 +147,7 @@ import { handleAccountAnnotationRoutes } from './routes/account-annotations.js';
 import { handleMiscRoutes } from './routes/misc.js';
 import { handleHealthRoutes } from './routes/health.js';
 import { handleDNARoutes } from './routes/dna.js';
+import { handleNutritionRoutes } from './routes/nutrition.js';
 import { handleStrategyRoutes } from './routes/strategy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1798,6 +1799,12 @@ async function handleRequest(req: Request): Promise<Response> {
   // makes the routing intent explicit.
   const dnaResponse = await handleDNARoutes(req, url, pathname);
   if (dnaResponse) return dnaResponse;
+
+  // Nutrition routes — supplement/food label parsing + dose tracking.
+  // Same registration pattern as DNA: the nutrition regex catches
+  // `/api/health/:personId/nutrition/*` before handleHealthRoutes sees it.
+  const nutritionResponse = await handleNutritionRoutes(req, url, pathname);
+  if (nutritionResponse) return nutritionResponse;
 
   // health routes (Apple Health exports, people, parsed summaries)
   const healthResponse = await handleHealthRoutes(req, url, pathname);
