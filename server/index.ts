@@ -2126,15 +2126,31 @@ async function handleRequest(req: Request): Promise<Response> {
     return jsonResponse(status);
   }
 
-  // GET /api/logs - Recent in-memory log entries (ring buffer)
+  // GET /api/logs - Recent log entries
+  //   ?dates=1                      — list available historical log dates (no entries)
+  //   ?date=YYYY-MM-DD              — read that day's persisted log from disk
+  //   (no date)                     — live ring buffer for this process
   //   ?level=info|warn|error|debug  — filter by level
   //   ?limit=N                      — cap result count
   if (pathname === '/api/logs' && req.method === 'GET') {
+    if (url.searchParams.get('dates') === '1') {
+      const dates = await listLogDates();
+      return jsonResponse({ dates });
+    }
+
     const level = url.searchParams.get('level') as 'info' | 'warn' | 'error' | 'debug' | null;
     const limitParam = url.searchParams.get('limit');
     const limit = limitParam ? Math.min(parseInt(limitParam, 10) || 200, 1000) : 200;
+    const date = url.searchParams.get('date');
+
+    if (date) {
+      const entries = await readLogsForDate(date, { level: level || undefined, limit });
+      return jsonResponse({ entries, source: 'disk', date });
+    }
+
     return jsonResponse({
       entries: getRecentLogs({ level: level || undefined, limit }),
+      source: 'buffer',
     });
   }
 
@@ -2428,7 +2444,7 @@ import {
   DEFAULT_DROPBOX_SYNC_INTERVAL,
   DEFAULT_QUANT_REFRESH_INTERVAL,
 } from './scheduler.js';
-import { getRecentLogs } from './logger.js';
+import { getRecentLogs, listLogDates, readLogsForDate } from './logger.js';
 import { readRecentAiCalls, summarizeUsage } from './ai/usage-log.js';
 
 // ============================================================================
