@@ -34,6 +34,8 @@ import { HealthWorkoutsView } from '../Health/HealthWorkoutsView';
 import { HealthBodyView } from '../Health/HealthBodyView';
 import { HealthRecordsView } from '../Health/HealthRecordsView';
 import { HealthNutritionView } from '../Health/HealthNutritionView';
+import { HealthSicknessView } from '../Health/HealthSicknessView';
+import { HealthAnalysisView } from '../Health/HealthAnalysisView';
 import { AddEntityModal } from '../Settings/AddEntityModal';
 import { SearchResultsView } from '../Search/SearchResultsView';
 
@@ -143,6 +145,10 @@ export function Layout() {
         return <HealthDNAView />;
       case 'health-nutrition':
         return <HealthNutritionView />;
+      case 'health-sickness':
+        return <HealthSicknessView />;
+      case 'health-analysis':
+        return <HealthAnalysisView />;
       default:
         return <TaxYearView />;
     }

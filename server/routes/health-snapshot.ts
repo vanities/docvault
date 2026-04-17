@@ -39,6 +39,7 @@ import {
 import { decryptBytesWithMasterKey } from '../crypto-keys.js';
 import type { DNAParseResult, TraitReading } from '../parsers/dna-traits.js';
 import type { NutritionEntry, NutritionStatus } from './nutrition.js';
+import type { SicknessLog } from './sickness.js';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('HealthSnapshot');
@@ -60,6 +61,7 @@ interface HealthStore {
   clinical?: Record<string, ClinicalSummary>;
   illnessNotes?: Record<string, IllnessNote>;
   nutrition?: Record<string, NutritionEntry>;
+  sicknessLogs?: Record<string, SicknessLog>;
 }
 
 async function loadHealthStore(): Promise<HealthStore> {
@@ -74,6 +76,7 @@ async function loadHealthStore(): Promise<HealthStore> {
       clinical: parsed.clinical ?? {},
       illnessNotes: parsed.illnessNotes ?? {},
       nutrition: parsed.nutrition ?? {},
+      sicknessLogs: parsed.sicknessLogs ?? {},
     };
   } catch {
     return {
@@ -84,6 +87,7 @@ async function loadHealthStore(): Promise<HealthStore> {
       clinical: {},
       illnessNotes: {},
       nutrition: {},
+      sicknessLogs: {},
     };
   }
 }
@@ -326,6 +330,8 @@ interface PersonSurface {
   } | null;
   reminders: Reminder[];
   nutrition: NutritionSurface | null;
+  /** User-logged sickness episodes (distinct from auto-detected illnessPeriods). */
+  sicknessLogs: SicknessLog[];
   // Only populated when ?includeDaily=true
   daily?: {
     activity: PersonSnapshots['activity']['daily'];
@@ -422,6 +428,12 @@ export async function handleHealthSnapshotRoutes(
       const nutritionSurface =
         personNutrition.length > 0 ? buildNutritionSurface(personNutrition) : null;
 
+      // Sickness logs for this person, newest first
+      const personSicknessLogs: SicknessLog[] = Object.entries(store.sicknessLogs ?? {})
+        .filter(([k]) => k.startsWith(nutritionPrefix))
+        .map(([, v]) => v)
+        .sort((a, b) => b.startDate.localeCompare(a.startDate));
+
       const dna = includeDNA
         ? await loadDNAForPerson(person.id)
         : { metadata: null, results: null };
@@ -475,6 +487,7 @@ export async function handleHealthSnapshotRoutes(
             : null,
         reminders: personReminders,
         nutrition: nutritionSurface,
+        sicknessLogs: personSicknessLogs,
       };
 
       if (includeDaily && snapshot) {
@@ -744,6 +757,32 @@ function renderToon(s: ReturnType<typeof packSnapshot>): string {
             `      BLEND ${q(b.name)}${b.ingredients?.length ? ` items=${q(b.ingredients.join(';'))}` : ''}`
           );
         }
+      }
+    }
+
+    if (p.sicknessLogs.length > 0) {
+      const active = p.sicknessLogs.filter((l) => !l.endDate);
+      t.push(
+        `  SICKNESS logs=${p.sicknessLogs.length}${active.length > 0 ? ` active=${active.length}` : ''}`
+      );
+      for (const sl of p.sicknessLogs.slice(0, 20)) {
+        const range = sl.endDate ? `${sl.startDate}..${sl.endDate}` : `${sl.startDate}..ongoing`;
+        const symptoms = sl.symptoms.length > 0 ? ` symptoms=${q(sl.symptoms.join(','))}` : '';
+        const meds =
+          sl.medications.length > 0
+            ? ` meds=${q(
+                sl.medications
+                  .map(
+                    (m) =>
+                      `${m.name}${m.doseText ? ' ' + m.doseText : ''}${m.count ? ' x' + m.count : ''}`
+                  )
+                  .join(';')
+              )}`
+            : '';
+        const notes = sl.notes ? ` notes=${q(sl.notes.slice(0, 200))}` : '';
+        t.push(
+          `    ${sl.severity.toUpperCase()} ${range} cat=${sl.category} title=${q(sl.title)}${symptoms}${meds}${notes}`
+        );
       }
     }
 
@@ -1020,6 +1059,32 @@ function renderMarkdown(s: ReturnType<typeof packSnapshot>): string {
         for (const t of totals) {
           L.push(`| ${t.name} | ${t.total.toFixed(2)} | ${t.unit} | ${t.sources.join(', ')} |`);
         }
+      }
+      L.push('');
+    }
+
+    if (p.sicknessLogs.length > 0) {
+      const active = p.sicknessLogs.filter((l) => !l.endDate);
+      L.push(
+        `### Sickness Log (${p.sicknessLogs.length} total${active.length > 0 ? ` · ${active.length} active` : ''})`
+      );
+      L.push('');
+      L.push('| Dates | Severity | Category | Title | Symptoms | Meds | Notes |');
+      L.push('|-------|----------|----------|-------|----------|------|-------|');
+      for (const sl of p.sicknessLogs.slice(0, 25)) {
+        const range = sl.endDate ? `${sl.startDate} → ${sl.endDate}` : `${sl.startDate} → ongoing`;
+        const symptoms = sl.symptoms.join(', ') || '—';
+        const meds =
+          sl.medications
+            .map(
+              (m) =>
+                `${m.name}${m.doseText ? ` ${m.doseText}` : ''}${m.count ? ` ×${m.count}` : ''}`
+            )
+            .join(', ') || '—';
+        const notes = sl.notes ? sl.notes.replace(/\n/g, ' ').slice(0, 120) : '';
+        L.push(
+          `| ${range} | ${sl.severity} | ${sl.category} | ${sl.title} | ${symptoms} | ${meds} | ${notes} |`
+        );
       }
       L.push('');
     }
