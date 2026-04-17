@@ -100,6 +100,13 @@ interface HealthStore {
   clinical?: Record<string, ClinicalSummary>;
   /** key format: "<personId>/<startDate>-<endDate>" */
   illnessNotes?: Record<string, IllnessNote>;
+  /**
+   * Fields owned by OTHER route modules (nutrition.ts, sickness.ts,
+   * future additions). We preserve them via spread in loadHealthStore so
+   * this module's saves don't silently clobber sibling modules' data.
+   * A regression-preserving round-trip test lives in health-store.test.ts.
+   */
+  [key: string]: unknown;
 }
 
 async function loadHealthStore(): Promise<HealthStore> {
@@ -107,6 +114,10 @@ async function loadHealthStore(): Promise<HealthStore> {
     const content = await fs.readFile(HEALTH_STORE_FILE, 'utf-8');
     const parsed = JSON.parse(content) as Partial<HealthStore>;
     return {
+      // Spread FIRST so explicit fields below win type-wise, but any unknown
+      // sibling-owned fields (nutrition, sicknessLogs, …) survive the
+      // round-trip instead of being silently wiped on save.
+      ...parsed,
       version: 1,
       people: parsed.people ?? [],
       summaries: parsed.summaries ?? {},
