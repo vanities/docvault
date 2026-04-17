@@ -133,6 +133,7 @@ export { getClaudeModel, getAnthropicKey } from './data.js';
 
 // Route modules
 import { handleFinancialSnapshotRoutes } from './routes/financial-snapshot.js';
+import { handleHealthSnapshotRoutes } from './routes/health-snapshot.js';
 import { handleDownloadRoutes } from './routes/downloads.js';
 import { handleCryptoRoutes } from './routes/crypto.js';
 import { handleQuantRoutes } from './routes/quant.js';
@@ -1755,6 +1756,14 @@ async function handleRequest(req: Request): Promise<Response> {
   // Financial snapshot (extracted to routes/financial-snapshot.ts)
   const snapshotResponse = await handleFinancialSnapshotRoutes(req, url, pathname);
   if (snapshotResponse) return snapshotResponse;
+
+  // Health snapshot — consolidated per-person Apple Health + clinical + DNA
+  // for LLM consumption. Registered before handleHealthRoutes so the top-level
+  // `/api/health-snapshot` path is matched here; handleHealthRoutes only cares
+  // about `/api/health/*` so there's no regex collision, but the ordering
+  // documents the routing intent.
+  const healthSnapshotResponse = await handleHealthSnapshotRoutes(req, url, pathname);
+  if (healthSnapshotResponse) return healthSnapshotResponse;
   // misc routes (extracted to routes/misc.ts)
   const miscResponse = await handleMiscRoutes(req, url, pathname);
   if (miscResponse) return miscResponse;
