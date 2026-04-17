@@ -430,7 +430,9 @@ export function SettingsView() {
   const [logLevelFilter, setLogLevelFilter] = useState<'all' | LogLine['level']>('all');
   const [logSearch, setLogSearch] = useState('');
   const [logsCopied, setLogsCopied] = useState(false);
-  const [showLogs, setShowLogs] = useState(false);
+  // Default open — historically this panel was the #1 self-diagnosis tool
+  // and hiding it behind a click adds friction for the common case.
+  const [showLogs, setShowLogs] = useState(true);
   // "" = live ring buffer (current session); a YYYY-MM-DD picks a historical
   // day from the persisted on-disk log (retained 90 days).
   const [logDate, setLogDate] = useState<string>('');
@@ -447,6 +449,7 @@ export function SettingsView() {
     void loadSchedules();
     void loadScheduleStatus();
     void loadLogs();
+    void loadLogDates();
     const interval = setInterval(() => {
       void loadSyncStatus();
       void loadCacheStatus();
