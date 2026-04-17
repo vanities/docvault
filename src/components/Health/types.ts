@@ -299,6 +299,12 @@ export interface BodySnapshot {
     currentLb: number | null;
     change30d: number | null; // kg
     change1y: number | null; // kg
+    changeSincePrev: {
+      kg: number;
+      lb: number;
+      prevDate: string;
+      daysAgo: number;
+    } | null;
   };
   insights: InsightItem[];
   periods: PeriodSummary[];
@@ -372,6 +378,13 @@ export interface Coding {
   display?: string;
 }
 
+export interface ObservationComponent {
+  loinc: string | null;
+  name: string;
+  value: number | null;
+  unit: string | null;
+}
+
 export interface LabResult {
   id: string;
   loinc: string | null;
@@ -389,6 +402,12 @@ export interface LabResult {
   interpretation: string | null;
   derivedFlag: 'low' | 'high' | 'normal' | null;
   panelId: string | null;
+  /**
+   * Sub-measurements for composite observations (e.g. BP systolic +
+   * diastolic). Populated by v2+ clinical parses. Optional so v1-cached
+   * summaries don't break consumers; treat undefined as empty.
+   */
+  components?: ObservationComponent[];
 }
 
 export interface LabPanel {
@@ -414,6 +433,8 @@ export interface LabTrend {
   refHigh: number | null;
 }
 
+export type ConditionCategory = 'chronic' | 'encounter' | 'symptom' | 'unknown';
+
 export interface ClinicalCondition {
   id: string;
   name: string;
@@ -423,6 +444,7 @@ export interface ClinicalCondition {
   onsetDate: string | null;
   recordedDate: string | null;
   abatementDate: string | null;
+  category: ConditionCategory;
 }
 
 export interface ClinicalMedication {
@@ -453,12 +475,15 @@ export interface ClinicalAllergy {
   reactions: string[];
 }
 
+export type ProcedureCategory = 'procedure' | 'lab' | 'counseling' | 'evaluation' | 'unknown';
+
 export interface ClinicalProcedure {
   id: string;
   name: string;
   cpt: string | null;
   status: string | null;
   date: string | null;
+  category: ProcedureCategory;
 }
 
 export interface ClinicalDocumentRef {

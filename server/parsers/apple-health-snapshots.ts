@@ -262,6 +262,18 @@ export interface BodySnapshot {
     currentLb: number | null;
     change30d: number | null;
     change1y: number | null;
+    /**
+     * Floating delta from the latest reading to the one before it.
+     * Most useful for clinic-cadenced data where fixed 30/365-day
+     * anchors rarely have a matching reading. Null when only one
+     * reading exists.
+     */
+    changeSincePrev: {
+      kg: number;
+      lb: number;
+      prevDate: string;
+      daysAgo: number;
+    } | null;
   };
   insights: InsightItem[];
   periods: PeriodSummary[];
@@ -702,36 +714,36 @@ export function humanizeTypeName(name: string): string {
 // ===========================================================================
 
 function sum(day: DailySummary, type: string): number {
-  return day.numeric[type]?.sum ?? 0;
+  return day.numeric?.[type]?.sum ?? 0;
 }
 
 function count(day: DailySummary, type: string): number {
-  return day.numeric[type]?.count ?? 0;
+  return day.numeric?.[type]?.count ?? 0;
 }
 
 function lastNullable(day: DailySummary, type: string): number | null {
-  const v = day.numeric[type]?.last;
+  const v = day.numeric?.[type]?.last;
   return v !== undefined && Number.isFinite(v) ? v : null;
 }
 
 function avgNullable(day: DailySummary, type: string): number | null {
-  const agg = day.numeric[type];
+  const agg = day.numeric?.[type];
   if (!agg || agg.count === 0) return null;
   return agg.sum / agg.count;
 }
 
 function minNullable(day: DailySummary, type: string): number | null {
-  const v = day.numeric[type]?.min;
+  const v = day.numeric?.[type]?.min;
   return v !== undefined && Number.isFinite(v) ? v : null;
 }
 
 function maxNullable(day: DailySummary, type: string): number | null {
-  const v = day.numeric[type]?.max;
+  const v = day.numeric?.[type]?.max;
   return v !== undefined && Number.isFinite(v) ? v : null;
 }
 
 function unitOf(day: DailySummary, type: string): string | undefined {
-  return day.numeric[type]?.unit;
+  return day.numeric?.[type]?.unit;
 }
 
 // ===========================================================================
@@ -1556,7 +1568,7 @@ export function computeSleepSnapshot(
    * "Awake" (after the parser's prefix strip removes "HKCategoryValueSleepAnalysis").
    */
   const readSleep = (day: DailySummary): SleepDay => {
-    const agg = day.category.SleepAnalysis;
+    const agg = day.category?.SleepAnalysis;
     const durations = agg?.valueDurationMinutes ?? {};
 
     const inBed = durations.InBed ?? 0;
@@ -1730,7 +1742,7 @@ export function computeWorkoutsSnapshot(
   summary: AppleHealthSummary,
   now: Date = new Date()
 ): WorkoutsSnapshot {
-  const workouts = summary.workouts;
+  const workouts = Array.isArray(summary.workouts) ? summary.workouts : [];
 
   // ---------- by type ----------
   const byTypeMap = new Map<string, WorkoutTypeAgg>();
@@ -1915,9 +1927,29 @@ export function computeWorkoutsSnapshot(
       const d = w.start.slice(0, 10);
       return d >= current.start && d <= current.end;
     });
+
+    // For cumulative metrics (session count, total minutes) we need to
+    // compare apples-to-apples: "This Month so far" has N days, so "Last
+    // Month so far" should also be the first N days. Otherwise on
+    // April 2nd a "This Month vs Last Month" delta shows -93% just from
+    // calendar compression. Truncate the previous range to the same
+    // day-count as the current period.
+    const curDayCount =
+      Math.round(
+        (new Date(`${current.end}T00:00:00Z`).getTime() -
+          new Date(`${current.start}T00:00:00Z`).getTime()) /
+          86_400_000
+      ) + 1;
+    const truncatedPrevEnd = new Date(`${previous.start}T00:00:00Z`);
+    truncatedPrevEnd.setUTCDate(truncatedPrevEnd.getUTCDate() + curDayCount - 1);
+    const truncatedPrevEndStr = truncatedPrevEnd.toISOString().slice(0, 10);
+    // Clamp truncated end to actual previous-period end (handles month-length
+    // mismatch: "This Month: Feb 1–28" vs "Last Month: Jan 1–28" is fine,
+    // but we never want to extend past Jan 31).
+    const prevEndStr = truncatedPrevEndStr < previous.end ? truncatedPrevEndStr : previous.end;
     const prevWorkouts = workouts.filter((w) => {
       const d = w.start.slice(0, 10);
-      return d >= previous.start && d <= previous.end;
+      return d >= previous.start && d <= prevEndStr;
     });
 
     const curCount = curWorkouts.length;
@@ -1977,7 +2009,7 @@ export function computeBodySnapshot(
   // Weight history from Apple Health: last BodyMass value per day
   const weightHistory: WeightPoint[] = [];
   for (const day of days) {
-    const mass = day.numeric.BodyMass;
+    const mass = day.numeric?.BodyMass;
     if (!mass || mass.count === 0) continue;
     const unit = mass.unit?.toLowerCase();
     const lastValue = mass.last;
@@ -2028,7 +2060,7 @@ export function computeBodySnapshot(
   // ("Body height"), unit typically `[in_i]` (UCUM inches).
   const heightHistory: HeightPoint[] = [];
   for (const day of days) {
-    const h = day.numeric.Height;
+    const h = day.numeric?.Height;
     if (!h || h.count === 0) continue;
     const unit = h.unit?.toLowerCase();
     const cm = unit === 'cm' ? h.last : unit === 'm' ? h.last * 100 : h.last * 2.54;
@@ -2227,12 +2259,33 @@ export function computeBodySnapshot(
     };
   });
 
+  // "Change since previous reading" — floats with whatever cadence the
+  // weight series happens to have. Unlike change30d/change1y this is
+  // always defined when ≥2 readings exist, so it's the right headline
+  // for clinic-cadence data (a few VA weigh-ins per year).
+  let changeSincePrev: BodySnapshot['headline']['changeSincePrev'] = null;
+  if (weightHistory.length >= 2) {
+    const latest = weightHistory[weightHistory.length - 1];
+    const prev = weightHistory[weightHistory.length - 2];
+    const daysAgo = Math.round(
+      (new Date(`${latest.date}T00:00:00Z`).getTime() -
+        new Date(`${prev.date}T00:00:00Z`).getTime()) /
+        86_400_000
+    );
+    changeSincePrev = {
+      kg: Math.round((latest.kg - prev.kg) * 100) / 100,
+      lb: Math.round((latest.lb - prev.lb) * 10) / 10,
+      prevDate: prev.date,
+      daysAgo,
+    };
+  }
+
   return {
     weightHistory,
     heightHistory,
     heightCm: heightCm !== null ? Math.round(heightCm * 10) / 10 : null,
     heightIn: heightIn !== null ? Math.round(heightIn * 10) / 10 : null,
-    headline: { currentKg, currentLb, change30d, change1y },
+    headline: { currentKg, currentLb, change30d, change1y, changeSincePrev },
     insights,
     periods,
   };
