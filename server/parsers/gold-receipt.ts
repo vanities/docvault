@@ -125,6 +125,7 @@ const goldReceiptParser: DocumentParser<ParsedGoldReceiptSchema> = {
         maxTokens: 2048,
         tools: [GOLD_RECEIPT_TOOL],
         toolChoice: { type: 'tool', name: 'extract_gold_receipt' },
+        purpose: 'parse-gold-receipt',
       });
 
       const result = extractToolResult(response) as Record<string, unknown> | null;

@@ -74,6 +74,7 @@ export const int1099Parser: DocumentParser<Parsed1099INTSchema> = {
         maxTokens: 1024,
         tools: [INT_TOOL],
         toolChoice: { type: 'tool', name: 'extract_1099_int' },
+        purpose: 'parse-1099-int',
       });
 
       const result = extractToolResult(response) as Record<string, unknown> | null;

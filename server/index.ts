@@ -2125,6 +2125,18 @@ async function handleRequest(req: Request): Promise<Response> {
     });
   }
 
+  // GET /api/ai-usage - Per-call Claude API usage log + aggregate summary.
+  //   ?limit=N — cap the number of recent entries returned (default 100, max 1000)
+  //   ?summary=1 — include aggregate totals (cost, tokens, per-model, per-purpose)
+  if (pathname === '/api/ai-usage' && req.method === 'GET') {
+    const limitParam = url.searchParams.get('limit');
+    const limit = limitParam ? Math.min(parseInt(limitParam, 10) || 100, 1000) : 100;
+    const wantSummary = url.searchParams.get('summary') === '1';
+    const entries = await readRecentAiCalls(limit);
+    const summary = wantSummary ? await summarizeUsage() : undefined;
+    return jsonResponse({ entries, summary });
+  }
+
   // PUT /api/schedules - Update schedule config and restart timers
   if (pathname === '/api/schedules' && req.method === 'PUT') {
     try {
@@ -2404,6 +2416,7 @@ import {
   DEFAULT_QUANT_REFRESH_INTERVAL,
 } from './scheduler.js';
 import { getRecentLogs } from './logger.js';
+import { readRecentAiCalls, summarizeUsage } from './ai/usage-log.js';
 
 // ============================================================================
 // Start server using Bun's native server

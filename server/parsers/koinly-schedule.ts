@@ -86,6 +86,7 @@ export const koinlyScheduleParser: DocumentParser<ParsedKoinlyScheduleSchema> = 
         maxTokens: 2048,
         tools: [KOINLY_SCHEDULE_TOOL],
         toolChoice: { type: 'tool', name: 'extract_koinly_schedule' },
+        purpose: 'parse-koinly-schedule',
       });
 
       const result = extractToolResult(response) as Record<string, unknown> | null;

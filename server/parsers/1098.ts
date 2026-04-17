@@ -80,6 +80,7 @@ export const parser1098: DocumentParser<Parsed1098Schema> = {
         maxTokens: 1024,
         tools: [TOOL_1098],
         toolChoice: { type: 'tool', name: 'extract_1098' },
+        purpose: 'parse-1098',
       });
 
       const result = extractToolResult(response) as Record<string, unknown> | null;

@@ -84,6 +84,7 @@ export const div1099Parser: DocumentParser<Parsed1099DIVSchema> = {
         maxTokens: 1024,
         tools: [DIV_TOOL],
         toolChoice: { type: 'tool', name: 'extract_1099_div' },
+        purpose: 'parse-1099-div',
       });
 
       const result = extractToolResult(response) as Record<string, unknown> | null;

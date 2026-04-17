@@ -162,6 +162,7 @@ export const composite1099Parser: DocumentParser<Parsed1099CompositeSchema> = {
         maxTokens: 16384, // Composites can be 20+ pages with many transactions
         tools: [COMPOSITE_TOOL],
         toolChoice: { type: 'tool', name: 'extract_1099_composite' },
+        purpose: 'parse-1099-composite',
       });
 
       const result = extractToolResult(response) as Record<string, unknown> | null;

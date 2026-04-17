@@ -78,6 +78,7 @@ export const r1099Parser: DocumentParser<Parsed1099RSchema> = {
         maxTokens: 1024,
         tools: [R_TOOL],
         toolChoice: { type: 'tool', name: 'extract_1099_r' },
+        purpose: 'parse-1099-r',
       });
 
       const result = extractToolResult(response) as Record<string, unknown> | null;

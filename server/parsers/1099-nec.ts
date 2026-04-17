@@ -59,6 +59,7 @@ export const nec1099Parser: DocumentParser<Parsed1099NECSchema> = {
         maxTokens: 1024,
         tools: [NEC_TOOL],
         toolChoice: { type: 'tool', name: 'extract_1099_nec' },
+        purpose: 'parse-1099-nec',
       });
 
       const result = extractToolResult(response) as Record<string, unknown> | null;

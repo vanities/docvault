@@ -125,6 +125,7 @@ export const bankStatementParser: DocumentParser<ParsedBankStatementSchema> = {
         maxTokens: 8192, // Bank statements can have many transactions
         tools: [BANK_STATEMENT_TOOL],
         toolChoice: { type: 'tool', name: 'extract_bank_statement' },
+        purpose: 'parse-bank-statement',
       });
 
       const result = extractToolResult(response) as Record<string, unknown> | null;

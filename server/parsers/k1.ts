@@ -87,6 +87,7 @@ export const k1Parser: DocumentParser<ParsedK1Schema> = {
         maxTokens: 2048,
         tools: [K1_TOOL],
         toolChoice: { type: 'tool', name: 'extract_k1' },
+        purpose: 'parse-k1',
       });
 
       const result = extractToolResult(response) as Record<string, unknown> | null;
