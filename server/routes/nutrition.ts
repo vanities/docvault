@@ -82,6 +82,8 @@ interface HealthStoreShape {
   clinical?: Record<string, unknown>;
   illnessNotes?: Record<string, unknown>;
   nutrition?: Record<string, NutritionEntry>;
+  /** Preserve fields owned by other route modules (sickness, …). */
+  [key: string]: unknown;
 }
 
 // ---------------------------------------------------------------------------
@@ -93,6 +95,9 @@ async function loadHealthStore(): Promise<HealthStoreShape> {
     const raw = await fs.readFile(HEALTH_STORE_FILE, 'utf-8');
     const parsed = JSON.parse(raw) as Partial<HealthStoreShape>;
     return {
+      // Spread first so sibling-owned fields (sicknessLogs, future additions)
+      // survive this module's saves instead of getting silently wiped.
+      ...parsed,
       version: 1,
       people: parsed.people ?? [],
       summaries: parsed.summaries ?? {},
