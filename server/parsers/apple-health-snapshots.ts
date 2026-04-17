@@ -38,8 +38,12 @@ import type { ClinicalSummary, LabResult } from './apple-health-clinical.js';
  *       rate, pain from VA/FHIR vital-signs observations). BodySnapshot
  *       now merges VA-recorded weights and heights into weightHistory/
  *       heightHistory; each point tags `source: 'apple-health' | 'clinical'`.
+ *   8 — BodySnapshot.headline gains `changeSincePrev` (delta from latest
+ *       reading to the one before it). WorkoutsSnapshot.periods truncates
+ *       previous range to match current-period length, fixing the
+ *       "first-of-month -93%" bug for cumulative metrics.
  */
-export const SNAPSHOT_SCHEMA_VERSION = 7;
+export const SNAPSHOT_SCHEMA_VERSION = 8;
 
 /**
  * A delta file — written by the /api/health/:personId/ingest endpoint when
