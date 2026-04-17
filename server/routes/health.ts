@@ -36,7 +36,6 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import { randomUUID } from 'crypto';
 import { jsonResponse, ensureDir, getOrCreateHealthIngestToken, DATA_DIR } from '../data.js';
 import type { HealthPerson } from '../data.js';
 import {
@@ -65,18 +64,17 @@ import('./shortcut-generator.js')
   .catch(() => {
     /* shortcut generation unavailable in this environment */
   });
-import { createLogger } from '../logger.js';
+import { createLogger, SERVER_BOOT_ID } from '../logger.js';
 
 const log = createLogger('Health');
 
 const HEALTH_STORE_FILE = path.join(DATA_DIR, '.docvault-health.json');
 const HEALTH_DATA_DIR = path.join(DATA_DIR, 'health');
 
-// A fresh UUID minted at module load. Stamped on every ingest-log row so
-// events can be grouped by process lifetime across container restarts.
-// Docker PIDs are almost always 1, which would collapse across restarts —
-// this gives real resolution.
-const SERVER_BOOT_ID = randomUUID();
+// Ingest-log rows are stamped with the same SERVER_BOOT_ID that the
+// Application Log uses. Matching UUIDs across the two logs means you can
+// correlate "what did the server log during the boot that received this
+// ingest POST?" by searching for the bootId in both.
 const INGEST_LOG_RETENTION_DAYS = 30;
 
 // ---------------------------------------------------------------------------

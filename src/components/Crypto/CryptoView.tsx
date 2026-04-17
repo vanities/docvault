@@ -518,7 +518,7 @@ export function CryptoView() {
   if (isLoading) {
     return (
       <div className="max-w-5xl mx-auto px-4 md:px-6 py-8">
-        <h2 className="text-2xl font-bold text-surface-950 mb-6">Crypto Portfolio</h2>
+        <h2 className="font-display italic text-2xl text-surface-950 mb-6">Crypto Portfolio</h2>
         {progressBar || (
           <div className="text-center py-20 text-surface-600">Loading crypto balances...</div>
         )}
@@ -538,7 +538,7 @@ export function CryptoView() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
         <div>
-          <h2 className="text-2xl font-bold text-surface-950">Crypto Portfolio</h2>
+          <h2 className="font-display italic text-2xl text-surface-950">Crypto Portfolio</h2>
           {portfolio?.lastUpdated && (
             <p className="text-[12px] text-surface-600 mt-1 flex items-center gap-1.5">
               <Clock className="w-3 h-3" />

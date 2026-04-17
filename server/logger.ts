@@ -12,9 +12,20 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { randomUUID } from 'crypto';
 
 const IS_DEBUG = process.env.LOG_LEVEL === 'debug' || !!process.env.DEBUG;
 const USE_COLOR = process.stdout?.isTTY !== false;
+
+/**
+ * Fresh UUID minted at module load. Stamped on every LogEntry so the UI
+ * can draw a visual divider whenever the bootId changes between adjacent
+ * rows — that's what marks a container restart in the cumulative log.
+ *
+ * Exported so sibling modules (e.g. health ingest log) can tag their own
+ * persistence rows with the same id, making cross-log correlation trivial.
+ */
+export const SERVER_BOOT_ID = randomUUID();
 
 // =============================================================================
 // In-memory ring buffer — fast, live view of the current process's recent
@@ -27,6 +38,11 @@ export interface LogEntry {
   level: 'info' | 'warn' | 'error' | 'debug';
   namespace: string;
   message: string;
+  /**
+   * Absent on entries written by pre-bootId server versions (harmless —
+   * the UI treats a missing bootId as "no divider here").
+   */
+  bootId?: string;
 }
 
 const LOG_BUFFER_SIZE = 1000;
@@ -203,6 +219,7 @@ export function createLogger(namespace: string) {
       level,
       namespace,
       message: msg + extra,
+      bootId: SERVER_BOOT_ID,
     };
     pushLog(entry);
     // Persist to disk too. Debug-level entries only persist when debug

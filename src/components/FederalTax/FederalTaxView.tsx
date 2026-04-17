@@ -597,16 +597,19 @@ export function FederalTaxView() {
 
   return (
     <div className="space-y-4 p-4 md:p-6 max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-violet-500/10 rounded-lg">
-            <Scale className="w-5 h-5 text-violet-400" />
+      {/* Header — mirrors Health-section masthead */}
+      <div className="flex flex-wrap items-end justify-between gap-3 pb-2">
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="p-2.5 bg-violet-500/10 rounded-xl shrink-0">
+            <Scale className="w-6 h-6 text-violet-400" />
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-surface-950">Federal Taxes</h1>
-            <p className="text-xs text-surface-500">
+          <div className="min-w-0">
+            <h1 className="font-display italic text-2xl sm:text-3xl leading-tight text-surface-950">
+              Federal Taxes
+            </h1>
+            <p className="text-xs text-surface-500 mt-0.5">
               {data.filed ? `Filed ${data.filedDate || ''}` : 'Not yet filed'}
+              <span className="text-surface-400"> · Form 1040 ledger</span>
             </p>
           </div>
         </div>
@@ -648,15 +651,22 @@ export function FederalTaxView() {
         </div>
       </div>
 
-      {/* Due / Refund Banner */}
-      <Card variant="glass" className="p-5">
-        <div className="flex items-center justify-between">
+      {/* Due / Refund Banner — Health-style gradient wash */}
+      <Card
+        variant="glass"
+        className={`p-5 relative overflow-hidden bg-gradient-to-br ${
+          isRefund
+            ? 'from-emerald-500/[0.06] via-surface-50/30 to-transparent'
+            : 'from-rose-500/[0.06] via-surface-50/30 to-transparent'
+        }`}
+      >
+        <div className="flex items-center justify-between relative">
           <div>
-            <p className="text-sm text-surface-600">
+            <p className="text-[11px] font-semibold text-surface-600 uppercase tracking-[0.18em]">
               {isRefund ? 'Federal Refund' : 'Federal Due'}
             </p>
             <p
-              className={`text-3xl font-bold font-mono tracking-tight ${
+              className={`font-display italic text-4xl sm:text-5xl leading-[1.05] tracking-tight mt-1 ${
                 isRefund ? 'text-emerald-500' : 'text-rose-500'
               }`}
             >
