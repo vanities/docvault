@@ -75,3 +75,8 @@ Makefile
 outer.html
 inner.html
 inner2.html
+
+# Regenerable runtime caches + scheduler state — not part of demo fixtures
+demo-data/.docvault-quant-cache.json
+demo-data/.docvault-schedule-status.json
+demo-data/.docvault-estimated-taxes.json
