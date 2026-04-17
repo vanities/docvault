@@ -52,6 +52,8 @@ import {
 } from '../parsers/apple-health-snapshots.js';
 import {
   parseClinicalFromZip,
+  loadClinicalRecords,
+  buildClinicalSummary,
   CLINICAL_SCHEMA_VERSION,
   type ClinicalSummary,
 } from '../parsers/apple-health-clinical.js';
@@ -1083,10 +1085,32 @@ export async function handleHealthRoutes(
     const deltasMtime = await getDeltasDirMtime(personId);
     const deltasChanged = snapshots !== undefined && deltasMtime > snapshots.generatedAt;
     // Load the persisted clinical summary (if any) so vitals merge into
-    // the recomputed Body segment. When no clinical export was ever parsed
-    // for this key, `clinicalForSnapshot` stays null and snapshot.clinicalVitals
-    // is null on the output.
-    const clinicalForSnapshot: ClinicalSummary | null = store.clinical?.[key] ?? null;
+    // the recomputed Body segment. Auto-heal it to the current clinical
+    // schema first, so the snapshot isn't built against stale clinical
+    // (e.g. missing BP components). Auto-heal rebuilds from the FHIR
+    // JSONs on disk — cheap, no re-unzip needed.
+    let clinicalForSnapshot: ClinicalSummary | null = store.clinical?.[key] ?? null;
+    let clinicalRebuilt = false;
+    if (clinicalForSnapshot && clinicalForSnapshot.schemaVersion !== CLINICAL_SCHEMA_VERSION) {
+      try {
+        const recordsDir = getPersonClinicalDir(personId);
+        const resources = await loadClinicalRecords(recordsDir);
+        if (resources.length > 0) {
+          log.info(
+            `Auto-rebuilding stale clinical for ${key} before snapshot recompute: ` +
+              `cached v${clinicalForSnapshot.schemaVersion}, current v${CLINICAL_SCHEMA_VERSION}`
+          );
+          clinicalForSnapshot = buildClinicalSummary(resources);
+          if (!store.clinical) store.clinical = {};
+          store.clinical[key] = clinicalForSnapshot;
+          clinicalRebuilt = true;
+          // Persisted below alongside the snapshot save.
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.warn(`Clinical auto-rebuild failed for ${key}: ${msg}`);
+      }
+    }
     if (!snapshots) {
       log.info(`Backfilling snapshot for ${key} (${deltas.length} delta(s) overlaid)`);
       snapshots = computeSnapshots(summary, filename, new Date(), deltas, clinicalForSnapshot);
@@ -1114,6 +1138,14 @@ export async function handleHealthRoutes(
           `newer than cached snapshot generatedAt ${snapshots.generatedAt} ` +
           `(${deltas.length} delta(s))`
       );
+      snapshots = computeSnapshots(summary, filename, new Date(), deltas, clinicalForSnapshot);
+      store.snapshots[key] = snapshots;
+      await saveHealthStore(store);
+    } else if (clinicalRebuilt) {
+      // Clinical schema was upgraded — the existing snapshot's clinical-
+      // derived fields (body.weightHistory merges, clinicalVitals) were
+      // built against the old clinical and may now be stale. Recompute.
+      log.info(`Re-computing snapshot for ${key}: clinical schema was upgraded`);
       snapshots = computeSnapshots(summary, filename, new Date(), deltas, clinicalForSnapshot);
       store.snapshots[key] = snapshots;
       await saveHealthStore(store);
@@ -1161,10 +1193,10 @@ export async function handleHealthRoutes(
   // lab trends (grouped by LOINC), panels, vitals, conditions, medications,
   // immunizations, allergies, procedures, documents.
   //
-  // Auto-heals on schema-version mismatch the same way /snapshot/ does for
-  // the HealthKit snapshots. On parser version mismatch we don't re-parse
-  // here (the user explicitly triggers /parse-export for that); instead we
-  // surface `stale: true` so the UI can prompt.
+  // Auto-heals on schema-version mismatch by re-running buildClinicalSummary
+  // against the persisted FHIR JSONs in data/health/<personId>/clinical-records/.
+  // No re-unzip needed (the JSONs are already extracted on disk). This is
+  // cheap: ~few MB of JSON parse, ~hundreds of ms for a typical export.
   const clinicalMatch = pathname.match(/^\/api\/health\/([^/]+)\/clinical$/);
   if (clinicalMatch && req.method === 'GET') {
     const personId = clinicalMatch[1];
@@ -1185,7 +1217,34 @@ export async function handleHealthRoutes(
       return b.localeCompare(a);
     });
     const key = keys[0];
-    const data = clinical[key];
+    let data = clinical[key];
+
+    // Schema mismatch → rebuild from the persisted FHIR JSONs.
+    if (data.schemaVersion !== CLINICAL_SCHEMA_VERSION) {
+      try {
+        const recordsDir = getPersonClinicalDir(personId);
+        const resources = await loadClinicalRecords(recordsDir);
+        if (resources.length > 0) {
+          log.info(
+            `Re-building clinical summary for ${key}: cached v${data.schemaVersion}, ` +
+              `current v${CLINICAL_SCHEMA_VERSION} (${resources.length} FHIR resources)`
+          );
+          data = buildClinicalSummary(resources);
+          const updated = await loadHealthStore();
+          if (!updated.clinical) updated.clinical = {};
+          updated.clinical[key] = data;
+          await saveHealthStore(updated);
+        } else {
+          log.warn(
+            `Clinical schema stale for ${key} but no FHIR JSONs on disk — user must re-upload`
+          );
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.warn(`Clinical auto-rebuild failed for ${key}: ${msg}`);
+      }
+    }
+
     const stale = data.schemaVersion !== CLINICAL_SCHEMA_VERSION;
     return jsonResponse({
       clinical: data,
