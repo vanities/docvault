@@ -16,11 +16,15 @@
 //   GET    /api/health/:personId/snapshot/:segment       — read a single segment snapshot for this person's latest upload
 //     (segment = activity|heart|sleep|workouts|body|all)
 //   GET    /api/health/:personId/clinical                 — FHIR clinical summary (labs, panels, vitals, conditions, …)
+//   POST   /api/health/:personId/ingest                   — daily delta POST from iOS Shortcut (auth: X-Docvault-Auth)
+//   GET    /api/health/:personId/ingest-log?limit=100     — recent ingest audit entries (bootId-stamped NDJSON)
 //
 // Storage:
 //   data/health/<personId>/exports/<name>.zip          — uploaded source exports (never deleted)
 //   data/health/<personId>/exports/<name>.xml          — decompressed XML (persistent cache, backed up)
 //   data/health/<personId>/clinical-records/*.json     — extracted FHIR resources from the zip (backed up)
+//   data/health/<personId>/deltas/<YYYY-MM-DD>.json    — daily delta files from iOS Shortcut
+//   data/health/<personId>/ingest.log                  — NDJSON audit log (append + 30-day trim)
 //   data/.docvault-health.json                         — people list + parsed summaries + snapshots + clinical
 //
 // Health is NOT an entity — it's a global sidebar section. People, summaries,
@@ -32,6 +36,7 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import { jsonResponse, ensureDir, getOrCreateHealthIngestToken, DATA_DIR } from '../data.js';
 import type { HealthPerson } from '../data.js';
 import {
@@ -66,6 +71,13 @@ const log = createLogger('Health');
 
 const HEALTH_STORE_FILE = path.join(DATA_DIR, '.docvault-health.json');
 const HEALTH_DATA_DIR = path.join(DATA_DIR, 'health');
+
+// A fresh UUID minted at module load. Stamped on every ingest-log row so
+// events can be grouped by process lifetime across container restarts.
+// Docker PIDs are almost always 1, which would collapse across restarts —
+// this gives real resolution.
+const SERVER_BOOT_ID = randomUUID();
+const INGEST_LOG_RETENTION_DAYS = 30;
 
 // ---------------------------------------------------------------------------
 // Store — people + parsed summaries live together in .docvault-health.json
@@ -162,6 +174,68 @@ function getPersonExportsDir(personId: string): string {
 
 function getPersonDeltasDir(personId: string): string {
   return path.join(HEALTH_DATA_DIR, personId, 'deltas');
+}
+
+function getPersonIngestLog(personId: string): string {
+  return path.join(HEALTH_DATA_DIR, personId, 'ingest.log');
+}
+
+interface IngestLogEntry {
+  ts: string;
+  bootId: string;
+  status: 'ok' | 'error';
+  http: number;
+  date?: string;
+  source?: string;
+  metricCount?: number;
+  metricKeys?: string[];
+  bytes?: number;
+  error?: string;
+  preview?: string;
+}
+
+/**
+ * Append one line of NDJSON to the person's ingest log, trimming any rows
+ * older than INGEST_LOG_RETENTION_DAYS in the same pass. Ingest fires ~once
+ * per day so the file stays ~30 rows max — read-filter-write is fine.
+ *
+ * Corruption-safe: writes a tmp file then renames. Never throws — a logging
+ * failure should never break the real ingest response.
+ */
+async function appendIngestLog(personId: string, entry: IngestLogEntry): Promise<void> {
+  const filePath = getPersonIngestLog(personId);
+  try {
+    await ensureDir(path.dirname(filePath));
+
+    let existing: string[] = [];
+    try {
+      const content = await fs.readFile(filePath, 'utf-8');
+      existing = content.split('\n').filter(Boolean);
+    } catch {
+      // First write — file doesn't exist yet
+    }
+
+    const cutoff = Date.now() - INGEST_LOG_RETENTION_DAYS * 86_400_000;
+    const kept = existing.filter((line) => {
+      try {
+        const parsed = JSON.parse(line) as { ts?: string };
+        if (!parsed.ts) return false;
+        return new Date(parsed.ts).getTime() >= cutoff;
+      } catch {
+        return false;
+      }
+    });
+
+    kept.push(JSON.stringify(entry));
+
+    const tmp = `${filePath}.tmp-${Date.now()}`;
+    await fs.writeFile(tmp, kept.join('\n') + '\n');
+    await fs.rename(tmp, filePath);
+  } catch (err) {
+    log.error(
+      `Failed to write ingest log for ${personId}: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
 }
 
 /**
@@ -470,19 +544,37 @@ export async function handleHealthRoutes(
   const ingestMatch = pathname.match(/^\/api\/health\/([^/]+)\/ingest$/);
   if (ingestMatch && req.method === 'POST') {
     const personId = ingestMatch[1];
+    const ts = new Date().toISOString();
 
     // Auth: header vs stored token
     const providedToken = req.headers.get('x-docvault-auth') ?? '';
     const expectedToken = await getOrCreateHealthIngestToken();
     if (!providedToken || providedToken !== expectedToken) {
       log.warn(`Ingest auth rejected for ${personId}`);
-      return jsonResponse({ error: 'Unauthorized — bad or missing X-Docvault-Auth header' }, 401);
+      await appendIngestLog(personId, {
+        ts,
+        bootId: SERVER_BOOT_ID,
+        status: 'error',
+        http: 401,
+        error: 'auth',
+      });
+      return jsonResponse(
+        { ok: false, error: 'Unauthorized — bad or missing X-Docvault-Auth header' },
+        401
+      );
     }
 
     try {
       await requirePerson(personId);
     } catch {
-      return jsonResponse({ error: 'Person not found' }, 404);
+      await appendIngestLog(personId, {
+        ts,
+        bootId: SERVER_BOOT_ID,
+        status: 'error',
+        http: 404,
+        error: 'person-not-found',
+      });
+      return jsonResponse({ ok: false, error: 'Person not found' }, 404);
     }
 
     let body: Partial<DeltaFile & { raw?: boolean }>;
@@ -500,10 +592,20 @@ export async function handleHealthRoutes(
       body = JSON.parse(fixedBody) as Partial<DeltaFile & { raw?: boolean }>;
     } catch (parseErr) {
       const preview = rawBody ? rawBody.slice(0, 1000).replace(/\n/g, '↵') : '(empty)';
+      const errMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
       log.error(
-        `Ingest JSON parse failed for ${personId}: ${parseErr instanceof Error ? parseErr.message : String(parseErr)} | len=${rawBody?.length ?? 0} | body: ${preview}`
+        `Ingest JSON parse failed for ${personId}: ${errMsg} | len=${rawBody?.length ?? 0} | body: ${preview}`
       );
-      return jsonResponse({ error: 'Invalid JSON body', preview }, 400);
+      await appendIngestLog(personId, {
+        ts,
+        bootId: SERVER_BOOT_ID,
+        status: 'error',
+        http: 400,
+        bytes: rawBody?.length ?? 0,
+        error: `json-parse: ${errMsg}`,
+        preview: preview.slice(0, 200),
+      });
+      return jsonResponse({ ok: false, error: 'Invalid JSON body', preview }, 400);
     }
 
     log.info(
@@ -515,17 +617,52 @@ export async function handleHealthRoutes(
     const date = body.date;
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       log.warn(`Ingest rejected for ${personId}: bad date "${date}"`);
-      return jsonResponse({ error: 'Missing or invalid `date` — expected YYYY-MM-DD' }, 400);
+      await appendIngestLog(personId, {
+        ts,
+        bootId: SERVER_BOOT_ID,
+        status: 'error',
+        http: 400,
+        bytes: rawBody?.length ?? 0,
+        source: body.source,
+        error: `bad-date: "${date}"`,
+      });
+      return jsonResponse(
+        { ok: false, error: 'Missing or invalid `date` — expected YYYY-MM-DD' },
+        400
+      );
     }
     if (!isDateWithinRange(date)) {
       log.warn(
         `Ingest rejected for ${personId}: date "${date}" out of range (server: ${new Date().toISOString()})`
       );
-      return jsonResponse({ error: `Date "${date}" is not within ±2 days of server time` }, 400);
+      await appendIngestLog(personId, {
+        ts,
+        bootId: SERVER_BOOT_ID,
+        status: 'error',
+        http: 400,
+        bytes: rawBody?.length ?? 0,
+        date,
+        source: body.source,
+        error: 'date-out-of-range',
+      });
+      return jsonResponse(
+        { ok: false, error: `Date "${date}" is not within ±2 days of server time` },
+        400
+      );
     }
     if (!body.metrics || typeof body.metrics !== 'object') {
       log.warn(`Ingest rejected for ${personId}: missing metrics`);
-      return jsonResponse({ error: 'Missing or invalid `metrics` object' }, 400);
+      await appendIngestLog(personId, {
+        ts,
+        bootId: SERVER_BOOT_ID,
+        status: 'error',
+        http: 400,
+        bytes: rawBody?.length ?? 0,
+        date,
+        source: body.source,
+        error: 'missing-metrics',
+      });
+      return jsonResponse({ ok: false, error: 'Missing or invalid `metrics` object' }, 400);
     }
 
     // If `raw: true`, the shortcut sent newline-separated value strings
@@ -567,28 +704,102 @@ export async function handleHealthRoutes(
       receivedAt: new Date().toISOString(),
       metrics: metrics as DeltaFile['metrics'],
     };
+    const metricKeys = Object.keys(normalized.metrics);
 
-    const dir = getPersonDeltasDir(personId);
-    await ensureDir(dir);
-    const targetPath = path.join(dir, `${date}.json`);
-    const tmp = `${targetPath}.tmp-${Date.now()}`;
-    await fs.writeFile(tmp, JSON.stringify(normalized, null, 2));
-    await fs.rename(tmp, targetPath);
+    try {
+      const dir = getPersonDeltasDir(personId);
+      await ensureDir(dir);
+      const targetPath = path.join(dir, `${date}.json`);
+      const tmp = `${targetPath}.tmp-${Date.now()}`;
+      await fs.writeFile(tmp, JSON.stringify(normalized, null, 2));
+      await fs.rename(tmp, targetPath);
 
-    // Drop the cached snapshot so the next read re-computes with the delta
-    const store = await loadHealthStore();
-    for (const k of Object.keys(store.snapshots)) {
-      if (k.startsWith(`${personId}/`)) delete store.snapshots[k];
+      // Drop the cached snapshot so the next read re-computes with the delta
+      const store = await loadHealthStore();
+      for (const k of Object.keys(store.snapshots)) {
+        if (k.startsWith(`${personId}/`)) delete store.snapshots[k];
+      }
+      await saveHealthStore(store);
+    } catch (writeErr) {
+      const errMsg = writeErr instanceof Error ? writeErr.message : String(writeErr);
+      log.error(`Ingest write failed for ${personId}/${date}: ${errMsg}`);
+      await appendIngestLog(personId, {
+        ts,
+        bootId: SERVER_BOOT_ID,
+        status: 'error',
+        http: 500,
+        bytes: rawBody?.length ?? 0,
+        date,
+        source: normalized.source,
+        metricCount: metricKeys.length,
+        metricKeys,
+        error: `write-fail: ${errMsg}`,
+      });
+      return jsonResponse({ ok: false, error: 'Failed to persist delta', details: errMsg }, 500);
     }
-    await saveHealthStore(store);
 
     log.info(
-      `Ingested ${personId}/${date} with ${Object.keys(normalized.metrics).length} metric(s) from "${normalized.source}"`
+      `Ingested ${personId}/${date} with ${metricKeys.length} metric(s) from "${normalized.source}"`
     );
+    await appendIngestLog(personId, {
+      ts,
+      bootId: SERVER_BOOT_ID,
+      status: 'ok',
+      http: 200,
+      bytes: rawBody?.length ?? 0,
+      date,
+      source: normalized.source,
+      metricCount: metricKeys.length,
+      metricKeys,
+    });
     return jsonResponse({
       ok: true,
+      message: `Synced ${date} — ${metricKeys.length} metrics`,
       filename: `deltas/${date}.json`,
-      updated: Object.keys(normalized.metrics),
+      updated: metricKeys,
+    });
+  }
+
+  // GET /api/health/:personId/ingest-log?limit=100
+  //
+  // Returns the last N parsed NDJSON entries from the ingest audit log.
+  // Survives container restarts (unlike Docker's log ring buffer) and is
+  // auto-trimmed to INGEST_LOG_RETENTION_DAYS. Useful for retroactively
+  // answering "did the shortcut fire this morning?" and "was the server
+  // up when it fired?" (group by bootId).
+  const ingestLogMatch = pathname.match(/^\/api\/health\/([^/]+)\/ingest-log$/);
+  if (ingestLogMatch && req.method === 'GET') {
+    const personId = ingestLogMatch[1];
+    await requirePerson(personId);
+
+    const rawLimit = Number(url.searchParams.get('limit') ?? '100');
+    const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : 100, 1), 500);
+
+    let entries: IngestLogEntry[] = [];
+    try {
+      const content = await fs.readFile(getPersonIngestLog(personId), 'utf-8');
+      const lines = content.split('\n').filter(Boolean);
+      for (const line of lines) {
+        try {
+          entries.push(JSON.parse(line) as IngestLogEntry);
+        } catch {
+          // Skip corrupt line
+        }
+      }
+    } catch {
+      // No log yet — return empty
+    }
+
+    // Newest first, then trim to limit
+    entries.reverse();
+    entries = entries.slice(0, limit);
+
+    return jsonResponse({
+      personId,
+      bootId: SERVER_BOOT_ID,
+      retentionDays: INGEST_LOG_RETENTION_DAYS,
+      count: entries.length,
+      entries,
     });
   }
 

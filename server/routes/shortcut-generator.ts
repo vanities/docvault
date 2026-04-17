@@ -1,12 +1,13 @@
-// Apple Shortcuts `.shortcut` file generator — v10 (working).
+// Apple Shortcuts `.shortcut` file generator — v11 (surfaces server response).
 //
 // Produces a binary plist that:
 //   1. Gets current date + formats as yyyy-MM-dd
 //   2. Subtracts 1 day → yesterday (for the JSON date field)
 //   3. Finds Health Samples for 8 metrics, filtered yesterday→today
 //   4. Builds a JSON body as a Text action with .Value Aggrandizements
-//   5. POSTs to the DocVault ingest endpoint with auth header
-//   6. Shows result
+//   5. POSTs to the DocVault ingest endpoint with auth header (UUID'd output)
+//   6. Shows the actual server response — `ok/message` on success,
+//      `error` on failure — so iOS stops pretending a 4xx is a success.
 //
 // Action IDs are confirmed from decompiling a real shortcut on the user's
 // Mac via Shortcuts.sqlite → plutil. The Text-based JSON approach avoids
@@ -244,10 +245,12 @@ export function buildHealthShortcut(opts: ShortcutOptions): Buffer {
     },
   });
 
-  // 7. POST to DocVault
+  // 7. POST to DocVault (UUID'd so step 8 can reference the response)
+  const postUuid = uuid();
   actions.push({
     WFWorkflowActionIdentifier: 'is.workflow.actions.downloadurl',
     WFWorkflowActionParameters: {
+      UUID: postUuid,
       WFURL: opts.ingestUrl,
       WFHTTPMethod: 'POST',
       WFHTTPBodyType: 'File',
@@ -292,10 +295,30 @@ export function buildHealthShortcut(opts: ShortcutOptions): Buffer {
     },
   });
 
-  // 8. Show result
+  // 8. Show result — interpolate the server response so iOS surfaces the
+  // actual ok/error message (e.g. "Synced 2026-04-16 — 8 metrics" or
+  // "Invalid JSON body"). Static "sync complete" text was misleading
+  // because the shortcut would claim success even on HTTP 4xx.
+  //
+  // Prefix "DocVault: " is 10 chars, so the response attachment lands at
+  // character offset 10.
   actions.push({
     WFWorkflowActionIdentifier: 'is.workflow.actions.showresult',
-    WFWorkflowActionParameters: { Text: 'DocVault sync complete' },
+    WFWorkflowActionParameters: {
+      Text: {
+        Value: {
+          string: 'DocVault: ' + PH,
+          attachmentsByRange: {
+            '{10, 1}': {
+              OutputName: 'Contents of URL',
+              OutputUUID: postUuid,
+              Type: 'ActionOutput',
+            },
+          },
+        },
+        WFSerializationType: 'WFTextTokenString',
+      },
+    },
   });
 
   const workflow = {
