@@ -2280,7 +2280,10 @@ export function computeClinicalVitalsSnapshot(
       let systolic: number | null = null;
       let diastolic: number | null = null;
       let unit: string | null = null;
-      for (const c of v.components) {
+      // `components` is populated by the v2 clinical parser. On v1-cached
+      // data (pre-component-extraction) the field is undefined — skip BP
+      // gracefully in that case; a re-parse will upgrade the clinical cache.
+      for (const c of v.components ?? []) {
         if (c.value === null) continue;
         if (c.loinc === CLINICAL_VITAL_LOINCS.bpSystolic || /systolic/i.test(c.name)) {
           systolic = c.value;
