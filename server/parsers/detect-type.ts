@@ -87,6 +87,7 @@ export async function detectDocumentType(filePath: string, filename: string): Pr
       system: CLASSIFICATION_PROMPT,
       userContent: [fileContent, { type: 'text', text: 'What type of document is this?' }],
       maxTokens: 50,
+      purpose: 'detect-type',
     });
 
     const text = extractTextResponse(response);

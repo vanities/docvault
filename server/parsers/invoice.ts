@@ -104,6 +104,7 @@ export const invoiceParser: DocumentParser<ParsedInvoiceSchema> = {
         maxTokens: 8192,
         tools: [INVOICE_TOOL],
         toolChoice: { type: 'tool', name: 'extract_invoice' },
+        purpose: 'parse-invoice',
       });
 
       const result = extractToolResult(response) as Record<string, unknown> | null;

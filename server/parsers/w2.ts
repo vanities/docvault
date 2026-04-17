@@ -81,6 +81,7 @@ export const w2Parser: DocumentParser<ParsedW2Schema> = {
         maxTokens: 2048,
         tools: [W2_TOOL],
         toolChoice: { type: 'tool', name: 'extract_w2' },
+        purpose: 'parse-w2',
       });
 
       const result = extractToolResult(response) as Record<string, unknown> | null;

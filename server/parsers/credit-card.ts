@@ -53,6 +53,7 @@ export const creditCardParser: DocumentParser<ParsedCreditCardSchema> = {
         maxTokens: 1024,
         tools: [CREDIT_CARD_TOOL],
         toolChoice: { type: 'tool', name: 'extract_credit_card_statement' },
+        purpose: 'parse-credit-card',
       });
 
       const result = extractToolResult(response) as Record<string, unknown> | null;

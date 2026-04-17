@@ -409,6 +409,7 @@ export const genericParser: DocumentParser<ParsedTaxDocument> = {
         system: SYSTEM_PROMPT,
         userContent: [fileContent, { type: 'text', text: userPrompt }],
         maxTokens,
+        purpose: 'parse-generic',
       });
 
       const text = extractTextResponse(response);

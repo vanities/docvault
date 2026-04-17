@@ -368,6 +368,7 @@ export async function parseNutritionLabel(
     maxTokens: 4096,
     tools: [LABEL_TOOL],
     toolChoice: { type: 'tool', name: 'extract_nutrition_label' },
+    purpose: 'parse-nutrition-label',
   });
 
   const result = extractToolResult(response) as Record<string, unknown> | null;

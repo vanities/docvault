@@ -3,10 +3,16 @@
 
 import { promises as fs } from 'fs';
 import Anthropic from '@anthropic-ai/sdk';
+import sharp from 'sharp';
 import type { ParsedTaxDocument } from './pdf.js';
 import type { ParserMetadata } from './schemas/index.js';
 import { getAnthropicKey, getClaudeModel } from '../data.js';
 import { withAILimit } from '../aiLimiter.js';
+import { logAiCall } from '../ai/usage-log.js';
+import type { UsageTokens } from '../ai/pricing.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('ParserBase');
 
 // --- Anthropic Client (lazy, shared) ---
 
@@ -33,7 +39,6 @@ export interface FileData {
 
 export async function readFileAsBase64(filePath: string, filename: string): Promise<FileData> {
   const buffer = await fs.readFile(filePath);
-  const base64 = buffer.toString('base64');
 
   const ext = filename.split('.').pop()?.toLowerCase();
   let mimeType = 'application/pdf';
@@ -42,7 +47,88 @@ export async function readFileAsBase64(filePath: string, filename: string): Prom
   else if (ext === 'gif') mimeType = 'image/gif';
   else if (ext === 'webp') mimeType = 'image/webp';
 
-  return { base64, mimeType, mediaType: getMediaType(mimeType) };
+  return bufferToFileData(buffer, mimeType);
+}
+
+/**
+ * Convert a raw buffer + known mime type into a FileData ready for Claude.
+ * Used by parsers that already have the bytes in memory (e.g. the nutrition
+ * parser receives uploads directly as ArrayBuffer) rather than a file path.
+ * Runs the same Claude-Vision size normalization as readFileAsBase64().
+ */
+export async function bufferToFileData(buffer: Buffer, mimeType: string): Promise<FileData> {
+  const mediaType = getMediaType(mimeType);
+  const { buffer: normalized, mediaType: normalizedMediaType } = await normalizeImageForClaude(
+    buffer,
+    mediaType
+  );
+  return {
+    base64: normalized.toString('base64'),
+    mimeType: normalizedMediaType,
+    mediaType: normalizedMediaType,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Image normalization for Claude Vision
+// ---------------------------------------------------------------------------
+
+/**
+ * Claude Vision's image input limit is 5 MB after base64 encoding, which
+ * translates to roughly 3.75 MB raw. We trigger resize at 2.5 MB raw to
+ * leave headroom and ensure the JPEG re-encoding produces something
+ * comfortably under the limit even for worst-case content.
+ *
+ * The 1600px long-edge cap is a quality/size trade-off: at that dimension
+ * + 85% JPEG quality, Claude Vision consistently hits 95%+ confidence on
+ * supplement/nutrition labels (verified empirically on 8 real labels).
+ * Smaller sizes (1024px) start to hurt fine-text extraction; larger sizes
+ * don't improve accuracy but do inflate upload time and token consumption.
+ */
+const CLAUDE_VISION_RESIZE_THRESHOLD_BYTES = 2.5 * 1024 * 1024;
+const CLAUDE_VISION_MAX_EDGE_PX = 1600;
+const CLAUDE_VISION_JPEG_QUALITY = 85;
+
+/**
+ * If `buffer` is an image that exceeds the Claude Vision size budget,
+ * resize it down to a safe size and convert to JPEG. Returns the
+ * normalized buffer + potentially updated media type. PDFs pass through
+ * unchanged (Anthropic's PDF limit is 32 MB; we don't re-encode PDFs).
+ *
+ * This runs at the `base.ts` layer rather than inside individual parsers
+ * so every current and future Claude-Vision caller gets auto-resize for
+ * free — no parser needs its own image-size handling.
+ */
+export async function normalizeImageForClaude(
+  buffer: Buffer,
+  mediaType: MediaType
+): Promise<{ buffer: Buffer; mediaType: MediaType }> {
+  // PDFs have their own 32 MB limit; leave them alone.
+  if (mediaType === 'application/pdf') return { buffer, mediaType };
+  if (buffer.length <= CLAUDE_VISION_RESIZE_THRESHOLD_BYTES) return { buffer, mediaType };
+
+  try {
+    const resized = await sharp(buffer)
+      .rotate() // honour EXIF orientation so phone photos land right-side-up
+      .resize({
+        width: CLAUDE_VISION_MAX_EDGE_PX,
+        height: CLAUDE_VISION_MAX_EDGE_PX,
+        fit: 'inside',
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality: CLAUDE_VISION_JPEG_QUALITY, mozjpeg: true })
+      .toBuffer();
+    log.info(
+      `Auto-resized image for Claude Vision: ${(buffer.length / 1024 / 1024).toFixed(2)}MB ${mediaType} → ${(resized.length / 1024 / 1024).toFixed(2)}MB image/jpeg`
+    );
+    return { buffer: resized, mediaType: 'image/jpeg' };
+  } catch (err) {
+    // If Sharp can't decode (corrupt / unusual format), fall through with
+    // the original bytes. Claude may still reject oversize, but at least
+    // we'll surface the real API error rather than a pre-flight crash.
+    log.warn(`Sharp resize failed, passing original image through:`, String(err));
+    return { buffer, mediaType };
+  }
 }
 
 function getMediaType(mimeType: string): MediaType {
@@ -119,27 +205,81 @@ export interface CallClaudeOptions {
   maxTokens: number;
   tools?: Anthropic.Messages.Tool[];
   toolChoice?: Anthropic.Messages.ToolChoice;
+  /**
+   * Logical label written to `.docvault-ai-usage.ndjson` so each call can
+   * be attributed (e.g. "parse-w2", "detect-type"). Defaults to "unknown".
+   */
+  purpose?: string;
+}
+
+// Pull usage fields off the SDK response, handling both the old bundled
+// `cache_creation_input_tokens` shape and the newer split 5m/1h fields.
+function extractUsageTokens(response: Anthropic.Messages.Message): UsageTokens {
+  const u = response.usage as unknown as {
+    input_tokens: number;
+    output_tokens: number;
+    cache_creation_input_tokens?: number | null;
+    cache_read_input_tokens?: number | null;
+    cache_creation?: {
+      ephemeral_5m_input_tokens?: number | null;
+      ephemeral_1h_input_tokens?: number | null;
+    } | null;
+  };
+  return {
+    inputTokens: u.input_tokens ?? 0,
+    outputTokens: u.output_tokens ?? 0,
+    cacheCreationInputTokens: u.cache_creation_input_tokens ?? undefined,
+    cacheCreationEphemeral5mInputTokens: u.cache_creation?.ephemeral_5m_input_tokens ?? undefined,
+    cacheCreationEphemeral1hInputTokens: u.cache_creation?.ephemeral_1h_input_tokens ?? undefined,
+    cacheReadInputTokens: u.cache_read_input_tokens ?? undefined,
+  };
 }
 
 export async function callClaude(opts: CallClaudeOptions): Promise<Anthropic.Messages.Message> {
   const anthropic = await getClient();
   const model = await getClaudeModel();
+  const purpose = opts.purpose ?? 'unknown';
+  const startedAt = Date.now();
 
-  return withAILimit(() =>
-    anthropic.messages.create({
+  try {
+    const response = await withAILimit(() =>
+      anthropic.messages.create({
+        model,
+        max_tokens: opts.maxTokens,
+        system: opts.system,
+        messages: [
+          {
+            role: 'user',
+            content: opts.userContent,
+          },
+        ],
+        ...(opts.tools ? { tools: opts.tools } : {}),
+        ...(opts.toolChoice ? { tool_choice: opts.toolChoice } : {}),
+      })
+    );
+    // Fire-and-forget — we never want logging to delay or fail a real parse.
+    void logAiCall({
       model,
-      max_tokens: opts.maxTokens,
-      system: opts.system,
-      messages: [
-        {
-          role: 'user',
-          content: opts.userContent,
-        },
-      ],
-      ...(opts.tools ? { tools: opts.tools } : {}),
-      ...(opts.toolChoice ? { tool_choice: opts.toolChoice } : {}),
-    })
-  );
+      purpose,
+      latencyMs: Date.now() - startedAt,
+      usage: extractUsageTokens(response),
+      ok: true,
+      requestId: response.id ?? null,
+      stopReason: response.stop_reason ?? null,
+    });
+    return response;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    void logAiCall({
+      model,
+      purpose,
+      latencyMs: Date.now() - startedAt,
+      usage: { inputTokens: 0, outputTokens: 0 },
+      ok: false,
+      error: message,
+    });
+    throw err;
+  }
 }
 
 // Extract tool use result from a Claude response (for structured output parsers)

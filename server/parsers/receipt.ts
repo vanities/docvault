@@ -88,6 +88,7 @@ export const receiptParser: DocumentParser<ParsedReceiptSchema> = {
         maxTokens: 4096,
         tools: [RECEIPT_TOOL],
         toolChoice: { type: 'tool', name: 'extract_receipt' },
+        purpose: 'parse-receipt',
       });
 
       const result = extractToolResult(response) as Record<string, unknown> | null;

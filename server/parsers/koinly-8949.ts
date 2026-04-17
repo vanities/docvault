@@ -100,6 +100,7 @@ export const koinly8949Parser: DocumentParser<ParsedKoinly8949Schema> = {
         maxTokens: 8192,
         tools: [KOINLY_8949_TOOL],
         toolChoice: { type: 'tool', name: 'extract_koinly_8949' },
+        purpose: 'parse-koinly-8949',
       });
 
       const result = extractToolResult(response) as Record<string, unknown> | null;

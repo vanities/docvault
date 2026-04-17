@@ -68,6 +68,7 @@ export const misc1099Parser: DocumentParser<Parsed1099MISCSchema> = {
         maxTokens: 1024,
         tools: [MISC_TOOL],
         toolChoice: { type: 'tool', name: 'extract_1099_misc' },
+        purpose: 'parse-1099-misc',
       });
 
       const result = extractToolResult(response) as Record<string, unknown> | null;
