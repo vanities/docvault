@@ -33,16 +33,23 @@ const CATEGORY_LABELS: Record<ConditionCategory, string> = {
 export function ConditionsTab({ summary }: { summary: ClinicalSummary }) {
   const [showAll, setShowAll] = useState(false);
   const active = summary.conditions.filter((c) => c.clinicalStatus?.toLowerCase() === 'active');
-  const chronicCount = summary.conditions.filter((c) => c.category === 'chronic').length;
-  const encounterCount = summary.conditions.filter((c) => c.category === 'encounter').length;
-  const symptomCount = summary.conditions.filter((c) => c.category === 'symptom').length;
+  // v2-cached summaries don't have `category` populated yet — treat undefined
+  // as "chronic" so the default view shows everything until the user re-runs
+  // /parse-export to upgrade to v3. After re-parse, real categorization kicks in.
+  const cat = (c: ClinicalCondition) => c.category ?? 'chronic';
+  const chronicCount = summary.conditions.filter((c) => cat(c) === 'chronic').length;
+  const encounterCount = summary.conditions.filter((c) => cat(c) === 'encounter').length;
+  const symptomCount = summary.conditions.filter((c) => cat(c) === 'symptom').length;
 
   // Group by name for the timeline (one line per distinct condition, latest first)
   const grouped = useMemo(() => {
     const map = new Map<string, ClinicalCondition[]>();
     const filtered = showAll
       ? summary.conditions
-      : summary.conditions.filter((c) => c.category === 'chronic' || c.category === 'unknown');
+      : summary.conditions.filter((c) => {
+          const cc = c.category ?? 'chronic';
+          return cc === 'chronic' || cc === 'unknown';
+        });
     for (const c of filtered) {
       const key = c.icd10 ?? c.name;
       const arr = map.get(key);

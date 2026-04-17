@@ -13,12 +13,16 @@ Want to poke around before connecting real data? The repo ships with a `demo-dat
 ```bash
 bun install
 # Terminal 1 — demo backend on port 3006, reading demo-data/
-DOCVAULT_DATA_DIR=./demo-data DOCVAULT_PORT=3006 bun run server/index.ts
+DOCVAULT_DATA_DIR=./demo-data \
+  DOCVAULT_PORT=3006 \
+  DOCVAULT_PASSWORD=demo \
+  DOCVAULT_MASTER_KEY=$(openssl rand -base64 32) \
+  bun run server/index.ts
 # Terminal 2 — demo frontend on port 5174, proxying /api to :3006
-bun x vite --config vite.demo.config.ts
+vp dev --config vite.demo.config.ts
 ```
 
-Open <http://localhost:5174> — full app, fake data. Your `./data/` stays untouched.
+Open <http://localhost:5174> and sign in with `admin` / `demo` — full app, fake data. Your `./data/` stays untouched.
 
 ## Features
 
@@ -33,6 +37,13 @@ Open <http://localhost:5174> — full app, fake data. Your `./data/` stays untou
 - **CPA package export** — one click to bundle an entity/year into a ZIP for your accountant.
 
 ![Federal tax consolidation](./docs/screenshots/federal-tax.png)
+
+<table>
+<tr>
+<td><img src="./docs/screenshots/solo-401k.png" alt="Solo 401(k) contribution calculator" /></td>
+<td><img src="./docs/screenshots/estimated-tax.png" alt="Estimated quarterly tax tracker" /></td>
+</tr>
+</table>
 
 ### Net Worth & Portfolio
 
@@ -67,8 +78,11 @@ Open <http://localhost:5174> — full app, fake data. Your `./data/` stays untou
 
 <table>
 <tr>
-<td><img src="./docs/screenshots/quant.png" alt="Quant dashboard with market snapshot" /></td>
-<td><img src="./docs/screenshots/strategy.png" alt="AI-generated strategy card" /></td>
+<td><img src="./docs/screenshots/quant-crypto.png" alt="Crypto quant dashboard — BTC risk metric" /></td>
+<td><img src="./docs/screenshots/quant-macro.png" alt="Macro quant dashboard — Fed policy and business cycle" /></td>
+</tr>
+<tr>
+<td colspan="2"><img src="./docs/screenshots/strategy.png" alt="AI-generated strategy card" /></td>
 </tr>
 </table>
 
@@ -81,6 +95,20 @@ Open <http://localhost:5174> — full app, fake data. Your `./data/` stays untou
 - Running ROI (vs BTC/SPX), workout segment insights, sleep quality scoring, recovery scoring.
 
 ![Health overview](./docs/screenshots/health.png)
+
+<table>
+<tr>
+<td><img src="./docs/screenshots/health-activity.png" alt="Activity — steps, energy, exercise, recovery score" /></td>
+<td><img src="./docs/screenshots/health-heart.png" alt="Heart — resting HR, HRV, recovery" /></td>
+</tr>
+<tr>
+<td><img src="./docs/screenshots/health-sleep.png" alt="Sleep — stages, quality score, duration" /></td>
+<td><img src="./docs/screenshots/health-workouts.png" alt="Workouts — counts, distance, streak" /></td>
+</tr>
+<tr>
+<td colspan="2"><img src="./docs/screenshots/health-body.png" alt="Body composition — weight trend, BMI" /></td>
+</tr>
+</table>
 
 ### Backup, Sync, Observability
 

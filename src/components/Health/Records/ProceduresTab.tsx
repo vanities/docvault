@@ -31,15 +31,19 @@ export function ProceduresTab({ summary }: { summary: ClinicalSummary }) {
       evaluation: 0,
       unknown: 0,
     };
-    for (const p of summary.procedures) counts[p.category] += 1;
+    // v2-cached summaries don't have `category` populated — treat undefined
+    // as "procedure" so the default view matches old behavior. Re-parse to
+    // upgrade to v3 and get actual CPT-based categorization.
+    for (const p of summary.procedures) counts[p.category ?? 'procedure'] += 1;
     return counts;
   }, [summary.procedures]);
 
   const visible = useMemo(() => {
     if (showAll) return summary.procedures;
-    // Default view: real procedures + unknown (the latter covers non-CPT
-    // coded entries that are typically still clinically meaningful).
-    return summary.procedures.filter((p) => p.category === 'procedure' || p.category === 'unknown');
+    return summary.procedures.filter((p) => {
+      const cc = p.category ?? 'procedure';
+      return cc === 'procedure' || cc === 'unknown';
+    });
   }, [summary.procedures, showAll]);
 
   if (summary.procedures.length === 0) {
