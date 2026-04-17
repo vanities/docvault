@@ -40,6 +40,8 @@ server/parsers/fixtures/
 
 # Scripts that reference NAS/personal data
 scripts/
+# Exception: sync-to-dropbox.sh is shipped in the Docker image for cron-driven sync
+!scripts/sync-to-dropbox.sh
 
 # All test files (may contain personal financial data)
 **/*.test.ts
