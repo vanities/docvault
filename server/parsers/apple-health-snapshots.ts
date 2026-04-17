@@ -29,8 +29,12 @@ import type { AppleHealthSummary, DailySummary, WorkoutEntry } from './apple-hea
  *   5 — +illness detection: auto-flagged periods where multiple vitals
  *       deviate from baseline simultaneously (elevated RHR, low HRV,
  *       low steps, elevated respiratory rate, positive wrist temp).
+ *   6 — BodySnapshot.change30d / change1y are now null when no weight
+ *       point exists within tolerance of the target date (±14d / ±60d)
+ *       instead of collapsing onto the nearest-older-point regardless
+ *       of age. Sparse weight series no longer produce misleading deltas.
  */
-export const SNAPSHOT_SCHEMA_VERSION = 5;
+export const SNAPSHOT_SCHEMA_VERSION = 6;
 
 /**
  * A delta file — written by the /api/health/:personId/ingest endpoint when
