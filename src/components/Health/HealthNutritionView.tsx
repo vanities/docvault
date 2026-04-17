@@ -392,10 +392,10 @@ function MastheadHeader({
         <span>{new Date().toISOString().split('T')[0]}</span>
       </div>
 
-      <div className="flex items-end justify-between gap-6 flex-wrap">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
         <div className="min-w-0 flex-1">
-          <h1 className="font-display italic text-4xl md:text-5xl leading-[1.05] text-surface-950">
-            Nutrition &nbsp;&&nbsp; Supplements
+          <h1 className="font-display italic text-3xl sm:text-4xl md:text-5xl leading-[1.05] text-surface-950">
+            Nutrition <span className="text-surface-500">&amp;</span> Supplements
           </h1>
           <p className="mt-3 text-sm text-surface-700 max-w-xl leading-relaxed">
             A reference for what's currently in the daily stack, what's being considered, and what's
@@ -418,8 +418,10 @@ function MastheadHeader({
           )}
         </div>
 
-        {/* Upload CTA — Fitts's Law target */}
-        <UploadButton onFile={onUpload} uploading={uploading} />
+        {/* Upload CTA — Fitts's Law target; stacks below heading on mobile */}
+        <div className="shrink-0 self-start sm:self-end">
+          <UploadButton onFile={onUpload} uploading={uploading} />
+        </div>
       </div>
 
       {totalEntries > 0 && (
