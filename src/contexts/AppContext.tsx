@@ -40,7 +40,8 @@ export type NavView =
   | 'health-workouts'
   | 'health-body'
   | 'health-records'
-  | 'health-dna';
+  | 'health-dna'
+  | 'health-nutrition';
 
 // Tab types for tax year view
 export type TabType = 'documents' | 'income' | 'expenses' | 'invoices' | 'statements';

@@ -38,6 +38,7 @@ import {
 } from '../parsers/apple-health-clinical.js';
 import { decryptBytesWithMasterKey } from '../crypto-keys.js';
 import type { DNAParseResult, TraitReading } from '../parsers/dna-traits.js';
+import type { NutritionEntry, NutritionStatus } from './nutrition.js';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('HealthSnapshot');
@@ -58,6 +59,7 @@ interface HealthStore {
   snapshots: Record<string, PersonSnapshots>;
   clinical?: Record<string, ClinicalSummary>;
   illnessNotes?: Record<string, IllnessNote>;
+  nutrition?: Record<string, NutritionEntry>;
 }
 
 async function loadHealthStore(): Promise<HealthStore> {
@@ -71,9 +73,18 @@ async function loadHealthStore(): Promise<HealthStore> {
       snapshots: parsed.snapshots ?? {},
       clinical: parsed.clinical ?? {},
       illnessNotes: parsed.illnessNotes ?? {},
+      nutrition: parsed.nutrition ?? {},
     };
   } catch {
-    return { version: 1, people: [], summaries: {}, snapshots: {}, clinical: {}, illnessNotes: {} };
+    return {
+      version: 1,
+      people: [],
+      summaries: {},
+      snapshots: {},
+      clinical: {},
+      illnessNotes: {},
+      nutrition: {},
+    };
   }
 }
 
@@ -165,6 +176,83 @@ interface ClinicalSurface {
   schemaStale: boolean;
 }
 
+function buildNutritionSurface(entries: NutritionEntry[]): NutritionSurface {
+  // Order: active → considering → past → never; within each group newest first.
+  const order: Record<NutritionStatus, number> = {
+    active: 0,
+    considering: 1,
+    past: 2,
+    never: 3,
+  };
+  const sorted = [...entries].sort((a, b) => {
+    const o = order[a.status] - order[b.status];
+    if (o !== 0) return o;
+    return b.uploadedAt.localeCompare(a.uploadedAt);
+  });
+
+  let activeCount = 0;
+  let consideringCount = 0;
+  let pastCount = 0;
+  for (const e of entries) {
+    if (e.status === 'active') activeCount++;
+    else if (e.status === 'considering') consideringCount++;
+    else if (e.status === 'past') pastCount++;
+  }
+
+  return {
+    activeCount,
+    consideringCount,
+    pastCount,
+    entries: sorted.map((e) => {
+      const p = e.parsed;
+      return {
+        id: e.id,
+        status: e.status,
+        productName: p?.productName ?? null,
+        brandName: p?.brandName ?? null,
+        category: p?.category ?? null,
+        dose: e.dose,
+        notes: e.notes ?? null,
+        parseError: e.parseError,
+        summary: {
+          servingSize: p?.servingSize
+            ? `${p.servingSize.amount} ${p.servingSize.unit}${p.servingSize.description ? ` (${p.servingSize.description})` : ''}`
+            : null,
+          servingsPerContainer: p?.servingsPerContainer ?? null,
+          calories: p?.macros?.calories ?? null,
+          vitamins: (p?.vitamins ?? []).map((v) => ({
+            name: v.name,
+            amount: v.amount,
+            unit: v.unit,
+            dv: v.dv,
+            form: v.form,
+          })),
+          minerals: (p?.minerals ?? []).map((v) => ({
+            name: v.name,
+            amount: v.amount,
+            unit: v.unit,
+            dv: v.dv,
+            form: v.form,
+          })),
+          otherActive: (p?.otherActive ?? []).map((v) => ({
+            name: v.name,
+            amount: v.amount,
+            unit: v.unit,
+            dv: v.dv,
+            form: v.form,
+          })),
+          proprietaryBlends: (p?.proprietaryBlends ?? []).map((b) => ({
+            name: b.name,
+            ingredients: b.ingredients,
+          })),
+          warnings: p?.warnings ?? [],
+          allergenInfo: p?.allergenInfo ?? [],
+        },
+      };
+    }),
+  };
+}
+
 function surfaceClinical(c: ClinicalSummary): ClinicalSurface {
   return {
     recordCount: c.recordCount,
@@ -237,6 +325,7 @@ interface PersonSurface {
     polygenic: DNAParseResult['polygenic'];
   } | null;
   reminders: Reminder[];
+  nutrition: NutritionSurface | null;
   // Only populated when ?includeDaily=true
   daily?: {
     activity: PersonSnapshots['activity']['daily'];
@@ -245,6 +334,42 @@ interface PersonSurface {
     workouts: PersonSnapshots['workouts']['recent'];
     weight: PersonSnapshots['body']['weightHistory'];
   };
+}
+
+interface NutritionSurface {
+  activeCount: number;
+  consideringCount: number;
+  pastCount: number;
+  /** All entries, sorted by status then uploadedAt desc. Each entry includes parsed label + dose/status. */
+  entries: Array<{
+    id: string;
+    status: NutritionStatus;
+    productName: string | null;
+    brandName: string | null;
+    category: string | null;
+    dose: NutritionEntry['dose'];
+    notes: string | null;
+    /** True if parsing failed or has never been attempted successfully. */
+    parseError: string | null;
+    /** Trimmed parsed label — servings, macros, vitamins+minerals+otherActive names only. */
+    summary: {
+      servingSize: string | null;
+      servingsPerContainer: number | string | null;
+      calories: number | null;
+      vitamins: Array<{ name: string; amount?: number; unit?: string; dv?: number; form?: string }>;
+      minerals: Array<{ name: string; amount?: number; unit?: string; dv?: number; form?: string }>;
+      otherActive: Array<{
+        name: string;
+        amount?: number;
+        unit?: string;
+        dv?: number;
+        form?: string;
+      }>;
+      proprietaryBlends: Array<{ name: string; ingredients?: string[] }>;
+      warnings: string[];
+      allergenInfo: string[];
+    };
+  }>;
 }
 
 export async function handleHealthSnapshotRoutes(
@@ -288,6 +413,14 @@ export async function handleHealthSnapshotRoutes(
 
       // Health-tagged reminders (no entity tie-in — keyword match)
       const personReminders = healthReminders; // global; not per-person
+
+      // Nutrition entries for this person, rolled up into a snapshot summary
+      const nutritionPrefix = `${person.id}/`;
+      const personNutrition: NutritionEntry[] = Object.entries(store.nutrition ?? {})
+        .filter(([k]) => k.startsWith(nutritionPrefix))
+        .map(([, v]) => v);
+      const nutritionSurface =
+        personNutrition.length > 0 ? buildNutritionSurface(personNutrition) : null;
 
       const dna = includeDNA
         ? await loadDNAForPerson(person.id)
@@ -341,6 +474,7 @@ export async function handleHealthSnapshotRoutes(
               }
             : null,
         reminders: personReminders,
+        nutrition: nutritionSurface,
       };
 
       if (includeDaily && snapshot) {
@@ -569,6 +703,50 @@ function renderToon(s: ReturnType<typeof packSnapshot>): string {
       }
     }
 
+    if (p.nutrition) {
+      const n = p.nutrition;
+      t.push(
+        `  NUTRITION active=${n.activeCount} considering=${n.consideringCount} past=${n.pastCount}`
+      );
+      for (const e of n.entries) {
+        const product = e.productName ?? '(unparsed)';
+        const brand = e.brandName ? ` brand=${q(e.brandName)}` : '';
+        const cat = e.category ? ` cat=${e.category}` : '';
+        const doseBits: string[] = [];
+        if (e.dose?.amount != null) doseBits.push(`${e.dose.amount}`);
+        if (e.dose?.unit) doseBits.push(e.dose.unit);
+        if (e.dose?.frequency) doseBits.push(e.dose.frequency);
+        if (e.dose?.timeOfDay) doseBits.push(`@${e.dose.timeOfDay}`);
+        if (e.dose?.frequencyCustom) doseBits.push(`"${e.dose.frequencyCustom}"`);
+        const doseStr = doseBits.length > 0 ? ` dose=${q(doseBits.join(' '))}` : '';
+        const notesStr = e.notes ? ` notes=${q(e.notes)}` : '';
+        const errStr = e.parseError ? ' PARSE_ERROR=true' : '';
+        t.push(
+          `    ${e.status.toUpperCase()} product=${q(product)}${brand}${cat}${doseStr}${notesStr}${errStr}`
+        );
+        if (e.summary.servingSize) {
+          t.push(`      serving=${q(e.summary.servingSize)}`);
+        }
+        for (const v of e.summary.vitamins) {
+          const dvStr = v.dv != null ? ` dv=${v.dv}%` : '';
+          t.push(`      VIT ${v.name} ${v.amount ?? ''}${v.unit ? v.unit : ''}${dvStr}`);
+        }
+        for (const m of e.summary.minerals) {
+          const dvStr = m.dv != null ? ` dv=${m.dv}%` : '';
+          t.push(`      MIN ${m.name} ${m.amount ?? ''}${m.unit ? m.unit : ''}${dvStr}`);
+        }
+        for (const a of e.summary.otherActive) {
+          const dvStr = a.dv != null ? ` dv=${a.dv}%` : '';
+          t.push(`      ACTIVE ${a.name} ${a.amount ?? ''}${a.unit ? a.unit : ''}${dvStr}`);
+        }
+        for (const b of e.summary.proprietaryBlends) {
+          t.push(
+            `      BLEND ${q(b.name)}${b.ingredients?.length ? ` items=${q(b.ingredients.join(';'))}` : ''}`
+          );
+        }
+      }
+    }
+
     t.push('');
   }
 
@@ -788,6 +966,63 @@ function renderMarkdown(s: ReturnType<typeof packSnapshot>): string {
       }
       L.push('');
     }
+
+    if (p.nutrition) {
+      const n = p.nutrition;
+      L.push(
+        `### Nutrition & Supplements (${n.activeCount} active · ${n.consideringCount} considering · ${n.pastCount} past)`
+      );
+      // Active section first — the actual daily regimen
+      const active = n.entries.filter((e) => e.status === 'active');
+      if (active.length > 0) {
+        L.push('');
+        L.push('#### Active daily regimen');
+        L.push('| Product | Category | Dose | Serving | Notes |');
+        L.push('|---------|----------|------|---------|-------|');
+        for (const e of active) {
+          const product = e.productName ?? '_unparsed_';
+          const brand = e.brandName ? ` (${e.brandName})` : '';
+          const dose = formatDose(e.dose);
+          const serving = e.summary.servingSize ?? '';
+          const notes = e.notes ?? '';
+          L.push(
+            `| **${product}**${brand} | ${e.category ?? ''} | ${dose} | ${serving} | ${notes} |`
+          );
+        }
+      }
+      // Considering
+      const considering = n.entries.filter((e) => e.status === 'considering');
+      if (considering.length > 0) {
+        L.push('');
+        L.push(`#### Considering`);
+        for (const e of considering) {
+          L.push(
+            `- ${e.productName ?? '_unparsed_'}${e.brandName ? ` (${e.brandName})` : ''}${e.notes ? ` — ${e.notes}` : ''}`
+          );
+        }
+      }
+      // Past — show briefly
+      const past = n.entries.filter((e) => e.status === 'past');
+      if (past.length > 0) {
+        L.push('');
+        L.push(`#### Past`);
+        for (const e of past) {
+          L.push(`- ${e.productName ?? '_unparsed_'}${e.notes ? ` — ${e.notes}` : ''}`);
+        }
+      }
+      // Vitamin + mineral aggregate across active items
+      const totals = sumMicronutrients(active);
+      if (totals.length > 0) {
+        L.push('');
+        L.push(`#### Daily micronutrient totals (active supplements)`);
+        L.push('| Nutrient | Total | Unit | Across products |');
+        L.push('|----------|-------|------|-----------------|');
+        for (const t of totals) {
+          L.push(`| ${t.name} | ${t.total.toFixed(2)} | ${t.unit} | ${t.sources.join(', ')} |`);
+        }
+      }
+      L.push('');
+    }
   }
 
   if (s.reminders.length > 0) {
@@ -804,6 +1039,58 @@ function renderMarkdown(s: ReturnType<typeof packSnapshot>): string {
   }
 
   return L.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Nutrition helpers for markdown rendering
+// ---------------------------------------------------------------------------
+
+function formatDose(dose: NutritionEntry['dose']): string {
+  if (!dose) return '';
+  const parts: string[] = [];
+  if (dose.amount != null) parts.push(String(dose.amount));
+  if (dose.unit) parts.push(dose.unit);
+  if (dose.frequency) {
+    if (dose.frequency === 'custom' && dose.frequencyCustom) parts.push(dose.frequencyCustom);
+    else parts.push(dose.frequency);
+  }
+  if (dose.timeOfDay) parts.push(`@${dose.timeOfDay}`);
+  return parts.join(' ');
+}
+
+/**
+ * Roll up vitamins + minerals + otherActive across multiple active supplements.
+ * Groups by lowercased `name` + unit (so "Zinc 15mg" + "Zinc 15mg" = 30mg total).
+ * Different units for the same nutrient (e.g. IU vs mcg) show up as separate rows
+ * because we can't safely assume conversion factors without knowing the nutrient.
+ */
+function sumMicronutrients(
+  active: NutritionSurface['entries']
+): Array<{ name: string; total: number; unit: string; sources: string[] }> {
+  const groups = new Map<
+    string,
+    { name: string; unit: string; total: number; sources: string[] }
+  >();
+  for (const entry of active) {
+    const product = entry.productName ?? '(unparsed)';
+    const allNutrients = [
+      ...entry.summary.vitamins,
+      ...entry.summary.minerals,
+      ...entry.summary.otherActive,
+    ];
+    for (const n of allNutrients) {
+      if (n.amount == null || !n.unit) continue;
+      const key = `${n.name.toLowerCase()}|${n.unit.toLowerCase()}`;
+      const existing = groups.get(key);
+      if (existing) {
+        existing.total += n.amount;
+        if (!existing.sources.includes(product)) existing.sources.push(product);
+      } else {
+        groups.set(key, { name: n.name, unit: n.unit, total: n.amount, sources: [product] });
+      }
+    }
+  }
+  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // Type helper so renderers can pull the packed shape.

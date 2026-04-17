@@ -11,6 +11,7 @@ import type {
   ExportInfo,
   HealthSegment,
   HeartSnapshot,
+  NutritionEntry,
   PersonSnapshots,
   SleepSnapshot,
   WorkoutsSnapshot,
@@ -242,6 +243,84 @@ export function useHealthApi() {
     []
   );
 
+  /** Nutrition: list all supplement/food labels for a person. */
+  const listNutrition = useCallback(async (personId: string): Promise<NutritionEntry[]> => {
+    const res = await request<{ entries: NutritionEntry[] }>(
+      `${API_BASE}/health/${personId}/nutrition`
+    );
+    return res.entries;
+  }, []);
+
+  /** Nutrition: upload a label image; parser runs server-side and returns the full entry. */
+  const uploadNutritionLabel = useCallback(
+    async (
+      personId: string,
+      file: File,
+      status: 'considering' | 'active' | 'past' | 'never' = 'considering'
+    ): Promise<NutritionEntry> => {
+      const qs = new URLSearchParams({ filename: file.name, status });
+      const res = await fetch(`${API_BASE}/health/${personId}/nutrition/upload?${qs.toString()}`, {
+        method: 'POST',
+        body: file,
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(err.error ?? `Upload failed: ${res.status}`);
+      }
+      const body = (await res.json()) as { entry: NutritionEntry };
+      return body.entry;
+    },
+    []
+  );
+
+  /** Nutrition: patch status/dose/notes/parsed fields. */
+  const updateNutrition = useCallback(
+    async (
+      personId: string,
+      id: string,
+      updates: Partial<{
+        status: 'considering' | 'active' | 'past' | 'never';
+        dose: NutritionEntry['dose'] | null;
+        notes: string | null;
+        parsed: NutritionEntry['parsed'] | null;
+      }>
+    ): Promise<NutritionEntry> => {
+      const res = await request<{ entry: NutritionEntry }>(
+        `${API_BASE}/health/${personId}/nutrition/${id}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify(updates),
+        }
+      );
+      return res.entry;
+    },
+    []
+  );
+
+  /** Nutrition: re-run the parser against the stored image. */
+  const reparseNutrition = useCallback(
+    async (personId: string, id: string): Promise<NutritionEntry> => {
+      const res = await request<{ entry: NutritionEntry }>(
+        `${API_BASE}/health/${personId}/nutrition/${id}/reparse`,
+        { method: 'POST' }
+      );
+      return res.entry;
+    },
+    []
+  );
+
+  /** Nutrition: delete a label + its image file. */
+  const deleteNutrition = useCallback(async (personId: string, id: string): Promise<void> => {
+    await request<{ ok: true }>(`${API_BASE}/health/${personId}/nutrition/${id}`, {
+      method: 'DELETE',
+    });
+  }, []);
+
+  /** Nutrition: build the image URL for an entry (no auth — same origin). */
+  const nutritionImageUrl = useCallback((personId: string, id: string): string => {
+    return `${API_BASE}/health/${personId}/nutrition/${id}/image`;
+  }, []);
+
   /** PUT /api/health/:personId/illness-notes/:key — update or delete an illness note. */
   const updateIllnessNote = useCallback(
     async (personId: string, key: string, data: { note?: string; dismissed?: boolean }) => {
@@ -268,6 +347,12 @@ export function useHealthApi() {
       getSnapshot,
       getClinical,
       updateIllnessNote,
+      listNutrition,
+      uploadNutritionLabel,
+      updateNutrition,
+      reparseNutrition,
+      deleteNutrition,
+      nutritionImageUrl,
     }),
     [
       listPeople,
@@ -281,6 +366,12 @@ export function useHealthApi() {
       getSnapshot,
       getClinical,
       updateIllnessNote,
+      listNutrition,
+      uploadNutritionLabel,
+      updateNutrition,
+      reparseNutrition,
+      deleteNutrition,
+      nutritionImageUrl,
     ]
   );
 }
