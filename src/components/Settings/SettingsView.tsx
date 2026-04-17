@@ -431,6 +431,10 @@ export function SettingsView() {
   const [logSearch, setLogSearch] = useState('');
   const [logsCopied, setLogsCopied] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
+  // "" = live ring buffer (current session); a YYYY-MM-DD picks a historical
+  // day from the persisted on-disk log (retained 90 days).
+  const [logDate, setLogDate] = useState<string>('');
+  const [availableLogDates, setAvailableLogDates] = useState<string[]>([]);
 
   // Load settings and sync status on mount
   useEffect(() => {
@@ -460,12 +464,30 @@ export function SettingsView() {
     }
   };
 
-  const loadLogs = async () => {
+  // Pass "" (or omit) for the live ring-buffer view; pass a YYYY-MM-DD to
+  // load that day from disk. We take `date` as an explicit arg instead of
+  // reading the `logDate` state from closure so this function has no
+  // reactive deps and stays safe to call from useEffect without tripping
+  // exhaustive-deps.
+  const loadLogs = async (date = '') => {
     try {
-      const res = await fetch(`${API_BASE}/logs?limit=500`);
+      const qs = date ? `date=${date}&limit=500` : 'limit=500';
+      const res = await fetch(`${API_BASE}/logs?${qs}`);
       if (res.ok) {
         const data = (await res.json()) as { entries: LogLine[] };
         setLogs(data.entries);
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const loadLogDates = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/logs?dates=1`);
+      if (res.ok) {
+        const data = (await res.json()) as { dates: string[] };
+        setAvailableLogDates(data.dates);
       }
     } catch {
       /* ignore */
@@ -1904,7 +1926,10 @@ export function SettingsView() {
               <button
                 onClick={() => {
                   setShowLogs(!showLogs);
-                  if (!showLogs) void loadLogs();
+                  if (!showLogs) {
+                    void loadLogs();
+                    void loadLogDates();
+                  }
                 }}
                 className="flex items-center gap-2 text-[13px] font-medium text-surface-900 mb-3 hover:text-violet-400"
               >
@@ -1915,13 +1940,30 @@ export function SettingsView() {
                 )}
                 Application Logs
                 <span className="text-[11px] text-surface-500 font-normal">
-                  ({logs.length} in buffer)
+                  ({logs.length} {logDate ? `on ${logDate}` : 'in buffer'})
                 </span>
               </button>
 
               {showLogs && (
                 <div>
                   <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <select
+                      value={logDate}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setLogDate(next);
+                        void loadLogs(next);
+                      }}
+                      className="px-2 py-1 bg-surface-200/30 border border-border rounded text-[11px] text-surface-950 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
+                      title="Switch between the live current-session buffer and persisted historical days"
+                    >
+                      <option value="">Current session (live)</option>
+                      {availableLogDates.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
                     <div className="flex gap-1">
                       {(['all', 'info', 'warn', 'error', 'debug'] as const).map((lvl) => (
                         <button
@@ -1945,7 +1987,10 @@ export function SettingsView() {
                       className="flex-1 min-w-[120px] px-2 py-1 bg-surface-200/30 border border-border rounded text-[11px] text-surface-950 placeholder-surface-400 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
                     />
                     <Button
-                      onClick={() => void loadLogs()}
+                      onClick={() => {
+                        void loadLogs(logDate);
+                        void loadLogDates();
+                      }}
                       className="bg-surface-200/50 hover:bg-surface-200 text-surface-700 text-[11px] px-2 py-1"
                     >
                       <RefreshCw className="w-3 h-3" />
@@ -1996,8 +2041,8 @@ export function SettingsView() {
                     )}
                   </pre>
                   <p className="text-[11px] text-surface-500 mt-2">
-                    Buffer holds last 1000 entries across all namespaces. Copies plain text for
-                    pasting into issues / chat.
+                    Live buffer holds last 1000 entries; older entries persist to disk (90-day
+                    retention) and are selectable from the date dropdown. Copy is plain text.
                   </p>
                 </div>
               )}
