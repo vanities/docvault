@@ -3,8 +3,18 @@
   "claudeModel": "claude-sonnet-4-6",
   "crypto": {
     "exchanges": [
-      { "id": "kraken", "apiKey": "demo", "apiSecret": "demo", "enabled": true },
-      { "id": "coinbase", "apiKey": "demo", "apiSecret": "demo", "enabled": true }
+      {
+        "id": "kraken",
+        "apiKey": "enc:v1:aA55WSkd1QTMCzdlSzInwZIR13hsWjvNVgsf05SOLr4=",
+        "apiSecret": "enc:v1:9ebZqtWVMDZ30Eb9Gxy3raGBgnXYAAeVP6yQ35TjrbQ=",
+        "enabled": true
+      },
+      {
+        "id": "coinbase",
+        "apiKey": "enc:v1:XTmAjJfm3fvm5WI+0XUGckdmwTG3gJImzxrrOyvOJbM=",
+        "apiSecret": "enc:v1:A8nm1CF0LYA1hlS98rDLi7GX4BbP14SaSooIp3rWYm8=",
+        "enabled": true
+      }
     ],
     "wallets": [
       {
@@ -14,7 +24,7 @@
         "label": "Demo ETH Wallet"
       }
     ],
-    "etherscanKey": "demo"
+    "etherscanKey": "enc:v1:IRxrkqMrTRSXA/iEbx2mtQ5vjAJ3liSpqz5n/MTv31s="
   },
   "brokers": {
     "accounts": [
@@ -35,7 +45,7 @@
     ]
   },
   "simplefin": {
-    "accessUrl": "https://demo:demo@bridge.example/simplefin"
+    "accessUrl": "enc:v1:HnkO86l5nuEwsiOdVHJR/2hr9I1ZC+5vPjzdfgeSB4pogseQOSzPlvf9ZVptr3n99v7LRx5fJ+FV4y7vGnB68+tcGMCSzQ=="
   },
   "schedules": {
     "snapshotEnabled": false,
