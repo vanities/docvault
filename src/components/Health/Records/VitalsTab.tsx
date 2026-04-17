@@ -9,10 +9,59 @@ import { StatTile } from '../StatTile';
 import { Section, formatDate, EmptyTabState } from './shared';
 import type { ClinicalSummary, LabResult } from '../types';
 
+/**
+ * Humanize a UCUM unit code into something a human actually reads.
+ * UCUM is FHIR's canonical unit system ([degF], [lb_av], [in_i], /min,
+ * mm[Hg]) but nobody looks at a scale and says "178 lb_av". We keep the
+ * raw unit in the data model and only humanize at the display boundary.
+ *
+ * `/min` is ambiguous (heart rate vs respiratory rate), so we take the
+ * LOINC code as a hint.
+ */
+function humanizeUnit(unit: string | null, loinc: string | null): string {
+  if (!unit) return '';
+  const u = unit.toLowerCase();
+  if (u === '[degf]' || u === 'degf') return '°F';
+  if (u === '[degc]' || u === 'degc') return '°C';
+  if (u === '[lb_av]' || u === 'lb_av') return 'lb';
+  if (u === '[in_i]' || u === 'in_i') return 'in';
+  if (u === 'mm[hg]') return 'mmHg';
+  if (u === '/min') {
+    // LOINC 8867-4 = Heart rate, 9279-1 = Respiratory rate.
+    // Default to bpm since HR is by far the more common "/min" vital.
+    if (loinc === '9279-1') return 'breaths/min';
+    return 'bpm';
+  }
+  return unit;
+}
+
+/**
+ * Render inches as feet-and-inches (`61 in → 5' 1"`). LOINC 8302-2 is
+ * "Body height" — only apply to that.
+ */
+function formatHeight(inches: number): string {
+  const ft = Math.floor(inches / 12);
+  const remaining = Math.round(inches - ft * 12);
+  return `${ft}' ${remaining}"`;
+}
+
 function formatValue(r: LabResult): string {
+  // Composite observations (BP LOINC 85354-9) have value:null and carry
+  // the actual data in components[]. Render as "systolic/diastolic unit".
+  if (r.value === null && r.components && r.components.length > 0) {
+    const sys = r.components.find((c) => c.loinc === '8480-6' || /systolic/i.test(c.name));
+    const dia = r.components.find((c) => c.loinc === '8462-4' || /diastolic/i.test(c.name));
+    if (sys?.value != null && dia?.value != null) {
+      const unit = humanizeUnit(sys.unit, sys.loinc);
+      return `${sys.value}/${dia.value}${unit ? ` ${unit}` : ''}`;
+    }
+  }
   if (r.value !== null) {
+    const humanUnit = humanizeUnit(r.unit, r.loinc);
+    // Body height: render inches as 5' 9"
+    if (r.loinc === '8302-2' && humanUnit === 'in') return formatHeight(r.value);
     const fixed = Number.isInteger(r.value) ? r.value.toString() : r.value.toFixed(1);
-    return r.unit ? `${fixed} ${r.unit}` : fixed;
+    return humanUnit ? `${fixed} ${humanUnit}` : fixed;
   }
   return r.valueString ?? '—';
 }
@@ -48,9 +97,20 @@ function buildVitalTrends(vitals: LabResult[]): VitalTrend[] {
 }
 
 function VitalCard({ trend }: { trend: VitalTrend }) {
-  const data = trend.points
-    .filter((p) => p.value !== null)
-    .map((p) => ({ date: p.date ?? '', value: p.value as number }));
+  // For BP composite observations, value is null but components[] has
+  // systolic (8480-6) — use that for the trend chart so BP actually plots.
+  const isBP = trend.latest?.loinc === '85354-9';
+  const data = isBP
+    ? trend.points
+        .map((p) => {
+          const sys = p.components?.find((c) => c.loinc === '8480-6');
+          return sys?.value != null ? { date: p.date ?? '', value: sys.value as number } : null;
+        })
+        .filter((d): d is { date: string; value: number } => d !== null)
+    : trend.points
+        .filter((p) => p.value !== null)
+        .map((p) => ({ date: p.date ?? '', value: p.value as number }));
+  const displayUnit = humanizeUnit(trend.unit, trend.latest?.loinc ?? null);
 
   return (
     <div className="rounded-xl border border-border/30 bg-surface-50/40 p-4">
@@ -86,8 +146,8 @@ function VitalCard({ trend }: { trend: VitalTrend }) {
                 }}
                 labelFormatter={(label) => formatDate(String(label))}
                 formatter={(value) => [
-                  `${String(value)}${trend.unit ? ` ${trend.unit}` : ''}`,
-                  trend.name,
+                  `${String(value)}${displayUnit ? ` ${displayUnit}` : ''}`,
+                  isBP ? `${trend.name} (systolic)` : trend.name,
                 ]}
               />
               <Line

@@ -36,7 +36,11 @@ export function HealthBodyView() {
       accent="sky"
     >
       {(data) => {
-        const Trend30 = trendIcon(data.headline.change30d);
+        // Prefer "change since previous reading" for the headline — works for
+        // clinic-cadenced data and eliminates the "—" blank tile problem when
+        // no reading falls within ±14/±60 day anchor tolerance.
+        const changeSincePrev = data.headline.changeSincePrev;
+        const TrendSincePrev = trendIcon(changeSincePrev?.lb ?? null);
         const Trend1y = trendIcon(data.headline.change1y);
 
         // Most weight series are clinic-visit-cadenced (a few readings per
@@ -47,19 +51,6 @@ export function HealthBodyView() {
         const hasPeriodData = data.periods.some((p: PeriodSummary) =>
           p.stats.some((s) => s.value !== 0 && s.value !== null)
         );
-
-        // Count readings in the last 90 days to decide whether 30d/1y
-        // stat tiles should show an explanatory empty caption vs a plain
-        // dash. This is separate from the snapshot's change30d/change1y
-        // which look for anchor points within ±14d / ±60d tolerance.
-        const ninetyDaysAgo = Date.now() - 90 * 24 * 60 * 60 * 1000;
-        const recentCount = data.weightHistory.filter(
-          (w) => new Date(`${w.date}T00:00:00Z`).getTime() >= ninetyDaysAgo
-        ).length;
-        const noRecentWeights = recentCount === 0 && data.weightHistory.length > 0;
-        // Show a hint caption instead of a blank dash when the last reading
-        // is too old for a clean 30-day or 1-year delta.
-        const sparseCaption = noRecentWeights ? 'No reading within tolerance' : undefined;
 
         // Current-weight tile shows which source the headline number came
         // from. Clinical values are audited — smart scales are convenience.
@@ -89,15 +80,19 @@ export function HealthBodyView() {
                 color="text-sky-400"
               />
               <StatTile
-                icon={Trend30}
-                label="30-day change"
+                icon={TrendSincePrev}
+                label="Change since last reading"
                 value={
-                  data.headline.change30d !== null
-                    ? `${data.headline.change30d > 0 ? '+' : ''}${formatDecimal1(data.headline.change30d * 2.20462)} lb`
+                  changeSincePrev
+                    ? `${changeSincePrev.lb > 0 ? '+' : ''}${formatDecimal1(changeSincePrev.lb)} lb`
                     : '—'
                 }
-                caption={data.headline.change30d === null ? sparseCaption : undefined}
-                color={trendColor(data.headline.change30d)}
+                caption={
+                  changeSincePrev
+                    ? `${changeSincePrev.prevDate} · ${changeSincePrev.daysAgo}d ago`
+                    : 'Only one reading on file'
+                }
+                color={trendColor(changeSincePrev?.lb ?? null)}
               />
               <StatTile
                 icon={Trend1y}
@@ -107,7 +102,7 @@ export function HealthBodyView() {
                     ? `${data.headline.change1y > 0 ? '+' : ''}${formatDecimal1(data.headline.change1y * 2.20462)} lb`
                     : '—'
                 }
-                caption={data.headline.change1y === null ? sparseCaption : undefined}
+                caption={data.headline.change1y === null ? 'No reading near 1 year ago' : undefined}
                 color={trendColor(data.headline.change1y)}
               />
               <StatTile

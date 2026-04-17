@@ -123,6 +123,18 @@ export interface LabTrend {
   refHigh: number | null;
 }
 
+/**
+ * Derived clinical category for a Condition. VA FHIR exports tag every
+ * coded observation as `clinicalStatus: active` and never transition them
+ * to `resolved`, so the raw list mixes real chronic illness with:
+ *   - Encounter/visit codes (Z-codes): billing markers, not conditions
+ *   - Symptom codes (R-codes): one-off visit complaints, not chronic
+ *   - Ocular/other specific chapters
+ * This field buckets the condition using its ICD-10 prefix so the UI
+ * can default to "Chronic" and hide the noise behind a toggle.
+ */
+export type ConditionCategory = 'chronic' | 'encounter' | 'symptom' | 'unknown';
+
 export interface Condition {
   id: string;
   name: string;
@@ -132,6 +144,8 @@ export interface Condition {
   onsetDate: string | null;
   recordedDate: string | null;
   abatementDate: string | null;
+  /** Derived bucket based on ICD-10 prefix. See ConditionCategory docs. */
+  category: ConditionCategory;
 }
 
 export interface Medication {
@@ -162,12 +176,27 @@ export interface Allergy {
   reactions: string[];
 }
 
+/**
+ * Derived clinical category for a Procedure. VA FHIR exports mark every
+ * billable CPT code as a Procedure, so the raw list mixes real surgical
+ * / interventional procedures with labs and E/M billing codes. Buckets:
+ *   - procedure: real interventions (surgery, injection, endoscopy, …)
+ *   - lab: CPT 80000-89999 (pathology/lab orders)
+ *   - counseling: CPT 90000-90899 (psych/therapy)
+ *   - evaluation: CPT 99000-99499 (E/M office visits)
+ *   - unknown: no CPT code
+ * Defaults the UI to "procedure" bucket, hides the rest behind a toggle.
+ */
+export type ProcedureCategory = 'procedure' | 'lab' | 'counseling' | 'evaluation' | 'unknown';
+
 export interface Procedure {
   id: string;
   name: string;
   cpt: string | null;
   status: string | null;
   date: string | null;
+  /** Derived bucket based on CPT code range. See ProcedureCategory docs. */
+  category: ProcedureCategory;
 }
 
 export interface DocumentRef {
@@ -186,11 +215,15 @@ export interface DocumentRef {
  *   1 — initial: labs (with LOINC trends), panels, vitals, conditions,
  *       medications, immunizations, allergies, procedures, documents.
  *   2 — LabResult gains `components[]` for composite observations (BP).
+ *   3 — Condition gains `category` (chronic / encounter / symptom) derived
+ *       from ICD-10 prefix. Procedure gains `category` (procedure / lab /
+ *       counseling / evaluation) derived from CPT code range. Medication
+ *       name fallback now prefers contained[0].code.text over timing text.
  */
-export const CLINICAL_SCHEMA_VERSION = 2;
+export const CLINICAL_SCHEMA_VERSION = 3;
 
 export interface ClinicalSummary {
-  schemaVersion: 1 | 2;
+  schemaVersion: 1 | 2 | 3;
   /** Number of clinical-records files ingested. */
   recordCount: number;
   /** Date range of the ingested data (earliest/latest observation). */
@@ -288,6 +321,17 @@ interface FhirMedicationRequest {
   authoredOn?: string;
   medicationCodeableConcept?: FhirCodeableConcept | null;
   medicationReference?: FhirReference;
+  /**
+   * VA exports inline the Medication resource under `contained[]` and point
+   * `medicationReference` at its id. The actual drug name lives at
+   * `contained[0].code.text` (e.g. "OMEPRAZOLE 20MG CAP,EC").
+   */
+  contained?: Array<{
+    resourceType?: string;
+    id?: string;
+    code?: FhirCodeableConcept;
+    form?: FhirCodeableConcept;
+  }>;
   dosageInstruction?: Array<{
     text?: string;
     route?: FhirCodeableConcept;
@@ -511,6 +555,26 @@ function normalizeDiagnosticReport(d: FhirDiagnosticReport): LabPanel {
   };
 }
 
+/**
+ * Categorize a condition by ICD-10 first letter. This is a rough-but-
+ * effective heuristic because ICD-10 chapters map cleanly to bucket
+ * semantics:
+ *   - Z**: Factors influencing health status / contact with services
+ *     (e.g. Z00 = general exam, Z71 = counseling) → encounter markers
+ *   - R**: Symptoms, signs, abnormal findings not elsewhere classified
+ *     (e.g. R00 = palpitations, R19 = digestive symptoms) → one-off
+ *   - Everything else (A/B/C/D/E/F/G/H/I/J/K/L/M/N/O/P/Q): actual
+ *     diseases and conditions → chronic bucket
+ * Unknown ICD → "unknown" so the UI can still surface it.
+ */
+function categorizeCondition(icd10: string | null): ConditionCategory {
+  if (!icd10) return 'unknown';
+  const first = icd10[0]?.toUpperCase();
+  if (first === 'Z') return 'encounter';
+  if (first === 'R') return 'symptom';
+  return 'chronic';
+}
+
 function normalizeCondition(c: FhirCondition): Condition {
   const icd10 =
     c.code?.coding?.find((x) => x.system === 'http://hl7.org/fhir/sid/icd-10-cm')?.code ?? null;
@@ -523,20 +587,31 @@ function normalizeCondition(c: FhirCondition): Condition {
     onsetDate: extractDate(c.onsetDateTime),
     recordedDate: extractDate(c.recordedDate),
     abatementDate: extractDate(c.abatementDateTime),
+    category: categorizeCondition(icd10),
   };
 }
 
 function normalizeMedication(m: FhirMedicationRequest): Medication {
   const dose = m.dosageInstruction?.[0];
-  // VA exports often leave medicationCodeableConcept null and stash the med
-  // name inside dosageInstruction.timing.code.text or dosageInstruction.text.
-  // Try the canonical field first, then cascade to VA-style locations.
+  // VA exports leave `medicationCodeableConcept` null and inline the actual
+  // medication under `contained[]`. The real drug name lives either at
+  // `contained[0].code.text` ("OMEPRAZOLE 20MG CAP,EC") or at
+  // `medicationReference.display`. The previous fallback chain picked
+  // `dosageInstruction.timing.code.text` as a name — but that's a
+  // frequency/context marker ("EVERY DAY", "NON VA MED/HERBAL"), never
+  // a drug name. Same for `dose.text` which is "20MG" or "1 TABLET".
+  // Cascade:
+  //   1. canonical `medicationCodeableConcept` (non-VA FHIR sources)
+  //   2. `medicationReference.display` (present on most VA meds)
+  //   3. `contained[0].code.text` (VA-style inlined Medication resource)
+  //   4. no valid name → "Medication"
   const canonicalName = m.medicationCodeableConcept
     ? displayName(m.medicationCodeableConcept, '')
     : '';
-  const fallbackName =
-    dose?.timing?.code?.text || m.medicationReference?.display || dose?.text || '';
-  const name = canonicalName || fallbackName || 'Medication';
+  const containedName =
+    m.contained?.find((c) => c.resourceType === 'Medication')?.code?.text?.trim() ?? '';
+  const refDisplay = m.medicationReference?.display?.trim() ?? '';
+  const name = canonicalName || refDisplay || containedName || 'Medication';
   const bounds = dose?.timing?.repeat?.boundsPeriod;
   return {
     id: m.id ?? '',
@@ -582,6 +657,28 @@ function normalizeAllergy(a: FhirAllergyIntolerance): Allergy {
   };
 }
 
+/**
+ * Categorize a procedure by CPT code range. VA exports tag every billable
+ * CPT code as a FHIR Procedure, so labs, therapy sessions, office visits,
+ * and actual interventions all land here. The AMA CPT code book's major
+ * sections map cleanly:
+ *   - 80000–89999: Pathology / laboratory tests
+ *   - 90000–90899: Psychiatric / counseling / therapy
+ *   - 99000–99499: Evaluation & management (office visits, billing)
+ *   - Everything else (10000–69999): Real surgical / interventional
+ * "Unknown" when no CPT code resolves (some VA entries are text-only).
+ */
+function categorizeProcedure(cpt: string | null): ProcedureCategory {
+  if (!cpt) return 'unknown';
+  const num = parseInt(cpt, 10);
+  if (!Number.isFinite(num)) return 'unknown';
+  if (num >= 80000 && num < 90000) return 'lab';
+  if (num >= 90000 && num < 90900) return 'counseling';
+  if (num >= 99000 && num < 99500) return 'evaluation';
+  if (num >= 10000 && num < 70000) return 'procedure';
+  return 'unknown';
+}
+
 function normalizeProcedure(p: FhirProcedure): Procedure {
   const cpt =
     p.code?.coding?.find((x) => x.system === 'http://www.ama-assn.org/go/cpt')?.code ?? null;
@@ -592,6 +689,7 @@ function normalizeProcedure(p: FhirProcedure): Procedure {
     cpt,
     status: p.status ?? null,
     date,
+    category: categorizeProcedure(cpt),
   };
 }
 
@@ -768,7 +866,7 @@ export function buildClinicalSummary(resources: FhirResource[]): ClinicalSummary
   allDates.sort();
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     recordCount: resources.length,
     dateRange: {
       start: allDates[0] ?? null,
