@@ -1934,12 +1934,25 @@ export function computeBodySnapshot(
   const currentKg = weightHistory.length > 0 ? weightHistory[weightHistory.length - 1].kg : null;
   const currentLb = weightHistory.length > 0 ? weightHistory[weightHistory.length - 1].lb : null;
 
-  const weightOnDate = (target: string): number | null => {
-    // Find the closest measurement on or before the target date
-    for (let i = weightHistory.length - 1; i >= 0; i--) {
-      if (weightHistory[i].date <= target) return weightHistory[i].kg;
+  // Nearest measurement to `target` date, but only if within `toleranceDays`.
+  // Falling back to "any prior point" produces misleading deltas when the
+  // weight series is sparse — e.g. a user with 3 lifetime weigh-ins spanning
+  // several years would otherwise see change30d and change1y both collapse
+  // onto the same stale anchor. Returns null when no anchor is close enough.
+  const weightNearDate = (target: string, toleranceDays: number): number | null => {
+    if (weightHistory.length === 0) return null;
+    const targetMs = new Date(`${target}T00:00:00Z`).getTime();
+    const toleranceMs = toleranceDays * 24 * 60 * 60 * 1000;
+    let best: WeightPoint | null = null;
+    let bestDelta = Infinity;
+    for (const p of weightHistory) {
+      const delta = Math.abs(new Date(`${p.date}T00:00:00Z`).getTime() - targetMs);
+      if (delta < bestDelta) {
+        best = p;
+        bestDelta = delta;
+      }
     }
-    return null;
+    return best !== null && bestDelta <= toleranceMs ? best.kg : null;
   };
 
   let change30d: number | null = null;
@@ -1950,8 +1963,11 @@ export function computeBodySnapshot(
     d30.setUTCDate(d30.getUTCDate() - 30);
     const d365 = new Date(latest);
     d365.setUTCDate(d365.getUTCDate() - 365);
-    const w30 = weightOnDate(d30.toISOString().slice(0, 10));
-    const w365 = weightOnDate(d365.toISOString().slice(0, 10));
+    // Tolerance: ±14d for the 30d anchor accepts weekly weigh-in cadence but
+    // rejects year-old fallbacks. ±60d for the 1y anchor accepts quarterly
+    // measurements without letting a 3-year-old point pose as "1 year ago".
+    const w30 = weightNearDate(d30.toISOString().slice(0, 10), 14);
+    const w365 = weightNearDate(d365.toISOString().slice(0, 10), 60);
     change30d = w30 !== null ? Math.round((currentKg - w30) * 100) / 100 : null;
     change1y = w365 !== null ? Math.round((currentKg - w365) * 100) / 100 : null;
   }
