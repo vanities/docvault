@@ -148,6 +148,8 @@ import { handleMiscRoutes } from './routes/misc.js';
 import { handleHealthRoutes } from './routes/health.js';
 import { handleDNARoutes } from './routes/dna.js';
 import { handleNutritionRoutes } from './routes/nutrition.js';
+import { handleSicknessRoutes } from './routes/sickness.js';
+import { handleHealthAnalysisRoutes } from './routes/health-analysis.js';
 import { handleStrategyRoutes } from './routes/strategy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1806,9 +1808,20 @@ async function handleRequest(req: Request): Promise<Response> {
   const nutritionResponse = await handleNutritionRoutes(req, url, pathname);
   if (nutritionResponse) return nutritionResponse;
 
+  // Sickness routes — manually-logged illness episodes with symptoms + meds.
+  // Registered before handleHealthRoutes so `/api/health/:personId/sickness/*`
+  // dispatches here.
+  const sicknessResponse = await handleSicknessRoutes(req, url, pathname);
+  if (sicknessResponse) return sicknessResponse;
+
   // health routes (Apple Health exports, people, parsed summaries)
   const healthResponse = await handleHealthRoutes(req, url, pathname);
   if (healthResponse) return healthResponse;
+
+  // Health analysis routes — AI-generated health narratives (like strategy
+  // for financial). Pre-health-prefix so there's no regex collision.
+  const healthAnalysisResponse = await handleHealthAnalysisRoutes(req, url, pathname);
+  if (healthAnalysisResponse) return healthAnalysisResponse;
 
   // strategy routes (AI-generated investment strategy history)
   const strategyResponse = await handleStrategyRoutes(req, url, pathname);

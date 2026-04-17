@@ -558,3 +558,76 @@ export interface NutritionEntry {
   notes?: string;
   lastUpdated: string;
 }
+
+// ===========================================================================
+// Sickness logs (mirror of server/routes/sickness.ts)
+// ===========================================================================
+
+export type SicknessCategory =
+  | 'cold'
+  | 'flu'
+  | 'covid'
+  | 'allergies'
+  | 'sinus'
+  | 'stomach'
+  | 'injury'
+  | 'migraine'
+  | 'other';
+
+export type SicknessSeverity = 'mild' | 'moderate' | 'severe';
+
+export interface MedicationDose {
+  name: string;
+  doseText?: string;
+  count?: number;
+  notes?: string;
+}
+
+export interface SicknessLog {
+  id: string;
+  personId: string;
+  startDate: string;
+  endDate?: string;
+  category: SicknessCategory;
+  severity: SicknessSeverity;
+  title: string;
+  symptoms: string[];
+  medications: MedicationDose[];
+  notes?: string;
+  linkToAutoDetection?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ===========================================================================
+// Health analysis entries (mirror of server/routes/health-analysis.ts)
+// ===========================================================================
+
+export interface HealthAnalysisSignals {
+  ldl?: number | null;
+  hdl?: number | null;
+  triglycerides?: number | null;
+  totalCholesterol?: number | null;
+  apoB?: number | null;
+  lpA?: number | null;
+  hba1c?: number | null;
+  fastingGlucose?: number | null;
+  platelets?: number | null;
+  restingHR?: number | null;
+  hrv?: number | null;
+  avgSleepHours?: number | null;
+  avgDailySteps?: number | null;
+  weightKg?: number | null;
+  [key: string]: unknown;
+}
+
+export interface HealthAnalysisEntry {
+  id: string;
+  createdAt: string;
+  title: string;
+  body: string;
+  personId?: string;
+  signals: HealthAnalysisSignals;
+  tags?: string[];
+  author: string;
+}

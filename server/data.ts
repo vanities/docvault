@@ -675,6 +675,10 @@ export const PROPERTY_FILE = path.join(DATA_DIR, '.docvault-property.json');
 export const CRYPTO_CACHE_FILE = path.join(DATA_DIR, '.docvault-crypto-cache.json');
 export const QUANT_SNAPSHOTS_FILE = path.join(DATA_DIR, '.docvault-quant-snapshots.json');
 export const STRATEGY_HISTORY_FILE = path.join(DATA_DIR, '.docvault-strategy-history.json');
+export const HEALTH_ANALYSIS_HISTORY_FILE = path.join(
+  DATA_DIR,
+  '.docvault-health-analysis-history.json'
+);
 export const BROKER_CACHE_FILE = path.join(DATA_DIR, '.docvault-broker-cache.json');
 export const SIMPLEFIN_CACHE_FILE = path.join(DATA_DIR, '.docvault-simplefin-cache.json');
 export const INCOME_FILE = path.join(DATA_DIR, '.docvault-income.json');

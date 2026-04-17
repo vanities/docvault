@@ -13,6 +13,7 @@ import type {
   HeartSnapshot,
   NutritionEntry,
   PersonSnapshots,
+  SicknessLog,
   SleepSnapshot,
   WorkoutsSnapshot,
 } from './types';
@@ -321,6 +322,49 @@ export function useHealthApi() {
     return `${API_BASE}/health/${personId}/nutrition/${id}/image`;
   }, []);
 
+  /** Sickness: list all manually-logged episodes for a person. */
+  const listSickness = useCallback(async (personId: string): Promise<SicknessLog[]> => {
+    const res = await request<{ logs: SicknessLog[] }>(`${API_BASE}/health/${personId}/sickness`);
+    return res.logs;
+  }, []);
+
+  /** Sickness: create a new episode log. */
+  const createSickness = useCallback(
+    async (
+      personId: string,
+      input: Omit<SicknessLog, 'id' | 'personId' | 'createdAt' | 'updatedAt'>
+    ): Promise<SicknessLog> => {
+      const res = await request<{ log: SicknessLog }>(`${API_BASE}/health/${personId}/sickness`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+      return res.log;
+    },
+    []
+  );
+
+  /** Sickness: update fields on an existing episode. */
+  const updateSickness = useCallback(
+    async (personId: string, id: string, updates: Partial<SicknessLog>): Promise<SicknessLog> => {
+      const res = await request<{ log: SicknessLog }>(
+        `${API_BASE}/health/${personId}/sickness/${id}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify(updates),
+        }
+      );
+      return res.log;
+    },
+    []
+  );
+
+  /** Sickness: delete an episode log. */
+  const deleteSickness = useCallback(async (personId: string, id: string): Promise<void> => {
+    await request<{ ok: true }>(`${API_BASE}/health/${personId}/sickness/${id}`, {
+      method: 'DELETE',
+    });
+  }, []);
+
   /** PUT /api/health/:personId/illness-notes/:key — update or delete an illness note. */
   const updateIllnessNote = useCallback(
     async (personId: string, key: string, data: { note?: string; dismissed?: boolean }) => {
@@ -353,6 +397,10 @@ export function useHealthApi() {
       reparseNutrition,
       deleteNutrition,
       nutritionImageUrl,
+      listSickness,
+      createSickness,
+      updateSickness,
+      deleteSickness,
     }),
     [
       listPeople,
@@ -372,6 +420,10 @@ export function useHealthApi() {
       reparseNutrition,
       deleteNutrition,
       nutritionImageUrl,
+      listSickness,
+      createSickness,
+      updateSickness,
+      deleteSickness,
     ]
   );
 }
