@@ -878,13 +878,11 @@ export async function handleHealthRoutes(
     try {
       log.info(`Parsing ${personId}/${filename}`);
       const summary = await parseAppleHealthExport(zipPath);
-      const snapshots = computeSnapshots(summary, filename);
 
       // Clinical records live in a different subtree of the zip
-      // (`apple_health_export/clinical-records/`). Parse them in parallel
-      // so we get both HealthKit aggregates AND FHIR resources from one
-      // re-parse click. Clinical extraction is cheap (few MB of JSON)
-      // compared to the ~1 GB XML parse.
+      // (`apple_health_export/clinical-records/`). Parse them before
+      // computing snapshots so FHIR vitals (VA weights, BP, etc.) can be
+      // merged into the Body segment in a single pass.
       let clinical: ClinicalSummary | null = null;
       try {
         clinical = await parseClinicalFromZip(zipPath, getPersonClinicalDir(personId));
@@ -900,6 +898,8 @@ export async function handleHealthRoutes(
           `Clinical parse skipped for ${personId}/${filename}: ${clinicalErr instanceof Error ? clinicalErr.message : String(clinicalErr)}`
         );
       }
+
+      const snapshots = computeSnapshots(summary, filename, new Date(), [], clinical);
 
       // Persist to store
       const store = await loadHealthStore();
@@ -963,12 +963,9 @@ export async function handleHealthRoutes(
       log.info(`Unarchiving + parsing ${personId}/${filename}`);
       const summary = await parseAppleHealthExport(zipPath);
 
-      // 3. Compute segment snapshots (pure, ~8ms for 8 years of data)
-      const snapshots = computeSnapshots(summary, filename);
-
-      // 4. Clinical records (FHIR) — extracted to clinical-records/ and parsed.
-      //    Non-fatal: if the zip has no clinical subtree (user hasn't linked
-      //    any Health Records providers) we skip silently.
+      // 3. Clinical records (FHIR) — extracted and parsed BEFORE snapshot
+      //    compute, so VA vitals (weight, BP, etc.) merge into the Body
+      //    segment on the same pass. Non-fatal if absent.
       let clinical: ClinicalSummary | null = null;
       try {
         clinical = await parseClinicalFromZip(zipPath, getPersonClinicalDir(personId));
@@ -981,6 +978,9 @@ export async function handleHealthRoutes(
           `Clinical parse skipped for ${personId}/${filename}: ${clinicalErr instanceof Error ? clinicalErr.message : String(clinicalErr)}`
         );
       }
+
+      // 4. Compute segment snapshots (pure, ~8ms for 8 years of data)
+      const snapshots = computeSnapshots(summary, filename, new Date(), [], clinical);
 
       // 5. Persist summary + snapshots + clinical to store in a single write
       const store = await loadHealthStore();
@@ -1082,9 +1082,14 @@ export async function handleHealthRoutes(
     const deltas = await loadPersonDeltas(personId);
     const deltasMtime = await getDeltasDirMtime(personId);
     const deltasChanged = snapshots !== undefined && deltasMtime > snapshots.generatedAt;
+    // Load the persisted clinical summary (if any) so vitals merge into
+    // the recomputed Body segment. When no clinical export was ever parsed
+    // for this key, `clinicalForSnapshot` stays null and snapshot.clinicalVitals
+    // is null on the output.
+    const clinicalForSnapshot: ClinicalSummary | null = store.clinical?.[key] ?? null;
     if (!snapshots) {
       log.info(`Backfilling snapshot for ${key} (${deltas.length} delta(s) overlaid)`);
-      snapshots = computeSnapshots(summary, filename, new Date(), deltas);
+      snapshots = computeSnapshots(summary, filename, new Date(), deltas, clinicalForSnapshot);
       store.snapshots[key] = snapshots;
       await saveHealthStore(store);
     } else if (snapshots.parserVersion !== summary.parserVersion) {
@@ -1092,7 +1097,7 @@ export async function handleHealthRoutes(
         `Re-computing snapshot for ${key}: cached was v${snapshots.parserVersion}, ` +
           `summary is v${summary.parserVersion} (${deltas.length} delta(s))`
       );
-      snapshots = computeSnapshots(summary, filename, new Date(), deltas);
+      snapshots = computeSnapshots(summary, filename, new Date(), deltas, clinicalForSnapshot);
       store.snapshots[key] = snapshots;
       await saveHealthStore(store);
     } else if (snapshots.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
@@ -1100,7 +1105,7 @@ export async function handleHealthRoutes(
         `Re-computing snapshot for ${key}: cached schema v${snapshots.schemaVersion}, ` +
           `current schema v${SNAPSHOT_SCHEMA_VERSION} (${deltas.length} delta(s))`
       );
-      snapshots = computeSnapshots(summary, filename, new Date(), deltas);
+      snapshots = computeSnapshots(summary, filename, new Date(), deltas, clinicalForSnapshot);
       store.snapshots[key] = snapshots;
       await saveHealthStore(store);
     } else if (deltasChanged) {
@@ -1109,7 +1114,7 @@ export async function handleHealthRoutes(
           `newer than cached snapshot generatedAt ${snapshots.generatedAt} ` +
           `(${deltas.length} delta(s))`
       );
-      snapshots = computeSnapshots(summary, filename, new Date(), deltas);
+      snapshots = computeSnapshots(summary, filename, new Date(), deltas, clinicalForSnapshot);
       store.snapshots[key] = snapshots;
       await saveHealthStore(store);
     }

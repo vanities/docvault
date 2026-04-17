@@ -8,6 +8,7 @@
 // All helpers are exported for unit testing. Do not add I/O to this module.
 
 import type { AppleHealthSummary, DailySummary, WorkoutEntry } from './apple-health.js';
+import type { ClinicalSummary, LabResult } from './apple-health-clinical.js';
 
 /**
  * Snapshot schema / computer version. Bump this when the snapshot computer's
@@ -33,8 +34,12 @@ import type { AppleHealthSummary, DailySummary, WorkoutEntry } from './apple-hea
  *       point exists within tolerance of the target date (±14d / ±60d)
  *       instead of collapsing onto the nearest-older-point regardless
  *       of age. Sparse weight series no longer produce misleading deltas.
+ *   7 — +clinicalVitals segment (BP, HR, temperature, SpO2, respiratory
+ *       rate, pain from VA/FHIR vital-signs observations). BodySnapshot
+ *       now merges VA-recorded weights and heights into weightHistory/
+ *       heightHistory; each point tags `source: 'apple-health' | 'clinical'`.
  */
-export const SNAPSHOT_SCHEMA_VERSION = 6;
+export const SNAPSHOT_SCHEMA_VERSION = 7;
 
 /**
  * A delta file — written by the /api/health/:personId/ingest endpoint when
@@ -226,10 +231,30 @@ export interface WeightPoint {
   date: string;
   kg: number;
   lb: number;
+  /**
+   * Where this measurement came from.
+   *   - "apple-health": HealthKit BodyMass record (smart scale, manual entry).
+   *   - "clinical": FHIR Observation LOINC 29463-7 from a clinical export
+   *     (e.g. VA visit vitals).
+   */
+  source: 'apple-health' | 'clinical';
+}
+
+export interface HeightPoint {
+  date: string;
+  cm: number;
+  inches: number;
+  source: 'apple-health' | 'clinical';
 }
 
 export interface BodySnapshot {
   weightHistory: WeightPoint[];
+  /**
+   * All recorded heights (merged Apple Health + clinical). Same ordering
+   * rules as weightHistory. Empty array when no height has been captured.
+   */
+  heightHistory: HeightPoint[];
+  /** Most recent height — preserved for backwards compatibility. */
   heightCm: number | null;
   heightIn: number | null;
   headline: {
@@ -240,6 +265,43 @@ export interface BodySnapshot {
   };
   insights: InsightItem[];
   periods: PeriodSummary[];
+}
+
+/** A single clinical vital-sign point. Units vary by vital type. */
+export interface ClinicalVitalPoint {
+  date: string;
+  value: number;
+  unit: string | null;
+}
+
+/** Blood pressure is a composite — stored separately from single-value vitals. */
+export interface BloodPressurePoint {
+  date: string;
+  systolic: number;
+  diastolic: number;
+  unit: string | null;
+}
+
+/**
+ * VA/FHIR vital-signs observations surfaced as trend series. Apple Health
+ * doesn't carry most of these (except HR — which lives under HeartSnapshot
+ * as a richer continuous stream), so these series are almost entirely
+ * clinical-sourced. Each array is ordered oldest → newest.
+ */
+export interface ClinicalVitalsSnapshot {
+  bp: BloodPressurePoint[];
+  heartRate: ClinicalVitalPoint[];
+  temperature: ClinicalVitalPoint[];
+  oxygenSaturation: ClinicalVitalPoint[];
+  respiratoryRate: ClinicalVitalPoint[];
+  pain: ClinicalVitalPoint[];
+  headline: {
+    latestBP: { systolic: number; diastolic: number; date: string } | null;
+    avgBP90d: { systolic: number; diastolic: number } | null;
+    latestTemperatureF: number | null;
+    latestSpO2: number | null;
+  };
+  insights: InsightItem[];
 }
 
 export interface PersonSnapshots {
@@ -256,6 +318,12 @@ export interface PersonSnapshots {
   body: BodySnapshot;
   /** Auto-detected illness periods from cross-metric anomaly analysis. */
   illnessPeriods: IllnessPeriod[];
+  /**
+   * Clinical vital-signs trends from FHIR (VA, etc.). Null when no clinical
+   * summary was available at snapshot-compute time (older snapshots or
+   * persons without clinical exports).
+   */
+  clinicalVitals: ClinicalVitalsSnapshot | null;
 }
 
 export type HealthSegment = 'activity' | 'heart' | 'sleep' | 'workouts' | 'body';
@@ -1900,12 +1968,13 @@ export function computeWorkoutsSnapshot(
 
 export function computeBodySnapshot(
   summary: AppleHealthSummary,
-  now: Date = new Date()
+  now: Date = new Date(),
+  clinicalVitals: readonly LabResult[] = []
 ): BodySnapshot {
   const days = sortedDays(summary);
   const LB_PER_KG = 2.20462;
 
-  // Weight history: take the last BodyMass value each day that has one
+  // Weight history from Apple Health: last BodyMass value per day
   const weightHistory: WeightPoint[] = [];
   for (const day of days) {
     const mass = day.numeric.BodyMass;
@@ -1918,19 +1987,118 @@ export function computeBodySnapshot(
       date: day.date,
       kg: Math.round(kg * 100) / 100,
       lb: Math.round(lb * 100) / 100,
+      source: 'apple-health',
     });
   }
 
-  // Height: take the most recent value
+  // Merge in clinical (VA/FHIR) weights. LOINC 29463-7 is "Body weight".
+  // Units seen in real data: [lb_av] (UCUM pound-avoirdupois), kg, lbs, lb.
+  const clinicalWeights: WeightPoint[] = [];
+  for (const v of clinicalVitals) {
+    if (v.value === null || !v.date) continue;
+    const loinc = v.loinc;
+    const nameLc = v.name.toLowerCase();
+    const isWeight = loinc === '29463-7' || /body weight/i.test(nameLc);
+    if (!isWeight) continue;
+    const unit = (v.unit ?? '').toLowerCase();
+    const isPoundUnit = unit === '[lb_av]' || unit === 'lb' || unit === 'lbs' || unit === 'lb_av';
+    const kg = isPoundUnit ? v.value / LB_PER_KG : v.value;
+    const lb = isPoundUnit ? v.value : v.value * LB_PER_KG;
+    clinicalWeights.push({
+      date: v.date,
+      kg: Math.round(kg * 100) / 100,
+      lb: Math.round(lb * 100) / 100,
+      source: 'clinical',
+    });
+  }
+
+  // Dedupe by date. When Apple Health and clinical both have a reading on
+  // the same day, prefer clinical — VA vitals are audited, smart-scale data
+  // is not. This also keeps the merged stream's source labels meaningful
+  // (same-day collisions would otherwise become arbitrary).
+  const byDate = new Map<string, WeightPoint>();
+  for (const p of weightHistory) byDate.set(p.date, p);
+  for (const p of clinicalWeights) byDate.set(p.date, p);
+  const mergedWeights = Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+  // Rebind so downstream code reads the merged stream
+  weightHistory.length = 0;
+  weightHistory.push(...mergedWeights);
+
+  // Height history: merge Apple Health + clinical. For VA data, LOINC 8302-2
+  // ("Body height"), unit typically `[in_i]` (UCUM inches).
+  const heightHistory: HeightPoint[] = [];
+  for (const day of days) {
+    const h = day.numeric.Height;
+    if (!h || h.count === 0) continue;
+    const unit = h.unit?.toLowerCase();
+    const cm = unit === 'cm' ? h.last : unit === 'm' ? h.last * 100 : h.last * 2.54;
+    const inches = unit === 'in' ? h.last : unit === 'ft' ? h.last * 12 : cm / 2.54;
+    heightHistory.push({
+      date: day.date,
+      cm: Math.round(cm * 10) / 10,
+      inches: Math.round(inches * 10) / 10,
+      source: 'apple-health',
+    });
+  }
+  for (const v of clinicalVitals) {
+    if (v.value === null || !v.date) continue;
+    const loinc = v.loinc;
+    const isHeight = loinc === '8302-2' || /body height/i.test(v.name.toLowerCase());
+    if (!isHeight) continue;
+    const unit = (v.unit ?? '').toLowerCase();
+    const isInchUnit = unit === '[in_i]' || unit === 'in' || unit === 'in_i';
+    const cm = isInchUnit ? v.value * 2.54 : unit === 'm' ? v.value * 100 : v.value;
+    const inches = isInchUnit ? v.value : cm / 2.54;
+    heightHistory.push({
+      date: v.date,
+      cm: Math.round(cm * 10) / 10,
+      inches: Math.round(inches * 10) / 10,
+      source: 'clinical',
+    });
+  }
+  // Dedupe + sort
+  const heightByDate = new Map<string, HeightPoint>();
+  for (const p of heightHistory) {
+    // Prefer clinical when both sources collide on a date
+    const existing = heightByDate.get(p.date);
+    if (!existing || p.source === 'clinical') heightByDate.set(p.date, p);
+  }
+  const mergedHeights = Array.from(heightByDate.values()).sort((a, b) =>
+    a.date.localeCompare(b.date)
+  );
+  heightHistory.length = 0;
+  heightHistory.push(...mergedHeights);
+
+  // Headline height for BMI. Adult height is stable, so when multiple
+  // readings exist we pick the MODE — the value the provider recorded most
+  // consistently — not the most recent one. This ignores VA data-entry
+  // artifacts like a single 61" keyed in on a visit where the nurse
+  // measured wrong while most other visits say 69". <50 in is filtered as
+  // impossible before the mode is computed.
   let heightCm: number | null = null;
   let heightIn: number | null = null;
-  for (let i = days.length - 1; i >= 0; i--) {
-    const h = days[i].numeric.Height;
-    if (h && h.count > 0) {
-      const unit = h.unit?.toLowerCase();
-      heightCm = unit === 'cm' ? h.last : unit === 'm' ? h.last * 100 : h.last * 30.48;
-      heightIn = unit === 'in' ? h.last : unit === 'ft' ? h.last * 12 : (heightCm ?? 0) / 2.54;
-      break;
+  if (heightHistory.length > 0) {
+    const plausible = heightHistory.filter((h) => h.inches >= 50);
+    if (plausible.length > 0) {
+      // Cluster near-equal measurements into 0.5-inch buckets so 69 and
+      // 69.3 count as the same reading.
+      const counts = new Map<number, number>();
+      for (const h of plausible) {
+        const key = Math.round(h.inches * 2) / 2;
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+      let bestKey = plausible[0].inches;
+      let bestCount = 0;
+      for (const [k, c] of counts) {
+        // Tiebreak: prefer the larger value, which tends to be the adult
+        // stable height (slouchy measurements come out low).
+        if (c > bestCount || (c === bestCount && k > bestKey)) {
+          bestCount = c;
+          bestKey = k;
+        }
+      }
+      heightIn = bestKey;
+      heightCm = bestKey * 2.54;
     }
   }
 
@@ -2061,11 +2229,192 @@ export function computeBodySnapshot(
 
   return {
     weightHistory,
+    heightHistory,
     heightCm: heightCm !== null ? Math.round(heightCm * 10) / 10 : null,
     heightIn: heightIn !== null ? Math.round(heightIn * 10) / 10 : null,
     headline: { currentKg, currentLb, change30d, change1y },
     insights,
     periods,
+  };
+}
+
+// ===========================================================================
+// Clinical vitals (BP / HR / temp / SpO2 / resp / pain)
+// ===========================================================================
+
+/**
+ * LOINC codes for the clinical vital-signs we surface. Any Observation whose
+ * `loinc` matches these (or whose name matches the fallback regex) is picked
+ * up. Kept as a lookup object — each entry is independently testable and
+ * easy to extend with additional vitals later.
+ */
+const CLINICAL_VITAL_LOINCS = {
+  bp: '85354-9', // Blood pressure panel
+  bpSystolic: '8480-6',
+  bpDiastolic: '8462-4',
+  heartRate: '8867-4',
+  temperature: '8310-5',
+  oxygenSaturation: '2708-6',
+  respiratoryRate: '9279-1',
+  painSeverity: '72514-3',
+} as const;
+
+export function computeClinicalVitalsSnapshot(
+  clinicalVitals: readonly LabResult[],
+  now: Date = new Date()
+): ClinicalVitalsSnapshot {
+  const bp: BloodPressurePoint[] = [];
+  const heartRate: ClinicalVitalPoint[] = [];
+  const temperature: ClinicalVitalPoint[] = [];
+  const oxygenSaturation: ClinicalVitalPoint[] = [];
+  const respiratoryRate: ClinicalVitalPoint[] = [];
+  const pain: ClinicalVitalPoint[] = [];
+
+  for (const v of clinicalVitals) {
+    if (!v.date) continue;
+    const loinc = v.loinc;
+    const nameLc = v.name.toLowerCase();
+
+    // BP is a composite observation — value is null, data lives in components.
+    if (loinc === CLINICAL_VITAL_LOINCS.bp || /blood pressure/i.test(nameLc)) {
+      let systolic: number | null = null;
+      let diastolic: number | null = null;
+      let unit: string | null = null;
+      for (const c of v.components) {
+        if (c.value === null) continue;
+        if (c.loinc === CLINICAL_VITAL_LOINCS.bpSystolic || /systolic/i.test(c.name)) {
+          systolic = c.value;
+          unit = unit ?? c.unit;
+        } else if (c.loinc === CLINICAL_VITAL_LOINCS.bpDiastolic || /diastolic/i.test(c.name)) {
+          diastolic = c.value;
+          unit = unit ?? c.unit;
+        }
+      }
+      if (systolic !== null && diastolic !== null) {
+        bp.push({ date: v.date, systolic, diastolic, unit });
+      }
+      continue;
+    }
+
+    // Single-value vitals
+    if (v.value === null) continue;
+
+    if (loinc === CLINICAL_VITAL_LOINCS.heartRate || /^heart rate/i.test(nameLc)) {
+      heartRate.push({ date: v.date, value: v.value, unit: v.unit });
+    } else if (loinc === CLINICAL_VITAL_LOINCS.temperature || /body temperature/i.test(nameLc)) {
+      temperature.push({ date: v.date, value: v.value, unit: v.unit });
+    } else if (
+      loinc === CLINICAL_VITAL_LOINCS.oxygenSaturation ||
+      /oxygen saturation/i.test(nameLc)
+    ) {
+      oxygenSaturation.push({ date: v.date, value: v.value, unit: v.unit });
+    } else if (
+      loinc === CLINICAL_VITAL_LOINCS.respiratoryRate ||
+      /respiratory rate/i.test(nameLc)
+    ) {
+      respiratoryRate.push({ date: v.date, value: v.value, unit: v.unit });
+    } else if (loinc === CLINICAL_VITAL_LOINCS.painSeverity || /pain severity/i.test(nameLc)) {
+      pain.push({ date: v.date, value: v.value, unit: v.unit });
+    }
+  }
+
+  // Sort each series oldest → newest
+  const byDateAsc = <T extends { date: string }>(arr: T[]): void => {
+    arr.sort((a, b) => a.date.localeCompare(b.date));
+  };
+  byDateAsc(bp);
+  byDateAsc(heartRate);
+  byDateAsc(temperature);
+  byDateAsc(oxygenSaturation);
+  byDateAsc(respiratoryRate);
+  byDateAsc(pain);
+
+  // Headline: latest BP, 90-day avg BP, latest temp in °F, latest SpO2.
+  // 90-day window is anchored to `now`, not to the latest observation — it's
+  // "what's current?" not "what was current when this was last measured?".
+  const nowMs = now.getTime();
+  const ninetyDaysAgo = nowMs - 90 * 24 * 60 * 60 * 1000;
+  const inLast90 = (iso: string): boolean =>
+    new Date(`${iso}T00:00:00Z`).getTime() >= ninetyDaysAgo;
+
+  const latestBP = bp.length > 0 ? bp[bp.length - 1] : null;
+  const recentBP = bp.filter((p) => inLast90(p.date));
+  const avgBP90d =
+    recentBP.length > 0
+      ? {
+          systolic: Math.round(recentBP.reduce((a, p) => a + p.systolic, 0) / recentBP.length),
+          diastolic: Math.round(recentBP.reduce((a, p) => a + p.diastolic, 0) / recentBP.length),
+        }
+      : null;
+
+  // Temperature: normalize °C → °F for headline, since US clinical sources
+  // almost always use °F and downstream consumers expect it.
+  let latestTemperatureF: number | null = null;
+  if (temperature.length > 0) {
+    const t = temperature[temperature.length - 1];
+    const u = (t.unit ?? '').toLowerCase();
+    latestTemperatureF =
+      u === '[degf]' || u === 'degf' || u === '°f' || u === 'f'
+        ? Math.round(t.value * 10) / 10
+        : Math.round((t.value * 9) / 5 + 32 * 10) / 10;
+  }
+
+  const latestSpO2 =
+    oxygenSaturation.length > 0 ? oxygenSaturation[oxygenSaturation.length - 1].value : null;
+
+  // Insights — high-signal observations from the data
+  const insights: InsightItem[] = [];
+  if (latestBP) {
+    const stage =
+      latestBP.systolic >= 140 || latestBP.diastolic >= 90
+        ? 'stage 2 (≥140/90)'
+        : latestBP.systolic >= 130 || latestBP.diastolic >= 80
+          ? 'stage 1 (130–139/80–89)'
+          : latestBP.systolic >= 120
+            ? 'elevated (120–129/<80)'
+            : 'normal (<120/80)';
+    insights.push({
+      label: 'Latest BP',
+      value: `${latestBP.systolic}/${latestBP.diastolic}`,
+      caption: `${latestBP.date} · ${stage}`,
+      tone: latestBP.systolic >= 130 || latestBP.diastolic >= 80 ? 'warn' : 'good',
+    });
+  }
+  if (bp.length >= 2) {
+    const spreadSys =
+      Math.max(...bp.map((p) => p.systolic)) - Math.min(...bp.map((p) => p.systolic));
+    insights.push({
+      label: 'BP readings',
+      value: `${bp.length} over ${bp.length > 1 ? `${bp[0].date} → ${bp[bp.length - 1].date}` : bp[0].date}`,
+      caption: `systolic spread ${spreadSys} mmHg`,
+      tone: 'neutral',
+    });
+  }
+  if (oxygenSaturation.length > 0 && latestSpO2 !== null) {
+    insights.push({
+      label: 'Latest SpO₂',
+      value: `${latestSpO2}%`,
+      caption: latestSpO2 >= 95 ? 'normal' : latestSpO2 >= 90 ? 'mild hypoxemia' : 'low',
+      tone: latestSpO2 >= 95 ? 'good' : 'warn',
+    });
+  }
+
+  return {
+    bp,
+    heartRate,
+    temperature,
+    oxygenSaturation,
+    respiratoryRate,
+    pain,
+    headline: {
+      latestBP: latestBP
+        ? { systolic: latestBP.systolic, diastolic: latestBP.diastolic, date: latestBP.date }
+        : null,
+      avgBP90d,
+      latestTemperatureF,
+      latestSpO2,
+    },
+    insights,
   };
 }
 
@@ -2155,27 +2504,41 @@ export function overlayDeltas(
  * so the UI can detect when a cached snapshot was produced by an older
  * parser (and therefore may be missing data a newer parser would capture).
  *
- * @param deltas optional DeltaFile[] from shortcut-posted daily data.
- *               Overlaid on the summary before segment computation.
+ * @param deltas   optional DeltaFile[] from shortcut-posted daily data.
+ *                 Overlaid on the summary before segment computation.
+ * @param clinical optional ClinicalSummary from FHIR clinical-records.
+ *                 Its `vitals[]` are merged into BodySnapshot (weights +
+ *                 heights) and surfaced as a standalone ClinicalVitals-
+ *                 Snapshot (BP, HR, temperature, SpO2, resp rate, pain).
+ *                 When null, `clinicalVitals` on the returned snapshot
+ *                 is null and the Body segment falls back to Apple-Health-
+ *                 only data.
  */
 export function computeSnapshots(
   summary: AppleHealthSummary,
   sourceFilename: string,
   now: Date = new Date(),
-  deltas: readonly DeltaFile[] = []
+  deltas: readonly DeltaFile[] = [],
+  clinical: ClinicalSummary | null = null
 ): PersonSnapshots {
   const merged = overlayDeltas(summary, deltas);
+  const clinicalVitalsRaw = clinical?.vitals ?? [];
   const activity = computeActivitySnapshot(merged, now);
   const heart = computeHeartSnapshot(merged, now);
   const sleep = computeSleepSnapshot(merged, now);
   const workouts = computeWorkoutsSnapshot(merged, now);
-  const body = computeBodySnapshot(merged, now);
+  const body = computeBodySnapshot(merged, now, clinicalVitalsRaw);
 
   // Cross-segment: compute recovery scores (needs activity + heart + sleep)
   activity.recoveryScores = computeRecoveryScores(activity.daily, heart.daily, sleep.daily);
 
   // Cross-segment: detect illness periods
   const illnessPeriods = detectIllnessPeriods(activity.daily, heart.daily, sleep.daily);
+
+  // Clinical vitals is null when there's no clinical source at all, so
+  // downstream consumers can distinguish "no data" from "empty series".
+  const clinicalVitals =
+    clinical !== null ? computeClinicalVitalsSnapshot(clinicalVitalsRaw, now) : null;
 
   return {
     schemaVersion: SNAPSHOT_SCHEMA_VERSION,
@@ -2188,5 +2551,6 @@ export function computeSnapshots(
     workouts,
     body,
     illnessPeriods,
+    clinicalVitals,
   };
 }
