@@ -47,6 +47,14 @@ export interface Coding {
   display?: string;
 }
 
+/** Sub-measurement of a composite observation (e.g. BP systolic/diastolic). */
+export interface ObservationComponent {
+  loinc: string | null;
+  name: string;
+  value: number | null;
+  unit: string | null;
+}
+
 /** A single lab/vital measurement. LOINC-coded where available. */
 export interface LabResult {
   /** FHIR resource id (used to link from DiagnosticReport.result[]). */
@@ -77,6 +85,13 @@ export interface LabResult {
   derivedFlag: 'low' | 'high' | 'normal' | null;
   /** If this observation belongs to a DiagnosticReport, its id. */
   panelId: string | null;
+  /**
+   * Sub-measurements for composite observations. FHIR represents blood
+   * pressure as one Observation with `valueQuantity: null` and two entries
+   * in `component[]` (LOINC 8480-6 systolic, 8462-4 diastolic). Downstream
+   * renderers read this when `value` is null.
+   */
+  components: ObservationComponent[];
 }
 
 /** A DiagnosticReport groups multiple LabResults into one visit's panel. */
@@ -170,11 +185,12 @@ export interface DocumentRef {
  * History:
  *   1 — initial: labs (with LOINC trends), panels, vitals, conditions,
  *       medications, immunizations, allergies, procedures, documents.
+ *   2 — LabResult gains `components[]` for composite observations (BP).
  */
-export const CLINICAL_SCHEMA_VERSION = 1;
+export const CLINICAL_SCHEMA_VERSION = 2;
 
 export interface ClinicalSummary {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   /** Number of clinical-records files ingested. */
   recordCount: number;
   /** Date range of the ingested data (earliest/latest observation). */
@@ -223,6 +239,12 @@ interface FhirRange {
   high?: FhirQuantity;
   text?: string;
 }
+interface FhirObservationComponent {
+  code?: FhirCodeableConcept;
+  valueQuantity?: FhirQuantity;
+  valueString?: string;
+  valueCodeableConcept?: FhirCodeableConcept;
+}
 interface FhirObservation {
   resourceType: 'Observation';
   id?: string;
@@ -236,6 +258,7 @@ interface FhirObservation {
   effectiveDateTime?: string;
   issued?: string;
   interpretation?: FhirCodeableConcept[] | FhirCodeableConcept | null;
+  component?: FhirObservationComponent[];
 }
 interface FhirDiagnosticReport {
   resourceType: 'DiagnosticReport';
@@ -433,6 +456,21 @@ function normalizeObservation(o: FhirObservation): LabResult {
   const interp = interpretationCode(o.interpretation);
   const effectiveAt = o.effectiveDateTime ?? o.issued ?? null;
 
+  // Composite observations (e.g. Blood pressure, LOINC 85354-9) carry their
+  // measurements in `component[]` rather than `valueQuantity`. Each component
+  // has its own LOINC code (8480-6 systolic, 8462-4 diastolic) and unit. We
+  // normalize them into a flat ObservationComponent[] so downstream code can
+  // read BP the same way it reads any other vital.
+  const components: ObservationComponent[] = (o.component ?? []).map((c) => {
+    const cv = c.valueQuantity?.value;
+    return {
+      loinc: pickLoinc(c.code),
+      name: displayName(c.code),
+      value: typeof cv === 'number' ? cv : null,
+      unit: c.valueQuantity?.unit ?? null,
+    };
+  });
+
   return {
     id: o.id ?? '',
     loinc: pickLoinc(o.code),
@@ -450,6 +488,7 @@ function normalizeObservation(o: FhirObservation): LabResult {
     interpretation: interp,
     derivedFlag: derivedFlag(typeof value === 'number' ? value : null, refLow, refHigh),
     panelId: null, // filled in later during panel linking
+    components,
   };
 }
 
@@ -729,7 +768,7 @@ export function buildClinicalSummary(resources: FhirResource[]): ClinicalSummary
   allDates.sort();
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     recordCount: resources.length,
     dateRange: {
       start: allDates[0] ?? null,

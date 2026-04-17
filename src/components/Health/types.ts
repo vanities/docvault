@@ -279,10 +279,19 @@ export interface WeightPoint {
   date: string;
   kg: number;
   lb: number;
+  source: 'apple-health' | 'clinical';
+}
+
+export interface HeightPoint {
+  date: string;
+  cm: number;
+  inches: number;
+  source: 'apple-health' | 'clinical';
 }
 
 export interface BodySnapshot {
   weightHistory: WeightPoint[];
+  heightHistory: HeightPoint[];
   heightCm: number | null;
   heightIn: number | null;
   headline: {
@@ -293,6 +302,35 @@ export interface BodySnapshot {
   };
   insights: InsightItem[];
   periods: PeriodSummary[];
+}
+
+export interface ClinicalVitalPoint {
+  date: string;
+  value: number;
+  unit: string | null;
+}
+
+export interface BloodPressurePoint {
+  date: string;
+  systolic: number;
+  diastolic: number;
+  unit: string | null;
+}
+
+export interface ClinicalVitalsSnapshot {
+  bp: BloodPressurePoint[];
+  heartRate: ClinicalVitalPoint[];
+  temperature: ClinicalVitalPoint[];
+  oxygenSaturation: ClinicalVitalPoint[];
+  respiratoryRate: ClinicalVitalPoint[];
+  pain: ClinicalVitalPoint[];
+  headline: {
+    latestBP: { systolic: number; diastolic: number; date: string } | null;
+    avgBP90d: { systolic: number; diastolic: number } | null;
+    latestTemperatureF: number | null;
+    latestSpO2: number | null;
+  };
+  insights: InsightItem[];
 }
 
 /** An auto-detected illness period from cross-metric anomaly analysis. */
@@ -317,6 +355,7 @@ export interface PersonSnapshots {
   workouts: WorkoutsSnapshot;
   body: BodySnapshot;
   illnessPeriods: IllnessPeriod[];
+  clinicalVitals: ClinicalVitalsSnapshot | null;
 }
 
 /** Segment identifier. Used by the API path + NavView routing. */

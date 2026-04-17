@@ -316,6 +316,20 @@ interface PersonSurface {
   };
   illnessPeriods: IllnessPeriod[];
   illnessNotes: Record<string, IllnessNote>;
+  /**
+   * Full weight and height series from the Body snapshot. These are
+   * duplicated here (rather than read from `snapshot.body.*`) so the
+   * markdown and toon renderers can draw trend deltas without also
+   * having to consume `snapshot.body.weightHistory[]` wholesale.
+   */
+  body: {
+    weightHistory: PersonSnapshots['body']['weightHistory'];
+    heightHistory: PersonSnapshots['body']['heightHistory'];
+    heightCm: number | null;
+    heightIn: number | null;
+  } | null;
+  /** Clinical vital-signs trends (BP, HR, temp, SpO2, resp, pain). */
+  clinicalVitals: PersonSnapshots['clinicalVitals'];
   clinical: ClinicalSurface | null;
   dna: {
     uploadedAt: string;
@@ -470,6 +484,15 @@ export async function handleHealthSnapshotRoutes(
         },
         illnessPeriods: snapshot?.illnessPeriods ?? [],
         illnessNotes: notes,
+        body: snapshot
+          ? {
+              weightHistory: snapshot.body.weightHistory,
+              heightHistory: snapshot.body.heightHistory,
+              heightCm: snapshot.body.heightCm,
+              heightIn: snapshot.body.heightIn,
+            }
+          : null,
+        clinicalVitals: snapshot?.clinicalVitals ?? null,
         clinical: clinical ? surfaceClinical(clinical) : null,
         dna:
           dna.metadata && dna.results
@@ -889,15 +912,126 @@ function renderMarkdown(s: ReturnType<typeof packSnapshot>): string {
       L.push('');
     }
 
-    if (p.headlines.body) {
+    if (p.headlines.body || p.body) {
       const h = p.headlines.body;
-      if (h.currentKg != null || h.currentLb != null) {
+      const body = p.body;
+      const weights = body?.weightHistory ?? [];
+      const hasWeights = weights.length > 0;
+      if (hasWeights || (h && (h.currentKg != null || h.currentLb != null))) {
         L.push(`### Body`);
-        L.push(`- Weight: ${n(h.currentKg, 2)} kg / ${n(h.currentLb, 1)} lb`);
-        if (h.change30d != null)
+        if (h && (h.currentKg != null || h.currentLb != null)) {
+          L.push(`- Weight: ${n(h.currentKg, 2)} kg / ${n(h.currentLb, 1)} lb`);
+        }
+        if (h?.change30d != null)
           L.push(`- 30d change: ${h.change30d >= 0 ? '+' : ''}${h.change30d.toFixed(2)} kg`);
-        if (h.change1y != null)
+        if (h?.change1y != null)
           L.push(`- 1y change: ${h.change1y >= 0 ? '+' : ''}${h.change1y.toFixed(2)} kg`);
+        if (hasWeights) {
+          const first = weights[0];
+          const last = weights[weights.length - 1];
+          const spanDays = Math.round(
+            (new Date(`${last.date}T00:00:00Z`).getTime() -
+              new Date(`${first.date}T00:00:00Z`).getTime()) /
+              86_400_000
+          );
+          const years = spanDays / 365.25;
+          const netLb = last.lb - first.lb;
+          const clinicalCount = weights.filter((w) => w.source === 'clinical').length;
+          const appleCount = weights.length - clinicalCount;
+          L.push(
+            `- Tracking span: ${first.date} → ${last.date} (${years >= 1 ? years.toFixed(1) + 'y' : spanDays + 'd'}) · ` +
+              `${weights.length} points (${clinicalCount} clinical / ${appleCount} apple-health)`
+          );
+          L.push(
+            `- Net since first reading: ${netLb >= 0 ? '+' : ''}${netLb.toFixed(1)} lb ` +
+              `(${first.lb.toFixed(1)} → ${last.lb.toFixed(1)} lb)`
+          );
+        }
+        if (body?.heightCm != null && body.heightIn != null) {
+          L.push(`- Height: ${body.heightIn.toFixed(1)} in / ${body.heightCm.toFixed(1)} cm`);
+          if (h?.currentKg != null) {
+            const bmi = h.currentKg / Math.pow(body.heightCm / 100, 2);
+            const tier =
+              bmi < 18.5 ? 'underweight' : bmi < 25 ? 'normal' : bmi < 30 ? 'overweight' : 'obese';
+            L.push(`- BMI: ${bmi.toFixed(1)} (${tier})`);
+          }
+        }
+        // Compact recent weight trend table (last 6 readings) — exposes the
+        // VA inflection without dumping the whole history.
+        if (weights.length > 1) {
+          const recent = weights.slice(-6);
+          L.push('');
+          L.push('| Date | Weight (lb) | Source |');
+          L.push('|------|-------------|--------|');
+          for (const w of recent) {
+            L.push(`| ${w.date} | ${w.lb.toFixed(1)} | ${w.source} |`);
+          }
+        }
+        L.push('');
+      }
+    }
+
+    if (p.clinicalVitals) {
+      const v = p.clinicalVitals;
+      const hasAny =
+        v.bp.length > 0 ||
+        v.heartRate.length > 0 ||
+        v.temperature.length > 0 ||
+        v.oxygenSaturation.length > 0 ||
+        v.respiratoryRate.length > 0 ||
+        v.pain.length > 0;
+      if (hasAny) {
+        L.push(`### Clinical Vitals (VA / FHIR)`);
+        if (v.headline.latestBP) {
+          const b = v.headline.latestBP;
+          L.push(`- Latest BP: **${b.systolic}/${b.diastolic}** mmHg (${b.date})`);
+          if (v.headline.avgBP90d) {
+            L.push(
+              `- 90d avg BP: ${v.headline.avgBP90d.systolic}/${v.headline.avgBP90d.diastolic} mmHg`
+            );
+          }
+        }
+        if (v.headline.latestTemperatureF != null) {
+          L.push(`- Latest temperature: ${v.headline.latestTemperatureF.toFixed(1)} °F`);
+        }
+        if (v.headline.latestSpO2 != null) {
+          L.push(`- Latest SpO₂: ${v.headline.latestSpO2}%`);
+        }
+
+        // Per-vital trend summary: last 5 readings each. Keeps the markdown
+        // compact while still showing cross-year movement at a glance.
+        const renderSeries = (
+          title: string,
+          series: Array<{
+            date: string;
+            value?: number;
+            systolic?: number;
+            diastolic?: number;
+            unit: string | null;
+          }>,
+          fmt: (p: {
+            date: string;
+            value?: number;
+            systolic?: number;
+            diastolic?: number;
+            unit: string | null;
+          }) => string
+        ) => {
+          if (series.length === 0) return;
+          const recent = series.slice(-5);
+          L.push('');
+          L.push(`#### ${title} — ${series.length} reading${series.length === 1 ? '' : 's'}`);
+          L.push('| Date | Value |');
+          L.push('|------|-------|');
+          for (const pt of recent) L.push(`| ${pt.date} | ${fmt(pt)} |`);
+        };
+
+        renderSeries('Blood pressure', v.bp, (pt) => `${pt.systolic}/${pt.diastolic} mmHg`);
+        renderSeries('Heart rate', v.heartRate, (pt) => `${pt.value} bpm`);
+        renderSeries('Temperature', v.temperature, (pt) => `${pt.value} ${pt.unit ?? ''}`.trim());
+        renderSeries('SpO₂', v.oxygenSaturation, (pt) => `${pt.value}%`);
+        renderSeries('Respiratory rate', v.respiratoryRate, (pt) => `${pt.value} /min`);
+        renderSeries('Pain severity', v.pain, (pt) => `${pt.value}/10`);
         L.push('');
       }
     }
