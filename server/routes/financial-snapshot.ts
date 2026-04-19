@@ -621,7 +621,7 @@ export async function handleFinancialSnapshotRoutes(
 
       // Property mortgages contribute monthly P&I even though they aren't in SimpleFIN.
       const mortgageMonthlyPayment = propertySummary.entries.reduce(
-        (s, p) => s + (p.monthlyPayment || 0),
+        (s, p) => s + (p.mortgage?.monthlyPayment || 0),
         0
       );
 
