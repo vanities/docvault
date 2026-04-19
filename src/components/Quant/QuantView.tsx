@@ -7,6 +7,7 @@ import {
   RefreshCw,
   Grid3x3,
   CalendarClock,
+  FileText,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -45,9 +46,10 @@ import { CommoditiesChart } from './CommoditiesChart';
 import { VixTermStructureChart } from './VixTermStructureChart';
 import { GlobalMarketsChart } from './GlobalMarketsChart';
 import { useQuantRefresh } from './useQuantData';
+import { ResearchPanel } from './ResearchPanel';
 
-/** Four top-level tabs — an overview snapshot plus Cowen's 3 categories. */
-type QuantCategory = 'overview' | 'crypto' | 'macro' | 'tradfi';
+/** Top-level tabs — overview snapshot, Cowen's 3 categories, plus uploaded research. */
+type QuantCategory = 'overview' | 'crypto' | 'macro' | 'tradfi' | 'research';
 
 const STORAGE_KEY = 'docvault.quant.category';
 
@@ -82,6 +84,13 @@ const CATEGORY_META: Record<
     icon: Building2,
     description:
       'Equity markets and traditional finance — S&P 500 cycles, sector rotation, valuation ratios, and commodity trends.',
+  },
+  research: {
+    label: 'Research',
+    accent: 'text-purple-400',
+    icon: FileText,
+    description:
+      'Upload analyst research PDFs (Cowen, Lyn Alden, Fidelity, Raoul Pal, etc.) — text is extracted for easy reading and search. Add your own notes and tags.',
   },
 };
 
@@ -289,7 +298,7 @@ export function QuantView() {
   const [category, setCategory] = useState<QuantCategory>(() => {
     if (typeof window === 'undefined') return 'overview';
     const stored = localStorage.getItem(STORAGE_KEY);
-    const valid: QuantCategory[] = ['overview', 'crypto', 'macro', 'tradfi'];
+    const valid: QuantCategory[] = ['overview', 'crypto', 'macro', 'tradfi', 'research'];
     return valid.includes(stored as QuantCategory) ? (stored as QuantCategory) : 'overview';
   });
 
@@ -533,6 +542,14 @@ export function QuantView() {
           >
             <GlobalMarketsChart />
           </ChartGroup>
+        </TabsContent>
+
+        {/* ── Research ───────────────────────────────────── */}
+        <TabsContent value="research">
+          <p className="text-[12px] text-surface-800 mb-6 leading-relaxed">
+            {CATEGORY_META.research.description}
+          </p>
+          <ResearchPanel />
         </TabsContent>
       </Tabs>
     </div>
