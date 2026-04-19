@@ -152,6 +152,7 @@ import { handleSicknessRoutes } from './routes/sickness.js';
 import { handleHealthAnalysisRoutes } from './routes/health-analysis.js';
 import { handleStrategyRoutes } from './routes/strategy.js';
 import { handleResearchRoutes } from './routes/research.js';
+import { handleCryptoYieldsRoutes } from './routes/crypto-yields.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1831,6 +1832,11 @@ async function handleRequest(req: Request): Promise<Response> {
   // research routes (analyst PDF uploads + text extraction for Quant section)
   const researchResponse = await handleResearchRoutes(req, url, pathname);
   if (researchResponse) return researchResponse;
+
+  // crypto yields overlay (APY per source/asset, merged into balances at render
+  // time — see routes/crypto-yields.ts for why this is separate from the balance cache)
+  const cryptoYieldsResponse = await handleCryptoYieldsRoutes(req, url, pathname);
+  if (cryptoYieldsResponse) return cryptoYieldsResponse;
 
   // ========================================================================
   // Geocode API (Geoapify proxy)
