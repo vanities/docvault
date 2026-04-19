@@ -36,6 +36,7 @@
     "sharp": "^0.34.5",
     "snaptrade-typescript-sdk": "^9.0.173",
     "sonner": "^2.0.7",
+    "unpdf": "^1.6.0",
     "viem": "^2.47.6",
     "yahoo-finance2": "^3.14.0"
   },

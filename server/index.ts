@@ -151,6 +151,7 @@ import { handleNutritionRoutes } from './routes/nutrition.js';
 import { handleSicknessRoutes } from './routes/sickness.js';
 import { handleHealthAnalysisRoutes } from './routes/health-analysis.js';
 import { handleStrategyRoutes } from './routes/strategy.js';
+import { handleResearchRoutes } from './routes/research.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1826,6 +1827,10 @@ async function handleRequest(req: Request): Promise<Response> {
   // strategy routes (AI-generated investment strategy history)
   const strategyResponse = await handleStrategyRoutes(req, url, pathname);
   if (strategyResponse) return strategyResponse;
+
+  // research routes (analyst PDF uploads + text extraction for Quant section)
+  const researchResponse = await handleResearchRoutes(req, url, pathname);
+  if (researchResponse) return researchResponse;
 
   // ========================================================================
   // Geocode API (Geoapify proxy)
