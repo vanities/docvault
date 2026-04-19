@@ -143,6 +143,7 @@ import { handleMileageRoutes } from './routes/mileage.js';
 import { handleGoldRoutes } from './routes/gold.js';
 import { handlePropertyRoutes } from './routes/property.js';
 import { handleIncomeRoutes } from './routes/income.js';
+import { handleLiabilityRoutes } from './routes/liabilities.js';
 import { handleAccountAnnotationRoutes } from './routes/account-annotations.js';
 import { handleMiscRoutes } from './routes/misc.js';
 import { handleHealthRoutes } from './routes/health.js';
@@ -1792,6 +1793,10 @@ async function handleRequest(req: Request): Promise<Response> {
   // income routes (additional recurring income sources)
   const incomeResponse = await handleIncomeRoutes(req, url, pathname);
   if (incomeResponse) return incomeResponse;
+
+  // liability routes (manual debts not tracked by SimpleFIN)
+  const liabilityResponse = await handleLiabilityRoutes(req, url, pathname);
+  if (liabilityResponse) return liabilityResponse;
 
   // account annotation routes (rates/types for SimpleFIN accounts)
   const annotationResponse = await handleAccountAnnotationRoutes(req, url, pathname);
