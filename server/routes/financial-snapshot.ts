@@ -22,6 +22,7 @@ import {
   loadSnapshotsForYear,
   loadAssets,
   loadIncomeData,
+  loadLiabilities,
   loadAccountAnnotations,
   fetchMetalSpotPrices,
   getEntityPath,
@@ -37,6 +38,7 @@ import type {
   PortfolioSnapshot,
   Contribution401k,
   IncomeSource,
+  LiabilityEntry,
   AccountAnnotation,
 } from '../data.js';
 
@@ -112,6 +114,7 @@ export async function handleFinancialSnapshotRoutes(
         reminders,
         portfolioSnapshots,
         incomeData,
+        liabilitiesData,
         accountAnnotations,
       ] = await Promise.all([
         loadConfig(),
@@ -126,6 +129,7 @@ export async function handleFinancialSnapshotRoutes(
         loadReminders(),
         loadSnapshotsForYear(parseInt(year)),
         loadIncomeData(),
+        loadLiabilities(),
         loadAccountAnnotations(),
       ]);
 
@@ -599,11 +603,56 @@ export async function handleFinancialSnapshotRoutes(
       const otherLoans = sumByCat(['personal-loan', 'student-loan']);
       const otherLiabilities = sumByCat(['other-liability']);
       const totalDebt = creditCardDebt + autoLoans + mortgageDebt + otherLoans + otherLiabilities;
-      const monthlyDebtService = categorizedAccounts.reduce(
+      const bankMonthlyDebtService = categorizedAccounts.reduce(
         (s, c) => s + (c.annotation?.monthlyPayment || 0),
         0
       );
+
+      // Manual liabilities (non-SimpleFIN: equipment, construction, private notes)
+      // Negative so they flow into totals like other debt balances.
+      const manualLiabilityBalance = liabilitiesData.entries.reduce(
+        (s, l) => s - (l.balance || 0),
+        0
+      );
+      const manualLiabilityMonthlyPayment = liabilitiesData.entries.reduce(
+        (s, l) => s + (l.monthlyPayment || 0),
+        0
+      );
+
+      // Property mortgages contribute monthly P&I even though they aren't in SimpleFIN.
+      const mortgageMonthlyPayment = propertySummary.entries.reduce(
+        (s, p) => s + (p.monthlyPayment || 0),
+        0
+      );
+
+      const monthlyDebtService =
+        bankMonthlyDebtService + manualLiabilityMonthlyPayment + mortgageMonthlyPayment;
       const bankTotal = liquidCash + totalDebt;
+
+      // Income qualifying for DTI — sum of monthly-equivalent income sources.
+      // VA disability is grossed up 25% (industry-standard non-taxable gross-up).
+      const qualifyingMonthlyIncome = incomeData.sources.reduce((sum, s) => {
+        let monthly: number;
+        switch (s.frequency) {
+          case 'weekly':
+            monthly = (s.amount * 52) / 12;
+            break;
+          case 'biweekly':
+            monthly = (s.amount * 26) / 12;
+            break;
+          case 'quarterly':
+            monthly = s.amount / 3;
+            break;
+          case 'annually':
+            monthly = s.amount / 12;
+            break;
+          default:
+            monthly = s.amount;
+        }
+        return sum + (s.taxable ? monthly : monthly * 1.25);
+      }, 0);
+      const dtiRatio =
+        qualifyingMonthlyIncome > 0 ? monthlyDebtService / qualifyingMonthlyIncome : null;
 
       const portfolioSummary = {
         brokerage: brokerTotal,
@@ -617,14 +666,21 @@ export async function handleFinancialSnapshotRoutes(
         mortgageDebt,
         otherLoans,
         otherLiabilities,
-        totalDebt,
+        manualLiabilities: manualLiabilityBalance,
+        totalDebt: totalDebt + manualLiabilityBalance,
+        bankMonthlyDebtService,
+        manualLiabilityMonthlyPayment,
+        mortgageMonthlyPayment,
         monthlyDebtService,
+        qualifyingMonthlyIncome,
+        dtiRatio,
         totalNetWorth:
           brokerTotal +
           cryptoTotal +
           goldSummary.totalValue +
           propertySummary.totalEquity +
-          bankTotal,
+          bankTotal +
+          manualLiabilityBalance,
       };
 
       // ── Tax Summary + Form 2210 (using centralized analytics) ──────
@@ -1551,6 +1607,49 @@ export async function handleFinancialSnapshotRoutes(
             }
           }, 0);
           lines.push(`| **Monthly Total** | **${fmt(monthlyTotal)}** | | | |`);
+          lines.push('');
+        }
+
+        // Additional Debts (manual liabilities — not in SimpleFIN)
+        if (liabilitiesData.entries.length > 0) {
+          lines.push('## Additional Debts');
+          lines.push('| Name | Type | Balance | Rate | Payment/mo | Payoff |');
+          lines.push('|------|------|---------|------|-----------|--------|');
+          for (const l of liabilitiesData.entries) {
+            const rate = `${(l.rate * 100).toFixed(2)}%`;
+            const payoff = l.payoffDate || '—';
+            lines.push(
+              `| ${l.name}${l.lender ? ` (${l.lender})` : ''} | ${l.type} | ${fmt(l.balance)} | ${rate} | ${fmt(l.monthlyPayment)} | ${payoff} |`
+            );
+          }
+          const totalBal = liabilitiesData.entries.reduce((s, l) => s + l.balance, 0);
+          const totalPmt = liabilitiesData.entries.reduce((s, l) => s + l.monthlyPayment, 0);
+          lines.push(`| **Total** | | **${fmt(totalBal)}** | | **${fmt(totalPmt)}** | |`);
+          lines.push('');
+        }
+
+        // DTI Analysis (always shown if we have debt service or qualifying income)
+        if (monthlyDebtService > 0 || qualifyingMonthlyIncome > 0) {
+          lines.push('## Debt-to-Income (DTI)');
+          lines.push('| Component | Amount |');
+          lines.push('|-----------|--------|');
+          if (bankMonthlyDebtService > 0)
+            lines.push(`| Bank loans (auto, CC minimums) | ${fmt(bankMonthlyDebtService)}/mo |`);
+          if (mortgageMonthlyPayment > 0)
+            lines.push(`| Property mortgages | ${fmt(mortgageMonthlyPayment)}/mo |`);
+          if (manualLiabilityMonthlyPayment > 0)
+            lines.push(
+              `| Manual liabilities (equipment, etc.) | ${fmt(manualLiabilityMonthlyPayment)}/mo |`
+            );
+          lines.push(`| **Monthly Debt Service** | **${fmt(monthlyDebtService)}/mo** |`);
+          lines.push(
+            `| Qualifying monthly income (taxable + 1.25× non-taxable) | ${fmt(qualifyingMonthlyIncome)}/mo |`
+          );
+          if (dtiRatio != null) {
+            const pct = (dtiRatio * 100).toFixed(1);
+            const flag = dtiRatio > 0.43 ? ' — elevated' : dtiRatio > 0.36 ? ' (elevated)' : '';
+            lines.push(`| **DTI Ratio** | **${pct}%**${flag} |`);
+          }
           lines.push('');
         }
 

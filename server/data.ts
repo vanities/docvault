@@ -682,6 +682,7 @@ export const HEALTH_ANALYSIS_HISTORY_FILE = path.join(
 export const BROKER_CACHE_FILE = path.join(DATA_DIR, '.docvault-broker-cache.json');
 export const SIMPLEFIN_CACHE_FILE = path.join(DATA_DIR, '.docvault-simplefin-cache.json');
 export const INCOME_FILE = path.join(DATA_DIR, '.docvault-income.json');
+export const LIABILITIES_FILE = path.join(DATA_DIR, '.docvault-liabilities.json');
 export const ACCOUNT_ANNOTATIONS_FILE = path.join(DATA_DIR, '.docvault-account-annotations.json');
 
 export interface PortfolioSnapshot {
@@ -1078,6 +1079,55 @@ export async function loadIncomeData(): Promise<IncomeData> {
 
 export async function saveIncomeData(data: IncomeData): Promise<void> {
   await fs.writeFile(INCOME_FILE, JSON.stringify(data, null, 2));
+}
+
+// ============================================================================
+// Manual Liabilities (non-SimpleFIN debts — equipment loans, private notes, etc.)
+// ============================================================================
+
+export type LiabilityType =
+  | 'equipment-loan'
+  | 'auto-loan'
+  | 'personal-loan'
+  | 'student-loan'
+  | 'mortgage'
+  | 'construction-loan'
+  | 'credit-line'
+  | 'other';
+
+export interface LiabilityEntry {
+  id: string;
+  name: string;
+  lender?: string;
+  type: LiabilityType;
+  originalBalance?: number;
+  balance: number;
+  rate: number;
+  monthlyPayment: number;
+  termMonths?: number;
+  startDate?: string;
+  payoffDate?: string;
+  entity?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface LiabilitiesData {
+  entries: LiabilityEntry[];
+}
+
+export async function loadLiabilities(): Promise<LiabilitiesData> {
+  try {
+    const content = await fs.readFile(LIABILITIES_FILE, 'utf-8');
+    const data = JSON.parse(content);
+    return { entries: data.entries || [] };
+  } catch {
+    return { entries: [] };
+  }
+}
+
+export async function saveLiabilities(data: LiabilitiesData): Promise<void> {
+  await fs.writeFile(LIABILITIES_FILE, JSON.stringify(data, null, 2));
 }
 
 // ============================================================================

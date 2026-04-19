@@ -31,6 +31,7 @@ export type NavView =
   | 'gold'
   | 'property'
   | 'income'
+  | 'debts'
   | 'quant'
   | 'strategy'
   | 'health'
@@ -241,6 +242,7 @@ export function AppProvider({ children }: AppProviderProps) {
     'federal-tax',
     'property',
     'income',
+    'debts',
     'quant',
     'strategy',
     'health',

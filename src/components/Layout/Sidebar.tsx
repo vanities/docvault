@@ -18,6 +18,7 @@ import {
   Car,
   Check,
   Coins,
+  CreditCard,
   MapPin,
   Receipt,
   Scale,
@@ -644,6 +645,16 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               icon={MapPin}
               activeColor="bg-emerald-500/10"
               activeTextColor="text-emerald-500"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
+            <NavButton
+              view="debts"
+              label="Debts"
+              icon={CreditCard}
+              activeColor="bg-rose-500/10"
+              activeTextColor="text-rose-400"
               activeView={activeView}
               isProcessing={isProcessing}
               onClick={handleViewClick}
