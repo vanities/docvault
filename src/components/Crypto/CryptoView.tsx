@@ -26,6 +26,13 @@ import { Money } from '../common/Money';
 
 const TOP_N = 5;
 
+/** Map of `"<sourceId>::<ASSET>"` → user-set APY (whole-number percent, e.g. 4.0 = 4%). */
+type YieldMap = Record<string, number>;
+
+function yieldKey(sourceId: string, asset: string): string {
+  return `${sourceId}::${asset.toUpperCase()}`;
+}
+
 function timeAgo(isoStr: string): string {
   const diffSec = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
   if (diffSec < 5) return 'just now';
@@ -82,12 +89,83 @@ const ASSET_TEXT_COLORS = [
 
 const DEAD_TOKENS = new Set(['MIR', 'RAD', 'SOS', 'AIDOGE', 'DOS', 'ICE', 'POLY']);
 
+/**
+ * Inline APY editor — tiny input styled like a pill. Empty/invalid input
+ * clears the override (null commit). Commits only on blur / Enter so every
+ * keystroke doesn't hit the server.
+ */
+function YieldEditor({
+  apy,
+  onCommit,
+}: {
+  apy: number | undefined;
+  onCommit: (next: number | null) => void | Promise<void>;
+}) {
+  const [draft, setDraft] = useState(apy == null ? '' : String(apy));
+
+  // Reset draft when the source-of-truth changes from elsewhere
+  // (e.g. optimistic revert after a failed save).
+  useEffect(() => {
+    setDraft(apy == null ? '' : String(apy));
+  }, [apy]);
+
+  const commit = () => {
+    const trimmed = draft.trim();
+    if (trimmed === '' || trimmed === '0' || trimmed === '0%') {
+      if (apy != null) void onCommit(null);
+      return;
+    }
+    const parsed = parseFloat(trimmed.replace('%', ''));
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setDraft(apy == null ? '' : String(apy));
+      return;
+    }
+    if (parsed !== apy) void onCommit(parsed);
+  };
+
+  const hasValue = apy != null && apy > 0;
+
+  return (
+    <div
+      className={`flex items-center rounded px-1.5 border text-[11px] font-mono transition-colors ${
+        hasValue
+          ? 'border-emerald-500/30 bg-emerald-500/5'
+          : 'border-border/40 bg-transparent opacity-50 hover:opacity-100'
+      }`}
+    >
+      <input
+        type="text"
+        inputMode="decimal"
+        value={draft}
+        placeholder="APY"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            (e.target as HTMLInputElement).blur();
+          } else if (e.key === 'Escape') {
+            setDraft(apy == null ? '' : String(apy));
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        className="w-10 bg-transparent outline-none text-center tabular-nums text-surface-950 placeholder:text-surface-500"
+      />
+      <span className={hasValue ? 'text-emerald-500' : 'text-surface-500'}>%</span>
+    </div>
+  );
+}
+
 function SourceCard({
   source,
   onRefresh,
+  yields,
+  onSetYield,
 }: {
   source: CryptoSourceBalance;
   onRefresh: (sourceId: string) => void;
+  yields: YieldMap;
+  onSetYield: (asset: string, apy: number | null) => void | Promise<void>;
 }) {
   const isExchange = source.sourceType === 'exchange';
   const [refreshing, setRefreshing] = useState(false);
@@ -95,6 +173,15 @@ function SourceCard({
   const sortedBalances = [...source.balances].sort((a, b) => (b.usdValue || 0) - (a.usdValue || 0));
   const visibleBalances = expanded ? sortedBalances : sortedBalances.slice(0, TOP_N);
   const hasMore = sortedBalances.length > TOP_N;
+
+  // Sum of annual yield across ALL holdings in this source (not just the
+  // currently-visible top-N). Only counted when a yield has been set AND the
+  // balance has a USD value — zero-yield or value-less rows contribute nothing.
+  const totalAnnualYieldUsd = sortedBalances.reduce((sum, b) => {
+    const apy = yields[yieldKey(source.sourceId, b.asset)];
+    if (!apy || !b.usdValue) return sum;
+    return sum + (b.usdValue * apy) / 100;
+  }, 0);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -156,29 +243,46 @@ function SourceCard({
       {source.balances.length > 0 && (
         <div className="border-t border-border">
           <div className="px-5">
-            {visibleBalances.map((balance) => (
-              <div
-                key={balance.asset}
-                className="flex items-center justify-between py-2.5 border-b border-border/30 last:border-0"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-[13px] font-mono font-bold text-surface-800">
-                    {balance.asset}
-                  </span>
-                  {DEAD_TOKENS.has(balance.asset) && (
-                    <span className="text-[9px] px-1 py-0.5 rounded bg-red-500/10 text-red-400 font-medium">
-                      defunct
+            {visibleBalances.map((balance) => {
+              const apy = yields[yieldKey(source.sourceId, balance.asset)];
+              const annualUsd = apy && balance.usdValue ? (balance.usdValue * apy) / 100 : null;
+              return (
+                <div
+                  key={balance.asset}
+                  className="flex items-center justify-between py-2.5 border-b border-border/30 last:border-0 gap-3"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[13px] font-mono font-bold text-surface-800">
+                      {balance.asset}
                     </span>
-                  )}
-                  <span className="text-[11px] text-surface-500 font-mono">
-                    <Money>{formatAmount(balance.amount, balance.asset)}</Money>
-                  </span>
+                    {DEAD_TOKENS.has(balance.asset) && (
+                      <span className="text-[9px] px-1 py-0.5 rounded bg-red-500/10 text-red-400 font-medium">
+                        defunct
+                      </span>
+                    )}
+                    <span className="text-[11px] text-surface-500 font-mono truncate">
+                      <Money>{formatAmount(balance.amount, balance.asset)}</Money>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <YieldEditor apy={apy} onCommit={(next) => onSetYield(balance.asset, next)} />
+                    <div className="text-right min-w-[88px]">
+                      <div className="text-[13px] text-surface-950 font-medium leading-tight">
+                        {balance.usdValue ? <Money>{formatUsd(balance.usdValue)}</Money> : '--'}
+                      </div>
+                      {annualUsd !== null && (
+                        <div
+                          className="text-[10px] text-emerald-500 font-mono leading-tight"
+                          title={`${apy}% APY × ${formatUsd(balance.usdValue ?? 0)}`}
+                        >
+                          +<Money>{formatUsd(annualUsd)}</Money>/yr
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <span className="text-[13px] text-surface-950 font-medium">
-                  {balance.usdValue ? <Money>{formatUsd(balance.usdValue)}</Money> : '--'}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
           {hasMore && (
             <Button
@@ -199,6 +303,16 @@ function SourceCard({
                 </>
               )}
             </Button>
+          )}
+          {totalAnnualYieldUsd > 0 && (
+            <div className="border-t border-border/40 px-5 py-2 flex items-center justify-between bg-emerald-500/[0.03]">
+              <span className="text-[11px] text-surface-600 uppercase tracking-wider">
+                Passive income
+              </span>
+              <span className="text-[12px] font-mono font-semibold text-emerald-500">
+                +<Money>{formatUsd(totalAnnualYieldUsd)}</Money>/yr
+              </span>
+            </div>
           )}
         </div>
       )}
@@ -274,6 +388,7 @@ let cachedPortfolio: CryptoPortfolio | null = null;
 
 export function CryptoView() {
   const [portfolio, setPortfolio] = useState<CryptoPortfolio | null>(cachedPortfolio);
+  const [yields, setYields] = useState<YieldMap>({});
   const [isLoading, setIsLoading] = useState(!cachedPortfolio);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -473,6 +588,19 @@ export function CryptoView() {
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) setSnapshots(data);
+      })
+      .catch(() => {});
+
+    // Load yield overlay — APYs per (source, asset) set by the user.
+    void fetch(`${API_BASE}/crypto/yields`)
+      .then((r) => r.json())
+      .then((data: { entries?: Record<string, { yieldApy: number }> }) => {
+        if (!data.entries) return;
+        const m: YieldMap = {};
+        for (const [k, v] of Object.entries(data.entries)) {
+          m[k] = v.yieldApy;
+        }
+        setYields(m);
       })
       .catch(() => {});
 
@@ -848,7 +976,44 @@ export function CryptoView() {
           <h3 className="text-[14px] font-semibold text-surface-950 mb-3">By Source</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {portfolio?.sources.map((source) => (
-              <SourceCard key={source.sourceId} source={source} onRefresh={refreshSource} />
+              <SourceCard
+                key={source.sourceId}
+                source={source}
+                onRefresh={refreshSource}
+                yields={yields}
+                onSetYield={async (asset, apy) => {
+                  const key = yieldKey(source.sourceId, asset);
+                  // Optimistic local update — revert on failure.
+                  setYields((prev) => {
+                    const next = { ...prev };
+                    if (apy === null) delete next[key];
+                    else next[key] = apy;
+                    return next;
+                  });
+                  try {
+                    const res = await fetch(
+                      `${API_BASE}/crypto/yields/${encodeURIComponent(source.sourceId)}/${encodeURIComponent(asset)}`,
+                      {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ yieldApy: apy }),
+                      }
+                    );
+                    if (!res.ok) throw new Error(`${res.status}`);
+                  } catch {
+                    // Best-effort revert — if the server rejects, reload from truth.
+                    void fetch(`${API_BASE}/crypto/yields`)
+                      .then((r) => r.json())
+                      .then((data: { entries?: Record<string, { yieldApy: number }> }) => {
+                        if (!data.entries) return;
+                        const m: YieldMap = {};
+                        for (const [k, v] of Object.entries(data.entries)) m[k] = v.yieldApy;
+                        setYields(m);
+                      })
+                      .catch(() => {});
+                  }
+                }}
+              />
             ))}
           </div>
         </>
