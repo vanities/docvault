@@ -202,19 +202,6 @@ export function HealthNutritionView() {
     [api, selectedHealthPersonId, load]
   );
 
-  const handleGenerateResearch = useCallback(
-    async (entry: NutritionEntry) => {
-      if (!selectedHealthPersonId) return;
-      try {
-        await api.generateResearch(selectedHealthPersonId, entry.id);
-        await load();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    },
-    [api, selectedHealthPersonId, load]
-  );
-
   const handleDoseOrNotesChange = useCallback(
     async (
       entry: NutritionEntry,
@@ -374,7 +361,6 @@ export function HealthNutritionView() {
           onDelete={() => handleDelete(selectedEntry)}
           onReparse={() => handleReparse(selectedEntry)}
           onSave={(u) => handleDoseOrNotesChange(selectedEntry, u)}
-          onGenerateResearch={() => handleGenerateResearch(selectedEntry)}
         />
       )}
     </div>
@@ -860,7 +846,6 @@ function DetailModal({
   onDelete,
   onReparse,
   onSave,
-  onGenerateResearch,
 }: {
   entry: NutritionEntry;
   imageUrl: string;
@@ -869,7 +854,6 @@ function DetailModal({
   onDelete: () => void;
   onReparse: () => Promise<void> | void;
   onSave: (updates: { dose?: NutritionDose | null; notes?: string | null }) => void;
-  onGenerateResearch: () => Promise<void> | void;
 }) {
   const [doseAmount, setDoseAmount] = useState<string>(entry.dose?.amount?.toString() ?? '');
   const [doseUnit, setDoseUnit] = useState<string>(entry.dose?.unit ?? '');
@@ -1094,9 +1078,9 @@ function DetailModal({
           </div>
         </div>
 
-        {/* Research panel — AI-generated evidence + structured citations */}
+        {/* Research panel — evidence + structured citations (populated via PATCH) */}
         <div className="px-6 md:px-8 pb-2">
-          <ResearchPanel entry={entry} onGenerateResearch={onGenerateResearch} />
+          <ResearchPanel entry={entry} />
         </div>
 
         {/* Parsed facts panel */}
@@ -1239,82 +1223,42 @@ function PassportDivider({ label }: { label: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Research panel — collapsible, read-only. Renders AI-generated evidence
-// prose (markdown) + structured citations with clickable PubMed links.
-// "Generate with AI" button hits the /generate-research endpoint which
-// calls Claude with the product info and auto-saves the result.
+// Research panel — collapsible, read-only display of evidence prose
+// (markdown) + structured citations with clickable PubMed links. Research
+// is curated externally (typically via a conversation with an AI assistant
+// that has web-search tools) and persisted through the existing PATCH
+// endpoint — this panel never invokes an AI itself.
 // ---------------------------------------------------------------------------
 
-function ResearchPanel({
-  entry,
-  onGenerateResearch,
-}: {
-  entry: NutritionEntry;
-  onGenerateResearch: () => Promise<void> | void;
-}) {
+function ResearchPanel({ entry }: { entry: NutritionEntry }) {
   const hasResearch = !!entry.research && entry.research.trim().length > 0;
   const citations = entry.citations ?? [];
   const [open, setOpen] = useState<boolean>(hasResearch);
-  const [generating, setGenerating] = useState<boolean>(false);
-
-  const handleGenerate = useCallback(async () => {
-    setGenerating(true);
-    try {
-      await onGenerateResearch();
-      setOpen(true);
-    } finally {
-      setGenerating(false);
-    }
-  }, [onGenerateResearch]);
 
   return (
     <div className="rounded-xl border border-surface-200/50 bg-surface-50/40">
-      {/* Header — clickable to toggle; shows state + CTA */}
-      <div className="flex items-center gap-3 px-4 py-3">
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="flex items-center gap-2 text-left flex-1 min-w-0 group"
-          aria-expanded={open}
-        >
-          <BookOpen className="w-4 h-4 text-accent-400 shrink-0" />
-          <span className="text-xs font-semibold text-surface-800 uppercase tracking-[0.18em]">
-            Evidence & research
+      {/* Header — clickable to toggle */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 text-left w-full px-4 py-3"
+        aria-expanded={open}
+      >
+        <BookOpen className="w-4 h-4 text-accent-400 shrink-0" />
+        <span className="text-xs font-semibold text-surface-800 uppercase tracking-[0.18em]">
+          Evidence &amp; research
+        </span>
+        {hasResearch ? (
+          <span className="text-xs text-surface-600">
+            · {citations.length} reference{citations.length === 1 ? '' : 's'}
           </span>
-          {hasResearch ? (
-            <span className="text-xs text-surface-600">
-              · {citations.length} reference{citations.length === 1 ? '' : 's'}
-            </span>
-          ) : (
-            <span className="text-xs text-surface-600 italic">· not yet generated</span>
-          )}
-          <ChevronDown
-            className={`w-4 h-4 text-surface-600 ml-auto transition-transform ${open ? 'rotate-180' : ''}`}
-          />
-        </button>
-        <button
-          type="button"
-          onClick={handleGenerate}
-          disabled={generating}
-          className={`shrink-0 px-3 py-1.5 text-xs rounded-lg flex items-center gap-1.5 transition-colors ${
-            hasResearch
-              ? 'text-surface-700 hover:text-surface-950 border border-surface-200/50'
-              : 'text-accent-400 hover:text-accent-300 border border-accent-400/40 bg-accent-400/5'
-          } disabled:opacity-50`}
-          title={
-            hasResearch
-              ? 'Regenerate research (overwrites current)'
-              : 'Have Claude generate evidence + citations'
-          }
-        >
-          {generating ? (
-            <Loader2 className="w-3 h-3 animate-spin" />
-          ) : (
-            <Sparkles className="w-3 h-3" />
-          )}
-          {generating ? 'Generating…' : hasResearch ? 'Regenerate' : 'Generate with AI'}
-        </button>
-      </div>
+        ) : (
+          <span className="text-xs text-surface-600 italic">· not yet added</span>
+        )}
+        <ChevronDown
+          className={`w-4 h-4 text-surface-600 ml-auto transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
 
       {/* Body — research markdown + references, visible only when open */}
       {open && (
@@ -1376,11 +1320,30 @@ function ResearchPanel({
               )}
             </>
           ) : (
-            <p className="text-xs text-surface-600 italic">
-              No research generated yet. Click "Generate with AI" to have Claude draft
-              evidence-backed research with structured citations based on this product's parsed
-              ingredients.
-            </p>
+            <div className="text-xs text-surface-700 space-y-2 italic">
+              <p>
+                No research attached yet. Ask an AI assistant with web-search tools (e.g. Claude
+                Code or another chat assistant) to research this product — have it cite real PubMed
+                IDs and write up the evidence, then PATCH the entry with a{' '}
+                <code className="not-italic">research</code> markdown string plus a{' '}
+                <code className="not-italic">citations</code> array.
+              </p>
+              <pre className="not-italic bg-surface-950/5 border border-surface-200/40 rounded-md px-2 py-1.5 text-[11px] font-mono text-surface-700 overflow-x-auto">
+                {`PATCH /api/health/${entry.personId}/nutrition/${entry.id}
+{
+  "research": "**Why:** ...\\n**Evidence:** ...",
+  "citations": [
+    { "id": "author-year", "pmid": "...", "authors": "...",
+      "year": 2024, "title": "...", "journal": "...",
+      "findings": "..." }
+  ]
+}`}
+              </pre>
+              <p className="not-italic text-[11px] text-surface-600">
+                Research persists on the entry and surfaces in the health-snapshot markdown with{' '}
+                <code>?includeResearch=true</code>.
+              </p>
+            </div>
           )}
         </div>
       )}
