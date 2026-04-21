@@ -33,7 +33,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  BookOpen,
   Check,
+  ChevronDown,
   Loader2,
   Pill,
   RefreshCw,
@@ -47,6 +49,8 @@ import {
   X,
   Camera,
 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -190,6 +194,19 @@ export function HealthNutritionView() {
       if (!selectedHealthPersonId) return;
       try {
         await api.reparseNutrition(selectedHealthPersonId, entry.id);
+        await load();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [api, selectedHealthPersonId, load]
+  );
+
+  const handleGenerateResearch = useCallback(
+    async (entry: NutritionEntry) => {
+      if (!selectedHealthPersonId) return;
+      try {
+        await api.generateResearch(selectedHealthPersonId, entry.id);
         await load();
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -357,6 +374,7 @@ export function HealthNutritionView() {
           onDelete={() => handleDelete(selectedEntry)}
           onReparse={() => handleReparse(selectedEntry)}
           onSave={(u) => handleDoseOrNotesChange(selectedEntry, u)}
+          onGenerateResearch={() => handleGenerateResearch(selectedEntry)}
         />
       )}
     </div>
@@ -689,6 +707,15 @@ function LabelCard({
               Parse failed
             </div>
           )}
+          {entry.citations && entry.citations.length > 0 && (
+            <div
+              className="absolute top-2 right-2 px-2 py-0.5 bg-surface-950/80 backdrop-blur-sm text-accent-400 text-[10px] font-semibold rounded-md flex items-center gap-1"
+              title={`${entry.citations.length} research citation${entry.citations.length === 1 ? '' : 's'} attached`}
+            >
+              <BookOpen className="w-3 h-3" />
+              {entry.citations.length}
+            </div>
+          )}
         </button>
 
         <div className="p-4 space-y-3 flex-1 flex flex-col">
@@ -833,6 +860,7 @@ function DetailModal({
   onDelete,
   onReparse,
   onSave,
+  onGenerateResearch,
 }: {
   entry: NutritionEntry;
   imageUrl: string;
@@ -841,6 +869,7 @@ function DetailModal({
   onDelete: () => void;
   onReparse: () => Promise<void> | void;
   onSave: (updates: { dose?: NutritionDose | null; notes?: string | null }) => void;
+  onGenerateResearch: () => Promise<void> | void;
 }) {
   const [doseAmount, setDoseAmount] = useState<string>(entry.dose?.amount?.toString() ?? '');
   const [doseUnit, setDoseUnit] = useState<string>(entry.dose?.unit ?? '');
@@ -1065,6 +1094,11 @@ function DetailModal({
           </div>
         </div>
 
+        {/* Research panel — AI-generated evidence + structured citations */}
+        <div className="px-6 md:px-8 pb-2">
+          <ResearchPanel entry={entry} onGenerateResearch={onGenerateResearch} />
+        </div>
+
         {/* Parsed facts panel */}
         {p && (
           <div className="px-6 md:px-8 pb-8 space-y-6">
@@ -1200,6 +1234,156 @@ function PassportDivider({ label }: { label: string }) {
         {label}
       </span>
       <div className="flex-1 h-px bg-surface-200/50" />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Research panel — collapsible, read-only. Renders AI-generated evidence
+// prose (markdown) + structured citations with clickable PubMed links.
+// "Generate with AI" button hits the /generate-research endpoint which
+// calls Claude with the product info and auto-saves the result.
+// ---------------------------------------------------------------------------
+
+function ResearchPanel({
+  entry,
+  onGenerateResearch,
+}: {
+  entry: NutritionEntry;
+  onGenerateResearch: () => Promise<void> | void;
+}) {
+  const hasResearch = !!entry.research && entry.research.trim().length > 0;
+  const citations = entry.citations ?? [];
+  const [open, setOpen] = useState<boolean>(hasResearch);
+  const [generating, setGenerating] = useState<boolean>(false);
+
+  const handleGenerate = useCallback(async () => {
+    setGenerating(true);
+    try {
+      await onGenerateResearch();
+      setOpen(true);
+    } finally {
+      setGenerating(false);
+    }
+  }, [onGenerateResearch]);
+
+  return (
+    <div className="rounded-xl border border-surface-200/50 bg-surface-50/40">
+      {/* Header — clickable to toggle; shows state + CTA */}
+      <div className="flex items-center gap-3 px-4 py-3">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex items-center gap-2 text-left flex-1 min-w-0 group"
+          aria-expanded={open}
+        >
+          <BookOpen className="w-4 h-4 text-accent-400 shrink-0" />
+          <span className="text-xs font-semibold text-surface-800 uppercase tracking-[0.18em]">
+            Evidence & research
+          </span>
+          {hasResearch ? (
+            <span className="text-xs text-surface-600">
+              · {citations.length} reference{citations.length === 1 ? '' : 's'}
+            </span>
+          ) : (
+            <span className="text-xs text-surface-600 italic">· not yet generated</span>
+          )}
+          <ChevronDown
+            className={`w-4 h-4 text-surface-600 ml-auto transition-transform ${open ? 'rotate-180' : ''}`}
+          />
+        </button>
+        <button
+          type="button"
+          onClick={handleGenerate}
+          disabled={generating}
+          className={`shrink-0 px-3 py-1.5 text-xs rounded-lg flex items-center gap-1.5 transition-colors ${
+            hasResearch
+              ? 'text-surface-700 hover:text-surface-950 border border-surface-200/50'
+              : 'text-accent-400 hover:text-accent-300 border border-accent-400/40 bg-accent-400/5'
+          } disabled:opacity-50`}
+          title={
+            hasResearch
+              ? 'Regenerate research (overwrites current)'
+              : 'Have Claude generate evidence + citations'
+          }
+        >
+          {generating ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : (
+            <Sparkles className="w-3 h-3" />
+          )}
+          {generating ? 'Generating…' : hasResearch ? 'Regenerate' : 'Generate with AI'}
+        </button>
+      </div>
+
+      {/* Body — research markdown + references, visible only when open */}
+      {open && (
+        <div className="px-4 pb-4 pt-1 border-t border-surface-200/40">
+          {hasResearch ? (
+            <>
+              <div className="prose prose-sm prose-surface max-w-none text-sm text-surface-800 [&_strong]:text-surface-950 [&_a]:text-accent-400 [&_ul]:my-2 [&_li]:my-0.5 [&_p]:my-2">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.research ?? ''}</ReactMarkdown>
+              </div>
+              {citations.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-surface-200/40">
+                  <div className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.22em] mb-2">
+                    References
+                  </div>
+                  <ol className="text-xs text-surface-700 space-y-1.5 list-decimal list-outside ml-5">
+                    {citations.map((c, i) => (
+                      <li key={c.id || i} className="pl-1">
+                        <span className="text-surface-800">{c.authors}</span>{' '}
+                        <span className="text-surface-600">{c.year}.</span>{' '}
+                        <em className="text-surface-700">{c.journal}</em>.{' '}
+                        {c.pmid && (
+                          <a
+                            href={`https://pubmed.ncbi.nlm.nih.gov/${c.pmid}/`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-accent-400 hover:text-accent-300 underline-offset-2 hover:underline"
+                          >
+                            PMID {c.pmid}
+                          </a>
+                        )}
+                        {!c.pmid && c.doi && (
+                          <a
+                            href={`https://doi.org/${c.doi}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-accent-400 hover:text-accent-300 underline-offset-2 hover:underline"
+                          >
+                            DOI {c.doi}
+                          </a>
+                        )}
+                        {!c.pmid && !c.doi && c.url && (
+                          <a
+                            href={c.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-accent-400 hover:text-accent-300 underline-offset-2 hover:underline"
+                          >
+                            link
+                          </a>
+                        )}
+                        . <span className="text-surface-800">{c.title}</span>.
+                        {c.findings && (
+                          <span className="text-surface-600 italic"> {c.findings}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-surface-600 italic">
+              No research generated yet. Click "Generate with AI" to have Claude draft
+              evidence-backed research with structured citations based on this product's parsed
+              ingredients.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
