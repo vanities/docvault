@@ -607,6 +607,20 @@ export interface NutritionDose {
   timeOfDay?: 'morning' | 'midday' | 'evening' | 'bedtime' | 'pre-workout' | 'post-workout';
 }
 
+export interface NutritionCitation {
+  /** Short ref id like "dabos-2010" — stable across edits so prose can reference it. */
+  id: string;
+  pmid?: string;
+  doi?: string;
+  authors: string;
+  year: number;
+  title: string;
+  journal: string;
+  /** One-line key finding — renders inline in the References list. */
+  findings?: string;
+  url?: string;
+}
+
 export interface NutritionEntry {
   id: string;
   personId: string;
@@ -619,7 +633,12 @@ export interface NutritionEntry {
   parseError: string | null;
   status: NutritionStatus;
   dose?: NutritionDose;
+  /** Short, personal, mutable — fits in the snapshot table row. */
   notes?: string;
+  /** Evidence-backed prose (markdown). Rendered only when snapshot called with ?includeResearch=true. */
+  research?: string;
+  /** Structured citations referenced by the research prose. */
+  citations?: NutritionCitation[];
   lastUpdated: string;
 }
 
