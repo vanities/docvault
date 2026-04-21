@@ -8,8 +8,9 @@
 //   GET    /api/health/:personId/nutrition/:id/image      — fetch the raw label image (PNG/JPG)
 //   PATCH  /api/health/:personId/nutrition/:id            — update status, dose, notes, research, citations, or parsed fields
 //     body: partial { status?, dose?, notes?, research?, citations?, parsed? }
-//   POST   /api/health/:personId/nutrition/:id/reparse    — re-run the parser against the stored image
-//   DELETE /api/health/:personId/nutrition/:id            — delete entry + image
+//   POST   /api/health/:personId/nutrition/:id/reparse            — re-run the parser against the stored image
+//   POST   /api/health/:personId/nutrition/:id/generate-research   — call Claude to generate research + citations for this supplement
+//   DELETE /api/health/:personId/nutrition/:id                     — delete entry + image
 //
 // Storage:
 //   data/health/<personId>/nutrition/<id>.<ext>           — raw label image (png/jpg)
@@ -28,6 +29,7 @@ import {
   NUTRITION_PARSER_VERSION,
   type ParsedNutritionLabel,
 } from '../parsers/nutrition-label.js';
+import { generateSupplementResearch } from '../parsers/research-generator.js';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('Nutrition');
@@ -316,7 +318,8 @@ export async function handleNutritionRoutes(
   // PATCH /api/health/:personId/nutrition/:id — update fields
   // DELETE /api/health/:personId/nutrition/:id — remove
   // POST /api/health/:personId/nutrition/:id/reparse — re-run the parser
-  const idMatch = sub.match(/^\/([a-z0-9]+)(?:\/(image|reparse))?$/i);
+  // POST /api/health/:personId/nutrition/:id/generate-research — AI-generate research + citations
+  const idMatch = sub.match(/^\/([a-z0-9]+)(?:\/(image|reparse|generate-research))?$/i);
   if (idMatch) {
     const id = idMatch[1];
     const action = idMatch[2];
@@ -373,6 +376,33 @@ export async function handleNutritionRoutes(
       entry.lastUpdated = now;
       await saveHealthStore(store);
       return jsonResponse({ entry });
+    }
+
+    // POST /api/health/:personId/nutrition/:id/generate-research
+    if (action === 'generate-research' && req.method === 'POST') {
+      try {
+        const generated = await generateSupplementResearch({
+          productName: entry.parsed?.productName ?? null,
+          brandName: entry.parsed?.brandName ?? null,
+          category: entry.parsed?.category ?? null,
+          parsed: entry.parsed,
+        });
+        if (!generated) {
+          return jsonResponse(
+            { error: 'Claude returned no tool result. Try re-parsing the label first.' },
+            502
+          );
+        }
+        entry.research = generated.research || undefined;
+        entry.citations = generated.citations.length > 0 ? generated.citations : undefined;
+        entry.lastUpdated = new Date().toISOString();
+        await saveHealthStore(store);
+        return jsonResponse({ entry });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        log.error(`Research generation failed for ${key}: ${message}`);
+        return jsonResponse({ error: `Research generation failed: ${message}` }, 500);
+      }
     }
 
     // GET /api/health/:personId/nutrition/:id

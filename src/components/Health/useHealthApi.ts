@@ -274,7 +274,7 @@ export function useHealthApi() {
     []
   );
 
-  /** Nutrition: patch status/dose/notes/parsed fields. */
+  /** Nutrition: patch status/dose/notes/research/citations/parsed fields. */
   const updateNutrition = useCallback(
     async (
       personId: string,
@@ -283,6 +283,8 @@ export function useHealthApi() {
         status: 'considering' | 'active' | 'past' | 'never';
         dose: NutritionEntry['dose'] | null;
         notes: string | null;
+        research: string | null;
+        citations: NutritionEntry['citations'] | null;
         parsed: NutritionEntry['parsed'] | null;
       }>
     ): Promise<NutritionEntry> => {
@@ -303,6 +305,22 @@ export function useHealthApi() {
     async (personId: string, id: string): Promise<NutritionEntry> => {
       const res = await request<{ entry: NutritionEntry }>(
         `${API_BASE}/health/${personId}/nutrition/${id}/reparse`,
+        { method: 'POST' }
+      );
+      return res.entry;
+    },
+    []
+  );
+
+  /**
+   * Nutrition: call Claude to generate evidence-backed research + citations
+   * for this entry. Server auto-saves the result to entry.research +
+   * entry.citations and returns the updated entry.
+   */
+  const generateResearch = useCallback(
+    async (personId: string, id: string): Promise<NutritionEntry> => {
+      const res = await request<{ entry: NutritionEntry }>(
+        `${API_BASE}/health/${personId}/nutrition/${id}/generate-research`,
         { method: 'POST' }
       );
       return res.entry;
@@ -395,6 +413,7 @@ export function useHealthApi() {
       uploadNutritionLabel,
       updateNutrition,
       reparseNutrition,
+      generateResearch,
       deleteNutrition,
       nutritionImageUrl,
       listSickness,
@@ -418,6 +437,7 @@ export function useHealthApi() {
       uploadNutritionLabel,
       updateNutrition,
       reparseNutrition,
+      generateResearch,
       deleteNutrition,
       nutritionImageUrl,
       listSickness,
