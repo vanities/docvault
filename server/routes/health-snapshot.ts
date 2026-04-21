@@ -7,6 +7,7 @@
 //     &includeClinical=false               — skip FHIR clinical summary (default: true)
 //     &includeDNA=false                    — skip DNA results (default: true)
 //     &includeDaily=true                   — (json only) include full daily arrays (default: false)
+//     &includeResearch=true                — (md only) render evidence prose + citations per supplement (default: false)
 //
 // Mirrors server/routes/financial-snapshot.ts. Default format is `toon` — a
 // flat line-oriented format ~60% smaller than JSON when fed to an LLM.
@@ -217,6 +218,8 @@ function buildNutritionSurface(entries: NutritionEntry[]): NutritionSurface {
         category: p?.category ?? null,
         dose: e.dose,
         notes: e.notes ?? null,
+        research: e.research ?? null,
+        citations: e.citations,
         parseError: e.parseError,
         summary: {
           servingSize: p?.servingSize
@@ -369,6 +372,10 @@ interface NutritionSurface {
     category: string | null;
     dose: NutritionEntry['dose'];
     notes: string | null;
+    /** Evidence-backed prose (markdown). Only rendered in MD format when ?includeResearch=true. */
+    research: string | null;
+    /** Structured citations that back the research prose. */
+    citations: NutritionEntry['citations'];
     /** True if parsing failed or has never been attempted successfully. */
     parseError: string | null;
     /** Trimmed parsed label — servings, macros, vitamins+minerals+otherActive names only. */
@@ -405,6 +412,7 @@ export async function handleHealthSnapshotRoutes(
   const includeClinical = url.searchParams.get('includeClinical') !== 'false';
   const includeDNA = url.searchParams.get('includeDNA') !== 'false';
   const includeDaily = url.searchParams.get('includeDaily') === 'true';
+  const includeResearch = url.searchParams.get('includeResearch') === 'true';
 
   try {
     const [store, allReminders] = await Promise.all([loadHealthStore(), loadReminders()]);
@@ -572,7 +580,7 @@ export async function handleHealthSnapshotRoutes(
       });
     }
     if (format === 'md' || format === 'markdown') {
-      return new Response(renderMarkdown(snapshot), {
+      return new Response(renderMarkdown(snapshot, { includeResearch }), {
         headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
       });
     }
@@ -829,7 +837,10 @@ function renderToon(s: ReturnType<typeof packSnapshot>): string {
 // Markdown renderer — tables + prose for human reading
 // ---------------------------------------------------------------------------
 
-function renderMarkdown(s: ReturnType<typeof packSnapshot>): string {
+function renderMarkdown(
+  s: ReturnType<typeof packSnapshot>,
+  opts: { includeResearch?: boolean } = {}
+): string {
   const L: string[] = [];
   const n = (v: number | null | undefined, d = 1): string =>
     typeof v === 'number' && Number.isFinite(v) ? v.toFixed(d) : '—';
@@ -1194,6 +1205,36 @@ function renderMarkdown(s: ReturnType<typeof packSnapshot>): string {
           L.push(`| ${t.name} | ${t.total.toFixed(2)} | ${t.unit} | ${t.sources.join(', ')} |`);
         }
       }
+      // Evidence per supplement — only when ?includeResearch=true, only for entries
+      // that actually have research prose or a citations array populated.
+      if (opts.includeResearch) {
+        const withResearch = active.filter(
+          (e) =>
+            (e.research && e.research.trim().length > 0) || (e.citations && e.citations.length > 0)
+        );
+        if (withResearch.length > 0) {
+          L.push('');
+          L.push(`#### Evidence per supplement`);
+          for (const e of withResearch) {
+            const product = e.productName ?? '(unparsed)';
+            const brand = e.brandName ? ` (${e.brandName})` : '';
+            L.push('');
+            L.push(`##### ${product}${brand}`);
+            if (e.research && e.research.trim().length > 0) {
+              L.push('');
+              L.push(e.research.trim());
+            }
+            if (e.citations && e.citations.length > 0) {
+              L.push('');
+              L.push('**References:**');
+              e.citations.forEach((c, i) => {
+                const ref = formatCitation(c);
+                L.push(`${i + 1}. ${ref}`);
+              });
+            }
+          }
+        }
+      }
       L.push('');
     }
 
@@ -1254,6 +1295,26 @@ function formatDose(dose: NutritionEntry['dose']): string {
     else parts.push(dose.frequency);
   }
   if (dose.timeOfDay) parts.push(`@${dose.timeOfDay}`);
+  return parts.join(' ');
+}
+
+/**
+ * Render a structured citation as a Vancouver-ish markdown line.
+ * Prefers explicit url, then PMID (links to PubMed), then DOI (links to doi.org).
+ */
+function formatCitation(c: NonNullable<NutritionEntry['citations']>[number]): string {
+  const parts: string[] = [];
+  parts.push(`${c.authors} ${c.year}.`);
+  parts.push(`*${c.journal}*.`);
+  if (c.pmid) {
+    parts.push(`PMID [${c.pmid}](https://pubmed.ncbi.nlm.nih.gov/${c.pmid}/).`);
+  } else if (c.doi) {
+    parts.push(`DOI [${c.doi}](https://doi.org/${c.doi}).`);
+  } else if (c.url) {
+    parts.push(`[link](${c.url}).`);
+  }
+  parts.push(`${c.title}.`);
+  if (c.findings) parts.push(c.findings);
   return parts.join(' ');
 }
 

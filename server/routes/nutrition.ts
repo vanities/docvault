@@ -6,8 +6,8 @@
 //   GET    /api/health/:personId/nutrition                — list all entries for a person
 //   GET    /api/health/:personId/nutrition/:id            — get one parsed entry
 //   GET    /api/health/:personId/nutrition/:id/image      — fetch the raw label image (PNG/JPG)
-//   PATCH  /api/health/:personId/nutrition/:id            — update status, dose, notes, or parsed fields
-//     body: partial { status?, dose?, notes?, parsed? }
+//   PATCH  /api/health/:personId/nutrition/:id            — update status, dose, notes, research, citations, or parsed fields
+//     body: partial { status?, dose?, notes?, research?, citations?, parsed? }
 //   POST   /api/health/:personId/nutrition/:id/reparse    — re-run the parser against the stored image
 //   DELETE /api/health/:personId/nutrition/:id            — delete entry + image
 //
@@ -51,6 +51,20 @@ export interface NutritionDose {
   timeOfDay?: 'morning' | 'midday' | 'evening' | 'bedtime' | 'pre-workout' | 'post-workout';
 }
 
+export interface NutritionCitation {
+  /** Short ref id like "dabos-2010" — stable across edits so prose can reference it. */
+  id: string;
+  pmid?: string;
+  doi?: string;
+  authors: string;
+  year: number;
+  title: string;
+  journal: string;
+  /** One-line key finding — renders inline in the References list. */
+  findings?: string;
+  url?: string;
+}
+
 export interface NutritionEntry {
   id: string;
   personId: string;
@@ -66,7 +80,12 @@ export interface NutritionEntry {
   parseError: string | null;
   status: NutritionStatus;
   dose?: NutritionDose;
+  /** Short, personal, mutable — renders inline in the snapshot regimen table. */
   notes?: string;
+  /** Evidence-backed prose (markdown). Only renders when snapshot called with ?includeResearch=true. */
+  research?: string;
+  /** Structured citations referenced by the research prose. */
+  citations?: NutritionCitation[];
   lastUpdated: string;
 }
 
@@ -367,6 +386,8 @@ export async function handleNutritionRoutes(
         status: NutritionStatus;
         dose: NutritionDose | null;
         notes: string | null;
+        research: string | null;
+        citations: NutritionCitation[] | null;
         parsed: ParsedNutritionLabel | null;
       }>;
 
@@ -380,6 +401,12 @@ export async function handleNutritionRoutes(
       }
       if (body.notes !== undefined) {
         entry.notes = body.notes ?? undefined;
+      }
+      if (body.research !== undefined) {
+        entry.research = body.research ?? undefined;
+      }
+      if (body.citations !== undefined) {
+        entry.citations = body.citations ?? undefined;
       }
       if (body.parsed !== undefined) {
         // Allow manual correction of parsed fields — reviewer edits after auto-parse
