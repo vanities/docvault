@@ -56,6 +56,7 @@ import { Card } from '@/components/ui/card';
 import { API_BASE } from '../../constants';
 import { useAppContext } from '../../contexts/AppContext';
 import type { HealthPerson } from '../../hooks/useFileSystemServer';
+import { HealthAncestrySection } from './HealthAncestrySection';
 
 // ---------------------------------------------------------------------------
 // Types — kept in sync with server/parsers/dna-traits.ts DNAParseResult.
@@ -466,6 +467,11 @@ export function HealthDNAView() {
               {error}
             </p>
           )}
+          {/* Ancestry section works independently of raw DNA upload — users
+              can upload an ethnicity screenshot without genotype data first. */}
+          <div className="mt-8">
+            <HealthAncestrySection personId={selectedHealthPersonId} />
+          </div>
         </div>
       </div>
     );
@@ -525,6 +531,10 @@ export function HealthDNAView() {
         />
 
         <OverviewStrip results={results} metadata={status.metadata} />
+
+        {/* Ancestral origins — reads as "Part Two" context before the SNP
+            readings. Independent storage/upload from the raw DNA file above. */}
+        <HealthAncestrySection personId={selectedHealthPersonId} />
 
         <CaveatBlock results={results} />
 
