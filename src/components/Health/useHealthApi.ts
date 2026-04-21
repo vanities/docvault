@@ -312,22 +312,6 @@ export function useHealthApi() {
     []
   );
 
-  /**
-   * Nutrition: call Claude to generate evidence-backed research + citations
-   * for this entry. Server auto-saves the result to entry.research +
-   * entry.citations and returns the updated entry.
-   */
-  const generateResearch = useCallback(
-    async (personId: string, id: string): Promise<NutritionEntry> => {
-      const res = await request<{ entry: NutritionEntry }>(
-        `${API_BASE}/health/${personId}/nutrition/${id}/generate-research`,
-        { method: 'POST' }
-      );
-      return res.entry;
-    },
-    []
-  );
-
   /** Nutrition: delete a label + its image file. */
   const deleteNutrition = useCallback(async (personId: string, id: string): Promise<void> => {
     await request<{ ok: true }>(`${API_BASE}/health/${personId}/nutrition/${id}`, {
@@ -413,7 +397,6 @@ export function useHealthApi() {
       uploadNutritionLabel,
       updateNutrition,
       reparseNutrition,
-      generateResearch,
       deleteNutrition,
       nutritionImageUrl,
       listSickness,
@@ -437,7 +420,6 @@ export function useHealthApi() {
       uploadNutritionLabel,
       updateNutrition,
       reparseNutrition,
-      generateResearch,
       deleteNutrition,
       nutritionImageUrl,
       listSickness,
