@@ -148,6 +148,7 @@ import { handleAccountAnnotationRoutes } from './routes/account-annotations.js';
 import { handleMiscRoutes } from './routes/misc.js';
 import { handleHealthRoutes } from './routes/health.js';
 import { handleDNARoutes } from './routes/dna.js';
+import { handleAncestryRoutes } from './routes/ancestry.js';
 import { handleNutritionRoutes } from './routes/nutrition.js';
 import { handleSicknessRoutes } from './routes/sickness.js';
 import { handleHealthAnalysisRoutes } from './routes/health-analysis.js';
@@ -1808,6 +1809,12 @@ async function handleRequest(req: Request): Promise<Response> {
   // makes the routing intent explicit.
   const dnaResponse = await handleDNARoutes(req, url, pathname);
   if (dnaResponse) return dnaResponse;
+
+  // Ancestry routes — ethnicity-report screenshot/PDF uploads, vision-parsed
+  // to structured regions + journeys. Same encrypt-at-rest pattern as DNA;
+  // source image and parsed JSON both protected by the master key.
+  const ancestryResponse = await handleAncestryRoutes(req, url, pathname);
+  if (ancestryResponse) return ancestryResponse;
 
   // Nutrition routes — supplement/food label parsing + dose tracking.
   // Same registration pattern as DNA: the nutrition regex catches
