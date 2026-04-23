@@ -7,6 +7,7 @@
 // 2. Manual holdings — enter ticker + shares, prices fetched via Yahoo Finance.
 
 import { Snaptrade } from 'snaptrade-typescript-sdk';
+import { enrichCusipLabels, isCusip } from './openfigi.js';
 
 // -----------------------------------------------------------------------------
 // Types
@@ -239,6 +240,22 @@ export async function fetchSnapTradeHoldings(
       label: pos.symbol?.symbol?.description || pos.symbol?.description || undefined,
       price: typeof pos.price === 'number' && pos.price > 0 ? pos.price : undefined,
     });
+  }
+
+  // OpenFIGI enrichment: for any holding whose ticker is a CUSIP and whose
+  // label is missing or just the CUSIP itself (common for brokered CDs /
+  // Treasuries), swap in a human-readable name + description.
+  const cusipsNeedingLabel = holdings
+    .filter(
+      (h) => isCusip(h.ticker) && (!h.label || h.label.toUpperCase() === h.ticker.toUpperCase())
+    )
+    .map((h) => h.ticker);
+  if (cusipsNeedingLabel.length > 0) {
+    const labels = await enrichCusipLabels(cusipsNeedingLabel);
+    for (const h of holdings) {
+      const resolved = labels[h.ticker.toUpperCase()];
+      if (resolved) h.label = resolved;
+    }
   }
 
   return holdings;
