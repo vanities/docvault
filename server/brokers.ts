@@ -27,6 +27,10 @@ export interface BrokerHolding {
   costBasis?: number;
   purchaseDate?: string; // ISO date for short/long-term gain classification
   label?: string;
+  // Brokerage-reported price per unit. Set when the source (e.g. SnapTrade)
+  // already knows the price — bypasses Yahoo lookup, which has no quote for
+  // CUSIPs like brokered CDs / Treasuries.
+  price?: number;
 }
 
 export interface BrokerAccount {
@@ -233,6 +237,7 @@ export async function fetchSnapTradeHoldings(
       shares: units,
       costBasis: pos.averagePurchasePrice ? pos.averagePurchasePrice * units : undefined,
       label: pos.symbol?.symbol?.description || pos.symbol?.description || undefined,
+      price: typeof pos.price === 'number' && pos.price > 0 ? pos.price : undefined,
     });
   }
 
@@ -400,7 +405,9 @@ export async function buildPortfolio(
     if (account.overrideValue !== undefined) continue; // skip price lookups for override accounts
     for (const holding of account.holdings) {
       const upper = holding.ticker.toUpperCase();
-      if (upper !== 'USD') allTickers.add(upper);
+      // Skip Yahoo lookup if the brokerage already gave us a price (bonds,
+      // CDs, money-market funds) — Yahoo has no quote for CUSIPs anyway.
+      if (upper !== 'USD' && holding.price === undefined) allTickers.add(upper);
     }
   }
 
@@ -430,7 +437,9 @@ export async function buildPortfolio(
 
     const enrichedHoldings = account.holdings.map((h) => {
       const upperTicker = h.ticker.toUpperCase();
-      const price = upperTicker === 'USD' ? 1 : prices[upperTicker] || 0;
+      // Brokerage-reported price wins (live CD/bond quote). Fall back to
+      // Yahoo for manual holdings. USD is always 1.
+      const price = upperTicker === 'USD' ? 1 : (h.price ?? prices[upperTicker] ?? 0);
       const marketValue = h.shares * price;
       const costBasis = h.costBasis || 0;
       const gainLoss = costBasis > 0 ? marketValue - costBasis : 0;
