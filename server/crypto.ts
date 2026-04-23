@@ -300,46 +300,100 @@ function buildCoinbaseJwt(apiKeyName: string, privateKey: string, uri: string): 
   return `${signingInput}.${sigB64}`;
 }
 
-async function fetchCoinbaseBalances(config: ExchangeConfig): Promise<Balance[]> {
-  const method = 'GET';
-  const requestPath = '/api/v3/brokerage/accounts';
-  // URI in JWT should NOT include query params
-  const uri = `${method} api.coinbase.com${requestPath}`;
-
-  const jwt = buildCoinbaseJwt(config.apiKey, config.apiSecret, uri);
-  logCoinbase.debug(`Key type: ${isEd25519Key(config.apiSecret) ? 'Ed25519' : 'ECDSA'}`);
-  logCoinbase.debug(`URI: ${uri}`);
-  logCoinbase.debug(`Key name: ${config.apiKey.substring(0, 30)}...`);
-
-  const elapsed = logCoinbase.timer();
-  const res = await fetch(`https://api.coinbase.com${requestPath}?limit=250`, {
-    headers: {
-      Authorization: `Bearer ${jwt}`,
-      'Content-Type': 'application/json',
-    },
+// Shared signed GET for Coinbase CDP endpoints. JWT URI excludes query params.
+async function coinbaseGet(config: ExchangeConfig, path: string): Promise<unknown> {
+  const pathWithoutQuery = path.split('?')[0];
+  const jwt = buildCoinbaseJwt(
+    config.apiKey,
+    config.apiSecret,
+    `GET api.coinbase.com${pathWithoutQuery}`
+  );
+  const res = await fetch(`https://api.coinbase.com${path}`, {
+    headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
   });
-
   if (!res.ok) {
     const text = await res.text();
-    logCoinbase.error(`HTTP ${res.status}: ${text}`);
-    throw new Error(`Coinbase API error ${res.status}: ${text}`);
+    throw new Error(`Coinbase ${res.status} on ${path}: ${text.slice(0, 300)}`);
   }
+  return res.json();
+}
 
-  const data = await res.json();
-  const balances: Balance[] = [];
+async function fetchCoinbaseBalances(config: ExchangeConfig): Promise<Balance[]> {
+  logCoinbase.debug(`Key type: ${isEd25519Key(config.apiSecret) ? 'Ed25519' : 'ECDSA'}`);
+  logCoinbase.debug(`Key name: ${config.apiKey.substring(0, 30)}...`);
+  const elapsed = logCoinbase.timer();
 
-  for (const account of data.accounts || []) {
-    const amount = parseFloat(account.available_balance?.value || '0');
-    if (amount > 0) {
-      balances.push({
-        asset: account.currency?.toUpperCase() || account.available_balance?.currency || 'UNKNOWN',
-        amount,
-      });
+  // Aggregate across all portfolios + pages. Coinbase splits balances into
+  // `available_balance` (liquid) and `hold` (earning/staking/locked) — summing
+  // both catches USDC Rewards / Earn that would otherwise get dropped.
+  const byAsset = new Map<string, number>();
+  let accountsSeen = 0;
+
+  type RawAccount = {
+    currency?: string;
+    available_balance?: { value?: string; currency?: string };
+    hold?: { value?: string };
+  };
+  const addAccount = (acct: RawAccount): void => {
+    const asset = (acct.currency || acct.available_balance?.currency || 'UNKNOWN').toUpperCase();
+    const total =
+      parseFloat(acct.available_balance?.value || '0') + parseFloat(acct.hold?.value || '0');
+    if (total > 0) byAsset.set(asset, (byAsset.get(asset) ?? 0) + total);
+  };
+
+  // Pass 1: paginate /api/v3/brokerage/accounts (covers the default portfolio
+  // + any v2 wallets exposed through it).
+  let cursor = '';
+  for (let page = 0; page < 20; page++) {
+    const qs = cursor ? `?limit=250&cursor=${encodeURIComponent(cursor)}` : '?limit=250';
+    const data = (await coinbaseGet(config, `/api/v3/brokerage/accounts${qs}`)) as {
+      accounts?: RawAccount[];
+      cursor?: string;
+      has_next?: boolean;
+    };
+    for (const acct of data.accounts ?? []) {
+      accountsSeen++;
+      addAccount(acct);
     }
+    if (!data.has_next || !data.cursor) break;
+    cursor = data.cursor;
   }
 
+  // Pass 2: enumerate non-default portfolios (Intx, Perpetual, isolated) and
+  // pick up any spot positions they hold. `/api/v3/brokerage/portfolios/{uuid}`
+  // returns `breakdown.spot_positions[]` with `asset` + `total_balance_crypto`.
+  try {
+    const portData = (await coinbaseGet(config, '/api/v3/brokerage/portfolios')) as {
+      portfolios?: Array<{ uuid?: string; name?: string; type?: string; deleted?: boolean }>;
+    };
+    const portfolios = (portData.portfolios ?? []).filter(
+      (p) => p.uuid && p.type !== 'DEFAULT' && !p.deleted
+    );
+    for (const p of portfolios) {
+      try {
+        const br = (await coinbaseGet(config, `/api/v3/brokerage/portfolios/${p.uuid}`)) as {
+          breakdown?: {
+            spot_positions?: Array<{ asset?: string; total_balance_crypto?: string }>;
+          };
+        };
+        for (const pos of br.breakdown?.spot_positions ?? []) {
+          const asset = (pos.asset ?? 'UNKNOWN').toUpperCase();
+          const total = parseFloat(pos.total_balance_crypto ?? '0');
+          if (total > 0) byAsset.set(asset, (byAsset.get(asset) ?? 0) + total);
+        }
+      } catch (err) {
+        logCoinbase.warn(
+          `portfolio ${p.name ?? p.uuid} breakdown failed: ${(err as Error).message}`
+        );
+      }
+    }
+  } catch (err) {
+    logCoinbase.warn(`portfolios enumeration skipped: ${(err as Error).message}`);
+  }
+
+  const balances = Array.from(byAsset, ([asset, amount]) => ({ asset, amount }));
   logCoinbase.info(
-    `${balances.length} non-zero balances fetched in ${elapsed()}ms (${data.accounts?.length ?? 0} total accounts)`
+    `${balances.length} non-zero balances fetched in ${elapsed()}ms (${accountsSeen} v3 accounts)`
   );
   return balances;
 }
