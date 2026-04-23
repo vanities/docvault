@@ -318,6 +318,79 @@ async function coinbaseGet(config: ExchangeConfig, path: string): Promise<unknow
   return res.json();
 }
 
+// Diagnostic: probe every Coinbase surface we can sign for and report where
+// USDC is held. Helpful for locating balances that don't appear via the
+// standard v3 brokerage/accounts path (e.g. legacy v2 vaults, wallets).
+export async function diagnoseCoinbaseUsdc(
+  config: ExchangeConfig
+): Promise<Record<string, unknown>> {
+  const report: Record<string, unknown> = {};
+
+  // v3 accounts — paginated — list every USDC-holding row
+  try {
+    const usdcAccounts: unknown[] = [];
+    let totalAccounts = 0;
+    let cursor = '';
+    for (let page = 0; page < 20; page++) {
+      const qs = cursor ? `?limit=250&cursor=${encodeURIComponent(cursor)}` : '?limit=250';
+      const data = (await coinbaseGet(config, `/api/v3/brokerage/accounts${qs}`)) as {
+        accounts?: Array<Record<string, unknown>>;
+        cursor?: string;
+        has_next?: boolean;
+      };
+      for (const acct of data.accounts ?? []) {
+        totalAccounts++;
+        const currency = String(acct.currency ?? '').toUpperCase();
+        if (currency === 'USDC') usdcAccounts.push(acct);
+      }
+      if (!data.has_next || !data.cursor) break;
+      cursor = data.cursor;
+    }
+    report.v3_totalAccounts = totalAccounts;
+    report.v3_usdc = usdcAccounts;
+  } catch (err) {
+    report.v3_error = (err as Error).message;
+  }
+
+  // v3 portfolios — list + breakdown per portfolio
+  try {
+    const portData = (await coinbaseGet(config, '/api/v3/brokerage/portfolios')) as {
+      portfolios?: Array<Record<string, unknown>>;
+    };
+    report.portfolios = portData.portfolios ?? [];
+    const breakdowns: Record<string, unknown> = {};
+    for (const p of portData.portfolios ?? []) {
+      const uuid = p.uuid as string | undefined;
+      if (!uuid) continue;
+      try {
+        const br = await coinbaseGet(config, `/api/v3/brokerage/portfolios/${uuid}`);
+        breakdowns[uuid] = br;
+      } catch (err) {
+        breakdowns[uuid] = { error: (err as Error).message };
+      }
+    }
+    report.portfolio_breakdowns = breakdowns;
+  } catch (err) {
+    report.portfolios_error = (err as Error).message;
+  }
+
+  // Legacy v2 — USDC here would indicate vaults / earn accounts
+  try {
+    const v2 = (await coinbaseGet(config, '/v2/accounts?limit=100')) as {
+      data?: Array<Record<string, unknown>>;
+    };
+    report.v2_usdc = (v2.data ?? []).filter((a) => {
+      const currency = a.currency as { code?: string } | string | undefined;
+      const code = typeof currency === 'string' ? currency : (currency?.code ?? '');
+      return code.toUpperCase() === 'USDC';
+    });
+  } catch (err) {
+    report.v2_error = (err as Error).message;
+  }
+
+  return report;
+}
+
 async function fetchCoinbaseBalances(config: ExchangeConfig): Promise<Balance[]> {
   logCoinbase.debug(`Key type: ${isEd25519Key(config.apiSecret) ? 'Ed25519' : 'ECDSA'}`);
   logCoinbase.debug(`Key name: ${config.apiKey.substring(0, 30)}...`);

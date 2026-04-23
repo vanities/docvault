@@ -4,7 +4,12 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { loadSettings, saveSettings, jsonResponse, CRYPTO_CACHE_FILE, DATA_DIR } from '../data.js';
-import { fetchAllBalances, fetchSourceBalance, fetchCryptoGains } from '../crypto.js';
+import {
+  fetchAllBalances,
+  fetchSourceBalance,
+  fetchCryptoGains,
+  diagnoseCoinbaseUsdc,
+} from '../crypto.js';
 
 export async function handleCryptoRoutes(
   req: Request,
@@ -207,6 +212,19 @@ export async function handleCryptoRoutes(
       return jsonResponse(source);
     } catch (err) {
       return jsonResponse({ error: err instanceof Error ? err.message : 'Unknown error' }, 404);
+    }
+  }
+
+  // Temporary: GET /api/crypto/coinbase/debug — diagnose where USDC lives
+  if (pathname === '/api/crypto/coinbase/debug' && req.method === 'GET') {
+    const settings = await loadSettings();
+    const cb = (settings.crypto?.exchanges || []).find((e) => e.id === 'coinbase');
+    if (!cb) return jsonResponse({ error: 'no coinbase config' }, 404);
+    try {
+      const report = await diagnoseCoinbaseUsdc(cb);
+      return jsonResponse(report);
+    } catch (err) {
+      return jsonResponse({ error: err instanceof Error ? err.message : 'Unknown error' }, 500);
     }
   }
 
