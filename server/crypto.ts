@@ -318,141 +318,41 @@ async function coinbaseGet(config: ExchangeConfig, path: string): Promise<unknow
   return res.json();
 }
 
-// Diagnostic: probe every Coinbase surface we can sign for and report where
-// USDC is held. Helpful for locating balances that don't appear via the
-// standard v3 brokerage/accounts path (e.g. legacy v2 vaults, wallets).
-export async function diagnoseCoinbaseUsdc(
-  config: ExchangeConfig
-): Promise<Record<string, unknown>> {
-  const report: Record<string, unknown> = {};
-
-  // v3 accounts — paginated — list every USDC-holding row
-  try {
-    const usdcAccounts: unknown[] = [];
-    let totalAccounts = 0;
-    let cursor = '';
-    for (let page = 0; page < 20; page++) {
-      const qs = cursor ? `?limit=250&cursor=${encodeURIComponent(cursor)}` : '?limit=250';
-      const data = (await coinbaseGet(config, `/api/v3/brokerage/accounts${qs}`)) as {
-        accounts?: Array<Record<string, unknown>>;
-        cursor?: string;
-        has_next?: boolean;
-      };
-      for (const acct of data.accounts ?? []) {
-        totalAccounts++;
-        const currency = String(acct.currency ?? '').toUpperCase();
-        if (currency === 'USDC') usdcAccounts.push(acct);
-      }
-      if (!data.has_next || !data.cursor) break;
-      cursor = data.cursor;
-    }
-    report.v3_totalAccounts = totalAccounts;
-    report.v3_usdc = usdcAccounts;
-  } catch (err) {
-    report.v3_error = (err as Error).message;
-  }
-
-  // v3 portfolios — list + breakdown per portfolio
-  try {
-    const portData = (await coinbaseGet(config, '/api/v3/brokerage/portfolios')) as {
-      portfolios?: Array<Record<string, unknown>>;
-    };
-    report.portfolios = portData.portfolios ?? [];
-    const breakdowns: Record<string, unknown> = {};
-    for (const p of portData.portfolios ?? []) {
-      const uuid = p.uuid as string | undefined;
-      if (!uuid) continue;
-      try {
-        const br = await coinbaseGet(config, `/api/v3/brokerage/portfolios/${uuid}`);
-        breakdowns[uuid] = br;
-      } catch (err) {
-        breakdowns[uuid] = { error: (err as Error).message };
-      }
-    }
-    report.portfolio_breakdowns = breakdowns;
-  } catch (err) {
-    report.portfolios_error = (err as Error).message;
-  }
-
-  // Legacy v2 — USDC here would indicate vaults / earn accounts
-  try {
-    const v2 = (await coinbaseGet(config, '/v2/accounts?limit=100')) as {
-      data?: Array<Record<string, unknown>>;
-    };
-    report.v2_usdc = (v2.data ?? []).filter((a) => {
-      const currency = a.currency as { code?: string } | string | undefined;
-      const code = typeof currency === 'string' ? currency : (currency?.code ?? '');
-      return code.toUpperCase() === 'USDC';
-    });
-  } catch (err) {
-    report.v2_error = (err as Error).message;
-  }
-
-  return report;
-}
-
 async function fetchCoinbaseBalances(config: ExchangeConfig): Promise<Balance[]> {
   logCoinbase.debug(`Key type: ${isEd25519Key(config.apiSecret) ? 'Ed25519' : 'ECDSA'}`);
   logCoinbase.debug(`Key name: ${config.apiKey.substring(0, 30)}...`);
   const elapsed = logCoinbase.timer();
 
-  // Aggregate across all portfolios + pages. Coinbase splits balances into
-  // `available_balance` (liquid) and `hold` (earning/staking/locked) — summing
-  // both catches USDC Rewards / Earn that would otherwise get dropped.
+  // Source of truth is `/api/v3/brokerage/portfolios/{uuid}` → breakdown.spot_positions.
+  // Unlike `/api/v3/brokerage/accounts`, this surface includes non-wallet account
+  // types such as ACCOUNT_TYPE_RETAIL_DEFI_LEND (USDC lent to Morpho/Aave via the
+  // Coinbase app) — otherwise those balances are invisible to the API.
   const byAsset = new Map<string, number>();
-  let accountsSeen = 0;
+  let positionsSeen = 0;
 
-  type RawAccount = {
-    currency?: string;
-    available_balance?: { value?: string; currency?: string };
-    hold?: { value?: string };
-  };
-  const addAccount = (acct: RawAccount): void => {
-    const asset = (acct.currency || acct.available_balance?.currency || 'UNKNOWN').toUpperCase();
-    const total =
-      parseFloat(acct.available_balance?.value || '0') + parseFloat(acct.hold?.value || '0');
-    if (total > 0) byAsset.set(asset, (byAsset.get(asset) ?? 0) + total);
+  type SpotPosition = {
+    asset?: string;
+    total_balance_crypto?: number | string;
+    account_type?: string;
   };
 
-  // Pass 1: paginate /api/v3/brokerage/accounts (covers the default portfolio
-  // + any v2 wallets exposed through it).
-  let cursor = '';
-  for (let page = 0; page < 20; page++) {
-    const qs = cursor ? `?limit=250&cursor=${encodeURIComponent(cursor)}` : '?limit=250';
-    const data = (await coinbaseGet(config, `/api/v3/brokerage/accounts${qs}`)) as {
-      accounts?: RawAccount[];
-      cursor?: string;
-      has_next?: boolean;
-    };
-    for (const acct of data.accounts ?? []) {
-      accountsSeen++;
-      addAccount(acct);
-    }
-    if (!data.has_next || !data.cursor) break;
-    cursor = data.cursor;
-  }
-
-  // Pass 2: enumerate non-default portfolios (Intx, Perpetual, isolated) and
-  // pick up any spot positions they hold. `/api/v3/brokerage/portfolios/{uuid}`
-  // returns `breakdown.spot_positions[]` with `asset` + `total_balance_crypto`.
   try {
     const portData = (await coinbaseGet(config, '/api/v3/brokerage/portfolios')) as {
       portfolios?: Array<{ uuid?: string; name?: string; type?: string; deleted?: boolean }>;
     };
-    const portfolios = (portData.portfolios ?? []).filter(
-      (p) => p.uuid && p.type !== 'DEFAULT' && !p.deleted
-    );
+    const portfolios = (portData.portfolios ?? []).filter((p) => p.uuid && !p.deleted);
     for (const p of portfolios) {
       try {
         const br = (await coinbaseGet(config, `/api/v3/brokerage/portfolios/${p.uuid}`)) as {
-          breakdown?: {
-            spot_positions?: Array<{ asset?: string; total_balance_crypto?: string }>;
-          };
+          breakdown?: { spot_positions?: SpotPosition[] };
         };
         for (const pos of br.breakdown?.spot_positions ?? []) {
+          positionsSeen++;
           const asset = (pos.asset ?? 'UNKNOWN').toUpperCase();
-          const total = parseFloat(pos.total_balance_crypto ?? '0');
-          if (total > 0) byAsset.set(asset, (byAsset.get(asset) ?? 0) + total);
+          const total = Number(pos.total_balance_crypto ?? 0);
+          if (Number.isFinite(total) && total > 0) {
+            byAsset.set(asset, (byAsset.get(asset) ?? 0) + total);
+          }
         }
       } catch (err) {
         logCoinbase.warn(
@@ -461,12 +361,43 @@ async function fetchCoinbaseBalances(config: ExchangeConfig): Promise<Balance[]>
       }
     }
   } catch (err) {
-    logCoinbase.warn(`portfolios enumeration skipped: ${(err as Error).message}`);
+    // Fall back to the accounts endpoint if portfolios is unavailable — misses
+    // DeFi-lend but at least catches the spot wallet.
+    logCoinbase.warn(
+      `portfolios unreachable (${(err as Error).message}); falling back to /accounts`
+    );
+    type RawAccount = {
+      currency?: string;
+      available_balance?: { value?: string; currency?: string };
+      hold?: { value?: string };
+    };
+    let cursor = '';
+    for (let page = 0; page < 20; page++) {
+      const qs = cursor ? `?limit=250&cursor=${encodeURIComponent(cursor)}` : '?limit=250';
+      const data = (await coinbaseGet(config, `/api/v3/brokerage/accounts${qs}`)) as {
+        accounts?: RawAccount[];
+        cursor?: string;
+        has_next?: boolean;
+      };
+      for (const acct of data.accounts ?? []) {
+        positionsSeen++;
+        const asset = (
+          acct.currency ||
+          acct.available_balance?.currency ||
+          'UNKNOWN'
+        ).toUpperCase();
+        const total =
+          parseFloat(acct.available_balance?.value || '0') + parseFloat(acct.hold?.value || '0');
+        if (total > 0) byAsset.set(asset, (byAsset.get(asset) ?? 0) + total);
+      }
+      if (!data.has_next || !data.cursor) break;
+      cursor = data.cursor;
+    }
   }
 
   const balances = Array.from(byAsset, ([asset, amount]) => ({ asset, amount }));
   logCoinbase.info(
-    `${balances.length} non-zero balances fetched in ${elapsed()}ms (${accountsSeen} v3 accounts)`
+    `${balances.length} non-zero balances fetched in ${elapsed()}ms (${positionsSeen} positions)`
   );
   return balances;
 }
