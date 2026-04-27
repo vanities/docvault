@@ -280,6 +280,184 @@ export async function fetchAllSnapTradeHoldings(
   return stAccounts;
 }
 
+// -----------------------------------------------------------------------------
+// Activity History (BUYs / SELLs / DIVIDENDs / TRANSFERs / etc)
+// -----------------------------------------------------------------------------
+// SnapTrade returns a `UniversalActivity` shape that varies by broker. Vanguard
+// in particular returns `symbol: null` and packs the security name into
+// `description` text — so we always preserve `description` and accept that
+// `ticker` can be null.
+
+export interface BrokerActivity {
+  id: string;
+  accountId: string; // SnapTrade account UUID (without the "snap-" prefix)
+  type: string; // BUY | SELL | DIVIDEND | WITHDRAWAL | SWEEP IN/OUT | REI | TRANSFER | FEE | INTEREST | ...
+  tradeDate: string; // ISO datetime
+  settlementDate: string | null;
+  ticker: string | null; // raw.symbol.symbol.symbol when present, else null (use description)
+  description: string; // always populated; primary label when ticker is null
+  units: number; // signed — negative on SELL, positive on BUY
+  price: number;
+  amount: number; // gross dollars (positive)
+  fee: number;
+  currency: string; // ISO 3-letter code
+  institution: string;
+  externalReferenceId: string | null;
+}
+
+export interface AccountActivities {
+  activities: BrokerActivity[];
+  lastSyncedDate: string; // YYYY-MM-DD — high-water mark for incremental sync
+  earliestActivityDate: string | null;
+}
+
+export interface ActivitiesCache {
+  accounts: Record<string, AccountActivities>;
+  updatedAt: string;
+}
+
+// Pagination is by offset/limit; SnapTrade caps page size around 1000. We use
+// 500 as a reasonable balance between request count and memory.
+const ACTIVITY_PAGE_SIZE = 500;
+// Overlap window on incremental sync — re-fetches the trailing N days each time
+// so corrections / delayed-posting trades aren't missed. Dedupe is by `id`.
+const INCREMENTAL_OVERLAP_DAYS = 7;
+
+interface RawActivitySymbol {
+  symbol?: { symbol?: string | null; description?: string | null } | null;
+  description?: string | null;
+}
+
+interface RawActivity {
+  id?: string;
+  symbol?: RawActivitySymbol | null;
+  type?: string | null;
+  description?: string | null;
+  amount?: number | null;
+  price?: number | null;
+  units?: number | null;
+  fee?: number | null;
+  trade_date?: string | null;
+  settlement_date?: string | null;
+  institution?: string | null;
+  external_reference_id?: string | null;
+  currency?: { code?: string | null } | null;
+}
+
+function normalizeActivity(raw: RawActivity, accountId: string): BrokerActivity | null {
+  if (!raw.id || !raw.trade_date) return null;
+  const ticker = raw.symbol?.symbol?.symbol ?? null;
+  return {
+    id: raw.id,
+    accountId,
+    type: raw.type || 'UNKNOWN',
+    tradeDate: raw.trade_date,
+    settlementDate: raw.settlement_date ?? null,
+    ticker,
+    description: raw.description || raw.symbol?.symbol?.description || ticker || '',
+    units: typeof raw.units === 'number' ? raw.units : 0,
+    price: typeof raw.price === 'number' ? raw.price : 0,
+    amount: typeof raw.amount === 'number' ? raw.amount : 0,
+    fee: typeof raw.fee === 'number' ? raw.fee : 0,
+    currency: raw.currency?.code || 'USD',
+    institution: raw.institution || '',
+    externalReferenceId: raw.external_reference_id ?? null,
+  };
+}
+
+// Walks the paginated activities endpoint for one account in one date window.
+export async function fetchSnapTradeActivities(
+  config: SnapTradeConfig,
+  accountId: string,
+  startDate?: string,
+  endDate?: string
+): Promise<BrokerActivity[]> {
+  const client = initSnapTrade(config);
+  if (!config.userId || !config.userSecret) return [];
+
+  const out: BrokerActivity[] = [];
+  let offset = 0;
+
+  while (true) {
+    const res = await client.accountInformation.getAccountActivities({
+      accountId,
+      userId: config.userId,
+      userSecret: config.userSecret,
+      ...(startDate ? { startDate } : {}),
+      ...(endDate ? { endDate } : {}),
+      offset,
+      limit: ACTIVITY_PAGE_SIZE,
+    });
+
+    const body = res.data as { data?: RawActivity[]; pagination?: { total?: number } };
+    const page = body.data ?? [];
+    for (const raw of page) {
+      const activity = normalizeActivity(raw, accountId);
+      if (activity) out.push(activity);
+    }
+
+    const total = body.pagination?.total ?? page.length;
+    offset += page.length;
+    if (page.length === 0 || offset >= total) break;
+  }
+
+  return out;
+}
+
+function isoDateOnly(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+// Drives sync across every SnapTrade-linked account. On first run for an
+// account, fetches everything (no startDate). On subsequent runs, fetches
+// from `lastSyncedDate - INCREMENTAL_OVERLAP_DAYS` to today and merges.
+export async function syncAllSnapTradeActivities(
+  config: SnapTradeConfig,
+  existing: ActivitiesCache,
+  onProgress?: (current: number, total: number, label: string) => void
+): Promise<ActivitiesCache> {
+  const stAccounts = await fetchSnapTradeAccounts(config);
+  const total = stAccounts.length;
+  const today = isoDateOnly(new Date());
+  const next: ActivitiesCache = {
+    accounts: { ...existing.accounts },
+    updatedAt: new Date().toISOString(),
+  };
+
+  for (let i = 0; i < stAccounts.length; i++) {
+    const acct = stAccounts[i];
+    onProgress?.(i + 1, total, acct.name);
+    if (!acct.snaptradeAccountId) continue;
+
+    const accountId = acct.snaptradeAccountId;
+    const prior = existing.accounts[accountId];
+    let startDate: string | undefined;
+    if (prior?.lastSyncedDate) {
+      const overlap = new Date(prior.lastSyncedDate);
+      overlap.setUTCDate(overlap.getUTCDate() - INCREMENTAL_OVERLAP_DAYS);
+      startDate = isoDateOnly(overlap);
+    }
+
+    const fetched = await fetchSnapTradeActivities(config, accountId, startDate, today);
+
+    const merged = new Map<string, BrokerActivity>();
+    for (const a of prior?.activities ?? []) merged.set(a.id, a);
+    for (const a of fetched) merged.set(a.id, a); // newer wins on duplicate id
+    const activities = Array.from(merged.values()).sort((a, b) =>
+      a.tradeDate < b.tradeDate ? 1 : a.tradeDate > b.tradeDate ? -1 : 0
+    );
+
+    next.accounts[accountId] = {
+      activities,
+      lastSyncedDate: today,
+      earliestActivityDate:
+        activities.length > 0 ? activities[activities.length - 1].tradeDate.slice(0, 10) : null,
+    };
+  }
+
+  return next;
+}
+
 // Delete SnapTrade user (cleanup)
 export async function deleteSnapTradeUser(config: SnapTradeConfig): Promise<void> {
   const client = initSnapTrade(config);

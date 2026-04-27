@@ -436,6 +436,23 @@ export interface BrokerPortfolio {
   lastUpdated: string;
 }
 
+export interface BrokerActivity {
+  id: string;
+  accountId: string;
+  type: string; // BUY | SELL | DIVIDEND | TRANSFER | WITHDRAWAL | SWEEP IN/OUT | ... (server treats as free-form)
+  tradeDate: string;
+  settlementDate: string | null;
+  ticker: string | null;
+  description: string;
+  units: number;
+  price: number;
+  amount: number;
+  fee: number;
+  currency: string;
+  institution: string;
+  externalReferenceId: string | null;
+}
+
 // Portfolio snapshot types
 export interface PortfolioSnapshot {
   date: string; // ISO date (YYYY-MM-DD)
