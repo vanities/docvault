@@ -251,18 +251,31 @@ describe('buildClinicalSummary — non-observation resources', () => {
     expect(summary.allergies[0].reactions).toEqual(['Anaphylaxis', 'Urticaria']);
   });
 
-  test('normalizes VA-style MedicationRequest (med name in dosageInstruction.timing)', () => {
+  test('normalizes VA-style MedicationRequest (med name in contained[])', () => {
+    // VA exports leave medicationCodeableConcept null and inline the actual
+    // medication under contained[]. The drug name lives at contained[0].code.text.
+    // The dosageInstruction.timing.code.text field — while syntactically valid
+    // for a med name — actually carries frequency markers like "EVERY DAY", so
+    // the parser must NOT fall back to it. Including a misleading timing.code
+    // here locks in that negative invariant.
     const m = {
       resourceType: 'MedicationRequest' as const,
       id: 'med-1',
       status: 'active',
       authoredOn: '2024-02-27',
       medicationCodeableConcept: null,
+      contained: [
+        {
+          resourceType: 'Medication',
+          id: 'med-inline-1',
+          code: { text: 'Lisinopril' },
+        },
+      ],
       dosageInstruction: [
         {
           text: '50MG',
           route: { text: 'MOUTH' },
-          timing: { code: { text: 'Lisinopril' } },
+          timing: { code: { text: 'EVERY DAY' } },
         },
       ],
     };
