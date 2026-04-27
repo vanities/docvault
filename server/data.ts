@@ -680,6 +680,7 @@ export const HEALTH_ANALYSIS_HISTORY_FILE = path.join(
   '.docvault-health-analysis-history.json'
 );
 export const BROKER_CACHE_FILE = path.join(DATA_DIR, '.docvault-broker-cache.json');
+export const BROKER_ACTIVITIES_FILE = path.join(DATA_DIR, '.docvault-broker-activities.json');
 export const SIMPLEFIN_CACHE_FILE = path.join(DATA_DIR, '.docvault-simplefin-cache.json');
 export const INCOME_FILE = path.join(DATA_DIR, '.docvault-income.json');
 export const LIABILITIES_FILE = path.join(DATA_DIR, '.docvault-liabilities.json');

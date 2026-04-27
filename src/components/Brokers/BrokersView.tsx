@@ -37,6 +37,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { BrokerActivities } from './BrokerActivities';
 
 const BROKER_LABELS: Record<BrokerId, string> = {
   vanguard: 'Vanguard',
@@ -983,65 +985,76 @@ export function BrokersView() {
           <Button onClick={() => setShowAddAccount(true)}>Add Your First Account</Button>
         </Card>
       ) : (
-        <>
-          {/* Portfolio Summary */}
-          <Card variant="glass" className="p-6 mb-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-[12px] text-surface-600 uppercase tracking-wider mb-1">
-                  Total Portfolio Value
-                </p>
-                <p className="text-2xl sm:text-3xl font-bold text-surface-950">
-                  <Money>{formatUsd(portfolio?.totalValue || 0)}</Money>
-                </p>
-                <p className="text-[12px] text-surface-600 mt-1">
-                  {portfolio?.accounts.length || 0} account
-                  {(portfolio?.accounts.length || 0) !== 1 ? 's' : ''}
-                </p>
-              </div>
-              {portfolio && portfolio.totalCostBasis > 0 && (
-                <div className="text-right">
-                  <p className="text-[11px] text-surface-500 mb-1">Total Gain/Loss</p>
-                  <GainLossBadge
-                    value={portfolio.totalGainLoss}
-                    percent={(portfolio.totalGainLoss / portfolio.totalCostBasis) * 100}
-                  />
-                  <p className="text-[11px] text-surface-500 mt-1">
-                    Cost: <Money>{formatUsd(portfolio.totalCostBasis)}</Money>
+        <Tabs defaultValue="holdings" className="w-full">
+          <TabsList className="mb-4">
+            <TabsTrigger value="holdings">Holdings</TabsTrigger>
+            <TabsTrigger value="activity">Activity</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="holdings">
+            {/* Portfolio Summary */}
+            <Card variant="glass" className="p-6 mb-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-[12px] text-surface-600 uppercase tracking-wider mb-1">
+                    Total Portfolio Value
+                  </p>
+                  <p className="text-2xl sm:text-3xl font-bold text-surface-950">
+                    <Money>{formatUsd(portfolio?.totalValue || 0)}</Money>
+                  </p>
+                  <p className="text-[12px] text-surface-600 mt-1">
+                    {portfolio?.accounts.length || 0} account
+                    {(portfolio?.accounts.length || 0) !== 1 ? 's' : ''}
                   </p>
                 </div>
-              )}
-            </div>
-          </Card>
-
-          {/* History Chart */}
-          {snapshots.length >= 2 && (
-            <Card variant="glass" className="p-5 mb-6">
-              <h3 className="text-[14px] font-semibold text-surface-950 mb-3 flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-violet-500" />
-                Broker History
-              </h3>
-              <HistoryChart
-                snapshots={snapshots}
-                lines={[{ key: 'brokerValue', label: 'Brokers', color: '#8b5cf6' }]}
-                height={180}
-              />
+                {portfolio && portfolio.totalCostBasis > 0 && (
+                  <div className="text-right">
+                    <p className="text-[11px] text-surface-500 mb-1">Total Gain/Loss</p>
+                    <GainLossBadge
+                      value={portfolio.totalGainLoss}
+                      percent={(portfolio.totalGainLoss / portfolio.totalCostBasis) * 100}
+                    />
+                    <p className="text-[11px] text-surface-500 mt-1">
+                      Cost: <Money>{formatUsd(portfolio.totalCostBasis)}</Money>
+                    </p>
+                  </div>
+                )}
+              </div>
             </Card>
-          )}
 
-          {/* Account Cards */}
-          <div className="space-y-4">
-            {portfolio?.accounts.map((account) => (
-              <AccountCard
-                key={account.id}
-                account={account}
-                onAddHolding={handleAddHolding}
-                onRemoveHolding={handleRemoveHolding}
-                onDeleteAccount={handleDeleteAccount}
-              />
-            ))}
-          </div>
-        </>
+            {/* History Chart */}
+            {snapshots.length >= 2 && (
+              <Card variant="glass" className="p-5 mb-6">
+                <h3 className="text-[14px] font-semibold text-surface-950 mb-3 flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-violet-500" />
+                  Broker History
+                </h3>
+                <HistoryChart
+                  snapshots={snapshots}
+                  lines={[{ key: 'brokerValue', label: 'Brokers', color: '#8b5cf6' }]}
+                  height={180}
+                />
+              </Card>
+            )}
+
+            {/* Account Cards */}
+            <div className="space-y-4">
+              {portfolio?.accounts.map((account) => (
+                <AccountCard
+                  key={account.id}
+                  account={account}
+                  onAddHolding={handleAddHolding}
+                  onRemoveHolding={handleRemoveHolding}
+                  onDeleteAccount={handleDeleteAccount}
+                />
+              ))}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="activity">
+            <BrokerActivities accounts={portfolio?.accounts ?? []} />
+          </TabsContent>
+        </Tabs>
       )}
 
       <AddAccountModal
