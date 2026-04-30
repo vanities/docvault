@@ -68,7 +68,11 @@ FEDERAL_TAX_LIMITATIONS.md
 
 # Lock files (use bun.lock)
 pnpm-lock.yaml
+
+# agent stuff
 .claude
+.agents
+skills-lock.json
 
 # Local deploy helper
 Makefile
