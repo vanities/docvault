@@ -39,6 +39,10 @@ interface AssistantToolCallBlock {
   input: unknown;
   result: unknown;
   ok: boolean;
+  // Server-emitted tool_use id — used to match streaming tool_result events
+  // back to the originating tool_call. Optional so legacy persisted blocks
+  // (pre-streaming) still type-check.
+  id?: string;
 }
 
 type AssistantBlock = AssistantTextBlock | AssistantToolCallBlock;
@@ -512,8 +516,24 @@ export function ChatView() {
   const handleSend = useCallback(
     async (text: string) => {
       const userMsg: UserMessage = { id: newId(), role: 'user', content: text };
-      setMessages((prev) => [...prev, userMsg]);
+      const assistantId = newId();
+      const assistantMsg: AssistantMessage = {
+        id: assistantId,
+        role: 'assistant',
+        blocks: [],
+      };
+      setMessages((prev) => [...prev, userMsg, assistantMsg]);
       setPending(true);
+
+      // Helper to mutate the in-progress assistant message in place. All
+      // streaming SSE events update this single message, so the bubble
+      // materializes incrementally instead of replacing itself.
+      const updateAssistant = (updater: (msg: AssistantMessage) => AssistantMessage): void => {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantId ? updater(m as AssistantMessage) : m))
+        );
+      };
+
       try {
         const apiMessages = toApiMessages(messages, text);
         const res = await fetch(`${API_BASE}/chat`, {
@@ -524,42 +544,105 @@ export function ChatView() {
             entity: selectedEntity === 'all' ? undefined : selectedEntity,
           }),
         });
-        const data = (await res.json()) as {
-          content?: AssistantBlock[];
-          stopReason?: string | null;
-          error?: string;
-        };
-        if (!res.ok) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: newId(),
-              role: 'assistant',
-              blocks: [],
-              error: data.error || `Request failed (${res.status})`,
-            },
-          ]);
-        } else {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: newId(),
-              role: 'assistant',
-              blocks: data.content ?? [],
-              stopReason: data.stopReason ?? null,
-            },
-          ]);
+
+        if (!res.ok || !res.body) {
+          const fallback = await res.text().catch(() => '');
+          updateAssistant((m) => ({
+            ...m,
+            error: fallback || `Request failed (${res.status})`,
+          }));
+          return;
+        }
+
+        // Stream consumer: read the body as SSE-formatted chunks
+        // (`data: <json>\n\n`), buffer across chunk boundaries, and route
+        // each parsed event into the assistant message state.
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          let separatorIdx: number;
+          while ((separatorIdx = buffer.indexOf('\n\n')) !== -1) {
+            const eventChunk = buffer.slice(0, separatorIdx);
+            buffer = buffer.slice(separatorIdx + 2);
+
+            const dataPayload = eventChunk
+              .split('\n')
+              .filter((line) => line.startsWith('data:'))
+              .map((line) => line.slice(5).trimStart())
+              .join('\n');
+            if (dataPayload.length === 0) continue;
+
+            let event: {
+              type: string;
+              text?: string;
+              id?: string;
+              toolName?: string;
+              input?: unknown;
+              toolUseId?: string;
+              result?: unknown;
+              isError?: boolean;
+              stopReason?: string | null;
+              message?: string;
+            };
+            try {
+              event = JSON.parse(dataPayload);
+            } catch {
+              continue;
+            }
+
+            if (event.type === 'text' && typeof event.text === 'string') {
+              const textChunk = event.text;
+              updateAssistant((m) => {
+                const blocks = [...m.blocks];
+                const lastIdx = blocks.length - 1;
+                const lastBlock = blocks[lastIdx];
+                if (lastBlock && lastBlock.type === 'text') {
+                  blocks[lastIdx] = { type: 'text', text: lastBlock.text + textChunk };
+                } else {
+                  blocks.push({ type: 'text', text: textChunk });
+                }
+                return { ...m, blocks };
+              });
+            } else if (event.type === 'tool_call') {
+              const toolCall: AssistantToolCallBlock = {
+                type: 'tool_call',
+                toolName: event.toolName ?? 'unknown',
+                input: event.input,
+                result: null,
+                ok: true,
+                id: event.id,
+              };
+              updateAssistant((m) => ({ ...m, blocks: [...m.blocks, toolCall] }));
+            } else if (event.type === 'tool_result') {
+              updateAssistant((m) => ({
+                ...m,
+                blocks: m.blocks.map((b) =>
+                  b.type === 'tool_call' && b.id === event.toolUseId
+                    ? { ...b, result: event.result, ok: !event.isError }
+                    : b
+                ),
+              }));
+            } else if (event.type === 'done') {
+              updateAssistant((m) => ({ ...m, stopReason: event.stopReason ?? null }));
+            } else if (event.type === 'error') {
+              updateAssistant((m) => ({
+                ...m,
+                error: event.message ?? 'Stream error',
+              }));
+            }
+          }
         }
       } catch (err) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: newId(),
-            role: 'assistant',
-            blocks: [],
-            error: err instanceof Error ? err.message : 'Request failed',
-          },
-        ]);
+        updateAssistant((m) => ({
+          ...m,
+          error: err instanceof Error ? err.message : 'Request failed',
+        }));
       } finally {
         setPending(false);
       }

@@ -2,22 +2,29 @@
 //
 // POST /api/chat
 //   body: { messages: ChatMessage[], entity?: string }
-//   returns: { content: AssistantBlock[], stopReason?: string, error?: string }
+//   returns: text/event-stream — newline-delimited `data: {json}\n\n` events
 //
-// The frontend keeps the full conversation history client-side and replays it
-// on every turn (server is stateless). This route runs the Claude tool-use
-// loop server-side: tool_use blocks come back from the model, we execute the
-// tool, append a tool_result, and loop until stop_reason !== 'tool_use'.
+// Powered by `@anthropic-ai/claude-agent-sdk` — the same SDK Claude Code
+// itself uses, which spawns a bundled Claude Code binary internally and
+// gives us its rate-limit treatment when authenticated via the
+// `CLAUDE_CODE_OAUTH_TOKEN` env var. DocVault's tools (list_files, …) are
+// exposed via an in-process MCP server so the agent loop can call them
+// without Bash/Read/Edit access to the NAS filesystem.
 //
-// Tools intentionally hit the same data-layer helpers the rest of the app
-// uses (loadConfig, scanDirectory, loadParsedData, …) so the chat sees
-// exactly what the file views show. Write tools (set_metadata, add_reminder)
-// are scoped to safe metadata mutations — the chat can't move/delete files.
+// Frontend keeps the conversation history client-side and replays it every
+// turn (server is stateless). We pass the LAST user message as the SDK's
+// `prompt` and fold prior turns into the system prompt — preserves multi-
+// turn context without owning session state on the server.
 //
-// Loop is bounded at MAX_TURNS to keep tokens predictable; client gets a
-// `stopReason` if it hit the cap.
+// Event types streamed back:
+//   { type: 'text', text }              — assistant text turn
+//   { type: 'tool_call', id, toolName, input }
+//   { type: 'tool_result', toolUseId, result, isError }
+//   { type: 'done', stopReason, isError? }
+//   { type: 'error', message }          — fatal stream error
 
-import Anthropic from '@anthropic-ai/sdk';
+import { createSdkMcpServer, query, tool, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import { z } from 'zod';
 import {
   jsonResponse,
   loadConfig,
@@ -29,14 +36,14 @@ import {
   scanDirectory,
   getEntityPath,
   getClaudeModel,
+  getAnthropicKey,
+  getAnthropicAuthToken,
   type EntityConfig,
   type FileInfo,
   type Reminder,
   type DocMetadata,
   type ParsedData,
 } from '../data.js';
-import { getClient } from '../parsers/base.js';
-import { withAILimit } from '../aiLimiter.js';
 import { logAiCall } from '../ai/usage-log.js';
 import { createLogger } from '../logger.js';
 
@@ -46,116 +53,23 @@ const log = createLogger('Chat');
 // Constants
 // ---------------------------------------------------------------------------
 
-const MAX_TURNS = 8; // hard cap on tool-use round-trips per request
-const MAX_OUTPUT_TOKENS = 4096;
 const MAX_FILE_RESULTS = 100;
 const MAX_PARSED_TEXT_CHARS = 8000;
+const MCP_SERVER_NAME = 'docvault';
 
-// ---------------------------------------------------------------------------
-// Tool definitions (Anthropic Messages format)
-// ---------------------------------------------------------------------------
-
-const TOOLS: Anthropic.Messages.Tool[] = [
-  {
-    name: 'list_entities',
-    description:
-      'List every configured entity (id, display name, type). Use first if you do not know which entity the user is asking about.',
-    input_schema: { type: 'object', properties: {} },
-  },
-  {
-    name: 'list_files',
-    description:
-      'List files for a given entity. Optionally restrict to a tax year. Returns up to 100 files with their path, size, type, and a one-line summary derived from any cached parse data. Use this before drilling into specific documents.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        entity: { type: 'string', description: 'Entity id from list_entities.' },
-        year: {
-          type: 'number',
-          description: 'Optional tax year (e.g. 2025). Omit to list all files.',
-        },
-      },
-      required: ['entity'],
-    },
-  },
-  {
-    name: 'read_file',
-    description:
-      'Return the cached parse data plus user notes/tags for a single file. Use this to answer questions about a specific document. Files that have not been parsed return parsedData: null — explain this rather than guessing.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        entity: { type: 'string' },
-        path: {
-          type: 'string',
-          description:
-            'File path relative to the entity root (use the path field from list_files).',
-        },
-      },
-      required: ['entity', 'path'],
-    },
-  },
-  {
-    name: 'search_files',
-    description:
-      'Substring search across filenames, paths, and parsed-data fields (vendor, payer, employer, line item descriptions, …) across every entity. Returns up to 100 hits. Prefer this over list_files when the user asks about a vendor or topic.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        query: { type: 'string', description: 'Lowercased substring; minimum 2 chars.' },
-      },
-      required: ['query'],
-    },
-  },
-  {
-    name: 'get_tax_summary',
-    description:
-      'Return totals (income + expenses by category) for every tax-type entity for a given year. Use this for "what did I make" / "how much did I spend" questions.',
-    input_schema: {
-      type: 'object',
-      properties: { year: { type: 'number' } },
-      required: ['year'],
-    },
-  },
-  {
-    name: 'set_metadata',
-    description:
-      'Set tags or a notes string on a file. Pass null to clear. Tags are merged with any existing tags. Use sparingly — confirm with the user before tagging if the request was ambiguous.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        entity: { type: 'string' },
-        path: { type: 'string' },
-        tags: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Tags to add (merged with existing). Pass [] to leave tags unchanged.',
-        },
-        notes: { type: ['string', 'null'] },
-      },
-      required: ['entity', 'path'],
-    },
-  },
-  {
-    name: 'add_reminder',
-    description:
-      'Create a reminder/deadline tied to an entity. Use for tax filing deadlines, follow-ups, etc.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        entity: { type: 'string', description: 'Entity id.' },
-        title: { type: 'string' },
-        dueDate: { type: 'string', description: 'YYYY-MM-DD' },
-        recurrence: {
-          type: ['string', 'null'],
-          enum: ['yearly', 'monthly', 'quarterly', null],
-        },
-        notes: { type: ['string', 'null'] },
-      },
-      required: ['entity', 'title', 'dueDate'],
-    },
-  },
-];
+// Tool names declared by our MCP server. Prefixed with `mcp__docvault__` once
+// the agent SDK registers them — that prefixed form is what shows up in
+// canUseTool / allowedTools / disallowedTools.
+const TOOL_NAMES = [
+  'list_entities',
+  'list_files',
+  'read_file',
+  'search_files',
+  'get_tax_summary',
+  'set_metadata',
+  'add_reminder',
+] as const;
+const ALLOWED_TOOLS = TOOL_NAMES.map((n) => `mcp__${MCP_SERVER_NAME}__${n}`);
 
 // ---------------------------------------------------------------------------
 // Tool implementations
@@ -428,50 +342,111 @@ async function toolAddReminder(
   return { ok: true, reminder };
 }
 
-async function executeTool(name: string, input: unknown, ctx: ToolContext): Promise<unknown> {
-  try {
-    switch (name) {
-      case 'list_entities':
-        return await toolListEntities();
-      case 'list_files':
-        return await toolListFiles(input as { entity: string; year?: number });
-      case 'read_file':
-        return await toolReadFile(input as { entity: string; path: string });
-      case 'search_files':
-        return await toolSearchFiles(input as { query: string });
-      case 'get_tax_summary':
-        return await toolGetTaxSummary(input as { year: number });
-      case 'set_metadata':
-        return await toolSetMetadata(
-          input as { entity: string; path: string; tags?: string[]; notes?: string | null },
-          ctx
-        );
-      case 'add_reminder':
-        return await toolAddReminder(
-          input as {
-            entity: string;
-            title: string;
-            dueDate: string;
-            recurrence?: 'yearly' | 'monthly' | 'quarterly' | null;
-            notes?: string | null;
-          },
-          ctx
-        );
-      default:
-        return { error: `Unknown tool "${name}"` };
-    }
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) };
-  }
+// ---------------------------------------------------------------------------
+// MCP server — wraps the tool implementations as the agent SDK expects.
+// Each tool returns a CallToolResult with a single text block carrying the
+// JSON-serialized payload — same pattern Claude Code uses for its built-in
+// tools, and the model parses it out of `content[0].text`.
+// ---------------------------------------------------------------------------
+
+function jsonResult(value: unknown) {
+  return { content: [{ type: 'text' as const, text: JSON.stringify(value) }] };
+}
+
+function buildDocVaultMcpServer(ctx: ToolContext) {
+  return createSdkMcpServer({
+    name: MCP_SERVER_NAME,
+    version: '1.0.0',
+    tools: [
+      tool(
+        'list_entities',
+        'List every configured entity (id, display name, type). Use first if you do not know which entity the user is asking about.',
+        {},
+        async () => jsonResult(await toolListEntities())
+      ),
+      tool(
+        'list_files',
+        'List files for a given entity. Optionally restrict to a tax year. Returns up to 100 files with their path, size, type, and a one-line summary derived from any cached parse data. Use this before drilling into specific documents.',
+        {
+          entity: z.string().describe('Entity id from list_entities.'),
+          year: z
+            .number()
+            .optional()
+            .describe('Optional tax year (e.g. 2025). Omit to list all files.'),
+        },
+        async (args) => jsonResult(await toolListFiles(args))
+      ),
+      tool(
+        'read_file',
+        'Return the cached parse data plus user notes/tags for a single file. Use this to answer questions about a specific document. Files that have not been parsed return parsedData: null — explain this rather than guessing.',
+        {
+          entity: z.string(),
+          path: z
+            .string()
+            .describe(
+              'File path relative to the entity root (use the path field from list_files).'
+            ),
+        },
+        async (args) => jsonResult(await toolReadFile(args))
+      ),
+      tool(
+        'search_files',
+        'Substring search across filenames, paths, and parsed-data fields (vendor, payer, employer, line item descriptions, …) across every entity. Returns up to 100 hits. Prefer this over list_files when the user asks about a vendor or topic.',
+        {
+          query: z.string().describe('Lowercased substring; minimum 2 chars.'),
+        },
+        async (args) => jsonResult(await toolSearchFiles(args))
+      ),
+      tool(
+        'get_tax_summary',
+        'Return totals (income + expenses by category) for every tax-type entity for a given year. Use this for "what did I make" / "how much did I spend" questions.',
+        {
+          year: z.number(),
+        },
+        async (args) => jsonResult(await toolGetTaxSummary(args))
+      ),
+      tool(
+        'set_metadata',
+        'Set tags or a notes string on a file. Pass null to clear. Tags are merged with any existing tags. Use sparingly — confirm with the user before tagging if the request was ambiguous.',
+        {
+          entity: z.string(),
+          path: z.string(),
+          tags: z
+            .array(z.string())
+            .optional()
+            .describe('Tags to add (merged with existing). Pass [] to leave tags unchanged.'),
+          notes: z.string().nullable().optional(),
+        },
+        async (args) => jsonResult(await toolSetMetadata(args, ctx))
+      ),
+      tool(
+        'add_reminder',
+        'Create a reminder/deadline tied to an entity. Use for tax filing deadlines, follow-ups, etc.',
+        {
+          entity: z.string().describe('Entity id.'),
+          title: z.string(),
+          dueDate: z.string().describe('YYYY-MM-DD'),
+          recurrence: z.enum(['yearly', 'monthly', 'quarterly']).nullable().optional(),
+          notes: z.string().nullable().optional(),
+        },
+        async (args) => jsonResult(await toolAddReminder(args, ctx))
+      ),
+    ],
+  });
 }
 
 // ---------------------------------------------------------------------------
-// System prompt
+// System prompt — the LAST user message is sent as the SDK's `prompt`, so
+// prior conversation lives here as static context. Cheap because the SDK
+// caches the system prompt across turns.
 // ---------------------------------------------------------------------------
 
-function buildSystemPrompt(activeEntity?: string): string {
+function buildSystemPrompt(
+  activeEntity: string | undefined,
+  history: IncomingChatMessage[]
+): string {
   const today = new Date().toISOString().slice(0, 10);
-  return [
+  const parts: string[] = [
     `You are the DocVault chat assistant — answering questions about the user's tax documents, financial records, and personal files. Today is ${today}.`,
     activeEntity
       ? `The user currently has entity "${activeEntity}" selected in the UI; prefer it when context is ambiguous, but call list_entities if they ask about something different.`
@@ -479,11 +454,16 @@ function buildSystemPrompt(activeEntity?: string): string {
     'Use the provided tools to answer factually. Never invent file names, vendors, amounts, or dates. If a file has not been parsed yet, say so — do not guess its contents.',
     'Be concise. Use markdown tables for structured data. When citing a specific document, include its path so the user can find it.',
     'Write tools (set_metadata, add_reminder) make persistent changes — only invoke them when the user has clearly asked for that action.',
-  ].join('\n\n');
+  ];
+  if (history.length > 0) {
+    const transcript = history.map((m) => `${m.role}: ${m.content}`).join('\n\n');
+    parts.push(`## Prior conversation in this thread\n\n${transcript}`);
+  }
+  return parts.join('\n\n');
 }
 
 // ---------------------------------------------------------------------------
-// Public types (mirrored on the frontend)
+// Public types
 // ---------------------------------------------------------------------------
 
 interface IncomingChatMessage {
@@ -491,23 +471,8 @@ interface IncomingChatMessage {
   content: string;
 }
 
-interface AssistantTextBlock {
-  type: 'text';
-  text: string;
-}
-
-interface AssistantToolCallBlock {
-  type: 'tool_call';
-  toolName: string;
-  input: unknown;
-  result: unknown;
-  ok: boolean;
-}
-
-type AssistantBlock = AssistantTextBlock | AssistantToolCallBlock;
-
 // ---------------------------------------------------------------------------
-// Route handler
+// Route handler — streams SSE
 // ---------------------------------------------------------------------------
 
 export async function handleChatRoutes(
@@ -536,12 +501,18 @@ export async function handleChatRoutes(
     return jsonResponse({ error: 'last message must be from the user' }, 400);
   }
 
-  let anthropic: Anthropic;
-  try {
-    anthropic = await getClient();
-  } catch (err) {
+  // Resolve credentials from settings (override env). The SDK reads
+  // CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY from the env we pass to
+  // its bundled Claude Code subprocess, so we layer settings on top of
+  // process.env rather than mutating process.env globally.
+  const oauthToken = await getAnthropicAuthToken();
+  const apiKey = await getAnthropicKey();
+  if (!oauthToken && !apiKey) {
     return jsonResponse(
-      { error: err instanceof Error ? err.message : 'Claude not configured' },
+      {
+        error:
+          'No Claude credentials configured. Add an Anthropic API key OR a Claude OAuth token in Settings.',
+      },
       400
     );
   }
@@ -549,97 +520,170 @@ export async function handleChatRoutes(
   const model = await getClaudeModel();
   const config = await loadConfig();
   const ctx: ToolContext = { config };
-  const system = buildSystemPrompt(body.entity);
+  const history = incoming.slice(0, -1);
+  const systemPrompt = buildSystemPrompt(body.entity, history);
+  const mcpServer = buildDocVaultMcpServer(ctx);
 
-  const apiMessages: Anthropic.Messages.MessageParam[] = incoming.map((m) => ({
-    role: m.role,
-    content: m.content,
-  }));
+  const subprocessEnv: Record<string, string | undefined> = {
+    ...process.env,
+    ...(oauthToken ? { CLAUDE_CODE_OAUTH_TOKEN: oauthToken } : {}),
+    ...(apiKey ? { ANTHROPIC_API_KEY: apiKey } : {}),
+  };
 
-  // Surface blocks the user sees, in order. Text blocks are streamed-out
-  // assistant chatter; tool_call blocks let the UI render a small "ran X"
-  // affordance with the input/result for transparency.
-  const surfaceBlocks: AssistantBlock[] = [];
   const startedAt = Date.now();
-  let stopReason: string | null = null;
+  const encoder = new TextEncoder();
 
-  try {
-    for (let turn = 0; turn < MAX_TURNS; turn++) {
-      const response = await withAILimit(() =>
-        anthropic.messages.create({
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (event: object) => {
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        } catch {
+          /* stream already closed */
+        }
+      };
+
+      try {
+        for await (const message of query({
+          prompt: last.content,
+          options: {
+            model,
+            systemPrompt,
+            // Disable every built-in Claude Code tool — the chat must NOT
+            // be able to Bash/Read/Edit files on the NAS. Only DocVault's
+            // MCP tools below should be reachable.
+            allowedTools: ALLOWED_TOOLS,
+            disallowedTools: [
+              'Bash',
+              'Read',
+              'Edit',
+              'Write',
+              'Glob',
+              'Grep',
+              'WebFetch',
+              'WebSearch',
+              'NotebookEdit',
+            ],
+            mcpServers: { [MCP_SERVER_NAME]: mcpServer },
+            // Defense-in-depth: even if a built-in tool slips past
+            // disallowedTools, this callback denies anything not in our
+            // explicit allow-list.
+            canUseTool: async (toolName) => {
+              if (ALLOWED_TOOLS.includes(toolName)) {
+                return { behavior: 'allow', updatedInput: {} };
+              }
+              return {
+                behavior: 'deny',
+                message: `Tool "${toolName}" is not allowed in DocVault chat.`,
+                interrupt: false,
+              };
+            },
+            env: subprocessEnv,
+            cwd: '/tmp',
+          },
+        })) {
+          translateAndSend(message, send);
+          if (message.type === 'result') {
+            const usageInput = message.usage?.input_tokens ?? 0;
+            const usageOutput = message.usage?.output_tokens ?? 0;
+            void logAiCall({
+              model,
+              purpose: 'chat',
+              latencyMs: Date.now() - startedAt,
+              usage: { inputTokens: usageInput, outputTokens: usageOutput },
+              ok: !message.is_error,
+              stopReason: message.stop_reason ?? null,
+            });
+          }
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.error(`Chat stream failed: ${msg}`);
+        send({ type: 'error', message: msg });
+        void logAiCall({
           model,
-          max_tokens: MAX_OUTPUT_TOKENS,
-          system,
-          tools: TOOLS,
-          messages: apiMessages,
-        })
-      );
-
-      void logAiCall({
-        model,
-        purpose: 'chat',
-        latencyMs: Date.now() - startedAt,
-        usage: {
-          inputTokens: response.usage.input_tokens ?? 0,
-          outputTokens: response.usage.output_tokens ?? 0,
-        },
-        ok: true,
-        requestId: response.id ?? null,
-        stopReason: response.stop_reason ?? null,
-      });
-
-      stopReason = response.stop_reason;
-
-      // Append the assistant's response into the running message log.
-      apiMessages.push({ role: 'assistant', content: response.content });
-
-      // Capture text blocks for the client.
-      for (const block of response.content) {
-        if (block.type === 'text') {
-          surfaceBlocks.push({ type: 'text', text: block.text });
+          purpose: 'chat',
+          latencyMs: Date.now() - startedAt,
+          usage: { inputTokens: 0, outputTokens: 0 },
+          ok: false,
+          error: msg,
+        });
+      } finally {
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
         }
       }
+    },
+  });
 
-      // No tool use → done.
-      if (response.stop_reason !== 'tool_use') break;
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+}
 
-      // Execute every tool_use block in this turn and append a single
-      // user-role message containing all tool_result blocks.
-      const toolResults: Anthropic.Messages.ToolResultBlockParam[] = [];
-      for (const block of response.content) {
-        if (block.type !== 'tool_use') continue;
-        log.info(`tool_use: ${block.name} ${JSON.stringify(block.input).slice(0, 200)}`);
-        const result = await executeTool(block.name, block.input, ctx);
-        const ok = !(typeof result === 'object' && result && 'error' in result);
-        surfaceBlocks.push({
+// Translate one SDKMessage into zero-or-more wire events for the client.
+function translateAndSend(message: SDKMessage, send: (event: object) => void): void {
+  if (message.type === 'assistant') {
+    for (const block of message.message.content) {
+      if (block.type === 'text') {
+        send({ type: 'text', text: block.text });
+      } else if (block.type === 'tool_use') {
+        // Strip the `mcp__docvault__` prefix so the UI shows the friendly
+        // tool name (matches the labels the previous chat handler emitted).
+        const friendlyName = block.name.startsWith(`mcp__${MCP_SERVER_NAME}__`)
+          ? block.name.slice(`mcp__${MCP_SERVER_NAME}__`.length)
+          : block.name;
+        send({
           type: 'tool_call',
-          toolName: block.name,
+          id: block.id,
+          toolName: friendlyName,
           input: block.input,
-          result,
-          ok,
-        });
-        toolResults.push({
-          type: 'tool_result',
-          tool_use_id: block.id,
-          content: JSON.stringify(result),
-          is_error: !ok,
         });
       }
-      apiMessages.push({ role: 'user', content: toolResults });
     }
-
-    return jsonResponse({ content: surfaceBlocks, stopReason });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    log.error(`Chat call failed: ${message}`);
-    void logAiCall({
-      model,
-      purpose: 'chat',
-      latencyMs: Date.now() - startedAt,
-      usage: { inputTokens: 0, outputTokens: 0 },
-      ok: false,
-      error: message,
+  } else if (message.type === 'user') {
+    const content = message.message.content;
+    if (typeof content === 'string') return;
+    for (const block of content) {
+      if (block.type !== 'tool_result') continue;
+      // tool_result.content is `string | unknown[]` per the API. The MCP
+      // server we built returns text-block arrays — extract the text and
+      // try to parse it back into the JSON the model sent up.
+      let parsed: unknown = block.content;
+      if (Array.isArray(block.content)) {
+        const textBlock = block.content.find(
+          (b: unknown) =>
+            typeof b === 'object' && b !== null && (b as { type?: string }).type === 'text'
+        ) as { text?: string } | undefined;
+        if (textBlock?.text) {
+          try {
+            parsed = JSON.parse(textBlock.text);
+          } catch {
+            parsed = textBlock.text;
+          }
+        }
+      }
+      send({
+        type: 'tool_result',
+        toolUseId: block.tool_use_id,
+        result: parsed,
+        isError: !!block.is_error,
+      });
+    }
+  } else if (message.type === 'result') {
+    send({
+      type: 'done',
+      stopReason: message.stop_reason ?? null,
+      isError: message.is_error,
     });
-    return jsonResponse({ error: message, content: surfaceBlocks }, 500);
   }
 }

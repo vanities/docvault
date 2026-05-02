@@ -18,6 +18,7 @@
     "prepare": "vp config"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.126",
     "@anthropic-ai/sdk": "^0.73.0",
     "bplist-creator": "^0.1.1",
     "bplist-parser": "^0.3.2",
@@ -38,7 +39,8 @@
     "sonner": "^2.0.7",
     "unpdf": "^1.6.0",
     "viem": "^2.47.6",
-    "yahoo-finance2": "^3.14.0"
+    "yahoo-finance2": "^3.14.0",
+    "zod": "^4.4.2"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.2",
