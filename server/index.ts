@@ -267,6 +267,10 @@ async function handleRequest(req: Request): Promise<Response> {
       fredKeyHint: settings.fredApiKey ? settings.fredApiKey.slice(-4) : undefined,
       transcribeUrl: settings.transcribeUrl ?? '',
       transcribeModel: settings.transcribeModel ?? '',
+      hasTranscribeApiKey: !!settings.transcribeApiKey,
+      transcribeApiKeyHint: settings.transcribeApiKey
+        ? settings.transcribeApiKey.slice(-4)
+        : undefined,
     });
   }
 
@@ -325,6 +329,14 @@ async function handleRequest(req: Request): Promise<Response> {
       const v = String(body.transcribeModel).trim();
       if (v) settings.transcribeModel = v;
       else delete settings.transcribeModel;
+    }
+
+    if (body.clearTranscribeApiKey) {
+      delete settings.transcribeApiKey;
+    } else if (body.transcribeApiKey !== undefined) {
+      const v = String(body.transcribeApiKey).trim();
+      if (v) settings.transcribeApiKey = v;
+      else delete settings.transcribeApiKey;
     }
 
     await saveSettings(settings);

@@ -96,6 +96,12 @@ export interface Settings {
   transcribeUrl?: string;
   /** Model name passed to the transcription service (e.g. "parakeet-tdt-0.6b-v2", "whisper-large-v3"). */
   transcribeModel?: string;
+  /**
+   * Optional bearer token for the transcription service. Sent as
+   * `Authorization: Bearer <key>` to the upstream /v1/audio/transcriptions
+   * endpoint. Encrypted at rest. For Parakeet, matches `PARAKEET_API_KEY`.
+   */
+  transcribeApiKey?: string;
   crypto?: {
     exchanges: CryptoExchangeConfig[];
     wallets: CryptoWalletConfig[];
@@ -258,17 +264,20 @@ export async function getAnthropicAuthToken(): Promise<string | undefined> {
 export interface TranscribeConfig {
   url?: string;
   model?: string;
+  apiKey?: string;
 }
 
 /**
  * Get transcription service config. Falls back to env vars
- * (DOCVAULT_TRANSCRIBE_URL, DOCVAULT_TRANSCRIBE_MODEL) if not in settings.
+ * (DOCVAULT_TRANSCRIBE_URL, DOCVAULT_TRANSCRIBE_MODEL, DOCVAULT_TRANSCRIBE_API_KEY)
+ * if not in settings.
  */
 export async function getTranscribeConfig(): Promise<TranscribeConfig> {
   const settings = await loadSettings();
   return {
     url: settings.transcribeUrl || process.env.DOCVAULT_TRANSCRIBE_URL,
     model: settings.transcribeModel || process.env.DOCVAULT_TRANSCRIBE_MODEL,
+    apiKey: settings.transcribeApiKey || process.env.DOCVAULT_TRANSCRIBE_API_KEY,
   };
 }
 
