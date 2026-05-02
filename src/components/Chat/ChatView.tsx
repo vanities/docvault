@@ -20,6 +20,10 @@ import {
   ChevronRight,
   Settings as SettingsIcon,
   Trash2,
+  Paperclip,
+  X,
+  FileText,
+  Image as ImageIcon,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Button } from '@/components/ui/button';
@@ -64,10 +68,49 @@ interface AssistantMessage {
 type ChatMessage = UserMessage | AssistantMessage;
 
 const STORAGE_KEY = 'docvault-chat-history-v1';
+const META_STORAGE_KEY = 'docvault-chat-meta-v1';
 const MAX_PERSISTED_MESSAGES = 40;
 
 function newId(): string {
   return Math.random().toString(36).slice(2, 11);
+}
+
+// chatId + resumeSessionId persistence — separate from message history so
+// "Clear chat" can wipe messages while keeping the chat alive, and so
+// reloads in the middle of a multi-turn conversation preserve continuity.
+interface ChatMeta {
+  chatId: string | null;
+  resumeSessionId: string | null;
+}
+
+function loadChatMeta(): ChatMeta {
+  try {
+    const raw = localStorage.getItem(META_STORAGE_KEY);
+    if (!raw) return { chatId: null, resumeSessionId: null };
+    const parsed = JSON.parse(raw) as ChatMeta;
+    return {
+      chatId: typeof parsed.chatId === 'string' ? parsed.chatId : null,
+      resumeSessionId: typeof parsed.resumeSessionId === 'string' ? parsed.resumeSessionId : null,
+    };
+  } catch {
+    return { chatId: null, resumeSessionId: null };
+  }
+}
+
+function saveChatMeta(meta: ChatMeta): void {
+  try {
+    localStorage.setItem(META_STORAGE_KEY, JSON.stringify(meta));
+  } catch {
+    /* quota exceeded */
+  }
+}
+
+interface UploadedAttachment {
+  id: string;
+  type: 'image' | 'document';
+  mimeType: string;
+  name: string;
+  sizeBytes: number;
 }
 
 function loadHistory(): ChatMessage[] {
@@ -276,16 +319,24 @@ function formatDuration(ms: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function Composer({ onSend, pending }: { onSend: (text: string) => void; pending: boolean }) {
+function Composer({
+  onSend,
+  pending,
+  ensureChatId,
+}: {
+  onSend: (text: string, attachmentIds: string[]) => void;
+  pending: boolean;
+  ensureChatId: () => string;
+}) {
   const { addToast } = useToast();
   const [text, setText] = useState('');
   const [transcribing, setTranscribing] = useState(false);
-  // null = still loading the config check; true/false = known state.
-  // The mic button is hidden until we confirm a transcription service is
-  // configured, so users don't see a button that would just error out.
   const [transcribeConfigured, setTranscribeConfigured] = useState<boolean | null>(null);
+  const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const recorder = useVoiceRecorder();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Probe /api/transcribe once on mount to learn whether voice input is
   // available. The endpoint reads getTranscribeConfig() — same source the
@@ -315,9 +366,67 @@ function Composer({ onSend, pending }: { onSend: (text: string) => void; pending
 
   const handleSend = () => {
     const trimmed = text.trim();
-    if (!trimmed || pending) return;
-    onSend(trimmed);
+    // Allow sending with attachments only (no text needed) — the model
+    // will infer "describe this" / "what does this say" from context.
+    if ((!trimmed && attachments.length === 0) || pending) return;
+    onSend(
+      trimmed,
+      attachments.map((a) => a.id)
+    );
     setText('');
+    setAttachments([]);
+  };
+
+  const handleAttachClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFilesSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    // Reset the input value immediately so picking the same file twice in a
+    // row still fires onChange.
+    event.target.value = '';
+    if (files.length === 0) return;
+    setUploadingAttachment(true);
+    const chatId = ensureChatId();
+    for (const file of files) {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('chatId', chatId);
+      try {
+        const res = await fetch(`${API_BASE}/chat/attachments`, { method: 'POST', body: form });
+        const data = (await res.json()) as Partial<UploadedAttachment> & { error?: string };
+        if (!res.ok) {
+          addToast(data.error || `Upload failed (${res.status})`, 'error');
+          continue;
+        }
+        if (
+          data.id &&
+          data.type &&
+          data.mimeType &&
+          data.name &&
+          typeof data.sizeBytes === 'number'
+        ) {
+          setAttachments((prev) => [
+            ...prev,
+            {
+              id: data.id!,
+              type: data.type!,
+              mimeType: data.mimeType!,
+              name: data.name!,
+              sizeBytes: data.sizeBytes!,
+            },
+          ]);
+        }
+      } catch (err) {
+        addToast(err instanceof Error ? err.message : 'Upload failed', 'error');
+      }
+    }
+    setUploadingAttachment(false);
+  };
+
+  const handleRemoveAttachment = (id: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
   };
 
   const handleMic = useCallback(async () => {
@@ -375,6 +484,40 @@ function Composer({ onSend, pending }: { onSend: (text: string) => void; pending
             </Button>
           </div>
         )}
+        {attachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {attachments.map((a) => (
+              <div
+                key={a.id}
+                className="group flex items-center gap-2 px-2 py-1.5 rounded-lg bg-surface-100/80 border border-border/50 text-[12px] text-surface-800"
+                title={`${a.name} · ${(a.sizeBytes / 1024).toFixed(1)} KB`}
+              >
+                {a.type === 'image' ? (
+                  <ImageIcon className="w-3.5 h-3.5 text-accent-400" />
+                ) : (
+                  <FileText className="w-3.5 h-3.5 text-fuchsia-400" />
+                )}
+                <span className="truncate max-w-[160px]">{a.name}</span>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveAttachment(a.id)}
+                  className="ml-1 text-surface-500 hover:text-surface-950"
+                  aria-label={`Remove ${a.name}`}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept="image/png,image/jpeg,image/gif,image/webp,application/pdf"
+          onChange={handleFilesSelected}
+          className="hidden"
+        />
         <div className="flex items-end gap-2">
           <textarea
             ref={textareaRef}
@@ -401,6 +544,21 @@ function Composer({ onSend, pending }: { onSend: (text: string) => void; pending
             disabled={pending || transcribing}
             className="flex-1 resize-none rounded-2xl border border-border/60 bg-surface-0 px-4 py-3 text-[15px] leading-snug text-surface-950 placeholder:text-surface-500 focus:outline-none focus:border-accent-500/50 disabled:opacity-60"
           />
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            onClick={handleAttachClick}
+            disabled={pending || uploadingAttachment}
+            aria-label="Attach file"
+            className="h-11 w-11 rounded-full"
+          >
+            {uploadingAttachment ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <Paperclip className="w-5 h-5" />
+            )}
+          </Button>
           {showMic && (
             <Button
               type="button"
@@ -424,7 +582,7 @@ function Composer({ onSend, pending }: { onSend: (text: string) => void; pending
             type="button"
             size="icon"
             onClick={handleSend}
-            disabled={!text.trim() || pending}
+            disabled={(!text.trim() && attachments.length === 0) || pending}
             aria-label="Send"
             className="h-11 w-11 rounded-full"
           >
@@ -478,6 +636,12 @@ function EmptyState({
 // Main view
 // ---------------------------------------------------------------------------
 
+interface ChatStats {
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+}
+
 export function ChatView() {
   const { selectedEntity, setActiveView } = useAppContext();
   const { addToast } = useToast();
@@ -485,6 +649,29 @@ export function ChatView() {
   const [pending, setPending] = useState(false);
   const [credentialsOk, setCredentialsOk] = useState<boolean | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Two IDs for chat session continuity — see server/routes/chat.ts header.
+  // chatId is owned by the browser; resumeSessionId is captured from the
+  // SDK's session_id once the first turn completes. Both persisted so that
+  // a page reload mid-conversation preserves Claude's context.
+  const [chatMeta, setChatMeta] = useState<ChatMeta>(() => loadChatMeta());
+  useEffect(() => {
+    saveChatMeta(chatMeta);
+  }, [chatMeta]);
+
+  // Cumulative token + cost counter for the current chat. Resets on Clear.
+  // Updated from each turn's `done` event payload.
+  const [stats, setStats] = useState<ChatStats>({ inputTokens: 0, outputTokens: 0, costUsd: 0 });
+
+  // Mint a chatId on demand — the very first user send is the trigger, OR
+  // the first attachment upload (whichever happens first). Idempotent: if
+  // we already have one, return it.
+  const ensureChatId = useCallback((): string => {
+    if (chatMeta.chatId) return chatMeta.chatId;
+    const fresh = crypto.randomUUID();
+    setChatMeta((prev) => ({ ...prev, chatId: fresh }));
+    return fresh;
+  }, [chatMeta.chatId]);
 
   // Detect whether the user has Claude credentials configured at all so we can
   // surface a helpful empty-state CTA instead of letting the first send fail.
@@ -514,7 +701,7 @@ export function ChatView() {
   }, [messages, pending]);
 
   const handleSend = useCallback(
-    async (text: string) => {
+    async (text: string, attachmentIds: string[]) => {
       const userMsg: UserMessage = { id: newId(), role: 'user', content: text };
       const assistantId = newId();
       const assistantMsg: AssistantMessage = {
@@ -525,9 +712,6 @@ export function ChatView() {
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
       setPending(true);
 
-      // Helper to mutate the in-progress assistant message in place. All
-      // streaming SSE events update this single message, so the bubble
-      // materializes incrementally instead of replacing itself.
       const updateAssistant = (updater: (msg: AssistantMessage) => AssistantMessage): void => {
         setMessages((prev) =>
           prev.map((m) => (m.id === assistantId ? updater(m as AssistantMessage) : m))
@@ -536,12 +720,16 @@ export function ChatView() {
 
       try {
         const apiMessages = toApiMessages(messages, text);
+        const cid = ensureChatId();
         const res = await fetch(`${API_BASE}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             messages: apiMessages,
             entity: selectedEntity === 'all' ? undefined : selectedEntity,
+            chatId: cid,
+            ...(chatMeta.resumeSessionId ? { resumeSessionId: chatMeta.resumeSessionId } : {}),
+            ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
           }),
         });
 
@@ -589,6 +777,9 @@ export function ChatView() {
               isError?: boolean;
               stopReason?: string | null;
               message?: string;
+              sessionId?: string;
+              usage?: { inputTokens?: number; outputTokens?: number };
+              cost?: number;
             };
             try {
               event = JSON.parse(dataPayload);
@@ -628,8 +819,23 @@ export function ChatView() {
                     : b
                 ),
               }));
+            } else if (event.type === 'session' && typeof event.sessionId === 'string') {
+              // Persist the SDK-assigned session ID so the next turn can
+              // pass it as resume:. This is what gives us multi-turn
+              // continuity across requests.
+              setChatMeta((prev) => ({ ...prev, resumeSessionId: event.sessionId ?? null }));
             } else if (event.type === 'done') {
               updateAssistant((m) => ({ ...m, stopReason: event.stopReason ?? null }));
+              if (event.usage) {
+                const inDelta = event.usage.inputTokens ?? 0;
+                const outDelta = event.usage.outputTokens ?? 0;
+                const costDelta = event.cost ?? 0;
+                setStats((prev) => ({
+                  inputTokens: prev.inputTokens + inDelta,
+                  outputTokens: prev.outputTokens + outDelta,
+                  costUsd: prev.costUsd + costDelta,
+                }));
+              }
             } else if (event.type === 'error') {
               updateAssistant((m) => ({
                 ...m,
@@ -647,12 +853,14 @@ export function ChatView() {
         setPending(false);
       }
     },
-    [messages, selectedEntity]
+    [messages, selectedEntity, chatMeta.resumeSessionId, ensureChatId]
   );
 
   const handleClear = () => {
-    if (messages.length === 0) return;
+    if (messages.length === 0 && !chatMeta.chatId) return;
     setMessages([]);
+    setChatMeta({ chatId: null, resumeSessionId: null });
+    setStats({ inputTokens: 0, outputTokens: 0, costUsd: 0 });
     addToast('Chat cleared', 'success');
   };
 
@@ -701,7 +909,18 @@ export function ChatView() {
         </div>
       </div>
 
-      <Composer onSend={handleSend} pending={pending} />
+      <Composer onSend={handleSend} pending={pending} ensureChatId={ensureChatId} />
+      {(stats.inputTokens > 0 || stats.outputTokens > 0) && (
+        <div className="px-3 pb-1 pt-0.5 text-center text-[10px] text-surface-500 font-mono tracking-tight">
+          {formatTokens(stats.inputTokens)} in · {formatTokens(stats.outputTokens)} out
+          {stats.costUsd > 0 && ` · $${stats.costUsd.toFixed(4)}`}
+        </div>
+      )}
     </div>
   );
+}
+
+function formatTokens(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
 }

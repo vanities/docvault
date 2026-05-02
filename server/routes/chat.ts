@@ -1,8 +1,26 @@
 // Mobile chat route — agentic conversation against the user's vault.
 //
 // POST /api/chat
-//   body: { messages: ChatMessage[], entity?: string }
+//   body: { messages: ChatMessage[], entity?: string, chatId?: string,
+//           resumeSessionId?: string, attachmentIds?: string[] }
 //   returns: text/event-stream — newline-delimited `data: {json}\n\n` events
+//
+// Two IDs (matches t3code's split):
+//   - `chatId` — client-minted UUID, sent on every turn. Used to scope
+//     attachments under /data/_chat-attachments/<chatId>/. The client can
+//     upload attachments BEFORE the first message because chatId is owned
+//     by the browser.
+//   - `resumeSessionId` — assigned by the SDK on the first turn. Server
+//     captures it from `session_id` on each SDKMessage and emits a
+//     {type:'session', sessionId} event so the client can persist it. On
+//     subsequent turns the client sends it back and the route passes
+//     `resume:` to query() — Claude Code then has full conversation context
+//     natively, so we don't need to fold history into the system prompt.
+//
+// Attachments: client POSTs files to /api/chat/attachments with chatId,
+// gets back ids, then includes those ids in `attachmentIds` on the next
+// /api/chat call. Backend reads them and includes them as image/document
+// content blocks in the SDKUserMessage.
 //
 // Powered by `@anthropic-ai/claude-agent-sdk` — the same SDK Claude Code
 // itself uses, which spawns a bundled Claude Code binary internally and
@@ -24,10 +42,13 @@
 //   { type: 'error', message }          — fatal stream error
 
 import path from 'path';
+import { promises as fs } from 'fs';
+import { randomUUID } from 'crypto';
 import { createRequire } from 'module';
 import { createSdkMcpServer, query, tool, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import {
+  DATA_DIR,
   jsonResponse,
   loadConfig,
   loadParsedData,
@@ -40,6 +61,7 @@ import {
   getClaudeModel,
   getAnthropicKey,
   getAnthropicAuthToken,
+  ensureDir,
   type EntityConfig,
   type FileInfo,
   type Reminder,
@@ -58,6 +80,45 @@ const log = createLogger('Chat');
 const MAX_FILE_RESULTS = 100;
 const MAX_PARSED_TEXT_CHARS = 8000;
 const MCP_SERVER_NAME = 'docvault';
+
+// Per-chat attachment store. Mirrors t3code's per-thread folder pattern
+// so cleanup is just `rm -rf <chatId>/`. Layout:
+//   /data/_chat-attachments/<chatId>/<uuid>.<ext>
+const CHAT_ATTACHMENTS_DIR = path.join(DATA_DIR, '_chat-attachments');
+
+// Mime types we let through the upload endpoint. Images go in as Anthropic
+// `image` content blocks; PDFs as `document` blocks (the SDK passes both
+// straight through to the Messages API). DocVault is document-first, so
+// PDFs are the most-requested attachment type — extends t3code's
+// image-only schema.
+const SUPPORTED_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+const SUPPORTED_DOCUMENT_MIME_TYPES = new Set(['application/pdf']);
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB — Anthropic's image cap is generous but DocVault doesn't need megabyte raws.
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+function isAttachmentId(value: string): boolean {
+  return /^[a-z0-9_-]+$/i.test(value) && value.length <= 80;
+}
+
+function extensionFor(mimeType: string): string {
+  switch (mimeType) {
+    case 'image/png':
+      return '.png';
+    case 'image/jpeg':
+      return '.jpg';
+    case 'image/gif':
+      return '.gif';
+    case 'image/webp':
+      return '.webp';
+    case 'application/pdf':
+      return '.pdf';
+    default:
+      return '.bin';
+  }
+}
 
 // Tool names declared by our MCP server. Prefixed with `mcp__docvault__` once
 // the agent SDK registers them — that prefixed form is what shows up in
@@ -473,12 +534,9 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
 // caches the system prompt across turns.
 // ---------------------------------------------------------------------------
 
-function buildSystemPrompt(
-  activeEntity: string | undefined,
-  history: IncomingChatMessage[]
-): string {
+function buildSystemPrompt(activeEntity: string | undefined): string {
   const today = new Date().toISOString().slice(0, 10);
-  const parts: string[] = [
+  return [
     `You are the DocVault chat assistant — answering questions about the user's tax documents, financial records, and personal files. Today is ${today}.`,
     activeEntity
       ? `The user currently has entity "${activeEntity}" selected in the UI; prefer it when context is ambiguous, but call list_entities if they ask about something different.`
@@ -486,12 +544,7 @@ function buildSystemPrompt(
     'Use the provided tools to answer factually. Never invent file names, vendors, amounts, or dates. If a file has not been parsed yet, say so — do not guess its contents.',
     'Be concise. Use markdown tables for structured data. When citing a specific document, include its path so the user can find it.',
     'Write tools (set_metadata, add_reminder) make persistent changes — only invoke them when the user has clearly asked for that action.',
-  ];
-  if (history.length > 0) {
-    const transcript = history.map((m) => `${m.role}: ${m.content}`).join('\n\n');
-    parts.push(`## Prior conversation in this thread\n\n${transcript}`);
-  }
-  return parts.join('\n\n');
+  ].join('\n\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -504,6 +557,156 @@ interface IncomingChatMessage {
 }
 
 // ---------------------------------------------------------------------------
+// Attachments — /api/chat/attachments
+// ---------------------------------------------------------------------------
+
+interface StoredAttachmentMeta {
+  id: string;
+  type: 'image' | 'document';
+  mimeType: string;
+  name: string;
+  sizeBytes: number;
+  ext: string;
+}
+
+function attachmentDirFor(chatId: string): string {
+  return path.join(CHAT_ATTACHMENTS_DIR, chatId);
+}
+
+function attachmentFileFor(chatId: string, meta: { id: string; ext: string }): string {
+  return path.join(attachmentDirFor(chatId), `${meta.id}${meta.ext}`);
+}
+
+// POST /api/chat/attachments  (multipart/form-data: file, chatId)
+// Writes the file to the per-chat dir, returns
+//   { id, type, mimeType, name, sizeBytes }
+// The client then includes the `id` in the next /api/chat call's
+// `attachmentIds` array.
+async function handleAttachmentUpload(req: Request): Promise<Response> {
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch {
+    return jsonResponse({ error: 'Expected multipart/form-data' }, 400);
+  }
+  const file = form.get('file');
+  const chatIdRaw = form.get('chatId');
+  if (!(file instanceof File) || file.size === 0) {
+    return jsonResponse({ error: 'Missing "file" upload' }, 400);
+  }
+  if (typeof chatIdRaw !== 'string' || !isUuid(chatIdRaw)) {
+    return jsonResponse(
+      { error: 'chatId is required (UUID; mint client-side with crypto.randomUUID())' },
+      400
+    );
+  }
+  const chatId = chatIdRaw;
+  if (file.size > MAX_ATTACHMENT_BYTES) {
+    return jsonResponse({ error: `Attachment exceeds ${MAX_ATTACHMENT_BYTES} bytes` }, 413);
+  }
+  const mimeType = file.type || 'application/octet-stream';
+  let attachmentType: 'image' | 'document';
+  if (SUPPORTED_IMAGE_MIME_TYPES.has(mimeType)) attachmentType = 'image';
+  else if (SUPPORTED_DOCUMENT_MIME_TYPES.has(mimeType)) attachmentType = 'document';
+  else
+    return jsonResponse(
+      {
+        error: `Unsupported mime type ${mimeType}. Allowed: image/* (PNG/JPG/GIF/WebP) or application/pdf.`,
+      },
+      415
+    );
+
+  await ensureDir(attachmentDirFor(chatId));
+  const id = randomUUID();
+  const ext = extensionFor(mimeType);
+  const target = attachmentFileFor(chatId, { id, ext });
+  const buffer = Buffer.from(await file.arrayBuffer());
+  await fs.writeFile(target, buffer);
+
+  const meta: StoredAttachmentMeta = {
+    id,
+    type: attachmentType,
+    mimeType,
+    name: file.name || `attachment${ext}`,
+    sizeBytes: file.size,
+    ext,
+  };
+  return jsonResponse(meta);
+}
+
+// Look up a previously-uploaded attachment, read its bytes, and translate
+// to an Anthropic content block. Returns null if the id doesn't exist (we
+// drop missing attachments rather than failing the whole turn).
+async function loadAttachmentAsContentBlock(
+  chatId: string,
+  attachmentId: string
+): Promise<Record<string, unknown> | null> {
+  if (!isAttachmentId(attachmentId)) return null;
+  const dir = attachmentDirFor(chatId);
+  let entries: string[];
+  try {
+    entries = await fs.readdir(dir);
+  } catch {
+    return null;
+  }
+  const filename = entries.find((f) => f.startsWith(`${attachmentId}.`));
+  if (!filename) return null;
+  const fullPath = path.join(dir, filename);
+  const ext = path.extname(filename).toLowerCase();
+  const mimeType =
+    ext === '.png'
+      ? 'image/png'
+      : ext === '.jpg' || ext === '.jpeg'
+        ? 'image/jpeg'
+        : ext === '.gif'
+          ? 'image/gif'
+          : ext === '.webp'
+            ? 'image/webp'
+            : ext === '.pdf'
+              ? 'application/pdf'
+              : null;
+  if (!mimeType) return null;
+  const data = (await fs.readFile(fullPath)).toString('base64');
+  if (mimeType.startsWith('image/')) {
+    return {
+      type: 'image',
+      source: { type: 'base64', media_type: mimeType, data },
+    };
+  }
+  return {
+    type: 'document',
+    source: { type: 'base64', media_type: mimeType, data },
+  };
+}
+
+// Build the SDK prompt input. With no attachments, the SDK accepts a plain
+// string. With attachments, we have to use the AsyncIterable<SDKUserMessage>
+// form so the user message can carry rich content blocks.
+async function buildUserMessageContent(
+  text: string,
+  chatId: string | undefined,
+  attachmentIds: string[]
+): Promise<string | AsyncIterable<{ type: 'user'; message: { role: 'user'; content: unknown } }>> {
+  if (attachmentIds.length === 0 || !chatId) return text;
+
+  const blocks: Array<Record<string, unknown>> = [];
+  if (text.length > 0) blocks.push({ type: 'text', text });
+  for (const id of attachmentIds) {
+    const block = await loadAttachmentAsContentBlock(chatId, id);
+    if (block) blocks.push(block);
+  }
+  if (blocks.length === 0) return text;
+
+  // SDK iterable form — yield exactly one user message and finish.
+  return (async function* () {
+    yield {
+      type: 'user' as const,
+      message: { role: 'user' as const, content: blocks },
+    };
+  })();
+}
+
+// ---------------------------------------------------------------------------
 // Route handler — streams SSE
 // ---------------------------------------------------------------------------
 
@@ -512,10 +715,20 @@ export async function handleChatRoutes(
   _url: URL,
   pathname: string
 ): Promise<Response | null> {
+  if (pathname === '/api/chat/attachments') {
+    if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405);
+    return handleAttachmentUpload(req);
+  }
   if (pathname !== '/api/chat') return null;
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405);
 
-  let body: { messages?: IncomingChatMessage[]; entity?: string };
+  let body: {
+    messages?: IncomingChatMessage[];
+    entity?: string;
+    chatId?: string;
+    resumeSessionId?: string;
+    attachmentIds?: string[];
+  };
   try {
     body = await req.json();
   } catch {
@@ -532,6 +745,15 @@ export async function handleChatRoutes(
   if (last.role !== 'user') {
     return jsonResponse({ error: 'last message must be from the user' }, 400);
   }
+
+  // Validate IDs up-front so malformed values don't surprise the SDK with a
+  // NotFound error mid-stream.
+  const chatId = body.chatId && isUuid(body.chatId) ? body.chatId : undefined;
+  const resumeSessionId =
+    body.resumeSessionId && isUuid(body.resumeSessionId) ? body.resumeSessionId : undefined;
+  const attachmentIds = Array.isArray(body.attachmentIds)
+    ? body.attachmentIds.filter((id): id is string => typeof id === 'string')
+    : [];
 
   // Resolve credentials from settings (override env). The SDK reads
   // CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY from the env we pass to
@@ -552,9 +774,17 @@ export async function handleChatRoutes(
   const model = await getClaudeModel();
   const config = await loadConfig();
   const ctx: ToolContext = { config };
-  const history = incoming.slice(0, -1);
-  const systemPrompt = buildSystemPrompt(body.entity, history);
+  // When resuming, the SDK already has the full conversation in its session
+  // JSONL — no need to fold prior turns into the system prompt. For brand-new
+  // sessions, history is empty anyway (this is the first turn), so dropping
+  // the fold is a no-op there too.
+  const systemPrompt = buildSystemPrompt(body.entity);
   const mcpServer = buildDocVaultMcpServer(ctx);
+
+  // If attachments were uploaded for this turn, we need to switch from the
+  // simple `prompt: string` form to the iterable `prompt: AsyncIterable<SDKUserMessage>`
+  // form so the user message can carry image content blocks.
+  const userMessageContent = await buildUserMessageContent(last.content, chatId, attachmentIds);
 
   const subprocessEnv: Record<string, string | undefined> = {
     ...process.env,
@@ -575,12 +805,18 @@ export async function handleChatRoutes(
         }
       };
 
+      // Track the session_id once we see it on the first SDK message so we
+      // can echo it back to the client. The SDK stamps every message with
+      // this value, but we only need to send it once per turn.
+      let emittedSession = false;
+
       try {
         for await (const message of query({
-          prompt: last.content,
+          prompt: userMessageContent,
           options: {
             model,
             systemPrompt,
+            ...(resumeSessionId ? { resume: resumeSessionId } : {}),
             // Disable every built-in Claude Code tool — the chat must NOT
             // be able to Bash/Read/Edit files on the NAS. Only DocVault's
             // MCP tools below should be reachable.
@@ -612,13 +848,41 @@ export async function handleChatRoutes(
             },
             env: subprocessEnv,
             cwd: '/tmp',
+            // Token-level streaming. SDK emits SDKPartialAssistantMessage
+            // events carrying raw Anthropic stream deltas (content_block_delta
+            // with text_delta) so the UI can render character-by-character
+            // instead of waiting for whole assistant turns.
+            includePartialMessages: true,
             ...(CLAUDE_BINARY_PATH ? { pathToClaudeCodeExecutable: CLAUDE_BINARY_PATH } : {}),
           },
         })) {
-          translateAndSend(message, send);
+          // Echo the SDK-assigned session id once per stream so the client
+          // can persist it and pass it back as `sessionId` on the next turn
+          // to keep Claude Code's conversation continuity.
+          if (
+            !emittedSession &&
+            typeof (message as { session_id?: unknown }).session_id === 'string'
+          ) {
+            const sid = (message as { session_id: string }).session_id;
+            if (sid.length > 0) {
+              send({ type: 'session', sessionId: sid });
+              emittedSession = true;
+            }
+          }
           if (message.type === 'result') {
+            // Forward usage + cost to the client so it can render a running
+            // total at the bottom of the chat view. We log AND send here
+            // (not in translateAndSend) so the cost is computed once.
             const usageInput = message.usage?.input_tokens ?? 0;
             const usageOutput = message.usage?.output_tokens ?? 0;
+            const cost = message.total_cost_usd ?? null;
+            send({
+              type: 'done',
+              stopReason: message.stop_reason ?? null,
+              isError: message.is_error,
+              usage: { inputTokens: usageInput, outputTokens: usageOutput },
+              ...(typeof cost === 'number' ? { cost } : {}),
+            });
             void logAiCall({
               model,
               purpose: 'chat',
@@ -627,6 +891,8 @@ export async function handleChatRoutes(
               ok: !message.is_error,
               stopReason: message.stop_reason ?? null,
             });
+          } else {
+            translateAndSend(message, send);
           }
         }
       } catch (err) {
@@ -665,11 +931,29 @@ export async function handleChatRoutes(
 
 // Translate one SDKMessage into zero-or-more wire events for the client.
 function translateAndSend(message: SDKMessage, send: (event: object) => void): void {
+  // Token-level text streaming. With includePartialMessages enabled, every
+  // model-emitted token arrives as a stream_event carrying a raw Anthropic
+  // content_block_delta. We forward only text_delta payloads — tool_use
+  // input deltas and thinking deltas aren't useful to render incrementally
+  // in this UI.
+  if (message.type === 'stream_event') {
+    const ev = message.event as { type?: string; delta?: { type?: string; text?: string } };
+    if (
+      ev.type === 'content_block_delta' &&
+      ev.delta?.type === 'text_delta' &&
+      typeof ev.delta.text === 'string'
+    ) {
+      send({ type: 'text', text: ev.delta.text });
+    }
+    return;
+  }
   if (message.type === 'assistant') {
     for (const block of message.message.content) {
       if (block.type === 'text') {
-        send({ type: 'text', text: block.text });
-      } else if (block.type === 'tool_use') {
+        // Skip — partial events above already streamed the text.
+        continue;
+      }
+      if (block.type === 'tool_use') {
         // Strip the `mcp__docvault__` prefix so the UI shows the friendly
         // tool name (matches the labels the previous chat handler emitted).
         const friendlyName = block.name.startsWith(`mcp__${MCP_SERVER_NAME}__`)
@@ -712,11 +996,7 @@ function translateAndSend(message: SDKMessage, send: (event: object) => void): v
         isError: !!block.is_error,
       });
     }
-  } else if (message.type === 'result') {
-    send({
-      type: 'done',
-      stopReason: message.stop_reason ?? null,
-      isError: message.is_error,
-    });
   }
+  // 'result' is handled inline in the route handler so we can attach
+  // usage + cost to the done event without recomputing them here.
 }
