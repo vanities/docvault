@@ -2,14 +2,13 @@
 //
 // POST /api/chat
 //   body: { messages: ChatMessage[], entity?: string, chatId?: string,
-//           resumeSessionId?: string, attachmentIds?: string[] }
+//           resumeSessionId?: string,
+//           attachments?: { name, mimeType, dataUrl }[] }
 //   returns: text/event-stream — newline-delimited `data: {json}\n\n` events
 //
 // Two IDs (matches t3code's split):
-//   - `chatId` — client-minted UUID, sent on every turn. Used to scope
-//     attachments under /data/_chat-attachments/<chatId>/. The client can
-//     upload attachments BEFORE the first message because chatId is owned
-//     by the browser.
+//   - `chatId` — client-minted UUID, sent on every turn. Scopes attachments
+//     to /data/_chat-attachments/<chatId>/ on disk for cleanup.
 //   - `resumeSessionId` — assigned by the SDK on the first turn. Server
 //     captures it from `session_id` on each SDKMessage and emits a
 //     {type:'session', sessionId} event so the client can persist it. On
@@ -17,10 +16,11 @@
 //     `resume:` to query() — Claude Code then has full conversation context
 //     natively, so we don't need to fold history into the system prompt.
 //
-// Attachments: client POSTs files to /api/chat/attachments with chatId,
-// gets back ids, then includes those ids in `attachmentIds` on the next
-// /api/chat call. Backend reads them and includes them as image/document
-// content blocks in the SDKUserMessage.
+// Attachments are sent **inline as base64 data URLs in the chat body**
+// (matches t3code's `UploadChatImageAttachment` flow — no separate upload
+// endpoint). The handler parses each dataUrl, validates size + mime, writes
+// it to disk under <chatId>/, and includes it as an image or document
+// content block in the SDKUserMessage that gets handed to query().
 //
 // Powered by `@anthropic-ai/claude-agent-sdk` — the same SDK Claude Code
 // itself uses, which spawns a bundled Claude Code binary internally and
@@ -99,8 +99,16 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
-function isAttachmentId(value: string): boolean {
-  return /^[a-z0-9_-]+$/i.test(value) && value.length <= 80;
+// Parse a `data:<mime>;base64,<payload>` URL. Returns null on any deviation
+// from that exact form — we deliberately don't accept percent-encoded data
+// URLs (they're a different format and we can validate base64 cleanly).
+function parseBase64DataUrl(dataUrl: string): { mimeType: string; base64: string } | null {
+  const match = /^data:([^;,]+);base64,(.+)$/.exec(dataUrl);
+  if (!match) return null;
+  const mimeType = match[1].trim().toLowerCase();
+  const base64 = match[2];
+  if (mimeType.length === 0 || base64.length === 0) return null;
+  return { mimeType, base64 };
 }
 
 function extensionFor(mimeType: string): string {
@@ -560,144 +568,92 @@ interface IncomingChatMessage {
 // Attachments — /api/chat/attachments
 // ---------------------------------------------------------------------------
 
-interface StoredAttachmentMeta {
-  id: string;
-  type: 'image' | 'document';
-  mimeType: string;
+// Inline-upload attachment shape, mirrors t3code's UploadChatImageAttachment
+// schema (with PDF added). dataUrl is `data:<mime>;base64,<bytes>`.
+interface IncomingAttachment {
   name: string;
-  sizeBytes: number;
-  ext: string;
+  mimeType: string;
+  dataUrl: string;
 }
 
 function attachmentDirFor(chatId: string): string {
   return path.join(CHAT_ATTACHMENTS_DIR, chatId);
 }
 
-function attachmentFileFor(chatId: string, meta: { id: string; ext: string }): string {
-  return path.join(attachmentDirFor(chatId), `${meta.id}${meta.ext}`);
-}
-
-// POST /api/chat/attachments  (multipart/form-data: file, chatId)
-// Writes the file to the per-chat dir, returns
-//   { id, type, mimeType, name, sizeBytes }
-// The client then includes the `id` in the next /api/chat call's
-// `attachmentIds` array.
-async function handleAttachmentUpload(req: Request): Promise<Response> {
-  let form: FormData;
-  try {
-    form = await req.formData();
-  } catch {
-    return jsonResponse({ error: 'Expected multipart/form-data' }, 400);
-  }
-  const file = form.get('file');
-  const chatIdRaw = form.get('chatId');
-  if (!(file instanceof File) || file.size === 0) {
-    return jsonResponse({ error: 'Missing "file" upload' }, 400);
-  }
-  if (typeof chatIdRaw !== 'string' || !isUuid(chatIdRaw)) {
-    return jsonResponse(
-      { error: 'chatId is required (UUID; mint client-side with crypto.randomUUID())' },
-      400
-    );
-  }
-  const chatId = chatIdRaw;
-  if (file.size > MAX_ATTACHMENT_BYTES) {
-    return jsonResponse({ error: `Attachment exceeds ${MAX_ATTACHMENT_BYTES} bytes` }, 413);
-  }
-  const mimeType = file.type || 'application/octet-stream';
-  let attachmentType: 'image' | 'document';
-  if (SUPPORTED_IMAGE_MIME_TYPES.has(mimeType)) attachmentType = 'image';
-  else if (SUPPORTED_DOCUMENT_MIME_TYPES.has(mimeType)) attachmentType = 'document';
-  else
-    return jsonResponse(
-      {
-        error: `Unsupported mime type ${mimeType}. Allowed: image/* (PNG/JPG/GIF/WebP) or application/pdf.`,
-      },
-      415
-    );
-
-  await ensureDir(attachmentDirFor(chatId));
-  const id = randomUUID();
-  const ext = extensionFor(mimeType);
-  const target = attachmentFileFor(chatId, { id, ext });
-  const buffer = Buffer.from(await file.arrayBuffer());
-  await fs.writeFile(target, buffer);
-
-  const meta: StoredAttachmentMeta = {
-    id,
-    type: attachmentType,
-    mimeType,
-    name: file.name || `attachment${ext}`,
-    sizeBytes: file.size,
-    ext,
-  };
-  return jsonResponse(meta);
-}
-
-// Look up a previously-uploaded attachment, read its bytes, and translate
-// to an Anthropic content block. Returns null if the id doesn't exist (we
-// drop missing attachments rather than failing the whole turn).
-async function loadAttachmentAsContentBlock(
+// Validate an incoming attachment, write it to disk under the chat dir, and
+// return the Anthropic content block that should be included in the user
+// message. Returns { error } on validation failure so we can short-circuit
+// the whole turn (keeps the model from being asked about an attachment we
+// silently dropped). Mirrors t3code's normalizer flow:
+//   parseBase64DataUrl → size/mime check → createAttachmentId → writeFile.
+async function persistAttachment(
   chatId: string,
-  attachmentId: string
-): Promise<Record<string, unknown> | null> {
-  if (!isAttachmentId(attachmentId)) return null;
-  const dir = attachmentDirFor(chatId);
-  let entries: string[];
-  try {
-    entries = await fs.readdir(dir);
-  } catch {
-    return null;
+  attachment: IncomingAttachment
+): Promise<{ block: Record<string, unknown> } | { error: string }> {
+  if (typeof attachment.dataUrl !== 'string' || attachment.dataUrl.length === 0) {
+    return { error: `Attachment "${attachment.name}" missing dataUrl` };
   }
-  const filename = entries.find((f) => f.startsWith(`${attachmentId}.`));
-  if (!filename) return null;
-  const fullPath = path.join(dir, filename);
-  const ext = path.extname(filename).toLowerCase();
-  const mimeType =
-    ext === '.png'
-      ? 'image/png'
-      : ext === '.jpg' || ext === '.jpeg'
-        ? 'image/jpeg'
-        : ext === '.gif'
-          ? 'image/gif'
-          : ext === '.webp'
-            ? 'image/webp'
-            : ext === '.pdf'
-              ? 'application/pdf'
-              : null;
-  if (!mimeType) return null;
-  const data = (await fs.readFile(fullPath)).toString('base64');
-  if (mimeType.startsWith('image/')) {
+  const parsed = parseBase64DataUrl(attachment.dataUrl);
+  if (!parsed) {
+    return { error: `Attachment "${attachment.name}" has invalid data URL` };
+  }
+  const mimeType = parsed.mimeType;
+  const isImage = SUPPORTED_IMAGE_MIME_TYPES.has(mimeType);
+  const isDoc = SUPPORTED_DOCUMENT_MIME_TYPES.has(mimeType);
+  if (!isImage && !isDoc) {
     return {
-      type: 'image',
-      source: { type: 'base64', media_type: mimeType, data },
+      error: `Unsupported mime "${mimeType}" for "${attachment.name}". Allowed: image/* (PNG/JPG/GIF/WebP) or application/pdf.`,
     };
   }
-  return {
-    type: 'document',
-    source: { type: 'base64', media_type: mimeType, data },
-  };
+  const bytes = Buffer.from(parsed.base64, 'base64');
+  if (bytes.byteLength === 0 || bytes.byteLength > MAX_ATTACHMENT_BYTES) {
+    return {
+      error: `Attachment "${attachment.name}" is empty or exceeds ${MAX_ATTACHMENT_BYTES} bytes`,
+    };
+  }
+
+  // Persist with a t3code-style scoped id: `<chat-segment>-<uuid>` so the
+  // file is recognizably part of this chat even if listed alongside other
+  // chats' uploads. Keep the chat-segment short and url-safe.
+  const chatSegment = chatId
+    .replace(/[^a-z0-9]/gi, '')
+    .slice(0, 12)
+    .toLowerCase();
+  const id = `${chatSegment}-${randomUUID()}`;
+  const ext = extensionFor(mimeType);
+  await ensureDir(attachmentDirFor(chatId));
+  const target = path.join(attachmentDirFor(chatId), `${id}${ext}`);
+  await fs.writeFile(target, bytes);
+
+  const block: Record<string, unknown> = isImage
+    ? { type: 'image', source: { type: 'base64', media_type: mimeType, data: parsed.base64 } }
+    : { type: 'document', source: { type: 'base64', media_type: mimeType, data: parsed.base64 } };
+  return { block };
 }
 
 // Build the SDK prompt input. With no attachments, the SDK accepts a plain
-// string. With attachments, we have to use the AsyncIterable<SDKUserMessage>
+// string. With attachments, switch to the AsyncIterable<SDKUserMessage>
 // form so the user message can carry rich content blocks.
 async function buildUserMessageContent(
   text: string,
   chatId: string | undefined,
-  attachmentIds: string[]
-): Promise<string | AsyncIterable<{ type: 'user'; message: { role: 'user'; content: unknown } }>> {
-  if (attachmentIds.length === 0 || !chatId) return text;
+  attachments: IncomingAttachment[]
+): Promise<
+  | string
+  | AsyncIterable<{ type: 'user'; message: { role: 'user'; content: unknown } }>
+  | { error: string }
+> {
+  if (attachments.length === 0 || !chatId) return text;
 
   const blocks: Array<Record<string, unknown>> = [];
   if (text.length > 0) blocks.push({ type: 'text', text });
-  for (const id of attachmentIds) {
-    const block = await loadAttachmentAsContentBlock(chatId, id);
-    if (block) blocks.push(block);
+  for (const attachment of attachments) {
+    const result = await persistAttachment(chatId, attachment);
+    if ('error' in result) return { error: result.error };
+    blocks.push(result.block);
   }
   if (blocks.length === 0) return text;
 
-  // SDK iterable form — yield exactly one user message and finish.
   return (async function* () {
     yield {
       type: 'user' as const,
@@ -715,10 +671,6 @@ export async function handleChatRoutes(
   _url: URL,
   pathname: string
 ): Promise<Response | null> {
-  if (pathname === '/api/chat/attachments') {
-    if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405);
-    return handleAttachmentUpload(req);
-  }
   if (pathname !== '/api/chat') return null;
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405);
 
@@ -727,7 +679,7 @@ export async function handleChatRoutes(
     entity?: string;
     chatId?: string;
     resumeSessionId?: string;
-    attachmentIds?: string[];
+    attachments?: IncomingAttachment[];
   };
   try {
     body = await req.json();
@@ -751,9 +703,25 @@ export async function handleChatRoutes(
   const chatId = body.chatId && isUuid(body.chatId) ? body.chatId : undefined;
   const resumeSessionId =
     body.resumeSessionId && isUuid(body.resumeSessionId) ? body.resumeSessionId : undefined;
-  const attachmentIds = Array.isArray(body.attachmentIds)
-    ? body.attachmentIds.filter((id): id is string => typeof id === 'string')
+  const attachments: IncomingAttachment[] = Array.isArray(body.attachments)
+    ? body.attachments.filter(
+        (a): a is IncomingAttachment =>
+          a !== null &&
+          typeof a === 'object' &&
+          typeof (a as IncomingAttachment).name === 'string' &&
+          typeof (a as IncomingAttachment).mimeType === 'string' &&
+          typeof (a as IncomingAttachment).dataUrl === 'string'
+      )
     : [];
+  if (attachments.length > 0 && !chatId) {
+    return jsonResponse(
+      {
+        error:
+          'chatId is required when sending attachments (mint client-side with crypto.randomUUID())',
+      },
+      400
+    );
+  }
 
   // Resolve credentials from settings (override env). The SDK reads
   // CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY from the env we pass to
@@ -781,10 +749,19 @@ export async function handleChatRoutes(
   const systemPrompt = buildSystemPrompt(body.entity);
   const mcpServer = buildDocVaultMcpServer(ctx);
 
-  // If attachments were uploaded for this turn, we need to switch from the
-  // simple `prompt: string` form to the iterable `prompt: AsyncIterable<SDKUserMessage>`
-  // form so the user message can carry image content blocks.
-  const userMessageContent = await buildUserMessageContent(last.content, chatId, attachmentIds);
+  // If attachments came in this turn, we switch from the simple
+  // `prompt: string` form to the iterable form so the user message can
+  // carry image / document blocks. persistAttachment writes each upload
+  // to disk under <chatId>/ and returns the matching content block.
+  const userMessageResult = await buildUserMessageContent(last.content, chatId, attachments);
+  if (
+    typeof userMessageResult === 'object' &&
+    userMessageResult !== null &&
+    'error' in userMessageResult
+  ) {
+    return jsonResponse({ error: userMessageResult.error }, 400);
+  }
+  const userMessageContent = userMessageResult;
 
   const subprocessEnv: Record<string, string | undefined> = {
     ...process.env,

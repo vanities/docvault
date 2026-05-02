@@ -105,12 +105,18 @@ function saveChatMeta(meta: ChatMeta): void {
   }
 }
 
-interface UploadedAttachment {
-  id: string;
+// Composer-local attachment state. Mirrors t3code's ComposerImageAttachment
+// pattern: keep a `previewUrl` (blob: URL via URL.createObjectURL) for cheap
+// rendering, plus a `dataUrl` (base64) for sending inline. Both are kept in
+// memory only — we don't persist drafts across reloads (yet).
+interface ComposerAttachment {
+  localId: string;
   type: 'image' | 'document';
   mimeType: string;
   name: string;
   sizeBytes: number;
+  dataUrl: string;
+  previewUrl?: string;
 }
 
 function loadHistory(): ChatMessage[] {
@@ -319,24 +325,54 @@ function formatDuration(ms: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+const SUPPORTED_IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+const SUPPORTED_DOC_MIMES = new Set(['application/pdf']);
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === 'string') resolve(result);
+      else reject(new Error('Unexpected FileReader result'));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('FileReader failed'));
+    reader.readAsDataURL(file);
+  });
+}
+
 function Composer({
   onSend,
   pending,
-  ensureChatId,
 }: {
-  onSend: (text: string, attachmentIds: string[]) => void;
+  onSend: (text: string, attachments: ComposerAttachment[]) => void;
   pending: boolean;
-  ensureChatId: () => string;
 }) {
   const { addToast } = useToast();
   const [text, setText] = useState('');
   const [transcribing, setTranscribing] = useState(false);
   const [transcribeConfigured, setTranscribeConfigured] = useState<boolean | null>(null);
-  const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
-  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
+  const [processingFiles, setProcessingFiles] = useState(false);
   const recorder = useVoiceRecorder();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Revoke any blob: URLs we created when this Composer unmounts so the
+  // browser can free the underlying File objects. Without this, navigating
+  // away mid-compose leaks the bytes until the GC catches the unreferenced
+  // ObjectURL — usually fine but explicit is safer with large images.
+  useEffect(() => {
+    return () => {
+      for (const a of attachments) {
+        if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
+      }
+    };
+    // Intentionally only run on unmount (`attachments` would re-trigger and
+    // double-revoke). Captured `attachments` is the latest closure value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Probe /api/transcribe once on mount to learn whether voice input is
   // available. The endpoint reads getTranscribeConfig() — same source the
@@ -369,10 +405,14 @@ function Composer({
     // Allow sending with attachments only (no text needed) — the model
     // will infer "describe this" / "what does this say" from context.
     if ((!trimmed && attachments.length === 0) || pending) return;
-    onSend(
-      trimmed,
-      attachments.map((a) => a.id)
-    );
+    // Hand the attachments to ChatView before clearing our state — the
+    // parent will pull dataUrls into the chat-send body. We revoke the
+    // blob: URLs here since the parent doesn't render those (it'll fetch
+    // server-stored copies later if it needs to display them again).
+    onSend(trimmed, attachments);
+    for (const a of attachments) {
+      if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
+    }
     setText('');
     setAttachments([]);
   };
@@ -387,46 +427,45 @@ function Composer({
     // row still fires onChange.
     event.target.value = '';
     if (files.length === 0) return;
-    setUploadingAttachment(true);
-    const chatId = ensureChatId();
+    setProcessingFiles(true);
     for (const file of files) {
-      const form = new FormData();
-      form.append('file', file);
-      form.append('chatId', chatId);
+      const mimeType = file.type || 'application/octet-stream';
+      const isImage = SUPPORTED_IMAGE_MIMES.has(mimeType);
+      const isDoc = SUPPORTED_DOC_MIMES.has(mimeType);
+      if (!isImage && !isDoc) {
+        addToast(`Unsupported file type: ${mimeType || file.name}`, 'error');
+        continue;
+      }
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        addToast(`"${file.name}" exceeds 10MB`, 'error');
+        continue;
+      }
       try {
-        const res = await fetch(`${API_BASE}/chat/attachments`, { method: 'POST', body: form });
-        const data = (await res.json()) as Partial<UploadedAttachment> & { error?: string };
-        if (!res.ok) {
-          addToast(data.error || `Upload failed (${res.status})`, 'error');
-          continue;
-        }
-        if (
-          data.id &&
-          data.type &&
-          data.mimeType &&
-          data.name &&
-          typeof data.sizeBytes === 'number'
-        ) {
-          setAttachments((prev) => [
-            ...prev,
-            {
-              id: data.id!,
-              type: data.type!,
-              mimeType: data.mimeType!,
-              name: data.name!,
-              sizeBytes: data.sizeBytes!,
-            },
-          ]);
-        }
+        const dataUrl = await readFileAsDataUrl(file);
+        const previewUrl = isImage ? URL.createObjectURL(file) : undefined;
+        const attachment: ComposerAttachment = {
+          localId: crypto.randomUUID(),
+          type: isImage ? 'image' : 'document',
+          mimeType,
+          name: file.name || (isImage ? 'image' : 'document'),
+          sizeBytes: file.size,
+          dataUrl,
+          ...(previewUrl ? { previewUrl } : {}),
+        };
+        setAttachments((prev) => [...prev, attachment]);
       } catch (err) {
-        addToast(err instanceof Error ? err.message : 'Upload failed', 'error');
+        addToast(err instanceof Error ? err.message : `Failed to read ${file.name}`, 'error');
       }
     }
-    setUploadingAttachment(false);
+    setProcessingFiles(false);
   };
 
-  const handleRemoveAttachment = (id: string) => {
-    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  const handleRemoveAttachment = (localId: string) => {
+    setAttachments((prev) => {
+      const removed = prev.find((a) => a.localId === localId);
+      if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
+      return prev.filter((a) => a.localId !== localId);
+    });
   };
 
   const handleMic = useCallback(async () => {
@@ -486,28 +525,46 @@ function Composer({
         )}
         {attachments.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
-            {attachments.map((a) => (
-              <div
-                key={a.id}
-                className="group flex items-center gap-2 px-2 py-1.5 rounded-lg bg-surface-100/80 border border-border/50 text-[12px] text-surface-800"
-                title={`${a.name} · ${(a.sizeBytes / 1024).toFixed(1)} KB`}
-              >
-                {a.type === 'image' ? (
-                  <ImageIcon className="w-3.5 h-3.5 text-accent-400" />
-                ) : (
-                  <FileText className="w-3.5 h-3.5 text-fuchsia-400" />
-                )}
-                <span className="truncate max-w-[160px]">{a.name}</span>
-                <button
-                  type="button"
-                  onClick={() => handleRemoveAttachment(a.id)}
-                  className="ml-1 text-surface-500 hover:text-surface-950"
-                  aria-label={`Remove ${a.name}`}
+            {attachments.map((a) =>
+              a.type === 'image' && a.previewUrl ? (
+                <div
+                  key={a.localId}
+                  className="relative group rounded-lg overflow-hidden border border-border/50 bg-surface-100"
+                  title={`${a.name} · ${(a.sizeBytes / 1024).toFixed(1)} KB`}
                 >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))}
+                  <img src={a.previewUrl} alt={a.name} className="block h-16 w-16 object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveAttachment(a.localId)}
+                    className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-surface-950/70 text-surface-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    aria-label={`Remove ${a.name}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ) : (
+                <div
+                  key={a.localId}
+                  className="group flex items-center gap-2 px-2 py-1.5 rounded-lg bg-surface-100/80 border border-border/50 text-[12px] text-surface-800"
+                  title={`${a.name} · ${(a.sizeBytes / 1024).toFixed(1)} KB`}
+                >
+                  {a.type === 'image' ? (
+                    <ImageIcon className="w-3.5 h-3.5 text-accent-400" />
+                  ) : (
+                    <FileText className="w-3.5 h-3.5 text-fuchsia-400" />
+                  )}
+                  <span className="truncate max-w-[160px]">{a.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveAttachment(a.localId)}
+                    className="ml-1 text-surface-500 hover:text-surface-950"
+                    aria-label={`Remove ${a.name}`}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )
+            )}
           </div>
         )}
         <input
@@ -549,11 +606,11 @@ function Composer({
             size="icon"
             variant="ghost"
             onClick={handleAttachClick}
-            disabled={pending || uploadingAttachment}
+            disabled={pending || processingFiles}
             aria-label="Attach file"
             className="h-11 w-11 rounded-full"
           >
-            {uploadingAttachment ? (
+            {processingFiles ? (
               <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
               <Paperclip className="w-5 h-5" />
@@ -701,7 +758,7 @@ export function ChatView() {
   }, [messages, pending]);
 
   const handleSend = useCallback(
-    async (text: string, attachmentIds: string[]) => {
+    async (text: string, atts: ComposerAttachment[]) => {
       const userMsg: UserMessage = { id: newId(), role: 'user', content: text };
       const assistantId = newId();
       const assistantMsg: AssistantMessage = {
@@ -721,6 +778,14 @@ export function ChatView() {
       try {
         const apiMessages = toApiMessages(messages, text);
         const cid = ensureChatId();
+        // Pull the wire-format attachments out of the composer state. The
+        // server parses each dataUrl, validates, persists to disk, and
+        // builds the matching image/document content block.
+        const wireAttachments = atts.map((a) => ({
+          name: a.name,
+          mimeType: a.mimeType,
+          dataUrl: a.dataUrl,
+        }));
         const res = await fetch(`${API_BASE}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -729,7 +794,7 @@ export function ChatView() {
             entity: selectedEntity === 'all' ? undefined : selectedEntity,
             chatId: cid,
             ...(chatMeta.resumeSessionId ? { resumeSessionId: chatMeta.resumeSessionId } : {}),
-            ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
+            ...(wireAttachments.length > 0 ? { attachments: wireAttachments } : {}),
           }),
         });
 
@@ -909,7 +974,7 @@ export function ChatView() {
         </div>
       </div>
 
-      <Composer onSend={handleSend} pending={pending} ensureChatId={ensureChatId} />
+      <Composer onSend={handleSend} pending={pending} />
       {(stats.inputTokens > 0 || stats.outputTokens > 0) && (
         <div className="px-3 pb-1 pt-0.5 text-center text-[10px] text-surface-500 font-mono tracking-tight">
           {formatTokens(stats.inputTokens)} in · {formatTokens(stats.outputTokens)} out
