@@ -80,7 +80,22 @@ export const DEFAULT_MODEL = 'claude-sonnet-4-6';
 
 export interface Settings {
   anthropicKey?: string;
+  /**
+   * Optional Claude OAuth subscription token (Bearer). When present, the
+   * Anthropic SDK is configured with `authToken` instead of `apiKey`, which
+   * routes calls through the Claude.ai subscription instead of API billing.
+   * Generate with `claude setup-token` or the OAuth flow.
+   */
+  anthropicAuthToken?: string;
   claudeModel?: string;
+  /**
+   * HTTP endpoint for an OpenAI-compatible /audio/transcriptions service —
+   * e.g. whisper.cpp server, faster-whisper-server, parakeet-mlx server.
+   * The /api/transcribe route forwards multipart audio uploads here.
+   */
+  transcribeUrl?: string;
+  /** Model name passed to the transcription service (e.g. "parakeet-tdt-0.6b-v2", "whisper-large-v3"). */
+  transcribeModel?: string;
   crypto?: {
     exchanges: CryptoExchangeConfig[];
     wallets: CryptoWalletConfig[];
@@ -224,6 +239,37 @@ export async function getAnthropicKey(): Promise<string | undefined> {
   }
   // Fall back to environment variable
   return process.env.ANTHROPIC_API_KEY;
+}
+
+/**
+ * Get the Claude OAuth subscription bearer token, if configured.
+ * Settings override environment. When present, this should be preferred over
+ * the API key — the Anthropic SDK accepts it via `authToken`, which routes
+ * calls through a Claude.ai subscription instead of API billing.
+ */
+export async function getAnthropicAuthToken(): Promise<string | undefined> {
+  const settings = await loadSettings();
+  if (settings.anthropicAuthToken) {
+    return settings.anthropicAuthToken;
+  }
+  return process.env.ANTHROPIC_AUTH_TOKEN;
+}
+
+export interface TranscribeConfig {
+  url?: string;
+  model?: string;
+}
+
+/**
+ * Get transcription service config. Falls back to env vars
+ * (DOCVAULT_TRANSCRIBE_URL, DOCVAULT_TRANSCRIBE_MODEL) if not in settings.
+ */
+export async function getTranscribeConfig(): Promise<TranscribeConfig> {
+  const settings = await loadSettings();
+  return {
+    url: settings.transcribeUrl || process.env.DOCVAULT_TRANSCRIBE_URL,
+    model: settings.transcribeModel || process.env.DOCVAULT_TRANSCRIBE_MODEL,
+  };
 }
 
 /**

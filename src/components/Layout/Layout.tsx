@@ -9,6 +9,7 @@ import { useAppContext } from '../../contexts/AppContext';
 import { TaxYearView } from '../TaxYear/TaxYearView';
 import { BusinessDocsView } from '../BusinessDocs/BusinessDocsView';
 import { AllFilesView } from '../AllFiles/AllFilesView';
+import { ChatView } from '../Chat/ChatView';
 import { SettingsView } from '../Settings/SettingsView';
 import { TnTaxView } from '../TnTax/TnTaxView';
 import { CryptoView } from '../Crypto/CryptoView';
@@ -96,6 +97,8 @@ export function Layout() {
         return <BusinessDocsView />;
       case 'all-files':
         return <AllFilesView />;
+      case 'chat':
+        return <ChatView />;
       case 'settings':
         return <SettingsView />;
       case 'tn-tax':

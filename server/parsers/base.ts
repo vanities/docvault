@@ -6,7 +6,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import sharp from 'sharp';
 import type { ParsedTaxDocument } from './pdf.js';
 import type { ParserMetadata } from './schemas/index.js';
-import { getAnthropicKey, getClaudeModel } from '../data.js';
+import { getAnthropicKey, getAnthropicAuthToken, getClaudeModel } from '../data.js';
 import { withAILimit } from '../aiLimiter.js';
 import { logAiCall } from '../ai/usage-log.js';
 import type { UsageTokens } from '../ai/pricing.js';
@@ -15,13 +15,30 @@ import { createLogger } from '../logger.js';
 const log = createLogger('ParserBase');
 
 // --- Anthropic Client (lazy, shared) ---
+// Prefers the Claude OAuth subscription token (Bearer) when configured —
+// requests are routed through a Claude.ai subscription rather than API
+// billing. Falls back to the API key otherwise. The token is sent as
+// `Authorization: Bearer ...` via the SDK's `authToken` parameter and
+// requires the `oauth-2025-04-20` beta header.
 
 let client: Anthropic | null = null;
 
 export async function getClient(): Promise<Anthropic> {
+  const authToken = await getAnthropicAuthToken();
+  if (authToken) {
+    client = new Anthropic({
+      authToken,
+      maxRetries: 0,
+      defaultHeaders: { 'anthropic-beta': 'oauth-2025-04-20' },
+    });
+    return client;
+  }
+
   const apiKey = await getAnthropicKey();
   if (!apiKey) {
-    throw new Error('Anthropic API key not configured. Please add it in Settings.');
+    throw new Error(
+      'No Claude credentials configured. Add an Anthropic API key OR a Claude OAuth token in Settings.'
+    );
   }
   client = new Anthropic({ apiKey, maxRetries: 0 });
   return client;
