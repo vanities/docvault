@@ -43,6 +43,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { ChatSettingsSection } from './ChatSettingsSection';
 import {
   AVAILABLE_ICONS,
   DEFAULT_ENTITY_ICONS,
@@ -1501,6 +1502,8 @@ export function SettingsView() {
                 </div>
               )}
             </Card>
+
+            <ChatSettingsSection />
           </>
         )}
 

@@ -155,6 +155,8 @@ import { handleHealthAnalysisRoutes } from './routes/health-analysis.js';
 import { handleStrategyRoutes } from './routes/strategy.js';
 import { handleResearchRoutes } from './routes/research.js';
 import { handleCryptoYieldsRoutes } from './routes/crypto-yields.js';
+import { handleChatRoutes } from './routes/chat.js';
+import { handleTranscribeRoutes } from './routes/transcribe.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -239,15 +241,32 @@ async function handleRequest(req: Request): Promise<Response> {
       keyHint = process.env.ANTHROPIC_API_KEY!.slice(-4);
     }
 
+    const hasSettingsAuth = !!settings.anthropicAuthToken;
+    const hasEnvAuth = !!process.env.ANTHROPIC_AUTH_TOKEN;
+    let authSource: 'settings' | 'env' | undefined;
+    let authHint: string | undefined;
+    if (hasSettingsAuth) {
+      authSource = 'settings';
+      authHint = settings.anthropicAuthToken!.slice(-4);
+    } else if (hasEnvAuth) {
+      authSource = 'env';
+      authHint = process.env.ANTHROPIC_AUTH_TOKEN!.slice(-4);
+    }
+
     return jsonResponse({
       hasAnthropicKey: hasSettingsKey || hasEnvKey,
       keySource,
       keyHint,
+      hasAnthropicAuthToken: hasSettingsAuth || hasEnvAuth,
+      authSource,
+      authHint,
       claudeModel: settings.claudeModel || DEFAULT_MODEL,
       hasGeoapifyKey: !!settings.geoapifyApiKey,
       geoapifyKeyHint: settings.geoapifyApiKey ? settings.geoapifyApiKey.slice(-4) : undefined,
       hasFredKey: !!settings.fredApiKey,
       fredKeyHint: settings.fredApiKey ? settings.fredApiKey.slice(-4) : undefined,
+      transcribeUrl: settings.transcribeUrl ?? '',
+      transcribeModel: settings.transcribeModel ?? '',
     });
   }
 
@@ -284,6 +303,28 @@ async function handleRequest(req: Request): Promise<Response> {
       } else {
         delete settings.fredApiKey;
       }
+    }
+
+    if (body.clearAnthropicAuthToken) {
+      delete settings.anthropicAuthToken;
+    } else if (body.anthropicAuthToken !== undefined) {
+      if (body.anthropicAuthToken) {
+        settings.anthropicAuthToken = body.anthropicAuthToken;
+      } else {
+        delete settings.anthropicAuthToken;
+      }
+    }
+
+    if (body.transcribeUrl !== undefined) {
+      const v = String(body.transcribeUrl).trim();
+      if (v) settings.transcribeUrl = v;
+      else delete settings.transcribeUrl;
+    }
+
+    if (body.transcribeModel !== undefined) {
+      const v = String(body.transcribeModel).trim();
+      if (v) settings.transcribeModel = v;
+      else delete settings.transcribeModel;
     }
 
     await saveSettings(settings);
@@ -1844,6 +1885,16 @@ async function handleRequest(req: Request): Promise<Response> {
   // research routes (analyst PDF uploads + text extraction for Quant section)
   const researchResponse = await handleResearchRoutes(req, url, pathname);
   if (researchResponse) return researchResponse;
+
+  // chat routes (mobile chat with agentic tool calls against the vault)
+  const chatResponse = await handleChatRoutes(req, url, pathname);
+  if (chatResponse) return chatResponse;
+
+  // voice transcription proxy (forwards audio to a configurable
+  // OpenAI-compatible /audio/transcriptions service — whisper.cpp,
+  // faster-whisper-server, parakeet-mlx, …)
+  const transcribeResponse = await handleTranscribeRoutes(req, url, pathname);
+  if (transcribeResponse) return transcribeResponse;
 
   // crypto yields overlay (APY per source/asset, merged into balances at render
   // time — see routes/crypto-yields.ts for why this is separate from the balance cache)

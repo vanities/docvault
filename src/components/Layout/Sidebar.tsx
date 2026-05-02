@@ -24,6 +24,7 @@ import {
   Scale,
   LineChart,
   Brain,
+  MessageCircle,
 } from 'lucide-react';
 import { useAppContext, type NavView } from '../../contexts/AppContext';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
@@ -381,7 +382,12 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
   const handleEntitySelect = (entity: EntityConfig) => {
     setSelectedEntity(entity.id);
     // Smart view defaulting
-    if (activeView === 'sales' || activeView === 'mileage' || activeView === 'income') {
+    if (
+      activeView === 'sales' ||
+      activeView === 'mileage' ||
+      activeView === 'income' ||
+      activeView === 'chat'
+    ) {
       onClose?.();
       return;
     }
@@ -576,6 +582,16 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               activeColor="bg-accent-500/10"
               activeTextColor="text-accent-400"
               glow="glow-emerald"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
+            <NavButton
+              view="chat"
+              label="Chat"
+              icon={MessageCircle}
+              activeColor="bg-fuchsia-500/10"
+              activeTextColor="text-fuchsia-400"
               activeView={activeView}
               isProcessing={isProcessing}
               onClick={handleViewClick}
