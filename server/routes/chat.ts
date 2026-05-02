@@ -23,6 +23,8 @@
 //   { type: 'done', stopReason, isError? }
 //   { type: 'error', message }          — fatal stream error
 
+import path from 'path';
+import { createRequire } from 'module';
 import { createSdkMcpServer, query, tool, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import {
@@ -70,6 +72,36 @@ const TOOL_NAMES = [
   'add_reminder',
 ] as const;
 const ALLOWED_TOOLS = TOOL_NAMES.map((n) => `mcp__${MCP_SERVER_NAME}__${n}`);
+
+// Resolve the Claude Code binary path explicitly. The SDK's auto-detection
+// can pick the wrong platform variant when both `linux-x64` (glibc) and
+// `linux-x64-musl` are present in node_modules — Bun installs all matching
+// optional dependencies regardless of libc, and the SDK has been observed
+// to prefer the musl variant on Debian-slim, which then fails to execute.
+// Picking the right package by platform+arch and resolving its `claude`
+// binary up-front sidesteps the heuristic entirely. Falls back to `undefined`
+// (SDK auto-detect) on platforms we don't handle, so dev on macOS still works.
+const CLAUDE_BINARY_PATH: string | undefined = (() => {
+  const { platform, arch } = process;
+  // Note: musl distros (Alpine) aren't covered — DocVault's container uses
+  // Debian-slim, and dev happens on macOS or glibc Linux.
+  let pkg: string | undefined;
+  if (platform === 'linux' && arch === 'x64') pkg = '@anthropic-ai/claude-agent-sdk-linux-x64';
+  else if (platform === 'linux' && arch === 'arm64')
+    pkg = '@anthropic-ai/claude-agent-sdk-linux-arm64';
+  else if (platform === 'darwin' && arch === 'x64')
+    pkg = '@anthropic-ai/claude-agent-sdk-darwin-x64';
+  else if (platform === 'darwin' && arch === 'arm64')
+    pkg = '@anthropic-ai/claude-agent-sdk-darwin-arm64';
+  if (!pkg) return undefined;
+  try {
+    const requireFromHere = createRequire(import.meta.url);
+    const pkgJsonPath = requireFromHere.resolve(`${pkg}/package.json`);
+    return path.join(path.dirname(pkgJsonPath), 'claude');
+  } catch {
+    return undefined;
+  }
+})();
 
 // ---------------------------------------------------------------------------
 // Tool implementations
@@ -580,6 +612,7 @@ export async function handleChatRoutes(
             },
             env: subprocessEnv,
             cwd: '/tmp',
+            ...(CLAUDE_BINARY_PATH ? { pathToClaudeCodeExecutable: CLAUDE_BINARY_PATH } : {}),
           },
         })) {
           translateAndSend(message, send);
