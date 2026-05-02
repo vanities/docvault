@@ -10,13 +10,16 @@
 //   - lightning-whisper-mlx HTTP wrapper
 //   - any OpenAI-compatible local server (vllm, llama-server with whisper, …)
 //
-// Configure transcribeUrl + transcribeModel in settings, or via the
-// DOCVAULT_TRANSCRIBE_URL / DOCVAULT_TRANSCRIBE_MODEL env vars. The route
+// Configure transcribeUrl + transcribeModel + (optional) transcribeApiKey in
+// settings, or via DOCVAULT_TRANSCRIBE_URL / DOCVAULT_TRANSCRIBE_MODEL /
+// DOCVAULT_TRANSCRIBE_API_KEY env vars. When an API key is configured it is
+// forwarded as `Authorization: Bearer <key>` — matches Parakeet's
+// PARAKEET_API_KEY contract and OpenAI Whisper's Bearer auth. The route
 // keeps the audio in memory rather than writing to disk — privacy-sensitive
 // content shouldn't leave bytes on the NAS unnecessarily.
 //
 // Routes:
-//   GET  /api/transcribe  → { configured, hasUrl, urlHint, model }
+//   GET  /api/transcribe  → { configured, hasUrl, urlHint, model, hasApiKey }
 //   POST /api/transcribe  → forwards multipart "file" to the service,
 //                           returns { text }
 
@@ -39,6 +42,7 @@ export async function handleTranscribeRoutes(
       hasUrl: !!cfg.url,
       urlHint: cfg.url ? safeHostHint(cfg.url) : null,
       model: cfg.model ?? null,
+      hasApiKey: !!cfg.apiKey,
     });
   }
 
@@ -85,13 +89,16 @@ export async function handleTranscribeRoutes(
   }
 
   const target = normalizeTranscribeUrl(cfg.url);
+  // Headers — only set Authorization when an API key is configured so we
+  // don't break unauthenticated upstream servers that reject any auth header.
+  const headers: Record<string, string> = {};
+  if (cfg.apiKey) headers['Authorization'] = `Bearer ${cfg.apiKey}`;
   let upstream: Response;
   try {
     upstream = await fetch(target, {
       method: 'POST',
       body: outbound,
-      // No "Authorization" header — these are typically self-hosted on the
-      // user's NAS. Add bearer support later if a remote service needs it.
+      headers,
     });
   } catch (err) {
     log.error(`Upstream fetch failed: ${err}`);

@@ -276,8 +276,30 @@ function Composer({ onSend, pending }: { onSend: (text: string) => void; pending
   const { addToast } = useToast();
   const [text, setText] = useState('');
   const [transcribing, setTranscribing] = useState(false);
+  // null = still loading the config check; true/false = known state.
+  // The mic button is hidden until we confirm a transcription service is
+  // configured, so users don't see a button that would just error out.
+  const [transcribeConfigured, setTranscribeConfigured] = useState<boolean | null>(null);
   const recorder = useVoiceRecorder();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Probe /api/transcribe once on mount to learn whether voice input is
+  // available. The endpoint reads getTranscribeConfig() — same source the
+  // POST proxy uses — so this stays consistent with what the upload would do.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/transcribe`)
+      .then((r) => r.json())
+      .then((data: { configured?: boolean }) => {
+        if (!cancelled) setTranscribeConfigured(!!data.configured);
+      })
+      .catch(() => {
+        if (!cancelled) setTranscribeConfigured(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Auto-grow textarea up to ~6 lines on mobile.
   useEffect(() => {
@@ -330,6 +352,7 @@ function Composer({ onSend, pending }: { onSend: (text: string) => void; pending
 
   const isRecording = recorder.status === 'recording';
   const micDisabled = !recorder.isSupported || transcribing || pending;
+  const showMic = transcribeConfigured === true;
 
   return (
     <div className="border-t border-border bg-surface-50/95 backdrop-blur supports-[backdrop-filter]:bg-surface-50/80 pb-[env(safe-area-inset-bottom)]">
@@ -374,23 +397,25 @@ function Composer({ onSend, pending }: { onSend: (text: string) => void; pending
             disabled={pending || transcribing}
             className="flex-1 resize-none rounded-2xl border border-border/60 bg-surface-0 px-4 py-3 text-[15px] leading-snug text-surface-950 placeholder:text-surface-500 focus:outline-none focus:border-accent-500/50 disabled:opacity-60"
           />
-          <Button
-            type="button"
-            size="icon"
-            variant={isRecording ? 'destructive' : 'ghost'}
-            onClick={handleMic}
-            disabled={micDisabled}
-            aria-label={isRecording ? 'Stop recording' : 'Start recording'}
-            className="h-11 w-11 rounded-full"
-          >
-            {transcribing ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : isRecording ? (
-              <MicOff className="w-5 h-5" />
-            ) : (
-              <Mic className="w-5 h-5" />
-            )}
-          </Button>
+          {showMic && (
+            <Button
+              type="button"
+              size="icon"
+              variant={isRecording ? 'destructive' : 'ghost'}
+              onClick={handleMic}
+              disabled={micDisabled}
+              aria-label={isRecording ? 'Stop recording' : 'Start recording'}
+              className="h-11 w-11 rounded-full"
+            >
+              {transcribing ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : isRecording ? (
+                <MicOff className="w-5 h-5" />
+              ) : (
+                <Mic className="w-5 h-5" />
+              )}
+            </Button>
+          )}
           <Button
             type="button"
             size="icon"

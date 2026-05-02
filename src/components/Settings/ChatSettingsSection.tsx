@@ -25,6 +25,8 @@ interface ChatSettingsData {
   authHint?: string;
   transcribeUrl?: string;
   transcribeModel?: string;
+  hasTranscribeApiKey?: boolean;
+  transcribeApiKeyHint?: string;
 }
 
 export function ChatSettingsSection() {
@@ -41,6 +43,12 @@ export function ChatSettingsSection() {
   const [transcribeModel, setTranscribeModel] = useState('');
   const [savingTranscribe, setSavingTranscribe] = useState(false);
 
+  const [hasTranscribeApiKey, setHasTranscribeApiKey] = useState(false);
+  const [transcribeApiKeyHint, setTranscribeApiKeyHint] = useState<string | undefined>();
+  const [transcribeApiKeyInput, setTranscribeApiKeyInput] = useState('');
+  const [showTranscribeApiKey, setShowTranscribeApiKey] = useState(false);
+  const [savingTranscribeApiKey, setSavingTranscribeApiKey] = useState(false);
+
   const loadData = async () => {
     try {
       const res = await fetch(`${API_BASE}/settings`);
@@ -50,6 +58,8 @@ export function ChatSettingsSection() {
       setAuthHint(data.authHint);
       setTranscribeUrl(data.transcribeUrl ?? '');
       setTranscribeModel(data.transcribeModel ?? '');
+      setHasTranscribeApiKey(!!data.hasTranscribeApiKey);
+      setTranscribeApiKeyHint(data.transcribeApiKeyHint);
     } catch {
       /* ignore */
     } finally {
@@ -98,6 +108,46 @@ export function ChatSettingsSection() {
       }
     } finally {
       setSavingAuth(false);
+    }
+  };
+
+  const handleSaveTranscribeApiKey = async () => {
+    if (!transcribeApiKeyInput.trim()) return;
+    setSavingTranscribeApiKey(true);
+    try {
+      const res = await fetch(`${API_BASE}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcribeApiKey: transcribeApiKeyInput.trim() }),
+      });
+      if ((await res.json()).ok) {
+        addToast('Transcription API key saved', 'success');
+        setTranscribeApiKeyInput('');
+        await loadData();
+      } else {
+        addToast('Failed to save key', 'error');
+      }
+    } catch {
+      addToast('Failed to save key', 'error');
+    } finally {
+      setSavingTranscribeApiKey(false);
+    }
+  };
+
+  const handleClearTranscribeApiKey = async () => {
+    setSavingTranscribeApiKey(true);
+    try {
+      const res = await fetch(`${API_BASE}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clearTranscribeApiKey: true }),
+      });
+      if ((await res.json()).ok) {
+        addToast('Transcription API key removed', 'success');
+        await loadData();
+      }
+    } finally {
+      setSavingTranscribeApiKey(false);
     }
   };
 
@@ -287,6 +337,78 @@ export function ChatSettingsSection() {
             <Save className="w-4 h-4" />
             {savingTranscribe ? 'Saving…' : 'Save'}
           </Button>
+
+          {/* Optional API key — for services that require bearer auth
+              (e.g. Parakeet PARAKEET_API_KEY, hosted Whisper-as-a-service). */}
+          <div className="mt-5">
+            <label className="flex items-center gap-2 text-[13px] font-medium text-surface-800 mb-2">
+              <Key className="w-4 h-4" />
+              API Key
+              <span className="font-normal text-surface-500">(optional)</span>
+            </label>
+
+            {hasTranscribeApiKey ? (
+              <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                <CheckCircle className="w-5 h-5 text-emerald-400" />
+                <div className="flex-1">
+                  <span className="text-[13px] text-emerald-400 font-medium">API key set</span>
+                  {transcribeApiKeyHint && (
+                    <span className="text-[13px] text-emerald-400/70 ml-2 font-mono">
+                      --------{transcribeApiKeyHint}
+                    </span>
+                  )}
+                </div>
+                <Button
+                  variant="ghost-danger"
+                  size="xs"
+                  onClick={handleClearTranscribeApiKey}
+                  disabled={savingTranscribeApiKey}
+                >
+                  Remove
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="relative">
+                  <Input
+                    type={showTranscribeApiKey ? 'text' : 'password'}
+                    value={transcribeApiKeyInput}
+                    onChange={(e) => setTranscribeApiKeyInput(e.target.value)}
+                    placeholder="Bearer token sent as Authorization header"
+                    className="pr-10 text-[13px] font-mono"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => setShowTranscribeApiKey(!showTranscribeApiKey)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2"
+                  >
+                    {showTranscribeApiKey ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </Button>
+                </div>
+                <p className="text-[11px] text-surface-600">
+                  Leave blank for unauthenticated services (e.g. Parakeet on a trusted LAN with no{' '}
+                  <code className="font-mono">PARAKEET_API_KEY</code>). When set, sent as{' '}
+                  <code className="font-mono">Authorization: Bearer …</code> on every request.
+                </p>
+                {transcribeApiKeyInput && (
+                  <Button
+                    onClick={handleSaveTranscribeApiKey}
+                    size="sm"
+                    disabled={savingTranscribeApiKey}
+                  >
+                    <Save className="w-4 h-4" />
+                    {savingTranscribeApiKey ? 'Saving…' : 'Save'}
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </Card>
