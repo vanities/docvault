@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Plus,
   Calendar,
@@ -25,8 +25,9 @@ import {
   LineChart,
   Brain,
   MessageCircle,
+  X,
 } from 'lucide-react';
-import { useAppContext, type NavView } from '../../contexts/AppContext';
+import { useAppContext, type NavView, type PersistedThread } from '../../contexts/AppContext';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import type { SyncStatus } from '../../types';
 import { SIDEBAR_COLOR_MAP as COLOR_MAP, renderEntityIcon } from '../../utils/entityDisplay';
@@ -352,6 +353,116 @@ function SyncIndicator() {
 }
 
 // ---------------------------------------------------------------------------
+// Chat thread list — nested under the Chat NavButton when chat is active.
+// Mirrors t3code's pattern of threads-as-sidebar-rows: each thread is a
+// clickable row with title + delete X on hover, and a "New chat" button at
+// the top mints a fresh thread.
+// ---------------------------------------------------------------------------
+
+function relativeTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 60_000) return 'just now';
+  const min = Math.floor(ms / 60_000);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+function ThreadRow({
+  thread,
+  isActive,
+  onSwitch,
+  onDelete,
+}: {
+  thread: PersistedThread;
+  isActive: boolean;
+  onSwitch: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onSwitch(thread.id)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSwitch(thread.id);
+        }
+      }}
+      className={`group relative flex items-center gap-1.5 px-2 py-1 rounded text-[12px] cursor-pointer ${
+        isActive
+          ? 'bg-fuchsia-500/10 text-fuchsia-400'
+          : 'text-surface-700 hover:text-surface-950 hover:bg-surface-200/50'
+      }`}
+      title={`${thread.title} · ${relativeTime(thread.updatedAt)}`}
+    >
+      <span className="flex-1 truncate">{thread.title}</span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete(thread.id);
+        }}
+        className="text-surface-500 hover:text-danger-400 opacity-0 group-hover:opacity-100 focus:opacity-100"
+        aria-label={`Delete ${thread.title}`}
+      >
+        <X className="w-3 h-3" />
+      </button>
+    </div>
+  );
+}
+
+function ChatThreadList() {
+  const { chatThreads, switchChatThread, deleteChatThread, newChatThread, setActiveView } =
+    useAppContext();
+
+  const sorted = useMemo(
+    () => Object.values(chatThreads.threads).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+    [chatThreads.threads]
+  );
+
+  const handleNew = () => {
+    newChatThread();
+    setActiveView('chat');
+  };
+
+  const handleSwitch = (id: string) => {
+    switchChatThread(id);
+    setActiveView('chat');
+  };
+
+  return (
+    <div className="mt-1 ml-6 mr-1 space-y-0.5 max-h-72 overflow-y-auto">
+      <button
+        type="button"
+        onClick={handleNew}
+        className="w-full flex items-center gap-1.5 px-2 py-1 rounded text-[12px] text-surface-700 hover:text-surface-950 hover:bg-surface-200/50"
+      >
+        <Plus className="w-3 h-3" />
+        New chat
+      </button>
+      {sorted.length === 0 ? (
+        <div className="px-2 py-1 text-[11px] text-surface-500 italic">No chats yet</div>
+      ) : (
+        sorted.map((t) => (
+          <ThreadRow
+            key={t.id}
+            thread={t}
+            isActive={t.id === chatThreads.activeThreadId}
+            onSwitch={handleSwitch}
+            onDelete={deleteChatThread}
+          />
+        ))
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Sidebar
 // ---------------------------------------------------------------------------
 interface SidebarProps {
@@ -596,6 +707,7 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               isProcessing={isProcessing}
               onClick={handleViewClick}
             />
+            {activeView === 'chat' && <ChatThreadList />}
           </div>
         </div>
 
