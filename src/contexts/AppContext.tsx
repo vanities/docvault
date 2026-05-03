@@ -11,6 +11,96 @@ import {
 } from 'react';
 import { useFileSystemServer, type EntityConfig } from '../hooks/useFileSystemServer';
 import type { Entity, TaxDocument, DocumentType, ExpenseCategory, Reminder, Todo } from '../types';
+import { uuidV4 } from '../utils/uuid';
+
+// ---------------------------------------------------------------------------
+// Chat threads — single source of truth for the multi-thread chat UI.
+// Lives in AppContext (not local to ChatView) because the main Sidebar
+// renders the thread list under the "Chat" NavButton when active. Mirrors
+// t3code's pattern where threads are first-class sidebar rows.
+//
+// The `messages` field is loose `unknown[]` here because Sidebar doesn't
+// need to know about ChatMessage / AssistantBlock shapes — only ChatView
+// reads/writes the conversation transcript and casts at the boundary.
+// ---------------------------------------------------------------------------
+
+export interface ChatStats {
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+}
+
+export interface PersistedThread {
+  id: string; // UUID, also serves as chatId for attachment scoping
+  title: string;
+  resumeSessionId: string | null;
+  messages: unknown[];
+  stats: ChatStats;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ThreadsState {
+  threads: Record<string, PersistedThread>;
+  activeThreadId: string | null;
+}
+
+const CHAT_THREADS_STORAGE_KEY = 'docvault-chat-threads-v1';
+const LEGACY_CHAT_HISTORY_KEY = 'docvault-chat-history-v1';
+const LEGACY_CHAT_META_KEY = 'docvault-chat-meta-v1';
+const EMPTY_CHAT_STATS: ChatStats = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
+
+function loadThreadsState(): ThreadsState {
+  try {
+    const raw = localStorage.getItem(CHAT_THREADS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as ThreadsState;
+      if (parsed && parsed.threads && typeof parsed.threads === 'object') return parsed;
+    }
+  } catch {
+    /* fall through to migration */
+  }
+  return migrateLegacyChat();
+}
+
+function migrateLegacyChat(): ThreadsState {
+  try {
+    const rawMessages = localStorage.getItem(LEGACY_CHAT_HISTORY_KEY);
+    const rawMeta = localStorage.getItem(LEGACY_CHAT_META_KEY);
+    if (!rawMessages && !rawMeta) return { threads: {}, activeThreadId: null };
+    const messages = rawMessages ? (JSON.parse(rawMessages) as unknown[]) : [];
+    const meta = rawMeta
+      ? (JSON.parse(rawMeta) as { chatId: string | null; resumeSessionId: string | null })
+      : { chatId: null, resumeSessionId: null };
+    if (!Array.isArray(messages) || (messages.length === 0 && !meta.chatId)) {
+      return { threads: {}, activeThreadId: null };
+    }
+    const id = typeof meta.chatId === 'string' && meta.chatId.length > 0 ? meta.chatId : uuidV4();
+    const now = new Date().toISOString();
+    const thread: PersistedThread = {
+      id,
+      title: 'Recovered chat',
+      resumeSessionId: meta.resumeSessionId ?? null,
+      messages,
+      stats: EMPTY_CHAT_STATS,
+      createdAt: now,
+      updatedAt: now,
+    };
+    localStorage.removeItem(LEGACY_CHAT_HISTORY_KEY);
+    localStorage.removeItem(LEGACY_CHAT_META_KEY);
+    return { threads: { [id]: thread }, activeThreadId: id };
+  } catch {
+    return { threads: {}, activeThreadId: null };
+  }
+}
+
+function saveThreadsState(state: ThreadsState): void {
+  try {
+    localStorage.setItem(CHAT_THREADS_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    /* quota exceeded */
+  }
+}
 
 // Navigation views
 export type NavView =
@@ -202,6 +292,20 @@ interface AppContextValue {
   // Display preferences
   blurNumbers: boolean;
   setBlurNumbers: (v: boolean) => void;
+
+  // Chat threads — multi-thread chat state shared between ChatView (which
+  // owns the conversation surface) and Sidebar (which renders the thread
+  // picker as nested rows under the Chat NavButton).
+  chatThreads: ThreadsState;
+  /** Mutate the active thread by passing a partial update. No-op if no
+   *  active thread exists. updatedAt is stamped automatically. */
+  updateActiveChatThread: (updater: (t: PersistedThread) => Partial<PersistedThread>) => void;
+  /** Mint a fresh thread, switch to it, and return its id. */
+  newChatThread: () => string;
+  /** Switch the active thread. */
+  switchChatThread: (id: string) => void;
+  /** Delete a thread; if it was active, falls back to the next-most-recent. */
+  deleteChatThread: (id: string) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -277,6 +381,73 @@ export function AppProvider({ children }: AppProviderProps) {
 
   // Mobile sidebar state (declared before callbacks that reference it)
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Chat threads — see header docblock at top of file for the design.
+  const [chatThreads, setChatThreads] = useState<ThreadsState>(() => loadThreadsState());
+  useEffect(() => {
+    saveThreadsState(chatThreads);
+  }, [chatThreads]);
+
+  const updateActiveChatThread = useCallback(
+    (updater: (t: PersistedThread) => Partial<PersistedThread>) => {
+      setChatThreads((prev) => {
+        if (!prev.activeThreadId) return prev;
+        const current = prev.threads[prev.activeThreadId];
+        if (!current) return prev;
+        return {
+          ...prev,
+          threads: {
+            ...prev.threads,
+            [prev.activeThreadId]: {
+              ...current,
+              ...updater(current),
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        };
+      });
+    },
+    []
+  );
+
+  const newChatThread = useCallback((): string => {
+    const id = uuidV4();
+    const now = new Date().toISOString();
+    setChatThreads((prev) => ({
+      activeThreadId: id,
+      threads: {
+        ...prev.threads,
+        [id]: {
+          id,
+          title: 'New chat',
+          resumeSessionId: null,
+          messages: [],
+          stats: EMPTY_CHAT_STATS,
+          createdAt: now,
+          updatedAt: now,
+        },
+      },
+    }));
+    return id;
+  }, []);
+
+  const switchChatThread = useCallback((id: string) => {
+    setChatThreads((prev) => (prev.threads[id] ? { ...prev, activeThreadId: id } : prev));
+  }, []);
+
+  const deleteChatThread = useCallback((id: string) => {
+    setChatThreads((prev) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [id]: _gone, ...rest } = prev.threads;
+      const newActive =
+        prev.activeThreadId === id
+          ? (Object.keys(rest).sort((a, b) =>
+              rest[b].updatedAt.localeCompare(rest[a].updatedAt)
+            )[0] ?? null)
+          : prev.activeThreadId;
+      return { threads: rest, activeThreadId: newActive };
+    });
+  }, []);
 
   const setActiveView = useCallback((view: NavView) => {
     setActiveViewState(view);
@@ -495,6 +666,13 @@ export function AppProvider({ children }: AppProviderProps) {
     selectedYear,
     setSelectedYear,
     availableYears,
+
+    // Chat threads
+    chatThreads,
+    updateActiveChatThread,
+    newChatThread,
+    switchChatThread,
+    deleteChatThread,
 
     // Documents
     scannedDocuments,

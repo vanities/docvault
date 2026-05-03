@@ -19,18 +19,19 @@ import {
   ChevronDown,
   ChevronRight,
   Settings as SettingsIcon,
-  Trash2,
   Paperclip,
   X,
   FileText,
   Image as ImageIcon,
+  Plus,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Button } from '@/components/ui/button';
-import { useAppContext } from '../../contexts/AppContext';
+import { useAppContext, type ChatStats, type PersistedThread } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import { useVoiceRecorder } from '../../hooks/useVoiceRecorder';
 import { API_BASE } from '../../constants';
+import { uuidV4 } from '../../utils/uuid';
 
 interface AssistantTextBlock {
   type: 'text';
@@ -67,61 +68,19 @@ interface AssistantMessage {
 
 type ChatMessage = UserMessage | AssistantMessage;
 
-const STORAGE_KEY = 'docvault-chat-history-v1';
-const META_STORAGE_KEY = 'docvault-chat-meta-v1';
-const MAX_PERSISTED_MESSAGES = 40;
-
 function newId(): string {
   return Math.random().toString(36).slice(2, 11);
 }
 
-// UUID v4 generator that works in non-secure contexts. crypto.randomUUID()
-// is restricted to HTTPS / localhost — DocVault runs over HTTP on Unraid,
-// so calling it throws "crypto.randomUUID is not a function" on the LAN
-// IP. crypto.getRandomValues() has no such restriction, so we hand-roll
-// the formatting from random bytes (RFC 4122 §4.4: set version + variant
-// bits, hex-format with dashes).
-function uuidV4(): string {
-  const bytes = new Uint8Array(16);
-  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
-    crypto.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
-  }
-  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
-  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 1
-  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
-}
-
-// chatId + resumeSessionId persistence — separate from message history so
-// "Clear chat" can wipe messages while keeping the chat alive, and so
-// reloads in the middle of a multi-turn conversation preserve continuity.
-interface ChatMeta {
-  chatId: string | null;
-  resumeSessionId: string | null;
-}
-
-function loadChatMeta(): ChatMeta {
-  try {
-    const raw = localStorage.getItem(META_STORAGE_KEY);
-    if (!raw) return { chatId: null, resumeSessionId: null };
-    const parsed = JSON.parse(raw) as ChatMeta;
-    return {
-      chatId: typeof parsed.chatId === 'string' ? parsed.chatId : null,
-      resumeSessionId: typeof parsed.resumeSessionId === 'string' ? parsed.resumeSessionId : null,
-    };
-  } catch {
-    return { chatId: null, resumeSessionId: null };
-  }
-}
-
-function saveChatMeta(meta: ChatMeta): void {
-  try {
-    localStorage.setItem(META_STORAGE_KEY, JSON.stringify(meta));
-  } catch {
-    /* quota exceeded */
-  }
+// Title derivation lives in ChatView (not AppContext) because it needs to
+// know about ChatMessage shape — Sidebar / context only see opaque message
+// blobs. ChatView calls this on send and passes the result via
+// updateActiveChatThread.
+function deriveTitleFromMessages(messages: ChatMessage[]): string {
+  const firstUser = messages.find((m) => m.role === 'user');
+  if (!firstUser) return 'New chat';
+  const text = firstUser.content.trim();
+  return text.length > 50 ? `${text.slice(0, 50)}…` : text;
 }
 
 // Composer-local attachment state. Mirrors t3code's ComposerImageAttachment
@@ -136,27 +95,6 @@ interface ComposerAttachment {
   sizeBytes: number;
   dataUrl: string;
   previewUrl?: string;
-}
-
-function loadHistory(): ChatMessage[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as ChatMessage[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed;
-  } catch {
-    return [];
-  }
-}
-
-function saveHistory(messages: ChatMessage[]): void {
-  try {
-    const trimmed = messages.slice(-MAX_PERSISTED_MESSAGES);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
-  } catch {
-    /* quota exceeded — drop the persistence */
-  }
 }
 
 // Build the on-wire message list — { role, content } pairs. Assistant
@@ -712,42 +650,70 @@ function EmptyState({
 // Main view
 // ---------------------------------------------------------------------------
 
-interface ChatStats {
-  inputTokens: number;
-  outputTokens: number;
-  costUsd: number;
-}
-
 export function ChatView() {
-  const { selectedEntity, setActiveView } = useAppContext();
-  const { addToast } = useToast();
-  const [messages, setMessages] = useState<ChatMessage[]>(() => loadHistory());
+  const { selectedEntity, setActiveView, chatThreads, updateActiveChatThread, newChatThread } =
+    useAppContext();
   const [pending, setPending] = useState(false);
   const [credentialsOk, setCredentialsOk] = useState<boolean | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  // Two IDs for chat session continuity — see server/routes/chat.ts header.
-  // chatId is owned by the browser; resumeSessionId is captured from the
-  // SDK's session_id once the first turn completes. Both persisted so that
-  // a page reload mid-conversation preserves Claude's context.
-  const [chatMeta, setChatMeta] = useState<ChatMeta>(() => loadChatMeta());
-  useEffect(() => {
-    saveChatMeta(chatMeta);
-  }, [chatMeta]);
+  // The active thread is the single source of truth for messages, stats,
+  // and resumeSessionId. Sidebar's ThreadList drives switching/deleting via
+  // the same context actions.
+  const activeThread: PersistedThread | null = chatThreads.activeThreadId
+    ? (chatThreads.threads[chatThreads.activeThreadId] ?? null)
+    : null;
 
-  // Cumulative token + cost counter for the current chat. Resets on Clear.
-  // Updated from each turn's `done` event payload.
-  const [stats, setStats] = useState<ChatStats>({ inputTokens: 0, outputTokens: 0, costUsd: 0 });
+  // Cast the loosely-typed messages array (context stores `unknown[]` since
+  // Sidebar doesn't need to know our discriminated-union shape).
+  const messages = (activeThread?.messages ?? []) as ChatMessage[];
+  const stats = activeThread?.stats ?? { inputTokens: 0, outputTokens: 0, costUsd: 0 };
+  const resumeSessionId = activeThread?.resumeSessionId ?? null;
 
-  // Mint a chatId on demand — the very first user send is the trigger, OR
-  // the first attachment upload (whichever happens first). Idempotent: if
-  // we already have one, return it.
+  // Adapter setters that ChatView's render/handlers use. Each one funnels
+  // into updateActiveChatThread so localStorage stays in sync via the
+  // context's persist effect.
+  const setMessages = useCallback(
+    (updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
+      updateActiveChatThread((t) => {
+        const prevMessages = t.messages as ChatMessage[];
+        const next = typeof updater === 'function' ? updater(prevMessages) : updater;
+        // Auto-derive title from the first user message so the picker shows
+        // something useful instead of "New chat" forever.
+        const title =
+          t.title === 'New chat' && next.length > 0 ? deriveTitleFromMessages(next) : t.title;
+        return { messages: next, title };
+      });
+    },
+    [updateActiveChatThread]
+  );
+
+  const setStats = useCallback(
+    (updater: ChatStats | ((prev: ChatStats) => ChatStats)) => {
+      updateActiveChatThread((t) => ({
+        stats: typeof updater === 'function' ? updater(t.stats) : updater,
+      }));
+    },
+    [updateActiveChatThread]
+  );
+
+  const setResumeSessionId = useCallback(
+    (sessionId: string | null) => {
+      updateActiveChatThread(() => ({ resumeSessionId: sessionId }));
+    },
+    [updateActiveChatThread]
+  );
+
+  // ensureChatId: called when the user starts to send/attach without an
+  // active thread (cold-start or after deleting all threads). Mints a
+  // thread on demand so chatId is always defined for the API call.
+  // newChatThread returns the new id synchronously even though the state
+  // update is async — we use it for the in-flight request and React
+  // re-renders with the same id once the setChatThreads update lands.
   const ensureChatId = useCallback((): string => {
-    if (chatMeta.chatId) return chatMeta.chatId;
-    const fresh = uuidV4();
-    setChatMeta((prev) => ({ ...prev, chatId: fresh }));
-    return fresh;
-  }, [chatMeta.chatId]);
+    if (activeThread) return activeThread.id;
+    return newChatThread();
+  }, [activeThread, newChatThread]);
 
   // Detect whether the user has Claude credentials configured at all so we can
   // surface a helpful empty-state CTA instead of letting the first send fail.
@@ -764,10 +730,6 @@ export function ChatView() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    saveHistory(messages);
-  }, [messages]);
 
   // Auto-scroll to bottom on new messages.
   useEffect(() => {
@@ -812,7 +774,7 @@ export function ChatView() {
             messages: apiMessages,
             entity: selectedEntity === 'all' ? undefined : selectedEntity,
             chatId: cid,
-            ...(chatMeta.resumeSessionId ? { resumeSessionId: chatMeta.resumeSessionId } : {}),
+            ...(resumeSessionId ? { resumeSessionId } : {}),
             ...(wireAttachments.length > 0 ? { attachments: wireAttachments } : {}),
           }),
         });
@@ -907,7 +869,7 @@ export function ChatView() {
               // Persist the SDK-assigned session ID so the next turn can
               // pass it as resume:. This is what gives us multi-turn
               // continuity across requests.
-              setChatMeta((prev) => ({ ...prev, resumeSessionId: event.sessionId ?? null }));
+              setResumeSessionId(event.sessionId ?? null);
             } else if (event.type === 'done') {
               updateAssistant((m) => ({ ...m, stopReason: event.stopReason ?? null }));
               if (event.usage) {
@@ -937,33 +899,33 @@ export function ChatView() {
         setPending(false);
       }
     },
-    [messages, selectedEntity, chatMeta.resumeSessionId, ensureChatId]
+    [
+      messages,
+      selectedEntity,
+      resumeSessionId,
+      ensureChatId,
+      setMessages,
+      setStats,
+      setResumeSessionId,
+    ]
   );
-
-  const handleClear = () => {
-    if (messages.length === 0 && !chatMeta.chatId) return;
-    setMessages([]);
-    setChatMeta({ chatId: null, resumeSessionId: null });
-    setStats({ inputTokens: 0, outputTokens: 0, costUsd: 0 });
-    addToast('Chat cleared', 'success');
-  };
 
   return (
     <div className="flex flex-col h-full">
       <div className="border-b border-border bg-surface-50 px-4 py-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <MessageCircle className="w-4 h-4 text-fuchsia-400" />
-          <span className="font-semibold text-[14px] text-surface-950">Chat</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <MessageCircle className="w-4 h-4 text-fuchsia-400 flex-shrink-0" />
+          <span className="font-semibold text-[14px] text-surface-950 truncate">
+            {activeThread?.title ?? 'Chat'}
+          </span>
           {selectedEntity !== 'all' && (
-            <span className="text-[11px] text-surface-600">· {selectedEntity}</span>
+            <span className="text-[11px] text-surface-600 flex-shrink-0">· {selectedEntity}</span>
           )}
         </div>
-        {messages.length > 0 && (
-          <Button variant="ghost" size="xs" onClick={handleClear}>
-            <Trash2 className="w-3.5 h-3.5" />
-            Clear
-          </Button>
-        )}
+        <Button variant="ghost" size="xs" onClick={() => newChatThread()}>
+          <Plus className="w-3.5 h-3.5" />
+          New
+        </Button>
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
