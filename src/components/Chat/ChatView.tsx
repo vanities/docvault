@@ -307,6 +307,7 @@ function Composer({
   pending: boolean;
 }) {
   const { addToast } = useToast();
+  const { setActiveView } = useAppContext();
   const [text, setText] = useState('');
   const [transcribing, setTranscribing] = useState(false);
   const [transcribeConfigured, setTranscribeConfigured] = useState<boolean | null>(null);
@@ -426,6 +427,15 @@ function Composer({
   };
 
   const handleMic = useCallback(async () => {
+    // If the browser blocks getUserMedia (typically because we're on an
+    // HTTP origin, which strips navigator.mediaDevices entirely), don't
+    // try — direct the user to Settings where SecureContextHelp explains
+    // the three fixes (Tailscale / Firefox flag / Chrome flag).
+    if (!recorder.isSupported) {
+      addToast('Voice input requires HTTPS — see Settings → Chat & Voice', 'info');
+      setActiveView('settings');
+      return;
+    }
     if (recorder.status === 'recording') {
       const blob = await recorder.stop();
       if (!blob || blob.size === 0) return;
@@ -457,11 +467,15 @@ function Composer({
         addToast(recorder.errorMessage, 'error');
       }
     }
-  }, [recorder, addToast]);
+  }, [recorder, addToast, setActiveView]);
 
   const isRecording = recorder.status === 'recording';
-  const micDisabled = !recorder.isSupported || transcribing || pending;
+  // Note: !recorder.isSupported deliberately does NOT disable the button
+  // anymore — handleMic intercepts unsupported clicks and routes them to
+  // the Settings help card. Disable only for in-flight states.
+  const micDisabled = transcribing || pending;
   const showMic = transcribeConfigured === true;
+  const micUnavailable = !recorder.isSupported;
 
   return (
     <div className="border-t border-border bg-surface-50/95 backdrop-blur supports-[backdrop-filter]:bg-surface-50/80 pb-[env(safe-area-inset-bottom)]">
@@ -580,8 +594,21 @@ function Composer({
               variant={isRecording ? 'destructive' : 'ghost'}
               onClick={handleMic}
               disabled={micDisabled}
-              aria-label={isRecording ? 'Stop recording' : 'Start recording'}
-              className="h-11 w-11 rounded-full"
+              aria-label={
+                micUnavailable
+                  ? 'Voice input requires HTTPS — tap for setup help'
+                  : isRecording
+                    ? 'Stop recording'
+                    : 'Start recording'
+              }
+              title={
+                micUnavailable
+                  ? 'Voice input requires HTTPS — tap for setup help'
+                  : isRecording
+                    ? 'Stop recording'
+                    : 'Start recording'
+              }
+              className={`h-11 w-11 rounded-full ${micUnavailable ? 'opacity-50' : ''}`}
             >
               {transcribing ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
