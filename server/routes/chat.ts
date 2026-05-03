@@ -787,12 +787,30 @@ export async function handleChatRoutes(
       // this value, but we only need to send it once per turn.
       let emittedSession = false;
 
+      // Cancellation support — when the client closes the SSE connection
+      // (Stop button, navigation, network drop), we break out of the
+      // for-await loop. The SDK then tears down the bundled Claude Code
+      // subprocess so we stop spending tokens on a response nobody's
+      // watching.
+      let aborted = req.signal.aborted;
+      const onAbort = () => {
+        aborted = true;
+      };
+      req.signal.addEventListener('abort', onAbort);
+
       try {
         for await (const message of query({
           prompt: userMessageContent,
           options: {
             model,
-            systemPrompt,
+            // Layer our DocVault-specific instructions on top of Claude
+            // Code's preset prompt — matches t3code's pattern. The model
+            // will sometimes try a tool we've disallowed (TodoWrite,
+            // Bash, etc.); canUseTool denies those and the model
+            // self-corrects to our MCP tools. Trade-off: minor "tried
+            // unavailable tool" noise vs richer baseline tool-use
+            // behavior from the preset.
+            systemPrompt: { type: 'preset', preset: 'claude_code', append: systemPrompt },
             ...(resumeSessionId ? { resume: resumeSessionId } : {}),
             // Disable every built-in Claude Code tool — the chat must NOT
             // be able to Bash/Read/Edit files on the NAS. Only DocVault's
@@ -812,10 +830,14 @@ export async function handleChatRoutes(
             mcpServers: { [MCP_SERVER_NAME]: mcpServer },
             // Defense-in-depth: even if a built-in tool slips past
             // disallowedTools, this callback denies anything not in our
-            // explicit allow-list.
-            canUseTool: async (toolName) => {
+            // explicit allow-list. Pass `toolInput` straight through to
+            // `updatedInput` — the SDK uses this as the FINAL input to the
+            // tool, so returning `{}` would call our MCP tools with empty
+            // arguments. T3code's pattern is the same (allow-list + pass
+            // toolInput). Found via the t3code parity audit.
+            canUseTool: async (toolName, toolInput) => {
               if (ALLOWED_TOOLS.includes(toolName)) {
-                return { behavior: 'allow', updatedInput: {} };
+                return { behavior: 'allow', updatedInput: toolInput };
               }
               return {
                 behavior: 'deny',
@@ -833,6 +855,7 @@ export async function handleChatRoutes(
             ...(CLAUDE_BINARY_PATH ? { pathToClaudeCodeExecutable: CLAUDE_BINARY_PATH } : {}),
           },
         })) {
+          if (aborted) break;
           // Echo the SDK-assigned session id once per stream so the client
           // can persist it and pass it back as `sessionId` on the next turn
           // to keep Claude Code's conversation continuity.
@@ -885,6 +908,7 @@ export async function handleChatRoutes(
           error: msg,
         });
       } finally {
+        req.signal.removeEventListener('abort', onAbort);
         try {
           controller.close();
         } catch {
@@ -908,6 +932,13 @@ export async function handleChatRoutes(
 
 // Translate one SDKMessage into zero-or-more wire events for the client.
 function translateAndSend(message: SDKMessage, send: (event: object) => void): void {
+  // SDK rate-limit event — the SDK emits this on its own when the
+  // Claude.ai subscription's quota window changes. Forward to the client
+  // so the UI can warn the user before they hit a hard 429 mid-turn.
+  if (message.type === 'rate_limit_event') {
+    send({ type: 'rate_limit', payload: message });
+    return;
+  }
   // Token-level text streaming. With includePartialMessages enabled, every
   // model-emitted token arrives as a stream_event carrying a raw Anthropic
   // content_block_delta. We forward only text_delta payloads — tool_use
@@ -925,6 +956,13 @@ function translateAndSend(message: SDKMessage, send: (event: object) => void): v
     return;
   }
   if (message.type === 'assistant') {
+    // Surface specific assistant-level errors (rate_limit, billing_error,
+    // authentication_failed, etc.) so the UI can show actionable copy
+    // instead of a generic "Stream error". The full union is in the SDK
+    // types as SDKAssistantMessageError.
+    if (message.error) {
+      send({ type: 'assistant_error', error: message.error });
+    }
     for (const block of message.message.content) {
       if (block.type === 'text') {
         // Skip — partial events above already streamed the text.
