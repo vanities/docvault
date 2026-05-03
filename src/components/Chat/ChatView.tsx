@@ -24,6 +24,7 @@ import {
   FileText,
   Image as ImageIcon,
   Plus,
+  Square,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Button } from '@/components/ui/button';
@@ -81,6 +82,29 @@ function deriveTitleFromMessages(messages: ChatMessage[]): string {
   if (!firstUser) return 'New chat';
   const text = firstUser.content.trim();
   return text.length > 50 ? `${text.slice(0, 50)}…` : text;
+}
+
+// Map SDKAssistantMessageError variants to actionable user-facing copy.
+// The SDK emits these on the assistant SDKMessage when something on the
+// Anthropic side rejected the request mid-stream (auth, rate limit,
+// billing, etc.). Generic "Stream error" was the previous behavior.
+const ASSISTANT_ERROR_COPY: Record<string, string> = {
+  authentication_failed:
+    'Claude authentication failed. Check your OAuth token or API key in Settings → Chat & Voice.',
+  oauth_org_not_allowed:
+    'Your Claude.ai account is not allowed by the organization. Switch to API key auth in Settings.',
+  billing_error: 'Anthropic billing error — check your account at console.anthropic.com.',
+  rate_limit:
+    'Hit your Claude.ai subscription rate limit. Wait a few minutes, or switch to API key in Settings to keep going.',
+  invalid_request: 'Anthropic rejected the request as invalid.',
+  server_error: 'Anthropic server error. Try again in a moment.',
+  max_output_tokens: 'Response was cut off — hit max tokens. Ask a follow-up to continue.',
+  unknown: 'Unknown Anthropic error.',
+};
+
+function copyForAssistantError(code: string | undefined): string {
+  if (!code) return 'Anthropic error.';
+  return ASSISTANT_ERROR_COPY[code] ?? `Anthropic error: ${code}`;
 }
 
 // Composer-local attachment state. Mirrors t3code's ComposerImageAttachment
@@ -301,9 +325,11 @@ function readFileAsDataUrl(file: File): Promise<string> {
 
 function Composer({
   onSend,
+  onStop,
   pending,
 }: {
   onSend: (text: string, attachments: ComposerAttachment[]) => void;
+  onStop: () => void;
   pending: boolean;
 }) {
   const { addToast } = useToast();
@@ -619,16 +645,30 @@ function Composer({
               )}
             </Button>
           )}
-          <Button
-            type="button"
-            size="icon"
-            onClick={handleSend}
-            disabled={(!text.trim() && attachments.length === 0) || pending}
-            aria-label="Send"
-            className="h-11 w-11 rounded-full"
-          >
-            {pending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-          </Button>
+          {pending ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="destructive"
+              onClick={onStop}
+              aria-label="Stop"
+              title="Stop generating"
+              className="h-11 w-11 rounded-full"
+            >
+              <Square className="w-4 h-4" fill="currentColor" />
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              size="icon"
+              onClick={handleSend}
+              disabled={!text.trim() && attachments.length === 0}
+              aria-label="Send"
+              className="h-11 w-11 rounded-full"
+            >
+              <Send className="w-5 h-5" />
+            </Button>
+          )}
         </div>
       </div>
     </div>
@@ -680,9 +720,15 @@ function EmptyState({
 export function ChatView() {
   const { selectedEntity, setActiveView, chatThreads, updateActiveChatThread, newChatThread } =
     useAppContext();
+  const { addToast } = useToast();
   const [pending, setPending] = useState(false);
   const [credentialsOk, setCredentialsOk] = useState<boolean | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  // AbortController for the in-flight chat fetch. Stop button calls
+  // .abort() which closes the SSE connection — backend detects via
+  // req.signal and breaks the SDK for-await loop, tearing down the
+  // Claude Code subprocess so we stop spending tokens.
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // The active thread is the single source of truth for messages, stats,
   // and resumeSessionId. Sidebar's ThreadList drives switching/deleting via
@@ -783,6 +829,9 @@ export function ChatView() {
         );
       };
 
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
+
       try {
         const apiMessages = toApiMessages(messages, text);
         const cid = ensureChatId();
@@ -796,6 +845,7 @@ export function ChatView() {
         }));
         const res = await fetch(`${API_BASE}/chat`, {
           method: 'POST',
+          signal: abortController.signal,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             messages: apiMessages,
@@ -853,6 +903,8 @@ export function ChatView() {
               sessionId?: string;
               usage?: { inputTokens?: number; outputTokens?: number };
               cost?: number;
+              error?: string;
+              payload?: unknown;
             };
             try {
               event = JSON.parse(dataPayload);
@@ -909,6 +961,20 @@ export function ChatView() {
                   costUsd: prev.costUsd + costDelta,
                 }));
               }
+            } else if (event.type === 'assistant_error') {
+              // SDK-surfaced auth/rate-limit/billing errors. Map to
+              // friendly copy so the user knows what to do next.
+              updateAssistant((m) => ({
+                ...m,
+                error: copyForAssistantError(event.error),
+              }));
+            } else if (event.type === 'rate_limit') {
+              // SDK rate_limit_event — emit as a warning toast so the
+              // user sees a heads-up before they hit the hard cap.
+              addToast(
+                'Approaching Claude.ai rate limit — consider switching to API key in Settings.',
+                'info'
+              );
             } else if (event.type === 'error') {
               updateAssistant((m) => ({
                 ...m,
@@ -918,11 +984,20 @@ export function ChatView() {
           }
         }
       } catch (err) {
-        updateAssistant((m) => ({
-          ...m,
-          error: err instanceof Error ? err.message : 'Request failed',
-        }));
+        // AbortError = user clicked Stop. Show a quiet "Stopped" marker
+        // instead of a scary error.
+        if (err instanceof Error && err.name === 'AbortError') {
+          updateAssistant((m) => ({ ...m, error: 'Stopped' }));
+        } else {
+          updateAssistant((m) => ({
+            ...m,
+            error: err instanceof Error ? err.message : 'Request failed',
+          }));
+        }
       } finally {
+        if (abortControllerRef.current === abortController) {
+          abortControllerRef.current = null;
+        }
         setPending(false);
       }
     },
@@ -934,8 +1009,13 @@ export function ChatView() {
       setMessages,
       setStats,
       setResumeSessionId,
+      addToast,
     ]
   );
+
+  const handleStop = useCallback(() => {
+    abortControllerRef.current?.abort();
+  }, []);
 
   return (
     <div className="flex flex-col h-full">
@@ -982,7 +1062,7 @@ export function ChatView() {
         </div>
       </div>
 
-      <Composer onSend={handleSend} pending={pending} />
+      <Composer onSend={handleSend} onStop={handleStop} pending={pending} />
       {(stats.inputTokens > 0 || stats.outputTokens > 0) && (
         <div className="px-3 pb-1 pt-0.5 text-center text-[10px] text-surface-500 font-mono tracking-tight">
           {formatTokens(stats.inputTokens)} in · {formatTokens(stats.outputTokens)} out
