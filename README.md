@@ -86,6 +86,17 @@ Open <http://localhost:5174> and sign in with `admin` / `demo` — full app, fak
 </tr>
 </table>
 
+### AI Chat
+
+Heavily inspired by [t3.chat](https://t3.chat) — a multi-thread Claude chat that can read across your entire vault. The sidebar lists every thread; the active conversation streams in the main panel with markdown rendering, image/PDF attachments, and tool calls shown as collapsible cards.
+
+- **Claude OAuth subscription token** — paste the token from `claude setup-token` and chats are billed to your Claude.ai subscription instead of the API. Falls back to an API key if you'd rather pay per-token.
+- **Voice input via Parakeet (or any OpenAI-compatible transcription service)** — point Settings → Chat & Voice at a `/audio/transcriptions` endpoint such as [parakeet-mlx](https://github.com/senstella/parakeet-mlx), faster-whisper-server, or lightning-whisper-mlx running on your LAN. Push-to-talk in the composer; audio never leaves your network.
+- **Multi-thread sidebar** — threads persist locally; switch, rename-by-derivation, delete, or start fresh without losing context.
+- **Tool-using agent** — Claude can list entities, read files, search documents, compute tax summaries, and tag/note files. Each tool call renders as an expandable card in the response.
+
+![AI Chat — multi-thread conversation with tool calls and markdown rendering](./docs/screenshots/chat.png)
+
 ### Health (Apple Health)
 
 - **iOS Shortcut daily sync** — a one-tap shortcut pushes HealthKit data to DocVault's `/api/health/ingest` endpoint.
