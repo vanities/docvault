@@ -16,6 +16,7 @@ import { CheckCircle, Eye, EyeOff, Key, Mic, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
+import { ShieldAlert, ChevronDown, ChevronRight } from 'lucide-react';
 import { useToast } from '../../hooks/useToast';
 import { API_BASE } from '../../constants';
 
@@ -27,6 +28,178 @@ interface ChatSettingsData {
   transcribeModel?: string;
   hasTranscribeApiKey?: boolean;
   transcribeApiKeyHint?: string;
+}
+
+// Setup help for users on HTTP origins. Browsers refuse to expose mic
+// access (navigator.mediaDevices.getUserMedia) outside secure contexts —
+// DocVault on Unraid LAN is HTTP, so we surface the three fixes inline.
+// The card hides itself entirely when window.isSecureContext is true so
+// it doesn't pollute the settings UI for users who already moved off HTTP.
+function SecureContextHelp() {
+  const isInsecure = typeof window !== 'undefined' && !window.isSecureContext;
+  const [openSection, setOpenSection] = useState<'tailscale' | 'firefox' | 'chrome' | null>(
+    'tailscale'
+  );
+
+  if (!isInsecure) return null;
+
+  const host = typeof window !== 'undefined' ? window.location.hostname : 'nas.local';
+  const port = typeof window !== 'undefined' ? window.location.port : '3005';
+
+  const toggle = (section: 'tailscale' | 'firefox' | 'chrome') =>
+    setOpenSection(openSection === section ? null : section);
+
+  return (
+    <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
+      <div className="flex items-start gap-2 mb-3">
+        <ShieldAlert className="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" />
+        <div className="min-w-0">
+          <h4 className="text-[14px] font-semibold text-amber-400">Voice input requires HTTPS</h4>
+          <p className="text-[12px] text-surface-700 mt-1 leading-relaxed">
+            DocVault is currently served over HTTP at{' '}
+            <code className="font-mono text-[11px] bg-surface-100/60 px-1 rounded">
+              http://{host}
+              {port ? `:${port}` : ''}
+            </code>
+            . Browsers block microphone access (and other secure-context APIs like clipboard) on
+            non-HTTPS origins. Pick one fix below.
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        <CollapsibleSetupSection
+          title="Tailscale Serve — recommended (works everywhere, including iOS)"
+          isOpen={openSection === 'tailscale'}
+          onToggle={() => toggle('tailscale')}
+        >
+          <p className="mb-2">
+            One command on your NAS gets you HTTPS via Tailscale's auto-issued Let's Encrypt cert:
+          </p>
+          <pre className="bg-surface-0 border border-border/40 rounded p-2 my-2 overflow-x-auto text-[11px]">
+            {`ssh nas 'tailscale serve --bg --https=443 http://localhost:${port || '3005'}'`}
+          </pre>
+          <p className="mb-2">After that, DocVault is reachable at:</p>
+          <pre className="bg-surface-0 border border-border/40 rounded p-2 my-2 overflow-x-auto text-[11px]">
+            {`https://<your-nas-name>.<your-tailnet>.ts.net`}
+          </pre>
+          <p className="text-[11px] text-surface-600">
+            Check the URL with{' '}
+            <code className="font-mono bg-surface-100/60 px-1 rounded">tailscale serve status</code>
+            . Mic, clipboard, and all secure-context APIs work over the tailnet HTTPS URL.{' '}
+            <a
+              href="https://tailscale.com/kb/1242/tailscale-serve"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent-400 hover:underline"
+            >
+              Docs
+            </a>
+            .
+          </p>
+        </CollapsibleSetupSection>
+
+        <CollapsibleSetupSection
+          title="Firefox: dom.securecontext.allowlist"
+          isOpen={openSection === 'firefox'}
+          onToggle={() => toggle('firefox')}
+        >
+          <ol className="list-decimal ml-4 space-y-1">
+            <li>
+              New tab →{' '}
+              <code className="font-mono bg-surface-100/60 px-1 rounded">about:config</code> →
+              accept the risk
+            </li>
+            <li>
+              Search for{' '}
+              <code className="font-mono bg-surface-100/60 px-1 rounded">
+                dom.securecontext.allowlist
+              </code>
+              . If missing, click the <strong>+</strong> button to add as <strong>String</strong>.
+            </li>
+            <li>
+              Set value to (hostnames only — no scheme, no port, comma-separated):
+              <pre className="bg-surface-0 border border-border/40 rounded p-2 my-1 overflow-x-auto text-[11px]">
+                {host},192.168.1.3
+              </pre>
+            </li>
+            <li>Fully quit Firefox (Cmd-Q on Mac) and reopen.</li>
+            <li>
+              Visit{' '}
+              <code className="font-mono bg-surface-100/60 px-1 rounded">
+                http://{host}
+                {port ? `:${port}` : ''}
+              </code>
+              . Mic should now work.
+            </li>
+          </ol>
+          <p className="text-[11px] text-surface-600 mt-2">
+            Firefox 95+. Per-profile setting; doesn't sync across devices.
+          </p>
+        </CollapsibleSetupSection>
+
+        <CollapsibleSetupSection
+          title="Chrome / Edge / Brave: unsafely-treat-insecure-origin-as-secure"
+          isOpen={openSection === 'chrome'}
+          onToggle={() => toggle('chrome')}
+        >
+          <ol className="list-decimal ml-4 space-y-1">
+            <li>
+              Visit{' '}
+              <code className="font-mono bg-surface-100/60 px-1 rounded">
+                chrome://flags/#unsafely-treat-insecure-origin-as-secure
+              </code>
+            </li>
+            <li>Enable the flag</li>
+            <li>
+              In the textbox, paste (full URLs with scheme + port, comma-separated):
+              <pre className="bg-surface-0 border border-border/40 rounded p-2 my-1 overflow-x-auto text-[11px]">
+                http://{host}
+                {port ? `:${port}` : ''},http://192.168.1.3:3005
+              </pre>
+            </li>
+            <li>Click "Relaunch" at the bottom.</li>
+          </ol>
+          <p className="text-[11px] text-surface-600 mt-2">
+            Per-browser setting. <strong>Doesn't work on iOS</strong> — Safari has no equivalent
+            flag, so Tailscale is the only path on iPhone/iPad.
+          </p>
+        </CollapsibleSetupSection>
+      </div>
+    </div>
+  );
+}
+
+function CollapsibleSetupSection({
+  title,
+  isOpen,
+  onToggle,
+  children,
+}: {
+  title: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="border border-amber-500/15 rounded-lg overflow-hidden bg-surface-50/30">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center gap-2 px-3 py-2 text-left text-[12px] font-medium text-surface-800 hover:bg-surface-100/40"
+      >
+        {isOpen ? (
+          <ChevronDown className="w-3.5 h-3.5 text-surface-500 flex-shrink-0" />
+        ) : (
+          <ChevronRight className="w-3.5 h-3.5 text-surface-500 flex-shrink-0" />
+        )}
+        <span>{title}</span>
+      </button>
+      {isOpen && (
+        <div className="px-3 pb-3 text-[12px] text-surface-700 leading-relaxed">{children}</div>
+      )}
+    </div>
+  );
 }
 
 export function ChatSettingsSection() {
@@ -188,6 +361,8 @@ export function ChatSettingsSection() {
         <Mic className="w-5 h-5" />
         Chat & Voice
       </h3>
+
+      <SecureContextHelp />
 
       <div className="space-y-6">
         {/* Claude OAuth subscription token */}
