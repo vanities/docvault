@@ -136,7 +136,7 @@ export default defineConfig({
     tabWidth: 2,
     printWidth: 100,
     sortPackageJson: false,
-    ignorePatterns: ['dist', 'node_modules', 'bun.lockb'],
+    ignorePatterns: ['dist', 'node_modules', 'bun.lockb', 'demo-data'],
   },
   resolve: {
     alias: {

@@ -1,14 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/main/.schema/devbox.schema.json",
-  "packages": [
-    "nodejs@24",
-    "bun@latest",
-    "pnpm@10"
-  ],
+  "packages": ["nodejs@24", "bun@latest", "pnpm@10"],
   "shell": {
-    "init_hook": [
-      "echo 'DocVault dev environment ready'"
-    ],
+    "init_hook": ["echo 'DocVault dev environment ready'"],
     "scripts": {
       "dev": "bun run start",
       "check": "bun run check",
