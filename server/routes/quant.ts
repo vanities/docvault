@@ -43,6 +43,7 @@ const TTL = {
   commodities: DAY_MS, // yahoo futures tickers
   vixTermStructure: 6 * 60 * 60 * 1000, // yahoo VIX variants
   globalMarkets: DAY_MS, // yahoo international indices
+  kronos: 60 * 60 * 1000, // shiyu-coder Kronos demo refreshes hourly
 };
 
 interface CacheEntry<T> {
@@ -78,6 +79,7 @@ type QuantCache = {
   commodities?: CacheEntry<MacroDashboardResponse>;
   vixTermStructure?: CacheEntry<MacroDashboardResponse>;
   globalMarkets?: CacheEntry<MacroDashboardResponse>;
+  kronos?: CacheEntry<KronosForecastResponse>;
 };
 
 async function loadCache(): Promise<QuantCache> {
@@ -210,6 +212,9 @@ const CACHE = {
   vixTermStructure: { maxAge: 3600, swr: 12 * 3600 },
   // Global Markets — yahoo international indices, 2h + 12h SWR.
   globalMarkets: { maxAge: 2 * 3600, swr: 12 * 3600 },
+  // Kronos forecast — upstream is hourly; 30m browser cache + 6h SWR keeps the
+  // panel snappy without hammering shiyu-coder's GitHub Pages.
+  kronos: { maxAge: 30 * 60, swr: 6 * 3600 },
   // Snapshots grow one row per day; short cache so new snapshots appear fast.
   snapshots: { maxAge: 300, swr: 3600 },
 };
@@ -1076,6 +1081,27 @@ export interface FearGreedResponse {
   lowest365: FearGreedSample | null;
   fetchedAt: number;
   source: 'alternative.me';
+}
+
+/** Kronos foundation-model forecast for BTC/USDT — scraped from
+ *  shiyu-coder.github.io/Kronos-demo. Probabilistic Monte-Carlo trajectory
+ *  collapsed into two scalars (24h up-probability + vol-amplification) plus
+ *  a link to the upstream chart image. */
+export interface KronosForecastResponse {
+  /** Decimal in [0, 1] — modeled probability that price 24h from
+   *  upstreamUpdatedAt exceeds the last close. */
+  upsideProbability: number;
+  /** Decimal in [0, 1] — modeled probability that next-24h realized vol
+   *  exceeds recent historical vol. */
+  volAmplification: number;
+  /** ISO-8601 timestamp from the demo page (originally "YYYY-MM-DD HH:MM:SS" UTC). */
+  upstreamUpdatedAt: string;
+  /** Direct URL to the forecast chart PNG (regenerated upstream each hour). */
+  chartUrl: string;
+  /** Hard-coded — the public demo only covers BTC/USDT 1h candles from Binance. */
+  symbol: 'BTC/USDT';
+  fetchedAt: number;
+  source: 'shiyu-coder.github.io/Kronos-demo';
 }
 
 /** One daily ETH/BTC ratio observation. */
@@ -3313,6 +3339,70 @@ async function computeFearGreed(): Promise<FearGreedResponse> {
 }
 
 // ---------------------------------------------------------------------------
+// Kronos forecast — scrape shiyu-coder.github.io/Kronos-demo. The demo page
+// is rendered server-side by their hourly cron (update_predictions.py) and
+// embeds three values directly in the HTML: upside probability, volatility
+// amplification, and the UTC timestamp of the last update. We pull the HTML,
+// regex out the three fields, and keep a pointer to their forecast PNG. If
+// upstream restructures their HTML this throws and the caller serves stale
+// cache, which is the right failure mode for a non-load-bearing signal.
+// ---------------------------------------------------------------------------
+
+const KRONOS_DEMO_URL = 'https://shiyu-coder.github.io/Kronos-demo/';
+const KRONOS_CHART_URL = 'https://shiyu-coder.github.io/Kronos-demo/prediction_chart.png';
+
+/** Pure parser — exported so we can unit-test the regexes without hitting
+ *  the network. Throws on missing fields rather than returning partials. */
+export function parseKronosHtml(html: string): {
+  upsideProbability: number;
+  volAmplification: number;
+  upstreamUpdatedAt: string;
+} {
+  const upMatch = html.match(/id="upside-prob"[^>]*>\s*([\d.]+)\s*%/);
+  const volMatch = html.match(/id="vol-amp-prob"[^>]*>\s*([\d.]+)\s*%/);
+  const tsMatch = html.match(/id="update-time"[^>]*>\s*([^<]+?)\s*</);
+  if (!upMatch || !volMatch || !tsMatch) {
+    throw new Error(
+      'Kronos demo HTML missing expected fields (upside-prob / vol-amp-prob / update-time)'
+    );
+  }
+  const upside = parseFloat(upMatch[1]);
+  const vol = parseFloat(volMatch[1]);
+  if (!Number.isFinite(upside) || !Number.isFinite(vol)) {
+    throw new Error(
+      `Kronos demo returned non-numeric probabilities: ${upMatch[1]} / ${volMatch[1]}`
+    );
+  }
+  // "2026-05-06 16:00:25" → "2026-05-06T16:00:25Z" (page labels it as UTC).
+  const upstreamUpdatedAt = tsMatch[1].replace(' ', 'T') + 'Z';
+  return {
+    upsideProbability: upside / 100,
+    volAmplification: vol / 100,
+    upstreamUpdatedAt,
+  };
+}
+
+async function computeKronos(): Promise<KronosForecastResponse> {
+  const res = await fetch(KRONOS_DEMO_URL, {
+    headers: { Accept: 'text/html', 'User-Agent': 'docvault/1.0' },
+  });
+  if (!res.ok) {
+    throw new Error(`Kronos demo HTTP ${res.status}`);
+  }
+  const html = await res.text();
+  const { upsideProbability, volAmplification, upstreamUpdatedAt } = parseKronosHtml(html);
+  return {
+    upsideProbability,
+    volAmplification,
+    upstreamUpdatedAt,
+    chartUrl: KRONOS_CHART_URL,
+    symbol: 'BTC/USDT',
+    fetchedAt: Date.now(),
+    source: 'shiyu-coder.github.io/Kronos-demo',
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Flippening Index — ETH/BTC price ratio over time. The proper ITC definition
 // uses market caps (ETH cap / BTC cap) but price ratio tracks that closely
 // since neither supply schedule changes fast. We additionally estimate the
@@ -5330,6 +5420,33 @@ export async function handleQuantRoutes(
         );
       }
       return jsonResponse({ error: `BTC log regression fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/btc/kronos — Kronos foundation-model forecast, scraped
+  // from shiyu-coder.github.io/Kronos-demo (BTC/USDT 1h, 24h horizon).
+  if (pathname === '/api/quant/btc/kronos' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.kronos, TTL.kronos)) {
+      return cachedJsonResponse(req, { ...cache.kronos!.data, cached: true }, CACHE.kronos);
+    }
+    try {
+      logQuant.info('kronos — computing fresh');
+      const data = await computeKronos();
+      cache.kronos = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.kronos);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('kronos failed:', msg);
+      if (cache.kronos) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.kronos.data, cached: true, stale: true, fetchError: msg },
+          CACHE.kronos
+        );
+      }
+      return jsonResponse({ error: `Kronos forecast fetch failed: ${msg}` }, 502);
     }
   }
 

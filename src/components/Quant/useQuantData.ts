@@ -554,6 +554,24 @@ export interface FearGreedData {
   stale?: boolean;
 }
 
+export interface KronosForecastData {
+  upsideProbability: number;
+  volAmplification: number;
+  upstreamUpdatedAt: string;
+  chartUrl: string;
+  symbol: string;
+  fetchedAt: number;
+  source: 'shiyu-coder.github.io/Kronos-demo';
+  cached?: boolean;
+  stale?: boolean;
+  fetchError?: string;
+}
+
+export function useKronosForecast() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<KronosForecastData>(`${API_BASE}/quant/btc/kronos?_=${bump}`);
+}
+
 export function useFearGreed() {
   const bump = useQuantRefreshBump();
   return useQuantFetch<FearGreedData>(`${API_BASE}/quant/btc/fear-greed?_=${bump}`);

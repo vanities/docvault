@@ -36,6 +36,7 @@ import { InflationDashboardChart } from './InflationDashboardChart';
 import { FinancialConditionsChart } from './FinancialConditionsChart';
 import { BtcDrawdownChart } from './BtcDrawdownChart';
 import { FearGreedChart } from './FearGreedChart';
+import { KronosForecastChart } from './KronosForecastChart';
 import { FlippeningChart } from './FlippeningChart';
 import { RealRatesChart } from './RealRatesChart';
 import { HashRateChart } from './HashRateChart';
@@ -427,6 +428,13 @@ export function QuantView() {
 
           <ChartGroup title="Fear & Greed Index" subtitle="alternative.me 0-100 sentiment">
             <FearGreedChart />
+          </ChartGroup>
+
+          <ChartGroup
+            title="Kronos Forecast"
+            subtitle="foundation-model 24h probabilistic forecast"
+          >
+            <KronosForecastChart />
           </ChartGroup>
 
           <ChartGroup title="Flippening Index" subtitle="ETH / BTC ratio + progress-to-flip">
