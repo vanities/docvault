@@ -1,5 +1,7 @@
 # DocVault
 
+![DocVault — self-hosted personal finance, health, and tax workspace](./docs/docvault-hero.png)
+
 Self-hosted personal finance and document workspace. One container holds your tax records, tracks net worth across brokers / crypto / metals / real estate, parses financial PDFs with Claude, ingests Apple Health data from an iOS Shortcut, and surfaces macro + crypto quant signals alongside AI-generated strategy notes — all without sending data off your machine.
 
 ![DocVault tax year overview](./docs/screenshots/tax-year.png)
