@@ -40,6 +40,7 @@ import { KronosForecastChart } from './KronosForecastChart';
 import { FlippeningChart } from './FlippeningChart';
 import { RealRatesChart } from './RealRatesChart';
 import { HashRateChart } from './HashRateChart';
+import { HodlTriangleChart } from './HodlTriangleChart';
 import { RunningRoiChart } from './RunningRoiChart';
 import { HousingDashboardChart } from './HousingDashboardChart';
 import { GdpGrowthChart } from './GdpGrowthChart';
@@ -443,6 +444,10 @@ export function QuantView() {
 
           <ChartGroup title="Hash Rate + Hash Ribbons" subtitle="30d × 60d SMA crossovers">
             <HashRateChart />
+          </ChartGroup>
+
+          <ChartGroup title="Hodl Triangle" subtitle="UTXO acquired-vs-spent date heatmap">
+            <HodlTriangleChart />
           </ChartGroup>
 
           <ChartGroup title="Running ROI" subtitle="1y / 2y / 4y rolling hold returns">
