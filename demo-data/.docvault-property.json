@@ -14,13 +14,13 @@
       "annualPropertyTax": 3450,
       "mortgage": {
         "principal": 225000,
-        "balance": 201400,
+        "balance": 254965.83,
         "rate": 3.25,
         "termYears": 30,
         "startDate": "2022-04-01",
         "monthlyPayment": 980
       },
-      "lastAmortizationDate": "2026-04-01",
+      "lastAmortizationDate": "2026-05",
       "notes": "Long-term tenants, annual rent increase schedule.",
       "createdAt": "2022-04-01T12:00:00.000Z"
     },
@@ -38,13 +38,13 @@
       "annualPropertyTax": 4100,
       "mortgage": {
         "principal": 256000,
-        "balance": 214500,
+        "balance": 280346.25,
         "rate": 3.75,
         "termYears": 30,
         "startDate": "2019-07-15",
         "monthlyPayment": 1185
       },
-      "lastAmortizationDate": "2026-04-01",
+      "lastAmortizationDate": "2026-05",
       "notes": "",
       "createdAt": "2019-07-15T12:00:00.000Z"
     }

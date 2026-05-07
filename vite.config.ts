@@ -127,7 +127,14 @@ export default defineConfig({
   },
   staged: {
     '*.{ts,tsx}': ['vp lint --fix', 'vp fmt'],
-    '*.{json,md,css}': ['vp fmt'],
+    // Filter demo-data — fmt.ignorePatterns drops it, so passing only demo-data
+    // files makes vp fmt error with "Expected at least one target file". The
+    // bundled lint-staged@16 supports a function value here, but Vite+'s
+    // StagedConfig type narrows to `string | string[]`, hence the cast.
+    '*.{json,md,css}': ((files: string[]) => {
+      const targets = files.filter((f) => !f.includes('demo-data/'));
+      return targets.length > 0 ? [`vp fmt ${targets.map((f) => `"${f}"`).join(' ')}`] : [];
+    }) as unknown as string[],
   },
   fmt: {
     semi: true,
