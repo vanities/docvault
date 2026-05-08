@@ -1,0 +1,185 @@
+{
+  "_doc": {
+    "fields": {
+      "slug": "URL hash after # — must match NavView in src/contexts/AppContext.tsx",
+      "file": "output filename in docs/screenshots/",
+      "section": "README section hint: 'Documents & Taxes' | 'Net Worth & Portfolio' | 'Quant Dashboards & Strategy' | 'Health' | 'Privacy' | 'Other'",
+      "pre_actions": "optional array of actions run after navigation, before screenshot",
+      "full_page": "optional bool — capture full scrollable height instead of viewport",
+      "viewport": "optional per-view viewport override"
+    },
+    "pre_action_types": {
+      "click_text": "{ type, text, exact? } — click element by accessible text",
+      "click_selector": "{ type, selector } — click by CSS selector",
+      "set_local_storage": "{ type, key, value } — write a localStorage key (value is a string; pair with reload)",
+      "reload": "{ type } — full page reload (use after set_local_storage so React reads new state)",
+      "wait_ms": "{ type, ms } — sleep",
+      "wait_for_selector": "{ type, selector } — block until selector appears"
+    }
+  },
+  "defaults": {
+    "viewport": { "width": 1440, "height": 900 },
+    "device_scale_factor": 2,
+    "wait_ms_after_nav": 900,
+    "wait_ms_after_pre_actions": 400
+  },
+  "session_setup": [
+    { "type": "goto_slug", "slug": "health" },
+    { "type": "wait_ms", "ms": 500 },
+    { "type": "click_text", "text": "Demo Person" },
+    { "type": "wait_ms", "ms": 400 }
+  ],
+  "views": [
+    { "slug": "tax-year", "file": "tax-year.png", "section": "Documents & Taxes" },
+    { "slug": "federal-tax", "file": "federal-tax.png", "section": "Documents & Taxes" },
+    { "slug": "tn-tax", "file": "tn-tax.png", "section": "Documents & Taxes" },
+    { "slug": "solo-401k", "file": "solo-401k.png", "section": "Documents & Taxes" },
+    { "slug": "estimated-tax", "file": "estimated-tax.png", "section": "Documents & Taxes" },
+    { "slug": "sales", "file": "sales.png", "section": "Documents & Taxes" },
+    { "slug": "mileage", "file": "mileage.png", "section": "Documents & Taxes" },
+    { "slug": "income", "file": "income.png", "section": "Documents & Taxes" },
+    { "slug": "business-docs", "file": "business-docs.png", "section": "Documents & Taxes" },
+    { "slug": "all-files", "file": "all-files.png", "section": "Documents & Taxes" },
+    { "slug": "portfolio", "file": "portfolio.png", "section": "Net Worth & Portfolio" },
+    { "slug": "crypto", "file": "crypto.png", "section": "Net Worth & Portfolio" },
+    { "slug": "brokers", "file": "brokers.png", "section": "Net Worth & Portfolio" },
+    { "slug": "banks", "file": "banks.png", "section": "Net Worth & Portfolio" },
+    { "slug": "gold", "file": "gold.png", "section": "Net Worth & Portfolio" },
+    { "slug": "property", "file": "property.png", "section": "Net Worth & Portfolio" },
+    {
+      "slug": "quant",
+      "file": "quant.png",
+      "section": "Quant Dashboards & Strategy",
+      "pre_actions": [
+        { "type": "click_role", "role": "tab", "name": "Overview" },
+        { "type": "wait_ms", "ms": 3000 }
+      ]
+    },
+    {
+      "slug": "quant",
+      "file": "quant-crypto.png",
+      "section": "Quant Dashboards & Strategy",
+      "pre_actions": [
+        { "type": "click_role", "role": "tab", "name": "Crypto" },
+        { "type": "wait_ms", "ms": 3000 }
+      ]
+    },
+    {
+      "slug": "quant",
+      "file": "quant-macro.png",
+      "section": "Quant Dashboards & Strategy",
+      "pre_actions": [
+        { "type": "click_role", "role": "tab", "name": "Macro" },
+        { "type": "wait_ms", "ms": 3000 }
+      ]
+    },
+    {
+      "slug": "quant",
+      "file": "quant-tradfi.png",
+      "section": "Quant Dashboards & Strategy",
+      "pre_actions": [
+        { "type": "click_role", "role": "tab", "name": "TradFi" },
+        { "type": "wait_ms", "ms": 3000 }
+      ]
+    },
+    { "slug": "strategy", "file": "strategy.png", "section": "Quant Dashboards & Strategy" },
+    { "slug": "health", "file": "health.png", "section": "Health" },
+    { "slug": "health-activity", "file": "health-activity.png", "section": "Health" },
+    { "slug": "health-heart", "file": "health-heart.png", "section": "Health" },
+    { "slug": "health-sleep", "file": "health-sleep.png", "section": "Health" },
+    { "slug": "health-workouts", "file": "health-workouts.png", "section": "Health" },
+    { "slug": "health-body", "file": "health-body.png", "section": "Health" },
+    { "slug": "health-records", "file": "health-records.png", "section": "Health" },
+    { "slug": "health-dna", "file": "health-dna.png", "section": "Health" },
+    { "slug": "health-nutrition", "file": "health-nutrition.png", "section": "Health" },
+    { "slug": "health-sickness", "file": "health-sickness.png", "section": "Health" },
+    { "slug": "health-analysis", "file": "health-analysis.png", "section": "Health" },
+    {
+      "slug": "chat",
+      "file": "chat.png",
+      "section": "Other",
+      "pre_actions": [
+        {
+          "type": "set_local_storage",
+          "key": "docvault-chat-threads-v1",
+          "value": {
+            "activeThreadId": "ch-q1-expenses",
+            "threads": {
+              "ch-q1-expenses": {
+                "id": "ch-q1-expenses",
+                "title": "Q1 expense breakdown",
+                "resumeSessionId": null,
+                "messages": [
+                  {
+                    "id": "u1",
+                    "role": "user",
+                    "content": "Summarize Q1 expenses for Acme Consulting by category."
+                  },
+                  {
+                    "id": "a1",
+                    "role": "assistant",
+                    "blocks": [
+                      {
+                        "type": "tool_call",
+                        "toolName": "get_tax_summary",
+                        "input": { "entity": "acme-consulting", "year": 2025 },
+                        "result": { "ok": true },
+                        "ok": true
+                      },
+                      {
+                        "type": "text",
+                        "text": "Here's Q1 2025 across **Acme Consulting**:\n\n- **Software & subscriptions** — $2,140\n- **Travel** — $1,820\n- **Office supplies** — $480\n- **Meals** (50% deductible) — $310\n\nTotal deductible: **$4,750**. Want me to break it down by month or pull the parsed receipts?"
+                      }
+                    ]
+                  }
+                ],
+                "stats": { "inputTokens": 1842, "outputTokens": 326, "costUsd": 0.012 },
+                "createdAt": "2026-04-15T14:20:00.000Z",
+                "updatedAt": "2026-04-15T14:21:30.000Z"
+              },
+              "ch-quarterly": {
+                "id": "ch-quarterly",
+                "title": "Estimate next quarterly tax payment",
+                "resumeSessionId": null,
+                "messages": [],
+                "stats": { "inputTokens": 0, "outputTokens": 0, "costUsd": 0 },
+                "createdAt": "2026-04-12T09:10:00.000Z",
+                "updatedAt": "2026-04-12T09:30:00.000Z"
+              },
+              "ch-receipts": {
+                "id": "ch-receipts",
+                "title": "Categorize last month's receipts",
+                "resumeSessionId": null,
+                "messages": [],
+                "stats": { "inputTokens": 0, "outputTokens": 0, "costUsd": 0 },
+                "createdAt": "2026-04-08T11:45:00.000Z",
+                "updatedAt": "2026-04-08T12:05:00.000Z"
+              },
+              "ch-exchanges": {
+                "id": "ch-exchanges",
+                "title": "Compare Coinbase vs Kraken YTD",
+                "resumeSessionId": null,
+                "messages": [],
+                "stats": { "inputTokens": 0, "outputTokens": 0, "costUsd": 0 },
+                "createdAt": "2026-04-04T16:00:00.000Z",
+                "updatedAt": "2026-04-04T16:20:00.000Z"
+              },
+              "ch-cost-basis": {
+                "id": "ch-cost-basis",
+                "title": "Pull crypto cost basis for Schedule D",
+                "resumeSessionId": null,
+                "messages": [],
+                "stats": { "inputTokens": 0, "outputTokens": 0, "costUsd": 0 },
+                "createdAt": "2026-03-30T10:00:00.000Z",
+                "updatedAt": "2026-03-30T10:15:00.000Z"
+              }
+            }
+          }
+        },
+        { "type": "reload" },
+        { "type": "wait_ms", "ms": 800 }
+      ]
+    },
+    { "slug": "settings", "file": "settings.png", "section": "Other" }
+  ]
+}

@@ -965,5 +965,16 @@
     "propertyValue": 224687.92,
     "shortTermGains": 0,
     "longTermGains": 0
+  },
+  {
+    "date": "2026-05-08",
+    "totalValue": 422406.19,
+    "cryptoValue": 118450,
+    "brokerValue": 0,
+    "bankValue": 49610.87,
+    "goldValue": 29657.4,
+    "propertyValue": 224687.92,
+    "shortTermGains": 0,
+    "longTermGains": 0
   }
 ]
