@@ -13,7 +13,7 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
-import type { TaxDocument, DocumentType, Entity } from '../../types';
+import type { TaxDocument, DocumentType, Entity, ExpenseCategory } from '../../types';
 import { DOCUMENT_TYPES, EXPENSE_CATEGORIES, getDocumentTypeColor } from '../../config';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import {
@@ -43,7 +43,8 @@ interface DocumentCardProps {
     fromPath: string,
     toEntity: Entity,
     toYear: number,
-    newDocType: DocumentType
+    newDocType: DocumentType,
+    expenseCategory?: ExpenseCategory
   ) => Promise<boolean>;
   entities?: EntityConfig[];
   availableYears?: number[];
@@ -87,11 +88,16 @@ export function DocumentCard({
   isSelected,
   onToggleSelect,
 }: DocumentCardProps) {
+  const initialCategory = (doc.parsedData as { category?: ExpenseCategory } | null | undefined)
+    ?.category;
   const [isEditing, setIsEditing] = useState(false);
   const [editedType, setEditedType] = useState(doc.type);
   const [editedNotes, setEditedNotes] = useState(doc.notes || '');
   const [editedEntity, setEditedEntity] = useState(doc.entity);
   const [editedYear, setEditedYear] = useState(doc.taxYear);
+  const [editedCategory, setEditedCategory] = useState<ExpenseCategory | undefined>(
+    initialCategory
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [newTag, setNewTag] = useState('');
 
@@ -102,15 +108,21 @@ export function DocumentCard({
       const typeChanged = editedType !== doc.type;
       const entityChanged = editedEntity !== doc.entity;
       const yearChanged = editedYear !== doc.taxYear;
+      const categoryChanged = editedType === 'receipt' && editedCategory !== initialCategory;
 
-      // If type, entity, or year changed, relocate the file
-      if ((typeChanged || entityChanged || yearChanged) && onRelocate && doc.filePath) {
+      // If type, entity, year, or expense category changed, relocate the file
+      if (
+        (typeChanged || entityChanged || yearChanged || categoryChanged) &&
+        onRelocate &&
+        doc.filePath
+      ) {
         const success = await onRelocate(
           doc.entity,
           doc.filePath,
           editedEntity,
           editedYear,
-          editedType
+          editedType,
+          editedType === 'receipt' ? editedCategory : undefined
         );
         if (!success) {
           setIsSaving(false);
@@ -118,11 +130,18 @@ export function DocumentCard({
         }
       }
 
-      // Update metadata
-      onUpdate(doc.id, {
+      // Update metadata (and parsed category if it changed)
+      const updates: Partial<TaxDocument> = {
         type: editedType,
         notes: editedNotes,
-      });
+      };
+      if (categoryChanged && doc.parsedData) {
+        updates.parsedData = {
+          ...(doc.parsedData as unknown as Record<string, unknown>),
+          category: editedCategory,
+        } as TaxDocument['parsedData'];
+      }
+      onUpdate(doc.id, updates);
     } catch (err) {
       console.error('Save error:', err);
     } finally {
@@ -383,6 +402,28 @@ export function DocumentCard({
                   </SelectContent>
                 </Select>
               </div>
+              {editedType === 'receipt' && (
+                <div>
+                  <label className="block text-[11px] font-medium text-surface-700 mb-1">
+                    Expense Category
+                  </label>
+                  <Select
+                    value={editedCategory ?? ''}
+                    onValueChange={(val) => setEditedCategory(val as ExpenseCategory)}
+                  >
+                    <SelectTrigger className="w-full text-[13px]">
+                      <SelectValue placeholder="Pick a category…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {EXPENSE_CATEGORIES.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               {entities && entities.length > 0 && (
                 <div>
                   <label className="block text-[11px] font-medium text-surface-700 mb-1">
@@ -448,6 +489,7 @@ export function DocumentCard({
                     setEditedNotes(doc.notes || '');
                     setEditedEntity(doc.entity);
                     setEditedYear(doc.taxYear);
+                    setEditedCategory(initialCategory);
                   }}
                 >
                   Cancel

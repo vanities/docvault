@@ -410,6 +410,8 @@ export function useFileSystemServer() {
       destPath += '/income/1099';
     } else if (docType === 'receipt' && expenseCategory) {
       destPath += '/' + EXPENSE_FOLDER_MAP[expenseCategory];
+    } else if (docType === 'receipt') {
+      destPath += '/expenses/business';
     } else if (docType === 'bank-statement') {
       destPath += '/statements/bank';
     } else if (docType === 'credit-card-statement') {

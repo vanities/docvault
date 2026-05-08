@@ -8,7 +8,7 @@ import { ReminderBanner } from '../Reminders/ReminderBanner';
 import { TodoList } from '../Todos/TodoList';
 import { EntityMetadataBanner } from '../EntityMetadata/EntityMetadataBanner';
 import { FileUploader } from '../common/FileUploader';
-import type { TaxDocument, DocumentType, Entity } from '../../types';
+import type { TaxDocument, DocumentType, Entity, ExpenseCategory } from '../../types';
 import { Button } from '@/components/ui/button';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 
@@ -138,9 +138,17 @@ export function BusinessDocsView() {
     fromPath: string,
     toEntity: Entity,
     toYear: number,
-    newDocType: DocumentType
+    newDocType: DocumentType,
+    expenseCategory?: ExpenseCategory
   ): Promise<boolean> => {
-    const success = await relocateFile(fromEntity, fromPath, toEntity, toYear, newDocType);
+    const success = await relocateFile(
+      fromEntity,
+      fromPath,
+      toEntity,
+      toYear,
+      newDocType,
+      expenseCategory
+    );
     if (success) {
       addToast('Document moved', 'success');
       await loadBusinessDocs();

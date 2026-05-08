@@ -210,9 +210,17 @@ export function TaxYearView() {
     fromPath: string,
     toEntity: Entity,
     toYear: number,
-    newDocType: DocumentType
+    newDocType: DocumentType,
+    expenseCategory?: ExpenseCategory
   ): Promise<boolean> => {
-    const success = await relocateFile(fromEntity, fromPath, toEntity, toYear, newDocType);
+    const success = await relocateFile(
+      fromEntity,
+      fromPath,
+      toEntity,
+      toYear,
+      newDocType,
+      expenseCategory
+    );
     if (success) {
       addToast('Document moved', 'success');
       const docs = await scanTaxYear(selectedEntity, selectedYear);

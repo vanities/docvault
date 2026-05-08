@@ -35,6 +35,9 @@ export function detectDocumentType(filename: string, filePath?: string): Documen
   if (/1099/i.test(lower)) return '1099-nec';
   if (/k-?1(?=[_.\s-]|$)|schedule.?k/i.test(lower)) return 'k-1';
   if (/receipt|expense|purchase/i.test(lower)) return 'receipt';
+  // A file inside expenses/ is a receipt regardless of filename — path is set
+  // by explicit user action (relocate), filename is just a heuristic.
+  if (pathLower.includes('/expenses/')) return 'receipt';
   if (/invoice/i.test(lower)) return 'invoice';
   if (/koinly|coinbase|kraken|crypto|8949/i.test(lower)) return 'crypto';
   if (/\.tax\d{4}$|return|final/i.test(lower)) return 'return';
