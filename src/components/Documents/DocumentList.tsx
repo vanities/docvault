@@ -55,12 +55,20 @@ type SortField = 'createdAt' | 'fileName' | 'type';
 type SortOrder = 'asc' | 'desc';
 type GroupMode = 'none' | 'folder' | 'type' | 'client';
 
+// Filename heuristics are only safe to assign "Invoices" when the explicit
+// document type doesn't already disagree. A file named Foo_Invoice.pdf that's
+// been retyped to 'receipt' (and moved to /expenses/) should NOT be grouped
+// under Invoices.
+function filenameInvoiceMatchAllowed(docType?: DocumentType): boolean {
+  return !docType || docType === 'invoice' || docType === 'other';
+}
+
 // Try to detect a smarter group from filename when the folder is generic ("other")
-function detectGroupFromFilename(fileName: string): string | null {
+function detectGroupFromFilename(fileName: string, docType?: DocumentType): string | null {
   const lower = fileName.toLowerCase();
 
-  // Invoices
-  if (/invoice/i.test(lower)) return 'Invoices';
+  // Invoices — only if the explicit type allows the filename heuristic
+  if (/invoice/i.test(lower) && filenameInvoiceMatchAllowed(docType)) return 'Invoices';
   // Timesheets
   if (/timesheet/i.test(lower)) return 'Timesheets';
   // Contracts, agreements, NDAs
@@ -121,7 +129,7 @@ function formatFolderName(f: string): string {
 }
 
 // Derive a human-readable group label from a file's path
-function getGroupFromPath(filePath: string): string {
+function getGroupFromPath(filePath: string, docType?: DocumentType): string {
   // filePath looks like "2024/income/w2/file.pdf" or "business-docs/ein/file.pdf"
   const parts = filePath.split('/');
   const fileName = parts[parts.length - 1];
@@ -141,12 +149,12 @@ function getGroupFromPath(filePath: string): string {
 
   const meaningful = folders.slice(start);
 
-  if (meaningful.length === 0) return detectGroupFromFilename(fileName) || 'Other';
+  if (meaningful.length === 0) return detectGroupFromFilename(fileName, docType) || 'Other';
 
   // If we're in an "other" folder, try to detect a smarter group from the filename
   const lastFolder = meaningful[meaningful.length - 1].toLowerCase();
   if (lastFolder === 'other') {
-    const detected = detectGroupFromFilename(fileName);
+    const detected = detectGroupFromFilename(fileName, docType);
     if (detected) {
       // If there's a client subfolder before "other", prefix it
       // e.g. business-docs/other/acme/W9.pdf → "Acme / Tax Forms"
@@ -170,7 +178,7 @@ function getGroupFromPath(filePath: string): string {
   // Show as the client name (e.g. "Acme", "Blueprint")
   if (meaningful.length >= 2 && meaningful[0].toLowerCase() === 'other') {
     const clientPath = meaningful.slice(1).map(formatFolderName);
-    const detected = detectGroupFromFilename(fileName);
+    const detected = detectGroupFromFilename(fileName, docType);
     if (detected) {
       return clientPath.join(' / ') + ' / ' + detected;
     }
@@ -219,13 +227,14 @@ const STRUCTURAL_FOLDERS = new Set([
 // Docs in structural folders (EIN, Formation, etc.) keep those category names.
 // Everything else gets grouped by the vendor/client name.
 function getGroupFromClient(filePath: string, docType?: DocumentType): string {
-  // Invoice type or filename → always "Invoices"
+  // Invoice type → always "Invoices"
   if (docType === 'invoice') return 'Invoices';
 
   const parts = filePath.split('/');
   const fileName = parts[parts.length - 1];
 
-  if (/invoice/i.test(fileName)) return 'Invoices';
+  // Filename-based "Invoices" only when docType doesn't already say otherwise.
+  if (/invoice/i.test(fileName) && filenameInvoiceMatchAllowed(docType)) return 'Invoices';
 
   const folders = parts.slice(0, -1);
 
@@ -454,7 +463,7 @@ export function DocumentList({
     for (const doc of filteredAndSortedDocuments) {
       let label: string;
       if (groupMode === 'folder') {
-        label = getGroupFromPath(doc.filePath ?? '');
+        label = getGroupFromPath(doc.filePath ?? '', doc.type);
       } else if (groupMode === 'type') {
         label = getGroupFromType(doc.type);
       } else {
