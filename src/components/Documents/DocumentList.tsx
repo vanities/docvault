@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { DocumentCard } from './DocumentCard';
 import { DocumentViewer } from './DocumentViewer';
-import type { TaxDocument, DocumentType, Entity } from '../../types';
+import type { TaxDocument, DocumentType, Entity, ExpenseCategory } from '../../types';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import { DOCUMENT_TYPES } from '../../config';
 import { Button } from '@/components/ui/button';
@@ -43,7 +43,8 @@ interface DocumentListProps {
     fromPath: string,
     toEntity: Entity,
     toYear: number,
-    newDocType: DocumentType
+    newDocType: DocumentType,
+    expenseCategory?: ExpenseCategory
   ) => Promise<boolean>;
   entities?: EntityConfig[];
   availableYears?: number[];
@@ -780,6 +781,7 @@ export function DocumentList({
               : undefined
           }
           onMove={onMove}
+          onRelocate={onRelocate}
           entities={entities}
           availableYears={availableYears}
         />

@@ -6,7 +6,7 @@ import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import { DocumentList } from '../Documents/DocumentList';
 import { FileUploader } from '../common/FileUploader';
-import type { TaxDocument, Entity, DocumentType } from '../../types';
+import type { TaxDocument, Entity, DocumentType, ExpenseCategory } from '../../types';
 import { Button } from '@/components/ui/button';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 
@@ -53,9 +53,7 @@ export function AllFilesView() {
   ): Promise<boolean> => {
     const expenseCategory =
       docType === 'receipt' && parsedData
-        ? ((parsedData as { category?: string }).category as
-            | import('../../types').ExpenseCategory
-            | undefined)
+        ? ((parsedData as { category?: string }).category as ExpenseCategory | undefined)
         : undefined;
 
     return importFile(
@@ -148,9 +146,17 @@ export function AllFilesView() {
     fromPath: string,
     toEntity: Entity,
     toYear: number,
-    newDocType: DocumentType
+    newDocType: DocumentType,
+    expenseCategory?: ExpenseCategory
   ): Promise<boolean> => {
-    const success = await relocateFile(fromEntity, fromPath, toEntity, toYear, newDocType);
+    const success = await relocateFile(
+      fromEntity,
+      fromPath,
+      toEntity,
+      toYear,
+      newDocType,
+      expenseCategory
+    );
     if (success) {
       addToast('File moved', 'success');
       await loadAllFiles();

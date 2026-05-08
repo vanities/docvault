@@ -15,7 +15,7 @@ import {
   Check,
   Wand2,
 } from 'lucide-react';
-import type { TaxDocument, Entity, ExpenseCategory } from '../../types';
+import type { TaxDocument, Entity, ExpenseCategory, DocumentType } from '../../types';
 import { DOCUMENT_TYPES, EXPENSE_CATEGORIES, getDocumentTypeColor } from '../../config';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import { useToast } from '../../hooks/useToast';
@@ -70,6 +70,14 @@ interface DocumentViewerProps {
     toEntity: Entity,
     toYear: number
   ) => Promise<boolean>;
+  onRelocate?: (
+    fromEntity: Entity,
+    fromPath: string,
+    toEntity: Entity,
+    toYear: number,
+    newDocType: DocumentType,
+    expenseCategory?: ExpenseCategory
+  ) => Promise<boolean>;
   entities?: EntityConfig[];
   availableYears?: number[];
 }
@@ -101,14 +109,22 @@ export function DocumentViewer({
   onReparse,
   onRename,
   onMove,
+  onRelocate,
   entities,
   availableYears,
 }: DocumentViewerProps) {
+  const initialMoveCategory = (
+    document.parsedData as { category?: ExpenseCategory } | null | undefined
+  )?.category;
   const [isDeleting, setIsDeleting] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [moveToEntity, setMoveToEntity] = useState<Entity>(document.entity);
   const [moveToYear, setMoveToYear] = useState<number>(document.taxYear);
+  const [moveToType, setMoveToType] = useState<DocumentType>(document.type);
+  const [moveToCategory, setMoveToCategory] = useState<ExpenseCategory | undefined>(
+    initialMoveCategory
+  );
   const [isMoving, setIsMoving] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
@@ -318,15 +334,33 @@ export function DocumentViewer({
   };
 
   const handleMove = async () => {
-    if (!onMove || !document.filePath) return;
-    if (moveToEntity === document.entity && moveToYear === document.taxYear) {
+    if (!document.filePath) return;
+    const entityChanged = moveToEntity !== document.entity;
+    const yearChanged = moveToYear !== document.taxYear;
+    const typeChanged = moveToType !== document.type;
+    const categoryChanged = moveToType === 'receipt' && moveToCategory !== initialMoveCategory;
+
+    if (!entityChanged && !yearChanged && !typeChanged && !categoryChanged) {
       setShowMoveModal(false);
       return;
     }
 
     setIsMoving(true);
     try {
-      const success = await onMove(document.entity, document.filePath, moveToEntity, moveToYear);
+      // Prefer onRelocate (handles type + category); fall back to onMove for entity/year only.
+      let success = false;
+      if (onRelocate) {
+        success = await onRelocate(
+          document.entity,
+          document.filePath,
+          moveToEntity,
+          moveToYear,
+          moveToType,
+          moveToType === 'receipt' ? moveToCategory : undefined
+        );
+      } else if (onMove && !typeChanged && !categoryChanged) {
+        success = await onMove(document.entity, document.filePath, moveToEntity, moveToYear);
+      }
       if (success) {
         setShowMoveModal(false);
         onClose();
@@ -621,13 +655,13 @@ export function DocumentViewer({
               <Wand2 className={`w-4 h-4 ${isAiRenaming ? 'animate-pulse' : ''}`} />
               {isAiRenaming ? 'Renaming...' : 'Auto Rename'}
             </Button>
-            {onMove && entities && availableYears && (
+            {(onMove || onRelocate) && entities && availableYears && (
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => setShowMoveModal(true)}
                 className="text-warn-400 hover:bg-warn-500/10"
-                title="Move to different entity/year"
+                title="Move to different entity, year, or change document type"
               >
                 <MoveRight className="w-4 h-4" />
               </Button>
@@ -653,11 +687,58 @@ export function DocumentViewer({
             <DialogHeader>
               <DialogTitle>Move Document</DialogTitle>
               <DialogDescription>
-                Move this document to a different entity or tax year.
+                Change the document type, expense category, entity, or tax year. The file will be
+                relocated on disk to match.
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4">
+              {onRelocate && (
+                <div>
+                  <label className="block text-[13px] font-medium text-surface-800 mb-2">
+                    Document Type
+                  </label>
+                  <Select
+                    value={moveToType}
+                    onValueChange={(val) => setMoveToType(val as DocumentType)}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DOCUMENT_TYPES.map((dt) => (
+                        <SelectItem key={dt.id} value={dt.id}>
+                          {dt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {onRelocate && moveToType === 'receipt' && (
+                <div>
+                  <label className="block text-[13px] font-medium text-surface-800 mb-2">
+                    Expense Category
+                  </label>
+                  <Select
+                    value={moveToCategory ?? ''}
+                    onValueChange={(val) => setMoveToCategory(val as ExpenseCategory)}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Pick a category…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {EXPENSE_CATEGORIES.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
               <div>
                 <label className="block text-[13px] font-medium text-surface-800 mb-2">
                   Entity
@@ -708,7 +789,11 @@ export function DocumentViewer({
               <Button
                 onClick={handleMove}
                 disabled={
-                  isMoving || (moveToEntity === document.entity && moveToYear === document.taxYear)
+                  isMoving ||
+                  (moveToEntity === document.entity &&
+                    moveToYear === document.taxYear &&
+                    moveToType === document.type &&
+                    (moveToType !== 'receipt' || moveToCategory === initialMoveCategory))
                 }
                 className="flex-1 bg-warn-500 hover:bg-warn-400 text-surface-0"
               >
