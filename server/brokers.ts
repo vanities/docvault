@@ -190,7 +190,7 @@ export async function fetchSnapTradeAccounts(config: SnapTradeConfig): Promise<B
   for (const acct of response.data || []) {
     // Determine broker from institution name
     const instName = (acct.institutionName || '').toLowerCase();
-    let broker: BrokerId = 'fidelity'; // default
+    let broker: BrokerId = 'other'; // default — surface unknown/failed lookups instead of silently labeling them fidelity
     if (instName.includes('vanguard')) broker = 'vanguard';
     else if (instName.includes('fidelity')) broker = 'fidelity';
     else if (instName.includes('robinhood')) broker = 'robinhood';
