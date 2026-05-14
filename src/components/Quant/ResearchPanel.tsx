@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Upload,
+  AlignLeft,
   FileText,
   ExternalLink,
   Trash2,
@@ -19,7 +20,7 @@ interface ResearchEntry {
   id: string;
   filename: string | null;
   filePath: string;
-  mediaType: 'application/pdf';
+  mediaType: 'application/pdf' | 'text/plain';
   uploadedAt: string;
   text: string | null;
   pageCount: number | null;
@@ -30,6 +31,7 @@ interface ResearchEntry {
   author?: string;
   publisher?: string;
   reportDate?: string;
+  sourceUrl?: string;
   notes?: string;
   tags?: string[];
   lastUpdated: string;
@@ -42,6 +44,7 @@ type PatchBody = Partial<{
   author: string | null;
   publisher: string | null;
   reportDate: string | null;
+  sourceUrl: string | null;
   notes: string | null;
   tags: string[] | null;
 }>;
@@ -53,6 +56,12 @@ function formatDate(iso: string | undefined | null): string {
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+// The "Paste text" form draft. A factory (not a const) so each reset hands
+// back a fresh object rather than sharing one reference across renders.
+function blankTextDraft() {
+  return { text: '', title: '', author: '', publisher: '', sourceUrl: '', reportDate: '' };
+}
+
 export function ResearchPanel() {
   const [entries, setEntries] = useState<ResearchEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,6 +70,12 @@ export function ResearchPanel() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // "Paste text" mode — a second ingest path alongside the PDF drop zone.
+  const [mode, setMode] = useState<'pdf' | 'text'>('pdf');
+  const [textDraft, setTextDraft] = useState(blankTextDraft);
+  const [savingText, setSavingText] = useState(false);
+  const [textError, setTextError] = useState<string | null>(null);
 
   // Initial load
   const load = useCallback(async () => {
@@ -118,6 +133,40 @@ export function ResearchPanel() {
     [uploadFiles]
   );
 
+  // Save a pasted transcript / article / note straight to the research store.
+  // No file involved — the text itself is the body of a POST /api/research/text.
+  const submitText = useCallback(async () => {
+    if (!textDraft.text.trim()) return;
+    setTextError(null);
+    setSavingText(true);
+    try {
+      const res = await fetch('/api/research/text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: textDraft.text,
+          title: textDraft.title.trim() || undefined,
+          author: textDraft.author.trim() || undefined,
+          publisher: textDraft.publisher.trim() || undefined,
+          sourceUrl: textDraft.sourceUrl.trim() || undefined,
+          reportDate: textDraft.reportDate.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        setTextError(err.error ?? `Save failed (${res.status})`);
+        return;
+      }
+      setTextDraft(blankTextDraft());
+      // Refresh inline (no loading flash) — mirrors the PDF upload path.
+      await fetch('/api/research')
+        .then((r) => r.json())
+        .then((d: { entries: ResearchEntry[] }) => setEntries(d.entries ?? []));
+    } finally {
+      setSavingText(false);
+    }
+  }, [textDraft]);
+
   // ---- Mutations ----
 
   const patchEntry = async (id: string, body: PatchBody) => {
@@ -133,7 +182,7 @@ export function ResearchPanel() {
   };
 
   const deleteEntry = async (id: string) => {
-    if (!window.confirm('Delete this report? The PDF and all notes will be removed.')) return;
+    if (!window.confirm('Delete this entry? The file and all notes will be removed.')) return;
     const res = await fetch(`/api/research/${id}`, { method: 'DELETE' });
     if (res.ok) {
       setEntries((prev) => prev.filter((e) => e.id !== id));
@@ -153,62 +202,154 @@ export function ResearchPanel() {
 
   return (
     <div>
-      {/* Upload zone */}
+      {/* Ingest card — toggle between uploading a PDF and pasting raw text. */}
       <Card variant="glass" className="mb-6">
-        <div
-          onDragEnter={(e) => {
-            e.preventDefault();
-            setIsDragging(true);
-          }}
-          onDragLeave={(e) => {
-            e.preventDefault();
-            setIsDragging(false);
-          }}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={handleDrop}
-          className={`p-6 m-4 border-2 border-dashed rounded-lg transition-all cursor-pointer ${
-            isDragging
-              ? 'border-accent-400 bg-accent-500/5'
-              : 'border-surface-500 hover:border-surface-400'
-          }`}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <div className="flex flex-col items-center text-center">
-            {uploading ? (
-              <>
-                <Loader2 className="w-8 h-8 mb-2 text-accent-400 animate-spin" />
-                <p className="text-[13px] text-surface-700">Uploading and extracting text…</p>
-              </>
-            ) : (
-              <>
-                <Upload className="w-8 h-8 mb-2 text-surface-600" />
-                <p className="text-[13px] text-surface-700 mb-1">
-                  <span className="font-medium text-accent-400">Click to upload</span> or drag &
-                  drop
-                </p>
-                <p className="text-[12px] text-surface-600">
-                  Research PDFs from Cowen, Lyn Alden, Fidelity, Raoul Pal, etc. Text is extracted
-                  automatically — no AI parsing.
-                </p>
-              </>
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,application/pdf"
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                if (e.target.files?.length) void uploadFiles(e.target.files);
-                e.target.value = '';
-              }}
-            />
-          </div>
+        {/* Mode toggle */}
+        <div className="flex gap-1 px-4 pt-4">
+          {(['pdf', 'text'] as const).map((m) => {
+            const active = mode === m;
+            const Icon = m === 'pdf' ? Upload : AlignLeft;
+            return (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
+                  active
+                    ? 'bg-surface-200/50 text-surface-950'
+                    : 'text-surface-600 hover:text-surface-800'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {m === 'pdf' ? 'Upload PDF' : 'Paste text'}
+              </button>
+            );
+          })}
         </div>
-        {uploadError && (
-          <div className="px-4 pb-4 flex items-center gap-2 text-[12px] text-red-400">
-            <AlertCircle className="w-3.5 h-3.5" />
-            {uploadError}
+
+        {mode === 'pdf' ? (
+          <>
+            <div
+              onDragEnter={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                setIsDragging(false);
+              }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={handleDrop}
+              className={`p-6 mx-4 mb-4 mt-3 border-2 border-dashed rounded-lg transition-all cursor-pointer ${
+                isDragging
+                  ? 'border-accent-400 bg-accent-500/5'
+                  : 'border-surface-500 hover:border-surface-400'
+              }`}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <div className="flex flex-col items-center text-center">
+                {uploading ? (
+                  <>
+                    <Loader2 className="w-8 h-8 mb-2 text-accent-400 animate-spin" />
+                    <p className="text-[13px] text-surface-700">Uploading and extracting text…</p>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-8 h-8 mb-2 text-surface-600" />
+                    <p className="text-[13px] text-surface-700 mb-1">
+                      <span className="font-medium text-accent-400">Click to upload</span> or drag &
+                      drop
+                    </p>
+                    <p className="text-[12px] text-surface-600">
+                      Research PDFs from Cowen, Lyn Alden, Fidelity, Raoul Pal, etc. Text is
+                      extracted automatically — no AI parsing.
+                    </p>
+                  </>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files?.length) void uploadFiles(e.target.files);
+                    e.target.value = '';
+                  }}
+                />
+              </div>
+            </div>
+            {uploadError && (
+              <div className="px-4 pb-4 flex items-center gap-2 text-[12px] text-red-400">
+                <AlertCircle className="w-3.5 h-3.5" />
+                {uploadError}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="p-4 pt-3 space-y-3">
+            <Textarea
+              value={textDraft.text}
+              onChange={(e) => setTextDraft({ ...textDraft, text: e.target.value })}
+              placeholder="Paste a transcript, article, or notes here…"
+              className="text-[12px] min-h-44 leading-relaxed"
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <Input
+                value={textDraft.title}
+                onChange={(e) => setTextDraft({ ...textDraft, title: e.target.value })}
+                className="h-8 text-[12px]"
+                placeholder="Title (inferred from first line if blank)"
+              />
+              <Input
+                value={textDraft.sourceUrl}
+                onChange={(e) => setTextDraft({ ...textDraft, sourceUrl: e.target.value })}
+                className="h-8 text-[12px]"
+                placeholder="Source URL (e.g. YouTube link)"
+              />
+              <Input
+                value={textDraft.author}
+                onChange={(e) => setTextDraft({ ...textDraft, author: e.target.value })}
+                className="h-8 text-[12px]"
+                placeholder="Author (e.g. Benjamin Cowen)"
+              />
+              <Input
+                value={textDraft.publisher}
+                onChange={(e) => setTextDraft({ ...textDraft, publisher: e.target.value })}
+                className="h-8 text-[12px]"
+                placeholder="Publisher (e.g. Into The Cryptoverse)"
+              />
+              <Input
+                type="date"
+                value={textDraft.reportDate}
+                onChange={(e) => setTextDraft({ ...textDraft, reportDate: e.target.value })}
+                className="h-8 text-[12px]"
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[11px] text-surface-600">
+                Stored verbatim in the Research tab — no AI parsing.
+              </p>
+              <Button
+                size="sm"
+                onClick={() => void submitText()}
+                disabled={savingText || !textDraft.text.trim()}
+              >
+                {savingText ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Saving…
+                  </>
+                ) : (
+                  'Save to Research'
+                )}
+              </Button>
+            </div>
+            {textError && (
+              <div className="flex items-center gap-2 text-[12px] text-red-400">
+                <AlertCircle className="w-3.5 h-3.5" />
+                {textError}
+              </div>
+            )}
           </div>
         )}
       </Card>
@@ -221,7 +362,7 @@ export function ResearchPanel() {
         </div>
       ) : entries.length === 0 ? (
         <div className="text-center py-8 text-surface-700 text-[13px]">
-          No research reports uploaded yet.
+          No research entries yet — upload a PDF or paste a transcript above.
         </div>
       ) : (
         <div className="space-y-2">
@@ -269,6 +410,7 @@ function ResearchRow({
     author: entry.author ?? '',
     publisher: entry.publisher ?? '',
     reportDate: entry.reportDate ?? '',
+    sourceUrl: entry.sourceUrl ?? '',
     notes: entry.notes ?? '',
   });
   const [reExtracting, setReExtracting] = useState(false);
@@ -279,6 +421,7 @@ function ResearchRow({
       author: entry.author ?? '',
       publisher: entry.publisher ?? '',
       reportDate: entry.reportDate ?? '',
+      sourceUrl: entry.sourceUrl ?? '',
       notes: entry.notes ?? '',
     });
   }, [
@@ -288,6 +431,7 @@ function ResearchRow({
     entry.author,
     entry.publisher,
     entry.reportDate,
+    entry.sourceUrl,
     entry.notes,
   ]);
 
@@ -319,7 +463,11 @@ function ResearchRow({
         ) : (
           <ChevronRight className="w-4 h-4 text-surface-600 flex-shrink-0" />
         )}
-        <FileText className="w-4 h-4 text-amber-400 flex-shrink-0" />
+        {entry.mediaType === 'application/pdf' ? (
+          <FileText className="w-4 h-4 text-amber-400 flex-shrink-0" />
+        ) : (
+          <AlignLeft className="w-4 h-4 text-purple-400 flex-shrink-0" />
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2 flex-wrap">
             <span className="text-[13px] font-medium text-surface-950 truncate">
@@ -396,6 +544,18 @@ function ResearchRow({
                 placeholder="e.g. Into The Cryptoverse"
               />
             </div>
+            <div className="sm:col-span-2">
+              <label className="text-[10px] uppercase tracking-wider text-surface-600 font-semibold">
+                Source URL
+              </label>
+              <Input
+                value={draft.sourceUrl}
+                onChange={(e) => setDraft({ ...draft, sourceUrl: e.target.value })}
+                onBlur={() => flush('sourceUrl')}
+                className="h-8 text-[12px]"
+                placeholder="https://…"
+              />
+            </div>
           </div>
 
           {/* Notes */}
@@ -416,23 +576,25 @@ function ResearchRow({
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="text-[10px] uppercase tracking-wider text-surface-600 font-semibold">
-                Extracted text
+                {entry.mediaType === 'application/pdf' ? 'Extracted text' : 'Content'}
                 {entry.pageCount !== null && (
                   <span className="ml-2 font-normal text-surface-500 normal-case tracking-normal">
                     {entry.pageCount} page{entry.pageCount === 1 ? '' : 's'}
                   </span>
                 )}
               </label>
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={handleReExtract}
-                disabled={reExtracting}
-                title="Re-run text extraction"
-              >
-                <RefreshCw className={`w-3 h-3 ${reExtracting ? 'animate-spin' : ''}`} />
-                Re-extract
-              </Button>
+              {entry.mediaType === 'application/pdf' && (
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={handleReExtract}
+                  disabled={reExtracting}
+                  title="Re-run text extraction"
+                >
+                  <RefreshCw className={`w-3 h-3 ${reExtracting ? 'animate-spin' : ''}`} />
+                  Re-extract
+                </Button>
+              )}
             </div>
             {entry.extractError ? (
               <div className="p-2 rounded bg-red-500/10 border border-red-500/20 text-[11px] text-red-400">
@@ -449,12 +611,26 @@ function ResearchRow({
 
           {/* Actions */}
           <div className="flex items-center justify-between gap-2">
-            <Button variant="outline" size="sm" asChild>
-              <a href={`/api/research/${entry.id}/file`} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="w-3.5 h-3.5" />
-                Open PDF
-              </a>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" asChild>
+                <a
+                  href={`/api/research/${entry.id}/file`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  {entry.mediaType === 'application/pdf' ? 'Open PDF' : 'Open raw text'}
+                </a>
+              </Button>
+              {entry.sourceUrl && (
+                <Button variant="ghost" size="sm" asChild>
+                  <a href={entry.sourceUrl} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Open source
+                  </a>
+                </Button>
+              )}
+            </div>
             <Button
               variant="ghost"
               size="sm"
