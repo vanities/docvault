@@ -1,21 +1,26 @@
-// Research routes — analyst research PDF uploads with plain-text extraction.
+// Research routes — analyst research ingest with plain-text storage.
 //
-// Deliberately AI-free at upload time. Text is pulled out via unpdf so it's
-// searchable + readable in the UI; users add their own notes and tags. An
-// AI summarizer can be layered on later as an opt-in action.
+// Two ingest paths, both deliberately AI-free:
+//   • PDF upload  — text is pulled out via unpdf so it's searchable + readable.
+//   • Pasted text — transcripts, articles, and notes are stored verbatim; the
+//                   request body IS the text, so there's no extraction step.
+// Users add their own notes and tags. An AI summarizer can be layered on later
+// as an opt-in action.
 //
 // Routes:
 //   POST   /api/research/upload            — upload a PDF, extract text immediately
 //     body: raw PDF bytes; query: ?filename=<name>&title=<override>
+//   POST   /api/research/text              — ingest pasted text (e.g. a video transcript)
+//     body: JSON { text, title?, author?, publisher?, reportDate?, sourceUrl?, filename? }
 //   GET    /api/research                   — list all entries (newest first)
 //   GET    /api/research/:id               — single entry (metadata + text)
-//   GET    /api/research/:id/file          — raw PDF bytes (inline for browser viewer)
-//   PATCH  /api/research/:id               — update title / author / publisher / reportDate / notes / tags
-//   POST   /api/research/:id/re-extract    — re-run text extraction against stored PDF
+//   GET    /api/research/:id/file          — raw file bytes (inline for browser viewer)
+//   PATCH  /api/research/:id               — update title / author / publisher / reportDate / sourceUrl / notes / tags
+//   POST   /api/research/:id/re-extract    — re-run text extraction (PDF entries only)
 //   DELETE /api/research/:id                — delete entry + file
 //
 // Storage:
-//   data/research/<id>.pdf                  — raw PDF
+//   data/research/<id>.pdf | <id>.txt       — raw PDF, or pasted text
 //   .docvault-research.json → { version, entries: { id → ResearchEntry } }
 
 import { promises as fs } from 'fs';
@@ -39,13 +44,22 @@ export interface ResearchEntry {
   filename: string | null;
   /** Relative path under DATA_DIR. */
   filePath: string;
-  /** Always 'application/pdf' for now — UI + upload guard enforce this. */
-  mediaType: 'application/pdf';
+  /**
+   * 'application/pdf' for uploaded PDFs, 'text/plain' for pasted text
+   * (transcripts, articles, notes). Determines the ingest path and which
+   * per-entry actions apply — e.g. re-extract is PDF-only.
+   */
+  mediaType: 'application/pdf' | 'text/plain';
   uploadedAt: string;
-  /** Plain text extracted from the PDF, pages separated by form-feed (\f). */
+  /**
+   * The entry's text. For PDFs: extracted via unpdf, pages separated by
+   * form-feed (\f). For pasted text: the verbatim body, stored as-is.
+   */
   text: string | null;
+  /** PDF page count; null for pasted-text entries. */
   pageCount: number | null;
   extractedAt: string | null;
+  /** Extractor schema version for PDFs; null for pasted text (no extractor). */
   extractorVersion: string | null;
   /** Error message if extraction failed. */
   extractError: string | null;
@@ -59,6 +73,8 @@ export interface ResearchEntry {
   publisher?: string;
   /** YYYY-MM-DD publication date. */
   reportDate?: string;
+  /** Source URL — e.g. the YouTube link a transcript was captured from. */
+  sourceUrl?: string;
   /** User's free-form notes. */
   notes?: string;
   /** User-defined tags for filtering. */
@@ -192,6 +208,73 @@ export async function handleResearchRoutes(
     return jsonResponse({ entry });
   }
 
+  // POST /api/research/text — ingest pasted text (transcripts, articles, notes).
+  // No file-format guard and no extraction step: the request body IS the text.
+  // Stored as data/research/<id>.txt so it's served + deleted like any entry.
+  // Matched before the per-entry routes below so "/text" isn't read as an id.
+  if (sub === '/text' && req.method === 'POST') {
+    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+
+    // Keep only non-empty string fields; ignore anything malformed.
+    const str = (v: unknown): string | undefined => {
+      if (typeof v !== 'string') return undefined;
+      const t = v.trim();
+      return t === '' ? undefined : t;
+    };
+
+    const text = body && typeof body.text === 'string' ? body.text : '';
+    if (text.trim() === '') {
+      return jsonResponse({ error: 'A non-empty "text" field is required' }, 400);
+    }
+
+    // Fall back to the first non-empty line as a title, mirroring PDF uploads,
+    // so a row never displays a raw id when no title was supplied.
+    const firstNonEmptyLine = text
+      .split('\n')
+      .map((l) => l.trim())
+      .find((l) => l.length > 0);
+    const inferredTitle =
+      firstNonEmptyLine && firstNonEmptyLine.length > 120
+        ? firstNonEmptyLine.slice(0, 119).trimEnd() + '…'
+        : firstNonEmptyLine;
+
+    const id = newEntryId();
+    await ensureDir(RESEARCH_DATA_DIR);
+    const absPath = path.join(RESEARCH_DATA_DIR, `${id}.txt`);
+    const relPath = path.relative(DATA_DIR, absPath);
+    await fs.writeFile(absPath, text);
+
+    const now = new Date().toISOString();
+    const entry: ResearchEntry = {
+      id,
+      filename: str(body?.filename) ?? null,
+      filePath: relPath,
+      mediaType: 'text/plain',
+      uploadedAt: now,
+      // The body is already plain text — record it as available "now" so the
+      // UI shows it immediately and never offers a (meaningless) re-extract.
+      // There is no extractor here, hence a null extractorVersion.
+      text,
+      pageCount: null,
+      extractedAt: now,
+      extractorVersion: null,
+      extractError: null,
+      title: str(body?.title) ?? inferredTitle,
+      author: str(body?.author),
+      publisher: str(body?.publisher),
+      reportDate: str(body?.reportDate),
+      sourceUrl: str(body?.sourceUrl),
+      lastUpdated: now,
+    };
+
+    const store = await loadStore();
+    store.entries[id] = entry;
+    await saveStore(store);
+
+    log.info(`Research text ingest: id=${id} chars=${text.length} title="${entry.title ?? '?'}"`);
+    return jsonResponse({ entry });
+  }
+
   // GET /api/research — list newest first (by reportDate if set, else upload time)
   if (sub === '' && req.method === 'GET') {
     const store = await loadStore();
@@ -215,16 +298,20 @@ export async function handleResearchRoutes(
       return jsonResponse({ error: `No research entry "${id}"` }, 404);
     }
 
-    // GET /api/research/:id/file — raw PDF, inline so browser viewer handles it
+    // GET /api/research/:id/file — raw bytes, inline so the browser viewer
+    // (PDF reader, or plain-text view) handles it.
     if (action === 'file' && req.method === 'GET') {
       const abs = path.join(DATA_DIR, entry.filePath);
       try {
         const bytes = await fs.readFile(abs);
+        const ext = entry.mediaType === 'application/pdf' ? 'pdf' : 'txt';
+        const contentType =
+          entry.mediaType === 'text/plain' ? 'text/plain; charset=utf-8' : entry.mediaType;
         return new Response(new Uint8Array(bytes), {
           headers: {
-            'Content-Type': entry.mediaType,
+            'Content-Type': contentType,
             'Cache-Control': 'private, max-age=3600',
-            'Content-Disposition': `inline; filename="${entry.filename ?? `${id}.pdf`}"`,
+            'Content-Disposition': `inline; filename="${entry.filename ?? `${id}.${ext}`}"`,
           },
         });
       } catch {
@@ -232,8 +319,18 @@ export async function handleResearchRoutes(
       }
     }
 
-    // POST /api/research/:id/re-extract — re-run text extraction
+    // POST /api/research/:id/re-extract — re-run text extraction (PDF only;
+    // pasted-text entries store their content directly, nothing to re-extract).
     if (action === 're-extract' && req.method === 'POST') {
+      if (entry.mediaType !== 'application/pdf') {
+        return jsonResponse(
+          {
+            error:
+              'Re-extract applies to PDF entries only — text entries store their content directly.',
+          },
+          400
+        );
+      }
       const abs = path.join(DATA_DIR, entry.filePath);
       let raw: Buffer;
       try {
@@ -276,6 +373,7 @@ export async function handleResearchRoutes(
         author: string | null;
         publisher: string | null;
         reportDate: string | null;
+        sourceUrl: string | null;
         notes: string | null;
         tags: string[] | null;
       }>;
@@ -284,6 +382,7 @@ export async function handleResearchRoutes(
       if (body.author !== undefined) entry.author = body.author ?? undefined;
       if (body.publisher !== undefined) entry.publisher = body.publisher ?? undefined;
       if (body.reportDate !== undefined) entry.reportDate = body.reportDate ?? undefined;
+      if (body.sourceUrl !== undefined) entry.sourceUrl = body.sourceUrl ?? undefined;
       if (body.notes !== undefined) entry.notes = body.notes ?? undefined;
       if (body.tags !== undefined) entry.tags = body.tags ?? undefined;
       entry.lastUpdated = new Date().toISOString();

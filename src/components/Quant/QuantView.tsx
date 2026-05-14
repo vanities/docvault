@@ -92,7 +92,7 @@ const CATEGORY_META: Record<
     accent: 'text-purple-400',
     icon: FileText,
     description:
-      'Upload analyst research PDFs (Cowen, Lyn Alden, Fidelity, Raoul Pal, etc.) — text is extracted for easy reading and search. Add your own notes and tags.',
+      'Analyst research PDFs and pasted transcripts (Cowen, Lyn Alden, Fidelity, Raoul Pal, etc.) — text is extracted or stored verbatim for easy reading and search. Add your own notes and tags.',
   },
 };
 
