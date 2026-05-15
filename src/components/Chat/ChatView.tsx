@@ -27,6 +27,7 @@ import {
   Square,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Button } from '@/components/ui/button';
 import { useAppContext, type ChatStats, type PersistedThread } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
@@ -230,6 +231,12 @@ function AssistantBubble({ message }: { message: AssistantMessage }) {
               className="px-4 py-2.5 rounded-2xl rounded-bl-md bg-surface-100/80 border border-border/50 text-[14px] leading-relaxed"
             >
               <ReactMarkdown
+                // Enable GitHub-flavored markdown — tables, strikethrough, task
+                // lists, autolinks. Every LLM emits GFM by default, so without
+                // this plugin assistant tables fall through as plain pipe-and-
+                // dash text. Same pattern as HealthNutritionView and
+                // BlurredMarkdown.
+                remarkPlugins={[remarkGfm]}
                 components={{
                   table: (props) => (
                     <table className="my-2 text-[13px] border-collapse w-full" {...props} />
