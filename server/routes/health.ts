@@ -39,6 +39,14 @@ import path from 'path';
 import { jsonResponse, ensureDir, getOrCreateHealthIngestToken, DATA_DIR } from '../data.js';
 import type { HealthPerson } from '../data.js';
 import {
+  loadHealthStore,
+  saveHealthStore,
+  storeKey,
+  requirePerson,
+  type HealthStore,
+  type IllnessNote,
+} from '../health-store.js';
+import {
   parseAppleHealthExport,
   PARSER_VERSION as CURRENT_PARSER_VERSION,
   type AppleHealthSummary,
@@ -70,7 +78,6 @@ import { createLogger, SERVER_BOOT_ID } from '../logger.js';
 
 const log = createLogger('Health');
 
-const HEALTH_STORE_FILE = path.join(DATA_DIR, '.docvault-health.json');
 const HEALTH_DATA_DIR = path.join(DATA_DIR, 'health');
 
 // Ingest-log rows are stamped with the same SERVER_BOOT_ID that the
@@ -80,75 +87,11 @@ const HEALTH_DATA_DIR = path.join(DATA_DIR, 'health');
 const INGEST_LOG_RETENTION_DAYS = 30;
 
 // ---------------------------------------------------------------------------
-// Store — people + parsed summaries live together in .docvault-health.json
+// Local helpers — the store types/loader/saver moved to ../health-store.ts
+// (single source of truth across health.ts, nutrition.ts, sickness.ts, and
+// health-snapshot.ts). The mutate-by-mutator helper stayed here because only
+// this module uses it.
 // ---------------------------------------------------------------------------
-
-/** User annotation on an auto-detected illness period. */
-interface IllnessNote {
-  note?: string;
-  dismissed?: boolean;
-  updatedAt: string;
-}
-
-interface HealthStore {
-  version: 1;
-  people: HealthPerson[];
-  // key format: "<personId>/<filename>"
-  summaries: Record<string, AppleHealthSummary>;
-  snapshots: Record<string, PersonSnapshots>;
-  /** Clinical (FHIR) summary per uploaded export. Same key format as summaries. */
-  clinical?: Record<string, ClinicalSummary>;
-  /** key format: "<personId>/<startDate>-<endDate>" */
-  illnessNotes?: Record<string, IllnessNote>;
-  /**
-   * Fields owned by OTHER route modules (nutrition.ts, sickness.ts,
-   * future additions). We preserve them via spread in loadHealthStore so
-   * this module's saves don't silently clobber sibling modules' data.
-   * A regression-preserving round-trip test lives in health-store.test.ts.
-   */
-  [key: string]: unknown;
-}
-
-async function loadHealthStore(): Promise<HealthStore> {
-  try {
-    const content = await fs.readFile(HEALTH_STORE_FILE, 'utf-8');
-    const parsed = JSON.parse(content) as Partial<HealthStore>;
-    return {
-      // Spread FIRST so explicit fields below win type-wise, but any unknown
-      // sibling-owned fields (nutrition, sicknessLogs, …) survive the
-      // round-trip instead of being silently wiped on save.
-      ...parsed,
-      version: 1,
-      people: parsed.people ?? [],
-      summaries: parsed.summaries ?? {},
-      snapshots: parsed.snapshots ?? {},
-      clinical: parsed.clinical ?? {},
-      illnessNotes: parsed.illnessNotes ?? {},
-    };
-  } catch {
-    return {
-      version: 1,
-      people: [],
-      summaries: {},
-      snapshots: {},
-      clinical: {},
-      illnessNotes: {},
-    };
-  }
-}
-
-async function saveHealthStore(store: HealthStore): Promise<void> {
-  // Write to a temp path then rename for atomicity (follows the project's
-  // "never pipe output back to same file" rule indirectly — safer on crashes).
-  await ensureDir(DATA_DIR);
-  const tmp = `${HEALTH_STORE_FILE}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(store, null, 2));
-  await fs.rename(tmp, HEALTH_STORE_FILE);
-}
-
-function storeKey(personId: string, filename: string): string {
-  return `${personId}/${filename}`;
-}
 
 /** Update the people list inside the health store. */
 async function updateHealthPeople(
@@ -168,15 +111,6 @@ function newPersonId(): string {
     id += alphabet[Math.floor(Math.random() * alphabet.length)];
   }
   return id;
-}
-
-async function requirePerson(personId: string): Promise<HealthPerson> {
-  const store = await loadHealthStore();
-  const person = store.people.find((p) => p.id === personId);
-  if (!person) {
-    throw new Error(`Person "${personId}" not found`);
-  }
-  return person;
 }
 
 function getPersonExportsDir(personId: string): string {

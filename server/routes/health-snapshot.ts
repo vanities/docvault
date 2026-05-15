@@ -26,6 +26,13 @@ import {
   type HealthPerson,
   type Reminder,
 } from '../data.js';
+import {
+  loadHealthStore,
+  type NutritionEntry,
+  type NutritionStatus,
+  type SicknessLog,
+  type IllnessNote,
+} from '../health-store.js';
 import type { AppleHealthSummary } from '../parsers/apple-health.js';
 import {
   SNAPSHOT_SCHEMA_VERSION,
@@ -39,59 +46,11 @@ import {
 } from '../parsers/apple-health-clinical.js';
 import { decryptBytesWithMasterKey } from '../crypto-keys.js';
 import type { DNAParseResult, TraitReading } from '../parsers/dna-traits.js';
-import type { NutritionEntry, NutritionStatus } from './nutrition.js';
-import type { SicknessLog } from './sickness.js';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('HealthSnapshot');
 
-const HEALTH_STORE_FILE = path.join(DATA_DIR, '.docvault-health.json');
 const HEALTH_DATA_DIR = path.join(DATA_DIR, 'health');
-
-interface IllnessNote {
-  note?: string;
-  dismissed?: boolean;
-  updatedAt: string;
-}
-
-interface HealthStore {
-  version: 1;
-  people: HealthPerson[];
-  summaries: Record<string, AppleHealthSummary>;
-  snapshots: Record<string, PersonSnapshots>;
-  clinical?: Record<string, ClinicalSummary>;
-  illnessNotes?: Record<string, IllnessNote>;
-  nutrition?: Record<string, NutritionEntry>;
-  sicknessLogs?: Record<string, SicknessLog>;
-}
-
-async function loadHealthStore(): Promise<HealthStore> {
-  try {
-    const raw = await fs.readFile(HEALTH_STORE_FILE, 'utf-8');
-    const parsed = JSON.parse(raw) as Partial<HealthStore>;
-    return {
-      version: 1,
-      people: parsed.people ?? [],
-      summaries: parsed.summaries ?? {},
-      snapshots: parsed.snapshots ?? {},
-      clinical: parsed.clinical ?? {},
-      illnessNotes: parsed.illnessNotes ?? {},
-      nutrition: parsed.nutrition ?? {},
-      sicknessLogs: parsed.sicknessLogs ?? {},
-    };
-  } catch {
-    return {
-      version: 1,
-      people: [],
-      summaries: {},
-      snapshots: {},
-      clinical: {},
-      illnessNotes: {},
-      nutrition: {},
-      sicknessLogs: {},
-    };
-  }
-}
 
 // Matches any of: health, doctor, dentist, medical, prescription, vaccine, lab,
 // checkup, physical, eye/vision, specialist, therapy, surgery. Case-insensitive.
