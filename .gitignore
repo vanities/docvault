@@ -39,8 +39,10 @@ server/parsers/fixtures/
 **/apple_health_export/
 
 # Scripts that reference NAS/personal data
-scripts/
-# Exceptions: scripts shipped in the Docker image
+scripts/*
+# Exceptions: scripts shipped in the Docker image. Using `scripts/*` (not
+# `scripts/`) because gitignore can't re-include files inside an excluded
+# directory — matching contents lets the !-rules below take effect.
 !scripts/sync-to-dropbox.sh
 !scripts/docker-entrypoint.sh
 # Exception: skill helper scripts are sanitized and meant to be public
