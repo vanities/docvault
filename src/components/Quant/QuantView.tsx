@@ -8,6 +8,7 @@ import {
   Grid3x3,
   CalendarClock,
   FileText,
+  BarChart3,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -49,9 +50,11 @@ import { VixTermStructureChart } from './VixTermStructureChart';
 import { GlobalMarketsChart } from './GlobalMarketsChart';
 import { useQuantRefresh } from './useQuantData';
 import { ResearchPanel } from './ResearchPanel';
+import { TickersPanel } from './TickersPanel';
 
-/** Top-level tabs — overview snapshot, Cowen's 3 categories, plus uploaded research. */
-type QuantCategory = 'overview' | 'crypto' | 'macro' | 'tradfi' | 'research';
+/** Top-level tabs — overview snapshot, Cowen's 3 categories, the live
+ *  ticker aggregate, and the uploaded research library. */
+type QuantCategory = 'overview' | 'crypto' | 'macro' | 'tradfi' | 'tickers' | 'research';
 
 const STORAGE_KEY = 'docvault.quant.category';
 
@@ -86,6 +89,13 @@ const CATEGORY_META: Record<
     icon: Building2,
     description:
       'Equity markets and traditional finance — S&P 500 cycles, sector rotation, valuation ratios, and commodity trends.',
+  },
+  tickers: {
+    label: 'Tickers',
+    accent: 'text-rose-300',
+    icon: BarChart3,
+    description:
+      "Live prices for every ticker tagged on a Research entry — sorted by frequency × recency so what your analysts are talking about most floats to the top. Click a row's mentions to jump back to its source entry.",
   },
   research: {
     label: 'Research',
@@ -300,7 +310,7 @@ export function QuantView() {
   const [category, setCategory] = useState<QuantCategory>(() => {
     if (typeof window === 'undefined') return 'overview';
     const stored = localStorage.getItem(STORAGE_KEY);
-    const valid: QuantCategory[] = ['overview', 'crypto', 'macro', 'tradfi', 'research'];
+    const valid: QuantCategory[] = ['overview', 'crypto', 'macro', 'tradfi', 'tickers', 'research'];
     return valid.includes(stored as QuantCategory) ? (stored as QuantCategory) : 'overview';
   });
 
@@ -555,6 +565,14 @@ export function QuantView() {
           >
             <GlobalMarketsChart />
           </ChartGroup>
+        </TabsContent>
+
+        {/* ── Tickers ────────────────────────────────────── */}
+        <TabsContent value="tickers">
+          <p className="text-[12px] text-surface-800 mb-6 leading-relaxed">
+            {CATEGORY_META.tickers.description}
+          </p>
+          <TickersPanel />
         </TabsContent>
 
         {/* ── Research ───────────────────────────────────── */}

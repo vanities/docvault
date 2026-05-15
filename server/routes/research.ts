@@ -11,11 +11,13 @@
 //   POST   /api/research/upload            — upload a PDF, extract text immediately
 //     body: raw PDF bytes; query: ?filename=<name>&title=<override>
 //   POST   /api/research/text              — ingest pasted text (e.g. a video transcript)
-//     body: JSON { text, title?, author?, publisher?, reportDate?, sourceUrl?, filename? }
+//     body: JSON { text, title?, author?, publisher?, reportDate?, sourceUrl?, tickers?, filename? }
+//   POST   /api/research/youtube           — fetch a YouTube video's captions + metadata via yt-dlp
+//     body: JSON { url, tickers? }
 //   GET    /api/research                   — list all entries (newest first)
 //   GET    /api/research/:id               — single entry (metadata + text)
 //   GET    /api/research/:id/file          — raw file bytes (inline for browser viewer)
-//   PATCH  /api/research/:id               — update title / author / publisher / reportDate / sourceUrl / notes / tags
+//   PATCH  /api/research/:id               — update title / author / publisher / reportDate / sourceUrl / notes / tags / tickers
 //   POST   /api/research/:id/re-extract    — re-run text extraction (PDF entries only)
 //   DELETE /api/research/:id                — delete entry + file
 //
@@ -27,7 +29,13 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { jsonResponse, ensureDir, DATA_DIR } from '../data.js';
 import { extractResearchText, RESEARCH_EXTRACTOR_VERSION } from '../parsers/research-report.js';
+import {
+  YOUTUBE_EXTRACTOR_VERSION,
+  extractVideoId,
+  fetchYouTubeTranscript,
+} from '../parsers/youtube-transcript.js';
 import { createLogger } from '../logger.js';
+import { normalizeTickers } from '../tickers.js';
 
 const log = createLogger('Research');
 
@@ -79,6 +87,12 @@ export interface ResearchEntry {
   notes?: string;
   /** User-defined tags for filtering. */
   tags?: string[];
+  /**
+   * Yahoo-style ticker symbols tagged on this entry — e.g. ["NVDA","TSM","NK.PA"].
+   * Normalized on write (uppercase, deduped, charset-validated). Used to power
+   * the per-entry price strip and the Quant → Tickers aggregate view.
+   */
+  tickers?: string[];
   lastUpdated: string;
 }
 
@@ -134,6 +148,69 @@ function looksLikePdf(buf: Buffer): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Entry creation — shared file-write + store-save path for every ingest
+// route (`/upload`, `/text`, `/youtube`). Keeping it in one place means
+// every ingest path lands in the store the same way, which matters because
+// the store is the source of truth read by /api/research, /api/research/:id,
+// and the upcoming Tickers aggregate view.
+// ---------------------------------------------------------------------------
+
+async function createResearchEntry(params: {
+  /** File bytes (PDF) or string content (text). */
+  content: Buffer | string;
+  /** File extension on disk. Drives the stored filename, not the mediaType. */
+  extension: 'pdf' | 'txt';
+  mediaType: ResearchEntry['mediaType'];
+  filename: string | null;
+  text: string | null;
+  pageCount: number | null;
+  extractedAt: string | null;
+  extractorVersion: string | null;
+  extractError: string | null;
+  title?: string;
+  author?: string;
+  publisher?: string;
+  reportDate?: string;
+  sourceUrl?: string;
+  /** Already normalized — callers normalize at the API boundary. */
+  tickers?: string[];
+}): Promise<ResearchEntry> {
+  const id = newEntryId();
+  await ensureDir(RESEARCH_DATA_DIR);
+  const absPath = path.join(RESEARCH_DATA_DIR, `${id}.${params.extension}`);
+  const relPath = path.relative(DATA_DIR, absPath);
+  await fs.writeFile(absPath, params.content);
+
+  const now = new Date().toISOString();
+  const entry: ResearchEntry = {
+    id,
+    filename: params.filename,
+    filePath: relPath,
+    mediaType: params.mediaType,
+    uploadedAt: now,
+    text: params.text,
+    pageCount: params.pageCount,
+    extractedAt: params.extractedAt,
+    extractorVersion: params.extractorVersion,
+    extractError: params.extractError,
+    title: params.title,
+    author: params.author,
+    publisher: params.publisher,
+    reportDate: params.reportDate,
+    sourceUrl: params.sourceUrl,
+    // Only persist the field when there's at least one symbol — keeps the
+    // store JSON tidy (no empty arrays everywhere).
+    tickers: params.tickers && params.tickers.length > 0 ? params.tickers : undefined,
+    lastUpdated: now,
+  };
+
+  const store = await loadStore();
+  store.entries[id] = entry;
+  await saveStore(store);
+  return entry;
+}
+
+// ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
 
@@ -161,19 +238,12 @@ export async function handleResearchRoutes(
       );
     }
 
-    const id = newEntryId();
-    await ensureDir(RESEARCH_DATA_DIR);
-    const absPath = path.join(RESEARCH_DATA_DIR, `${id}.pdf`);
-    const relPath = path.relative(DATA_DIR, absPath);
-    await fs.writeFile(absPath, raw);
-
-    const now = new Date().toISOString();
+    // Extract text — best-effort, surfacing errors back into the entry.
     let text: string | null = null;
     let pageCount: number | null = null;
     let extractError: string | null = null;
     let extractedAt: string | null = null;
     let inferredTitle: string | undefined;
-
     try {
       const result = await extractResearchText(raw);
       text = result.text;
@@ -182,29 +252,26 @@ export async function handleResearchRoutes(
       extractedAt = new Date().toISOString();
     } catch (err) {
       extractError = err instanceof Error ? err.message : String(err);
-      log.error(`Text extraction failed for research ${id}:`, extractError);
     }
 
-    const entry: ResearchEntry = {
-      id,
-      filename,
-      filePath: relPath,
+    const entry = await createResearchEntry({
+      content: raw,
+      extension: 'pdf',
       mediaType: 'application/pdf',
-      uploadedAt: now,
+      filename,
       text,
       pageCount,
       extractedAt,
       extractorVersion: extractedAt ? RESEARCH_EXTRACTOR_VERSION : null,
       extractError,
       title: titleOverride ?? inferredTitle,
-      lastUpdated: now,
-    };
-
-    const store = await loadStore();
-    store.entries[id] = entry;
-    await saveStore(store);
-
-    log.info(`Research upload: id=${id} pages=${pageCount ?? '?'} title="${entry.title ?? '?'}"`);
+    });
+    if (extractError) {
+      log.error(`Text extraction failed for research ${entry.id}:`, extractError);
+    }
+    log.info(
+      `Research upload: id=${entry.id} pages=${pageCount ?? '?'} title="${entry.title ?? '?'}"`
+    );
     return jsonResponse({ entry });
   }
 
@@ -238,25 +305,17 @@ export async function handleResearchRoutes(
         ? firstNonEmptyLine.slice(0, 119).trimEnd() + '…'
         : firstNonEmptyLine;
 
-    const id = newEntryId();
-    await ensureDir(RESEARCH_DATA_DIR);
-    const absPath = path.join(RESEARCH_DATA_DIR, `${id}.txt`);
-    const relPath = path.relative(DATA_DIR, absPath);
-    await fs.writeFile(absPath, text);
-
-    const now = new Date().toISOString();
-    const entry: ResearchEntry = {
-      id,
-      filename: str(body?.filename) ?? null,
-      filePath: relPath,
+    const entry = await createResearchEntry({
+      content: text,
+      extension: 'txt',
       mediaType: 'text/plain',
-      uploadedAt: now,
+      filename: str(body?.filename) ?? null,
       // The body is already plain text — record it as available "now" so the
       // UI shows it immediately and never offers a (meaningless) re-extract.
       // There is no extractor here, hence a null extractorVersion.
       text,
       pageCount: null,
-      extractedAt: now,
+      extractedAt: new Date().toISOString(),
       extractorVersion: null,
       extractError: null,
       title: str(body?.title) ?? inferredTitle,
@@ -264,14 +323,69 @@ export async function handleResearchRoutes(
       publisher: str(body?.publisher),
       reportDate: str(body?.reportDate),
       sourceUrl: str(body?.sourceUrl),
-      lastUpdated: now,
-    };
+      tickers: normalizeTickers(body?.tickers),
+    });
 
-    const store = await loadStore();
-    store.entries[id] = entry;
-    await saveStore(store);
+    log.info(
+      `Research text ingest: id=${entry.id} chars=${text.length} title="${entry.title ?? '?'}"`
+    );
+    return jsonResponse({ entry });
+  }
 
-    log.info(`Research text ingest: id=${id} chars=${text.length} title="${entry.title ?? '?'}"`);
+  // POST /api/research/youtube — fetch a YouTube video's captions +
+  // metadata via yt-dlp (see ../parsers/youtube-transcript.ts) and
+  // create a text/plain entry through the shared helper. Same store,
+  // same shape — just a different ingest source.
+  // Matched before the per-entry routes below so "/youtube" isn't read
+  // as an id.
+  if (sub === '/youtube' && req.method === 'POST') {
+    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+    const url = body && typeof body.url === 'string' ? body.url.trim() : '';
+    if (!url) {
+      return jsonResponse({ error: 'A "url" field is required' }, 400);
+    }
+    if (!extractVideoId(url)) {
+      return jsonResponse({ error: 'Not a recognized YouTube URL' }, 400);
+    }
+
+    let result;
+    try {
+      result = await fetchYouTubeTranscript(url);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error(`YouTube ingest failed for ${url}: ${msg}`);
+      return jsonResponse({ error: msg }, 502);
+    }
+
+    // Provenance header keeps the stored text self-documenting — mirrors
+    // what the manual yt-dlp pipeline produced when we filed Cowen Part 1.
+    const header =
+      `[YouTube auto-captions via yt-dlp, cleaned — channel: ${result.channel}` +
+      (result.uploadDate ? `, published ${result.uploadDate}` : '') +
+      `]\n\n`;
+    const text = header + result.text;
+
+    const entry = await createResearchEntry({
+      content: text,
+      extension: 'txt',
+      mediaType: 'text/plain',
+      filename: null,
+      text,
+      pageCount: null,
+      extractedAt: new Date().toISOString(),
+      extractorVersion: YOUTUBE_EXTRACTOR_VERSION,
+      extractError: null,
+      title: result.title,
+      publisher: result.channel,
+      reportDate: result.uploadDate ?? undefined,
+      sourceUrl: result.url,
+      tickers: normalizeTickers(body?.tickers),
+    });
+
+    log.info(
+      `Research YouTube ingest: id=${entry.id} videoId=${result.videoId} ` +
+        `segments=${result.segmentCount} title="${entry.title ?? '?'}"`
+    );
     return jsonResponse({ entry });
   }
 
@@ -376,6 +490,7 @@ export async function handleResearchRoutes(
         sourceUrl: string | null;
         notes: string | null;
         tags: string[] | null;
+        tickers: string[] | null;
       }>;
 
       if (body.title !== undefined) entry.title = body.title ?? undefined;
@@ -385,6 +500,10 @@ export async function handleResearchRoutes(
       if (body.sourceUrl !== undefined) entry.sourceUrl = body.sourceUrl ?? undefined;
       if (body.notes !== undefined) entry.notes = body.notes ?? undefined;
       if (body.tags !== undefined) entry.tags = body.tags ?? undefined;
+      if (body.tickers !== undefined) {
+        const normalized = normalizeTickers(body.tickers);
+        entry.tickers = normalized.length > 0 ? normalized : undefined;
+      }
       entry.lastUpdated = new Date().toISOString();
       await saveStore(store);
       return jsonResponse({ entry });

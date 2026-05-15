@@ -28,8 +28,24 @@ RUN ./node_modules/vite-plus/bin/vp build
 # Stage 3: Production runtime
 FROM oven/bun:1-slim
 
-# Install rclone for Dropbox sync
-RUN apt-get update && apt-get install -y --no-install-recommends rclone ca-certificates && rm -rf /var/lib/apt/lists/*
+# Install rclone (Dropbox sync), curl (used by the entrypoint script to
+# fall back to a fresh yt-dlp binary download when self-update fails),
+# and ca-certificates (TLS for both).
+RUN apt-get update && apt-get install -y --no-install-recommends rclone curl ca-certificates && rm -rf /var/lib/apt/lists/*
+
+# Install yt-dlp standalone binary, arch-specific. Used by the YouTube
+# research-ingest endpoint to fetch captions + metadata. The entrypoint
+# script attempts to self-update it on each container start so it keeps
+# pace with YouTube's frequent backend changes.
+ARG TARGETARCH
+RUN case "$TARGETARCH" in \
+      amd64)  YT_DLP_BIN=yt-dlp_linux ;; \
+      arm64)  YT_DLP_BIN=yt-dlp_linux_aarch64 ;; \
+      *)      echo "Unsupported arch: $TARGETARCH" && exit 1 ;; \
+    esac && \
+    curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/latest/download/$YT_DLP_BIN" -o /usr/local/bin/yt-dlp && \
+    chmod +x /usr/local/bin/yt-dlp && \
+    /usr/local/bin/yt-dlp --version
 
 WORKDIR /app
 
@@ -54,4 +70,8 @@ ENV RCLONE_CONFIG=/data/.rclone.conf
 
 EXPOSE 3005
 
-CMD ["bun", "run", "server/index.ts"]
+# Entrypoint script: best-effort yt-dlp self-update, then execs the Bun
+# server. See scripts/docker-entrypoint.sh.
+RUN chmod +x scripts/docker-entrypoint.sh
+
+CMD ["scripts/docker-entrypoint.sh"]

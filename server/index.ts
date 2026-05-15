@@ -137,6 +137,7 @@ import { handleHealthSnapshotRoutes } from './routes/health-snapshot.js';
 import { handleDownloadRoutes } from './routes/downloads.js';
 import { handleCryptoRoutes } from './routes/crypto.js';
 import { handleQuantRoutes } from './routes/quant.js';
+import { handleQuantTickerRoutes } from './routes/quant-tickers.js';
 import { handleBrokersRoutes } from './routes/brokers.js';
 import { handleSalesRoutes } from './routes/sales.js';
 import { handleMileageRoutes } from './routes/mileage.js';
@@ -482,6 +483,11 @@ async function handleRequest(req: Request): Promise<Response> {
   // brokers routes (extracted to routes/brokers.ts)
   const brokersResponse = await handleBrokersRoutes(req, url, pathname);
   if (brokersResponse) return brokersResponse;
+  // quant ticker prices (extracted to routes/quant-tickers.ts) — matched
+  // before the broader quant routes so the prices endpoint always wins.
+  const quantTickerResponse = await handleQuantTickerRoutes(req, url, pathname);
+  if (quantTickerResponse) return quantTickerResponse;
+
   // quant routes (extracted to routes/quant.ts)
   const quantResponse = await handleQuantRoutes(req, url, pathname);
   if (quantResponse) return quantResponse;
