@@ -22,7 +22,15 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { jsonResponse, ensureDir, DATA_DIR } from '../data.js';
-import type { HealthPerson } from '../data.js';
+import {
+  loadHealthStore,
+  saveHealthStore,
+  requirePerson,
+  type NutritionEntry,
+  type NutritionStatus,
+  type NutritionDose,
+  type NutritionCitation,
+} from '../health-store.js';
 import {
   parseNutritionLabel,
   NUTRITION_PARSER_VERSION,
@@ -32,128 +40,14 @@ import { createLogger } from '../logger.js';
 
 const log = createLogger('Nutrition');
 
-const HEALTH_STORE_FILE = path.join(DATA_DIR, '.docvault-health.json');
 const HEALTH_DATA_DIR = path.join(DATA_DIR, 'health');
 
 // ---------------------------------------------------------------------------
-// Types
+// Types — owned by health-store.ts now, re-exported for back-compat with
+// existing consumers (frontend types/index, sibling routes, tests).
 // ---------------------------------------------------------------------------
 
-export type NutritionStatus = 'considering' | 'active' | 'past' | 'never';
-
-export interface NutritionDose {
-  amount?: number;
-  /** e.g. "capsules", "tablets", "tbsp", "scoops", "softgels" */
-  unit?: string;
-  frequency?: 'daily' | 'twice-daily' | 'as-needed' | 'weekly' | 'custom';
-  /** Populated when frequency === 'custom'; free-form like "3× per week post-ruck". */
-  frequencyCustom?: string;
-  timeOfDay?: 'morning' | 'midday' | 'evening' | 'bedtime' | 'pre-workout' | 'post-workout';
-}
-
-export interface NutritionCitation {
-  /** Short ref id like "dabos-2010" — stable across edits so prose can reference it. */
-  id: string;
-  pmid?: string;
-  doi?: string;
-  authors: string;
-  year: number;
-  title: string;
-  journal: string;
-  /** One-line key finding — renders inline in the References list. */
-  findings?: string;
-  url?: string;
-}
-
-export interface NutritionEntry {
-  id: string;
-  personId: string;
-  /** Original filename uploaded, for display. */
-  filename: string | null;
-  /** Relative path under DATA_DIR. */
-  imagePath: string;
-  imageMediaType: string;
-  uploadedAt: string;
-  parsedAt: string | null;
-  parsed: ParsedNutritionLabel | null;
-  /** Error message if parse failed; null if it succeeded or hasn't been attempted. */
-  parseError: string | null;
-  status: NutritionStatus;
-  dose?: NutritionDose;
-  /** Short, personal, mutable — renders inline in the snapshot regimen table. */
-  notes?: string;
-  /** Evidence-backed prose (markdown). Only renders when snapshot called with ?includeResearch=true. */
-  research?: string;
-  /** Structured citations referenced by the research prose. */
-  citations?: NutritionCitation[];
-  lastUpdated: string;
-}
-
-// Subset of the HealthStore shape this module touches. We intentionally
-// re-declare the minimal surface instead of importing HealthStore from
-// routes/health.ts (it's not exported, and duplicating the shape here keeps
-// routes decoupled — same pattern used in routes/health-snapshot.ts).
-interface HealthStoreShape {
-  version: 1;
-  people: HealthPerson[];
-  summaries?: Record<string, unknown>;
-  snapshots?: Record<string, unknown>;
-  clinical?: Record<string, unknown>;
-  illnessNotes?: Record<string, unknown>;
-  nutrition?: Record<string, NutritionEntry>;
-  /** Preserve fields owned by other route modules (sickness, …). */
-  [key: string]: unknown;
-}
-
-// ---------------------------------------------------------------------------
-// Store helpers
-// ---------------------------------------------------------------------------
-
-async function loadHealthStore(): Promise<HealthStoreShape> {
-  try {
-    const raw = await fs.readFile(HEALTH_STORE_FILE, 'utf-8');
-    const parsed = JSON.parse(raw) as Partial<HealthStoreShape>;
-    return {
-      // Spread first so sibling-owned fields (sicknessLogs, future additions)
-      // survive this module's saves instead of getting silently wiped.
-      ...parsed,
-      version: 1,
-      people: parsed.people ?? [],
-      summaries: parsed.summaries ?? {},
-      snapshots: parsed.snapshots ?? {},
-      clinical: parsed.clinical ?? {},
-      illnessNotes: parsed.illnessNotes ?? {},
-      nutrition: parsed.nutrition ?? {},
-    };
-  } catch {
-    return {
-      version: 1,
-      people: [],
-      summaries: {},
-      snapshots: {},
-      clinical: {},
-      illnessNotes: {},
-      nutrition: {},
-    };
-  }
-}
-
-async function saveHealthStore(store: HealthStoreShape): Promise<void> {
-  // Atomic write via tmp rename — matches the existing health.ts pattern.
-  // Prevents partial writes on crash (the user's "never pipe output back to
-  // same file" rule applied at the serialization layer).
-  await ensureDir(DATA_DIR);
-  const tmp = `${HEALTH_STORE_FILE}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(store, null, 2));
-  await fs.rename(tmp, HEALTH_STORE_FILE);
-}
-
-async function requirePerson(personId: string): Promise<HealthPerson> {
-  const store = await loadHealthStore();
-  const person = store.people.find((p) => p.id === personId);
-  if (!person) throw new Error(`Person "${personId}" not found`);
-  return person;
-}
+export type { NutritionEntry, NutritionStatus, NutritionDose, NutritionCitation };
 
 function nutritionDir(personId: string): string {
   return path.join(HEALTH_DATA_DIR, personId, 'nutrition');
@@ -289,6 +183,111 @@ export async function handleNutritionRoutes(
 
     log.info(
       `Nutrition upload for ${personId}: id=${id} parsed=${parsed !== null} product="${parsed?.productName ?? '?'}"`
+    );
+
+    return jsonResponse({ entry });
+  }
+
+  // POST /api/health/:personId/nutrition — create a text-only entry (no label image)
+  //
+  // Used by the chat MCP layer when the agent recommends a supplement based on
+  // web research rather than scanning a physical label. The entry carries a
+  // synthesized ParsedNutritionLabel built from the request body so it looks
+  // identical to image-parsed entries in the regimen table.
+  //
+  // Required: brandName, productName. Everything else optional — the agent fills
+  // in what it knows. Status defaults to 'considering' so a chat-created
+  // recommendation never silently joins the active stack.
+  if (sub === '' && req.method === 'POST') {
+    try {
+      await requirePerson(personId);
+    } catch (err) {
+      return jsonResponse({ error: String(err instanceof Error ? err.message : err) }, 404);
+    }
+
+    const body = (await req.json().catch(() => null)) as Partial<{
+      brandName: string;
+      productName: string;
+      category: ParsedNutritionLabel['category'];
+      servingSize: ParsedNutritionLabel['servingSize'];
+      servingsPerContainer: ParsedNutritionLabel['servingsPerContainer'];
+      macros: ParsedNutritionLabel['macros'];
+      vitamins: ParsedNutritionLabel['vitamins'];
+      minerals: ParsedNutritionLabel['minerals'];
+      otherActive: ParsedNutritionLabel['otherActive'];
+      ingredients: ParsedNutritionLabel['ingredients'];
+      directions: ParsedNutritionLabel['directions'];
+      warnings: ParsedNutritionLabel['warnings'];
+      status: NutritionStatus;
+      dose: NutritionDose;
+      notes: string;
+      research: string;
+      citations: NutritionCitation[];
+    }> | null;
+
+    if (!body || typeof body !== 'object') {
+      return jsonResponse({ error: 'Body must be JSON' }, 400);
+    }
+    if (typeof body.brandName !== 'string' || body.brandName.trim().length === 0) {
+      return jsonResponse({ error: 'brandName is required' }, 400);
+    }
+    if (typeof body.productName !== 'string' || body.productName.trim().length === 0) {
+      return jsonResponse({ error: 'productName is required' }, 400);
+    }
+
+    const status = normalizeStatus(body.status) ?? 'considering';
+    const now = new Date().toISOString();
+    const id = newEntryId();
+
+    // Synthesized "parsed" label — same shape the image parser produces, so the
+    // snapshot renderer and regimen table treat this entry identically.
+    const parsed: ParsedNutritionLabel = {
+      schemaVersion: 1,
+      parserVersion: `${NUTRITION_PARSER_VERSION}+text`,
+      brandName: body.brandName.trim(),
+      productName: body.productName.trim(),
+      ...(body.category !== undefined && { category: body.category }),
+      ...(body.servingSize !== undefined && { servingSize: body.servingSize }),
+      ...(body.servingsPerContainer !== undefined && {
+        servingsPerContainer: body.servingsPerContainer,
+      }),
+      ...(body.macros !== undefined && { macros: body.macros }),
+      ...(body.vitamins !== undefined && { vitamins: body.vitamins }),
+      ...(body.minerals !== undefined && { minerals: body.minerals }),
+      ...(body.otherActive !== undefined && { otherActive: body.otherActive }),
+      ...(body.ingredients !== undefined && { ingredients: body.ingredients }),
+      ...(body.directions !== undefined && { directions: body.directions }),
+      ...(body.warnings !== undefined && { warnings: body.warnings }),
+    };
+
+    const entry: NutritionEntry = {
+      id,
+      personId,
+      filename: null,
+      // Empty imagePath — readers that try to fetch the image get a 410 (already
+      // handled by the image GET route), which is the correct behaviour for a
+      // text-only entry.
+      imagePath: '',
+      imageMediaType: '',
+      uploadedAt: now,
+      parsedAt: now,
+      parsed,
+      parseError: null,
+      status,
+      ...(body.dose !== undefined && { dose: body.dose }),
+      ...(body.notes !== undefined && { notes: body.notes }),
+      ...(body.research !== undefined && { research: body.research }),
+      ...(body.citations !== undefined && { citations: body.citations }),
+      lastUpdated: now,
+    };
+
+    const store = await loadHealthStore();
+    if (!store.nutrition) store.nutrition = {};
+    store.nutrition[`${personId}/${id}`] = entry;
+    await saveHealthStore(store);
+
+    log.info(
+      `Nutrition entry created from text for ${personId}: id=${id} brand="${entry.parsed?.brandName ?? '?'}" product="${entry.parsed?.productName ?? '?'}"`
     );
 
     return jsonResponse({ entry });
