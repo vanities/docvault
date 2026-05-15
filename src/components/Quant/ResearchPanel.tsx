@@ -10,7 +10,10 @@ import {
   Loader2,
   RefreshCw,
   AlertCircle,
+  X,
+  Youtube,
 } from 'lucide-react';
+import { Line, LineChart, ResponsiveContainer } from 'recharts';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,6 +37,7 @@ interface ResearchEntry {
   sourceUrl?: string;
   notes?: string;
   tags?: string[];
+  tickers?: string[];
   lastUpdated: string;
 }
 
@@ -47,6 +51,7 @@ type PatchBody = Partial<{
   sourceUrl: string | null;
   notes: string | null;
   tags: string[] | null;
+  tickers: string[] | null;
 }>;
 
 function formatDate(iso: string | undefined | null): string {
@@ -59,8 +64,240 @@ function formatDate(iso: string | undefined | null): string {
 // The "Paste text" form draft. A factory (not a const) so each reset hands
 // back a fresh object rather than sharing one reference across renders.
 function blankTextDraft() {
-  return { text: '', title: '', author: '', publisher: '', sourceUrl: '', reportDate: '' };
+  return {
+    text: '',
+    title: '',
+    author: '',
+    publisher: '',
+    sourceUrl: '',
+    reportDate: '',
+    tickers: [] as string[],
+  };
 }
+
+function blankYoutubeDraft() {
+  return { url: '', tickers: [] as string[] };
+}
+
+// ---------------------------------------------------------------------------
+// Ticker types + components
+// ---------------------------------------------------------------------------
+
+/** Field shape returned by GET /api/quant/tickers/prices — must match
+ *  server/ticker-prices.ts:TickerQuote. */
+interface TickerQuote {
+  symbol: string;
+  price: number | null;
+  currency: string | null;
+  oneYearChangePct: number | null;
+  fiftyTwoWeekHigh: number | null;
+  fiftyTwoWeekLow: number | null;
+  sparklineCloses: number[] | null;
+  name: string | null;
+  fetchedAt: string;
+  error: string | null;
+}
+
+/** Yahoo-style symbol charset — mirrors normalizeTicker() server-side. */
+const TICKER_CHAR_RE = /^[A-Z0-9.\-=^]{1,16}$/;
+
+/**
+ * Chip-style multi-input for tickers. Comma / space / Enter / Tab commits the
+ * current draft into a chip; Backspace on an empty draft removes the last
+ * chip. The input itself uppercases as you type. Invalid symbols are silently
+ * dropped at commit time rather than rejected with an error — paste-then-see
+ * is friendlier than type-then-bonk.
+ */
+function TickerChipInput({
+  value,
+  onChange,
+  placeholder,
+  className,
+}: {
+  value: string[];
+  onChange: (next: string[]) => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  const [draftText, setDraftText] = useState('');
+
+  const commitDraft = (raw: string) => {
+    const next = new Set(value);
+    let changed = false;
+    for (const candidate of raw.split(/[,\s]+/)) {
+      const sym = candidate.trim().toUpperCase();
+      if (!sym || !TICKER_CHAR_RE.test(sym)) continue;
+      if (!next.has(sym)) {
+        next.add(sym);
+        changed = true;
+      }
+    }
+    if (changed) onChange([...next]);
+    setDraftText('');
+  };
+
+  const removeTicker = (sym: string) => onChange(value.filter((t) => t !== sym));
+
+  return (
+    <div
+      className={`flex flex-wrap items-center gap-1 px-2 py-1 rounded-md border border-surface-500 bg-transparent min-h-8 focus-within:border-accent-400 transition-colors ${className ?? ''}`}
+    >
+      {value.map((sym) => (
+        <span
+          key={sym}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-surface-200/50 text-[11px] font-mono text-surface-950"
+        >
+          {sym}
+          <button
+            type="button"
+            onClick={() => removeTicker(sym)}
+            className="text-surface-600 hover:text-rose-400 transition-colors"
+            aria-label={`Remove ${sym}`}
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </span>
+      ))}
+      <input
+        type="text"
+        value={draftText}
+        onChange={(e) => setDraftText(e.target.value.toUpperCase())}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ',' || e.key === ' ' || e.key === 'Tab') {
+            if (draftText.trim()) {
+              e.preventDefault();
+              commitDraft(draftText);
+            }
+          } else if (e.key === 'Backspace' && draftText === '' && value.length > 0) {
+            removeTicker(value[value.length - 1]);
+          }
+        }}
+        onBlur={() => {
+          if (draftText.trim()) commitDraft(draftText);
+        }}
+        placeholder={value.length === 0 ? placeholder : ''}
+        className="flex-1 min-w-20 bg-transparent text-[12px] outline-none placeholder:text-surface-600 text-surface-950"
+      />
+    </div>
+  );
+}
+
+/** A single ticker's price card — symbol, name, sparkline, price, 1y %. */
+function TickerPriceCard({ quote }: { quote: TickerQuote }) {
+  const isUp = quote.oneYearChangePct !== null && quote.oneYearChangePct >= 0;
+  const sparklineData = (quote.sparklineCloses ?? []).map((c, i) => ({ i, c }));
+  const sparklineColor = isUp ? '#10b981' : '#f43f5e';
+  const showCurrency = quote.currency && quote.currency !== 'USD';
+
+  return (
+    <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-surface-100/30 border border-border/30 hover:border-border/60 transition-colors">
+      <div className="flex flex-col min-w-0">
+        <span className="text-[11px] font-mono font-semibold text-surface-950">{quote.symbol}</span>
+        {quote.name && (
+          <span className="text-[10px] text-surface-700 truncate max-w-[140px]" title={quote.name}>
+            {quote.name}
+          </span>
+        )}
+      </div>
+      {sparklineData.length > 1 && (
+        <div className="w-16 h-8 flex-shrink-0">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={sparklineData}>
+              <Line
+                type="monotone"
+                dataKey="c"
+                stroke={sparklineColor}
+                strokeWidth={1.5}
+                dot={false}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+      <div className="flex flex-col items-end ml-auto">
+        {quote.error ? (
+          <span className="text-[10px] text-rose-400" title={quote.error}>
+            error
+          </span>
+        ) : (
+          <>
+            <span className="text-[11px] font-mono text-surface-950">
+              {quote.price !== null ? quote.price.toFixed(2) : '?'}
+              {showCurrency && (
+                <span className="text-[9px] text-surface-600 ml-1">{quote.currency}</span>
+              )}
+            </span>
+            <span
+              className={`text-[10px] font-mono ${isUp ? 'text-emerald-400' : 'text-rose-400'}`}
+            >
+              {quote.oneYearChangePct !== null
+                ? (isUp ? '+' : '') + quote.oneYearChangePct.toFixed(0) + '%'
+                : '?'}
+            </span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Fetches /api/quant/tickers/prices for a set of tickers and renders one
+ * card per ticker. Server-side cache (15 min) makes repeated mounts cheap.
+ * Renders nothing when the input is empty.
+ */
+function TickerPriceStrip({ tickers }: { tickers: string[] }) {
+  const [quotes, setQuotes] = useState<TickerQuote[]>([]);
+  const [loading, setLoading] = useState(false);
+  // Stable string-identity for the effect dep — avoids refetching on parent
+  // renders that hand us a new-but-equivalent array reference.
+  const symbols = tickers.join(',');
+
+  useEffect(() => {
+    if (!symbols) {
+      setQuotes([]);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    fetch(`/api/quant/tickers/prices?symbols=${encodeURIComponent(symbols)}`)
+      .then((r) => r.json() as Promise<{ quotes: TickerQuote[] }>)
+      .then((d) => {
+        if (!cancelled) setQuotes(d.quotes ?? []);
+      })
+      .catch(() => {
+        /* per-quote .error carries per-symbol failures */
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [symbols]);
+
+  if (tickers.length === 0) return null;
+  if (loading && quotes.length === 0) {
+    return (
+      <div className="flex items-center gap-1.5 text-[11px] text-surface-600 py-2">
+        <Loader2 className="w-3 h-3 animate-spin" />
+        Loading prices…
+      </div>
+    );
+  }
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+      {quotes.map((q) => (
+        <TickerPriceCard key={q.symbol} quote={q} />
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ResearchPanel — main view
+// ---------------------------------------------------------------------------
 
 export function ResearchPanel() {
   const [entries, setEntries] = useState<ResearchEntry[]>([]);
@@ -71,11 +308,14 @@ export function ResearchPanel() {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // "Paste text" mode — a second ingest path alongside the PDF drop zone.
-  const [mode, setMode] = useState<'pdf' | 'text'>('pdf');
+  // Ingest mode: PDF drop, raw text paste, or fetch from a YouTube URL.
+  const [mode, setMode] = useState<'pdf' | 'text' | 'youtube'>('pdf');
   const [textDraft, setTextDraft] = useState(blankTextDraft);
   const [savingText, setSavingText] = useState(false);
   const [textError, setTextError] = useState<string | null>(null);
+  const [youtubeDraft, setYoutubeDraft] = useState(blankYoutubeDraft);
+  const [savingYoutube, setSavingYoutube] = useState(false);
+  const [youtubeError, setYoutubeError] = useState<string | null>(null);
 
   // Initial load
   const load = useCallback(async () => {
@@ -150,6 +390,7 @@ export function ResearchPanel() {
           publisher: textDraft.publisher.trim() || undefined,
           sourceUrl: textDraft.sourceUrl.trim() || undefined,
           reportDate: textDraft.reportDate.trim() || undefined,
+          tickers: textDraft.tickers.length > 0 ? textDraft.tickers : undefined,
         }),
       });
       if (!res.ok) {
@@ -166,6 +407,35 @@ export function ResearchPanel() {
       setSavingText(false);
     }
   }, [textDraft]);
+
+  // Save by URL via the yt-dlp-backed /api/research/youtube endpoint.
+  const submitYoutube = useCallback(async () => {
+    if (!youtubeDraft.url.trim()) return;
+    setYoutubeError(null);
+    setSavingYoutube(true);
+    try {
+      const res = await fetch('/api/research/youtube', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: youtubeDraft.url.trim(),
+          tickers: youtubeDraft.tickers.length > 0 ? youtubeDraft.tickers : undefined,
+        }),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        setYoutubeError(err.error ?? `Fetch failed (${res.status})`);
+        return;
+      }
+      setYoutubeDraft(blankYoutubeDraft());
+      // Refresh inline (no loading flash) — mirrors the other ingest paths.
+      await fetch('/api/research')
+        .then((r) => r.json())
+        .then((d: { entries: ResearchEntry[] }) => setEntries(d.entries ?? []));
+    } finally {
+      setSavingYoutube(false);
+    }
+  }, [youtubeDraft]);
 
   // ---- Mutations ----
 
@@ -206,9 +476,10 @@ export function ResearchPanel() {
       <Card variant="glass" className="mb-6">
         {/* Mode toggle */}
         <div className="flex gap-1 px-4 pt-4">
-          {(['pdf', 'text'] as const).map((m) => {
+          {(['pdf', 'text', 'youtube'] as const).map((m) => {
             const active = mode === m;
-            const Icon = m === 'pdf' ? Upload : AlignLeft;
+            const Icon = m === 'pdf' ? Upload : m === 'text' ? AlignLeft : Youtube;
+            const label = m === 'pdf' ? 'Upload PDF' : m === 'text' ? 'Paste text' : 'From YouTube';
             return (
               <button
                 key={m}
@@ -220,7 +491,7 @@ export function ResearchPanel() {
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
-                {m === 'pdf' ? 'Upload PDF' : 'Paste text'}
+                {label}
               </button>
             );
           })}
@@ -285,7 +556,7 @@ export function ResearchPanel() {
               </div>
             )}
           </>
-        ) : (
+        ) : mode === 'text' ? (
           <div className="p-4 pt-3 space-y-3">
             <Textarea
               value={textDraft.text}
@@ -325,6 +596,11 @@ export function ResearchPanel() {
                 className="h-8 text-[12px]"
               />
             </div>
+            <TickerChipInput
+              value={textDraft.tickers}
+              onChange={(next) => setTextDraft({ ...textDraft, tickers: next })}
+              placeholder="Tickers (e.g. NVDA, INTC, TSM, NK.PA)"
+            />
             <div className="flex items-center justify-between gap-3">
               <p className="text-[11px] text-surface-600">
                 Stored verbatim in the Research tab — no AI parsing.
@@ -348,6 +624,46 @@ export function ResearchPanel() {
               <div className="flex items-center gap-2 text-[12px] text-red-400">
                 <AlertCircle className="w-3.5 h-3.5" />
                 {textError}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="p-4 pt-3 space-y-3">
+            <Input
+              type="url"
+              value={youtubeDraft.url}
+              onChange={(e) => setYoutubeDraft({ ...youtubeDraft, url: e.target.value })}
+              placeholder="YouTube URL (e.g. https://www.youtube.com/watch?v=…)"
+              className="h-9 text-[12px]"
+            />
+            <TickerChipInput
+              value={youtubeDraft.tickers}
+              onChange={(next) => setYoutubeDraft({ ...youtubeDraft, tickers: next })}
+              placeholder="Tickers to tag (optional)"
+            />
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[11px] text-surface-600">
+                Captions + metadata (title, channel, upload date) auto-fetched via yt-dlp.
+              </p>
+              <Button
+                size="sm"
+                onClick={() => void submitYoutube()}
+                disabled={savingYoutube || !youtubeDraft.url.trim()}
+              >
+                {savingYoutube ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Fetching…
+                  </>
+                ) : (
+                  'Fetch & Save'
+                )}
+              </Button>
+            </div>
+            {youtubeError && (
+              <div className="flex items-center gap-2 text-[12px] text-red-400">
+                <AlertCircle className="w-3.5 h-3.5" />
+                {youtubeError}
               </div>
             )}
           </div>
@@ -413,6 +729,10 @@ function ResearchRow({
     sourceUrl: entry.sourceUrl ?? '',
     notes: entry.notes ?? '',
   });
+  // Tickers live separate from `draft` because they're string[]; the
+  // flush-on-blur pattern (used for string fields) doesn't fit. We PATCH
+  // immediately on every chip add/remove, debounced by an equality check.
+  const [draftTickers, setDraftTickers] = useState<string[]>(entry.tickers ?? []);
   const [reExtracting, setReExtracting] = useState(false);
 
   useEffect(() => {
@@ -424,6 +744,7 @@ function ResearchRow({
       sourceUrl: entry.sourceUrl ?? '',
       notes: entry.notes ?? '',
     });
+    setDraftTickers(entry.tickers ?? []);
   }, [
     entry.id,
     entry.lastUpdated,
@@ -433,6 +754,7 @@ function ResearchRow({
     entry.reportDate,
     entry.sourceUrl,
     entry.notes,
+    entry.tickers?.join(',') ?? '',
   ]);
 
   const flush = (field: keyof typeof draft) => {
@@ -556,7 +878,28 @@ function ResearchRow({
                 placeholder="https://…"
               />
             </div>
+            <div className="sm:col-span-2">
+              <label className="text-[10px] uppercase tracking-wider text-surface-600 font-semibold">
+                Tickers
+              </label>
+              <TickerChipInput
+                value={draftTickers}
+                onChange={(next) => {
+                  setDraftTickers(next);
+                  // Sort-compare so re-ordering doesn't trigger a PATCH and
+                  // the server only sees actual set-membership changes.
+                  const before = [...(entry.tickers ?? [])].sort().join(',');
+                  const after = [...next].sort().join(',');
+                  if (before === after) return;
+                  void onPatch({ tickers: next.length > 0 ? next : null });
+                }}
+                placeholder="NVDA, TSM, NK.PA…"
+              />
+            </div>
           </div>
+
+          {/* Tagged ticker prices (renders nothing when no tickers) */}
+          <TickerPriceStrip tickers={draftTickers} />
 
           {/* Notes */}
           <div>
