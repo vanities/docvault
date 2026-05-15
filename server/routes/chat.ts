@@ -68,6 +68,10 @@ import {
   type DocMetadata,
   type ParsedData,
 } from '../data.js';
+import { loadHealthStore } from '../health-store.js';
+import { handleNutritionRoutes } from './nutrition.js';
+import { handleSicknessRoutes } from './sickness.js';
+import { handleHealthSnapshotRoutes } from './health-snapshot.js';
 import { logAiCall } from '../ai/usage-log.js';
 import { createLogger } from '../logger.js';
 
@@ -131,16 +135,38 @@ function extensionFor(mimeType: string): string {
 // Tool names declared by our MCP server. Prefixed with `mcp__docvault__` once
 // the agent SDK registers them — that prefixed form is what shows up in
 // canUseTool / allowedTools / disallowedTools.
+//
+// READS are first, WRITES are last — visual grouping makes the
+// "agent must confirm before invoking" rule in the system prompt easy to
+// audit. The writes set is also the literal list the prompt names.
 const TOOL_NAMES = [
+  // --- Reads (free to chain) ---
   'list_entities',
   'list_files',
   'read_file',
   'search_files',
   'get_tax_summary',
+  'list_health_people',
+  'get_health_snapshot',
+  'list_supplements',
+  'get_supplement',
+  // --- Writes (require user confirmation per system prompt) ---
   'set_metadata',
   'add_reminder',
+  'create_supplement',
+  'update_supplement',
+  'delete_supplement',
+  'log_sickness',
 ] as const;
-const ALLOWED_TOOLS = TOOL_NAMES.map((n) => `mcp__${MCP_SERVER_NAME}__${n}`);
+// Built-in Claude Code tools we want available alongside our MCP set. WebSearch
+// lets the chat research products/brands/citations while reasoning about the
+// user's existing data — necessary for the "recommend a creatine brand" use
+// case the chat is designed for.
+const ALLOWED_BUILTIN_TOOLS = ['WebSearch'] as const;
+const ALLOWED_TOOLS: string[] = [
+  ...TOOL_NAMES.map((n) => `mcp__${MCP_SERVER_NAME}__${n}`),
+  ...ALLOWED_BUILTIN_TOOLS,
+];
 
 // Resolve the Claude Code binary path explicitly. The SDK's auto-detection
 // can pick the wrong platform variant when both `linux-x64` (glibc) and
@@ -444,6 +470,158 @@ async function toolAddReminder(
 }
 
 // ---------------------------------------------------------------------------
+// Health tools — read + write the multi-person Health sidebar surface.
+//
+// For mutations we call the existing route handlers in-process with a
+// synthesized Request rather than re-implementing the validation. This keeps
+// the chat path bit-identical to the HTTP path the UI uses, so any future fix
+// to the routes automatically applies to chat as well. Reads short-circuit
+// directly against the health store for speed.
+// ---------------------------------------------------------------------------
+
+type RouteHandler = (req: Request, url: URL, pathname: string) => Promise<Response | null>;
+
+async function invokeRoute(
+  handler: RouteHandler,
+  method: string,
+  routePath: string,
+  body?: unknown
+): Promise<{ status: number; data: unknown }> {
+  const url = new URL(`http://internal${routePath}`);
+  const init: RequestInit = { method };
+  if (body !== undefined) {
+    init.headers = { 'Content-Type': 'application/json' };
+    init.body = JSON.stringify(body);
+  }
+  const req = new Request(url, init);
+  const resp = await handler(req, url, url.pathname);
+  if (!resp) {
+    return { status: 500, data: { error: `No handler matched ${method} ${routePath}` } };
+  }
+  const text = await resp.text();
+  let data: unknown = text;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    // Non-JSON response (e.g. markdown snapshot) — keep as string.
+  }
+  return { status: resp.status, data };
+}
+
+async function toolListHealthPeople(): Promise<unknown> {
+  const store = await loadHealthStore();
+  return {
+    people: store.people.map((p) => ({
+      id: p.id,
+      name: p.name,
+      archived: !!p.archivedAt,
+    })),
+  };
+}
+
+async function toolGetHealthSnapshot(input: {
+  personId: string;
+  includeClinical?: boolean;
+  includeDNA?: boolean;
+}): Promise<unknown> {
+  const qs = new URLSearchParams();
+  qs.set('personId', input.personId);
+  qs.set('format', 'md');
+  if (input.includeClinical === false) qs.set('includeClinical', 'false');
+  if (input.includeDNA === false) qs.set('includeDNA', 'false');
+  const { status, data } = await invokeRoute(
+    handleHealthSnapshotRoutes,
+    'GET',
+    `/api/health-snapshot?${qs.toString()}`
+  );
+  if (status !== 200) return { error: data, status };
+  return { markdown: typeof data === 'string' ? data : JSON.stringify(data) };
+}
+
+async function toolListSupplements(input: {
+  personId: string;
+  status?: 'considering' | 'active' | 'past' | 'never';
+}): Promise<unknown> {
+  const store = await loadHealthStore();
+  if (!store.people.some((p) => p.id === input.personId)) {
+    return { error: `Unknown person "${input.personId}". Call list_health_people first.` };
+  }
+  const prefix = `${input.personId}/`;
+  const entries = Object.entries(store.nutrition ?? {})
+    .filter(([k]) => k.startsWith(prefix))
+    .map(([, v]) => v)
+    .filter((e) => (input.status ? e.status === input.status : true))
+    .map((e) => ({
+      id: e.id,
+      brandName: e.parsed?.brandName ?? null,
+      productName: e.parsed?.productName ?? null,
+      category: e.parsed?.category ?? null,
+      status: e.status,
+      dose: e.dose ?? null,
+      notes: e.notes ?? null,
+      lastUpdated: e.lastUpdated,
+    }));
+  return { personId: input.personId, totalFound: entries.length, entries };
+}
+
+async function toolGetSupplement(input: { personId: string; id: string }): Promise<unknown> {
+  const store = await loadHealthStore();
+  const entry = store.nutrition?.[`${input.personId}/${input.id}`];
+  if (!entry) return { error: `No supplement "${input.id}" for person "${input.personId}".` };
+  return { entry };
+}
+
+async function toolCreateSupplement(input: Record<string, unknown>): Promise<unknown> {
+  const personId = typeof input.personId === 'string' ? input.personId : '';
+  if (!personId) return { error: 'personId is required' };
+  // The personId travels in the URL; the rest of the input is the JSON body.
+  const { personId: _omit, ...body } = input;
+  const { status, data } = await invokeRoute(
+    handleNutritionRoutes,
+    'POST',
+    `/api/health/${encodeURIComponent(personId)}/nutrition`,
+    body
+  );
+  return status === 200 ? data : { error: data, status };
+}
+
+async function toolUpdateSupplement(input: Record<string, unknown>): Promise<unknown> {
+  const personId = typeof input.personId === 'string' ? input.personId : '';
+  const id = typeof input.id === 'string' ? input.id : '';
+  if (!personId || !id) return { error: 'personId and id are required' };
+  const { personId: _p, id: _i, ...patch } = input;
+  const { status, data } = await invokeRoute(
+    handleNutritionRoutes,
+    'PATCH',
+    `/api/health/${encodeURIComponent(personId)}/nutrition/${encodeURIComponent(id)}`,
+    patch
+  );
+  return status === 200 ? data : { error: data, status };
+}
+
+async function toolDeleteSupplement(input: { personId: string; id: string }): Promise<unknown> {
+  const { status, data } = await invokeRoute(
+    handleNutritionRoutes,
+    'DELETE',
+    `/api/health/${encodeURIComponent(input.personId)}/nutrition/${encodeURIComponent(input.id)}`
+  );
+  return status === 200 ? data : { error: data, status };
+}
+
+async function toolLogSickness(input: Record<string, unknown>): Promise<unknown> {
+  const personId = typeof input.personId === 'string' ? input.personId : '';
+  if (!personId) return { error: 'personId is required' };
+  const { personId: _omit, ...body } = input;
+  const { status, data } = await invokeRoute(
+    handleSicknessRoutes,
+    'POST',
+    `/api/health/${encodeURIComponent(personId)}/sickness`,
+    body
+  );
+  return status === 200 ? data : { error: data, status };
+}
+
+// ---------------------------------------------------------------------------
 // MCP server — wraps the tool implementations as the agent SDK expects.
 // Each tool returns a CallToolResult with a single text block carrying the
 // JSON-serialized payload — same pattern Claude Code uses for its built-in
@@ -532,6 +710,183 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
         },
         async (args) => jsonResult(await toolAddReminder(args, ctx))
       ),
+      // -- Health: reads ----------------------------------------------------
+      tool(
+        'list_health_people',
+        'List every configured person in DocVault Health (id, name, archived flag). The chat is multi-person — ALWAYS call this first to learn whose health data is available, and ask the user whose health they mean before calling any health tool.',
+        {},
+        async () => jsonResult(await toolListHealthPeople())
+      ),
+      tool(
+        'get_health_snapshot',
+        "Fetch the consolidated health snapshot (Apple Health activity/heart/sleep/body, clinical labs, DNA traits if enabled, current supplement regimen, recent sicknesses, illness periods) for one person, rendered as markdown. Use this BEFORE making any health recommendation so the advice is grounded in the user's actual data.",
+        {
+          personId: z.string().describe('Person id from list_health_people.'),
+          includeClinical: z
+            .boolean()
+            .optional()
+            .describe('Include FHIR clinical summary (labs, conditions, meds). Default true.'),
+          includeDNA: z.boolean().optional().describe('Include DNA trait results. Default true.'),
+        },
+        async (args) => jsonResult(await toolGetHealthSnapshot(args))
+      ),
+      tool(
+        'list_supplements',
+        "List the user's supplement regimen for a person, optionally filtered by status (active = currently taking, considering = on the shortlist, past = stopped, never = considered + rejected). Returns a trimmed summary per entry; call get_supplement for the full parsed label, research notes, or citations.",
+        {
+          personId: z.string(),
+          status: z.enum(['considering', 'active', 'past', 'never']).optional(),
+        },
+        async (args) => jsonResult(await toolListSupplements(args))
+      ),
+      tool(
+        'get_supplement',
+        'Return the full NutritionEntry for one supplement — parsed label fields, dose, user notes, research prose, citations. Use when the user asks "what dose am I on" / "what brand of X" / before recommending a switch.',
+        {
+          personId: z.string(),
+          id: z.string().describe('Supplement entry id (from list_supplements).'),
+        },
+        async (args) => jsonResult(await toolGetSupplement(args))
+      ),
+      // -- Health: writes (require user confirmation per system prompt) ----
+      tool(
+        'create_supplement',
+        'Create a new supplement entry from text (no label image required). Status defaults to "considering" so chat recommendations never silently join the active stack. WRITE TOOL — confirm with the user before invoking.',
+        {
+          personId: z.string(),
+          brandName: z.string().describe('e.g. "Thorne", "Klean Athlete", "Bulk Supplements".'),
+          productName: z
+            .string()
+            .describe('e.g. "Creatine Monohydrate", "Magnesium Bisglycinate".'),
+          category: z.string().optional().describe('Free-form category bucket from the parser.'),
+          dose: z
+            .object({
+              amount: z.number().optional(),
+              unit: z.string().optional(),
+              frequency: z
+                .enum(['daily', 'twice-daily', 'as-needed', 'weekly', 'custom'])
+                .optional(),
+              frequencyCustom: z.string().optional(),
+              timeOfDay: z
+                .enum(['morning', 'midday', 'evening', 'bedtime', 'pre-workout', 'post-workout'])
+                .optional(),
+            })
+            .optional(),
+          notes: z.string().optional(),
+          research: z
+            .string()
+            .optional()
+            .describe('Markdown prose summarizing the evidence supporting this choice.'),
+          citations: z
+            .array(
+              z.object({
+                id: z.string(),
+                pmid: z.string().optional(),
+                doi: z.string().optional(),
+                authors: z.string(),
+                year: z.number(),
+                title: z.string(),
+                journal: z.string(),
+                findings: z.string().optional(),
+                url: z.string().optional(),
+              })
+            )
+            .optional(),
+          status: z.enum(['considering', 'active', 'past', 'never']).optional(),
+        },
+        async (args) => jsonResult(await toolCreateSupplement(args))
+      ),
+      tool(
+        'update_supplement',
+        'Patch an existing supplement entry — change status, dose, notes, research, or citations. Common uses: record web research onto a "considering" entry, mark a brand "active" once the user starts taking it, append findings. WRITE TOOL — confirm before invoking.',
+        {
+          personId: z.string(),
+          id: z.string(),
+          status: z.enum(['considering', 'active', 'past', 'never']).optional(),
+          dose: z
+            .object({
+              amount: z.number().optional(),
+              unit: z.string().optional(),
+              frequency: z
+                .enum(['daily', 'twice-daily', 'as-needed', 'weekly', 'custom'])
+                .optional(),
+              frequencyCustom: z.string().optional(),
+              timeOfDay: z
+                .enum(['morning', 'midday', 'evening', 'bedtime', 'pre-workout', 'post-workout'])
+                .optional(),
+            })
+            .nullable()
+            .optional(),
+          notes: z.string().nullable().optional(),
+          research: z.string().nullable().optional(),
+          citations: z
+            .array(
+              z.object({
+                id: z.string(),
+                pmid: z.string().optional(),
+                doi: z.string().optional(),
+                authors: z.string(),
+                year: z.number(),
+                title: z.string(),
+                journal: z.string(),
+                findings: z.string().optional(),
+                url: z.string().optional(),
+              })
+            )
+            .nullable()
+            .optional(),
+        },
+        async (args) => jsonResult(await toolUpdateSupplement(args))
+      ),
+      tool(
+        'delete_supplement',
+        'Delete a supplement entry (and its label image if one exists). DESTRUCTIVE WRITE TOOL — always state which entry and confirm before invoking. Prefer setting status to "past" if the user might want the history.',
+        {
+          personId: z.string(),
+          id: z.string(),
+        },
+        async (args) => jsonResult(await toolDeleteSupplement(args))
+      ),
+      tool(
+        'log_sickness',
+        'Record an illness episode (cold, flu, allergies, migraine, …) with symptoms, severity, and any medications taken. Pairs with auto-detected illness periods from Apple Health to build a long-term picture. WRITE TOOL — confirm before invoking.',
+        {
+          personId: z.string(),
+          title: z.string().describe('Short label, e.g. "Spring sinus congestion".'),
+          startDate: z.string().describe('YYYY-MM-DD'),
+          endDate: z
+            .string()
+            .optional()
+            .describe('YYYY-MM-DD (inclusive). Omit while still active.'),
+          category: z
+            .enum([
+              'cold',
+              'flu',
+              'covid',
+              'allergies',
+              'sinus',
+              'stomach',
+              'injury',
+              'migraine',
+              'other',
+            ])
+            .optional(),
+          severity: z.enum(['mild', 'moderate', 'severe']).optional(),
+          symptoms: z.array(z.string()).optional(),
+          medications: z
+            .array(
+              z.object({
+                name: z.string(),
+                doseText: z.string().optional(),
+                count: z.number().optional(),
+                notes: z.string().optional(),
+              })
+            )
+            .optional(),
+          notes: z.string().optional(),
+        },
+        async (args) => jsonResult(await toolLogSickness(args))
+      ),
     ],
   });
 }
@@ -545,13 +900,22 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
 function buildSystemPrompt(activeEntity: string | undefined): string {
   const today = new Date().toISOString().slice(0, 10);
   return [
-    `You are the DocVault chat assistant — answering questions about the user's tax documents, financial records, and personal files. Today is ${today}.`,
+    `You are the DocVault chat assistant — answering questions about the user's tax documents, financial records, personal files, AND DocVault Health data (Apple Health, clinical labs, DNA, current supplement regimen, sickness log). Today is ${today}.`,
     activeEntity
-      ? `The user currently has entity "${activeEntity}" selected in the UI; prefer it when context is ambiguous, but call list_entities if they ask about something different.`
+      ? `The user currently has entity "${activeEntity}" selected in the UI; prefer it when entity context is ambiguous, but call list_entities if they ask about something different.`
       : 'No entity is currently selected in the UI.',
-    'Use the provided tools to answer factually. Never invent file names, vendors, amounts, or dates. If a file has not been parsed yet, say so — do not guess its contents.',
+    'DocVault Health is multi-person — the user, their partner, and any children each have their own person record. ALWAYS call list_health_people first when a health question comes in, and if the user did not specify whose health they mean, ASK before calling any health tool. Default to the user themselves only when there is exactly one non-archived person.',
+    "When making a supplement, dosing, or regimen recommendation, ground it in the user's actual data: call get_health_snapshot for the relevant person FIRST, then call list_supplements to see what they're already taking, and only after that synthesize advice. Cross-reference against any labs (kidney/liver function, electrolytes) before recommending dosage.",
+    'WebSearch is enabled. Use it to research products, brands, dosages, and primary literature (PubMed, journal articles) when the user asks for a recommendation or a comparison. Cite sources. Prefer primary literature over marketing pages.',
+    'Use the provided tools to answer factually. Never invent file names, vendors, amounts, dates, lab values, supplement brands, or citations. If a file has not been parsed yet or a supplement is not in the regimen, say so — do not guess.',
     'Be concise. Use markdown tables for structured data. When citing a specific document, include its path so the user can find it.',
-    'Write tools (set_metadata, add_reminder) make persistent changes — only invoke them when the user has clearly asked for that action.',
+    [
+      "WRITE TOOLS — these make persistent changes to the user's data:",
+      '  set_metadata, add_reminder, create_supplement, update_supplement, delete_supplement, log_sickness',
+      'ALWAYS state what you are about to write (which entry, which fields, what values) and wait for explicit user confirmation BEFORE invoking any of them. Read tools can be chained freely without asking.',
+      'delete_supplement is destructive — prefer update_supplement with status:"past" if the user might want the history back.',
+      'create_supplement defaults to status:"considering" — that is intentional so research-grounded suggestions never silently join the active stack.',
+    ].join('\n'),
   ].join('\n\n');
 }
 
@@ -816,6 +1180,11 @@ export async function handleChatRoutes(
             // be able to Bash/Read/Edit files on the NAS. Only DocVault's
             // MCP tools below should be reachable.
             allowedTools: ALLOWED_TOOLS,
+            // WebSearch is intentionally absent — it's in ALLOWED_BUILTIN_TOOLS
+            // so the chat can research supplement brands, lab interpretations,
+            // and tax-rule changes while reasoning about the user's data.
+            // WebFetch stays denied: the model would have to construct URLs
+            // and we don't want it pulling arbitrary user-supplied URLs.
             disallowedTools: [
               'Bash',
               'Read',
@@ -824,7 +1193,6 @@ export async function handleChatRoutes(
               'Glob',
               'Grep',
               'WebFetch',
-              'WebSearch',
               'NotebookEdit',
             ],
             mcpServers: { [MCP_SERVER_NAME]: mcpServer },

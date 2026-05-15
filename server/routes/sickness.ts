@@ -15,128 +15,26 @@
 //   PATCH  /api/health/:personId/sickness/:id          — update fields
 //   DELETE /api/health/:personId/sickness/:id          — delete a log
 
-import { promises as fs } from 'fs';
-import path from 'path';
-import { DATA_DIR, ensureDir, jsonResponse } from '../data.js';
-import type { HealthPerson } from '../data.js';
+import { jsonResponse } from '../data.js';
+import {
+  loadHealthStore,
+  saveHealthStore,
+  requirePerson,
+  type SicknessLog,
+  type SicknessCategory,
+  type SicknessSeverity,
+  type MedicationDose,
+} from '../health-store.js';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('Sickness');
 
-const HEALTH_STORE_FILE = path.join(DATA_DIR, '.docvault-health.json');
-
 // ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-/** Broad category — coarse filter, not a clinical diagnosis. */
-export type SicknessCategory =
-  | 'cold'
-  | 'flu'
-  | 'covid'
-  | 'allergies'
-  | 'sinus'
-  | 'stomach'
-  | 'injury'
-  | 'migraine'
-  | 'other';
-
-export type SicknessSeverity = 'mild' | 'moderate' | 'severe';
-
-export interface MedicationDose {
-  name: string; // "Claritin-D", "Ibuprofen", etc.
-  doseText?: string; // "10mg", "2 tabs", free-form
-  count?: number; // how many doses taken over the episode
-  notes?: string;
-}
-
-export interface SicknessLog {
-  id: string;
-  personId: string;
-  /** ISO date (YYYY-MM-DD) — when symptoms started. */
-  startDate: string;
-  /** ISO date, inclusive. If omitted, episode is still active. */
-  endDate?: string;
-  category: SicknessCategory;
-  severity: SicknessSeverity;
-  /** Free-form one-line title, e.g. "Spring sinus congestion". */
-  title: string;
-  /** Symptom tags — "congestion", "fatigue", "headache", "sore throat", etc. */
-  symptoms: string[];
-  /** Medications taken during this episode. */
-  medications: MedicationDose[];
-  /** Long-form notes, markdown OK. */
-  notes?: string;
-  /**
-   * Whether to link this log to auto-detected illness periods the parser
-   * flagged during the same date range. The link is resolved at render
-   * time by the frontend + snapshot — no persistent join.
-   */
-  linkToAutoDetection?: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// ---------------------------------------------------------------------------
-// Health store helpers (minimal — only the fields this module touches)
+// Types — owned by health-store.ts now, re-exported here so existing
+// consumers (frontend, tests, sibling routes) keep working unchanged.
 // ---------------------------------------------------------------------------
 
-interface HealthStoreShape {
-  version: 1;
-  people: HealthPerson[];
-  summaries?: Record<string, unknown>;
-  snapshots?: Record<string, unknown>;
-  clinical?: Record<string, unknown>;
-  illnessNotes?: Record<string, unknown>;
-  nutrition?: Record<string, unknown>;
-  sicknessLogs?: Record<string, SicknessLog>;
-  /** Preserve fields owned by other route modules (health-analysis, …). */
-  [key: string]: unknown;
-}
-
-async function loadHealthStore(): Promise<HealthStoreShape> {
-  try {
-    const raw = await fs.readFile(HEALTH_STORE_FILE, 'utf-8');
-    const parsed = JSON.parse(raw) as Partial<HealthStoreShape>;
-    return {
-      // Spread first so sibling-owned fields survive this module's saves.
-      ...parsed,
-      version: 1,
-      people: parsed.people ?? [],
-      summaries: parsed.summaries ?? {},
-      snapshots: parsed.snapshots ?? {},
-      clinical: parsed.clinical ?? {},
-      illnessNotes: parsed.illnessNotes ?? {},
-      nutrition: parsed.nutrition ?? {},
-      sicknessLogs: parsed.sicknessLogs ?? {},
-    };
-  } catch {
-    return {
-      version: 1,
-      people: [],
-      summaries: {},
-      snapshots: {},
-      clinical: {},
-      illnessNotes: {},
-      nutrition: {},
-      sicknessLogs: {},
-    };
-  }
-}
-
-async function saveHealthStore(store: HealthStoreShape): Promise<void> {
-  await ensureDir(DATA_DIR);
-  const tmp = `${HEALTH_STORE_FILE}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(store, null, 2));
-  await fs.rename(tmp, HEALTH_STORE_FILE);
-}
-
-async function requirePerson(personId: string): Promise<HealthPerson> {
-  const store = await loadHealthStore();
-  const person = store.people.find((p) => p.id === personId);
-  if (!person) throw new Error(`Person "${personId}" not found`);
-  return person;
-}
+export type { SicknessLog, SicknessCategory, SicknessSeverity, MedicationDose };
 
 function newLogId(): string {
   const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
