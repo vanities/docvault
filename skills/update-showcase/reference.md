@@ -6,7 +6,7 @@ Loaded on demand during Step 2/3 of the `update-showcase` skill. Keeps canonical
 
 - Lead with the concrete capability, not the aspiration. "Parses financial PDFs with Claude" > "AI-powered document intelligence."
 - One line per bullet. If a feature needs two lines, it's two features.
-- Numbers stay fabricated: `$1,234.56`, `Acme Bank`, `John Doe`. Never paste real fixtures into the README — see CLAUDE.md's open-source / privacy rules.
+- Numbers stay fabricated: `$1,234.56`, `Acme Bank`, `John Doe`. Never paste real fixtures into the README — see AGENTS.md's open-source / privacy rules.
 - Screenshot captions live next to the image in an underscore-italic line only when the image needs context beyond what the alt text provides.
 
 ## Section order (must match)

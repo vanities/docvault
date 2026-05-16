@@ -85,4 +85,4 @@ Pre-actions (click a tab, pick a person, wait for a selector) go under `pre_acti
 
 - The script sets `DOCVAULT_DATA_DIR=./demo-data` and `DOCVAULT_PASSWORD=demo` so the demo backend boots self-contained; it does not touch the user's real `./data/`.
 - Viewport defaults to 1440×900 at `device_scale_factor: 2` for crisp output. Per-view `viewport` or `full_page: true` overrides live in `views.json`.
-- Demo fixtures must stay generic — no real names or amounts. The CLAUDE.md "open source / privacy" rules apply: fabricate (`Acme Bank`, `$1,234.56`, `John Doe`) when writing new fixtures.
+- Demo fixtures must stay generic — no real names or amounts. The AGENTS.md "open source / privacy" rules apply: fabricate (`Acme Bank`, `$1,234.56`, `John Doe`) when writing new fixtures.
