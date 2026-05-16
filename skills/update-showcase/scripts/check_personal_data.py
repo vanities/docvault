@@ -11,7 +11,7 @@ Categories scanned:
 - Dollar amounts >= $10,000 (demo fixtures use round/small numbers).
 - 4-digit strings next to words like "account", "card", "ending in", "xxxx".
 - User-specific patterns from an optional gitignored wordlist at
-  .claude/skills/update-showcase/personal-patterns.txt (one per line —
+  skills/update-showcase/personal-patterns.txt (one per line —
   names, account tails, email addresses, etc). Missing file → warn-skip.
 
 Exit 0 = clean; exit 1 = hits found (prints locations).
