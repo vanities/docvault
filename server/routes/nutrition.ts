@@ -453,6 +453,30 @@ export async function handleNutritionRoutes(
       }
 
       const now = new Date().toISOString();
+      // Conservative merge for identity fields. When the re-parse reads the
+      // facts-panel slot (which it prefers when present), the panel image
+      // typically doesn't carry brand or product names — those live on the
+      // front of the bottle. Wholesale-replacing entry.parsed would zero out
+      // those identity fields, leaving the card title as "(unparsed)" even
+      // though the entry is more parsed than before. So: if the new parse
+      // omits brandName / productName / category, keep whatever the prior
+      // parse had. Everything else (servingSize, vitamins, ingredients,
+      // warnings, etc.) is replaced wholesale because the panel IS the
+      // authoritative source for those.
+      if (parsed) {
+        const prior = entry.parsed;
+        if (prior) {
+          if (parsed.brandName === undefined && prior.brandName !== undefined) {
+            parsed.brandName = prior.brandName;
+          }
+          if (parsed.productName === undefined && prior.productName !== undefined) {
+            parsed.productName = prior.productName;
+          }
+          if (parsed.category === undefined && prior.category !== undefined) {
+            parsed.category = prior.category;
+          }
+        }
+      }
       entry.parsed = parsed;
       entry.parseError = parseError;
       entry.parsedAt = parsed ? now : entry.parsedAt;
