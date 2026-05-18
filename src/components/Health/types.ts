@@ -625,8 +625,13 @@ export interface NutritionEntry {
   id: string;
   personId: string;
   filename: string | null;
+  /** Front-of-bottle thumbnail. Empty string = absent (text-only entry or facts-only). */
   imagePath: string;
   imageMediaType: string;
+  /** Optional Supplement Facts panel close-up — preferred by the parser when present. */
+  factsImagePath?: string;
+  factsImageMediaType?: string;
+  factsFilename?: string | null;
   uploadedAt: string;
   parsedAt: string | null;
   parsed: ParsedNutritionLabel | null;
