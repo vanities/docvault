@@ -23,12 +23,22 @@ const log = createLogger('ParserBase');
 
 let client: Anthropic | null = null;
 
+// Anthropic SDK retry config — left at the SDK default of 2. The SDK retries
+// on 429 and 5xx using exponential backoff and honours `Retry-After` headers
+// when the server provides them, which is the API-correct response to
+// transient rate-limit bursts (a single user clicking Re-parse should not
+// fail because someone else's parse used the per-minute token budget two
+// seconds ago). Worst-case latency penalty is ~4-5s before surfacing a true
+// rate-limit error to the UI; on the happy path the retry config has zero
+// effect.
+const ANTHROPIC_MAX_RETRIES = 2;
+
 export async function getClient(): Promise<Anthropic> {
   const authToken = await getAnthropicAuthToken();
   if (authToken) {
     client = new Anthropic({
       authToken,
-      maxRetries: 0,
+      maxRetries: ANTHROPIC_MAX_RETRIES,
       defaultHeaders: { 'anthropic-beta': 'oauth-2025-04-20' },
     });
     return client;
@@ -40,7 +50,7 @@ export async function getClient(): Promise<Anthropic> {
       'No Claude credentials configured. Add an Anthropic API key OR a Claude OAuth token in Settings.'
     );
   }
-  client = new Anthropic({ apiKey, maxRetries: 0 });
+  client = new Anthropic({ apiKey, maxRetries: ANTHROPIC_MAX_RETRIES });
   return client;
 }
 
