@@ -34,6 +34,26 @@ let client: Anthropic | null = null;
 const ANTHROPIC_MAX_RETRIES = 2;
 
 export async function getClient(): Promise<Anthropic> {
+  // Prefer the developer-console API key over the Claude.ai OAuth token when
+  // both are configured. The two flows have wildly different rate-limit
+  // regimes: API keys use the tiered per-minute token budget on the
+  // developer console (scales with usage tier 1-4, separate quota, billed),
+  // while OAuth tokens consume the user's claude.ai plan budget (~5-hour
+  // rolling window shared with their interactive chats). For backend
+  // automation like document parsing — which is what this client serves —
+  // the API key is the right tool. OAuth remains available as a fallback
+  // for users who only have a Claude.ai max plan and no developer key.
+  //
+  // Note: the chat MCP path in server/routes/chat.ts manages its own
+  // credentials independently (via env vars to a spawned Claude Code
+  // subprocess) and is unaffected by this precedence — chat continues to
+  // honour OAuth-first by design.
+  const apiKey = await getAnthropicKey();
+  if (apiKey) {
+    client = new Anthropic({ apiKey, maxRetries: ANTHROPIC_MAX_RETRIES });
+    return client;
+  }
+
   const authToken = await getAnthropicAuthToken();
   if (authToken) {
     client = new Anthropic({
@@ -44,14 +64,9 @@ export async function getClient(): Promise<Anthropic> {
     return client;
   }
 
-  const apiKey = await getAnthropicKey();
-  if (!apiKey) {
-    throw new Error(
-      'No Claude credentials configured. Add an Anthropic API key OR a Claude OAuth token in Settings.'
-    );
-  }
-  client = new Anthropic({ apiKey, maxRetries: ANTHROPIC_MAX_RETRIES });
-  return client;
+  throw new Error(
+    'No Claude credentials configured. Add an Anthropic API key OR a Claude OAuth token in Settings.'
+  );
 }
 
 // --- File I/O ---
