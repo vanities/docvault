@@ -6,6 +6,8 @@
 //   GET    /api/health/:personId/nutrition                — list all entries for a person
 //   GET    /api/health/:personId/nutrition/:id            — get one parsed entry
 //   GET    /api/health/:personId/nutrition/:id/image      — fetch the raw label image (PNG/JPG)
+//   PUT    /api/health/:personId/nutrition/:id/replace-image — swap the stored image bytes, keep entry id/dose/notes/parsed/etc.
+//     body: raw image bytes; query: ?filename=<name>
 //   PATCH  /api/health/:personId/nutrition/:id            — update status, dose, notes, research, citations, or parsed fields
 //     body: partial { status?, dose?, notes?, research?, citations?, parsed? }
 //   POST   /api/health/:personId/nutrition/:id/reparse    — re-run the parser against the stored image
@@ -311,11 +313,12 @@ export async function handleNutritionRoutes(
   }
 
   // GET /api/health/:personId/nutrition/:id — single entry
-  // GET /api/health/:personId/nutrition/:id/image — raw image bytes
+  // GET /api/health/:personId/nutrition/:id/image?slot=primary|facts — raw image bytes
+  // PUT /api/health/:personId/nutrition/:id/replace-image?slot=primary|facts — swap bytes for that slot
   // PATCH /api/health/:personId/nutrition/:id — update fields
   // DELETE /api/health/:personId/nutrition/:id — remove
   // POST /api/health/:personId/nutrition/:id/reparse — re-run the parser
-  const idMatch = sub.match(/^\/([a-z0-9]+)(?:\/(image|reparse))?$/i);
+  const idMatch = sub.match(/^\/([a-z0-9]+)(?:\/(image|reparse|replace-image))?$/i);
   if (idMatch) {
     const id = idMatch[1];
     const action = idMatch[2];
@@ -327,14 +330,26 @@ export async function handleNutritionRoutes(
       return jsonResponse({ error: `No nutrition entry "${id}" for ${personId}` }, 404);
     }
 
+    // Resolve which slot a request is targeting. Both image GET and the
+    // replace-image PUT use the same `?slot=primary|facts` convention, with
+    // `primary` as the default so existing URL callers keep working.
+    const slotParam = url.searchParams.get('slot');
+    const slot: 'primary' | 'facts' = slotParam === 'facts' ? 'facts' : 'primary';
+    const slotImagePath = slot === 'facts' ? (entry.factsImagePath ?? '') : entry.imagePath;
+    const slotMediaType =
+      slot === 'facts' ? (entry.factsImageMediaType ?? '') : entry.imageMediaType;
+
     // GET /api/health/:personId/nutrition/:id/image
     if (action === 'image' && req.method === 'GET') {
-      const abs = path.join(DATA_DIR, entry.imagePath);
+      if (!slotImagePath) {
+        return jsonResponse({ error: `Slot "${slot}" has no image attached` }, 404);
+      }
+      const abs = path.join(DATA_DIR, slotImagePath);
       try {
         const bytes = await fs.readFile(abs);
         return new Response(new Uint8Array(bytes), {
           headers: {
-            'Content-Type': entry.imageMediaType || 'image/png',
+            'Content-Type': slotMediaType || 'image/png',
             'Cache-Control': 'private, max-age=3600',
           },
         });
@@ -343,9 +358,81 @@ export async function handleNutritionRoutes(
       }
     }
 
+    // PUT /api/health/:personId/nutrition/:id/replace-image
+    //
+    // Writes raw image bytes to the slot's path on disk, then mutates the
+    // slot's three fields (imagePath, imageMediaType, filename — or the
+    // facts-prefixed counterparts) and bumps lastUpdated. Crucially, it
+    // does NOT touch parsed/dose/notes/research/citations/status — those
+    // survive intact across an image swap. The caller can choose to follow
+    // up with a /reparse POST if the new image changes the parsed facts.
+    //
+    // The previous file in the slot (if any) is unlinked best-effort. If
+    // the slot was empty (text-only entry attaching a first image, or
+    // attaching a facts panel for the first time), unlink is a no-op.
+    if (action === 'replace-image' && req.method === 'PUT') {
+      const filename = url.searchParams.get('filename');
+      const raw = Buffer.from(await req.arrayBuffer());
+      if (raw.length === 0) {
+        return jsonResponse({ error: 'Empty upload' }, 400);
+      }
+
+      const mediaType =
+        filename && /\.(png|jpe?g|gif|webp)$/i.test(filename)
+          ? mediaTypeFromFilename(filename)
+          : mediaTypeFromBuffer(raw);
+      const ext = extFromMediaType(mediaType);
+
+      // Unlink the old file (if any). The suffix `-facts` keeps the two
+      // slots' bytes on disk distinguishable when both are populated.
+      const oldRel = slot === 'facts' ? (entry.factsImagePath ?? '') : entry.imagePath;
+      if (oldRel) {
+        const oldAbs = path.join(DATA_DIR, oldRel);
+        try {
+          await fs.unlink(oldAbs);
+        } catch {
+          /* already gone — fine */
+        }
+      }
+
+      await ensureDir(nutritionDir(personId));
+      const baseName = slot === 'facts' ? `${id}-facts` : id;
+      const newAbs = path.join(nutritionDir(personId), `${baseName}.${ext}`);
+      const newRel = path.relative(DATA_DIR, newAbs);
+      await fs.writeFile(newAbs, raw);
+
+      const now = new Date().toISOString();
+      if (slot === 'facts') {
+        entry.factsImagePath = newRel;
+        entry.factsImageMediaType = mediaType;
+        entry.factsFilename = filename;
+      } else {
+        entry.imagePath = newRel;
+        entry.imageMediaType = mediaType;
+        entry.filename = filename;
+      }
+      entry.lastUpdated = now;
+      await saveHealthStore(store);
+
+      log.info(`Nutrition image replaced for ${key} slot=${slot}`);
+      return jsonResponse({ entry });
+    }
+
     // POST /api/health/:personId/nutrition/:id/reparse
+    //
+    // Prefer the facts-panel image when present — that's the close-up of the
+    // actual label text the parser can actually read. Fall back to the
+    // primary (bottle/front) shot if the facts slot is empty, which keeps
+    // older single-image entries working unchanged.
     if (action === 'reparse' && req.method === 'POST') {
-      const abs = path.join(DATA_DIR, entry.imagePath);
+      const sourceRel = entry.factsImagePath || entry.imagePath;
+      const sourceMediaType = entry.factsImagePath
+        ? entry.factsImageMediaType || ''
+        : entry.imageMediaType;
+      if (!sourceRel) {
+        return jsonResponse({ error: 'No image attached to reparse' }, 400);
+      }
+      const abs = path.join(DATA_DIR, sourceRel);
       let raw: Buffer;
       try {
         raw = await fs.readFile(abs);
@@ -353,7 +440,7 @@ export async function handleNutritionRoutes(
         return jsonResponse({ error: 'Image file missing on disk' }, 410);
       }
       const mediaType =
-        (entry.imageMediaType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp') ||
+        (sourceMediaType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp') ||
         mediaTypeFromBuffer(raw);
 
       let parsed: ParsedNutritionLabel | null = null;
@@ -418,12 +505,19 @@ export async function handleNutritionRoutes(
     }
 
     // DELETE /api/health/:personId/nutrition/:id
+    //
+    // Remove both image slots from disk best-effort, then drop the store
+    // entry. The two unlinks are tolerant of missing files so the JSON
+    // entry always gets cleared even if disk state is inconsistent (e.g.,
+    // someone removed files out-of-band).
     if (!action && req.method === 'DELETE') {
-      const abs = path.join(DATA_DIR, entry.imagePath);
-      try {
-        await fs.unlink(abs);
-      } catch {
-        /* file already gone — fine */
+      for (const rel of [entry.imagePath, entry.factsImagePath]) {
+        if (!rel) continue;
+        try {
+          await fs.unlink(path.join(DATA_DIR, rel));
+        } catch {
+          /* file already gone — fine */
+        }
       }
       delete store.nutrition![key];
       await saveHealthStore(store);

@@ -67,12 +67,24 @@ export interface NutritionEntry {
   /** Original filename uploaded, for display. May be null for text-only entries. */
   filename: string | null;
   /**
-   * Relative path under DATA_DIR. Empty string for text-only entries (no image
-   * uploaded — used by chat-tool-created supplements where the agent recorded
-   * the regimen without scanning a label).
+   * Front-of-bottle / packaging shot — used for the card thumbnail. Optional
+   * in spirit: empty string means absent (the chat-MCP creation path and
+   * facts-only uploads both leave it blank). Older entries created via the
+   * image-upload path always have it set.
    */
   imagePath: string;
   imageMediaType: string;
+  /**
+   * Close-up of the Supplement Facts / Nutrition Facts panel — separate slot
+   * so the card thumbnail can stay the recognizable front shot while the
+   * parser feeds on the actual label text. When set, the reparse endpoint
+   * reads bytes from this slot (a clean panel) instead of the primary
+   * (glossy product photography that's noisier for OCR). Missing or empty
+   * string means absent — readers should fall back to imagePath.
+   */
+  factsImagePath?: string;
+  factsImageMediaType?: string;
+  factsFilename?: string | null;
   uploadedAt: string;
   parsedAt: string | null;
   parsed: ParsedNutritionLabel | null;

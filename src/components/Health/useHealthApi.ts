@@ -312,6 +312,37 @@ export function useHealthApi() {
     []
   );
 
+  /**
+   * Nutrition: swap the image bytes at a slot ('primary' = bottle thumbnail,
+   * 'facts' = Supplement Facts panel). Preserves dose/notes/parsed/status.
+   * Returns the updated entry so callers can re-render with the new lastUpdated
+   * (used for cache-busting the image URL).
+   */
+  const replaceNutritionImage = useCallback(
+    async (
+      personId: string,
+      id: string,
+      file: File,
+      slot: 'primary' | 'facts' = 'primary'
+    ): Promise<NutritionEntry> => {
+      const qs = new URLSearchParams({ filename: file.name, slot });
+      const res = await fetch(
+        `${API_BASE}/health/${personId}/nutrition/${id}/replace-image?${qs.toString()}`,
+        {
+          method: 'PUT',
+          body: file,
+        }
+      );
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(err.error ?? `Replace failed: ${res.status}`);
+      }
+      const body = (await res.json()) as { entry: NutritionEntry };
+      return body.entry;
+    },
+    []
+  );
+
   /** Nutrition: delete a label + its image file. */
   const deleteNutrition = useCallback(async (personId: string, id: string): Promise<void> => {
     await request<{ ok: true }>(`${API_BASE}/health/${personId}/nutrition/${id}`, {
@@ -319,10 +350,25 @@ export function useHealthApi() {
     });
   }, []);
 
-  /** Nutrition: build the image URL for an entry (no auth — same origin). */
-  const nutritionImageUrl = useCallback((personId: string, id: string): string => {
-    return `${API_BASE}/health/${personId}/nutrition/${id}/image`;
-  }, []);
+  /**
+   * Build the image URL for an entry slot. `version` (typically entry.lastUpdated)
+   * is appended as a query param so the browser cache invalidates when the bytes
+   * change — the server ignores the param but the URL changes, so `Cache-Control:
+   * max-age=3600` stays effective while still being instantly fresh on mutation.
+   */
+  const nutritionImageUrl = useCallback(
+    (
+      personId: string,
+      id: string,
+      slot: 'primary' | 'facts' = 'primary',
+      version?: string
+    ): string => {
+      const qs = new URLSearchParams({ slot });
+      if (version) qs.set('v', version);
+      return `${API_BASE}/health/${personId}/nutrition/${id}/image?${qs.toString()}`;
+    },
+    []
+  );
 
   /** Sickness: list all manually-logged episodes for a person. */
   const listSickness = useCallback(async (personId: string): Promise<SicknessLog[]> => {
@@ -397,6 +443,7 @@ export function useHealthApi() {
       uploadNutritionLabel,
       updateNutrition,
       reparseNutrition,
+      replaceNutritionImage,
       deleteNutrition,
       nutritionImageUrl,
       listSickness,
@@ -420,6 +467,7 @@ export function useHealthApi() {
       uploadNutritionLabel,
       updateNutrition,
       reparseNutrition,
+      replaceNutritionImage,
       deleteNutrition,
       nutritionImageUrl,
       listSickness,

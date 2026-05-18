@@ -55,8 +55,9 @@ import type { LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useAppContext } from '../../contexts/AppContext';
+import { useToast } from '../../hooks/useToast';
 import { useHealthApi } from './useHealthApi';
-import type { NutritionDose, NutritionEntry, NutritionStatus } from './types';
+import type { NutritionDose, NutritionEntry, NutritionStatus, ParsedNutritionLabel } from './types';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -114,6 +115,7 @@ function tiltFor(id: string): number {
 export function HealthNutritionView() {
   const { selectedHealthPersonId } = useAppContext();
   const api = useHealthApi();
+  const { addToast } = useToast();
 
   const [entries, setEntries] = useState<NutritionEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -202,20 +204,63 @@ export function HealthNutritionView() {
     [api, selectedHealthPersonId, load]
   );
 
-  const handleDoseOrNotesChange = useCallback(
+  // Replace bytes at a slot (primary = bottle / front shot, facts = panel
+  // close-up). The slot's three fields update; everything else — dose,
+  // notes, parsed facts, research, citations — survives. The follow-up
+  // load() picks up the new lastUpdated which cache-busts both image URLs.
+  const handleReplaceImage = useCallback(
+    async (entry: NutritionEntry, file: File, slot: 'primary' | 'facts') => {
+      if (!selectedHealthPersonId) return;
+      try {
+        await api.replaceNutritionImage(entry.personId, entry.id, file, slot);
+        addToast(`${slot === 'facts' ? 'Facts panel' : 'Front image'} saved`, 'success');
+        await load();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(msg);
+        addToast(`Save failed: ${msg}`, 'error');
+      }
+    },
+    [api, selectedHealthPersonId, load, addToast]
+  );
+
+  // Pick the best available URL for a card thumbnail: front shot if present,
+  // facts panel as fallback, empty string if neither (the card handles that
+  // as a "no image" placeholder rather than rendering a broken <img>).
+  const thumbnailUrlFor = useCallback(
+    (e: NutritionEntry): string => {
+      if (e.imagePath) return api.nutritionImageUrl(e.personId, e.id, 'primary', e.lastUpdated);
+      if (e.factsImagePath) return api.nutritionImageUrl(e.personId, e.id, 'facts', e.lastUpdated);
+      return '';
+    },
+    [api]
+  );
+
+  // Persists any combination of dose, notes, and parsed-field edits (e.g.
+  // the editable productName/brandName "title" in the detail modal) in a
+  // single PATCH — keeps the round-trip count to one and lets the toast
+  // wait on the actual response rather than firing optimistically.
+  const handleEntryUpdate = useCallback(
     async (
       entry: NutritionEntry,
-      updates: { dose?: NutritionDose | null; notes?: string | null }
+      updates: {
+        dose?: NutritionDose | null;
+        notes?: string | null;
+        parsed?: ParsedNutritionLabel | null;
+      }
     ) => {
       if (!selectedHealthPersonId) return;
       try {
         await api.updateNutrition(selectedHealthPersonId, entry.id, updates);
+        addToast('Entry saved', 'success');
         await load();
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(msg);
+        addToast(`Save failed: ${msg}`, 'error');
       }
     },
-    [api, selectedHealthPersonId, load]
+    [api, selectedHealthPersonId, load, addToast]
   );
 
   // ---- Derived state -----------------------------------------------------
@@ -305,7 +350,7 @@ export function HealthNutritionView() {
                 activeByTime={activeByTime}
                 onOpen={setSelectedId}
                 onStatusChange={handleStatusChange}
-                imageUrlFor={(e) => api.nutritionImageUrl(e.personId, e.id)}
+                imageUrlFor={thumbnailUrlFor}
               />
             ) : null}
 
@@ -317,7 +362,7 @@ export function HealthNutritionView() {
                 entries={considering}
                 onOpen={setSelectedId}
                 onStatusChange={handleStatusChange}
-                imageUrlFor={(e) => api.nutritionImageUrl(e.personId, e.id)}
+                imageUrlFor={thumbnailUrlFor}
               />
             )}
             {past.length > 0 && (
@@ -328,7 +373,7 @@ export function HealthNutritionView() {
                 entries={past}
                 onOpen={setSelectedId}
                 onStatusChange={handleStatusChange}
-                imageUrlFor={(e) => api.nutritionImageUrl(e.personId, e.id)}
+                imageUrlFor={thumbnailUrlFor}
               />
             )}
             {never.length > 0 && (
@@ -339,7 +384,7 @@ export function HealthNutritionView() {
                 entries={never}
                 onOpen={setSelectedId}
                 onStatusChange={handleStatusChange}
-                imageUrlFor={(e) => api.nutritionImageUrl(e.personId, e.id)}
+                imageUrlFor={thumbnailUrlFor}
               />
             )}
 
@@ -355,12 +400,32 @@ export function HealthNutritionView() {
       {selectedEntry && (
         <DetailModal
           entry={selectedEntry}
-          imageUrl={api.nutritionImageUrl(selectedEntry.personId, selectedEntry.id)}
+          imageUrl={
+            selectedEntry.imagePath
+              ? api.nutritionImageUrl(
+                  selectedEntry.personId,
+                  selectedEntry.id,
+                  'primary',
+                  selectedEntry.lastUpdated
+                )
+              : null
+          }
+          factsImageUrl={
+            selectedEntry.factsImagePath
+              ? api.nutritionImageUrl(
+                  selectedEntry.personId,
+                  selectedEntry.id,
+                  'facts',
+                  selectedEntry.lastUpdated
+                )
+              : null
+          }
           onClose={() => setSelectedId(null)}
           onStatusChange={(s) => handleStatusChange(selectedEntry, s)}
           onDelete={() => handleDelete(selectedEntry)}
           onReparse={() => handleReparse(selectedEntry)}
-          onSave={(u) => handleDoseOrNotesChange(selectedEntry, u)}
+          onReplaceImage={(file, slot) => handleReplaceImage(selectedEntry, file, slot)}
+          onSave={(u) => handleEntryUpdate(selectedEntry, u)}
         />
       )}
     </div>
@@ -687,15 +752,33 @@ function LabelCard({
           onClick={onClick}
           className="relative w-full h-40 bg-surface-100/40 hover:bg-surface-200/50 transition-colors"
         >
-          <img src={imageUrl} alt={title} className="w-full h-full object-cover" loading="lazy" />
+          {imageUrl ? (
+            <img src={imageUrl} alt={title} className="w-full h-full object-cover" loading="lazy" />
+          ) : (
+            // Text-only entries (chat-MCP-created) and entries that haven't
+            // had any image attached yet land here. A muted placeholder is
+            // less jarring than a broken-image icon and reads as "open me to
+            // attach a photo".
+            <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-surface-600">
+              <Pill className="w-7 h-7" />
+              <span className="text-[10px] uppercase tracking-[0.18em]">no image yet</span>
+            </div>
+          )}
           {entry.parseError && (
             <div className="absolute top-2 left-2 px-2 py-0.5 bg-rose-500/90 text-surface-0 text-[10px] tracking-wide uppercase rounded-md">
               Parse failed
             </div>
           )}
           {entry.citations && entry.citations.length > 0 && (
+            // Near-black pill (`surface-0`) with a saturated mint accent ring
+            // that ties back to the BookOpen icon. The earlier `surface-300`
+            // ring was nearly invisible against `surface-100` — the edge
+            // vanished, so the pill looked unframed over bright label
+            // photos. A bigger drop shadow against `surface-0/60` lifts the
+            // badge off any image (light or dark) without needing more
+            // chrome inside.
             <div
-              className="absolute top-2 right-2 px-2 py-0.5 bg-surface-950/80 backdrop-blur-sm text-accent-400 text-[10px] font-semibold rounded-md flex items-center gap-1"
+              className="absolute top-2 right-2 px-2 py-1 bg-surface-0/85 backdrop-blur-md text-accent-400 text-[10px] font-semibold rounded-md flex items-center gap-1 ring-1 ring-accent-400/45 shadow-lg shadow-surface-0/60"
               title={`${entry.citations.length} research citation${entry.citations.length === 1 ? '' : 's'} attached`}
             >
               <BookOpen className="w-3 h-3" />
@@ -841,20 +924,36 @@ function ClosingNote({ totalActive }: { totalActive: number }) {
 function DetailModal({
   entry,
   imageUrl,
+  factsImageUrl,
   onClose,
   onStatusChange,
   onDelete,
   onReparse,
+  onReplaceImage,
   onSave,
 }: {
   entry: NutritionEntry;
-  imageUrl: string;
+  /** Front-of-bottle / product shot URL, or null if that slot is empty. */
+  imageUrl: string | null;
+  /** Supplement Facts panel URL, or null if that slot is empty. */
+  factsImageUrl: string | null;
   onClose: () => void;
   onStatusChange: (s: NutritionStatus) => void;
   onDelete: () => void;
   onReparse: () => Promise<void> | void;
-  onSave: (updates: { dose?: NutritionDose | null; notes?: string | null }) => void;
+  onReplaceImage: (file: File, slot: 'primary' | 'facts') => void;
+  onSave: (updates: {
+    dose?: NutritionDose | null;
+    notes?: string | null;
+    parsed?: ParsedNutritionLabel | null;
+  }) => void;
 }) {
+  // Editable title fields — productName is the headline, brandName the
+  // subtitle on cards and in the snapshot table. We keep all other parsed
+  // fields (vitamins, ingredients, etc.) intact when patching by spreading
+  // entry.parsed below.
+  const [productName, setProductName] = useState<string>(entry.parsed?.productName ?? '');
+  const [brandName, setBrandName] = useState<string>(entry.parsed?.brandName ?? '');
   const [doseAmount, setDoseAmount] = useState<string>(entry.dose?.amount?.toString() ?? '');
   const [doseUnit, setDoseUnit] = useState<string>(entry.dose?.unit ?? '');
   const [frequency, setFrequency] = useState<NutritionDose['frequency']>(entry.dose?.frequency);
@@ -863,6 +962,13 @@ function DetailModal({
   const [notes, setNotes] = useState<string>(entry.notes ?? '');
   const [reparsing, setReparsing] = useState(false);
 
+  // Saves dose + notes + title in a single PATCH. The server replaces
+  // entry.parsed wholesale (see server/routes/nutrition.ts handler), so
+  // we must send the full parsed object back — spread the existing one
+  // so vitamins/minerals/ingredients survive a title edit. If the entry
+  // was never parsed (parseError) and the user added a title, we
+  // synthesise a minimal stub so the card and snapshot stop showing
+  // "(unparsed)".
   const saveDose = useCallback(() => {
     const dose: NutritionDose = {};
     if (doseAmount.trim()) {
@@ -873,9 +979,46 @@ function DetailModal({
     if (frequency) dose.frequency = frequency;
     if (frequencyCustom.trim()) dose.frequencyCustom = frequencyCustom.trim();
     if (timeOfDay) dose.timeOfDay = timeOfDay;
-    const hasAny = Object.keys(dose).length > 0;
-    onSave({ dose: hasAny ? dose : null, notes: notes.trim() || null });
-  }, [doseAmount, doseUnit, frequency, frequencyCustom, timeOfDay, notes, onSave]);
+    const hasAnyDose = Object.keys(dose).length > 0;
+
+    const trimmedProduct = productName.trim();
+    const trimmedBrand = brandName.trim();
+    let parsedUpdate: ParsedNutritionLabel | null | undefined;
+    if (entry.parsed) {
+      parsedUpdate = {
+        ...entry.parsed,
+        productName: trimmedProduct || undefined,
+        brandName: trimmedBrand || undefined,
+      };
+    } else if (trimmedProduct || trimmedBrand) {
+      parsedUpdate = {
+        schemaVersion: 1,
+        parserVersion: 'manual',
+        productName: trimmedProduct || undefined,
+        brandName: trimmedBrand || undefined,
+      };
+    } else {
+      // No existing parsed and no title input — don't touch the field.
+      parsedUpdate = undefined;
+    }
+
+    onSave({
+      dose: hasAnyDose ? dose : null,
+      notes: notes.trim() || null,
+      ...(parsedUpdate !== undefined && { parsed: parsedUpdate }),
+    });
+  }, [
+    doseAmount,
+    doseUnit,
+    frequency,
+    frequencyCustom,
+    timeOfDay,
+    notes,
+    productName,
+    brandName,
+    entry.parsed,
+    onSave,
+  ]);
 
   const p = entry.parsed;
 
@@ -935,21 +1078,60 @@ function DetailModal({
 
         {/* Body */}
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_1.2fr] gap-0">
-          {/* Left: image */}
+          {/* Left: image slots — front-of-bottle on top (the card thumbnail),
+              Supplement Facts close-up below (what the re-parser feeds on).
+              Each slot is independently attach/replaceable, and the absence
+              of either renders as a dashed dropzone instead of a broken img.
+              The sticky wrapper keeps both visible while the right column
+              scrolls through the parsed-facts panels. */}
           <div className="p-6 md:p-8 border-r-0 lg:border-r border-surface-200/40 bg-surface-100/30">
-            <div className="sticky top-8">
-              <img
-                src={imageUrl}
-                alt={p?.productName ?? 'label'}
-                className="w-full rounded-xl border border-surface-200/60 shadow-md"
+            <div className="sticky top-8 space-y-5">
+              <ImageSlot
+                slot="primary"
+                url={imageUrl}
+                alt={p?.productName ?? 'front of bottle'}
+                emptyLabel="Front of bottle"
+                emptyHint="Used for the card thumbnail."
+                onReplace={(file) => onReplaceImage(file, 'primary')}
+              />
+              <ImageSlot
+                slot="facts"
+                url={factsImageUrl}
+                alt={`${p?.productName ?? 'label'} — Supplement Facts panel`}
+                emptyLabel="Supplement Facts panel"
+                emptyHint="Used by Re-parse when present (better OCR than the front shot)."
+                onReplace={(file) => onReplaceImage(file, 'facts')}
               />
             </div>
           </div>
 
           {/* Right: editable + parsed */}
           <div className="p-6 md:p-8 space-y-8">
+            {/* Identity — editable title (productName) + brand. Persists on
+                "Save entry" along with dose/notes via a single PATCH. */}
+            <FieldGroup number="01" label="Identity">
+              <input
+                type="text"
+                placeholder="Product name"
+                value={productName}
+                onChange={(e) => setProductName(e.target.value)}
+                className="w-full mb-2 px-3 py-1.5 text-sm bg-surface-100/50 border border-surface-200/50 rounded-lg focus:outline-none focus:border-accent-400/50"
+              />
+              <input
+                type="text"
+                placeholder="Brand"
+                value={brandName}
+                onChange={(e) => setBrandName(e.target.value)}
+                className="w-full px-3 py-1.5 text-sm bg-surface-100/50 border border-surface-200/50 rounded-lg focus:outline-none focus:border-accent-400/50"
+              />
+              <p className="text-[11px] text-surface-600 mt-2 italic">
+                Edits the title shown on the card, in the snapshot table, and across the regimen.
+                Re-parsing the label will overwrite these.
+              </p>
+            </FieldGroup>
+
             {/* Status */}
-            <FieldGroup number="01" label="Standing">
+            <FieldGroup number="02" label="Standing">
               <div className="flex gap-1.5 flex-wrap">
                 {STATUS_ORDER.map((s) => (
                   <button
@@ -971,7 +1153,7 @@ function DetailModal({
             </FieldGroup>
 
             {/* Dose */}
-            <FieldGroup number="02" label="Dose">
+            <FieldGroup number="03" label="Dose">
               <div className="flex gap-2 mb-2">
                 <input
                   type="number"
@@ -1031,7 +1213,7 @@ function DetailModal({
             </FieldGroup>
 
             {/* Notes */}
-            <FieldGroup number="03" label="Personal notes">
+            <FieldGroup number="04" label="Personal notes">
               <textarea
                 rows={3}
                 placeholder="Why you're taking this, interactions to watch, a hunch to track later…"
@@ -1218,6 +1400,81 @@ function PassportDivider({ label }: { label: string }) {
         {label}
       </span>
       <div className="flex-1 h-px bg-surface-200/50" />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Image slot — renders a slot's image with a hover-revealed Replace control,
+// or a dashed dropzone when the slot is empty. Same component handles both
+// the primary (front) and facts panel slots — only props differ.
+//
+// The file input is sized to overlay the whole tile so the click target
+// extends edge-to-edge (Fitts's Law) without needing the user to hunt for
+// a small button. When an image is present, we keep that behaviour but
+// dim the hover affordance so the visual is the image, not the button.
+// ---------------------------------------------------------------------------
+
+function ImageSlot({
+  slot,
+  url,
+  alt,
+  emptyLabel,
+  emptyHint,
+  onReplace,
+}: {
+  slot: 'primary' | 'facts';
+  url: string | null;
+  alt: string;
+  emptyLabel: string;
+  emptyHint: string;
+  onReplace: (file: File) => void;
+}) {
+  const slotLabel = slot === 'facts' ? 'Facts panel' : 'Front image';
+  return (
+    <div className="space-y-2">
+      <label
+        className={`group relative block w-full cursor-pointer rounded-xl overflow-hidden transition-shadow ${
+          url
+            ? 'border border-surface-200/60 shadow-md hover:shadow-lg'
+            : 'border-2 border-dashed border-surface-300/60 hover:border-accent-400/60 bg-surface-50/40'
+        }`}
+      >
+        {url ? (
+          <>
+            <img src={url} alt={alt} className="w-full block" />
+            {/* Hover overlay — invites a replace without competing with the
+                image when the user just wants to look. */}
+            <div className="absolute inset-0 flex items-end justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-t from-surface-0/70 via-surface-0/0 to-surface-0/0 pointer-events-none">
+              <span className="mb-3 px-3 py-1 rounded-md bg-surface-0/80 backdrop-blur-sm text-xs text-surface-950 font-medium flex items-center gap-1.5">
+                <Camera className="w-3.5 h-3.5" />
+                Replace {slotLabel.toLowerCase()}
+              </span>
+            </div>
+          </>
+        ) : (
+          <div className="py-10 px-4 flex flex-col items-center justify-center gap-2 text-center">
+            <Camera className="w-6 h-6 text-surface-600" />
+            <div className="text-sm font-medium text-surface-950">Attach {emptyLabel}</div>
+            <div className="text-[11px] text-surface-700 italic max-w-[16rem] leading-snug">
+              {emptyHint}
+            </div>
+            <div className="mt-1 text-[10px] uppercase tracking-[0.18em] text-surface-600">
+              PNG · JPG · WEBP
+            </div>
+          </div>
+        )}
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/gif,image/webp"
+          className="sr-only"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) onReplace(f);
+            e.target.value = '';
+          }}
+        />
+      </label>
     </div>
   );
 }
