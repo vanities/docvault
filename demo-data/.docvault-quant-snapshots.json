@@ -129,6 +129,266 @@
         "regime": "bearish",
         "hashRateEhs": 987.7829083676875
       }
+    },
+    {
+      "date": "2026-05-09",
+      "takenAt": 1778285252651,
+      "spxCycle": {
+        "currentYear": 2026,
+        "currentYearOfCycle": 2,
+        "currentExpectedReturn": -0.35116179859501684,
+        "currentYearAnnualAvg": 3.8759068730632498
+      },
+      "btc": {
+        "price": 80147.21875,
+        "fitted": 134308.2347332315,
+        "residualSigma": -0.9581414443129969,
+        "slope": 5.896661712459749,
+        "stdev": 0.23400948388077844,
+        "riskMetric": 0.46563492063492057
+      },
+      "btcDominance": {
+        "btcDominance": 58.209437683900845,
+        "ethDominance": 10.0910944792191,
+        "stableDominance": 9.699743869878528,
+        "flightToSafety": 67.90918155377938,
+        "totalMarketCapUsd": 2757627815066.1772
+      },
+      "shillerValuation": {
+        "cape": 30.81,
+        "capePercentile": 94.77524810274373,
+        "divYield": 1.5812221933281407
+      },
+      "sectorRotation": {
+        "topRS": {
+          "ticker": "XLK",
+          "rsRatio": 123.74605479831816
+        },
+        "topMomentum": {
+          "ticker": "XLK",
+          "momentum": 116.44309263199624
+        },
+        "quadrantCounts": {
+          "leading": 1,
+          "improving": 0,
+          "weakening": 1,
+          "lagging": 9
+        }
+      },
+      "btcDrawdown": {
+        "drawdown": -0.35755036032585513,
+        "daysSinceAth": 215,
+        "ath": 124752.53125
+      },
+      "fearGreed": {
+        "value": 38,
+        "classification": "Fear",
+        "ma30": 31.633333333333333,
+        "ma90": 18.711111111111112
+      },
+      "flippening": {
+        "ratio": 0.028758951179099712,
+        "progressToFlippening": 0.17414339784329222
+      },
+      "hashRibbons": {
+        "regime": "bearish",
+        "hashRateEhs": 987.7829083676875
+      }
+    },
+    {
+      "date": "2026-05-10",
+      "takenAt": 1778371652842,
+      "spxCycle": {
+        "currentYear": 2026,
+        "currentYearOfCycle": 2,
+        "currentExpectedReturn": -0.35116179859501684,
+        "currentYearAnnualAvg": 3.8759068730632498
+      },
+      "btc": {
+        "price": 80610.8203125,
+        "fitted": 134382.7738641208,
+        "residualSigma": -0.9484786333267302,
+        "slope": 5.896099468415175,
+        "stdev": 0.23400660056794412,
+        "riskMetric": 0.478015873015873
+      },
+      "btcDominance": {
+        "btcDominance": 58.275036485476726,
+        "ethDominance": 10.127437185589278,
+        "stableDominance": 9.650835847000602,
+        "flightToSafety": 67.92587233247733,
+        "totalMarketCapUsd": 2770978752566.529
+      },
+      "shillerValuation": {
+        "cape": 30.81,
+        "capePercentile": 94.77524810274373,
+        "divYield": 1.5812221933281407
+      },
+      "sectorRotation": {
+        "topRS": {
+          "ticker": "XLK",
+          "rsRatio": 123.74605479831816
+        },
+        "topMomentum": {
+          "ticker": "XLK",
+          "momentum": 116.44309263199624
+        },
+        "quadrantCounts": {
+          "leading": 1,
+          "improving": 0,
+          "weakening": 1,
+          "lagging": 9
+        }
+      },
+      "btcDrawdown": {
+        "drawdown": -0.35383419073911576,
+        "daysSinceAth": 216,
+        "ath": 124752.53125
+      },
+      "fearGreed": {
+        "value": 47,
+        "classification": "Neutral",
+        "ma30": 32.666666666666664,
+        "ma90": 19.07777777777778
+      },
+      "flippening": {
+        "ratio": 0.02883272954497327,
+        "progressToFlippening": 0.17459014623966226
+      },
+      "hashRibbons": {
+        "regime": "bearish",
+        "hashRateEhs": 987.7829083676875
+      }
+    },
+    {
+      "date": "2026-05-11",
+      "takenAt": 1778458052927,
+      "spxCycle": {
+        "currentYear": 2026,
+        "currentYearOfCycle": 2,
+        "currentExpectedReturn": -0.35116179859501684,
+        "currentYearAnnualAvg": 3.8759068730632498
+      },
+      "btc": {
+        "price": 81977.5625,
+        "fitted": 134458.9639943918,
+        "residualSigma": -0.9183452195790086,
+        "slope": 5.895555551992314,
+        "stdev": 0.2340021542472465,
+        "riskMetric": 0.5099206349206348
+      },
+      "btcDominance": {
+        "btcDominance": 58.314963479252214,
+        "ethDominance": 10.142245075827786,
+        "stableDominance": 9.486825258551713,
+        "flightToSafety": 67.80178873780393,
+        "totalMarketCapUsd": 2819693980518.8965
+      },
+      "shillerValuation": {
+        "cape": 30.81,
+        "capePercentile": 94.77524810274373,
+        "divYield": 1.5812221933281407
+      },
+      "sectorRotation": {
+        "topRS": {
+          "ticker": "XLK",
+          "rsRatio": 123.74605479831816
+        },
+        "topMomentum": {
+          "ticker": "XLK",
+          "momentum": 116.44309263199624
+        },
+        "quadrantCounts": {
+          "leading": 1,
+          "improving": 0,
+          "weakening": 1,
+          "lagging": 9
+        }
+      },
+      "btcDrawdown": {
+        "drawdown": -0.3428785638367558,
+        "daysSinceAth": 217,
+        "ath": 124752.53125
+      },
+      "fearGreed": {
+        "value": 48,
+        "classification": "Neutral",
+        "ma30": 33.766666666666666,
+        "ma90": 19.511111111111113
+      },
+      "flippening": {
+        "ratio": 0.028879853557490197,
+        "progressToFlippening": 0.17487549515967682
+      },
+      "hashRibbons": {
+        "regime": "bearish",
+        "hashRateEhs": 1126.0725155391635
+      }
+    },
+    {
+      "date": "2026-05-12",
+      "takenAt": 1778544453103,
+      "spxCycle": {
+        "currentYear": 2026,
+        "currentYearOfCycle": 2,
+        "currentExpectedReturn": -0.35116179859501684,
+        "currentYearAnnualAvg": 3.8759068730632498
+      },
+      "btc": {
+        "price": 81649.21875,
+        "fitted": 134534.853615928,
+        "residualSigma": -0.9268572980359822,
+        "slope": 5.89500822870604,
+        "stdev": 0.2339980247048989,
+        "riskMetric": 0.4980158730158729
+      },
+      "btcDominance": {
+        "btcDominance": 58.27151683717512,
+        "ethDominance": 10.050958192096536,
+        "stableDominance": 9.513329096668828,
+        "flightToSafety": 67.78484593384395,
+        "totalMarketCapUsd": 2808384099896.396
+      },
+      "shillerValuation": {
+        "cape": 30.81,
+        "capePercentile": 94.77524810274373,
+        "divYield": 1.5812221933281407
+      },
+      "sectorRotation": {
+        "topRS": {
+          "ticker": "XLK",
+          "rsRatio": 124.80545529008886
+        },
+        "topMomentum": {
+          "ticker": "XLK",
+          "momentum": 116.47612280248187
+        },
+        "quadrantCounts": {
+          "leading": 2,
+          "improving": 0,
+          "weakening": 0,
+          "lagging": 9
+        }
+      },
+      "btcDrawdown": {
+        "drawdown": -0.34551052446080127,
+        "daysSinceAth": 218,
+        "ath": 124752.53125
+      },
+      "fearGreed": {
+        "value": 49,
+        "classification": "Neutral",
+        "ma30": 34.86666666666667,
+        "ma90": 19.933333333333334
+      },
+      "flippening": {
+        "ratio": 0.028617176062806785,
+        "progressToFlippening": 0.1732849103300612
+      },
+      "hashRibbons": {
+        "regime": "bearish",
+        "hashRateEhs": 1126.0725155391635
+      }
     }
   ]
 }
