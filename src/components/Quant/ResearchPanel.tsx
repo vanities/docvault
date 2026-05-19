@@ -317,11 +317,12 @@ export function ResearchPanel() {
   const [savingYoutube, setSavingYoutube] = useState(false);
   const [youtubeError, setYoutubeError] = useState<string | null>(null);
 
-  // Initial load
+  // Initial load — filter to finance entries so the Health Research tab's
+  // entries (same store, different domain) don't bleed into Quant.
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/research');
+      const res = await fetch('/api/research?domain=finance');
       const data = (await res.json()) as { entries: ResearchEntry[] };
       setEntries(data.entries ?? []);
     } finally {
@@ -346,16 +347,16 @@ export function ResearchPanel() {
           continue;
         }
         const body = await file.arrayBuffer();
-        const res = await fetch(`/api/research/upload?filename=${encodeURIComponent(file.name)}`, {
-          method: 'POST',
-          body,
-        });
+        const res = await fetch(
+          `/api/research/upload?filename=${encodeURIComponent(file.name)}&domain=finance`,
+          { method: 'POST', body }
+        );
         if (!res.ok) {
           const err = (await res.json().catch(() => ({}))) as { error?: string };
           setUploadError(err.error ?? `Upload failed (${res.status}) for ${file.name}`);
         }
       }
-      await fetch('/api/research')
+      await fetch('/api/research?domain=finance')
         .then((r) => r.json())
         .then((d: { entries: ResearchEntry[] }) => setEntries(d.entries ?? []));
     } finally {
@@ -384,6 +385,7 @@ export function ResearchPanel() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          domain: 'finance',
           text: textDraft.text,
           title: textDraft.title.trim() || undefined,
           author: textDraft.author.trim() || undefined,
@@ -400,7 +402,7 @@ export function ResearchPanel() {
       }
       setTextDraft(blankTextDraft());
       // Refresh inline (no loading flash) — mirrors the PDF upload path.
-      await fetch('/api/research')
+      await fetch('/api/research?domain=finance')
         .then((r) => r.json())
         .then((d: { entries: ResearchEntry[] }) => setEntries(d.entries ?? []));
     } finally {
@@ -418,6 +420,7 @@ export function ResearchPanel() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          domain: 'finance',
           url: youtubeDraft.url.trim(),
           tickers: youtubeDraft.tickers.length > 0 ? youtubeDraft.tickers : undefined,
         }),
@@ -429,7 +432,7 @@ export function ResearchPanel() {
       }
       setYoutubeDraft(blankYoutubeDraft());
       // Refresh inline (no loading flash) — mirrors the other ingest paths.
-      await fetch('/api/research')
+      await fetch('/api/research?domain=finance')
         .then((r) => r.json())
         .then((d: { entries: ResearchEntry[] }) => setEntries(d.entries ?? []));
     } finally {
