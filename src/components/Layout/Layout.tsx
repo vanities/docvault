@@ -38,6 +38,7 @@ import { HealthRecordsView } from '../Health/HealthRecordsView';
 import { HealthNutritionView } from '../Health/HealthNutritionView';
 import { HealthSicknessView } from '../Health/HealthSicknessView';
 import { HealthAnalysisView } from '../Health/HealthAnalysisView';
+import { HealthResearchView } from '../Health/HealthResearchView';
 import { AddEntityModal } from '../Settings/AddEntityModal';
 import { SearchResultsView } from '../Search/SearchResultsView';
 
@@ -155,6 +156,8 @@ export function Layout() {
         return <HealthSicknessView />;
       case 'health-analysis':
         return <HealthAnalysisView />;
+      case 'health-research':
+        return <HealthResearchView />;
       default:
         return <TaxYearView />;
     }

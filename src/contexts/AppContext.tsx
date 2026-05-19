@@ -135,7 +135,8 @@ export type NavView =
   | 'health-dna'
   | 'health-nutrition'
   | 'health-sickness'
-  | 'health-analysis';
+  | 'health-analysis'
+  | 'health-research';
 
 // Tab types for tax year view
 export type TabType = 'documents' | 'income' | 'expenses' | 'invoices' | 'statements';
@@ -362,6 +363,7 @@ export function AppProvider({ children }: AppProviderProps) {
     'health-nutrition',
     'health-sickness',
     'health-analysis',
+    'health-research',
   ]);
 
   const viewFromHash = (): NavView | null => {

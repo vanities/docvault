@@ -15,6 +15,7 @@ import {
   Pill,
   Thermometer,
   Brain,
+  FileText,
 } from 'lucide-react';
 import type { NavView } from '../../contexts/AppContext';
 import { useAppContext } from '../../contexts/AppContext';
@@ -135,6 +136,16 @@ export function HealthSidebarSection({
           activeView={activeView}
           isProcessing={isProcessing}
           disabled={!hasPerson}
+          onClick={onClick}
+        />
+        {/* Research is global (entries can optionally tag people), so it's
+         *  always enabled — unlike the per-person segment views above. */}
+        <HealthNavButton
+          view="health-research"
+          label="Research"
+          icon={FileText}
+          activeView={activeView}
+          isProcessing={isProcessing}
           onClick={onClick}
         />
       </div>

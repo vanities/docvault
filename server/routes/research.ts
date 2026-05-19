@@ -46,8 +46,16 @@ const RESEARCH_DATA_DIR = path.join(DATA_DIR, 'research');
 // Types
 // ---------------------------------------------------------------------------
 
+export type ResearchDomain = 'finance' | 'health';
+
 export interface ResearchEntry {
   id: string;
+  /**
+   * Which tab surfaces this entry — 'finance' shows up in Quant → Research,
+   * 'health' shows up in Health → Research. Defaults to 'finance' for
+   * entries written before this field existed (backfilled in loadStore).
+   */
+  domain: ResearchDomain;
   /** Original filename at upload, for display. */
   filename: string | null;
   /** Relative path under DATA_DIR. */
@@ -90,9 +98,18 @@ export interface ResearchEntry {
   /**
    * Yahoo-style ticker symbols tagged on this entry — e.g. ["NVDA","TSM","NK.PA"].
    * Normalized on write (uppercase, deduped, charset-validated). Used to power
-   * the per-entry price strip and the Quant → Tickers aggregate view.
+   * the per-entry price strip and the Quant → Tickers aggregate view. Finance
+   * entries only — health entries leave this undefined.
    */
   tickers?: string[];
+  /**
+   * Optional list of HealthPerson IDs this entry is relevant to. Health
+   * entries can be linked to one or more people so research about a
+   * specific family member (e.g. pediatric studies for a child) can be
+   * surfaced on that person's dashboard later. Finance entries leave this
+   * undefined.
+   */
+  linkedPersonIds?: string[];
   lastUpdated: string;
 }
 
@@ -109,10 +126,32 @@ async function loadStore(): Promise<ResearchStore> {
   try {
     const raw = await fs.readFile(RESEARCH_STORE_FILE, 'utf-8');
     const parsed = JSON.parse(raw) as Partial<ResearchStore>;
-    return { version: 1, entries: parsed.entries ?? {} };
+    const entries: Record<string, ResearchEntry> = {};
+    for (const [id, e] of Object.entries(parsed.entries ?? {})) {
+      // Backfill `domain` for entries written before the field existed —
+      // they're all finance (Quant Research is where the feature shipped).
+      entries[id] = { ...e, domain: e.domain ?? 'finance' };
+    }
+    return { version: 1, entries };
   } catch {
     return { version: 1, entries: {} };
   }
+}
+
+/** Parse the `domain` value supplied by a client. Anything other than
+ *  the literal "health" falls back to "finance" — keeps the legacy
+ *  Quant ingest path working when callers don't send a domain at all. */
+function parseDomain(raw: unknown): ResearchDomain {
+  return raw === 'health' ? 'health' : 'finance';
+}
+
+/** Coerce a client-supplied list of person IDs into a clean string[].
+ *  Returns undefined when nothing usable came in — keeps the store tidy
+ *  (no empty arrays serialized to disk). */
+function parsePersonIds(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const ids = raw.filter((x): x is string => typeof x === 'string' && x.length > 0);
+  return ids.length > 0 ? Array.from(new Set(ids)) : undefined;
 }
 
 async function saveStore(store: ResearchStore): Promise<void> {
@@ -161,6 +200,8 @@ async function createResearchEntry(params: {
   /** File extension on disk. Drives the stored filename, not the mediaType. */
   extension: 'pdf' | 'txt';
   mediaType: ResearchEntry['mediaType'];
+  /** Which tab this entry belongs to — drives where it surfaces. */
+  domain: ResearchDomain;
   filename: string | null;
   text: string | null;
   pageCount: number | null;
@@ -174,6 +215,8 @@ async function createResearchEntry(params: {
   sourceUrl?: string;
   /** Already normalized — callers normalize at the API boundary. */
   tickers?: string[];
+  /** Already parsed/deduped — callers parse at the API boundary. */
+  linkedPersonIds?: string[];
 }): Promise<ResearchEntry> {
   const id = newEntryId();
   await ensureDir(RESEARCH_DATA_DIR);
@@ -184,6 +227,7 @@ async function createResearchEntry(params: {
   const now = new Date().toISOString();
   const entry: ResearchEntry = {
     id,
+    domain: params.domain,
     filename: params.filename,
     filePath: relPath,
     mediaType: params.mediaType,
@@ -198,9 +242,13 @@ async function createResearchEntry(params: {
     publisher: params.publisher,
     reportDate: params.reportDate,
     sourceUrl: params.sourceUrl,
-    // Only persist the field when there's at least one symbol — keeps the
+    // Only persist optional collection fields when non-empty — keeps the
     // store JSON tidy (no empty arrays everywhere).
     tickers: params.tickers && params.tickers.length > 0 ? params.tickers : undefined,
+    linkedPersonIds:
+      params.linkedPersonIds && params.linkedPersonIds.length > 0
+        ? params.linkedPersonIds
+        : undefined,
     lastUpdated: now,
   };
 
@@ -227,6 +275,9 @@ export async function handleResearchRoutes(
   if (sub === '/upload' && req.method === 'POST') {
     const filename = url.searchParams.get('filename');
     const titleOverride = url.searchParams.get('title');
+    // Domain comes through the query string here — the request body is
+    // the raw PDF bytes, so there's no JSON envelope to read from.
+    const domain = parseDomain(url.searchParams.get('domain'));
     const raw = Buffer.from(await req.arrayBuffer());
     if (raw.length === 0) {
       return jsonResponse({ error: 'Empty upload' }, 400);
@@ -258,6 +309,7 @@ export async function handleResearchRoutes(
       content: raw,
       extension: 'pdf',
       mediaType: 'application/pdf',
+      domain,
       filename,
       text,
       pageCount,
@@ -309,6 +361,7 @@ export async function handleResearchRoutes(
       content: text,
       extension: 'txt',
       mediaType: 'text/plain',
+      domain: parseDomain(body?.domain),
       filename: str(body?.filename) ?? null,
       // The body is already plain text — record it as available "now" so the
       // UI shows it immediately and never offers a (meaningless) re-extract.
@@ -324,6 +377,7 @@ export async function handleResearchRoutes(
       reportDate: str(body?.reportDate),
       sourceUrl: str(body?.sourceUrl),
       tickers: normalizeTickers(body?.tickers),
+      linkedPersonIds: parsePersonIds(body?.linkedPersonIds),
     });
 
     log.info(
@@ -369,6 +423,7 @@ export async function handleResearchRoutes(
       content: text,
       extension: 'txt',
       mediaType: 'text/plain',
+      domain: parseDomain(body?.domain),
       filename: null,
       text,
       pageCount: null,
@@ -380,6 +435,7 @@ export async function handleResearchRoutes(
       reportDate: result.uploadDate ?? undefined,
       sourceUrl: result.url,
       tickers: normalizeTickers(body?.tickers),
+      linkedPersonIds: parsePersonIds(body?.linkedPersonIds),
     });
 
     log.info(
@@ -389,10 +445,18 @@ export async function handleResearchRoutes(
     return jsonResponse({ entry });
   }
 
-  // GET /api/research — list newest first (by reportDate if set, else upload time)
+  // GET /api/research?domain=health — list newest first (by reportDate if
+  // set, else upload time). When `domain` is unset, returns everything for
+  // back-compat with the original Quant-only endpoint; callers that want a
+  // single tab's entries should always pass ?domain=finance or ?domain=health.
   if (sub === '' && req.method === 'GET') {
     const store = await loadStore();
-    const entries = Object.values(store.entries).sort((a, b) => {
+    const domainParam = url.searchParams.get('domain');
+    let entries = Object.values(store.entries);
+    if (domainParam === 'finance' || domainParam === 'health') {
+      entries = entries.filter((e) => e.domain === domainParam);
+    }
+    entries.sort((a, b) => {
       const aDate = a.reportDate ?? a.uploadedAt.slice(0, 10);
       const bDate = b.reportDate ?? b.uploadedAt.slice(0, 10);
       return bDate.localeCompare(aDate);
@@ -491,6 +555,7 @@ export async function handleResearchRoutes(
         notes: string | null;
         tags: string[] | null;
         tickers: string[] | null;
+        linkedPersonIds: string[] | null;
       }>;
 
       if (body.title !== undefined) entry.title = body.title ?? undefined;
@@ -503,6 +568,9 @@ export async function handleResearchRoutes(
       if (body.tickers !== undefined) {
         const normalized = normalizeTickers(body.tickers);
         entry.tickers = normalized.length > 0 ? normalized : undefined;
+      }
+      if (body.linkedPersonIds !== undefined) {
+        entry.linkedPersonIds = parsePersonIds(body.linkedPersonIds);
       }
       entry.lastUpdated = new Date().toISOString();
       await saveStore(store);
