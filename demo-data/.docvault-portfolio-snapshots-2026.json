@@ -976,5 +976,49 @@
     "propertyValue": 224687.92,
     "shortTermGains": 0,
     "longTermGains": 0
+  },
+  {
+    "date": "2026-05-09",
+    "totalValue": 422561.31,
+    "cryptoValue": 118450,
+    "brokerValue": 0,
+    "bankValue": 49610.87,
+    "goldValue": 29812.52,
+    "propertyValue": 224687.92,
+    "shortTermGains": 0,
+    "longTermGains": 0
+  },
+  {
+    "date": "2026-05-10",
+    "totalValue": 422502.13,
+    "cryptoValue": 118450,
+    "brokerValue": 0,
+    "bankValue": 49610.87,
+    "goldValue": 29753.34,
+    "propertyValue": 224687.92,
+    "shortTermGains": 0,
+    "longTermGains": 0
+  },
+  {
+    "date": "2026-05-11",
+    "totalValue": 422432.53,
+    "cryptoValue": 118450,
+    "brokerValue": 0,
+    "bankValue": 49610.87,
+    "goldValue": 29683.739999999998,
+    "propertyValue": 224687.92,
+    "shortTermGains": 0,
+    "longTermGains": 0
+  },
+  {
+    "date": "2026-05-12",
+    "totalValue": 423496.85,
+    "cryptoValue": 118450,
+    "brokerValue": 0,
+    "bankValue": 49610.87,
+    "goldValue": 30748.06,
+    "propertyValue": 224687.92,
+    "shortTermGains": 0,
+    "longTermGains": 0
   }
 ]
