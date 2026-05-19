@@ -154,6 +154,17 @@ function parsePersonIds(raw: unknown): string[] | undefined {
   return ids.length > 0 ? Array.from(new Set(ids)) : undefined;
 }
 
+/** Trim + dedupe a client-supplied list of free-form tags. Mirrors
+ *  parsePersonIds — undefined when nothing usable came in. */
+function parseTags(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const tags = raw
+    .filter((x): x is string => typeof x === 'string')
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+  return tags.length > 0 ? Array.from(new Set(tags)) : undefined;
+}
+
 async function saveStore(store: ResearchStore): Promise<void> {
   await ensureDir(DATA_DIR);
   const tmp = `${RESEARCH_STORE_FILE}.tmp`;
@@ -215,6 +226,8 @@ async function createResearchEntry(params: {
   sourceUrl?: string;
   /** Already normalized — callers normalize at the API boundary. */
   tickers?: string[];
+  /** Already trimmed/deduped — callers parse at the API boundary. */
+  tags?: string[];
   /** Already parsed/deduped — callers parse at the API boundary. */
   linkedPersonIds?: string[];
 }): Promise<ResearchEntry> {
@@ -245,6 +258,7 @@ async function createResearchEntry(params: {
     // Only persist optional collection fields when non-empty — keeps the
     // store JSON tidy (no empty arrays everywhere).
     tickers: params.tickers && params.tickers.length > 0 ? params.tickers : undefined,
+    tags: params.tags && params.tags.length > 0 ? params.tags : undefined,
     linkedPersonIds:
       params.linkedPersonIds && params.linkedPersonIds.length > 0
         ? params.linkedPersonIds
@@ -377,6 +391,7 @@ export async function handleResearchRoutes(
       reportDate: str(body?.reportDate),
       sourceUrl: str(body?.sourceUrl),
       tickers: normalizeTickers(body?.tickers),
+      tags: parseTags(body?.tags),
       linkedPersonIds: parsePersonIds(body?.linkedPersonIds),
     });
 
@@ -435,6 +450,7 @@ export async function handleResearchRoutes(
       reportDate: result.uploadDate ?? undefined,
       sourceUrl: result.url,
       tickers: normalizeTickers(body?.tickers),
+      tags: parseTags(body?.tags),
       linkedPersonIds: parsePersonIds(body?.linkedPersonIds),
     });
 
