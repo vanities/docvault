@@ -1,0 +1,176 @@
+import { mkdtemp, mkdir, rm, writeFile } from 'fs/promises';
+import os from 'os';
+import path from 'path';
+import { describe, expect, test } from 'vite-plus/test';
+import { handleJobRoutes } from './routes/jobs';
+import { customJobScriptPath } from './jobs';
+import type { ScheduleStatusMap } from './scheduler';
+
+async function withTempDataDir<T>(fn: (dataDir: string) => Promise<T>): Promise<T> {
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), 'docvault-job-routes-'));
+  try {
+    return await fn(dataDir);
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+}
+
+const scheduleStatus: ScheduleStatusMap = {
+  snapshot: {
+    lastRanAt: '2026-05-29T00:00:00.000Z',
+    lastSuccessAt: '2026-05-29T00:01:00.000Z',
+    lastError: null,
+    lastDurationMs: 60_000,
+    running: false,
+  },
+  dropboxSync: {
+    lastRanAt: null,
+    lastSuccessAt: null,
+    lastError: null,
+    lastDurationMs: null,
+    running: false,
+  },
+  quantRefresh: {
+    lastRanAt: null,
+    lastSuccessAt: null,
+    lastError: null,
+    lastDurationMs: null,
+    running: false,
+  },
+  encryptedBackup: {
+    lastRanAt: null,
+    lastSuccessAt: null,
+    lastError: null,
+    lastDurationMs: null,
+    running: false,
+  },
+};
+
+describe('handleJobRoutes', () => {
+  test('GET /api/jobs returns built-in and custom job records', async () => {
+    await withTempDataDir(async (dataDir) => {
+      const createResponse = await handleJobRoutes(
+        new Request('https://example.test/api/jobs', {
+          method: 'POST',
+          body: JSON.stringify({
+            id: 'benjamin-youtube-daily',
+            label: 'Benjamin Cowen YouTube daily transcript pull',
+            schedule: 'daily',
+            script: 'scripts/benjamin-cowen-youtube.local.ts',
+            enabled: true,
+            tags: ['politics'],
+          }),
+        }),
+        new URL('https://example.test/api/jobs'),
+        '/api/jobs',
+        {
+          dataDir,
+          loadScheduleStatus: async () => scheduleStatus,
+          loadSettings: async () => ({
+            schedules: { snapshotEnabled: true, snapshotIntervalMinutes: 1440 },
+          }),
+          restartCustomJobScheduler: async () => {},
+        }
+      );
+
+      expect(createResponse?.status).toBe(201);
+
+      const listResponse = await handleJobRoutes(
+        new Request('https://example.test/api/jobs'),
+        new URL('https://example.test/api/jobs'),
+        '/api/jobs',
+        {
+          dataDir,
+          loadScheduleStatus: async () => scheduleStatus,
+          loadSettings: async () => ({
+            schedules: { snapshotEnabled: true, snapshotIntervalMinutes: 1440 },
+          }),
+        }
+      );
+
+      expect(listResponse?.status).toBe(200);
+      const body = await listResponse!.json();
+      expect(body.builtInJobs.map((j: { id: string }) => j.id)).toContain('snapshot');
+      expect(body.customJobs).toHaveLength(1);
+      expect(body.customJobStatuses).toEqual({});
+      expect(body.customJobs[0].manifest).toMatchObject({
+        id: 'benjamin-youtube-daily',
+        kind: 'local-script',
+      });
+    });
+  });
+
+  test('POST /api/jobs/:id/run executes a local custom job', async () => {
+    await withTempDataDir(async (dataDir) => {
+      await handleJobRoutes(
+        new Request('https://example.test/api/jobs', {
+          method: 'POST',
+          body: JSON.stringify({
+            id: 'smoke-job',
+            label: 'Smoke Job',
+            schedule: 'hourly',
+            script: 'scripts/smoke.local.sh',
+            enabled: false,
+          }),
+        }),
+        new URL('https://example.test/api/jobs'),
+        '/api/jobs',
+        { dataDir, restartCustomJobScheduler: async () => {} }
+      );
+      const scriptPath = customJobScriptPath(dataDir, 'scripts/smoke.local.sh');
+      await mkdir(path.dirname(scriptPath), { recursive: true });
+      await writeFile(scriptPath, 'printf "route runner ok"\n', { mode: 0o700 });
+
+      const response = await handleJobRoutes(
+        new Request('https://example.test/api/jobs/smoke-job/run', { method: 'POST' }),
+        new URL('https://example.test/api/jobs/smoke-job/run'),
+        '/api/jobs/smoke-job/run',
+        { dataDir }
+      );
+
+      expect(response?.status).toBe(200);
+      const body = await response!.json();
+      expect(body.ok).toBe(true);
+      expect(body.result.stdout).toContain('route runner ok');
+    });
+  });
+
+  test('POST /api/jobs restarts custom scheduler after manifest changes', async () => {
+    await withTempDataDir(async (dataDir) => {
+      const restarts: string[] = [];
+      const response = await handleJobRoutes(
+        new Request('https://example.test/api/jobs', {
+          method: 'POST',
+          body: JSON.stringify({
+            id: 'scheduled-smoke-job',
+            label: 'Scheduled Smoke Job',
+            schedule: 'hourly',
+            script: 'scripts/scheduled-smoke.local.sh',
+            enabled: true,
+          }),
+        }),
+        new URL('https://example.test/api/jobs'),
+        '/api/jobs',
+        {
+          dataDir,
+          restartCustomJobScheduler: async (restartDataDir: string) => {
+            restarts.push(restartDataDir);
+          },
+        }
+      );
+
+      expect(response?.status).toBe(201);
+      expect(restarts).toEqual([dataDir]);
+    });
+  });
+
+  test('returns null for unrelated paths', async () => {
+    await expect(
+      handleJobRoutes(
+        new Request('https://example.test/nope'),
+        new URL('https://example.test/nope'),
+        '/nope'
+      )
+    ).resolves.toBeNull();
+  });
+});

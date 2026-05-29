@@ -16,12 +16,12 @@ The immediate foundation is Check the Vote running as a LAN-only political data 
 
 ## Systems
 
-| System               | Role                                                                                                   | Current status                                                                                                 |
-| -------------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| Check the Vote       | Political data service for votes, bills, politicians, trade filings, ingest status, and protected APIs | Main branch is pushed. Pi/SSD deployment is next.                                                              |
-| DocVault             | Local finance/health/document workspace and future Politics tab                                        | Politics research tab, Check the Vote bridge, local political job manifest validation, and roadmap are pushed. |
-| Artist Kit           | Markdown/influences/output archive                                                                     | Likely identified; keep future access read-only and provenance-preserving.                                     |
-| Predictive Headlines | Future experiment                                                                                      | Should ingest news, DocVault/Check the Vote signals, and Kalshi/Polymarket probabilities.                      |
+| System               | Role                                                                                                   | Current status                                                                                            |
+| -------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| Check the Vote       | Political data service for votes, bills, politicians, trade filings, ingest status, and protected APIs | Main branch is pushed. Pi/SSD deployment is next.                                                         |
+| DocVault             | Local finance/health/document workspace and future Politics tab                                        | Politics research tab, Check the Vote bridge, generic local Jobs manifest API/UI, and roadmap are pushed. |
+| Artist Kit           | Markdown/influences/output archive                                                                     | Likely identified; keep future access read-only and provenance-preserving.                                |
+| Predictive Headlines | Future experiment                                                                                      | Should ingest news, DocVault/Check the Vote signals, and Kalshi/Polymarket probabilities.                 |
 
 ## Completed foundation
 
@@ -52,8 +52,9 @@ The immediate foundation is Check the Vote running as a LAN-only political data 
 
 - Politics research tab exists.
 - Check the Vote server bridge exists.
-- Political job manifest validation and API-backed local manifest creator exist.
-- Political job manifests are stored under `DATA_DIR/political-jobs/inbox` via `GET/POST /api/political-jobs`.
+- Generic local Jobs manifest validation and API-backed manifest creator/listing exist.
+- Generic custom job manifests are stored under `DATA_DIR/jobs/manifests` via `GET/POST /api/jobs`.
+- Settings has a Jobs UI that lists committed built-in jobs and local custom job manifests.
 - Site-specific scraper scripts are still intentionally not committed.
 - Political intelligence roadmap exists and includes Kalshi/Polymarket as future prediction-market inputs.
 - Validation after the roadmap update:
@@ -204,10 +205,12 @@ Preferred source order:
 
 ### Generic connector shape
 
-- [x] Add API-backed local manifest creator/list endpoint: `GET/POST /api/political-jobs`.
-- [x] Store local political job manifests under `DATA_DIR/political-jobs/inbox`.
-- [x] Runtime-ensure local job folders under `DATA_DIR/political-jobs/{inbox,scripts,runs,logs}`.
+- [x] Add API-backed generic manifest creator/list endpoint: `GET/POST /api/jobs`.
+- [x] Store local custom job manifests under `DATA_DIR/jobs/manifests`.
+- [x] Runtime-ensure local custom job folders under `DATA_DIR/jobs/{manifests,scripts,runs,logs}`.
 - [x] Add manifest validation.
+- [x] Add Settings Jobs UI that lists built-in jobs and local custom jobs.
+- [x] Factor built-in scheduler jobs into the same listing surface while keeping committed typed handlers.
 - [ ] Add checked-in template documentation for private local manifests.
 - [ ] Add scheduler/executor that reads enabled manifests and runs local scripts on interval.
 - [ ] Add dry-run mode.

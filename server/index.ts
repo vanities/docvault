@@ -156,6 +156,7 @@ import { handleHealthAnalysisRoutes } from './routes/health-analysis.js';
 import { handleStrategyRoutes } from './routes/strategy.js';
 import { handleResearchRoutes } from './routes/research.js';
 import { handleCheckTheVoteRoutes } from './routes/check-the-vote.js';
+import { handleJobRoutes } from './routes/jobs.js';
 import { handlePoliticalJobRoutes } from './routes/political-jobs.js';
 import { handleCryptoYieldsRoutes } from './routes/crypto-yields.js';
 import { handleChatRoutes } from './routes/chat.js';
@@ -494,6 +495,11 @@ async function handleRequest(req: Request): Promise<Response> {
   const quantResponse = await handleQuantRoutes(req, url, pathname);
   if (quantResponse) return quantResponse;
 
+  // Generic Jobs API — one surface for built-in scheduler tasks and local custom jobs
+  const jobsResponse = await handleJobRoutes(req, url, pathname);
+  if (jobsResponse) return jobsResponse;
+
+  // Legacy political job manifest API kept for compatibility with the initial Politics prototype
   const politicalJobResponse = await handlePoliticalJobRoutes(req, url, pathname);
   if (politicalJobResponse) return politicalJobResponse;
 
@@ -2547,6 +2553,7 @@ import {
 } from './scheduler.js';
 import { getRecentLogs, listLogDates, readLogsForDate, SERVER_BOOT_ID } from './logger.js';
 import { readRecentAiCalls, summarizeUsage } from './ai/usage-log.js';
+import { startCustomJobScheduler } from './custom-job-runner.js';
 
 // ============================================================================
 // Start server using Bun's native server
@@ -2588,3 +2595,10 @@ const server = Bun.serve({
 
 logServer.info(`DocVault API running on http://localhost:${server.port}`);
 logServer.info(`Data directory: ${DATA_DIR}`);
+try {
+  await startCustomJobScheduler(DATA_DIR);
+} catch (err) {
+  logServer.error(
+    `Custom job scheduler startup failed: ${err instanceof Error ? err.message : err}`
+  );
+}

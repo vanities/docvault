@@ -65,23 +65,24 @@ Do not commit scraper implementations that target brittle or legally sensitive w
 Preferred shape:
 
 ```text
-DATA_DIR/political-jobs/inbox/*.json
-DATA_DIR/political-jobs/scripts/*.local.{js,ts,sh}
-DATA_DIR/political-jobs/runs/*.json
-DATA_DIR/political-jobs/logs/*.ndjson
+DATA_DIR/jobs/manifests/*.json
+DATA_DIR/jobs/scripts/*.local.{js,ts,sh}
+DATA_DIR/jobs/runs/*.json
+DATA_DIR/jobs/logs/*.ndjson
 ```
 
 A committed generic scheduler can safely provide:
 
-- job manifest validation (`server/political-jobs.ts` validates the safe committed manifest shape)
-- API-backed manifest creation/listing (`GET/POST /api/political-jobs`) under `DATA_DIR/political-jobs/inbox`
+- job manifest validation (`server/jobs.ts` validates the safe committed manifest shape)
+- API-backed manifest creation/listing (`GET/POST /api/jobs`) under `DATA_DIR/jobs/manifests`
+- built-in job registry/listing for committed DocVault jobs (snapshot, Dropbox sync, encrypted backup, quant refresh)
 - interval/cron metadata
 - status persistence
 - stdout/stderr capture
 - UI-visible run history
 - input/output folders
 
-Current state: manifest validation and API-backed manifest creation/listing exist. The scheduler/executor that reads enabled manifests and runs local scripts on interval is still the next implementation step.
+Current state: generic job manifest validation, API-backed manifest creation/listing, built-in job listing, and a Settings Jobs UI exist. The scheduler/executor that reads enabled custom manifests and runs local scripts on interval is still the next implementation step.
 
 Example manifest shape:
 
@@ -89,6 +90,7 @@ Example manifest shape:
 {
   "id": "benjamin-cowen-youtube-daily",
   "label": "Benjamin Cowen YouTube daily transcript pull",
+  "kind": "local-script",
   "schedule": "daily",
   "script": "scripts/benjamin-cowen-youtube.local.ts",
   "enabled": true,
