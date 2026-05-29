@@ -67,23 +67,24 @@ DATA_DIR/political-jobs/logs/*.ndjson
 
 A committed generic scheduler can safely provide:
 
-- job manifest validation (`server/political-jobs.ts` now validates the safe committed manifest shape)
+- job manifest validation (`server/political-jobs.ts` validates the safe committed manifest shape)
+- API-backed manifest creation/listing (`GET/POST /api/political-jobs`) under `DATA_DIR/political-jobs/inbox`
 - interval/cron metadata
 - status persistence
 - stdout/stderr capture
 - UI-visible run history
 - input/output folders
 
-Private local manifests/scripts provide the actual site-specific scraping behavior.
+Current state: manifest validation and API-backed manifest creation/listing exist. The scheduler/executor that reads enabled manifests and runs local scripts on interval is still the next implementation step.
 
 Example manifest shape:
 
 ```json
 {
-  "id": "benjamin-youtube-daily",
-  "label": "Benjamin YouTube daily transcript pull",
+  "id": "benjamin-cowen-youtube-daily",
+  "label": "Benjamin Cowen YouTube daily transcript pull",
   "schedule": "daily",
-  "script": "scripts/benjamin-youtube.local.ts",
+  "script": "scripts/benjamin-cowen-youtube.local.ts",
   "enabled": true,
   "tags": ["politics", "transcript", "youtube"]
 }
