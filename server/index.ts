@@ -156,6 +156,7 @@ import { handleHealthAnalysisRoutes } from './routes/health-analysis.js';
 import { handleStrategyRoutes } from './routes/strategy.js';
 import { handleResearchRoutes } from './routes/research.js';
 import { handleCheckTheVoteRoutes } from './routes/check-the-vote.js';
+import { handlePoliticalJobRoutes } from './routes/political-jobs.js';
 import { handleCryptoYieldsRoutes } from './routes/crypto-yields.js';
 import { handleChatRoutes } from './routes/chat.js';
 import { handleTranscribeRoutes } from './routes/transcribe.js';
@@ -492,6 +493,9 @@ async function handleRequest(req: Request): Promise<Response> {
   // quant routes (extracted to routes/quant.ts)
   const quantResponse = await handleQuantRoutes(req, url, pathname);
   if (quantResponse) return quantResponse;
+
+  const politicalJobResponse = await handlePoliticalJobRoutes(req, url, pathname);
+  if (politicalJobResponse) return politicalJobResponse;
 
   // =========================================================================
   // Portfolio Snapshots

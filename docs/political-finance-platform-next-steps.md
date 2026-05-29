@@ -52,7 +52,9 @@ The immediate foundation is Check the Vote running as a LAN-only political data 
 
 - Politics research tab exists.
 - Check the Vote server bridge exists.
-- Political job manifest validation exists.
+- Political job manifest validation and API-backed local manifest creator exist.
+- Political job manifests are stored under `DATA_DIR/political-jobs/inbox` via `GET/POST /api/political-jobs`.
+- Site-specific scraper scripts are still intentionally not committed.
 - Political intelligence roadmap exists and includes Kalshi/Polymarket as future prediction-market inputs.
 - Validation after the roadmap update:
   - `vp check` passed with pre-existing warnings only.
@@ -202,9 +204,12 @@ Preferred source order:
 
 ### Generic connector shape
 
-- [ ] Add ignored local connector folders under DocVault data/local config.
-- [ ] Add a checked-in template only.
-- [ ] Add manifest validation.
+- [x] Add API-backed local manifest creator/list endpoint: `GET/POST /api/political-jobs`.
+- [x] Store local political job manifests under `DATA_DIR/political-jobs/inbox`.
+- [x] Runtime-ensure local job folders under `DATA_DIR/political-jobs/{inbox,scripts,runs,logs}`.
+- [x] Add manifest validation.
+- [ ] Add checked-in template documentation for private local manifests.
+- [ ] Add scheduler/executor that reads enabled manifests and runs local scripts on interval.
 - [ ] Add dry-run mode.
 - [ ] Add UI-visible run history, stdout/stderr, next-run, and last-error.
 
@@ -212,7 +217,8 @@ Preferred source order:
 
 Candidate sources:
 
-- [ ] Benjamin / “Quentas” source — clarify exact person/site/channel.
+- [ ] Nick Fuentes — clarify preferred source URLs/channels and legal/local transcript method.
+- [ ] Benjamin Cowen — YouTube and/or website/newsletter source.
 - [ ] George Gammon YouTube.
 - [ ] George Gammon website.
 - [ ] Other macro/political commentators as needed.
@@ -313,12 +319,13 @@ Acceptance criteria:
 
 ## Immediate next steps
 
-1. Confirm the Pi hostname/IP, SSD availability, and intended mount path.
-2. Deploy Check the Vote to the Pi/SSD using the committed deploy docs/templates.
-3. Verify LAN-only `/api/v1/health`, `/admin/sync`, and `/admin/cursors`.
-4. Start bounded historical ingest on the Pi.
-5. Only after Check the Vote is reachable on LAN, finish DocVault runtime connector verification.
-6. Continue DocVault Politics tab UI and private connector runner.
+1. Confirm SSD availability and intended mount path.
+2. Install Docker on the Pi if Docker remains the preferred Postgres/runtime strategy.
+3. Deploy Check the Vote to the Pi/SSD using Docker/Postgres volumes on SSD once attached.
+4. Verify LAN-only `/api/v1/health`, `/admin/sync`, and `/admin/cursors`.
+5. Start bounded historical ingest on the Pi.
+6. Only after Check the Vote is reachable on LAN, finish DocVault runtime connector verification.
+7. Continue DocVault Politics tab UI and private connector scheduler/executor.
 
 ## Definition of done for the politics foundation
 
