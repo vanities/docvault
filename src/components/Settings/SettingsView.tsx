@@ -450,6 +450,7 @@ export function SettingsView() {
   const [customJobStatuses, setCustomJobStatuses] = useState<Record<string, TaskStatus>>({});
   const [runningJobIds, setRunningJobIds] = useState<Set<string>>(new Set());
   const [newJobId, setNewJobId] = useState('');
+  const [editingJobId, setEditingJobId] = useState<string | null>(null);
   const [newJobLabel, setNewJobLabel] = useState('');
   const [newJobSchedule, setNewJobSchedule] = useState('daily');
   const [newJobScript, setNewJobScript] = useState('scripts/example.local.ts');
@@ -557,7 +558,7 @@ export function SettingsView() {
   const handleCreateCustomJob = async () => {
     setIsJobSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/jobs`, {
+      const res = await fetch(`${API_BASE}/jobs${editingJobId ? '?overwrite=true' : ''}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -578,8 +579,14 @@ export function SettingsView() {
         addToast(data.error || 'Failed to create custom job', 'error');
         return;
       }
-      addToast('Custom job manifest created and script made runnable when present', 'success');
+      addToast(
+        editingJobId
+          ? 'Custom job saved and script made runnable when present'
+          : 'Custom job manifest created and script made runnable when present',
+        'success'
+      );
       setNewJobId('');
+      setEditingJobId(null);
       setNewJobLabel('');
       setNewJobSchedule('daily');
       setNewJobScript('scripts/example.local.ts');
@@ -592,6 +599,28 @@ export function SettingsView() {
     } finally {
       setIsJobSaving(false);
     }
+  };
+
+  const handleEditCustomJob = (manifest: CustomJobManifest) => {
+    setEditingJobId(manifest.id);
+    setNewJobId(manifest.id);
+    setNewJobLabel(manifest.label);
+    setNewJobSchedule(manifest.schedule);
+    setNewJobScript(manifest.script);
+    setNewJobScriptContent('');
+    setNewJobTags(manifest.tags.join(', '));
+    setNewJobEnabled(manifest.enabled);
+  };
+
+  const clearCustomJobForm = () => {
+    setEditingJobId(null);
+    setNewJobId('');
+    setNewJobLabel('');
+    setNewJobSchedule('daily');
+    setNewJobScript('scripts/example.local.ts');
+    setNewJobScriptContent('');
+    setNewJobTags('');
+    setNewJobEnabled(false);
   };
 
   // Pass "" (or omit) for the live ring-buffer view; pass a YYYY-MM-DD to
@@ -2101,6 +2130,12 @@ export function SettingsView() {
                               {job.manifest.enabled ? 'enabled' : 'disabled'}
                             </span>
                             <Button
+                              onClick={() => handleEditCustomJob(job.manifest)}
+                              className="bg-surface-200/50 hover:bg-surface-200 text-surface-700 text-[11px] px-2 py-1"
+                            >
+                              Edit
+                            </Button>
+                            <Button
                               onClick={() => void handleRunCustomJob(job.manifest.id)}
                               disabled={isRunning}
                               className="bg-violet-500 hover:bg-violet-400 text-[11px] px-2 py-1"
@@ -2137,10 +2172,18 @@ export function SettingsView() {
                   )}
                 </div>
 
+                {editingJobId && (
+                  <div className="mb-3 rounded-xl border border-violet-400/30 bg-violet-500/10 p-3 text-[12px] text-surface-700">
+                    Editing <code>{editingJobId}</code>. Saving will overwrite the manifest,
+                    normalize any pasted script body, chmod the script 0700, and reload the
+                    scheduler.
+                  </div>
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <Input
                     value={newJobId}
                     onChange={(e) => setNewJobId(e.target.value)}
+                    disabled={!!editingJobId}
                     placeholder="job-id-kebab-case"
                   />
                   <Input
@@ -2197,8 +2240,16 @@ export function SettingsView() {
                   className="mt-3 bg-violet-500 hover:bg-violet-400"
                 >
                   <Plus className="w-4 h-4" />
-                  {isJobSaving ? 'Creating…' : 'Create Custom Job'}
+                  {isJobSaving ? 'Saving…' : editingJobId ? 'Save Custom Job' : 'Create Custom Job'}
                 </Button>
+                {editingJobId && (
+                  <Button
+                    onClick={clearCustomJobForm}
+                    className="mt-3 ml-2 bg-surface-200/50 hover:bg-surface-200 text-surface-700"
+                  >
+                    Cancel Edit
+                  </Button>
+                )}
               </div>
             </Card>
           </>

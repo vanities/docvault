@@ -192,6 +192,52 @@ describe('handleJobRoutes', () => {
     });
   });
 
+  test('POST /api/jobs?overwrite=true edits a cron and keeps its script runnable', async () => {
+    await withTempDataDir(async (dataDir) => {
+      await handleJobRoutes(
+        new Request('https://example.test/api/jobs', {
+          method: 'POST',
+          body: JSON.stringify({
+            id: 'editable-job',
+            label: 'Editable Job',
+            schedule: 'hourly',
+            script: 'scripts/editable.local.sh',
+            scriptContent: '#!/usr/bin/env bash\nprintf "old"\n',
+            enabled: false,
+          }),
+        }),
+        new URL('https://example.test/api/jobs'),
+        '/api/jobs',
+        { dataDir, restartCustomJobScheduler: async () => {} }
+      );
+
+      const response = await handleJobRoutes(
+        new Request('https://example.test/api/jobs?overwrite=true', {
+          method: 'POST',
+          body: JSON.stringify({
+            id: 'editable-job',
+            label: 'Editable Job Updated',
+            schedule: 'daily',
+            script: 'scripts/editable.local.sh',
+            scriptContent: '#!/usr/bin/env bash\r\nprintf "new"\r\n',
+            enabled: true,
+          }),
+        }),
+        new URL('https://example.test/api/jobs?overwrite=true'),
+        '/api/jobs',
+        { dataDir, restartCustomJobScheduler: async () => {} }
+      );
+
+      expect(response?.status).toBe(201);
+      const body = await response!.json();
+      const scriptPath = customJobScriptPath(dataDir, 'scripts/editable.local.sh');
+      expect(body.manifest).toMatchObject({ label: 'Editable Job Updated', schedule: 'daily' });
+      expect(body.scriptStatus).toMatchObject({ exists: true, runnable: true, repaired: true });
+      expect(await readFile(scriptPath, 'utf8')).toBe('#!/usr/bin/env bash\nprintf "new"\n');
+      expect((await stat(scriptPath)).mode & 0o777).toBe(0o700);
+    });
+  });
+
   test('returns null for unrelated paths', async () => {
     await expect(
       handleJobRoutes(
