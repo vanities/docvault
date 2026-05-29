@@ -54,6 +54,12 @@ GET /api/v1/daily/political-summary
 
 ## 3. Local/private scraper job layer
 
+Selected first commentary sources:
+
+- Nick Fuentes: Rumble
+- Benjamin Cowen: YouTube plus the benjamincowen reports page
+- George Gammon: YouTube only
+
 Do not commit scraper implementations that target brittle or legally sensitive websites.
 
 Preferred shape:

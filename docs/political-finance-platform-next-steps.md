@@ -217,10 +217,9 @@ Preferred source order:
 
 Candidate sources:
 
-- [ ] Nick Fuentes — clarify preferred source URLs/channels and legal/local transcript method.
-- [ ] Benjamin Cowen — YouTube and/or website/newsletter source.
-- [ ] George Gammon YouTube.
-- [ ] George Gammon website.
+- [ ] Nick Fuentes — Rumble as the preferred source; use a legal/local transcript method.
+- [ ] Benjamin Cowen — YouTube plus the benjamincowen reports page.
+- [ ] George Gammon — YouTube only.
 - [ ] Other macro/political commentators as needed.
 
 Acceptance criteria:
