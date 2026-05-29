@@ -19,8 +19,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 
+type ResearchPanelDomain = 'finance' | 'politics';
+
 interface ResearchEntry {
   id: string;
+  domain: ResearchPanelDomain;
   filename: string | null;
   filePath: string;
   mediaType: 'application/pdf' | 'text/plain';
@@ -299,7 +302,17 @@ function TickerPriceStrip({ tickers }: { tickers: string[] }) {
 // ResearchPanel — main view
 // ---------------------------------------------------------------------------
 
-export function ResearchPanel() {
+export function ResearchPanel({
+  domain = 'finance',
+  title = 'Research',
+  description = 'Upload PDFs, paste transcripts/articles, or fetch YouTube captions into the research store.',
+  pdfHint = 'Research PDFs from Cowen, Lyn Alden, Fidelity, Raoul Pal, etc. Text is extracted automatically — no AI parsing.',
+}: {
+  domain?: ResearchPanelDomain;
+  title?: string;
+  description?: string;
+  pdfHint?: string;
+}) {
   const [entries, setEntries] = useState<ResearchEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -317,18 +330,18 @@ export function ResearchPanel() {
   const [savingYoutube, setSavingYoutube] = useState(false);
   const [youtubeError, setYoutubeError] = useState<string | null>(null);
 
-  // Initial load — filter to finance entries so the Health Research tab's
-  // entries (same store, different domain) don't bleed into Quant.
+  // Initial load — filter to this panel's domain so finance/politics entries
+  // do not bleed into each other.
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/research?domain=finance');
+      const res = await fetch(`/api/research?domain=${domain}`);
       const data = (await res.json()) as { entries: ResearchEntry[] };
       setEntries(data.entries ?? []);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [domain]);
 
   useEffect(() => {
     void load();
@@ -336,33 +349,36 @@ export function ResearchPanel() {
 
   // ---- Upload ----
 
-  const uploadFiles = useCallback(async (files: FileList | File[]) => {
-    setUploadError(null);
-    setUploading(true);
-    try {
-      const arr = Array.from(files);
-      for (const file of arr) {
-        if (!file.name.toLowerCase().endsWith('.pdf')) {
-          setUploadError(`Skipped ${file.name}: only PDFs are supported.`);
-          continue;
+  const uploadFiles = useCallback(
+    async (files: FileList | File[]) => {
+      setUploadError(null);
+      setUploading(true);
+      try {
+        const arr = Array.from(files);
+        for (const file of arr) {
+          if (!file.name.toLowerCase().endsWith('.pdf')) {
+            setUploadError(`Skipped ${file.name}: only PDFs are supported.`);
+            continue;
+          }
+          const body = await file.arrayBuffer();
+          const res = await fetch(
+            `/api/research/upload?filename=${encodeURIComponent(file.name)}&domain=${domain}`,
+            { method: 'POST', body }
+          );
+          if (!res.ok) {
+            const err = (await res.json().catch(() => ({}))) as { error?: string };
+            setUploadError(err.error ?? `Upload failed (${res.status}) for ${file.name}`);
+          }
         }
-        const body = await file.arrayBuffer();
-        const res = await fetch(
-          `/api/research/upload?filename=${encodeURIComponent(file.name)}&domain=finance`,
-          { method: 'POST', body }
-        );
-        if (!res.ok) {
-          const err = (await res.json().catch(() => ({}))) as { error?: string };
-          setUploadError(err.error ?? `Upload failed (${res.status}) for ${file.name}`);
-        }
+        await fetch(`/api/research?domain=${domain}`)
+          .then((r) => r.json())
+          .then((d: { entries: ResearchEntry[] }) => setEntries(d.entries ?? []));
+      } finally {
+        setUploading(false);
       }
-      await fetch('/api/research?domain=finance')
-        .then((r) => r.json())
-        .then((d: { entries: ResearchEntry[] }) => setEntries(d.entries ?? []));
-    } finally {
-      setUploading(false);
-    }
-  }, []);
+    },
+    [domain]
+  );
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -385,7 +401,7 @@ export function ResearchPanel() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          domain: 'finance',
+          domain,
           text: textDraft.text,
           title: textDraft.title.trim() || undefined,
           author: textDraft.author.trim() || undefined,
@@ -402,13 +418,13 @@ export function ResearchPanel() {
       }
       setTextDraft(blankTextDraft());
       // Refresh inline (no loading flash) — mirrors the PDF upload path.
-      await fetch('/api/research?domain=finance')
+      await fetch(`/api/research?domain=${domain}`)
         .then((r) => r.json())
         .then((d: { entries: ResearchEntry[] }) => setEntries(d.entries ?? []));
     } finally {
       setSavingText(false);
     }
-  }, [textDraft]);
+  }, [domain, textDraft]);
 
   // Save by URL via the yt-dlp-backed /api/research/youtube endpoint.
   const submitYoutube = useCallback(async () => {
@@ -420,7 +436,7 @@ export function ResearchPanel() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          domain: 'finance',
+          domain,
           url: youtubeDraft.url.trim(),
           tickers: youtubeDraft.tickers.length > 0 ? youtubeDraft.tickers : undefined,
         }),
@@ -432,13 +448,13 @@ export function ResearchPanel() {
       }
       setYoutubeDraft(blankYoutubeDraft());
       // Refresh inline (no loading flash) — mirrors the other ingest paths.
-      await fetch('/api/research?domain=finance')
+      await fetch(`/api/research?domain=${domain}`)
         .then((r) => r.json())
         .then((d: { entries: ResearchEntry[] }) => setEntries(d.entries ?? []));
     } finally {
       setSavingYoutube(false);
     }
-  }, [youtubeDraft]);
+  }, [domain, youtubeDraft]);
 
   // ---- Mutations ----
 
@@ -475,6 +491,10 @@ export function ResearchPanel() {
 
   return (
     <div>
+      <div className="mb-4">
+        <h2 className="font-display text-xl text-surface-950 italic">{title}</h2>
+        <p className="text-sm text-surface-700 mt-1">{description}</p>
+      </div>
       {/* Ingest card — toggle between uploading a PDF and pasting raw text. */}
       <Card variant="glass" className="mb-6">
         {/* Mode toggle */}
@@ -533,10 +553,7 @@ export function ResearchPanel() {
                       <span className="font-medium text-accent-400">Click to upload</span> or drag &
                       drop
                     </p>
-                    <p className="text-[12px] text-surface-600">
-                      Research PDFs from Cowen, Lyn Alden, Fidelity, Raoul Pal, etc. Text is
-                      extracted automatically — no AI parsing.
-                    </p>
+                    <p className="text-[12px] text-surface-600">{pdfHint}</p>
                   </>
                 )}
                 <input

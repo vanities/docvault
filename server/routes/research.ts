@@ -46,14 +46,15 @@ const RESEARCH_DATA_DIR = path.join(DATA_DIR, 'research');
 // Types
 // ---------------------------------------------------------------------------
 
-export type ResearchDomain = 'finance' | 'health';
+export type ResearchDomain = 'finance' | 'health' | 'politics';
 
 export interface ResearchEntry {
   id: string;
   /**
    * Which tab surfaces this entry — 'finance' shows up in Quant → Research,
-   * 'health' shows up in Health → Research. Defaults to 'finance' for
-   * entries written before this field existed (backfilled in loadStore).
+   * 'health' shows up in Health → Research, and 'politics' shows up in the
+   * Political intelligence tab. Defaults to 'finance' for entries written
+   * before this field existed (backfilled in loadStore).
    */
   domain: ResearchDomain;
   /** Original filename at upload, for display. */
@@ -138,11 +139,11 @@ async function loadStore(): Promise<ResearchStore> {
   }
 }
 
-/** Parse the `domain` value supplied by a client. Anything other than
- *  the literal "health" falls back to "finance" — keeps the legacy
- *  Quant ingest path working when callers don't send a domain at all. */
-function parseDomain(raw: unknown): ResearchDomain {
-  return raw === 'health' ? 'health' : 'finance';
+/** Parse the `domain` value supplied by a client. Unknown values fall back to
+ *  "finance" — keeps the legacy Quant ingest path working when callers don't
+ *  send a domain at all. */
+export function parseDomain(raw: unknown): ResearchDomain {
+  return raw === 'health' || raw === 'politics' || raw === 'finance' ? raw : 'finance';
 }
 
 /** Coerce a client-supplied list of person IDs into a clean string[].
@@ -464,12 +465,13 @@ export async function handleResearchRoutes(
   // GET /api/research?domain=health — list newest first (by reportDate if
   // set, else upload time). When `domain` is unset, returns everything for
   // back-compat with the original Quant-only endpoint; callers that want a
-  // single tab's entries should always pass ?domain=finance or ?domain=health.
+  // single tab's entries should always pass ?domain=finance, ?domain=health,
+  // or ?domain=politics.
   if (sub === '' && req.method === 'GET') {
     const store = await loadStore();
     const domainParam = url.searchParams.get('domain');
     let entries = Object.values(store.entries);
-    if (domainParam === 'finance' || domainParam === 'health') {
+    if (domainParam === 'finance' || domainParam === 'health' || domainParam === 'politics') {
       entries = entries.filter((e) => e.domain === domainParam);
     }
     entries.sort((a, b) => {
