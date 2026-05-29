@@ -7,9 +7,11 @@ This document connects the three related efforts discussed for DocVault / Check 
 Source of truth for public political records:
 
 - congressional vote history and daily vote sync
-- job/cursor/event visibility in `/admin/sync`
-- future politician trade disclosures
-- future API-key protected `/api/v1/*` endpoints consumed by DocVault
+- job/cursor/event visibility in `/admin/sync` and `/admin/cursors`
+- official House trade disclosure filing discovery
+- official House PTR PDF transaction parsing into `trade_disclosures`
+- scanned/blank House PTR PDF warnings via `ptr_pdf_text_blank`
+- API-key protected `/api/v1/*` endpoints consumed by DocVault
 
 DocVault should not own this long-running public backfill. It should call the Pi service over LAN once the SSD-backed service is live.
 
@@ -31,22 +33,23 @@ CHECKTHEVOTE_BASE_URL=http://pi.local:3000
 CHECKTHEVOTE_API_KEY=[REDACTED]
 ```
 
-The first committed Check the Vote API endpoints now use `Authorization: Bearer $CHECKTHEVOTE_API_KEY`:
+The committed Check the Vote API endpoints now use `Authorization: Bearer <CHECKTHEVOTE_API_KEY>`:
 
 ```text
 GET /api/v1/health
 GET /api/v1/sync
 GET /api/v1/votes/recent?limit=25
+GET /api/v1/trades/recent?limit=25
+GET /api/v1/trade-filings/recent?limit=25
 ```
 
 Potential next Check the Vote reads:
 
 ```text
-GET /api/v1/health
-GET /api/v1/sync
-GET /api/v1/votes/recent
 GET /api/v1/politicians/:id/votes
-GET /api/v1/trades/recent
+GET /api/v1/politicians/:id/trades
+GET /api/v1/politicians/:id/activity
+GET /api/v1/daily/political-summary
 ```
 
 ## 3. Local/private scraper job layer
@@ -88,7 +91,7 @@ Example manifest shape:
 
 ## 4. Predictive headlines V1
 
-Wait until Check the Vote and DocVault Politics have enough structured inputs. Then build a small experiment:
+Wait until Check the Vote and DocVault Politics have enough structured inputs. Then build a small experiment. Prediction markets are first-class inputs: Kalshi and Polymarket prices should act as market-implied priors that the predictor records, compares against, and explains divergences from.
 
 1. collect source bundle for day D:
    - recent votes
@@ -96,11 +99,34 @@ Wait until Check the Vote and DocVault Politics have enough structured inputs. T
    - finance indicators already in DocVault
    - political/commentary research snippets
    - selected news headlines
+   - selected Kalshi market snapshots
+   - selected Polymarket market snapshots
 2. generate predictions for day D+1
-3. store predictions immutably
+3. store predictions immutably with source context and market-implied probabilities
 4. next day, fetch actual headlines
 5. score similarity and misses
-6. append prompt-evaluation notes, not automatic prompt mutation at first
+6. compare predictor performance against market-implied expectations
+7. append prompt-evaluation notes, not automatic prompt mutation at first
+
+Prediction-market ingestion should be read-only in V1:
+
+```text
+prediction_market_events
+prediction_market_markets
+prediction_market_snapshots
+```
+
+Minimum fields per snapshot:
+
+- source: `kalshi` or `polymarket`
+- market/event external ID
+- question/title
+- outcomes
+- current implied probability or price
+- volume/liquidity/open interest if available
+- close/resolution date
+- fetched timestamp
+- raw payload for auditability
 
 Initial storage can be plain JSON under `DATA_DIR/predictions/`:
 
