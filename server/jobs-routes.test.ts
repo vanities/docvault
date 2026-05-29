@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from 'fs/promises';
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { describe, expect, test } from 'vite-plus/test';
@@ -161,6 +161,34 @@ describe('handleJobRoutes', () => {
 
       expect(response?.status).toBe(201);
       expect(restarts).toEqual([dataDir]);
+    });
+  });
+
+  test('POST /api/jobs can create and chmod a local script body', async () => {
+    await withTempDataDir(async (dataDir) => {
+      const response = await handleJobRoutes(
+        new Request('https://example.test/api/jobs', {
+          method: 'POST',
+          body: JSON.stringify({
+            id: 'body-script-job',
+            label: 'Body Script Job',
+            schedule: 'hourly',
+            script: 'scripts/body-script.local.sh',
+            scriptContent: '#!/usr/bin/env bash\r\nprintf "body ok"\r\n',
+            enabled: false,
+          }),
+        }),
+        new URL('https://example.test/api/jobs'),
+        '/api/jobs',
+        { dataDir, restartCustomJobScheduler: async () => {} }
+      );
+
+      expect(response?.status).toBe(201);
+      const body = await response!.json();
+      const scriptPath = customJobScriptPath(dataDir, 'scripts/body-script.local.sh');
+      expect(body.scriptStatus).toMatchObject({ exists: true, runnable: true, repaired: true });
+      expect(await readFile(scriptPath, 'utf8')).toBe('#!/usr/bin/env bash\nprintf "body ok"\n');
+      expect((await stat(scriptPath)).mode & 0o777).toBe(0o700);
     });
   });
 

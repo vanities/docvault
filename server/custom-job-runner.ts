@@ -8,6 +8,7 @@ import {
   ensureJobsLayout,
   jobsRoot,
   listCustomJobManifests,
+  prepareCustomJobScript,
 } from './jobs.js';
 import type { CustomJobManifest } from './jobs.js';
 import { createLogger } from './logger.js';
@@ -137,6 +138,7 @@ export async function runCustomJobNow(
 
   try {
     const scriptPath = customJobScriptPath(dataDir, manifest.script);
+    await prepareCustomJobScript({}, manifest, { dataDir, overwrite: true });
     await fs.access(scriptPath);
     const { cmd, args } = commandForScript(scriptPath);
     const child = spawn(cmd, args, {
