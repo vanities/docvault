@@ -234,4 +234,4 @@ Everything lives in `DOCVAULT_DATA_DIR` as `.docvault-*.json` — mount one volu
 
 ## License
 
-MIT
+[GNU General Public License v3.0](LICENSE)
