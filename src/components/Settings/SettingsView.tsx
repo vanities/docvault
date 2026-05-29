@@ -419,8 +419,44 @@ export function SettingsView() {
     lastError: string | null;
     lastDurationMs: number | null;
     running: boolean;
+    lastRunPath?: string | null;
   }
   const [scheduleStatus, setScheduleStatus] = useState<Record<string, TaskStatus>>({});
+
+  interface BuiltInJobRecord {
+    id: string;
+    label: string;
+    kind: 'built-in';
+    description: string;
+    enabled: boolean;
+    schedule: string;
+    tags: string[];
+    status: TaskStatus;
+  }
+  interface CustomJobManifest {
+    id: string;
+    label: string;
+    kind: 'local-script';
+    schedule: string;
+    script: string;
+    enabled: boolean;
+    tags: string[];
+  }
+  type CustomJobRecord =
+    | { status: 'valid'; path: string; manifest: CustomJobManifest }
+    | { status: 'invalid'; path: string; error: string };
+  const [builtInJobs, setBuiltInJobs] = useState<BuiltInJobRecord[]>([]);
+  const [customJobs, setCustomJobs] = useState<CustomJobRecord[]>([]);
+  const [customJobStatuses, setCustomJobStatuses] = useState<Record<string, TaskStatus>>({});
+  const [runningJobIds, setRunningJobIds] = useState<Set<string>>(new Set());
+  const [newJobId, setNewJobId] = useState('');
+  const [newJobLabel, setNewJobLabel] = useState('');
+  const [newJobSchedule, setNewJobSchedule] = useState('daily');
+  const [newJobScript, setNewJobScript] = useState('scripts/example.local.ts');
+  const [newJobTags, setNewJobTags] = useState('');
+  const [newJobEnabled, setNewJobEnabled] = useState(false);
+  const [isJobSaving, setIsJobSaving] = useState(false);
+
   interface LogLine {
     ts: string;
     level: 'info' | 'warn' | 'error' | 'debug';
@@ -451,12 +487,14 @@ export function SettingsView() {
     void loadSnapTradeStatus();
     void loadSchedules();
     void loadScheduleStatus();
+    void loadJobs();
     void loadLogs();
     void loadLogDates();
     const interval = setInterval(() => {
       void loadSyncStatus();
       void loadCacheStatus();
       void loadScheduleStatus();
+      void loadJobs();
     }, 30000); // Poll every 30s
     return () => clearInterval(interval);
   }, []);
@@ -467,6 +505,89 @@ export function SettingsView() {
       if (res.ok) setScheduleStatus(await res.json());
     } catch {
       /* ignore */
+    }
+  };
+
+  const loadJobs = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/jobs`);
+      if (res.ok) {
+        const data = (await res.json()) as {
+          builtInJobs?: BuiltInJobRecord[];
+          customJobs?: CustomJobRecord[];
+          customJobStatuses?: Record<string, TaskStatus>;
+        };
+        setBuiltInJobs(data.builtInJobs ?? []);
+        setCustomJobs(data.customJobs ?? []);
+        setCustomJobStatuses(data.customJobStatuses ?? {});
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const handleRunCustomJob = async (id: string) => {
+    setRunningJobIds((prev) => new Set(prev).add(id));
+    try {
+      const res = await fetch(`${API_BASE}/jobs/${encodeURIComponent(id)}/run`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        addToast(data.error || `Failed to run ${id}`, 'error');
+        return;
+      }
+      addToast(
+        `Custom job ${id} finished with exit ${data.result?.exitCode ?? 'unknown'}`,
+        'success'
+      );
+      void loadJobs();
+    } catch {
+      addToast(`Failed to run ${id}`, 'error');
+    } finally {
+      setRunningJobIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  const handleCreateCustomJob = async () => {
+    setIsJobSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: newJobId,
+          label: newJobLabel,
+          schedule: newJobSchedule,
+          script: newJobScript,
+          enabled: newJobEnabled,
+          tags: newJobTags
+            .split(',')
+            .map((tag) => tag.trim())
+            .filter(Boolean),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        addToast(data.error || 'Failed to create custom job', 'error');
+        return;
+      }
+      addToast('Custom job manifest created', 'success');
+      setNewJobId('');
+      setNewJobLabel('');
+      setNewJobSchedule('daily');
+      setNewJobScript('scripts/example.local.ts');
+      setNewJobTags('');
+      setNewJobEnabled(false);
+      void loadJobs();
+    } catch {
+      addToast('Failed to create custom job', 'error');
+    } finally {
+      setIsJobSaving(false);
     }
   };
 
@@ -1231,6 +1352,10 @@ export function SettingsView() {
             <Activity className="w-3.5 h-3.5" />
             Status
           </TabsTrigger>
+          <TabsTrigger value="jobs">
+            <Activity className="w-3.5 h-3.5" />
+            Jobs
+          </TabsTrigger>
           <TabsTrigger value="banking">
             <Banknote className="w-3.5 h-3.5" />
             Banking
@@ -1836,6 +1961,234 @@ export function SettingsView() {
                       {isScheduleSaving ? 'Saving...' : 'Save Schedules'}
                     </>
                   )}
+                </Button>
+              </div>
+            </Card>
+          </>
+        )}
+
+        {showIn(['jobs']) && (
+          <>
+            <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
+              Jobs
+            </p>
+
+            <Card variant="glass" className="p-6 mb-8">
+              <div className="flex items-start justify-between gap-4 mb-5">
+                <div>
+                  <h3 className="text-lg font-semibold text-surface-950 flex items-center gap-2">
+                    <Activity className="w-5 h-5" />
+                    Built-in and Custom Jobs
+                  </h3>
+                  <p className="text-[12px] text-surface-600 mt-1">
+                    Built-ins are committed DocVault jobs. Custom local-script jobs live under{' '}
+                    <code>DATA_DIR/jobs</code> and are safe for private scrapers/importers.
+                  </p>
+                </div>
+                <Button
+                  onClick={() => void loadJobs()}
+                  className="bg-surface-200/50 hover:bg-surface-200 text-surface-700 text-[12px] px-2 py-1"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  Refresh
+                </Button>
+              </div>
+
+              <div className="mb-6">
+                <p className="text-[13px] font-semibold text-surface-900 mb-3">Built-in jobs</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {builtInJobs.map((job) => {
+                    const hasError = !!job.status.lastError;
+                    const dotColor = job.status.running
+                      ? 'bg-blue-400 animate-pulse'
+                      : hasError
+                        ? 'bg-red-400'
+                        : job.status.lastSuccessAt
+                          ? 'bg-emerald-400'
+                          : job.enabled
+                            ? 'bg-amber-400'
+                            : 'bg-surface-500';
+                    return (
+                      <div
+                        key={job.id}
+                        className="p-3 bg-surface-200/20 rounded-xl border border-border/30"
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
+                            <p className="text-[13px] font-medium text-surface-900 truncate">
+                              {job.label}
+                            </p>
+                          </div>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-surface-200/40 text-surface-600">
+                            {job.enabled ? 'enabled' : 'disabled'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-surface-600">{job.description}</p>
+                        <p className="text-[11px] text-surface-500 mt-1">
+                          {job.schedule}
+                          {job.status.lastRanAt
+                            ? ` • last ran ${formatRelativeTime(job.status.lastRanAt)}`
+                            : ' • never ran'}
+                        </p>
+                        {hasError && (
+                          <p className="text-[11px] text-red-400 mt-1 break-words">
+                            Error: {job.status.lastError}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {builtInJobs.length === 0 && (
+                    <p className="text-[12px] text-surface-500">No built-in jobs loaded yet.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="border-t border-border/50 pt-5">
+                <p className="text-[13px] font-semibold text-surface-900 mb-3">Custom local jobs</p>
+                <div className="space-y-2 mb-5">
+                  {customJobs.map((job) => {
+                    if (job.status !== 'valid') {
+                      return (
+                        <div
+                          key={job.path}
+                          className="p-3 bg-red-500/10 rounded-xl border border-red-500/20"
+                        >
+                          <p className="text-[13px] font-medium text-red-300">Invalid manifest</p>
+                          <p className="text-[11px] text-red-200/80 break-words">
+                            {job.path}: {job.error}
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    const status = customJobStatuses[job.manifest.id];
+                    const isRunning = runningJobIds.has(job.manifest.id) || !!status?.running;
+                    const hasError = !!status?.lastError;
+                    const dotColor = isRunning
+                      ? 'bg-blue-400 animate-pulse'
+                      : hasError
+                        ? 'bg-red-400'
+                        : status?.lastSuccessAt
+                          ? 'bg-emerald-400'
+                          : job.manifest.enabled
+                            ? 'bg-amber-400'
+                            : 'bg-surface-500';
+                    return (
+                      <div
+                        key={job.path}
+                        className="p-3 bg-surface-200/20 rounded-xl border border-border/30"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
+                              <p className="text-[13px] font-medium text-surface-900 truncate">
+                                {job.manifest.label}
+                              </p>
+                            </div>
+                            <p className="text-[11px] text-surface-600 mt-1">
+                              {job.manifest.id} • {job.manifest.schedule} •{' '}
+                              <code>{job.manifest.script}</code>
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-surface-200/40 text-surface-600">
+                              {job.manifest.enabled ? 'enabled' : 'disabled'}
+                            </span>
+                            <Button
+                              onClick={() => void handleRunCustomJob(job.manifest.id)}
+                              disabled={isRunning}
+                              className="bg-violet-500 hover:bg-violet-400 text-[11px] px-2 py-1"
+                            >
+                              <RefreshCw className={`w-3 h-3 ${isRunning ? 'animate-spin' : ''}`} />
+                              {isRunning ? 'Running' : 'Run now'}
+                            </Button>
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-surface-500 mt-1">
+                          {status?.lastRanAt
+                            ? `Last ran ${formatRelativeTime(status.lastRanAt)}`
+                            : 'Never ran'}
+                          {status?.lastDurationMs ? ` • ${status.lastDurationMs}ms` : ''}
+                        </p>
+                        {hasError && (
+                          <p className="text-[11px] text-red-400 mt-1 break-words">
+                            Error: {status.lastError}
+                          </p>
+                        )}
+                        {job.manifest.tags.length > 0 && (
+                          <p className="text-[11px] text-surface-500 mt-1">
+                            {job.manifest.tags.join(', ')}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {customJobs.length === 0 && (
+                    <p className="text-[12px] text-surface-500">
+                      No custom jobs yet. Create a manifest below, then put the matching script
+                      under <code>DATA_DIR/jobs/scripts</code>.
+                    </p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <Input
+                    value={newJobId}
+                    onChange={(e) => setNewJobId(e.target.value)}
+                    placeholder="job-id-kebab-case"
+                  />
+                  <Input
+                    value={newJobLabel}
+                    onChange={(e) => setNewJobLabel(e.target.value)}
+                    placeholder="Human label"
+                  />
+                  <Select value={newJobSchedule} onValueChange={setNewJobSchedule}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="hourly">hourly</SelectItem>
+                      <SelectItem value="daily">daily</SelectItem>
+                      <SelectItem value="every 2h">every 2h</SelectItem>
+                      <SelectItem value="every 6h">every 6h</SelectItem>
+                      <SelectItem value="every 12h">every 12h</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    value={newJobScript}
+                    onChange={(e) => setNewJobScript(e.target.value)}
+                    placeholder="scripts/name.local.ts"
+                  />
+                  <Input
+                    value={newJobTags}
+                    onChange={(e) => setNewJobTags(e.target.value)}
+                    placeholder="tags, comma, separated"
+                  />
+                  <button
+                    onClick={() => setNewJobEnabled(!newJobEnabled)}
+                    className="flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-surface-200/20 text-[13px] text-surface-800"
+                  >
+                    <span>Enable scheduled runs</span>
+                    <span
+                      className={`relative w-10 h-5 rounded-full transition-colors ${newJobEnabled ? 'bg-violet-500' : 'bg-surface-400'}`}
+                    >
+                      <span
+                        className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
+                        style={{ left: newJobEnabled ? 22 : 2 }}
+                      />
+                    </span>
+                  </button>
+                </div>
+                <Button
+                  onClick={handleCreateCustomJob}
+                  disabled={isJobSaving || !newJobId || !newJobLabel || !newJobScript}
+                  className="mt-3 bg-violet-500 hover:bg-violet-400"
+                >
+                  <Plus className="w-4 h-4" />
+                  {isJobSaving ? 'Creating…' : 'Create Custom Job Manifest'}
                 </Button>
               </div>
             </Card>
