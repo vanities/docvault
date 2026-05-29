@@ -64,7 +64,7 @@ DATA_DIR/political-jobs/logs/*.ndjson
 
 A committed generic scheduler can safely provide:
 
-- job manifest validation
+- job manifest validation (`server/political-jobs.ts` now validates the safe committed manifest shape)
 - interval/cron metadata
 - status persistence
 - stdout/stderr capture
