@@ -155,6 +155,7 @@ import { handleSicknessRoutes } from './routes/sickness.js';
 import { handleHealthAnalysisRoutes } from './routes/health-analysis.js';
 import { handleStrategyRoutes } from './routes/strategy.js';
 import { handleResearchRoutes } from './routes/research.js';
+import { handleCheckTheVoteRoutes } from './routes/check-the-vote.js';
 import { handleCryptoYieldsRoutes } from './routes/crypto-yields.js';
 import { handleChatRoutes } from './routes/chat.js';
 import { handleTranscribeRoutes } from './routes/transcribe.js';
@@ -1900,7 +1901,11 @@ async function handleRequest(req: Request): Promise<Response> {
   const strategyResponse = await handleStrategyRoutes(req, url, pathname);
   if (strategyResponse) return strategyResponse;
 
-  // research routes (analyst PDF uploads + text extraction for Quant section)
+  // Check the Vote Pi API bridge for Politics tab status/cards
+  const checkTheVoteResponse = await handleCheckTheVoteRoutes(req, url, pathname);
+  if (checkTheVoteResponse) return checkTheVoteResponse;
+
+  // research routes (analyst PDF uploads + text extraction for Quant/Politics sections)
   const researchResponse = await handleResearchRoutes(req, url, pathname);
   if (researchResponse) return researchResponse;
 

@@ -31,7 +31,15 @@ CHECKTHEVOTE_BASE_URL=http://pi.local:3000
 CHECKTHEVOTE_API_KEY=[REDACTED]
 ```
 
-Potential first Check the Vote reads:
+The first committed Check the Vote API endpoints now use `Authorization: Bearer $CHECKTHEVOTE_API_KEY`:
+
+```text
+GET /api/v1/health
+GET /api/v1/sync
+GET /api/v1/votes/recent?limit=25
+```
+
+Potential next Check the Vote reads:
 
 ```text
 GET /api/v1/health
