@@ -807,6 +807,16 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               isProcessing={isProcessing}
               onClick={handleViewClick}
             />
+            <NavButton
+              view="politics"
+              label="Politics"
+              icon={Scale}
+              activeColor="bg-red-500/10"
+              activeTextColor="text-red-400"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
           </div>
         </div>
 
