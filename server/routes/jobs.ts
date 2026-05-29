@@ -1,5 +1,10 @@
 import { DATA_DIR, jsonResponse, loadSettings } from '../data.js';
-import { createCustomJobManifest, listBuiltInJobRecords, listCustomJobManifests } from '../jobs.js';
+import {
+  createCustomJobManifest,
+  listBuiltInJobRecords,
+  listCustomJobManifests,
+  prepareCustomJobScript,
+} from '../jobs.js';
 import {
   loadCustomJobStatus,
   runCustomJobNow,
@@ -66,8 +71,9 @@ export async function handleJobRoutes(
       const raw = await req.json();
       const overwrite = url.searchParams.get('overwrite') === 'true';
       const manifest = await createCustomJobManifest(raw, { dataDir, overwrite });
+      const scriptStatus = await prepareCustomJobScript(raw, manifest, { dataDir, overwrite });
       await restartScheduler(dataDir);
-      return jsonResponse({ ok: true, manifest }, 201);
+      return jsonResponse({ ok: true, manifest, scriptStatus }, 201);
     } catch (err) {
       return jsonResponse(
         { ok: false, error: err instanceof Error ? err.message : String(err) },

@@ -453,6 +453,7 @@ export function SettingsView() {
   const [newJobLabel, setNewJobLabel] = useState('');
   const [newJobSchedule, setNewJobSchedule] = useState('daily');
   const [newJobScript, setNewJobScript] = useState('scripts/example.local.ts');
+  const [newJobScriptContent, setNewJobScriptContent] = useState('');
   const [newJobTags, setNewJobTags] = useState('');
   const [newJobEnabled, setNewJobEnabled] = useState(false);
   const [isJobSaving, setIsJobSaving] = useState(false);
@@ -564,6 +565,7 @@ export function SettingsView() {
           label: newJobLabel,
           schedule: newJobSchedule,
           script: newJobScript,
+          ...(newJobScriptContent.trim() ? { scriptContent: newJobScriptContent } : {}),
           enabled: newJobEnabled,
           tags: newJobTags
             .split(',')
@@ -576,11 +578,12 @@ export function SettingsView() {
         addToast(data.error || 'Failed to create custom job', 'error');
         return;
       }
-      addToast('Custom job manifest created', 'success');
+      addToast('Custom job manifest created and script made runnable when present', 'success');
       setNewJobId('');
       setNewJobLabel('');
       setNewJobSchedule('daily');
       setNewJobScript('scripts/example.local.ts');
+      setNewJobScriptContent('');
       setNewJobTags('');
       setNewJobEnabled(false);
       void loadJobs();
@@ -2167,6 +2170,12 @@ export function SettingsView() {
                     onChange={(e) => setNewJobTags(e.target.value)}
                     placeholder="tags, comma, separated"
                   />
+                  <Textarea
+                    value={newJobScriptContent}
+                    onChange={(e) => setNewJobScriptContent(e.target.value)}
+                    placeholder="optional: paste script body here; create will normalize line endings and chmod 0700"
+                    className="md:col-span-2 min-h-[120px] font-mono text-xs"
+                  />
                   <button
                     onClick={() => setNewJobEnabled(!newJobEnabled)}
                     className="flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-surface-200/20 text-[13px] text-surface-800"
@@ -2188,7 +2197,7 @@ export function SettingsView() {
                   className="mt-3 bg-violet-500 hover:bg-violet-400"
                 >
                   <Plus className="w-4 h-4" />
-                  {isJobSaving ? 'Creating…' : 'Create Custom Job Manifest'}
+                  {isJobSaving ? 'Creating…' : 'Create Custom Job'}
                 </Button>
               </div>
             </Card>

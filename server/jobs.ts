@@ -46,6 +46,14 @@ export type CreateCustomJobOptions = {
   overwrite?: boolean;
 };
 
+export type CustomJobScriptStatus = {
+  path: string;
+  exists: boolean;
+  runnable: boolean;
+  repaired: boolean;
+  message: string | null;
+};
+
 export const JOBS_DIR = 'jobs';
 export const JOBS_MANIFESTS_DIR = 'manifests';
 export const JOBS_SCRIPTS_DIR = 'scripts';
@@ -186,6 +194,73 @@ export async function createCustomJobManifest(
 
   await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
   return manifest;
+}
+
+function readOptionalScriptContent(raw: unknown): string | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  const value = obj.scriptContent ?? obj.scriptBody;
+  if (value == null) return null;
+  if (typeof value !== 'string') throw new Error('scriptContent must be a string when provided');
+  return value;
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function prepareCustomJobScript(
+  raw: unknown,
+  manifest: CustomJobManifest,
+  options: CreateCustomJobOptions
+): Promise<CustomJobScriptStatus> {
+  const scriptPath = customJobScriptPath(options.dataDir, manifest.script);
+  const content = readOptionalScriptContent(raw);
+  let repaired = false;
+
+  if (content != null) {
+    if (!options.overwrite && (await fileExists(scriptPath))) {
+      throw new Error(`custom job script already exists: ${manifest.script}`);
+    }
+    await fs.mkdir(path.dirname(scriptPath), { recursive: true });
+    await fs.writeFile(scriptPath, content.replace(/\r\n?/g, '\n'), { mode: 0o700 });
+    repaired = true;
+  } else if (!(await fileExists(scriptPath))) {
+    return {
+      path: scriptPath,
+      exists: false,
+      runnable: false,
+      repaired: false,
+      message:
+        'script file does not exist yet; create it under DATA_DIR/jobs/scripts before running',
+    };
+  }
+
+  try {
+    const current = await fs.readFile(scriptPath, 'utf8');
+    const normalized = current.replace(/\r\n?/g, '\n');
+    if (normalized !== current) {
+      await fs.writeFile(scriptPath, normalized, { mode: 0o700 });
+      repaired = true;
+    }
+  } catch {
+    // Binary/non-UTF8 scripts are not expected for local jobs; still chmod below
+    // so a copied shell/js/ts script has a chance to run.
+  }
+
+  await fs.chmod(scriptPath, 0o700);
+  return {
+    path: scriptPath,
+    exists: true,
+    runnable: true,
+    repaired,
+    message: repaired ? 'script normalized and chmodded 0700' : 'script already runnable',
+  };
 }
 
 export async function listCustomJobManifests(dataDir: string): Promise<CustomJobRecord[]> {

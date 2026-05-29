@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { describe, expect, test } from 'vite-plus/test';
@@ -10,6 +10,7 @@ import {
   listBuiltInJobRecords,
   listCustomJobManifests,
   parseCustomJobManifest,
+  prepareCustomJobScript,
 } from './jobs';
 import type { ScheduleStatusMap } from './scheduler';
 
@@ -128,6 +129,44 @@ describe('custom job manifests', () => {
       expect(records).toHaveLength(2);
       expect(records[0]).toMatchObject({ status: 'invalid' });
       expect(records[1]).toMatchObject({ status: 'valid' });
+    });
+  });
+
+  test('prepares copied local scripts by normalizing line endings and chmodding runnable', async () => {
+    await withTempDataDir(async (dataDir) => {
+      const manifest = await createCustomJobManifest(
+        { ...exampleManifest, script: 'scripts/copied.local.sh' },
+        { dataDir }
+      );
+      const scriptPath = customJobScriptPath(dataDir, manifest.script);
+      await mkdir(path.dirname(scriptPath), { recursive: true });
+      await writeFile(scriptPath, '#!/usr/bin/env bash\r\nprintf "ok"\r\n', { mode: 0o600 });
+
+      const scriptStatus = await prepareCustomJobScript({}, manifest, { dataDir });
+      const mode = (await stat(scriptPath)).mode & 0o777;
+
+      expect(scriptStatus).toMatchObject({ exists: true, runnable: true, repaired: true });
+      expect(await readFile(scriptPath, 'utf8')).not.toContain('\r');
+      expect(mode).toBe(0o700);
+    });
+  });
+
+  test('can write scriptContent during manifest creation helper preparation', async () => {
+    await withTempDataDir(async (dataDir) => {
+      const manifest = await createCustomJobManifest(
+        { ...exampleManifest, script: 'scripts/new-script.local.sh' },
+        { dataDir }
+      );
+      const scriptStatus = await prepareCustomJobScript(
+        { scriptContent: '#!/usr/bin/env bash\r\nprintf "created"\r\n' },
+        manifest,
+        { dataDir }
+      );
+      const scriptPath = customJobScriptPath(dataDir, manifest.script);
+
+      expect(scriptStatus).toMatchObject({ exists: true, runnable: true, repaired: true });
+      expect(await readFile(scriptPath, 'utf8')).toBe('#!/usr/bin/env bash\nprintf "created"\n');
+      expect((await stat(scriptPath)).mode & 0o777).toBe(0o700);
     });
   });
 });
