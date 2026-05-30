@@ -54,6 +54,8 @@ scripts/*
 **/*.test.tsx
 **/*.spec.ts
 **/*.spec.tsx
+# Exception: Check the Vote connector tests use synthetic HTTP payloads, no personal data
+!server/check-the-vote.politics.test.ts
 # Exception: quant math tests are pure computation, no personal data
 !server/routes/quant.test.ts
 # Exception: crypto-keys tests are pure crypto primitives, no personal data

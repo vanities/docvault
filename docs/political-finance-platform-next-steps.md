@@ -16,12 +16,12 @@ The immediate foundation is Check the Vote running as a LAN-only political data 
 
 ## Systems
 
-| System               | Role                                                                                                   | Current status                                                                                            |
-| -------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| Check the Vote       | Political data service for votes, bills, politicians, trade filings, ingest status, and protected APIs | Main branch is pushed. Pi/SSD deployment is next.                                                         |
-| DocVault             | Local finance/health/document workspace and future Politics tab                                        | Politics research tab, Check the Vote bridge, generic local Jobs manifest API/UI, and roadmap are pushed. |
-| Artist Kit           | Markdown/influences/output archive                                                                     | Likely identified; keep future access read-only and provenance-preserving.                                |
-| Predictive Headlines | Future experiment                                                                                      | Should ingest news, DocVault/Check the Vote signals, and Kalshi/Polymarket probabilities.                 |
+| System               | Role                                                                                                   | Current status                                                                                                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Check the Vote       | Political data service for votes, bills, politicians, trade filings, ingest status, and protected APIs | Pi LAN staging is live at `http://192.168.1.12:3000`; historical trades, bills/votes, enrichment, and trade linking are verified. SSD deployment is next when drive arrives. |
+| DocVault             | Local finance/health/document workspace and future Politics tab                                        | Check the Vote backend bridge/aggregator, generic local Jobs manifest API/UI, and roadmap are pushed. Politics tab UI still needs wiring.                                    |
+| Artist Kit           | Markdown/influences/output archive                                                                     | Likely identified; keep future access read-only and provenance-preserving.                                                                                                   |
+| Predictive Headlines | Future experiment                                                                                      | Should ingest news, DocVault/Check the Vote signals, and Kalshi/Polymarket probabilities.                                                                                    |
 
 ## Completed foundation
 
@@ -47,11 +47,21 @@ The immediate foundation is Check the Vote running as a LAN-only political data 
   - 1,999 official House PTR transaction rows parsed.
   - 23 scanned/blank-PDF warnings.
   - 0 remaining readable zero-transaction warnings after parser fixes.
+- Pi staging snapshot as of 2026-05-30:
+  - `trade_disclosures`: 51,408 rows; 39,826 linked to politicians (77.47%).
+  - `bills`: 3,527; `bill_cosponsors`: 3,275.
+  - `votes`: 79; `vote_records`: 19,494; votes linked to bills: 25.
+  - Live `/trades`, `/bills`, `/votes`, and `/politicians` pages render on LAN staging with 0 browser console errors after latest verification.
+- Senate PTR ingestion/support is implemented and has populated `trade_disclosures` with `chamber = senate`.
+- Vote ingest cursors advance numerically rather than lexicographically.
+- Targeted vote-reference bill backfill exists: `bun run scripts/run-ingest.ts bills-vote-refs`.
 
 ### DocVault
 
 - Politics research tab exists.
 - Check the Vote server bridge exists.
+- Check the Vote backend aggregator route exists: `GET /api/check-the-vote/politics` fetches health, sync, recent votes, recent trades, and recent filings through the server-side API key.
+- Check the Vote connector tests cover missing config fail-closed behavior and bearer-auth upstream requests.
 - Generic local Jobs manifest validation and API-backed manifest creator/listing exist.
 - Generic custom job manifests are stored under `DATA_DIR/jobs/manifests` via `GET/POST /api/jobs`.
 - Settings has a Jobs UI that lists committed built-in jobs and local custom job manifests.
@@ -92,33 +102,33 @@ Acceptance criteria:
 
 ### Senate trade disclosure support
 
-- [ ] Research official Senate eFD/PTR access pattern.
-- [ ] Add a source contract test before broad ingest.
-- [ ] Add Senate filing discovery if possible.
-- [ ] Add Senate PTR transaction ingest if PDFs/text are accessible.
-- [ ] Surface source-specific warnings in `/admin/sync`.
+- [x] Research official Senate eFD/PTR access pattern.
+- [x] Add a source contract test before broad ingest.
+- [x] Add Senate filing discovery/backfill path.
+- [x] Add Senate PTR transaction ingest.
+- [x] Surface source-specific warnings in ingest/admin log surfaces.
 
 Acceptance criteria:
 
-- [ ] Senate filing discovery is source-tested.
-- [ ] Senate trade transactions land in `trade_disclosures` with `chamber = senate`.
-- [ ] Failures/warnings appear in admin UI.
+- [x] Senate filing discovery is source-tested.
+- [x] Senate trade transactions land in `trade_disclosures` with `chamber = senate`.
+- [x] Failures/warnings appear in admin/log surfaces.
 
 ### Additional protected APIs
 
 Existing APIs are enough for the first DocVault bridge. Next candidates:
 
 - [ ] `GET /api/v1/politicians/:id/activity` or slug equivalent.
-- [ ] `GET /api/v1/politicians/:id/trades`.
+- [x] `GET /api/v1/politicians/:id/trades` / identifier equivalent exists.
 - [ ] `GET /api/v1/politicians/:id/votes`.
 - [ ] `GET /api/v1/daily/political-summary` combining recent votes, bills, trades, and sync metadata.
 - [ ] Query filters for date range, chamber, ticker, category, and politician/person.
 
 Acceptance criteria:
 
-- [ ] DocVault can fetch all Politics-tab primitives with one API key.
-- [ ] Missing API key fails closed.
-- [ ] API responses include enough sync metadata for DocVault to show stale/error states.
+- [x] DocVault backend can fetch first Politics-tab primitives with one API key via `GET /api/check-the-vote/politics`.
+- [x] Missing API key fails closed.
+- [ ] Politics tab UI still needs to render sync metadata/stale/error states.
 
 ## Phase 2 — Pi + SSD deployment
 
@@ -131,17 +141,18 @@ Acceptance criteria:
 
 ### Clone/configure Check the Vote on Pi
 
+- [x] Stand up temporary Pi LAN staging at `/srv/checkthevote-stage/repo`; clone onto SSD remains pending.
 - [ ] Clone Check the Vote onto SSD.
-- [ ] Install runtime dependencies.
-- [ ] Configure service env:
+- [x] Install runtime dependencies for Pi staging.
+- [x] Configure Pi staging env:
   - `DATABASE_URL`
   - `CRON_SECRET`
   - `CHECKTHEVOTE_API_KEY`
   - `PDFTOTEXT_BIN`
   - optional official API keys
 - [ ] Install `poppler-utils` for `pdftotext`.
-- [ ] Run smoke test.
-- [ ] Confirm `GET /api/v1/health` works on LAN.
+- [x] Run Pi staging smoke tests.
+- [x] Confirm app/API health works on LAN staging.
 
 ### Install services and backups
 
@@ -156,8 +167,8 @@ Templates already exist. Remaining work is Pi-side installation and verification
 
 ### Run historical ingest on Pi
 
-- [ ] Seed historical cursors with intended range.
-- [ ] Start worker in bounded chunks.
+- [x] Seed/use historical cursors with intended ranges.
+- [x] Start worker/ingest in bounded chunks.
 - [ ] Verify `/admin/cursors` and `/admin/sync` while it runs.
 - [ ] Confirm historical ingest can resume after service restart.
 - [ ] Let long historical backfill continue in background.
