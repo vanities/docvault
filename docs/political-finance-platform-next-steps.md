@@ -58,7 +58,7 @@ The immediate foundation is Check the Vote running as a LAN-only political data 
 
 ### DocVault
 
-- Politics research tab exists.
+- Politics tab v1 exists with Check the Vote connection status, sync events/warnings, recent votes, recent trades, filings-attention bucket, and politics research inbox.
 - Check the Vote server bridge exists.
 - Check the Vote backend aggregator route exists: `GET /api/check-the-vote/politics` fetches health, sync, recent votes, recent trades, and recent filings through the server-side API key.
 - Check the Vote connector tests cover missing config fail-closed behavior and bearer-auth upstream requests.
@@ -184,8 +184,8 @@ Templates already exist. Remaining work is Pi-side installation and verification
 ### Connector/runtime verification
 
 - [ ] Confirm production NAS/local secret storage for `CHECKTHEVOTE_BASE_URL` and `CHECKTHEVOTE_API_KEY`.
-- [ ] Verify DocVault can call Check the Vote on LAN.
-- [ ] Show stale/error states from Check the Vote sync metadata.
+- [x] Verify DocVault can call Check the Vote on LAN.
+- [x] Show Check the Vote connection/error states and sync warning/error counts; richer stale-age copy can still be improved later.
 - [ ] Ensure API key is never exposed client-side if a backend boundary is available.
 
 ### Politics tab v1 sections
