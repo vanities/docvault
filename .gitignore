@@ -54,6 +54,8 @@ scripts/*
 **/*.test.tsx
 **/*.spec.ts
 **/*.spec.tsx
+# Exception: Politics dashboard tests use synthetic Check the Vote payloads, no personal data
+!src/components/Politics/politicsData.test.ts
 # Exception: Check the Vote connector tests use synthetic HTTP payloads, no personal data
 !server/check-the-vote.politics.test.ts
 # Exception: quant math tests are pure computation, no personal data
