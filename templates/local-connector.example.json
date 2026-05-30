@@ -1,0 +1,20 @@
+{
+  "id": "example-politics-source-daily",
+  "label": "Example politics source daily import",
+  "schedule": "daily",
+  "script": "scripts/example-politics-source.local.ts",
+  "enabled": false,
+  "tags": ["politics", "commentary", "transcript"],
+  "notes": [
+    "Copy this file into DATA_DIR/political-jobs/inbox/<id>.json, then remove these notes before posting to /api/political-jobs.",
+    "Put the private script under DATA_DIR/political-jobs/scripts/<name>.local.ts; do not commit site-specific scripts.",
+    "Keep credentials in local environment/config only; never add API keys or cookies to this manifest."
+  ],
+  "source": {
+    "name": "Example Source",
+    "url": "https://example.invalid/feed-or-channel",
+    "transcriptMethod": "manual-import | youtube-transcript | rss-html | local-script",
+    "parserMethod": "markdown | transcript | custom-local-script",
+    "topics": ["macro", "rates", "elections"]
+  }
+}
