@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs';
 import { mkdtemp, rm, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
@@ -17,6 +18,8 @@ const exampleManifest = {
   enabled: true,
   tags: ['politics', 'macro', 'transcript', 'youtube'],
 };
+
+const ROOT = path.resolve(__dirname, '..');
 
 async function withTempDataDir<T>(fn: (dataDir: string) => Promise<T>): Promise<T> {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), 'docvault-political-jobs-'));
@@ -54,6 +57,26 @@ describe('parsePoliticalJobManifest', () => {
         script: 'scripts/bad.local.ts',
       })
     ).toThrow(/id/);
+  });
+
+  test('checked-in local connector template remains parseable by the manifest validator', () => {
+    const templatePath = path.join(ROOT, 'templates/local-connector.example.json');
+    const raw = JSON.parse(readFileSync(templatePath, 'utf8'));
+    const manifest = parsePoliticalJobManifest(raw);
+
+    expect(manifest).toEqual({
+      id: 'example-politics-source-daily',
+      label: 'Example politics source daily import',
+      schedule: 'daily',
+      script: 'scripts/example-politics-source.local.ts',
+      enabled: false,
+      tags: ['politics', 'commentary', 'transcript'],
+    });
+    expect(raw.notes).toEqual(expect.arrayContaining([expect.stringContaining('do not commit')]));
+    expect(raw.source).toMatchObject({
+      name: 'Example Source',
+      transcriptMethod: 'manual-import | youtube-transcript | rss-html | local-script',
+    });
   });
 });
 
