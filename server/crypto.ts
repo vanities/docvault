@@ -558,13 +558,17 @@ function krakenSignRequest(
     .digest('base64');
 }
 
-async function fetchKrakenBalances(config: ExchangeConfig): Promise<Balance[]> {
-  logKraken.info('Fetching balances...');
-  const elapsed = logKraken.timer();
-  const nonce = Date.now().toString();
-  const urlPath = '/0/private/Balance';
-  const postData = `nonce=${nonce}`;
+const KRAKEN_DUST_THRESHOLD = 0.000001;
 
+// Signed POST to a Kraken private endpoint. Shared by /Balance and
+// /Earn/Allocations so nonce + HMAC handling lives in one place.
+async function krakenPrivatePost(
+  config: ExchangeConfig,
+  urlPath: string,
+  extraParams: Record<string, string> = {}
+): Promise<any> {
+  const nonce = Date.now().toString();
+  const postData = new URLSearchParams({ nonce, ...extraParams }).toString();
   const hmac = krakenSignRequest(config.apiSecret, urlPath, nonce, postData);
 
   const res = await fetch(`https://api.kraken.com${urlPath}`, {
@@ -581,33 +585,86 @@ async function fetchKrakenBalances(config: ExchangeConfig): Promise<Balance[]> {
     const text = await res.text();
     throw new Error(`Kraken API error ${res.status}: ${text}`);
   }
-
   const data = await res.json();
   if (data.error?.length > 0) {
     throw new Error(`Kraken: ${data.error.join(', ')}`);
   }
+  return data.result;
+}
 
-  // Aggregate by normalized symbol so staked + spot are combined
-  const assetTotals = new Map<string, number>();
-  for (const [asset, value] of Object.entries(data.result || {})) {
+// Total balance allocated to Kraken Earn, per normalized asset symbol.
+//
+// Why this matters: funds placed in some Earn strategies — notably the BTC and
+// USDC "vault" auto-earn products — are REMOVED from the /Balance response
+// (only a dust entry remains), so a balance-only read silently drops them.
+// /Earn/Allocations is the authoritative view of earn holdings; we merge it
+// back in (reconcileKrakenBalances handles the strategies that DO also appear
+// in /Balance, e.g. ETH2.S, so they are not double-counted).
+//
+// Best-effort: if the API key lacks the "Query Earn" permission (or the call
+// fails for any reason) we fall back to balance-only rather than failing sync.
+async function fetchKrakenEarnTotals(config: ExchangeConfig): Promise<Map<string, number>> {
+  const totals = new Map<string, number>();
+  try {
+    const result = await krakenPrivatePost(config, '/0/private/Earn/Allocations', {
+      hide_zero_allocations: 'true',
+    });
+    for (const item of result?.items ?? []) {
+      const native = item?.native_asset;
+      const amountStr = item?.amount_allocated?.total?.native;
+      if (!native || amountStr == null) continue;
+      const amount = parseFloat(amountStr);
+      if (!Number.isFinite(amount) || amount <= 0) continue;
+      const symbol = normalizeKrakenAsset(native);
+      totals.set(symbol, (totals.get(symbol) || 0) + amount);
+    }
+  } catch (err) {
+    logKraken.warn(
+      `Earn/Allocations unavailable, using balances only: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
+  }
+  return totals;
+}
+
+// Reconcile spot /Balance totals with Earn allocation totals into one figure
+// per asset. Some Earn strategies are already reflected in /Balance (e.g. ETH
+// appears as ETH2.S), so naively summing would double-count; others (the
+// BTC/USDC vault) are absent from /Balance entirely. Taking the per-asset
+// max() keeps the reflected balance and surfaces only the earn /Balance missed.
+export function reconcileKrakenBalances(
+  balanceTotals: Map<string, number>,
+  earnTotals: Map<string, number>,
+  dustThreshold = KRAKEN_DUST_THRESHOLD
+): Balance[] {
+  const balances: Balance[] = [];
+  for (const symbol of new Set([...balanceTotals.keys(), ...earnTotals.keys()])) {
+    const amount = Math.max(balanceTotals.get(symbol) || 0, earnTotals.get(symbol) || 0);
+    if (amount > dustThreshold) balances.push({ asset: symbol, amount });
+  }
+  return balances;
+}
+
+async function fetchKrakenBalances(config: ExchangeConfig): Promise<Balance[]> {
+  logKraken.info('Fetching balances...');
+  const elapsed = logKraken.timer();
+
+  const result = await krakenPrivatePost(config, '/0/private/Balance');
+
+  // Aggregate /Balance by normalized symbol so spot + staking variants combine.
+  const balanceTotals = new Map<string, number>();
+  for (const [asset, value] of Object.entries(result || {})) {
     const amount = parseFloat(value as string);
-    if (amount > 0.000001) {
-      // Check explicit map first, then strip staking suffix, then strip X/Z prefix
-      let symbol = KRAKEN_ASSET_MAP[asset];
-      if (!symbol) {
-        // Handle unknown staking variants: strip .S / .M / .P suffixes
-        const stripped = asset.replace(/\.\w+$/, '');
-        symbol = KRAKEN_ASSET_MAP[stripped] || stripped.replace(/^[XZ]/, '');
-      }
-      symbol = symbol.toUpperCase();
-      assetTotals.set(symbol, (assetTotals.get(symbol) || 0) + amount);
+    if (amount > KRAKEN_DUST_THRESHOLD) {
+      const symbol = normalizeKrakenAsset(asset);
+      balanceTotals.set(symbol, (balanceTotals.get(symbol) || 0) + amount);
     }
   }
 
-  const balances: Balance[] = [];
-  for (const [asset, amount] of assetTotals) {
-    balances.push({ asset, amount });
-  }
+  // Merge in Earn allocations that /Balance omits (e.g. the BTC/USDC vault).
+  const earnTotals = await fetchKrakenEarnTotals(config);
+  const balances = reconcileKrakenBalances(balanceTotals, earnTotals);
 
   logKraken.info(`${balances.length} non-zero balances fetched in ${elapsed()}ms`);
   return balances;
