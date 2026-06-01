@@ -82,7 +82,7 @@ A committed generic scheduler can safely provide:
 - UI-visible run history
 - input/output folders
 
-Current state: generic job manifest validation, API-backed manifest creation/listing, built-in job listing, and a Settings Jobs UI exist. The scheduler/executor that reads enabled custom manifests and runs local scripts on interval is still the next implementation step.
+Current NAS state: generic job manifest validation, API-backed manifest creation/listing, built-in job listing, Settings Jobs UI, scheduler/executor, run logs, and first private source jobs are live under `/mnt/user/appdata/docvault/data/jobs` (container path `/data/jobs`). The enabled first-source jobs are `nick-rumble-daily`, `benjamin-cowen-youtube-daily`, `benjamin-cowen-reports-daily`, and `george-gammon-youtube-daily`.
 
 Example manifest shape:
 

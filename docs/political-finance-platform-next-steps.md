@@ -231,16 +231,16 @@ Preferred source order:
 
 Candidate sources:
 
-- [ ] Nick Fuentes — Rumble as the preferred source; use a legal/local transcript method.
-- [ ] Benjamin Cowen — YouTube plus the benjamincowen reports page.
-- [ ] George Gammon — YouTube only.
+- [x] Nick Fuentes — Rumble custom NAS job `nick-rumble-daily` exists/runs under `/mnt/user/appdata/docvault/data/jobs` and stores cleaned Rumble captions in DocVault research.
+- [x] Benjamin Cowen — YouTube plus the benjamincowen reports page custom NAS jobs exist/run: `benjamin-cowen-youtube-daily` stores caption transcripts and `benjamin-cowen-reports-daily` uploads actual report PDFs.
+- [x] George Gammon — YouTube-only custom NAS job `george-gammon-youtube-daily` exists/runs and stores caption transcripts.
 - [ ] Other macro/political commentators as needed.
 
 Acceptance criteria:
 
-- [ ] At least one daily connector runs locally.
-- [ ] Transcript summary lands in Politics tab or Commentary inbox.
-- [ ] Logs show last run, next run, and error details.
+- [x] At least one daily connector runs locally; all four first-source jobs are enabled on the NAS DocVault data volume.
+- [x] Transcript/PDF artifacts land in DocVault research; summary/claim extraction remains the next separate layer.
+- [x] Logs show last run/status/error details through `/data/jobs/status.json` and `/data/jobs/runs/...`.
 
 ## Phase 5 — Combine politics and finance signals
 
