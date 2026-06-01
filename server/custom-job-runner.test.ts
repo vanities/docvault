@@ -47,4 +47,40 @@ describe('runCustomJobNow', () => {
       expect(runRecord.stdout).toContain('hello from custom job');
     });
   });
+
+  test('can run a connector in explicit dry-run mode without enabling the schedule', async () => {
+    await withTempDataDir(async (dataDir) => {
+      await createCustomJobManifest(
+        {
+          id: 'connector-check',
+          label: 'Connector Check',
+          schedule: 'daily',
+          script: 'scripts/connector-check.local.sh',
+          enabled: false,
+          tags: ['politics', 'connector'],
+        },
+        { dataDir }
+      );
+      const scriptPath = customJobScriptPath(dataDir, 'scripts/connector-check.local.sh');
+      await mkdir(path.dirname(scriptPath), { recursive: true });
+      await writeFile(
+        scriptPath,
+        'printf "dry=%s scheduled=%s" "$DOCVAULT_JOB_DRY_RUN" "$DOCVAULT_JOB_ENABLED"\n',
+        { mode: 0o700 }
+      );
+
+      const result = await runCustomJobNow('connector-check', { dataDir, dryRun: true });
+      const status = await loadCustomJobStatus(dataDir);
+
+      expect(result.dryRun).toBe(true);
+      expect(result.stdout).toContain('dry=1 scheduled=false');
+      expect(status['connector-check']).toMatchObject({
+        lastError: null,
+        running: false,
+      });
+      expect(status['connector-check'].lastRunPath).toBeTruthy();
+      const runRecord = JSON.parse(await readFile(status['connector-check'].lastRunPath!, 'utf8'));
+      expect(runRecord.dryRun).toBe(true);
+    });
+  });
 });

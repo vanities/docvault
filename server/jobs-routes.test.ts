@@ -135,6 +135,44 @@ describe('handleJobRoutes', () => {
     });
   });
 
+  test('POST /api/jobs/:id/run?dryRun=true passes explicit connector dry-run mode', async () => {
+    await withTempDataDir(async (dataDir) => {
+      await handleJobRoutes(
+        new Request('https://example.test/api/jobs', {
+          method: 'POST',
+          body: JSON.stringify({
+            id: 'dry-run-job',
+            label: 'Dry Run Job',
+            schedule: 'daily',
+            script: 'scripts/dry-run.local.sh',
+            enabled: false,
+          }),
+        }),
+        new URL('https://example.test/api/jobs'),
+        '/api/jobs',
+        { dataDir, restartCustomJobScheduler: async () => {} }
+      );
+      const scriptPath = customJobScriptPath(dataDir, 'scripts/dry-run.local.sh');
+      await mkdir(path.dirname(scriptPath), { recursive: true });
+      await writeFile(scriptPath, 'printf "dry=%s" "$DOCVAULT_JOB_DRY_RUN"\n', { mode: 0o700 });
+
+      const response = await handleJobRoutes(
+        new Request('https://example.test/api/jobs/dry-run-job/run?dryRun=true', {
+          method: 'POST',
+        }),
+        new URL('https://example.test/api/jobs/dry-run-job/run?dryRun=true'),
+        '/api/jobs/dry-run-job/run',
+        { dataDir }
+      );
+
+      expect(response?.status).toBe(200);
+      const body = await response!.json();
+      expect(body.ok).toBe(true);
+      expect(body.result.dryRun).toBe(true);
+      expect(body.result.stdout).toContain('dry=1');
+    });
+  });
+
   test('POST /api/jobs restarts custom scheduler after manifest changes', async () => {
     await withTempDataDir(async (dataDir) => {
       const restarts: string[] = [];
