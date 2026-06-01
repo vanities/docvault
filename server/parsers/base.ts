@@ -6,7 +6,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import sharp from 'sharp';
 import type { ParsedTaxDocument } from './pdf.js';
 import type { ParserMetadata } from './schemas/index.js';
-import { getAnthropicKey, getAnthropicAuthToken, getClaudeModel } from '../data.js';
+import { getAnthropicKey, getAnthropicAuthToken, getParsingModel } from '../data.js';
+import { openaiComplete } from '../llm/openai.js';
 import { withAILimit } from '../aiLimiter.js';
 import { logAiCall } from '../ai/usage-log.js';
 import type { UsageTokens } from '../ai/pricing.js';
@@ -278,30 +279,21 @@ function extractUsageTokens(response: Anthropic.Messages.Message): UsageTokens {
 }
 
 export async function callClaude(opts: CallClaudeOptions): Promise<Anthropic.Messages.Message> {
-  const anthropic = await getClient();
-  const model = await getClaudeModel();
+  // The parsing scope resolves to Anthropic by default; users can route it to
+  // OpenAI (or a local OpenAI-compatible model) in Settings → Models → Parsing.
+  const { provider, model } = await getParsingModel();
   const purpose = opts.purpose ?? 'unknown';
   const startedAt = Date.now();
+  const logModel = `${provider}:${model}`;
 
   try {
-    const response = await withAILimit(() =>
-      anthropic.messages.create({
-        model,
-        max_tokens: opts.maxTokens,
-        system: opts.system,
-        messages: [
-          {
-            role: 'user',
-            content: opts.userContent,
-          },
-        ],
-        ...(opts.tools ? { tools: opts.tools } : {}),
-        ...(opts.toolChoice ? { tool_choice: opts.toolChoice } : {}),
-      })
-    );
+    const response =
+      provider === 'openai'
+        ? await openaiComplete(opts, model)
+        : await withAILimit(() => anthropicMessagesCreate(model, opts));
     // Fire-and-forget — we never want logging to delay or fail a real parse.
     void logAiCall({
-      model,
+      model: logModel,
       purpose,
       latencyMs: Date.now() - startedAt,
       usage: extractUsageTokens(response),
@@ -313,7 +305,7 @@ export async function callClaude(opts: CallClaudeOptions): Promise<Anthropic.Mes
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     void logAiCall({
-      model,
+      model: logModel,
       purpose,
       latencyMs: Date.now() - startedAt,
       usage: { inputTokens: 0, outputTokens: 0 },
@@ -322,6 +314,22 @@ export async function callClaude(opts: CallClaudeOptions): Promise<Anthropic.Mes
     });
     throw err;
   }
+}
+
+/** The Anthropic Messages call — the default parsing provider. */
+async function anthropicMessagesCreate(
+  model: string,
+  opts: CallClaudeOptions
+): Promise<Anthropic.Messages.Message> {
+  const anthropic = await getClient();
+  return anthropic.messages.create({
+    model,
+    max_tokens: opts.maxTokens,
+    system: opts.system,
+    messages: [{ role: 'user', content: opts.userContent }],
+    ...(opts.tools ? { tools: opts.tools } : {}),
+    ...(opts.toolChoice ? { tool_choice: opts.toolChoice } : {}),
+  });
 }
 
 // Extract tool use result from a Claude response (for structured output parsers)

@@ -113,6 +113,15 @@ export interface ExternalSourcesConfig {
 }
 
 export const DEFAULT_MODEL = 'claude-sonnet-4-6';
+export const DEFAULT_OPENAI_MODEL = 'gpt-4o';
+
+/** Direct-API model providers (parsing, forms, deep research). Chat is agent-based. */
+export type ModelProvider = 'anthropic' | 'openai';
+
+export interface ModelRef {
+  provider: ModelProvider;
+  model: string;
+}
 
 export interface Settings {
   anthropicKey?: string;
@@ -175,6 +184,21 @@ export interface Settings {
    * server/external-sources.ts.
    */
   externalSources?: ExternalSourcesConfig;
+  /**
+   * OpenAI (or any OpenAI-compatible endpoint, including a self-hosted local
+   * model) credentials for the DIRECT-API call sites (parsing, forms, deep
+   * research). `baseUrl` points the SDK at a non-OpenAI endpoint, e.g.
+   * `http://nas:11434/v1` for Ollama. Chat is agent-based, configured elsewhere.
+   */
+  openai?: { apiKey?: string; baseUrl?: string };
+  /**
+   * Which provider + model each direct-API scope uses. An omitted scope falls
+   * back to Anthropic with `claudeModel`. Chat is NOT here — it's an agent backend.
+   */
+  modelRouting?: {
+    parsing?: ModelRef;
+    research?: ModelRef;
+  };
 }
 
 export interface FileInfo {
@@ -276,6 +300,33 @@ export async function migrateSettingsEncryption(): Promise<{
 export async function getClaudeModel(): Promise<string> {
   const settings = await loadSettings();
   return settings.claudeModel || DEFAULT_MODEL;
+}
+
+/** Resolve {provider, model} for a direct-API scope. Defaults to Anthropic + claudeModel. */
+function resolveModel(settings: Settings, ref: ModelRef | undefined): ModelRef {
+  if (ref?.provider && ref.model) return { provider: ref.provider, model: ref.model };
+  return { provider: 'anthropic', model: settings.claudeModel || DEFAULT_MODEL };
+}
+
+/** Provider + model for the parsing scope (all parsers + form decode/autofill). */
+export async function getParsingModel(): Promise<ModelRef> {
+  const settings = await loadSettings();
+  return resolveModel(settings, settings.modelRouting?.parsing);
+}
+
+/** Provider + model for the deep-research scope. */
+export async function getResearchModel(): Promise<ModelRef> {
+  const settings = await loadSettings();
+  return resolveModel(settings, settings.modelRouting?.research);
+}
+
+/** OpenAI (or OpenAI-compatible) credentials. Settings override environment. */
+export async function getOpenAIConfig(): Promise<{ apiKey?: string; baseUrl?: string }> {
+  const settings = await loadSettings();
+  return {
+    apiKey: settings.openai?.apiKey || process.env.OPENAI_API_KEY,
+    baseUrl: settings.openai?.baseUrl || undefined,
+  };
 }
 
 // Get the Anthropic API key (settings override environment)
