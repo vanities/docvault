@@ -162,6 +162,7 @@ import { handleCryptoYieldsRoutes } from './routes/crypto-yields.js';
 import { handleChatRoutes } from './routes/chat.js';
 import { handleTranscribeRoutes } from './routes/transcribe.js';
 import { handleExternalSourcesRoutes } from './routes/external-sources.js';
+import { handleFormsRoutes } from './routes/forms.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1926,6 +1927,9 @@ async function handleRequest(req: Request): Promise<Response> {
 
   const externalSourcesResponse = await handleExternalSourcesRoutes(req, url, pathname);
   if (externalSourcesResponse) return externalSourcesResponse;
+
+  const formsResponse = await handleFormsRoutes(req, url, pathname);
+  if (formsResponse) return formsResponse;
 
   // voice transcription proxy (forwards audio to a configurable
   // OpenAI-compatible /audio/transcriptions service — whisper.cpp,

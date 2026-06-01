@@ -72,6 +72,8 @@ scripts/*
 !server/crypto-kraken-reconcile.test.ts
 # Exception: external-sources tests are generic git/url/sync logic with fabricated fixtures, no personal data
 !server/external-sources.test.ts
+# Exception: pdf-forms tests build fabricated fillable PDFs in-memory, no personal data
+!server/pdf-forms.test.ts
 
 # Internal design docs
 docs/PRD-shadcn-migration.md

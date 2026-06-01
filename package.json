@@ -27,6 +27,7 @@
     "echarts-for-react": "^3.0.6",
     "fflate": "^0.8.2",
     "lightweight-charts": "^5.1.0",
+    "pdf-lib": "^1.17.1",
     "plist": "^3.1.0",
     "radix-ui": "^1.4.3",
     "react": "^19.2.4",
