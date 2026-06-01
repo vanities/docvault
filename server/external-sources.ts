@@ -180,6 +180,8 @@ export interface SourceSearchHit {
   line: number;
   /** The matching line, trimmed and length-capped. */
   text: string;
+  /** Whether the hit matched the file path/name (`line: 0`) or a content line. */
+  via: 'path' | 'content';
 }
 
 /** Yield every markdown file in a working tree as {rel, full}, skipping .git. */
@@ -229,6 +231,25 @@ export async function searchMarkdown(
         continue;
       }
       const lines = content.split('\n');
+      // Filename/path match: surface descriptively-named files (e.g.
+      // "Project - Manna of the Valley.md") even when the term is absent from
+      // the body. One hit per file, line 0, previewing the first content line.
+      if (file.rel.toLowerCase().includes(needle)) {
+        const firstLine =
+          lines
+            .find((l) => l.trim().length > 0)
+            ?.trim()
+            .slice(0, 200) ?? '';
+        hits.push({
+          sourceId: repo.id,
+          sourceName: repo.name,
+          path: file.rel,
+          line: 0,
+          text: firstLine,
+          via: 'path',
+        });
+        if (hits.length >= maxResults) return hits;
+      }
       for (let i = 0; i < lines.length; i++) {
         if (lines[i].toLowerCase().includes(needle)) {
           hits.push({
@@ -237,6 +258,7 @@ export async function searchMarkdown(
             path: file.rel,
             line: i + 1,
             text: lines[i].trim().slice(0, 300),
+            via: 'content',
           });
           if (hits.length >= maxResults) return hits;
         }

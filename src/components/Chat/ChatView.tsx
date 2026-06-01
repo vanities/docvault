@@ -161,6 +161,7 @@ const TOOL_LABELS: Record<string, string> = {
   list_external_sources: 'Listed external sources',
   search_external_sources: 'Searched external sources',
   read_external_file: 'Read external file',
+  list_external_source_files: 'Listed external files',
 };
 
 function ToolCallCard({ block }: { block: AssistantToolCallBlock }) {

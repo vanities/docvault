@@ -70,7 +70,7 @@ import {
   type ParsedData,
 } from '../data.js';
 import { loadHealthStore } from '../health-store.js';
-import { searchMarkdown, readSourceFile } from '../external-sources.js';
+import { searchMarkdown, readSourceFile, listSourceFiles } from '../external-sources.js';
 import { handleNutritionRoutes } from './nutrition.js';
 import { handleSicknessRoutes } from './sickness.js';
 import { handleHealthSnapshotRoutes } from './health-snapshot.js';
@@ -155,6 +155,7 @@ const TOOL_NAMES = [
   'list_external_sources',
   'search_external_sources',
   'read_external_file',
+  'list_external_source_files',
   // --- Writes (require user confirmation per system prompt) ---
   'set_metadata',
   'add_reminder',
@@ -679,6 +680,31 @@ async function toolReadExternalFile(input: { sourceId: string; path: string }): 
   }
 }
 
+async function toolListExternalSourceFiles(input: {
+  sourceId: string;
+  folder?: string;
+}): Promise<unknown> {
+  const settings = await loadSettings();
+  const repo = (settings.externalSources?.repos ?? []).find((r) => r.id === input.sourceId);
+  if (!repo) {
+    return { error: `Unknown source "${input.sourceId}". Call list_external_sources first.` };
+  }
+  let files = await listSourceFiles(input.sourceId);
+  if (input.folder) {
+    const prefix = input.folder.toLowerCase();
+    files = files.filter((f) => f.toLowerCase().startsWith(prefix));
+  }
+  const MAX = 200;
+  const truncated = files.length > MAX;
+  return {
+    sourceId: input.sourceId,
+    sourceName: repo.name,
+    totalFiles: files.length,
+    truncated,
+    files: truncated ? files.slice(0, MAX) : files,
+  };
+}
+
 function jsonResult(value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value) }] };
 }
@@ -735,7 +761,7 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
       ),
       tool(
         'search_external_sources',
-        'Case-insensitive substring search across the markdown in every synced External Source. Returns up to 50 hits with sourceId, file path, line number, and the matching line. Use this to find pages or notes in those repos before reading them.',
+        'Case-insensitive substring search across the markdown in every synced External Source — matches BOTH file paths and line content. Returns up to 50 hits, each tagged via:"path" (line 0) or via:"content". To browse structure without a search term, use list_external_source_files instead.',
         {
           query: z.string().describe('Substring to find; minimum 2 chars.'),
           sourceId: z
@@ -755,6 +781,18 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
             .describe('File path relative to the repo root (the `path` field from a search hit).'),
         },
         async (args) => jsonResult(await toolReadExternalFile(args))
+      ),
+      tool(
+        'list_external_source_files',
+        'List markdown file paths in an External Source, optionally filtered to a folder prefix (e.g. "vault/05_PROJECTS/"). Use this to browse the structure of a source when you have no obvious search term, then read_external_file on a path. Returns up to 200 paths.',
+        {
+          sourceId: z.string().describe('Source id from list_external_sources.'),
+          folder: z
+            .string()
+            .optional()
+            .describe('Optional path prefix to filter to, e.g. "vault/05_PROJECTS/".'),
+        },
+        async (args) => jsonResult(await toolListExternalSourceFiles(args))
       ),
       tool(
         'get_tax_summary',
@@ -987,7 +1025,7 @@ function buildSystemPrompt(activeEntity: string | undefined): string {
     'DocVault Health is multi-person — the user, their partner, and any children each have their own person record. ALWAYS call list_health_people first when a health question comes in, and if the user did not specify whose health they mean, ASK before calling any health tool. Default to the user themselves only when there is exactly one non-archived person.',
     "When making a supplement, dosing, or regimen recommendation, ground it in the user's actual data: call get_health_snapshot for the relevant person FIRST, then call list_supplements to see what they're already taking, and only after that synthesize advice. Cross-reference against any labs (kidney/liver function, electrolytes) before recommending dosage.",
     'WebSearch is enabled. Use it to research products, brands, dosages, and primary literature (PubMed, journal articles) when the user asks for a recommendation or a comparison. Cite sources. Prefer primary literature over marketing pages.',
-    'The user may have configured External Sources — cloned git repos of their own markdown (for example a personal knowledge or creative vault). For questions about their notes, projects, writing, or anything outside the tax, financial, and health data, call list_external_sources, then search_external_sources, then read_external_file. These are READ-ONLY and free to chain. Cite the source name + file path when you quote them.',
+    'The user may have configured External Sources — cloned git repos of their own markdown (for example a personal knowledge or creative vault). For questions about their notes, projects, writing, or anything outside the tax, financial, and health data: call list_external_sources, then either search_external_sources (substring over BOTH file paths and content) or list_external_source_files (browse the tree or a folder when you have no obvious search term), then read_external_file for the full text. These are READ-ONLY and free to chain. Cite the source name and file path when you quote them.',
     'Use the provided tools to answer factually. Never invent file names, vendors, amounts, dates, lab values, supplement brands, or citations. If a file has not been parsed yet or a supplement is not in the regimen, say so — do not guess.',
     'Be concise. Use markdown tables for structured data. When citing a specific document, include its path so the user can find it.',
     [
