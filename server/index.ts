@@ -278,6 +278,15 @@ async function handleRequest(req: Request): Promise<Response> {
       transcribeApiKeyHint: settings.transcribeApiKey
         ? settings.transcribeApiKey.slice(-4)
         : undefined,
+      // Direct-API model providers + per-scope routing (parsing, research)
+      hasOpenaiKey: !!(settings.openai?.apiKey || process.env.OPENAI_API_KEY),
+      openaiKeyHint: settings.openai?.apiKey
+        ? settings.openai.apiKey.slice(-4)
+        : process.env.OPENAI_API_KEY
+          ? process.env.OPENAI_API_KEY.slice(-4)
+          : undefined,
+      openaiBaseUrl: settings.openai?.baseUrl ?? '',
+      modelRouting: settings.modelRouting ?? {},
     });
   }
 
@@ -344,6 +353,38 @@ async function handleRequest(req: Request): Promise<Response> {
       const v = String(body.transcribeApiKey).trim();
       if (v) settings.transcribeApiKey = v;
       else delete settings.transcribeApiKey;
+    }
+
+    // --- Model providers + routing ---
+    if (body.clearOpenaiApiKey) {
+      if (settings.openai) delete settings.openai.apiKey;
+    } else if (body.openaiApiKey !== undefined) {
+      const v = String(body.openaiApiKey).trim();
+      if (v) settings.openai = { ...(settings.openai ?? {}), apiKey: v };
+      else if (settings.openai) delete settings.openai.apiKey;
+    }
+
+    if (body.openaiBaseUrl !== undefined) {
+      const v = String(body.openaiBaseUrl).trim();
+      if (v) settings.openai = { ...(settings.openai ?? {}), baseUrl: v };
+      else if (settings.openai) delete settings.openai.baseUrl;
+    }
+
+    if (body.modelRouting && typeof body.modelRouting === 'object') {
+      settings.modelRouting = settings.modelRouting ?? {};
+      for (const scope of ['parsing', 'research'] as const) {
+        const ref = body.modelRouting[scope];
+        if (ref === null) {
+          delete settings.modelRouting[scope];
+        } else if (
+          ref &&
+          (ref.provider === 'anthropic' || ref.provider === 'openai') &&
+          typeof ref.model === 'string' &&
+          ref.model.trim()
+        ) {
+          settings.modelRouting[scope] = { provider: ref.provider, model: ref.model.trim() };
+        }
+      }
     }
 
     await saveSettings(settings);
