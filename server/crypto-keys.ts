@@ -210,5 +210,8 @@ export function walkSensitiveFields(settings: Settings, transform: Transformer):
   if (out.externalSources?.githubToken) {
     out.externalSources.githubToken = transform(out.externalSources.githubToken);
   }
+  if (out.openai?.apiKey) {
+    out.openai.apiKey = transform(out.openai.apiKey);
+  }
   return out;
 }
