@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import { describe, expect, test } from 'vite-plus/test';
 import { createCustomJobManifest, customJobScriptPath } from './jobs';
-import { loadCustomJobStatus, runCustomJobNow } from './custom-job-runner';
+import { isCustomJobDue, loadCustomJobStatus, runCustomJobNow } from './custom-job-runner';
 
 async function withTempDataDir<T>(fn: (dataDir: string) => Promise<T>): Promise<T> {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), 'docvault-custom-job-runner-'));
@@ -82,5 +82,85 @@ describe('runCustomJobNow', () => {
       const runRecord = JSON.parse(await readFile(status['connector-check'].lastRunPath!, 'utf8'));
       expect(runRecord.dryRun).toBe(true);
     });
+  });
+
+  test('concurrent runs do not lose status updates (lost-update race)', async () => {
+    await withTempDataDir(async (dataDir) => {
+      const ids = ['job-a', 'job-b', 'job-c', 'job-d'];
+      for (const id of ids) {
+        await createCustomJobManifest(
+          {
+            id,
+            label: id,
+            schedule: 'daily',
+            script: `scripts/${id}.local.sh`,
+            enabled: true,
+            tags: [],
+          },
+          { dataDir }
+        );
+        const scriptPath = customJobScriptPath(dataDir, `scripts/${id}.local.sh`);
+        await mkdir(path.dirname(scriptPath), { recursive: true });
+        await writeFile(scriptPath, 'printf "ok"\n', { mode: 0o700 });
+      }
+
+      // Fire all four in the same tick — mirrors the daily timers firing
+      // together. Before the lock this clobbered keys and left lastRanAt
+      // stranded behind lastSuccessAt.
+      await Promise.all(ids.map((id) => runCustomJobNow(id, { dataDir })));
+
+      const status = await loadCustomJobStatus(dataDir);
+      for (const id of ids) {
+        expect(status[id]).toBeTruthy();
+        expect(status[id].lastSuccessAt).toEqual(expect.any(String));
+        expect(status[id].lastError).toBeNull();
+        // The production bug: lastRanAt got overwritten with an older value
+        // than lastSuccessAt. Within a single run it must never be later.
+        expect(Date.parse(status[id].lastRanAt!)).toBeLessThanOrEqual(
+          Date.parse(status[id].lastSuccessAt!)
+        );
+      }
+    });
+  });
+});
+
+describe('isCustomJobDue', () => {
+  const HOUR = 60 * 60 * 1000;
+  const MINUTE = 60 * 1000;
+  const DAY = 24 * HOUR;
+  const now = Date.parse('2026-06-01T12:00:00Z');
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const status = (over: Partial<Parameters<typeof isCustomJobDue>[0]> = {}) => ({
+    lastRanAt: null,
+    lastSuccessAt: null,
+    lastError: null,
+    lastDurationMs: null,
+    running: false,
+    lastRunPath: null,
+    ...over,
+  });
+
+  test('a job that has never run is due', () => {
+    expect(isCustomJobDue(undefined, DAY, now)).toBe(true);
+  });
+
+  test('a job whose last success is older than the interval is due (restart catch-up)', () => {
+    const s = status({ lastRanAt: iso(now - 25 * HOUR), lastSuccessAt: iso(now - 25 * HOUR) });
+    expect(isCustomJobDue(s, DAY, now)).toBe(true);
+  });
+
+  test('a job that succeeded within the interval is not due', () => {
+    const s = status({ lastRanAt: iso(now - HOUR), lastSuccessAt: iso(now - HOUR) });
+    expect(isCustomJobDue(s, DAY, now)).toBe(false);
+  });
+
+  test('a very recent attempt suppresses a catch-up storm even if it never succeeded', () => {
+    const s = status({ lastRanAt: iso(now - 2 * MINUTE), lastSuccessAt: null });
+    expect(isCustomJobDue(s, DAY, now)).toBe(false);
+  });
+
+  test('an earlier failure is retried once past the retry floor', () => {
+    const s = status({ lastRanAt: iso(now - 20 * MINUTE), lastSuccessAt: null });
+    expect(isCustomJobDue(s, DAY, now)).toBe(true);
   });
 });
