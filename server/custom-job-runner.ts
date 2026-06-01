@@ -33,6 +33,7 @@ export type CustomJobStatusMap = Record<string, CustomJobStatus>;
 export type CustomJobRunResult = {
   id: string;
   runId: string;
+  dryRun: boolean;
   startedAt: string;
   finishedAt: string;
   durationMs: number;
@@ -128,9 +129,10 @@ function collectProcessOutput(child: ReturnType<typeof spawn>): Promise<{
 
 export async function runCustomJobNow(
   id: string,
-  options: { dataDir?: string } = {}
+  options: { dataDir?: string; dryRun?: boolean } = {}
 ): Promise<CustomJobRunResult> {
   const dataDir = options.dataDir ?? DATA_DIR;
+  const dryRun = options.dryRun === true;
   const manifest = await findCustomJobManifest(id, dataDir);
   const startedAt = new Date().toISOString();
   const t0 = Date.now();
@@ -148,6 +150,9 @@ export async function runCustomJobNow(
         DOCVAULT_DATA_DIR: dataDir,
         DOCVAULT_JOB_ID: manifest.id,
         DOCVAULT_JOB_LABEL: manifest.label,
+        DOCVAULT_JOB_ENABLED: String(manifest.enabled),
+        DOCVAULT_JOB_DRY_RUN: dryRun ? '1' : '0',
+        DOCVAULT_DRY_RUN: dryRun ? '1' : '0',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -161,6 +166,7 @@ export async function runCustomJobNow(
     const result: CustomJobRunResult = {
       id: manifest.id,
       runId,
+      dryRun,
       startedAt,
       finishedAt,
       durationMs,

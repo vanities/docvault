@@ -42,7 +42,9 @@ export async function handleJobRoutes(
   if (runMatch) {
     if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405);
     try {
-      const result = await runCustomJobNow(decodeURIComponent(runMatch[1]), { dataDir });
+      const dryRun =
+        url.searchParams.get('dryRun') === 'true' || url.searchParams.get('dry-run') === 'true';
+      const result = await runCustomJobNow(decodeURIComponent(runMatch[1]), { dataDir, dryRun });
       return jsonResponse({ ok: true, result });
     } catch (err) {
       return jsonResponse(
