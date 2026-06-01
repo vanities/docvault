@@ -164,6 +164,10 @@ export async function decodeForm(
   const layout = await extractFormLayout(pdfBytes);
   const fingerprint = formFingerprint(layout);
 
+  if (layout.length === 0) {
+    return { fingerprint, formName: undefined, cached: false, fields: [] };
+  }
+
   const cachedTemplate = (await loadTemplates(templatesPath))[fingerprint];
   if (cachedTemplate) {
     log.info(`Form ${fingerprint} served from cache (${cachedTemplate.formName ?? 'unnamed'})`);

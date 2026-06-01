@@ -11,7 +11,7 @@
 
 import { loadConfig, jsonResponse } from '../data.js';
 import { decodeForm, suggestFormValues } from '../pdf-form-decode.js';
-import { fillFormFields, type FillValue } from '../pdf-forms.js';
+import { fillFormFields, hasFormFields, type FillValue } from '../pdf-forms.js';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('FormsRoutes');
@@ -28,6 +28,12 @@ export async function handleFormsRoutes(
     const bytes = new Uint8Array(await req.arrayBuffer());
     if (bytes.length === 0) {
       return jsonResponse({ error: 'empty body — POST the PDF bytes' }, 400);
+    }
+
+    // Most PDFs are records, not fillable forms — short-circuit before any
+    // model call so a plain document never costs a decode.
+    if (!(await hasFormFields(bytes))) {
+      return jsonResponse({ fillable: false, formName: null, fields: [] });
     }
 
     let decoded;
@@ -56,6 +62,7 @@ export async function handleFormsRoutes(
     }
 
     return jsonResponse({
+      fillable: true,
       fingerprint: decoded.fingerprint,
       formName: decoded.formName,
       cached: decoded.cached,
