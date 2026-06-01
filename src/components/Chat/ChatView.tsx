@@ -158,6 +158,9 @@ const TOOL_LABELS: Record<string, string> = {
   get_tax_summary: 'Computed tax summary',
   set_metadata: 'Updated metadata',
   add_reminder: 'Created reminder',
+  list_external_sources: 'Listed external sources',
+  search_external_sources: 'Searched external sources',
+  read_external_file: 'Read external file',
 };
 
 function ToolCallCard({ block }: { block: AssistantToolCallBlock }) {
@@ -166,7 +169,9 @@ function ToolCallCard({ block }: { block: AssistantToolCallBlock }) {
   const summary =
     block.toolName === 'list_files' && typeof block.input === 'object' && block.input
       ? `${(block.input as { entity?: string }).entity ?? '?'} ${(block.input as { year?: number }).year ?? ''}`.trim()
-      : block.toolName === 'search_files' && typeof block.input === 'object' && block.input
+      : (block.toolName === 'search_files' || block.toolName === 'search_external_sources') &&
+          typeof block.input === 'object' &&
+          block.input
         ? `"${(block.input as { query?: string }).query ?? ''}"`
         : '';
 

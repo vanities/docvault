@@ -51,6 +51,7 @@ import {
   DATA_DIR,
   jsonResponse,
   loadConfig,
+  loadSettings,
   loadParsedData,
   loadMetadata,
   saveMetadata,
@@ -69,6 +70,7 @@ import {
   type ParsedData,
 } from '../data.js';
 import { loadHealthStore } from '../health-store.js';
+import { searchMarkdown, readSourceFile } from '../external-sources.js';
 import { handleNutritionRoutes } from './nutrition.js';
 import { handleSicknessRoutes } from './sickness.js';
 import { handleHealthSnapshotRoutes } from './health-snapshot.js';
@@ -150,6 +152,9 @@ const TOOL_NAMES = [
   'get_health_snapshot',
   'list_supplements',
   'get_supplement',
+  'list_external_sources',
+  'search_external_sources',
+  'read_external_file',
   // --- Writes (require user confirmation per system prompt) ---
   'set_metadata',
   'add_reminder',
@@ -628,6 +633,52 @@ async function toolLogSickness(input: Record<string, unknown>): Promise<unknown>
 // tools, and the model parses it out of `content[0].text`.
 // ---------------------------------------------------------------------------
 
+async function toolListExternalSources(): Promise<unknown> {
+  const settings = await loadSettings();
+  const repos = settings.externalSources?.repos ?? [];
+  return {
+    sources: repos.map((r) => ({
+      id: r.id,
+      name: r.name,
+      synced: !!r.lastSyncedAt,
+      fileCount: r.fileCount ?? 0,
+      lastError: r.lastError ?? null,
+    })),
+  };
+}
+
+async function toolSearchExternalSources(input: {
+  query: string;
+  sourceId?: string;
+}): Promise<unknown> {
+  if (input.query.trim().length < 2) return { error: 'query must be at least 2 characters' };
+  const settings = await loadSettings();
+  let repos = (settings.externalSources?.repos ?? []).filter((r) => r.lastSyncedAt);
+  if (input.sourceId) repos = repos.filter((r) => r.id === input.sourceId);
+  if (repos.length === 0) {
+    return {
+      results: [],
+      note: 'No synced external sources to search. The user can add one in Settings → Sources.',
+    };
+  }
+  const results = await searchMarkdown(repos, input.query, { maxResults: 50 });
+  return { totalFound: results.length, results };
+}
+
+async function toolReadExternalFile(input: { sourceId: string; path: string }): Promise<unknown> {
+  const settings = await loadSettings();
+  const repo = (settings.externalSources?.repos ?? []).find((r) => r.id === input.sourceId);
+  if (!repo) {
+    return { error: `Unknown source "${input.sourceId}". Call list_external_sources first.` };
+  }
+  try {
+    const file = await readSourceFile(input.sourceId, input.path);
+    return { sourceId: input.sourceId, sourceName: repo.name, ...file };
+  } catch (err) {
+    return { error: (err as Error).message };
+  }
+}
+
 function jsonResult(value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value) }] };
 }
@@ -675,6 +726,35 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
           query: z.string().describe('Lowercased substring; minimum 2 chars.'),
         },
         async (args) => jsonResult(await toolSearchFiles(args))
+      ),
+      tool(
+        'list_external_sources',
+        'List the configured External Sources — cloned git repos of markdown the user maintains (for example a personal knowledge or creative vault). Returns each source id, name, whether it has synced, and its markdown file count. Call this before searching or reading external files.',
+        {},
+        async () => jsonResult(await toolListExternalSources())
+      ),
+      tool(
+        'search_external_sources',
+        'Case-insensitive substring search across the markdown in every synced External Source. Returns up to 50 hits with sourceId, file path, line number, and the matching line. Use this to find pages or notes in those repos before reading them.',
+        {
+          query: z.string().describe('Substring to find; minimum 2 chars.'),
+          sourceId: z
+            .string()
+            .optional()
+            .describe('Restrict to one source id from list_external_sources.'),
+        },
+        async (args) => jsonResult(await toolSearchExternalSources(args))
+      ),
+      tool(
+        'read_external_file',
+        'Return the full markdown content of one file in an External Source. Use the sourceId and path from search_external_sources. Markdown only; content over 256KB is truncated.',
+        {
+          sourceId: z.string().describe('Source id from list_external_sources.'),
+          path: z
+            .string()
+            .describe('File path relative to the repo root (the `path` field from a search hit).'),
+        },
+        async (args) => jsonResult(await toolReadExternalFile(args))
       ),
       tool(
         'get_tax_summary',
@@ -907,6 +987,7 @@ function buildSystemPrompt(activeEntity: string | undefined): string {
     'DocVault Health is multi-person — the user, their partner, and any children each have their own person record. ALWAYS call list_health_people first when a health question comes in, and if the user did not specify whose health they mean, ASK before calling any health tool. Default to the user themselves only when there is exactly one non-archived person.',
     "When making a supplement, dosing, or regimen recommendation, ground it in the user's actual data: call get_health_snapshot for the relevant person FIRST, then call list_supplements to see what they're already taking, and only after that synthesize advice. Cross-reference against any labs (kidney/liver function, electrolytes) before recommending dosage.",
     'WebSearch is enabled. Use it to research products, brands, dosages, and primary literature (PubMed, journal articles) when the user asks for a recommendation or a comparison. Cite sources. Prefer primary literature over marketing pages.',
+    'The user may have configured External Sources — cloned git repos of their own markdown (for example a personal knowledge or creative vault). For questions about their notes, projects, writing, or anything outside the tax, financial, and health data, call list_external_sources, then search_external_sources, then read_external_file. These are READ-ONLY and free to chain. Cite the source name + file path when you quote them.',
     'Use the provided tools to answer factually. Never invent file names, vendors, amounts, dates, lab values, supplement brands, or citations. If a file has not been parsed yet or a supplement is not in the regimen, say so — do not guess.',
     'Be concise. Use markdown tables for structured data. When citing a specific document, include its path so the user can find it.',
     [

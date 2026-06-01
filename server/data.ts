@@ -76,6 +76,42 @@ export interface CryptoWalletConfig {
   label: string;
 }
 
+/**
+ * A single External Source: a git repository of markdown that DocVault clones
+ * into DATA_DIR/.external-sources/<id>/ and exposes to the UI + Chat. Only the
+ * clean HTTPS URL is stored here — the auth token lives once on
+ * ExternalSourcesConfig.githubToken (encrypted), and is never written into the
+ * cloned repo's .git/config. See server/external-sources.ts.
+ */
+export interface ExternalRepo {
+  id: string;
+  name: string;
+  /** Clean HTTPS clone URL — never contains an embedded credential. */
+  url: string;
+  /** Branch to track; omit to follow the remote's default branch. */
+  branch?: string;
+  enabled: boolean;
+  /** ISO timestamp of the last successful sync. */
+  lastSyncedAt?: string;
+  /** Token-redacted error from the most recent sync, or null when healthy. */
+  lastError?: string | null;
+  /** Markdown files found at last sync. */
+  fileCount?: number;
+  /** Short commit SHA at last sync. */
+  commit?: string;
+}
+
+export interface ExternalSourcesConfig {
+  repos: ExternalRepo[];
+  /**
+   * GitHub personal access token (fine-grained, read-only Contents scope) used
+   * to clone private repos over HTTPS. Encrypted at rest via walkSensitiveFields.
+   * Supplied to git per-invocation as an Authorization header — never persisted
+   * into any cloned repo's .git/config.
+   */
+  githubToken?: string;
+}
+
 export const DEFAULT_MODEL = 'claude-sonnet-4-6';
 
 export interface Settings {
@@ -133,6 +169,12 @@ export interface Settings {
    * calling the getter again.
    */
   healthIngestToken?: string;
+  /**
+   * External Sources — git repositories of markdown cloned into
+   * DATA_DIR/.external-sources/ and surfaced in the UI + Chat. See
+   * server/external-sources.ts.
+   */
+  externalSources?: ExternalSourcesConfig;
 }
 
 export interface FileInfo {

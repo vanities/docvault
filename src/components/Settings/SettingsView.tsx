@@ -28,6 +28,7 @@ import {
   Banknote,
   LineChart,
   Archive,
+  Library,
   Activity,
   Copy,
   Check,
@@ -44,6 +45,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { ChatSettingsSection } from './ChatSettingsSection';
+import { ExternalSourcesSection } from './ExternalSourcesSection';
 import {
   AVAILABLE_ICONS,
   DEFAULT_ENTITY_ICONS,
@@ -1380,6 +1382,10 @@ export function SettingsView() {
             <RefreshCw className="w-3.5 h-3.5" />
             Sync
           </TabsTrigger>
+          <TabsTrigger value="sources">
+            <Library className="w-3.5 h-3.5" />
+            Sources
+          </TabsTrigger>
           <TabsTrigger value="status">
             <Activity className="w-3.5 h-3.5" />
             Status
@@ -1663,6 +1669,8 @@ export function SettingsView() {
             <ChatSettingsSection />
           </>
         )}
+
+        {showIn(['sources']) && <ExternalSourcesSection />}
 
         {showIn(['all']) && (
           <>

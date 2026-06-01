@@ -161,6 +161,7 @@ import { handlePoliticalJobRoutes } from './routes/political-jobs.js';
 import { handleCryptoYieldsRoutes } from './routes/crypto-yields.js';
 import { handleChatRoutes } from './routes/chat.js';
 import { handleTranscribeRoutes } from './routes/transcribe.js';
+import { handleExternalSourcesRoutes } from './routes/external-sources.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1922,6 +1923,9 @@ async function handleRequest(req: Request): Promise<Response> {
   // chat routes (mobile chat with agentic tool calls against the vault)
   const chatResponse = await handleChatRoutes(req, url, pathname);
   if (chatResponse) return chatResponse;
+
+  const externalSourcesResponse = await handleExternalSourcesRoutes(req, url, pathname);
+  if (externalSourcesResponse) return externalSourcesResponse;
 
   // voice transcription proxy (forwards audio to a configurable
   // OpenAI-compatible /audio/transcriptions service — whisper.cpp,
