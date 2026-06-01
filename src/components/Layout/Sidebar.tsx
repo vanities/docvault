@@ -26,6 +26,7 @@ import {
   Brain,
   MessageCircle,
   Library,
+  Telescope,
   X,
 } from 'lucide-react';
 import { useAppContext, type NavView, type PersistedThread } from '../../contexts/AppContext';
@@ -715,6 +716,16 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               icon={Library}
               activeColor="bg-sky-500/10"
               activeTextColor="text-sky-400"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
+            <NavButton
+              view="deep-research"
+              label="Deep Research"
+              icon={Telescope}
+              activeColor="bg-violet-500/10"
+              activeTextColor="text-violet-400"
               activeView={activeView}
               isProcessing={isProcessing}
               onClick={handleViewClick}
