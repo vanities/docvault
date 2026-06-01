@@ -164,6 +164,7 @@ import { handleTranscribeRoutes } from './routes/transcribe.js';
 import { handleExternalSourcesRoutes } from './routes/external-sources.js';
 import { handleFormsRoutes } from './routes/forms.js';
 import { handleDeepResearchRoutes } from './routes/deep-research.js';
+import { handleModelsRoutes } from './routes/models.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1975,6 +1976,9 @@ async function handleRequest(req: Request): Promise<Response> {
 
   const deepResearchResponse = await handleDeepResearchRoutes(req, url, pathname);
   if (deepResearchResponse) return deepResearchResponse;
+
+  const modelsResponse = await handleModelsRoutes(req, url, pathname);
+  if (modelsResponse) return modelsResponse;
 
   // voice transcription proxy (forwards audio to a configurable
   // OpenAI-compatible /audio/transcriptions service — whisper.cpp,
