@@ -5,7 +5,8 @@
 //
 // Model pickers are populated live from each provider's /v1/models endpoint
 // (GET /api/models), so newly-released models appear automatically. The field
-// is a datalist-backed input: pick from the live list or type a custom id.
+// is a <select> of the live list, with a "Custom…" option to type any id
+// (e.g. a local model not yet in the catalog).
 
 import { useEffect, useState } from 'react';
 import { CheckCircle, Cpu, Eye, EyeOff, Key, RefreshCw, Save } from 'lucide-react';
@@ -30,6 +31,7 @@ interface SettingsData {
 
 const DEFAULTS: Record<Provider, string> = { anthropic: 'claude-sonnet-4-6', openai: 'gpt-4o' };
 const PROVIDERS: Provider[] = ['anthropic', 'openai'];
+const CUSTOM = '__custom__';
 
 export function ModelsSettingsSection() {
   const { addToast } = useToast();
@@ -200,12 +202,23 @@ export function ModelsSettingsSection() {
         Choose which provider + model runs each task. Parsing covers document parsing and form
         auto-fill; Research is Deep Research. Chat is configured separately — it uses an agent
         backend. PDFs always parse on Anthropic (OpenAI can't read PDFs directly). Model lists load
-        live from each provider, so new releases show up automatically — or type a custom id.
+        live from each provider, so new releases show up automatically — pick “Custom…” to type any
+        id.
       </p>
 
       <div className="space-y-5">
-        <ScopeRow label="Document parsing & forms" value={parsing} onChange={setParsing} />
-        <ScopeRow label="Deep Research" value={research} onChange={setResearch} />
+        <ScopeRow
+          label="Document parsing & forms"
+          value={parsing}
+          onChange={setParsing}
+          models={modelsByProvider}
+        />
+        <ScopeRow
+          label="Deep Research"
+          value={research}
+          onChange={setResearch}
+          models={modelsByProvider}
+        />
 
         {usesOpenai && openaiFallback && (
           <p className="text-[11px] text-amber-500/90 -mt-2">
@@ -274,18 +287,6 @@ export function ModelsSettingsSection() {
           {saving ? 'Saving…' : 'Save'}
         </Button>
       </div>
-
-      {/* Live model option lists — referenced by each ScopeRow's input via `list`. */}
-      <datalist id="models-anthropic">
-        {modelsByProvider.anthropic.map((m) => (
-          <option key={m} value={m} />
-        ))}
-      </datalist>
-      <datalist id="models-openai">
-        {modelsByProvider.openai.map((m) => (
-          <option key={m} value={m} />
-        ))}
-      </datalist>
     </Card>
   );
 }
@@ -294,11 +295,24 @@ function ScopeRow({
   label,
   value,
   onChange,
+  models,
 }: {
   label: string;
   value: ModelRef;
   onChange: (v: ModelRef) => void;
+  models: Record<Provider, string[]>;
 }) {
+  const [custom, setCustom] = useState(false);
+  // Reset custom mode when the provider changes (model resets to a default).
+  useEffect(() => {
+    setCustom(false);
+  }, [value.provider]);
+
+  const list = models[value.provider] ?? [];
+  const knownValue = list.includes(value.model);
+  const selectClass =
+    'w-full text-[13px] bg-surface-100/60 border border-border/40 rounded-lg px-2 py-1.5';
+
   return (
     <div className="flex flex-col sm:flex-row sm:items-end gap-2">
       <div className="flex-1">
@@ -309,7 +323,7 @@ function ScopeRow({
             const provider = e.target.value as Provider;
             onChange({ provider, model: DEFAULTS[provider] });
           }}
-          className="w-full text-[13px] bg-surface-100/60 border border-border/40 rounded-lg px-2 py-1.5"
+          className={selectClass}
         >
           <option value="anthropic">Anthropic (Claude)</option>
           <option value="openai">OpenAI</option>
@@ -317,14 +331,39 @@ function ScopeRow({
       </div>
       <div className="flex-1">
         <label className="block text-[11px] text-surface-500 mb-1">Model</label>
-        <Input
-          type="text"
-          list={`models-${value.provider}`}
-          value={value.model}
-          onChange={(e) => onChange({ ...value, model: e.target.value })}
-          placeholder={DEFAULTS[value.provider]}
-          className="text-[13px] font-mono"
-        />
+        <select
+          value={custom ? CUSTOM : value.model}
+          onChange={(e) => {
+            if (e.target.value === CUSTOM) {
+              setCustom(true);
+              return;
+            }
+            setCustom(false);
+            onChange({ ...value, model: e.target.value });
+          }}
+          className={`${selectClass} font-mono`}
+        >
+          {/* Preserve a saved custom/unknown id as a selectable option */}
+          {!knownValue && value.model && !custom && (
+            <option value={value.model}>{value.model}</option>
+          )}
+          {list.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+          <option value={CUSTOM}>Custom…</option>
+        </select>
+        {custom && (
+          <Input
+            type="text"
+            autoFocus
+            value={value.model}
+            onChange={(e) => onChange({ ...value, model: e.target.value })}
+            placeholder="model id, e.g. gpt-4o-mini"
+            className="text-[13px] font-mono mt-1.5"
+          />
+        )}
       </div>
     </div>
   );

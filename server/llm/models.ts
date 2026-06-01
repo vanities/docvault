@@ -85,7 +85,9 @@ export async function listModels(
       const isLocal = !!baseUrl;
       models = res.data.map((m) => m.id).filter((id) => isLocal || looksLikeChatModel(id));
     }
-    models.sort();
+    // Descending so the newest-named models (gpt-5.5, o4, opus-4-8) surface at
+    // the top of the picker and legacy families (gpt-3.5, opus-4-1) sink down.
+    models.sort((a, b) => b.localeCompare(a));
     cache[cacheKey] = { models, fetchedAt: Date.now() };
     await saveCache(cache);
     log.info(`Fetched ${models.length} ${provider} models (live)`);
