@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Loader2, Plus, Search, Trash2 } from 'lucide-react';
+import { Download, Loader2, Plus, Search, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '../../hooks/useToast';
 import { API_BASE } from '../../constants';
@@ -165,6 +165,13 @@ export function ResearchView() {
     }
   };
 
+  const downloadReport = (id: string) => {
+    const a = document.createElement('a');
+    a.href = `${API_BASE}/deep-research/${id}/report.html`;
+    a.download = '';
+    a.click();
+  };
+
   const newResearch = () => {
     stopPolling();
     setActive(null);
@@ -262,9 +269,18 @@ export function ResearchView() {
                   ? ` · ${Math.round((active.usage.inputTokens + active.usage.outputTokens) / 1000)}k tokens`
                   : ''}
               </div>
-              <Button variant="ghost-danger" size="icon-xs" onClick={() => void remove(active.id)}>
-                <Trash2 className="w-3.5 h-3.5" />
-              </Button>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <Button variant="ghost" size="xs" onClick={() => downloadReport(active.id)}>
+                  <Download className="w-3.5 h-3.5" /> HTML
+                </Button>
+                <Button
+                  variant="ghost-danger"
+                  size="icon-xs"
+                  onClick={() => void remove(active.id)}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </div>
             </div>
             <div className="text-[14px] leading-relaxed text-surface-900">
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
