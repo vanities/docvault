@@ -7,6 +7,7 @@
 
 import { jsonResponse } from '../data.js';
 import { startResearchRun, getRun, listRuns, deleteRun } from '../deep-research-store.js';
+import { renderReportHtml } from '../deep-research-report.js';
 
 export async function handleDeepResearchRoutes(
   req: Request,
@@ -29,6 +30,24 @@ export async function handleDeepResearchRoutes(
   // GET /api/deep-research — history
   if (pathname === '/api/deep-research' && req.method === 'GET') {
     return jsonResponse({ runs: await listRuns() });
+  }
+
+  // GET /api/deep-research/:id/report.html — downloadable self-contained report
+  const reportMatch = pathname.match(/^\/api\/deep-research\/([^/]+)\/report\.html$/);
+  if (reportMatch && req.method === 'GET') {
+    const run = await getRun(decodeURIComponent(reportMatch[1]));
+    if (!run || run.status !== 'done') return jsonResponse({ error: 'no completed run' }, 404);
+    const slug =
+      run.question
+        .slice(0, 40)
+        .replace(/[^a-z0-9]+/gi, '-')
+        .replace(/^-+|-+$/g, '') || 'research';
+    return new Response(renderReportHtml(run), {
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${slug}.html"`,
+      },
+    });
   }
 
   // /api/deep-research/:id
