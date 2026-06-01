@@ -271,15 +271,27 @@ const claudeSuggest: SuggestFn = async (fields, entityData, formName) => {
   const result = extractToolResult(response) as {
     values?: Array<{ name: string; value: unknown }>;
   } | null;
-  const out: Record<string, FillValue> = {};
-  for (const v of result?.values ?? []) {
-    if (typeof v.value === 'string' || typeof v.value === 'boolean') out[v.name] = v.value;
-    else if (typeof v.value === 'number') out[v.name] = String(v.value);
-    else if (Array.isArray(v.value)) out[v.name] = v.value.map(String);
+  // The model may echo the field by its full name, its canonical key, or the
+  // short last segment — resolve any of those back to the real field name.
+  const resolve = new Map<string, string>();
+  for (const f of fields) {
+    resolve.set(f.name, f.name);
+    if (f.key) resolve.set(f.key, f.name);
+    const short = f.name.split('.').pop();
+    if (short) resolve.set(short, f.name);
   }
-  log.info(
-    `Auto-fill: kept ${Object.keys(out).length} of ${result?.values?.length ?? 0} suggestions`
-  );
+
+  const out: Record<string, FillValue> = {};
+  let matched = 0;
+  for (const v of result?.values ?? []) {
+    const fieldName = resolve.get(v.name);
+    if (!fieldName) continue;
+    matched++;
+    if (typeof v.value === 'string' || typeof v.value === 'boolean') out[fieldName] = v.value;
+    else if (typeof v.value === 'number') out[fieldName] = String(v.value);
+    else if (Array.isArray(v.value)) out[fieldName] = v.value.map(String);
+  }
+  log.info(`Auto-fill: matched ${matched} of ${result?.values?.length ?? 0} suggestions to fields`);
   return out;
 };
 
