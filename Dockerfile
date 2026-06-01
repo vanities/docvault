@@ -28,10 +28,10 @@ RUN ./node_modules/vite-plus/bin/vp build
 # Stage 3: Production runtime
 FROM oven/bun:1-slim
 
-# Install rclone (Dropbox sync), curl (used by the entrypoint script to
-# fall back to a fresh yt-dlp binary download when self-update fails),
-# and ca-certificates (TLS for both).
-RUN apt-get update && apt-get install -y --no-install-recommends rclone curl ca-certificates && rm -rf /var/lib/apt/lists/*
+# Install git (clone/pull External Sources repos), rclone (Dropbox sync), curl
+# (used by the entrypoint script to fall back to a fresh yt-dlp binary download
+# when self-update fails), and ca-certificates (TLS for all).
+RUN apt-get update && apt-get install -y --no-install-recommends git rclone curl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Install yt-dlp standalone binary, arch-specific. Used by the YouTube
 # research-ingest endpoint to fetch captions + metadata. The entrypoint

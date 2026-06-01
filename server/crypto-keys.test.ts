@@ -353,6 +353,19 @@ describe('walkSensitiveFields', () => {
     expect(out.simplefin?.accessUrl).toBe('E(https://user:pass@host/simplefin)');
   });
 
+  test('transforms externalSources.githubToken; preserves public repo metadata', () => {
+    const s: Settings = {
+      externalSources: {
+        githubToken: 'ghp_SECRET_TOKEN',
+        repos: [{ id: 'r1', name: 'o/r', url: 'https://github.com/o/r.git', enabled: true }],
+      },
+    };
+    const out = walkSensitiveFields(s, (v) => (v ? `E(${v})` : v));
+    expect(out.externalSources?.githubToken).toBe('E(ghp_SECRET_TOKEN)');
+    // The repo URL is public metadata, not a secret — must stay plaintext.
+    expect(out.externalSources?.repos[0].url).toBe('https://github.com/o/r.git');
+  });
+
   test('no-op when sub-objects are missing', () => {
     const s: Settings = { claudeModel: 'claude-sonnet-4-6' };
     const out = walkSensitiveFields(s, () => 'MUTATED');

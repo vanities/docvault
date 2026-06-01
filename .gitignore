@@ -70,6 +70,8 @@ scripts/*
 !server/parsers/apple-health-clinical.test.ts
 # Exception: kraken reconcile tests are pure merge logic with fabricated figures, no personal data
 !server/crypto-kraken-reconcile.test.ts
+# Exception: external-sources tests are generic git/url/sync logic with fabricated fixtures, no personal data
+!server/external-sources.test.ts
 
 # Internal design docs
 docs/PRD-shadcn-migration.md

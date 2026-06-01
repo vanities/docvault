@@ -25,6 +25,7 @@ import {
   LineChart,
   Brain,
   MessageCircle,
+  Library,
   X,
 } from 'lucide-react';
 import { useAppContext, type NavView, type PersistedThread } from '../../contexts/AppContext';
@@ -708,6 +709,16 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               onClick={handleViewClick}
             />
             {activeView === 'chat' && <ChatThreadList />}
+            <NavButton
+              view="external-sources"
+              label="Sources"
+              icon={Library}
+              activeColor="bg-sky-500/10"
+              activeTextColor="text-sky-400"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
           </div>
         </div>
 

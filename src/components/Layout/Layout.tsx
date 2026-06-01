@@ -11,6 +11,7 @@ import { BusinessDocsView } from '../BusinessDocs/BusinessDocsView';
 import { AllFilesView } from '../AllFiles/AllFilesView';
 import { ChatView } from '../Chat/ChatView';
 import { SettingsView } from '../Settings/SettingsView';
+import { ExternalSourcesView } from '../ExternalSources/ExternalSourcesView';
 import { TnTaxView } from '../TnTax/TnTaxView';
 import { CryptoView } from '../Crypto/CryptoView';
 import { BrokersView } from '../Brokers/BrokersView';
@@ -101,6 +102,8 @@ export function Layout() {
         return <AllFilesView />;
       case 'chat':
         return <ChatView />;
+      case 'external-sources':
+        return <ExternalSourcesView />;
       case 'settings':
         return <SettingsView />;
       case 'tn-tax':

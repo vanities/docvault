@@ -207,5 +207,8 @@ export function walkSensitiveFields(settings: Settings, transform: Transformer):
   if (out.simplefin?.accessUrl) {
     out.simplefin.accessUrl = transform(out.simplefin.accessUrl) ?? out.simplefin.accessUrl;
   }
+  if (out.externalSources?.githubToken) {
+    out.externalSources.githubToken = transform(out.externalSources.githubToken);
+  }
   return out;
 }
