@@ -215,7 +215,8 @@ export type SuggestFn = (
 const SUGGEST_SYSTEM = [
   'You are drafting a fillable form for a user from data they already have on file. You are given the form fields (with human labels + canonical keys) and the user data for one "entity" (a person or business).',
   'For each fillable field, provide the value to put in it using ONLY the supplied user data. Text → a string. Checkbox → true to check, omit otherwise (e.g. check the single tax-classification box matching the entity type). Choice/dropdown → one of the given options verbatim.',
-  'Be conservative: OMIT any field you cannot determine confidently from the data — a human reviews this draft. NEVER invent identifiers (SSN/EIN), names, or addresses that are not present in the supplied data.',
+  'Fill every field whose value IS present in the user data — do not hold back when the data clearly supplies it (a business name fills the business-name field; an entity type of LLC checks the LLC classification box). When the form splits one identifier across several boxes, split the data value to match: an EIN like "12-3456789" fills the 2-digit part with "12" and the 7-digit part with "3456789"; an SSN like "123-45-6789" fills its 3/2/4 boxes. Use the right address line for "address" vs "city, state, ZIP".',
+  'Be conservative only about data you do NOT have: OMIT any field you cannot determine from the supplied data — a human reviews this draft. NEVER invent identifiers, names, or addresses that are not present.',
 ].join('\n');
 
 const SUGGEST_TOOL: Anthropic.Messages.Tool = {
@@ -231,7 +232,10 @@ const SUGGEST_TOOL: Anthropic.Messages.Tool = {
           type: 'object',
           properties: {
             name: { type: 'string', description: 'Exact internal field name.' },
-            value: { description: 'String for text/choice fields; boolean for checkboxes.' },
+            value: {
+              type: ['string', 'boolean'],
+              description: 'String for text/choice fields; boolean for checkboxes.',
+            },
           },
           required: ['name', 'value'],
         },
@@ -270,8 +274,12 @@ const claudeSuggest: SuggestFn = async (fields, entityData, formName) => {
   const out: Record<string, FillValue> = {};
   for (const v of result?.values ?? []) {
     if (typeof v.value === 'string' || typeof v.value === 'boolean') out[v.name] = v.value;
+    else if (typeof v.value === 'number') out[v.name] = String(v.value);
     else if (Array.isArray(v.value)) out[v.name] = v.value.map(String);
   }
+  log.info(
+    `Auto-fill: kept ${Object.keys(out).length} of ${result?.values?.length ?? 0} suggestions`
+  );
   return out;
 };
 
