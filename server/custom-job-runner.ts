@@ -19,6 +19,33 @@ type Timer = ReturnType<typeof setInterval>;
 
 const timers = new Map<string, Timer>();
 
+// Serializes every read-modify-write of the shared jobs files (status.json +
+// runs.ndjson). All daily jobs share one boot time, so their timers fire in the
+// same event-loop tick — without this lock, concurrent load→modify→write cycles
+// on status.json lose each other's updates (a job reads before a peer's write
+// lands, then clobbers it on write-back). One in-process promise chain suffices
+// because every run lives in the same process.
+let jobsFileChain: Promise<unknown> = Promise.resolve();
+
+function withJobsFileLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = jobsFileChain.then(fn, fn);
+  // Keep the chain alive but swallow its outcome so one failure can't poison it.
+  jobsFileChain = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
+}
+
+// Floor between attempts — suppresses a "storm" of catch-up runs when the
+// container is redeployed several times in quick succession.
+const MIN_RETRY_MS = 10 * 60 * 1000;
+// Cap on the re-check cadence: even a daily job is polled at least hourly so a
+// missed run is recovered within the hour rather than a full interval later.
+const MAX_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+// Slack so an interval tick that lands a few ms early still counts as due.
+const DUE_TOLERANCE_MS = 60 * 1000;
+
 export type CustomJobStatus = {
   lastRanAt: string | null;
   lastSuccessAt: string | null;
@@ -78,7 +105,12 @@ export async function loadCustomJobStatus(dataDir: string = DATA_DIR): Promise<C
 
 async function writeCustomJobStatus(dataDir: string, status: CustomJobStatusMap): Promise<void> {
   await ensureJobsLayout(dataDir);
-  await fs.writeFile(customJobStatusPath(dataDir), `${JSON.stringify(status, null, 2)}\n`);
+  const finalPath = customJobStatusPath(dataDir);
+  // Write to a temp file then rename — rename is atomic on a single filesystem,
+  // so a concurrent reader never observes a half-written status file.
+  const tmpPath = `${finalPath}.${process.pid}.tmp`;
+  await fs.writeFile(tmpPath, `${JSON.stringify(status, null, 2)}\n`);
+  await fs.rename(tmpPath, finalPath);
 }
 
 async function patchCustomJobStatus(
@@ -86,10 +118,14 @@ async function patchCustomJobStatus(
   id: string,
   patch: Partial<CustomJobStatus>
 ): Promise<CustomJobStatus> {
-  const status = await loadCustomJobStatus(dataDir);
-  status[id] = { ...emptyStatus(), ...status[id], ...patch };
-  await writeCustomJobStatus(dataDir, status);
-  return status[id];
+  // Serialize the whole load→modify→write so simultaneous job runs can't lose
+  // each other's updates to the shared status.json.
+  return withJobsFileLock(async () => {
+    const status = await loadCustomJobStatus(dataDir);
+    status[id] = { ...emptyStatus(), ...status[id], ...patch };
+    await writeCustomJobStatus(dataDir, status);
+    return status[id];
+  });
 }
 
 async function findCustomJobManifest(id: string, dataDir: string): Promise<CustomJobManifest> {
@@ -176,7 +212,11 @@ export async function runCustomJobNow(
       runPath,
     };
     await fs.writeFile(runPath, `${JSON.stringify(result, null, 2)}\n`, { mode: 0o600 });
-    await fs.appendFile(customJobLogsPath(dataDir), `${JSON.stringify(result)}\n`);
+    // Serialize the shared NDJSON append too — large stdout/stderr payloads can
+    // exceed the atomic-append size, so concurrent appends could interleave.
+    await withJobsFileLock(() =>
+      fs.appendFile(customJobLogsPath(dataDir), `${JSON.stringify(result)}\n`)
+    );
 
     await patchCustomJobStatus(dataDir, id, {
       lastSuccessAt: exitCode === 0 ? finishedAt : null,
@@ -199,6 +239,36 @@ export async function runCustomJobNow(
   }
 }
 
+/**
+ * A job is due when it has never succeeded, or its last success is at least one
+ * interval old. A recent *attempt* (success or failure) within MIN_RETRY_MS
+ * suppresses it, so rapid redeploys don't trigger a storm of catch-up runs and
+ * a transient failure isn't retried tighter than that floor.
+ */
+export function isCustomJobDue(
+  status: CustomJobStatus | undefined,
+  intervalMs: number,
+  now: number
+): boolean {
+  const lastRan = status?.lastRanAt ? Date.parse(status.lastRanAt) : NaN;
+  if (!Number.isNaN(lastRan) && now - lastRan < MIN_RETRY_MS) return false;
+  const lastSuccess = status?.lastSuccessAt ? Date.parse(status.lastSuccessAt) : NaN;
+  if (Number.isNaN(lastSuccess)) return true; // never succeeded → due
+  return now - lastSuccess >= intervalMs - DUE_TOLERANCE_MS;
+}
+
+/** Runs a job iff it is currently due, deciding from the persisted status. */
+function runIfDue(id: string, intervalMs: number, dataDir: string): void {
+  loadCustomJobStatus(dataDir)
+    .then((statusMap) => {
+      if (!isCustomJobDue(statusMap[id], intervalMs, Date.now())) return undefined;
+      return runCustomJobNow(id, { dataDir });
+    })
+    .catch((err) =>
+      logJobs.error(`Custom job ${id} failed:`, err instanceof Error ? err.message : String(err))
+    );
+}
+
 export async function startCustomJobScheduler(dataDir: string = DATA_DIR): Promise<void> {
   for (const timer of timers.values()) clearInterval(timer);
   timers.clear();
@@ -208,17 +278,25 @@ export async function startCustomJobScheduler(dataDir: string = DATA_DIR): Promi
     if (record.status !== 'valid' || !record.manifest.enabled) continue;
     const intervalMs = customJobScheduleToMs(record.manifest.schedule);
     const id = record.manifest.id;
+
+    // Catch-up on boot: an in-process setInterval resets to zero on every
+    // restart and never fires on boot, so without this a job is silently
+    // skipped whenever the container is recreated (deploys, NAS reboots) more
+    // often than its interval. Run any overdue job immediately instead.
+    runIfDue(id, intervalMs, dataDir);
+
+    // Poll on a capped cadence and decide from the *persisted* lastSuccessAt
+    // (not wall-clock-from-boot), so due-ness survives restarts and a missed
+    // run is recovered within at most one check interval rather than drifting.
+    const checkMs = Math.min(intervalMs, MAX_CHECK_INTERVAL_MS);
     timers.set(
       id,
-      setInterval(() => {
-        runCustomJobNow(id, { dataDir }).catch((err) =>
-          logJobs.error(
-            `Custom job ${id} failed:`,
-            err instanceof Error ? err.message : String(err)
-          )
-        );
-      }, intervalMs)
+      setInterval(() => runIfDue(id, intervalMs, dataDir), checkMs)
     );
-    logJobs.info(`Custom job ${id}: every ${Math.round(intervalMs / 60000)}m`);
+    logJobs.info(
+      `Custom job ${id}: every ${Math.round(intervalMs / 60000)}m (checked every ${Math.round(
+        checkMs / 60000
+      )}m)`
+    );
   }
 }
