@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { RefreshCw, Sparkles, Search, X, Menu, ChevronDown } from 'lucide-react';
+import { RefreshCw, Sparkles, Search, X, Menu, ChevronDown, FileText } from 'lucide-react';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import {
@@ -11,6 +11,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { FillFormModal } from '../Forms/FillFormModal';
 
 export function Header() {
   const {
@@ -40,6 +41,7 @@ export function Header() {
     total: number;
     fileName: string;
   } | null>(null);
+  const [showFillForm, setShowFillForm] = useState(false);
 
   // Count unparsed income/expense files
   const unparsedCount = useMemo(() => {
@@ -138,6 +140,16 @@ export function Header() {
         )}
       </div>
 
+      {/* Fill a form — global + unobtrusive (most PDFs aren't fillable forms) */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="ghost" size="icon-sm" onClick={() => setShowFillForm(true)}>
+            <FileText className="w-4 h-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Fill a PDF form</TooltipContent>
+      </Tooltip>
+
       {/* Tax Year Controls - desktop only, visible in tax-year view when not searching */}
       {showTaxYearControls && (
         <div className="hidden md:flex items-center gap-2 ml-4">
@@ -213,6 +225,12 @@ export function Header() {
           </div>
         </div>
       )}
+
+      <FillFormModal
+        isOpen={showFillForm}
+        onClose={() => setShowFillForm(false)}
+        entities={entities}
+      />
     </header>
   );
 }
