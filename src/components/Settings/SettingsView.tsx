@@ -45,6 +45,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { ChatSettingsSection } from './ChatSettingsSection';
+import { ModelsSettingsSection } from './ModelsSettingsSection';
 import { ExternalSourcesSection } from './ExternalSourcesSection';
 import {
   AVAILABLE_ICONS,
@@ -1666,6 +1667,7 @@ export function SettingsView() {
               )}
             </Card>
 
+            <ModelsSettingsSection />
             <ChatSettingsSection />
           </>
         )}
