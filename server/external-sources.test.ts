@@ -180,6 +180,15 @@ describe('searchMarkdown + readSourceFile', () => {
     expect(hits.length).toBe(1);
   });
 
+  test('matches file paths, not just content (via: path)', async () => {
+    // "fruit" is in the path notes/fruit.md but nowhere in its body.
+    const hits = await searchMarkdown([{ id, name: 'Vault' }], 'fruit', { baseDir });
+    expect(hits.length).toBe(1);
+    expect(hits[0].path).toBe('notes/fruit.md');
+    expect(hits[0].via).toBe('path');
+    expect(hits[0].line).toBe(0);
+  });
+
   test('readSourceFile returns markdown content', async () => {
     const res = await readSourceFile(id, 'notes/fruit.md', { baseDir });
     expect(res.content).toContain('bananas are yellow');
