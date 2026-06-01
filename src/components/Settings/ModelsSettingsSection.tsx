@@ -2,9 +2,13 @@
 // (document parsing/forms, and Deep Research), plus the OpenAI key + optional
 // base URL (for a self-hosted OpenAI-compatible local model). Chat is NOT here —
 // it's an agent backend, configured in its own section.
+//
+// Model pickers are populated live from each provider's /v1/models endpoint
+// (GET /api/models), so newly-released models appear automatically. The field
+// is a datalist-backed input: pick from the live list or type a custom id.
 
 import { useEffect, useState } from 'react';
-import { CheckCircle, Cpu, Eye, EyeOff, Key, Save } from 'lucide-react';
+import { CheckCircle, Cpu, Eye, EyeOff, Key, RefreshCw, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -25,6 +29,7 @@ interface SettingsData {
 }
 
 const DEFAULTS: Record<Provider, string> = { anthropic: 'claude-sonnet-4-6', openai: 'gpt-4o' };
+const PROVIDERS: Provider[] = ['anthropic', 'openai'];
 
 export function ModelsSettingsSection() {
   const { addToast } = useToast();
@@ -46,6 +51,17 @@ export function ModelsSettingsSection() {
   const [showKey, setShowKey] = useState(false);
   const [openaiBaseUrl, setOpenaiBaseUrl] = useState('');
 
+  // Live model lists per provider, fetched from /api/models.
+  const [modelsByProvider, setModelsByProvider] = useState<Record<Provider, string[]>>({
+    anthropic: [],
+    openai: [],
+  });
+  const [modelSource, setModelSource] = useState<Record<Provider, string>>({
+    anthropic: '',
+    openai: '',
+  });
+  const [refreshing, setRefreshing] = useState(false);
+
   const load = async () => {
     try {
       const res = await fetch(`${API_BASE}/settings`);
@@ -66,8 +82,46 @@ export function ModelsSettingsSection() {
     }
   };
 
+  const fetchModels = async (refresh = false) => {
+    if (refresh) setRefreshing(true);
+    try {
+      const results = await Promise.all(
+        PROVIDERS.map((p) =>
+          fetch(`${API_BASE}/models?provider=${p}${refresh ? '&refresh=1' : ''}`)
+            .then((r) => r.json())
+            .then((d) => ({
+              p,
+              models: (d.models as string[]) ?? [],
+              source: (d.source as string) ?? 'error',
+            }))
+            .catch(() => ({ p, models: [] as string[], source: 'error' }))
+        )
+      );
+      const byProvider: Record<Provider, string[]> = { anthropic: [], openai: [] };
+      const bySource: Record<Provider, string> = { anthropic: '', openai: '' };
+      for (const { p, models, source } of results) {
+        byProvider[p] = models;
+        bySource[p] = source;
+      }
+      setModelsByProvider(byProvider);
+      setModelSource(bySource);
+      if (refresh) {
+        const live = PROVIDERS.filter((p) => bySource[p] === 'live').length;
+        addToast(
+          live
+            ? `Refreshed model lists (${live}/2 live)`
+            : 'Refreshed (using cached/fallback lists)',
+          live ? 'success' : 'info'
+        );
+      }
+    } finally {
+      if (refresh) setRefreshing(false);
+    }
+  };
+
   useEffect(() => {
     void load();
+    void fetchModels();
   }, []);
 
   const save = async () => {
@@ -84,6 +138,8 @@ export function ModelsSettingsSection() {
         addToast('Model settings saved', 'success');
         setOpenaiKeyInput('');
         await load();
+        // A freshly-added key unlocks the live OpenAI list — re-fetch.
+        void fetchModels(true);
       } else {
         addToast('Failed to save', 'error');
       }
@@ -120,22 +176,43 @@ export function ModelsSettingsSection() {
   }
 
   const usesOpenai = parsing.provider === 'openai' || research.provider === 'openai';
+  const openaiFallback = modelSource.openai === 'fallback';
 
   return (
     <Card variant="glass" className="p-6 mb-8">
-      <h3 className="text-lg font-semibold text-surface-950 mb-1 flex items-center gap-2">
-        <Cpu className="w-5 h-5" />
-        Models
-      </h3>
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <h3 className="text-lg font-semibold text-surface-950 flex items-center gap-2">
+          <Cpu className="w-5 h-5" />
+          Models
+        </h3>
+        <Button
+          variant="ghost"
+          size="xs"
+          onClick={() => void fetchModels(true)}
+          disabled={refreshing}
+          title="Re-fetch each provider's current model list"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Refreshing…' : 'Refresh models'}
+        </Button>
+      </div>
       <p className="text-[12px] text-surface-600 mb-4">
         Choose which provider + model runs each task. Parsing covers document parsing and form
         auto-fill; Research is Deep Research. Chat is configured separately — it uses an agent
-        backend. PDFs always parse on Anthropic (OpenAI can't read PDFs directly).
+        backend. PDFs always parse on Anthropic (OpenAI can't read PDFs directly). Model lists load
+        live from each provider, so new releases show up automatically — or type a custom id.
       </p>
 
       <div className="space-y-5">
         <ScopeRow label="Document parsing & forms" value={parsing} onChange={setParsing} />
         <ScopeRow label="Deep Research" value={research} onChange={setResearch} />
+
+        {usesOpenai && openaiFallback && (
+          <p className="text-[11px] text-amber-500/90 -mt-2">
+            Showing a built-in fallback list for OpenAI — add your key below and Save to load the
+            live model list.
+          </p>
+        )}
 
         <div className="pt-3 border-t border-border/30">
           <label className="flex items-center gap-2 text-[13px] font-medium text-surface-800 mb-2">
@@ -197,6 +274,18 @@ export function ModelsSettingsSection() {
           {saving ? 'Saving…' : 'Save'}
         </Button>
       </div>
+
+      {/* Live model option lists — referenced by each ScopeRow's input via `list`. */}
+      <datalist id="models-anthropic">
+        {modelsByProvider.anthropic.map((m) => (
+          <option key={m} value={m} />
+        ))}
+      </datalist>
+      <datalist id="models-openai">
+        {modelsByProvider.openai.map((m) => (
+          <option key={m} value={m} />
+        ))}
+      </datalist>
     </Card>
   );
 }
@@ -230,6 +319,7 @@ function ScopeRow({
         <label className="block text-[11px] text-surface-500 mb-1">Model</label>
         <Input
           type="text"
+          list={`models-${value.provider}`}
           value={value.model}
           onChange={(e) => onChange({ ...value, model: e.target.value })}
           placeholder={DEFAULTS[value.provider]}
