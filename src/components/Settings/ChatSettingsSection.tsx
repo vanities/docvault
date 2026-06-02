@@ -12,7 +12,7 @@
 // supplied just a host root.
 
 import { useEffect, useState } from 'react';
-import { Bot, CheckCircle, Eye, EyeOff, Key, Mic, Save } from 'lucide-react';
+import { Bot, CheckCircle, Eye, EyeOff, Key, LogIn, Mic, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -216,6 +216,8 @@ export function ChatSettingsSection() {
   const [chatBackend, setChatBackend] = useState<'claude' | 'codex'>('claude');
   const [codexModel, setCodexModel] = useState('');
   const [savingBackend, setSavingBackend] = useState(false);
+  const [loggingIntoCodex, setLoggingIntoCodex] = useState(false);
+  const [codexLoginOutput, setCodexLoginOutput] = useState<string[]>([]);
 
   const [transcribeUrl, setTranscribeUrl] = useState('');
   const [transcribeModel, setTranscribeModel] = useState('');
@@ -310,6 +312,45 @@ export function ChatSettingsSection() {
     } finally {
       setSavingBackend(false);
     }
+  };
+
+  // Drive `codex login --device-auth` on the server over SSE. Codex streams a
+  // verification URL + code (shown below the button); the user authorizes in any
+  // browser and codex writes auth.json to CODEX_HOME on the NAS.
+  const handleCodexLogin = () => {
+    setCodexLoginOutput([]);
+    setLoggingIntoCodex(true);
+    const es = new EventSource(`${API_BASE}/codex/login`);
+    es.onmessage = (e) => {
+      try {
+        const ev = JSON.parse(e.data) as {
+          type: string;
+          text?: string;
+          ok?: boolean;
+          message?: string;
+        };
+        if (ev.type === 'line' && ev.text) {
+          setCodexLoginOutput((prev) => [...prev, ev.text as string]);
+        } else if (ev.type === 'done') {
+          es.close();
+          setLoggingIntoCodex(false);
+          addToast(
+            ev.ok ? 'Signed in to Codex' : 'Codex sign-in failed',
+            ev.ok ? 'success' : 'error'
+          );
+        } else if (ev.type === 'error') {
+          es.close();
+          setLoggingIntoCodex(false);
+          addToast(`Codex sign-in error: ${ev.message ?? 'unknown'}`, 'error');
+        }
+      } catch {
+        /* ignore malformed event */
+      }
+    };
+    es.onerror = () => {
+      es.close();
+      setLoggingIntoCodex(false);
+    };
   };
 
   const handleSaveTranscribeApiKey = async () => {
@@ -426,6 +467,26 @@ export function ChatSettingsSection() {
                 placeholder="leave blank for codex's account default"
                 className="text-[13px] font-mono"
               />
+              <div className="pt-1">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleCodexLogin}
+                  disabled={loggingIntoCodex}
+                >
+                  <LogIn className="w-4 h-4" />
+                  {loggingIntoCodex ? 'Waiting for authorization…' : 'Sign in to Codex'}
+                </Button>
+                <p className="text-[11px] text-surface-500 mt-1">
+                  Runs codex device-auth on the server — a verification link + code appears below.
+                  Open it in any browser, authorize, and the token saves to the NAS.
+                </p>
+                {codexLoginOutput.length > 0 && (
+                  <pre className="mt-2 bg-surface-0 border border-border/40 rounded p-2 text-[11px] overflow-x-auto whitespace-pre-wrap break-words">
+                    {codexLoginOutput.join('\n')}
+                  </pre>
+                )}
+              </div>
             </div>
           )}
           <Button onClick={handleSaveBackend} size="sm" disabled={savingBackend} className="mt-3">
