@@ -197,7 +197,6 @@ export interface Settings {
    */
   modelRouting?: {
     parsing?: ModelRef;
-    research?: ModelRef;
   };
   /**
    * Chat agent backend. 'claude' (default) drives Claude Code via the agent SDK
@@ -327,12 +326,6 @@ function resolveModel(settings: Settings, ref: ModelRef | undefined): ModelRef {
 export async function getParsingModel(): Promise<ModelRef> {
   const settings = await loadSettings();
   return resolveModel(settings, settings.modelRouting?.parsing);
-}
-
-/** Provider + model for the deep-research scope. */
-export async function getResearchModel(): Promise<ModelRef> {
-  const settings = await loadSettings();
-  return resolveModel(settings, settings.modelRouting?.research);
 }
 
 export type ChatBackend = 'claude' | 'codex';

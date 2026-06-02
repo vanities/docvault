@@ -377,7 +377,7 @@ async function handleRequest(req: Request): Promise<Response> {
 
     if (body.modelRouting && typeof body.modelRouting === 'object') {
       settings.modelRouting = settings.modelRouting ?? {};
-      for (const scope of ['parsing', 'research'] as const) {
+      for (const scope of ['parsing'] as const) {
         const ref = body.modelRouting[scope];
         if (ref === null) {
           delete settings.modelRouting[scope];

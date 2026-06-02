@@ -21,7 +21,7 @@ interface ModelRef {
 }
 interface SettingsData {
   claudeModel?: string;
-  modelRouting?: { parsing?: ModelRef; research?: ModelRef };
+  modelRouting?: { parsing?: ModelRef };
   chat?: { backend?: 'claude' | 'codex'; codexModel?: string };
 }
 
@@ -38,10 +38,6 @@ export function ModelsSettingsSection() {
   const [defaultModel, setDefaultModel] = useState(DEFAULT_CLAUDE_MODEL);
   const [defaultCustom, setDefaultCustom] = useState(false);
   const [parsing, setParsing] = useState<ModelRef>({
-    provider: 'anthropic',
-    model: DEFAULTS.anthropic,
-  });
-  const [research, setResearch] = useState<ModelRef>({
     provider: 'anthropic',
     model: DEFAULTS.anthropic,
   });
@@ -69,7 +65,6 @@ export function ModelsSettingsSection() {
       };
       setDefaultModel(d.claudeModel || DEFAULT_CLAUDE_MODEL);
       setParsing(d.modelRouting?.parsing ?? fallback);
-      setResearch(d.modelRouting?.research ?? fallback);
       setChatBackend(d.chat?.backend === 'codex' ? 'codex' : 'claude');
       setCodexModel(d.chat?.codexModel ?? '');
     } catch {
@@ -137,7 +132,7 @@ export function ModelsSettingsSection() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           claudeModel: defaultModel.trim() || DEFAULT_CLAUDE_MODEL,
-          modelRouting: { parsing, research },
+          modelRouting: { parsing },
           chat: { backend: chatBackend, codexModel: codexModel.trim() },
         }),
       });
@@ -162,7 +157,7 @@ export function ModelsSettingsSection() {
     );
   }
 
-  const usesOpenai = parsing.provider === 'openai' || research.provider === 'openai';
+  const usesOpenai = parsing.provider === 'openai';
   const openaiFallback = modelSource.openai === 'fallback';
   const anthropicModels = modelsByProvider.anthropic;
   const selectClass =
@@ -196,9 +191,9 @@ export function ModelsSettingsSection() {
         <div className="flex flex-col sm:flex-row sm:items-end gap-2">
           <div className="flex-1">
             <label className="block text-[13px] font-medium text-surface-800 mb-1">
-              Default model{' '}
+              Default Claude model{' '}
               <span className="font-normal text-surface-500">
-                (fallback when a task below isn’t set)
+                (Deep Research, image analysis, Claude chat; parsing fallback)
               </span>
             </label>
             {defaultCustom ? (
@@ -240,12 +235,6 @@ export function ModelsSettingsSection() {
           label="Document parsing & forms"
           value={parsing}
           onChange={setParsing}
-          models={modelsByProvider}
-        />
-        <ScopeRow
-          label="Deep Research"
-          value={research}
-          onChange={setResearch}
           models={modelsByProvider}
         />
 
