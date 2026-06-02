@@ -2,10 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   Key,
   Save,
-  Eye,
-  EyeOff,
   CheckCircle,
-  AlertCircle,
   Building2,
   Pencil,
   Trash2,
@@ -32,6 +29,7 @@ import {
   Activity,
   Copy,
   Check,
+  MapPin,
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { SyncStatus, CryptoExchangeId, CryptoChain } from '../../types';
@@ -46,6 +44,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { ChatSettingsSection } from './ChatSettingsSection';
 import { ModelsSettingsSection } from './ModelsSettingsSection';
+import { AiLabsKeysSection } from './AiLabsKeysSection';
 import { ExternalSourcesSection } from './ExternalSourcesSection';
 import {
   AVAILABLE_ICONS,
@@ -326,16 +325,9 @@ export function SettingsView() {
   // so they only appear in the All view.
   const showIn = (tabs: string[]) => activeTab === 'all' || tabs.includes(activeTab);
 
-  // API Key state
-  const [anthropicKey, setAnthropicKey] = useState('');
-  const [showKey, setShowKey] = useState(false);
+  // Shared "saving" flag for the key fields still owned here (Geoapify, FRED,
+  // exchanges). The AI-lab keys live in <AiLabsKeysSection />.
   const [isSaving, setIsSaving] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
-  const [hasKey, setHasKey] = useState(false);
-  const [keySource, setKeySource] = useState<'settings' | 'env' | undefined>();
-  const [claudeModel, setClaudeModel] = useState('claude-sonnet-4-6');
-  const [keyHint, setKeyHint] = useState<string | undefined>();
 
   // Geoapify API Key state
   const [hasGeoapifyKey, setHasGeoapifyKey] = useState(false);
@@ -713,73 +705,15 @@ export function SettingsView() {
   };
 
   const loadSettings = async () => {
-    setIsLoading(true);
     try {
       const response = await fetch(`${API_BASE}/settings`);
       const data: SettingsData = await response.json();
-      setHasKey(data.hasAnthropicKey || false);
-      setKeySource(data.keySource);
-      setKeyHint(data.keyHint);
-      if (data.claudeModel) setClaudeModel(data.claudeModel);
-      setAnthropicKey('');
       setHasGeoapifyKey(data.hasGeoapifyKey || false);
       setGeoapifyKeyHint(data.geoapifyKeyHint);
       setHasFredKey(data.hasFredKey || false);
       setFredKeyHint(data.fredKeyHint);
     } catch (err) {
       console.error('Failed to load settings:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSaveKey = async () => {
-    setIsSaving(true);
-    setSaveStatus('idle');
-
-    try {
-      const response = await fetch(`${API_BASE}/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ anthropicKey: anthropicKey || undefined }),
-      });
-
-      const data = await response.json();
-      if (data.ok) {
-        setSaveStatus('success');
-        setHasKey(true);
-        setAnthropicKey('');
-        addToast('API key saved successfully', 'success');
-        setTimeout(() => setSaveStatus('idle'), 3000);
-      } else {
-        setSaveStatus('error');
-      }
-    } catch (err) {
-      console.error('Failed to save settings:', err);
-      setSaveStatus('error');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleClearKey = async () => {
-    setIsSaving(true);
-    try {
-      const response = await fetch(`${API_BASE}/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clearAnthropicKey: true }),
-      });
-
-      const data = await response.json();
-      if (data.ok) {
-        setHasKey(false);
-        addToast('API key removed', 'success');
-      }
-    } catch (err) {
-      console.error('Failed to clear key:', err);
-    } finally {
-      setIsSaving(false);
     }
   };
 
@@ -860,20 +794,6 @@ export function SettingsView() {
       addToast('Failed to remove FRED key', 'error');
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const handleSaveModel = async (model: string) => {
-    setClaudeModel(model);
-    try {
-      await fetch(`${API_BASE}/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ claudeModel: model }),
-      });
-      addToast(`Model set to ${model}`, 'success');
-    } catch {
-      addToast('Failed to save model', 'error');
     }
   };
 
@@ -1455,219 +1375,68 @@ export function SettingsView() {
               AI & API Keys
             </p>
 
+            <AiLabsKeysSection />
+            <ModelsSettingsSection />
+
+            {/* Maps & Location — Geoapify (geocoding for mileage autocomplete) */}
             <Card variant="glass" className="p-6 mb-8">
               <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
-                <Key className="w-5 h-5" />
-                API Configuration
+                <MapPin className="w-5 h-5" />
+                Maps & Location
               </h3>
-
-              {isLoading ? (
-                <div className="text-center py-4 text-surface-600">Loading...</div>
-              ) : (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-[13px] font-medium text-surface-800 mb-2">
-                      Anthropic API Key
-                    </label>
-
-                    {hasKey && keySource === 'settings' ? (
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-                          <CheckCircle className="w-5 h-5 text-emerald-400" />
-                          <div className="flex-1">
-                            <span className="text-[13px] text-emerald-400 font-medium">
-                              Custom API key
-                            </span>
-                            {keyHint && (
-                              <span className="text-[13px] text-emerald-400/70 ml-2 font-mono">
-                                --------{keyHint}
-                              </span>
-                            )}
-                          </div>
-                          <Button
-                            variant="ghost-danger"
-                            size="xs"
-                            onClick={handleClearKey}
-                            disabled={isSaving}
-                          >
-                            Remove
-                          </Button>
-                        </div>
-                      </div>
-                    ) : hasKey && keySource === 'env' ? (
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2 p-3 bg-info-500/10 border border-info-500/20 rounded-xl">
-                          <CheckCircle className="w-5 h-5 text-info-400" />
-                          <div className="flex-1">
-                            <span className="text-[13px] text-info-400 font-medium">
-                              Environment variable
-                            </span>
-                            {keyHint && (
-                              <span className="text-[13px] text-info-400/70 ml-2 font-mono">
-                                --------{keyHint}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="relative">
-                          <Input
-                            type={showKey ? 'text' : 'password'}
-                            value={anthropicKey}
-                            onChange={(e) => setAnthropicKey(e.target.value)}
-                            placeholder="Enter key to override..."
-                            className="pr-10 text-[13px] font-mono"
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-xs"
-                            onClick={() => setShowKey(!showKey)}
-                            className="absolute right-2 top-1/2 -translate-y-1/2"
-                          >
-                            {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <div className="relative">
-                          <Input
-                            type={showKey ? 'text' : 'password'}
-                            value={anthropicKey}
-                            onChange={(e) => setAnthropicKey(e.target.value)}
-                            placeholder="sk-ant-..."
-                            className="pr-10 text-[13px] font-mono"
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-xs"
-                            onClick={() => setShowKey(!showKey)}
-                            className="absolute right-2 top-1/2 -translate-y-1/2"
-                          >
-                            {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </Button>
-                        </div>
-                        <p className="text-[11px] text-surface-600">
-                          Get your API key at{' '}
-                          <a
-                            href="https://console.anthropic.com/"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-accent-400 hover:underline"
-                          >
-                            console.anthropic.com
-                          </a>
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Save button */}
-                  {anthropicKey && (
-                    <Button onClick={handleSaveKey} disabled={isSaving}>
-                      <Save className="w-4 h-4" />
-                      {isSaving ? 'Saving...' : 'Save'}
-                    </Button>
-                  )}
-
-                  {/* Status messages */}
-                  {saveStatus === 'success' && (
-                    <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-                      <CheckCircle className="w-5 h-5 text-emerald-400" />
-                      <span className="text-[13px] text-emerald-400">
-                        Settings saved successfully
-                      </span>
-                    </div>
-                  )}
-                  {saveStatus === 'error' && (
-                    <div className="flex items-center gap-2 p-3 bg-danger-500/10 border border-danger-500/20 rounded-xl">
-                      <AlertCircle className="w-5 h-5 text-danger-400" />
-                      <span className="text-[13px] text-danger-400">Failed to save settings</span>
-                    </div>
-                  )}
-
-                  {/* Model Selector */}
-                  <div className="pt-2 border-t border-border/30">
-                    <label className="block text-[13px] font-medium text-surface-800 mb-2">
-                      Claude Model
-                    </label>
-                    <Input
-                      type="text"
-                      value={claudeModel}
-                      onChange={(e) => setClaudeModel(e.target.value)}
-                      onBlur={() => handleSaveModel(claudeModel)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') void handleSaveModel(claudeModel);
-                      }}
-                      placeholder="claude-sonnet-4-6"
-                      className="text-[13px] font-mono"
-                    />
-                    <p className="text-[11px] text-surface-500 mt-1">
-                      Used for document parsing and filename suggestions. Saves on blur or Enter.
-                    </p>
-                  </div>
-
-                  {/* Geoapify API Key */}
-                  <div className="pt-2 border-t border-border/30">
-                    <label className="block text-[13px] font-medium text-surface-800 mb-2">
-                      Geoapify API Key{' '}
-                      <span className="text-surface-500 font-normal">
-                        (for mileage address autocomplete &mdash;{' '}
-                        <a
-                          href="https://myprojects.geoapify.com/"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-accent-400 hover:underline"
-                        >
-                          get one free
-                        </a>
-                        )
-                      </span>
-                    </label>
-                    {hasGeoapifyKey ? (
-                      <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-                        <CheckCircle className="w-4 h-4 text-emerald-400" />
-                        <span className="text-[13px] text-emerald-400 font-medium flex-1">
-                          Key set
-                          {geoapifyKeyHint && (
-                            <span className="text-emerald-400/70 ml-2 font-mono">
-                              ****{geoapifyKeyHint}
-                            </span>
-                          )}
+              <div>
+                <label className="block text-[13px] font-medium text-surface-800 mb-2">
+                  Geoapify API Key{' '}
+                  <span className="text-surface-500 font-normal">
+                    (for mileage address autocomplete &mdash;{' '}
+                    <a
+                      href="https://myprojects.geoapify.com/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-accent-400 hover:underline"
+                    >
+                      get one free
+                    </a>
+                    )
+                  </span>
+                </label>
+                {hasGeoapifyKey ? (
+                  <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                    <CheckCircle className="w-4 h-4 text-emerald-400" />
+                    <span className="text-[13px] text-emerald-400 font-medium flex-1">
+                      Key set
+                      {geoapifyKeyHint && (
+                        <span className="text-emerald-400/70 ml-2 font-mono">
+                          ****{geoapifyKeyHint}
                         </span>
-                        <Button
-                          variant="ghost-danger"
-                          size="xs"
-                          onClick={handleRemoveGeoapifyKey}
-                          disabled={isSaving}
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex gap-2">
-                        <Input
-                          type="password"
-                          value={newGeoapifyKey}
-                          onChange={(e) => setNewGeoapifyKey(e.target.value)}
-                          placeholder="Geoapify API key..."
-                          className="flex-1 text-[13px] font-mono"
-                        />
-                        <Button
-                          onClick={handleSaveGeoapifyKey}
-                          disabled={isSaving || !newGeoapifyKey}
-                        >
-                          Save
-                        </Button>
-                      </div>
-                    )}
+                      )}
+                    </span>
+                    <Button
+                      variant="ghost-danger"
+                      size="xs"
+                      onClick={handleRemoveGeoapifyKey}
+                      disabled={isSaving}
+                    >
+                      Remove
+                    </Button>
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="flex gap-2">
+                    <Input
+                      type="password"
+                      value={newGeoapifyKey}
+                      onChange={(e) => setNewGeoapifyKey(e.target.value)}
+                      placeholder="Geoapify API key..."
+                      className="flex-1 text-[13px] font-mono"
+                    />
+                    <Button onClick={handleSaveGeoapifyKey} disabled={isSaving || !newGeoapifyKey}>
+                      Save
+                    </Button>
+                  </div>
+                )}
+              </div>
             </Card>
 
-            <ModelsSettingsSection />
             <ChatSettingsSection />
           </>
         )}
