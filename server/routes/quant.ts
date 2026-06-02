@@ -8,6 +8,7 @@ import { gzipSync } from 'fflate';
 import YahooFinance from 'yahoo-finance2';
 import { DATA_DIR, jsonResponse, loadSettings, QUANT_SNAPSHOTS_FILE } from '../data.js';
 import { createLogger } from '../logger.js';
+import { fetchPredictionMarkets, type PredictionMarketsResponse } from '../prediction-markets.js';
 
 const yahooFinance = new YahooFinance();
 const logQuant = createLogger('Quant');
@@ -44,6 +45,7 @@ const TTL = {
   vixTermStructure: 6 * 60 * 60 * 1000, // yahoo VIX variants
   globalMarkets: DAY_MS, // yahoo international indices
   kronos: 60 * 60 * 1000, // shiyu-coder Kronos demo refreshes hourly
+  predictions: 30 * 60 * 1000, // Kalshi + Polymarket odds — 30 min cache
 };
 
 interface CacheEntry<T> {
@@ -80,6 +82,7 @@ type QuantCache = {
   vixTermStructure?: CacheEntry<MacroDashboardResponse>;
   globalMarkets?: CacheEntry<MacroDashboardResponse>;
   kronos?: CacheEntry<KronosForecastResponse>;
+  predictions?: CacheEntry<PredictionMarketsResponse>;
 };
 
 async function loadCache(): Promise<QuantCache> {
@@ -215,6 +218,8 @@ const CACHE = {
   // Kronos forecast — upstream is hourly; 30m browser cache + 6h SWR keeps the
   // panel snappy without hammering shiyu-coder's GitHub Pages.
   kronos: { maxAge: 30 * 60, swr: 6 * 3600 },
+  // Prediction markets — 15m browser cache + 30m SWR (server TTL is 30m).
+  predictions: { maxAge: 900, swr: 1800 },
   // Snapshots grow one row per day; short cache so new snapshots appear fast.
   snapshots: { maxAge: 300, swr: 3600 },
 };
@@ -4105,6 +4110,7 @@ export async function refreshAllQuantData(): Promise<{
   shillerValuation: boolean;
   yieldCurve: boolean;
   btcDominance: boolean;
+  predictions: boolean;
   errors: string[];
 }> {
   const errors: string[] = [];
@@ -4419,6 +4425,22 @@ export async function refreshAllQuantData(): Promise<{
     logQuant.warn(`FRED settings load failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
+  // Prediction markets (Kalshi + Polymarket) — no API key required
+  let predictionsOk = false;
+  try {
+    const data = await fetchPredictionMarkets();
+    cache.predictions = { fetchedAt: now, data };
+    predictionsOk = true;
+    logQuant.info(
+      `Predictions refreshed (finance=${data.finance.length}, politics=${data.politics.length})`
+    );
+  } catch (err) {
+    errors.push(`predictions: ${err instanceof Error ? err.message : String(err)}`);
+    logQuant.warn(
+      `Predictions refresh failed: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+
   await saveCache(cache);
 
   // Only write a snapshot if at least one metric refreshed successfully
@@ -4437,8 +4459,22 @@ export async function refreshAllQuantData(): Promise<{
     shillerValuation: shillerOk,
     yieldCurve: yieldCurveOk,
     btcDominance: dominanceOk,
+    predictions: predictionsOk,
     errors,
   };
+}
+
+/** Cache-or-fetch accessor for prediction-market odds, shared with the chat
+ *  `get_prediction_markets` tool so chat reads the same 30-min cache the
+ *  Predictions view does. Throws on a cold-cache fetch failure (the HTTP route
+ *  wraps this with a stale-cache fallback). */
+export async function getCachedPredictions(): Promise<PredictionMarketsResponse> {
+  const cache = await loadCache();
+  if (isFresh(cache.predictions, TTL.predictions)) return cache.predictions!.data;
+  const data = await fetchPredictionMarkets();
+  cache.predictions = { fetchedAt: Date.now(), data };
+  await saveCache(cache);
+  return data;
 }
 
 // ---------------------------------------------------------------------------
@@ -4462,13 +4498,15 @@ export async function handleQuantRoutes(
         result.sectorRotation ||
         result.shillerValuation ||
         result.yieldCurve ||
-        result.btcDominance,
+        result.btcDominance ||
+        result.predictions,
       btcRefreshed: result.btc,
       spxCycleRefreshed: result.spxCycle,
       sectorRotationRefreshed: result.sectorRotation,
       shillerValuationRefreshed: result.shillerValuation,
       yieldCurveRefreshed: result.yieldCurve,
       btcDominanceRefreshed: result.btcDominance,
+      predictionsRefreshed: result.predictions,
       errors: result.errors,
       refreshedAt: Date.now(),
     });
@@ -5242,6 +5280,36 @@ export async function handleQuantRoutes(
         );
       }
       return jsonResponse({ error: `Shiller valuation fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/predictions — Kalshi + Polymarket finance/political odds
+  if (pathname === '/api/quant/predictions' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.predictions, TTL.predictions)) {
+      return cachedJsonResponse(
+        req,
+        { ...cache.predictions!.data, cached: true },
+        CACHE.predictions
+      );
+    }
+    try {
+      logQuant.info('predictions — computing fresh');
+      const data = await fetchPredictionMarkets();
+      cache.predictions = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.predictions);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('predictions failed:', msg);
+      if (cache.predictions) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.predictions.data, cached: true, stale: true, fetchError: msg },
+          CACHE.predictions
+        );
+      }
+      return jsonResponse({ error: `Predictions fetch failed: ${msg}` }, 502);
     }
   }
 

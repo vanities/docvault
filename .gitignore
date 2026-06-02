@@ -76,6 +76,8 @@ scripts/*
 !server/external-sources.test.ts
 # Exception: pdf-forms tests build fabricated fillable PDFs in-memory, no personal data
 !server/pdf-forms.test.ts
+# Exception: prediction-market normalization tests use synthetic Kalshi/Polymarket payloads, no personal data
+!server/prediction-markets.test.ts
 
 # Internal design docs
 docs/PRD-shadcn-migration.md

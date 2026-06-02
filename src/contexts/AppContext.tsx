@@ -128,6 +128,7 @@ export type NavView =
   | 'quant'
   | 'strategy'
   | 'politics'
+  | 'predictions'
   | 'health'
   | 'health-activity'
   | 'health-heart'
@@ -358,6 +359,7 @@ export function AppProvider({ children }: AppProviderProps) {
     'quant',
     'strategy',
     'politics',
+    'predictions',
     'health',
     'health-activity',
     'health-heart',

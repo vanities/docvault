@@ -74,6 +74,7 @@ import {
 import { runCodexChat } from '../llm/codex-chat.js';
 import { loadHealthStore } from '../health-store.js';
 import { searchMarkdown, readSourceFile, listSourceFiles } from '../external-sources.js';
+import { getCachedPredictions } from './quant.js';
 import { handleNutritionRoutes } from './nutrition.js';
 import { handleSicknessRoutes } from './sickness.js';
 import { handleHealthSnapshotRoutes } from './health-snapshot.js';
@@ -159,6 +160,7 @@ const TOOL_NAMES = [
   'search_external_sources',
   'read_external_file',
   'list_external_source_files',
+  'get_prediction_markets',
   // --- Writes (require user confirmation per system prompt) ---
   'set_metadata',
   'add_reminder',
@@ -708,6 +710,43 @@ async function toolListExternalSourceFiles(input: {
   };
 }
 
+async function toolGetPredictionMarkets(input: {
+  domain?: 'finance' | 'politics';
+  query?: string;
+  limit?: number;
+}): Promise<unknown> {
+  try {
+    const data = await getCachedPredictions();
+    const limit = Math.max(1, Math.min(input.limit ?? 20, 50));
+    const q = input.query?.trim().toLowerCase();
+    const pick = (rows: typeof data.finance) =>
+      (q
+        ? rows.filter(
+            (m) => m.question.toLowerCase().includes(q) || m.topic.toLowerCase().includes(q)
+          )
+        : rows
+      )
+        .slice(0, limit)
+        .map((m) => ({
+          question: m.question,
+          probability: m.probability,
+          source: m.source,
+          topic: m.topic,
+          volumeUsd: m.volumeUsd,
+          change24h: m.change24h ?? null,
+          closeTime: m.closeTime,
+          url: m.url,
+        }));
+    const out: Record<string, unknown> = { fetchedAt: data.fetchedAt, sources: data.sources };
+    if (input.domain !== 'politics') out.finance = pick(data.finance);
+    if (input.domain !== 'finance') out.politics = pick(data.politics);
+    if (data.errors?.length) out.errors = data.errors;
+    return out;
+  } catch (err) {
+    return { error: (err as Error).message };
+  }
+}
+
 function jsonResult(value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value) }] };
 }
@@ -804,6 +843,22 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
           year: z.number(),
         },
         async (args) => jsonResult(await toolGetTaxSummary(args))
+      ),
+      tool(
+        'get_prediction_markets',
+        'Live prediction-market odds (Kalshi + Polymarket) on finance and political questions — Fed decisions, recession, crypto, elections, control of Congress, geopolitics. Each row is one event showing the current favorite, its probability (0–100), 24h move, $ volume, and a link. Use this when the user asks what the markets/odds think about an event, the implied probability of something, or current market sentiment. READ-ONLY.',
+        {
+          domain: z
+            .enum(['finance', 'politics'])
+            .optional()
+            .describe('Restrict to one bucket. Omit for both.'),
+          query: z
+            .string()
+            .optional()
+            .describe('Case-insensitive substring to filter questions/topics, e.g. "fed", "iran".'),
+          limit: z.number().optional().describe('Max rows per bucket (default 20, max 50).'),
+        },
+        async (args) => jsonResult(await toolGetPredictionMarkets(args))
       ),
       tool(
         'set_metadata',
@@ -1028,6 +1083,7 @@ function buildSystemPrompt(activeEntity: string | undefined): string {
     'DocVault Health is multi-person — the user, their partner, and any children each have their own person record. ALWAYS call list_health_people first when a health question comes in, and if the user did not specify whose health they mean, ASK before calling any health tool. Default to the user themselves only when there is exactly one non-archived person.',
     "When making a supplement, dosing, or regimen recommendation, ground it in the user's actual data: call get_health_snapshot for the relevant person FIRST, then call list_supplements to see what they're already taking, and only after that synthesize advice. Cross-reference against any labs (kidney/liver function, electrolytes) before recommending dosage.",
     'WebSearch is enabled. Use it to research products, brands, dosages, and primary literature (PubMed, journal articles) when the user asks for a recommendation or a comparison. Cite sources. Prefer primary literature over marketing pages.',
+    'get_prediction_markets returns live Kalshi + Polymarket odds on finance and political questions (Fed, recession, crypto, elections, control of Congress, geopolitics). Use it when the user asks what the markets/odds imply about an event or current market sentiment — quote the probability, source, and link, and frame them as real-money-weighted forecasts, not certainties. READ-ONLY, free to chain.',
     'The user may have configured External Sources — cloned git repos of their own markdown (for example a personal knowledge or creative vault). For questions about their notes, projects, writing, or anything outside the tax, financial, and health data: call list_external_sources, then either search_external_sources (substring over BOTH file paths and content) or list_external_source_files (browse the tree or a folder when you have no obvious search term), then read_external_file for the full text. These are READ-ONLY and free to chain. Cite the source name and file path when you quote them.',
     'Use the provided tools to answer factually. Never invent file names, vendors, amounts, dates, lab values, supplement brands, or citations. If a file has not been parsed yet or a supplement is not in the regimen, say so — do not guess.',
     'Be concise. Use markdown tables for structured data. When citing a specific document, include its path so the user can find it.',
