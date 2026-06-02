@@ -1,12 +1,11 @@
-// AI Labs — credentials for the AI model providers (Anthropic + OpenAI),
-// grouped in one card. The Models section consumes these keys for its per-task
-// provider/model routing; the OpenAI base URL can point at a local
-// OpenAI-compatible server (Ollama, LM Studio, etc.). Saving the OpenAI key
-// broadcasts `docvault:models-refresh` so the Models section reloads its live
-// model list (a freshly-added key unlocks the provider's /v1/models endpoint).
+// AI Credentials — all provider auth in one card: Anthropic API key, Claude
+// OAuth subscription token, OpenAI API key + base URL, and one-click Codex
+// sign-in (device-auth). Model/agent ROUTING lives in the Models & Chat card;
+// this card is purely credentials. (File name kept as AiLabsKeysSection so
+// SettingsView's import is stable.)
 
 import { useEffect, useState } from 'react';
-import { CheckCircle, Eye, EyeOff, Key, Save, Sparkles } from 'lucide-react';
+import { CheckCircle, Eye, EyeOff, Key, LogIn, Save, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -17,28 +16,33 @@ interface SettingsData {
   hasAnthropicKey?: boolean;
   keySource?: 'settings' | 'env';
   keyHint?: string;
-  claudeModel?: string;
+  hasAnthropicAuthToken?: boolean;
+  authSource?: 'settings' | 'env';
+  authHint?: string;
   hasOpenaiKey?: boolean;
   openaiKeyHint?: string;
   openaiBaseUrl?: string;
 }
-
-const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-4-6';
 
 export function AiLabsKeysSection() {
   const { addToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Anthropic
+  // Anthropic API key
   const [anthropicInput, setAnthropicInput] = useState('');
   const [hasAnthropicKey, setHasAnthropicKey] = useState(false);
   const [anthropicSource, setAnthropicSource] = useState<'settings' | 'env' | undefined>();
   const [anthropicHint, setAnthropicHint] = useState<string | undefined>();
   const [showAnthropic, setShowAnthropic] = useState(false);
-  const [claudeModel, setClaudeModel] = useState(DEFAULT_CLAUDE_MODEL);
-  const [anthropicModels, setAnthropicModels] = useState<string[]>([]);
-  const [customModel, setCustomModel] = useState(false);
+
+  // Claude OAuth subscription token (alternative to the API key)
+  const [hasAuth, setHasAuth] = useState(false);
+  const [authSource, setAuthSource] = useState<'settings' | 'env' | undefined>();
+  const [authHint, setAuthHint] = useState<string | undefined>();
+  const [authInput, setAuthInput] = useState('');
+  const [showAuth, setShowAuth] = useState(false);
+  const [savingAuth, setSavingAuth] = useState(false);
 
   // OpenAI
   const [openaiInput, setOpenaiInput] = useState('');
@@ -47,6 +51,10 @@ export function AiLabsKeysSection() {
   const [showOpenai, setShowOpenai] = useState(false);
   const [openaiBaseUrl, setOpenaiBaseUrl] = useState('');
 
+  // Codex sign-in (device-auth)
+  const [loggingIntoCodex, setLoggingIntoCodex] = useState(false);
+  const [codexLoginOutput, setCodexLoginOutput] = useState<string[]>([]);
+
   const load = async () => {
     try {
       const res = await fetch(`${API_BASE}/settings`);
@@ -54,8 +62,10 @@ export function AiLabsKeysSection() {
       setHasAnthropicKey(!!d.hasAnthropicKey);
       setAnthropicSource(d.keySource);
       setAnthropicHint(d.keyHint);
-      if (d.claudeModel) setClaudeModel(d.claudeModel);
       setAnthropicInput('');
+      setHasAuth(!!d.hasAnthropicAuthToken);
+      setAuthSource(d.authSource);
+      setAuthHint(d.authHint);
       setHasOpenaiKey(!!d.hasOpenaiKey);
       setOpenaiHint(d.openaiKeyHint);
       setOpenaiBaseUrl(d.openaiBaseUrl ?? '');
@@ -69,16 +79,6 @@ export function AiLabsKeysSection() {
 
   useEffect(() => {
     void load();
-  }, []);
-
-  // Live Anthropic model list for the Default Claude model dropdown.
-  useEffect(() => {
-    fetch(`${API_BASE}/models?provider=anthropic`)
-      .then((r) => r.json())
-      .then((d: { models?: string[] }) => setAnthropicModels(d.models ?? []))
-      .catch(() => {
-        /* dropdown falls back to the current value + Custom */
-      });
   }, []);
 
   const post = async (body: Record<string, unknown>): Promise<boolean> => {
@@ -120,11 +120,34 @@ export function AiLabsKeysSection() {
     }
   };
 
-  const saveClaudeModel = async (model: string) => {
+  const saveAuth = async () => {
+    if (!authInput.trim()) return;
+    setSavingAuth(true);
     try {
-      await post({ claudeModel: model });
+      if (await post({ anthropicAuthToken: authInput.trim() })) {
+        addToast('Claude OAuth token saved', 'success');
+        setAuthInput('');
+        await load();
+      } else {
+        addToast('Failed to save token', 'error');
+      }
     } catch {
-      /* non-fatal — model persists on next successful save */
+      addToast('Failed to save token', 'error');
+    } finally {
+      setSavingAuth(false);
+    }
+  };
+
+  const clearAuth = async () => {
+    setSavingAuth(true);
+    try {
+      await post({ clearAnthropicAuthToken: true });
+      addToast('Claude OAuth token removed', 'success');
+      await load();
+    } catch {
+      addToast('Failed to remove token', 'error');
+    } finally {
+      setSavingAuth(false);
     }
   };
 
@@ -163,6 +186,45 @@ export function AiLabsKeysSection() {
     }
   };
 
+  // Drive `codex login --device-auth` on the server over SSE. Codex streams a
+  // verification URL + code (shown below the button); the user authorizes in any
+  // browser and codex writes auth.json to CODEX_HOME on the NAS.
+  const handleCodexLogin = () => {
+    setCodexLoginOutput([]);
+    setLoggingIntoCodex(true);
+    const es = new EventSource(`${API_BASE}/codex/login`);
+    es.onmessage = (e) => {
+      try {
+        const ev = JSON.parse(e.data) as {
+          type: string;
+          text?: string;
+          ok?: boolean;
+          message?: string;
+        };
+        if (ev.type === 'line' && ev.text) {
+          setCodexLoginOutput((prev) => [...prev, ev.text as string]);
+        } else if (ev.type === 'done') {
+          es.close();
+          setLoggingIntoCodex(false);
+          addToast(
+            ev.ok ? 'Signed in to Codex' : 'Codex sign-in failed',
+            ev.ok ? 'success' : 'error'
+          );
+        } else if (ev.type === 'error') {
+          es.close();
+          setLoggingIntoCodex(false);
+          addToast(`Codex sign-in error: ${ev.message ?? 'unknown'}`, 'error');
+        }
+      } catch {
+        /* ignore malformed event */
+      }
+    };
+    es.onerror = () => {
+      es.close();
+      setLoggingIntoCodex(false);
+    };
+  };
+
   if (loading) {
     return (
       <Card variant="glass" className="p-6 mb-8">
@@ -175,15 +237,15 @@ export function AiLabsKeysSection() {
     <Card variant="glass" className="p-6 mb-8">
       <h3 className="text-lg font-semibold text-surface-950 mb-1 flex items-center gap-2">
         <Sparkles className="w-5 h-5" />
-        AI Labs
+        AI Credentials
       </h3>
       <p className="text-[12px] text-surface-600 mb-4">
-        API keys for the AI model providers. The Models section below uses these for per-task
-        provider/model routing.
+        Provider keys and sign-ins. Which model or chat agent actually runs is chosen in the Models
+        &amp; Chat card below.
       </p>
 
       <div className="space-y-5">
-        {/* ── Anthropic ───────────────────────────────── */}
+        {/* ── Anthropic API key ───────────────────────── */}
         <div>
           <label className="flex items-center gap-2 text-[13px] font-medium text-surface-800 mb-2">
             <Key className="w-4 h-4" />
@@ -256,51 +318,71 @@ export function AiLabsKeysSection() {
               {saving ? 'Saving…' : 'Save key'}
             </Button>
           )}
+        </div>
 
-          <label className="block text-[12px] font-medium text-surface-700 mt-3 mb-1">
-            Default Claude model
+        {/* ── Claude OAuth subscription token ──────────── */}
+        <div className="pt-4 border-t border-border/30">
+          <label className="flex items-center gap-2 text-[13px] font-medium text-surface-800 mb-2">
+            <Key className="w-4 h-4" />
+            Claude OAuth token
+            <span className="font-normal text-surface-500">
+              (use your Claude.ai subscription instead of API billing)
+            </span>
           </label>
-          {customModel ? (
-            <Input
-              type="text"
-              autoFocus
-              value={claudeModel}
-              onChange={(e) => setClaudeModel(e.target.value)}
-              onBlur={() => void saveClaudeModel(claudeModel)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void saveClaudeModel(claudeModel);
-              }}
-              placeholder={DEFAULT_CLAUDE_MODEL}
-              className="text-[13px] font-mono"
-            />
+
+          {hasAuth && authSource === 'settings' ? (
+            <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+              <CheckCircle className="w-5 h-5 text-emerald-400" />
+              <span className="flex-1 text-[13px] text-emerald-400 font-medium">
+                Token set
+                {authHint && (
+                  <span className="font-mono text-emerald-400/70 ml-2">…{authHint}</span>
+                )}
+              </span>
+              <Button variant="ghost-danger" size="xs" onClick={clearAuth} disabled={savingAuth}>
+                Remove
+              </Button>
+            </div>
+          ) : hasAuth && authSource === 'env' ? (
+            <div className="flex items-center gap-2 p-3 bg-info-500/10 border border-info-500/20 rounded-xl">
+              <CheckCircle className="w-5 h-5 text-info-400" />
+              <span className="flex-1 text-[13px] text-info-400 font-medium">
+                Set via ANTHROPIC_AUTH_TOKEN env
+                {authHint && <span className="font-mono text-info-400/70 ml-2">…{authHint}</span>}
+              </span>
+            </div>
           ) : (
-            <select
-              value={claudeModel}
-              onChange={(e) => {
-                if (e.target.value === '__custom__') {
-                  setCustomModel(true);
-                  return;
-                }
-                setClaudeModel(e.target.value);
-                void saveClaudeModel(e.target.value);
-              }}
-              className="w-full text-[13px] font-mono bg-surface-100/60 border border-border/40 rounded-lg px-2 py-1.5"
-            >
-              {!anthropicModels.includes(claudeModel) && claudeModel && (
-                <option value={claudeModel}>{claudeModel}</option>
+            <div className="space-y-2">
+              <div className="relative">
+                <Input
+                  type={showAuth ? 'text' : 'password'}
+                  value={authInput}
+                  onChange={(e) => setAuthInput(e.target.value)}
+                  placeholder="sk-ant-oat01-… or paste from `claude setup-token`"
+                  className="pr-10 text-[13px] font-mono"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => setShowAuth(!showAuth)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2"
+                >
+                  {showAuth ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </Button>
+              </div>
+              <p className="text-[11px] text-surface-600">
+                Run <code className="font-mono">claude setup-token</code> on a machine where Claude
+                Code is signed in to mint a long-lived token, then paste it here.
+              </p>
+              {authInput && (
+                <Button onClick={saveAuth} size="sm" disabled={savingAuth}>
+                  <Save className="w-4 h-4" />
+                  {savingAuth ? 'Saving…' : 'Save token'}
+                </Button>
               )}
-              {anthropicModels.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-              <option value="__custom__">Custom…</option>
-            </select>
+            </div>
           )}
-          <p className="text-[11px] text-surface-500 mt-1">
-            Fallback for any task not given an explicit model in the Models section. Live Anthropic
-            list — pick “Custom…” to type any id.
-          </p>
         </div>
 
         {/* ── OpenAI ──────────────────────────────────── */}
@@ -362,6 +444,34 @@ export function AiLabsKeysSection() {
             <Save className="w-4 h-4" />
             {saving ? 'Saving…' : 'Save'}
           </Button>
+        </div>
+
+        {/* ── Codex sign-in (ChatGPT subscription) ─────── */}
+        <div className="pt-4 border-t border-border/30">
+          <label className="flex items-center gap-2 text-[13px] font-medium text-surface-800 mb-2">
+            <LogIn className="w-4 h-4" />
+            Codex sign-in
+            <span className="font-normal text-surface-500">(ChatGPT subscription)</span>
+          </label>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleCodexLogin}
+            disabled={loggingIntoCodex}
+          >
+            <LogIn className="w-4 h-4" />
+            {loggingIntoCodex ? 'Waiting for authorization…' : 'Sign in to Codex'}
+          </Button>
+          <p className="text-[11px] text-surface-500 mt-1">
+            Runs codex device-auth on the server — a verification link + code appears below. Open it
+            in any browser, authorize, and the token saves to the NAS. Used by the Codex chat
+            backend (set in Models &amp; Chat).
+          </p>
+          {codexLoginOutput.length > 0 && (
+            <pre className="mt-2 bg-surface-0 border border-border/40 rounded p-2 text-[11px] overflow-x-auto whitespace-pre-wrap break-words">
+              {codexLoginOutput.join('\n')}
+            </pre>
+          )}
         </div>
       </div>
     </Card>
