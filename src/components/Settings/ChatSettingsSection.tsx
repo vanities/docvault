@@ -12,7 +12,7 @@
 // supplied just a host root.
 
 import { useEffect, useState } from 'react';
-import { CheckCircle, Eye, EyeOff, Key, Mic, Save } from 'lucide-react';
+import { Bot, CheckCircle, Eye, EyeOff, Key, Mic, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -21,6 +21,7 @@ import { useToast } from '../../hooks/useToast';
 import { API_BASE } from '../../constants';
 
 interface ChatSettingsData {
+  chat?: { backend?: 'claude' | 'codex'; codexModel?: string };
   hasAnthropicAuthToken?: boolean;
   authSource?: 'settings' | 'env';
   authHint?: string;
@@ -212,6 +213,10 @@ export function ChatSettingsSection() {
   const [showAuth, setShowAuth] = useState(false);
   const [savingAuth, setSavingAuth] = useState(false);
 
+  const [chatBackend, setChatBackend] = useState<'claude' | 'codex'>('claude');
+  const [codexModel, setCodexModel] = useState('');
+  const [savingBackend, setSavingBackend] = useState(false);
+
   const [transcribeUrl, setTranscribeUrl] = useState('');
   const [transcribeModel, setTranscribeModel] = useState('');
   const [savingTranscribe, setSavingTranscribe] = useState(false);
@@ -229,6 +234,8 @@ export function ChatSettingsSection() {
       setHasAuth(!!data.hasAnthropicAuthToken);
       setAuthSource(data.authSource);
       setAuthHint(data.authHint);
+      setChatBackend(data.chat?.backend === 'codex' ? 'codex' : 'claude');
+      setCodexModel(data.chat?.codexModel ?? '');
       setTranscribeUrl(data.transcribeUrl ?? '');
       setTranscribeModel(data.transcribeModel ?? '');
       setHasTranscribeApiKey(!!data.hasTranscribeApiKey);
@@ -281,6 +288,27 @@ export function ChatSettingsSection() {
       }
     } finally {
       setSavingAuth(false);
+    }
+  };
+
+  const handleSaveBackend = async () => {
+    setSavingBackend(true);
+    try {
+      const res = await fetch(`${API_BASE}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat: { backend: chatBackend, codexModel: codexModel.trim() } }),
+      });
+      if ((await res.json()).ok) {
+        addToast(`Chat backend set to ${chatBackend === 'codex' ? 'Codex' : 'Claude'}`, 'success');
+        await loadData();
+      } else {
+        addToast('Failed to save', 'error');
+      }
+    } catch {
+      addToast('Failed to save', 'error');
+    } finally {
+      setSavingBackend(false);
     }
   };
 
@@ -365,6 +393,47 @@ export function ChatSettingsSection() {
       <SecureContextHelp />
 
       <div className="space-y-6">
+        {/* Chat backend: Claude (agent SDK) vs Codex (OpenAI sub via app-server) */}
+        <div>
+          <label className="flex items-center gap-2 text-[13px] font-medium text-surface-800 mb-2">
+            <Bot className="w-4 h-4" />
+            Chat backend
+            <span className="font-normal text-surface-500">(which agent powers Chat)</span>
+          </label>
+          <select
+            value={chatBackend}
+            onChange={(e) => setChatBackend(e.target.value as 'claude' | 'codex')}
+            className="w-full text-[13px] bg-surface-100/60 border border-border/40 rounded-lg px-2 py-1.5"
+          >
+            <option value="claude">Claude (Claude Code — curated tools)</option>
+            <option value="codex">Codex (OpenAI subscription — native tools)</option>
+          </select>
+          {chatBackend === 'codex' && (
+            <div className="mt-3 space-y-2">
+              <p className="text-[11px] text-surface-600 leading-relaxed">
+                Codex runs server-side via <code className="font-mono">codex app-server</code>,
+                authed with your ChatGPT subscription (
+                <code className="font-mono">codex login</code> →{' '}
+                <code className="font-mono">$CODEX_HOME/auth.json</code> on the NAS). It reads your
+                documents with its own file tools over a read-only view of the data dir that
+                excludes <code className="font-mono">.docvault-settings.json</code>.
+              </p>
+              <label className="block text-[11px] text-surface-500">Codex model (optional)</label>
+              <Input
+                type="text"
+                value={codexModel}
+                onChange={(e) => setCodexModel(e.target.value)}
+                placeholder="leave blank for codex's account default"
+                className="text-[13px] font-mono"
+              />
+            </div>
+          )}
+          <Button onClick={handleSaveBackend} size="sm" disabled={savingBackend} className="mt-3">
+            <Save className="w-4 h-4" />
+            {savingBackend ? 'Saving…' : 'Save backend'}
+          </Button>
+        </div>
+
         {/* Claude OAuth subscription token */}
         <div>
           <label className="flex items-center gap-2 text-[13px] font-medium text-surface-800 mb-2">
