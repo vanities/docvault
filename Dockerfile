@@ -47,6 +47,23 @@ RUN case "$TARGETARCH" in \
     chmod +x /usr/local/bin/yt-dlp && \
     /usr/local/bin/yt-dlp --version
 
+# Install the codex CLI (provides `codex app-server`, driven by the Codex chat
+# backend — server/llm/codex-app-server.ts). Arch-specific static musl binary
+# from the codex release, mirroring the yt-dlp install above. The tarball
+# extracts to a triple-named binary which we rename to `codex` on PATH.
+ARG CODEX_VERSION=0.136.0
+RUN case "$TARGETARCH" in \
+      amd64)  CODEX_TRIPLE=x86_64-unknown-linux-musl ;; \
+      arm64)  CODEX_TRIPLE=aarch64-unknown-linux-musl ;; \
+      *)      echo "Unsupported arch: $TARGETARCH" && exit 1 ;; \
+    esac && \
+    curl -fsSL "https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/codex-${CODEX_TRIPLE}.tar.gz" -o /tmp/codex.tar.gz && \
+    tar -xzf /tmp/codex.tar.gz -C /tmp && \
+    mv "/tmp/codex-${CODEX_TRIPLE}" /usr/local/bin/codex && \
+    rm /tmp/codex.tar.gz && \
+    chmod +x /usr/local/bin/codex && \
+    /usr/local/bin/codex --version
+
 WORKDIR /app
 
 # Copy production deps from stage 1
@@ -67,6 +84,10 @@ RUN mkdir -p /data
 
 ENV DOCVAULT_DATA_DIR=/data
 ENV RCLONE_CONFIG=/data/.rclone.conf
+# Codex auth (auth.json from `codex login`) + config live here, in the data
+# volume so they persist across container restarts. The Codex chat backend
+# reads CODEX_HOME via getCodexChatConfig().
+ENV CODEX_HOME=/data/.codex
 
 EXPOSE 3005
 

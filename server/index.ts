@@ -288,6 +288,7 @@ async function handleRequest(req: Request): Promise<Response> {
           : undefined,
       openaiBaseUrl: settings.openai?.baseUrl ?? '',
       modelRouting: settings.modelRouting ?? {},
+      chat: settings.chat ?? {},
     });
   }
 
@@ -385,6 +386,22 @@ async function handleRequest(req: Request): Promise<Response> {
         ) {
           settings.modelRouting[scope] = { provider: ref.provider, model: ref.model.trim() };
         }
+      }
+    }
+
+    // Chat agent backend (claude | codex) + codex model/home/binary.
+    if (body.chat && typeof body.chat === 'object') {
+      settings.chat = settings.chat ?? {};
+      const c = body.chat as {
+        backend?: unknown;
+        codexModel?: unknown;
+        codexHome?: unknown;
+        codexBinary?: unknown;
+      };
+      if (c.backend === 'claude' || c.backend === 'codex') settings.chat.backend = c.backend;
+      for (const k of ['codexModel', 'codexHome', 'codexBinary'] as const) {
+        const v = c[k];
+        if (typeof v === 'string') settings.chat[k] = v.trim() || undefined;
       }
     }
 
