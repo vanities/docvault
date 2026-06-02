@@ -10,6 +10,7 @@ import {
   Loader2,
   RefreshCw,
   AlertCircle,
+  Brain,
   X,
   Youtube,
 } from 'lucide-react';
@@ -41,7 +42,42 @@ interface ResearchEntry {
   notes?: string;
   tags?: string[];
   tickers?: string[];
+  intelligence?: ResearchIntelligence;
   lastUpdated: string;
+}
+
+interface ResearchTextProvenance {
+  entryId: string;
+  title?: string;
+  sourceUrl?: string;
+  publisher?: string;
+  reportDate?: string;
+  mediaType: ResearchEntry['mediaType'];
+  lineStart: number;
+  lineEnd: number;
+  charStart: number;
+  charEnd: number;
+  quote: string;
+}
+
+interface ResearchSummaryBullet {
+  text: string;
+  provenance: ResearchTextProvenance;
+}
+
+interface ResearchClaim {
+  id: string;
+  text: string;
+  tickers: string[];
+  topics: string[];
+  stance: 'bullish' | 'bearish' | 'risk' | 'neutral';
+  provenance: ResearchTextProvenance;
+}
+
+interface ResearchIntelligence {
+  version: number;
+  summary: ResearchSummaryBullet[];
+  claims: ResearchClaim[];
 }
 
 // Fields the PATCH endpoint accepts. Nullable so the client can clear a value
@@ -487,6 +523,14 @@ export function ResearchPanel({
     }
   };
 
+  const buildIntelligence = async (id: string) => {
+    const res = await fetch(`/api/research/${id}/intelligence`, { method: 'POST' });
+    if (res.ok) {
+      const data = (await res.json()) as { entry: ResearchEntry };
+      setEntries((prev) => prev.map((e) => (e.id === id ? data.entry : e)));
+    }
+  };
+
   // ---- Render ----
 
   return (
@@ -711,8 +755,115 @@ export function ResearchPanel({
               onPatch={(body) => patchEntry(entry.id, body)}
               onDelete={() => deleteEntry(entry.id)}
               onReExtract={() => reExtract(entry.id)}
+              onBuildIntelligence={() => buildIntelligence(entry.id)}
             />
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Row intelligence view — deterministic summary / claims with provenance
+// ---------------------------------------------------------------------------
+
+function formatProvenance(provenance: ResearchTextProvenance): string {
+  const line =
+    provenance.lineStart === provenance.lineEnd
+      ? `line ${provenance.lineStart}`
+      : `lines ${provenance.lineStart}-${provenance.lineEnd}`;
+  return `${line}, chars ${provenance.charStart}-${provenance.charEnd}`;
+}
+
+function ResearchIntelligencePanel({ intelligence }: { intelligence?: ResearchIntelligence }) {
+  if (!intelligence || (intelligence.summary.length === 0 && intelligence.claims.length === 0)) {
+    return (
+      <div className="p-3 rounded-lg border border-dashed border-border/50 bg-surface-100/20 text-[11px] text-surface-600">
+        No extracted intelligence yet. Use “Extract intelligence” to create source-grounded summary
+        bullets and claims from the stored text.
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-3 rounded-lg border border-border/40 bg-surface-100/25 space-y-3">
+      <div className="flex items-center gap-2">
+        <Brain className="w-3.5 h-3.5 text-accent-400" />
+        <h4 className="text-[11px] uppercase tracking-wider text-surface-600 font-semibold">
+          Extracted intelligence
+        </h4>
+        <span className="text-[10px] text-surface-500">v{intelligence.version}</span>
+      </div>
+
+      {intelligence.summary.length > 0 && (
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-surface-600 font-semibold mb-1">
+            Summary
+          </p>
+          <ul className="space-y-1.5">
+            {intelligence.summary.map((item, index) => (
+              <li
+                key={`${item.provenance.charStart}-${index}`}
+                className="text-[12px] text-surface-800"
+              >
+                <span className="text-surface-500 mr-1">•</span>
+                {item.text}
+                <span className="ml-2 text-[10px] text-surface-500">
+                  {formatProvenance(item.provenance)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {intelligence.claims.length > 0 && (
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-surface-600 font-semibold mb-1">
+            Claims / signals
+          </p>
+          <div className="space-y-2">
+            {intelligence.claims.map((claim) => (
+              <div
+                key={claim.id}
+                className="rounded-md border border-border/30 bg-surface-200/20 p-2"
+              >
+                <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-200/50 text-surface-700 uppercase">
+                    {claim.stance}
+                  </span>
+                  {claim.tickers.map((ticker) => (
+                    <span key={ticker} className="text-[10px] font-mono text-accent-400">
+                      {ticker}
+                    </span>
+                  ))}
+                  {claim.topics.map((topic) => (
+                    <span key={topic} className="text-[10px] text-surface-600">
+                      #{topic}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-[12px] text-surface-800 leading-relaxed">{claim.text}</p>
+                <div className="mt-1 text-[10px] text-surface-500">
+                  {formatProvenance(claim.provenance)} · quote: “{claim.provenance.quote}”
+                  {claim.provenance.sourceUrl && (
+                    <>
+                      {' · '}
+                      <a
+                        href={claim.provenance.sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-accent-400 hover:underline"
+                      >
+                        source
+                      </a>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -730,6 +881,7 @@ function ResearchRow({
   onPatch,
   onDelete,
   onReExtract,
+  onBuildIntelligence,
 }: {
   entry: ResearchEntry;
   expanded: boolean;
@@ -737,6 +889,7 @@ function ResearchRow({
   onPatch: (body: PatchBody) => Promise<void>;
   onDelete: () => void;
   onReExtract: () => Promise<void>;
+  onBuildIntelligence: () => Promise<void>;
 }) {
   // Local edit buffers — flushed to the server on blur so every keystroke
   // doesn't fire a PATCH. Kept in refs-ish state so parent re-renders don't
@@ -754,6 +907,7 @@ function ResearchRow({
   // immediately on every chip add/remove, debounced by an equality check.
   const [draftTickers, setDraftTickers] = useState<string[]>(entry.tickers ?? []);
   const [reExtracting, setReExtracting] = useState(false);
+  const [buildingIntelligence, setBuildingIntelligence] = useState(false);
 
   useEffect(() => {
     setDraft({
@@ -790,6 +944,15 @@ function ResearchRow({
       await onReExtract();
     } finally {
       setReExtracting(false);
+    }
+  };
+
+  const handleBuildIntelligence = async () => {
+    setBuildingIntelligence(true);
+    try {
+      await onBuildIntelligence();
+    } finally {
+      setBuildingIntelligence(false);
     }
   };
 
@@ -935,6 +1098,9 @@ function ResearchRow({
             />
           </div>
 
+          {/* Deterministic source-grounded summary / claims */}
+          <ResearchIntelligencePanel intelligence={entry.intelligence} />
+
           {/* Extracted text */}
           <div>
             <div className="flex items-center justify-between mb-1">
@@ -946,18 +1112,30 @@ function ResearchRow({
                   </span>
                 )}
               </label>
-              {entry.mediaType === 'application/pdf' && (
+              <div className="flex items-center gap-1.5">
                 <Button
                   variant="ghost"
                   size="xs"
-                  onClick={handleReExtract}
-                  disabled={reExtracting}
-                  title="Re-run text extraction"
+                  onClick={handleBuildIntelligence}
+                  disabled={buildingIntelligence || !entry.text}
+                  title="Extract source-grounded summary and claims"
                 >
-                  <RefreshCw className={`w-3 h-3 ${reExtracting ? 'animate-spin' : ''}`} />
-                  Re-extract
+                  <Brain className={`w-3 h-3 ${buildingIntelligence ? 'animate-pulse' : ''}`} />
+                  {entry.intelligence ? 'Refresh intelligence' : 'Extract intelligence'}
                 </Button>
-              )}
+                {entry.mediaType === 'application/pdf' && (
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={handleReExtract}
+                    disabled={reExtracting}
+                    title="Re-run text extraction"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${reExtracting ? 'animate-spin' : ''}`} />
+                    Re-extract
+                  </Button>
+                )}
+              </div>
             </div>
             {entry.extractError ? (
               <div className="p-2 rounded bg-red-500/10 border border-red-500/20 text-[11px] text-red-400">
