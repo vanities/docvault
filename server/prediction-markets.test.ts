@@ -140,6 +140,18 @@ describe('normalizeKalshiEvent', () => {
     };
     expect(normalizeKalshiEvent(ev)).toBeNull();
   });
+
+  test('builds the URL from series_ticker, not the event_ticker suffix', () => {
+    const ev = {
+      event_ticker: 'KXFED-26JUN',
+      series_ticker: 'KXFEDDECISION',
+      category: 'Economics',
+      title: 'Fed decision',
+      markets: [{ status: 'active', last_price_dollars: '0.5' }],
+    };
+    // series_ticker → kxfeddecision; parsing event_ticker would give kxfed.
+    expect(normalizeKalshiEvent(ev)?.url).toBe('https://kalshi.com/markets/kxfeddecision');
+  });
 });
 
 describe('normalizePolymarketEvent', () => {

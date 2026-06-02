@@ -295,8 +295,11 @@ export function dedupeMarkets(markets: PredictionMarket[]): PredictionMarket[] {
   return out;
 }
 
-export function kalshiMarketUrl(eventTicker: string): string {
-  const series = (eventTicker.split('-')[0] || eventTicker).toLowerCase();
+export function kalshiMarketUrl(ticker: string): string {
+  // Kalshi's API returns no web URL, so we build one from the series ticker
+  // (e.g. "KXFEDDECISION" → kalshi.com/markets/kxfeddecision). Prefers a
+  // series_ticker; given an event_ticker we strip the "-suffix" as a fallback.
+  const series = (ticker.split('-')[0] || ticker).toLowerCase();
   return `https://kalshi.com/markets/${series}`;
 }
 
@@ -334,6 +337,7 @@ interface KalshiMarket {
 
 interface KalshiEvent {
   event_ticker: string;
+  series_ticker?: string;
   category: string;
   title: string;
   sub_title?: string;
@@ -386,7 +390,7 @@ export function normalizeKalshiEvent(ev: KalshiEvent): NormalizedMarket | null {
     // Contracts → rough USD via the favorite's price (each contract settles $0–1).
     volumeUsd: Math.round(volumeContracts * favPrice),
     closeTime: fav.close_time ?? null,
-    url: kalshiMarketUrl(ev.event_ticker),
+    url: kalshiMarketUrl(ev.series_ticker ?? ev.event_ticker),
     change24h,
   };
 }
