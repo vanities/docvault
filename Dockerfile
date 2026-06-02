@@ -76,6 +76,10 @@ COPY server/ ./server/
 # Copy scripts (sync-to-dropbox.sh, etc.)
 COPY scripts/ ./scripts/
 
+# Copy bundled example custom jobs — seeded (disabled) into the data dir on
+# boot by server/seed-example-jobs.ts. Without this the seeder finds nothing.
+COPY examples/ ./examples/
+
 # Copy built frontend from stage 2
 COPY --from=build /app/dist ./dist
 

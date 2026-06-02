@@ -12,12 +12,18 @@ import {
 } from './jobs.js';
 import type { CustomJobManifest } from './jobs.js';
 import { createLogger } from './logger.js';
+import { seedExampleJobs } from './seed-example-jobs.js';
 
 const logJobs = createLogger('Jobs');
 
 type Timer = ReturnType<typeof setInterval>;
 
 const timers = new Map<string, Timer>();
+
+// Example jobs are seeded at most once per process (at boot), guarded here so
+// the scheduler restarts triggered by every job CRUD op don't re-scan the
+// bundle. The seeder is idempotent anyway; this just avoids redundant I/O.
+let exampleSeedDone = false;
 
 // Serializes every read-modify-write of the shared jobs files (status.json +
 // runs.ndjson). All daily jobs share one boot time, so their timers fire in the
@@ -272,6 +278,20 @@ function runIfDue(id: string, intervalMs: number, dataDir: string): void {
 export async function startCustomJobScheduler(dataDir: string = DATA_DIR): Promise<void> {
   for (const timer of timers.values()) clearInterval(timer);
   timers.clear();
+
+  // Seed bundled example jobs (disabled) before reading manifests, so a fresh
+  // install surfaces them in Settings → Jobs immediately. Idempotent +
+  // non-destructive (marker-tracked); never blocks scheduling.
+  if (!exampleSeedDone) {
+    exampleSeedDone = true;
+    try {
+      await seedExampleJobs(dataDir);
+    } catch (err) {
+      logJobs.warn(
+        `Example job seeding failed: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
 
   const records = await listCustomJobManifests(dataDir);
   for (const record of records) {

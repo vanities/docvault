@@ -1,0 +1,9 @@
+{
+  "id": "zerohedge-research",
+  "label": "ZeroHedge RSS to Research (finance/politics/health)",
+  "kind": "local-script",
+  "schedule": "every 6h",
+  "script": "scripts/zerohedge-research.local.js",
+  "enabled": false,
+  "tags": ["research", "rss", "zerohedge", "finance", "politics", "health"]
+}

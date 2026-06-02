@@ -36,13 +36,22 @@ import { dirname } from 'node:path';
 
 const FEED_URL = 'https://feeds.feedburner.com/zerohedge/feed';
 const API_BASE = process.env.DOCVAULT_API ?? 'http://localhost:3005';
-const STATE_DIR = process.env.ZH_STATE_DIR ?? '/mnt/user/appdata/docvault';
-const SEEN_FILE = `${STATE_DIR}/zerohedge-seen.json`;
+// In-container (DocVault custom job) the runner injects DOCVAULT_DATA_DIR; on a
+// bare host fall back to the appdata dir. The ledger sits beside the other
+// .docvault-* state files so it's excluded from entity listings + Dropbox sync.
+const STATE_DIR =
+  process.env.ZH_STATE_DIR ?? process.env.DOCVAULT_DATA_DIR ?? '/mnt/user/appdata/docvault';
+const SEEN_FILE = `${STATE_DIR}/.docvault-zerohedge-seen.json`;
 const SEEN_MAX = 500; // far more than the feed's ~13h window; cheap insurance
 const FETCH_UA = 'Mozilla/5.0 (DocVault ZeroHedge cron)';
 // DRY_RUN=1 prints what would be filed (domain/title/tags) and writes nothing —
-// no POSTs, no seen-ledger update. Handy for tuning the watchlist.
-const DRY_RUN = !!process.env.DRY_RUN;
+// no POSTs, no seen-ledger update. The DocVault custom-job runner injects
+// DOCVAULT_DRY_RUN for its own dry-run mode, so honor both. Handy for tuning.
+const DRY_RUN = !!(
+  process.env.DRY_RUN ||
+  process.env.DOCVAULT_DRY_RUN ||
+  process.env.DOCVAULT_JOB_DRY_RUN
+);
 
 // Match the headline only by default. ZH bodies almost always mention some
 // macro/geo keyword, so body-matching would file ~everything and defeat the
@@ -54,44 +63,148 @@ const MATCH_AGAINST_BODY = false;
 // routing hint when the URL section is unknown (see routeDomain).
 const WATCHLIST = {
   finance: [
-    'fed', 'fomc', 'federal reserve', 'powell', 'rate cut', 'rate hike',
-    'interest rate', 'rates', 'inflation', 'cpi', 'ppi', 'pce', 'deflation',
-    'stagflation', 'jobs report', 'payroll', 'payrolls', 'jolts', 'unemployment',
-    'recession', 'gdp', 'treasury', 'treasuries', 'yields', 'yield curve',
-    'bond', 'bonds', 'bitcoin', 'btc', 'ethereum', 'crypto', 'stablecoin',
-    'gold', 'silver', 'copper', 'oil', 'crude', 'wti', 'brent', 'dollar', 'dxy',
-    's&p', 'nasdaq', 'dow', 'equities', 'stocks', 'earnings', 'bessent',
+    'fed',
+    'fomc',
+    'federal reserve',
+    'powell',
+    'rate cut',
+    'rate hike',
+    'interest rate',
+    'rates',
+    'inflation',
+    'cpi',
+    'ppi',
+    'pce',
+    'deflation',
+    'stagflation',
+    'jobs report',
+    'payroll',
+    'payrolls',
+    'jolts',
+    'unemployment',
+    'recession',
+    'gdp',
+    'treasury',
+    'treasuries',
+    'yields',
+    'yield curve',
+    'bond',
+    'bonds',
+    'bitcoin',
+    'btc',
+    'ethereum',
+    'crypto',
+    'stablecoin',
+    'gold',
+    'silver',
+    'copper',
+    'oil',
+    'crude',
+    'wti',
+    'brent',
+    'dollar',
+    'dxy',
+    's&p',
+    'nasdaq',
+    'dow',
+    'equities',
+    'stocks',
+    'earnings',
+    'bessent',
   ],
   politics: [
-    'trump', 'biden', 'election', 'tariff', 'tariffs', 'sanction', 'sanctions',
-    'war', 'ukraine', 'russia', 'china', 'iran', 'israel', 'gaza', 'nato',
-    'congress', 'senate', 'immigration', 'border', 'doge', 'musk', 'deportation',
-    'shutdown', 'impeach', 'supreme court',
+    'trump',
+    'biden',
+    'election',
+    'tariff',
+    'tariffs',
+    'sanction',
+    'sanctions',
+    'war',
+    'ukraine',
+    'russia',
+    'china',
+    'iran',
+    'israel',
+    'gaza',
+    'nato',
+    'congress',
+    'senate',
+    'immigration',
+    'border',
+    'doge',
+    'musk',
+    'deportation',
+    'shutdown',
+    'impeach',
+    'supreme court',
   ],
   health: [
-    'fda', 'cdc', 'vaccine', 'vaccines', 'mrna', 'covid', 'pandemic', 'pharma',
-    'pfizer', 'moderna', 'ozempic', 'glp-1', 'rfk', 'hhs', 'measles', 'outbreak',
-    'autism', 'disease', 'medical', 'hospital', 'obesity',
+    'fda',
+    'cdc',
+    'vaccine',
+    'vaccines',
+    'mrna',
+    'covid',
+    'pandemic',
+    'pharma',
+    'pfizer',
+    'moderna',
+    'ozempic',
+    'glp-1',
+    'rfk',
+    'hhs',
+    'measles',
+    'outbreak',
+    'autism',
+    'disease',
+    'medical',
+    'hospital',
+    'obesity',
   ],
 };
 
 // First path segment of a ZH article URL → Research domain. The strongest
 // routing signal (ZH's own editorial section), preferred over the keyword group.
 const SECTION_DOMAIN = {
-  economics: 'finance', markets: 'finance', commodities: 'finance',
-  energy: 'finance', crypto: 'finance', cryptocurrency: 'finance',
-  'personal-finance': 'finance', 'the-market-ear': 'finance', finance: 'finance',
-  political: 'politics', politics: 'politics', geopolitical: 'politics',
-  medical: 'health', 'covid-19': 'health', covid: 'health', health: 'health',
+  economics: 'finance',
+  markets: 'finance',
+  commodities: 'finance',
+  energy: 'finance',
+  crypto: 'finance',
+  cryptocurrency: 'finance',
+  'personal-finance': 'finance',
+  'the-market-ear': 'finance',
+  finance: 'finance',
+  political: 'politics',
+  politics: 'politics',
+  geopolitical: 'politics',
+  medical: 'health',
+  'covid-19': 'health',
+  covid: 'health',
+  health: 'health',
 };
 
 // --- Text helpers -----------------------------------------------------------
 
 const NAMED_ENTITIES = {
-  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
-  mdash: '—', ndash: '–', hellip: '…', rsquo: '’',
-  lsquo: '‘', ldquo: '“', rdquo: '”', copy: '©',
-  reg: '®', trade: '™', deg: '°',
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+  mdash: '—',
+  ndash: '–',
+  hellip: '…',
+  rsquo: '’',
+  lsquo: '‘',
+  ldquo: '“',
+  rdquo: '”',
+  copy: '©',
+  reg: '®',
+  trade: '™',
+  deg: '°',
 };
 
 function safeCodePoint(cp) {
@@ -287,7 +400,9 @@ async function main() {
     const tags = ['zerohedge', 'auto', ...uniq(terms).slice(0, 8)];
 
     if (DRY_RUN) {
-      console.log(`[dry] ${domain.padEnd(8)} ${it.title}  ·  ${section} · {${uniq(terms).join(', ')}}`);
+      console.log(
+        `[dry] ${domain.padEnd(8)} ${it.title}  ·  ${section} · {${uniq(terms).join(', ')}}`
+      );
       if (process.env.SHOW_BODY) {
         console.log(`      └─ ${body.replace(/\n+/g, ' ⏎ ').slice(0, 240)}…\n`);
       }
