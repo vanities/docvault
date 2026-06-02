@@ -23,6 +23,11 @@ const log = createLogger('CodexChat');
 // is fair game for the agent to read.
 const SECRET_FILES = new Set(['.docvault-settings.json']);
 
+// Codex item types that are NOT tool activity — don't surface them as tool
+// calls. `userMessage` is the echo of the user's own message; the assistant
+// text + reasoning have their own delta events.
+const NON_TOOL_ITEMS = new Set(['agentMessage', 'reasoning', 'userMessage']);
+
 /**
  * Build a read-only view of DATA_DIR that omits secret files, by symlinking
  * each non-secret top-level entry into a temp dir. Rebuilt per turn so newly
@@ -144,7 +149,7 @@ function translateNotification(
       // like Claude's tool calls. Skip the assistant-message / reasoning items.
       const item = obj(p.item);
       const type = str(item.type);
-      if (type && type !== 'agentMessage' && type !== 'reasoning') {
+      if (type && !NON_TOOL_ITEMS.has(type)) {
         send({ type: 'tool_call', id: str(item.id) ?? '', toolName: type, input: item });
       }
       break;
@@ -152,7 +157,7 @@ function translateNotification(
     case 'item/completed': {
       const item = obj(p.item);
       const type = str(item.type);
-      if (type && type !== 'agentMessage' && type !== 'reasoning') {
+      if (type && !NON_TOOL_ITEMS.has(type)) {
         send({ type: 'tool_result', toolUseId: str(item.id) ?? '', result: item, isError: false });
       }
       break;
