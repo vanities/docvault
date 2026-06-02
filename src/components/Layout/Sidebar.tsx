@@ -22,6 +22,7 @@ import {
   MapPin,
   Receipt,
   Scale,
+  TrendingUp,
   LineChart,
   Brain,
   MessageCircle,
@@ -835,6 +836,16 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               icon={Scale}
               activeColor="bg-red-500/10"
               activeTextColor="text-red-400"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
+            <NavButton
+              view="predictions"
+              label="Predictions"
+              icon={TrendingUp}
+              activeColor="bg-teal-500/10"
+              activeTextColor="text-teal-400"
               activeView={activeView}
               isProcessing={isProcessing}
               onClick={handleViewClick}

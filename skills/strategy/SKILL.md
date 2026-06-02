@@ -104,6 +104,7 @@ Key endpoints (run each via `curl -fsS "${NAS_URL}/api/quant/..."`):
 | `/api/quant/tradfi/commodities`         | Gold, silver, oil, copper, nat gas, platinum              |
 | `/api/quant/tradfi/global-markets`      | FTSE, DAX, Nikkei, Hang Seng, EEM, EFA                    |
 | `/api/quant/running-roi`                | BTC + SPX rolling hold-period returns                     |
+| `/api/quant/predictions`                | Kalshi + Polymarket odds (finance + politics, per event)  |
 
 ## Step 2: Classify the business cycle phase
 

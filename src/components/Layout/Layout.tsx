@@ -30,6 +30,7 @@ import { FederalTaxView } from '../FederalTax/FederalTaxView';
 import { QuantView } from '../Quant/QuantView';
 import { StrategyView } from '../Strategy/StrategyView';
 import { PoliticsView } from '../Politics/PoliticsView';
+import { PredictionsView } from '../Predictions/PredictionsView';
 import { HealthView } from '../Health/HealthView';
 import { HealthActivityView } from '../Health/HealthActivityView';
 import { HealthDNAView } from '../Health/HealthDNAView';
@@ -143,6 +144,8 @@ export function Layout() {
         return <StrategyView />;
       case 'politics':
         return <PoliticsView />;
+      case 'predictions':
+        return <PredictionsView />;
       case 'health':
         return <HealthView />;
       case 'health-activity':
