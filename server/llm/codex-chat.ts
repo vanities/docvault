@@ -12,6 +12,7 @@ import {
   CodexAppServerClient,
   type CodexNotification,
   type CodexServerRequest,
+  type CodexTurnInput,
 } from './codex-app-server.js';
 import { DATA_DIR } from '../data.js';
 import { createLogger } from '../logger.js';
@@ -63,6 +64,8 @@ export interface CodexChatOptions {
   binaryPath?: string;
   /** Resume a prior codex thread to keep conversation continuity. */
   resumeThreadId?: string;
+  /** Image attachments for this turn (data: URLs or file URLs). */
+  images?: { url: string }[];
   signal?: AbortSignal;
   /** Emit an SSE event — same shapes as the Claude path's `send`. */
   send: (event: object) => void;
@@ -90,7 +93,7 @@ export async function runCodexChat(opts: CodexChatOptions): Promise<void> {
     cwd,
     codexHome: opts.codexHome,
     onNotification: (n) => translateNotification(n, send, finish),
-    onServerRequest: (r) => handleServerRequest(r),
+    onServerRequest: (r) => handleServerRequest(r, opts.codexHome),
     onExit: (code) => {
       if (!done && code !== 0 && code !== null) {
         send({ type: 'error', message: `codex app-server exited (code ${code})` });
@@ -119,7 +122,11 @@ export async function runCodexChat(opts: CodexChatOptions): Promise<void> {
 
     send({ type: 'session', sessionId: threadId });
 
-    await client.startTurn({ threadId, input: [{ type: 'text', text: opts.userText }] });
+    const input: CodexTurnInput[] = [
+      { type: 'text', text: opts.userText },
+      ...(opts.images ?? []).map((img) => ({ type: 'image' as const, url: img.url })),
+    ];
+    await client.startTurn({ threadId, input });
     // Streaming + completion arrive via notifications; finish() resolves this.
     await donePromise;
   } catch (err) {
@@ -178,14 +185,34 @@ function translateNotification(
 
 /**
  * Answer codex's server-requests. We run read-only with approvalPolicy 'never',
- * so approvals shouldn't fire — deny any that do, defensively.
+ * so approvals shouldn't fire — deny any that do, defensively. For the ChatGPT
+ * auth-token refresh, we relay the current tokens from auth.json: codex
+ * refreshes its own auth.json via the stored refresh_token (t3code implements
+ * no OAuth flow of its own), and the client just hands the tokens back.
  */
-function handleServerRequest(r: CodexServerRequest): unknown {
+async function handleServerRequest(r: CodexServerRequest, codexHome?: string): Promise<unknown> {
   if (r.method.endsWith('requestApproval') || r.method === 'applyPatchApproval') {
     return { decision: 'deny' };
   }
-  // account/chatgptAuthTokens/refresh and others: codex manages its own
-  // auth.json; we can't mint tokens here. Return null and let codex proceed or
-  // fail clearly. (Wire real refresh later if the sub needs client-side help.)
+  if (r.method === 'account/chatgptAuthTokens/refresh') {
+    try {
+      const home = codexHome || path.join(os.homedir(), '.codex');
+      const raw = await fs.readFile(path.join(home, 'auth.json'), 'utf-8');
+      const auth = JSON.parse(raw) as { tokens?: { access_token?: string; account_id?: string } };
+      const tok = auth.tokens;
+      if (tok?.access_token) {
+        return {
+          accessToken: tok.access_token,
+          chatgptAccountId: tok.account_id ?? null,
+          chatgptPlanType: null,
+        };
+      }
+    } catch (err) {
+      log.warn(
+        `codex auth-token relay failed: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+    return null;
+  }
   return null;
 }
