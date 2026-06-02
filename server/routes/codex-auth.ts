@@ -44,11 +44,15 @@ export async function handleCodexAuthRoutes(
       };
 
       const proc = spawn(bin, ['login', '--device-auth'], { env });
+      // codex styles its output with ANSI CSI sequences (colored URL + code);
+      // strip them so the browser shows clean text. Built from the ESC char at
+      // runtime to avoid a control char literal in the regex source.
+      const ANSI_RE = new RegExp(String.fromCharCode(27) + '\\[[0-9;]*[a-zA-Z]', 'g');
       // codex prints the verification URL + code to stdout or stderr depending
       // on version — forward both as lines.
       const onData = (d: Buffer | string) => {
         for (const raw of d.toString().split('\n')) {
-          const text = raw.replace(/\r$/, '').trimEnd();
+          const text = raw.replace(/\r$/, '').replace(ANSI_RE, '').trimEnd();
           if (text.trim()) send({ type: 'line', text });
         }
       };
