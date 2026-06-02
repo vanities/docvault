@@ -45,6 +45,8 @@ scripts/*
 # directory — matching contents lets the !-rules below take effect.
 !scripts/sync-to-dropbox.sh
 !scripts/docker-entrypoint.sh
+# Exception: host-side NAS cron script (deployed to the Unraid flash, not the image)
+!scripts/zerohedge-scrape.mjs
 # Exception: skill helper scripts are sanitized and meant to be public
 !skills/*/scripts/
 !skills/*/scripts/**
