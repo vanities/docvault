@@ -1,9 +1,7 @@
-// Chat & Voice settings — Claude OAuth subscription token + transcription
-// service URL. Lives next to the API key card in the keys tab.
-//
-// The OAuth token is the alternative to an API key: the Anthropic SDK accepts
-// it via `authToken` (Bearer) and routes through the user's Claude.ai
-// subscription rather than API billing. Generate with `claude setup-token`.
+// Voice settings — the transcription service URL/model/key, plus the inline
+// HTTPS-setup help for mic access on HTTP origins. Chat backend + provider
+// credentials moved to the Models & Chat and AI Credentials cards; this card is
+// voice only. (File name kept as ChatSettingsSection so the import is stable.)
 //
 // The transcription URL points at any OpenAI-compatible
 // /audio/transcriptions service running on the user's NAS — whisper.cpp,
@@ -12,7 +10,7 @@
 // supplied just a host root.
 
 import { useEffect, useState } from 'react';
-import { Bot, CheckCircle, Eye, EyeOff, Key, LogIn, Mic, Save } from 'lucide-react';
+import { CheckCircle, Eye, EyeOff, Key, Mic, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -21,10 +19,6 @@ import { useToast } from '../../hooks/useToast';
 import { API_BASE } from '../../constants';
 
 interface ChatSettingsData {
-  chat?: { backend?: 'claude' | 'codex'; codexModel?: string };
-  hasAnthropicAuthToken?: boolean;
-  authSource?: 'settings' | 'env';
-  authHint?: string;
   transcribeUrl?: string;
   transcribeModel?: string;
   hasTranscribeApiKey?: boolean;
@@ -206,18 +200,6 @@ function CollapsibleSetupSection({
 export function ChatSettingsSection() {
   const { addToast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [hasAuth, setHasAuth] = useState(false);
-  const [authSource, setAuthSource] = useState<'settings' | 'env' | undefined>();
-  const [authHint, setAuthHint] = useState<string | undefined>();
-  const [authInput, setAuthInput] = useState('');
-  const [showAuth, setShowAuth] = useState(false);
-  const [savingAuth, setSavingAuth] = useState(false);
-
-  const [chatBackend, setChatBackend] = useState<'claude' | 'codex'>('claude');
-  const [codexModel, setCodexModel] = useState('');
-  const [savingBackend, setSavingBackend] = useState(false);
-  const [loggingIntoCodex, setLoggingIntoCodex] = useState(false);
-  const [codexLoginOutput, setCodexLoginOutput] = useState<string[]>([]);
 
   const [transcribeUrl, setTranscribeUrl] = useState('');
   const [transcribeModel, setTranscribeModel] = useState('');
@@ -233,11 +215,6 @@ export function ChatSettingsSection() {
     try {
       const res = await fetch(`${API_BASE}/settings`);
       const data: ChatSettingsData = await res.json();
-      setHasAuth(!!data.hasAnthropicAuthToken);
-      setAuthSource(data.authSource);
-      setAuthHint(data.authHint);
-      setChatBackend(data.chat?.backend === 'codex' ? 'codex' : 'claude');
-      setCodexModel(data.chat?.codexModel ?? '');
       setTranscribeUrl(data.transcribeUrl ?? '');
       setTranscribeModel(data.transcribeModel ?? '');
       setHasTranscribeApiKey(!!data.hasTranscribeApiKey);
@@ -252,106 +229,6 @@ export function ChatSettingsSection() {
   useEffect(() => {
     void loadData();
   }, []);
-
-  const handleSaveAuth = async () => {
-    if (!authInput.trim()) return;
-    setSavingAuth(true);
-    try {
-      const res = await fetch(`${API_BASE}/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ anthropicAuthToken: authInput.trim() }),
-      });
-      if ((await res.json()).ok) {
-        addToast('Claude OAuth token saved', 'success');
-        setAuthInput('');
-        await loadData();
-      } else {
-        addToast('Failed to save token', 'error');
-      }
-    } catch {
-      addToast('Failed to save token', 'error');
-    } finally {
-      setSavingAuth(false);
-    }
-  };
-
-  const handleClearAuth = async () => {
-    setSavingAuth(true);
-    try {
-      const res = await fetch(`${API_BASE}/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clearAnthropicAuthToken: true }),
-      });
-      if ((await res.json()).ok) {
-        addToast('Claude OAuth token removed', 'success');
-        await loadData();
-      }
-    } finally {
-      setSavingAuth(false);
-    }
-  };
-
-  const handleSaveBackend = async () => {
-    setSavingBackend(true);
-    try {
-      const res = await fetch(`${API_BASE}/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat: { backend: chatBackend, codexModel: codexModel.trim() } }),
-      });
-      if ((await res.json()).ok) {
-        addToast(`Chat backend set to ${chatBackend === 'codex' ? 'Codex' : 'Claude'}`, 'success');
-        await loadData();
-      } else {
-        addToast('Failed to save', 'error');
-      }
-    } catch {
-      addToast('Failed to save', 'error');
-    } finally {
-      setSavingBackend(false);
-    }
-  };
-
-  // Drive `codex login --device-auth` on the server over SSE. Codex streams a
-  // verification URL + code (shown below the button); the user authorizes in any
-  // browser and codex writes auth.json to CODEX_HOME on the NAS.
-  const handleCodexLogin = () => {
-    setCodexLoginOutput([]);
-    setLoggingIntoCodex(true);
-    const es = new EventSource(`${API_BASE}/codex/login`);
-    es.onmessage = (e) => {
-      try {
-        const ev = JSON.parse(e.data) as {
-          type: string;
-          text?: string;
-          ok?: boolean;
-          message?: string;
-        };
-        if (ev.type === 'line' && ev.text) {
-          setCodexLoginOutput((prev) => [...prev, ev.text as string]);
-        } else if (ev.type === 'done') {
-          es.close();
-          setLoggingIntoCodex(false);
-          addToast(
-            ev.ok ? 'Signed in to Codex' : 'Codex sign-in failed',
-            ev.ok ? 'success' : 'error'
-          );
-        } else if (ev.type === 'error') {
-          es.close();
-          setLoggingIntoCodex(false);
-          addToast(`Codex sign-in error: ${ev.message ?? 'unknown'}`, 'error');
-        }
-      } catch {
-        /* ignore malformed event */
-      }
-    };
-    es.onerror = () => {
-      es.close();
-      setLoggingIntoCodex(false);
-    };
-  };
 
   const handleSaveTranscribeApiKey = async () => {
     if (!transcribeApiKeyInput.trim()) return;
@@ -428,154 +305,14 @@ export function ChatSettingsSection() {
     <Card variant="glass" className="p-6 mb-8">
       <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
         <Mic className="w-5 h-5" />
-        Chat & Voice
+        Voice
       </h3>
 
       <SecureContextHelp />
 
       <div className="space-y-6">
-        {/* Chat backend: Claude (agent SDK) vs Codex (OpenAI sub via app-server) */}
-        <div>
-          <label className="flex items-center gap-2 text-[13px] font-medium text-surface-800 mb-2">
-            <Bot className="w-4 h-4" />
-            Chat backend
-            <span className="font-normal text-surface-500">(which agent powers Chat)</span>
-          </label>
-          <select
-            value={chatBackend}
-            onChange={(e) => setChatBackend(e.target.value as 'claude' | 'codex')}
-            className="w-full text-[13px] bg-surface-100/60 border border-border/40 rounded-lg px-2 py-1.5"
-          >
-            <option value="claude">Claude (Claude Code — curated tools)</option>
-            <option value="codex">Codex (OpenAI subscription — native tools)</option>
-          </select>
-          {chatBackend === 'codex' && (
-            <div className="mt-3 space-y-2">
-              <p className="text-[11px] text-surface-600 leading-relaxed">
-                Codex runs server-side via <code className="font-mono">codex app-server</code>,
-                authed with your ChatGPT subscription (
-                <code className="font-mono">codex login</code> →{' '}
-                <code className="font-mono">$CODEX_HOME/auth.json</code> on the NAS). It reads your
-                documents with its own file tools over a read-only view of the data dir that
-                excludes <code className="font-mono">.docvault-settings.json</code>.
-              </p>
-              <label className="block text-[11px] text-surface-500">Codex model (optional)</label>
-              <Input
-                type="text"
-                value={codexModel}
-                onChange={(e) => setCodexModel(e.target.value)}
-                placeholder="leave blank for codex's account default"
-                className="text-[13px] font-mono"
-              />
-              <div className="pt-1">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleCodexLogin}
-                  disabled={loggingIntoCodex}
-                >
-                  <LogIn className="w-4 h-4" />
-                  {loggingIntoCodex ? 'Waiting for authorization…' : 'Sign in to Codex'}
-                </Button>
-                <p className="text-[11px] text-surface-500 mt-1">
-                  Runs codex device-auth on the server — a verification link + code appears below.
-                  Open it in any browser, authorize, and the token saves to the NAS.
-                </p>
-                {codexLoginOutput.length > 0 && (
-                  <pre className="mt-2 bg-surface-0 border border-border/40 rounded p-2 text-[11px] overflow-x-auto whitespace-pre-wrap break-words">
-                    {codexLoginOutput.join('\n')}
-                  </pre>
-                )}
-              </div>
-            </div>
-          )}
-          <Button onClick={handleSaveBackend} size="sm" disabled={savingBackend} className="mt-3">
-            <Save className="w-4 h-4" />
-            {savingBackend ? 'Saving…' : 'Save backend'}
-          </Button>
-        </div>
-
-        {/* Claude OAuth subscription token */}
-        <div>
-          <label className="flex items-center gap-2 text-[13px] font-medium text-surface-800 mb-2">
-            <Key className="w-4 h-4" />
-            Claude OAuth Token
-            <span className="font-normal text-surface-500">
-              (use your Claude.ai subscription instead of API billing)
-            </span>
-          </label>
-
-          {hasAuth && authSource === 'settings' ? (
-            <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-              <CheckCircle className="w-5 h-5 text-emerald-400" />
-              <div className="flex-1">
-                <span className="text-[13px] text-emerald-400 font-medium">OAuth token set</span>
-                {authHint && (
-                  <span className="text-[13px] text-emerald-400/70 ml-2 font-mono">
-                    --------{authHint}
-                  </span>
-                )}
-              </div>
-              <Button
-                variant="ghost-danger"
-                size="xs"
-                onClick={handleClearAuth}
-                disabled={savingAuth}
-              >
-                Remove
-              </Button>
-            </div>
-          ) : hasAuth && authSource === 'env' ? (
-            <div className="flex items-center gap-2 p-3 bg-info-500/10 border border-info-500/20 rounded-xl">
-              <CheckCircle className="w-5 h-5 text-info-400" />
-              <div className="flex-1">
-                <span className="text-[13px] text-info-400 font-medium">
-                  Set via ANTHROPIC_AUTH_TOKEN env
-                </span>
-                {authHint && (
-                  <span className="text-[13px] text-info-400/70 ml-2 font-mono">
-                    --------{authHint}
-                  </span>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <div className="relative">
-                <Input
-                  type={showAuth ? 'text' : 'password'}
-                  value={authInput}
-                  onChange={(e) => setAuthInput(e.target.value)}
-                  placeholder="sk-ant-oat01-... or paste from `claude setup-token`"
-                  className="pr-10 text-[13px] font-mono"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={() => setShowAuth(!showAuth)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2"
-                >
-                  {showAuth ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </Button>
-              </div>
-              <p className="text-[11px] text-surface-600">
-                When set, requests are routed through the OAuth bearer endpoint instead of API
-                billing. Run <code className="font-mono">claude setup-token</code> on a machine
-                where Claude Code is signed in to mint a long-lived token.
-              </p>
-              {authInput && (
-                <Button onClick={handleSaveAuth} size="sm" disabled={savingAuth}>
-                  <Save className="w-4 h-4" />
-                  {savingAuth ? 'Saving…' : 'Save'}
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
-
         {/* Transcription service */}
-        <div className="pt-2 border-t border-border/30">
+        <div>
           <label className="block text-[13px] font-medium text-surface-800 mb-2">
             Transcription service URL
           </label>
