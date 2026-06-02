@@ -165,6 +165,7 @@ import { handleExternalSourcesRoutes } from './routes/external-sources.js';
 import { handleFormsRoutes } from './routes/forms.js';
 import { handleDeepResearchRoutes } from './routes/deep-research.js';
 import { handleModelsRoutes } from './routes/models.js';
+import { handleCodexAuthRoutes } from './routes/codex-auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1996,6 +1997,9 @@ async function handleRequest(req: Request): Promise<Response> {
 
   const modelsResponse = await handleModelsRoutes(req, url, pathname);
   if (modelsResponse) return modelsResponse;
+
+  const codexAuthResponse = await handleCodexAuthRoutes(req, url, pathname);
+  if (codexAuthResponse) return codexAuthResponse;
 
   // voice transcription proxy (forwards audio to a configurable
   // OpenAI-compatible /audio/transcriptions service — whisper.cpp,
