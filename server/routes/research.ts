@@ -36,6 +36,7 @@ import {
 } from '../parsers/youtube-transcript.js';
 import { createLogger } from '../logger.js';
 import { normalizeTickers } from '../tickers.js';
+import { buildResearchIntelligence, type ResearchIntelligence } from '../research-intelligence.js';
 
 const log = createLogger('Research');
 
@@ -111,6 +112,8 @@ export interface ResearchEntry {
    * undefined.
    */
   linkedPersonIds?: string[];
+  /** Deterministic source-grounded summary/claim extraction generated from `text`. */
+  intelligence?: ResearchIntelligence;
   lastUpdated: string;
 }
 
@@ -483,7 +486,7 @@ export async function handleResearchRoutes(
   }
 
   // Per-entry subpaths
-  const idMatch = sub.match(/^\/([a-z0-9]+)(?:\/(file|re-extract))?$/i);
+  const idMatch = sub.match(/^\/([a-z0-9]+)(?:\/(file|re-extract|intelligence))?$/i);
   if (idMatch) {
     const id = idMatch[1];
     const action = idMatch[2];
@@ -553,6 +556,17 @@ export async function handleResearchRoutes(
       entry.extractedAt = text !== null ? now : entry.extractedAt;
       entry.extractorVersion = text !== null ? RESEARCH_EXTRACTOR_VERSION : entry.extractorVersion;
       entry.lastUpdated = now;
+      await saveStore(store);
+      return jsonResponse({ entry });
+    }
+
+    // POST /api/research/:id/intelligence — extract deterministic summary
+    // bullets and source-grounded claims from the stored text. Every derived
+    // item carries line/char offsets plus an exact quote, so later politics
+    // linking can trace back to the original transcript/PDF line.
+    if (action === 'intelligence' && req.method === 'POST') {
+      entry.intelligence = buildResearchIntelligence(entry);
+      entry.lastUpdated = new Date().toISOString();
       await saveStore(store);
       return jsonResponse({ entry });
     }
