@@ -37,6 +37,8 @@ import {
 import { createLogger } from '../logger.js';
 import { normalizeTickers } from '../tickers.js';
 import { buildResearchIntelligence, type ResearchIntelligence } from '../research-intelligence.js';
+import { buildResearchPoliticsLinks } from '../research-politics-links.js';
+import { loadCheckTheVotePolitics } from '../check-the-vote.js';
 
 const log = createLogger('Research');
 
@@ -463,6 +465,16 @@ export async function handleResearchRoutes(
         `segments=${result.segmentCount} title="${entry.title ?? '?'}"`
     );
     return jsonResponse({ entry });
+  }
+
+  // GET /api/research/politics-links — joins politics-domain research claims
+  // to the protected Check the Vote feed by ticker/topic. The upstream bearer
+  // token stays server-side; only derived, source-grounded links are returned.
+  if (sub === '/politics-links' && req.method === 'GET') {
+    const [store, politics] = await Promise.all([loadStore(), loadCheckTheVotePolitics()]);
+    const entries = Object.values(store.entries).filter((entry) => entry.domain === 'politics');
+    const links = buildResearchPoliticsLinks({ entries, politics });
+    return jsonResponse({ ok: politics.configured && politics.ok, links });
   }
 
   // GET /api/research?domain=health — list newest first (by reportDate if
