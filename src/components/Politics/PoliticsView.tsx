@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   FileWarning,
   Landmark,
+  Link2,
   Loader2,
   RadioTower,
   RefreshCw,
@@ -13,6 +14,19 @@ import {
 import { Card } from '@/components/ui/card';
 import { ResearchPanel } from '../Quant/ResearchPanel';
 import { summarizePoliticsData, type CheckTheVotePoliticsPayload } from './politicsData';
+
+interface ResearchPoliticsLink {
+  entryId: string;
+  title?: string;
+  claimId: string;
+  claimText: string;
+  sourceUrl?: string;
+  tickers: string[];
+  topics: string[];
+  stance?: string;
+  matchedTrades: Array<{ politicianName?: string; ticker: string; category?: string }>;
+  matchedVotes: Array<{ externalId?: string; label: string }>;
+}
 
 function CheckTheVoteDashboard() {
   const [payload, setPayload] = useState<CheckTheVotePoliticsPayload | null>(null);
@@ -207,6 +221,89 @@ function FeedCard({
   );
 }
 
+function ResearchPoliticsLinksCard() {
+  const [links, setLinks] = useState<ResearchPoliticsLink[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch('/api/research/politics-links')
+      .then((res) => res.json() as Promise<{ links?: ResearchPoliticsLink[] }>)
+      .then((data) => {
+        if (!cancelled) setLinks(data.links ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setLinks([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <Card variant="glass" className="p-4 border-border/50">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="flex items-center gap-2">
+          <Link2 className="w-4 h-4 text-surface-600" />
+          <h3 className="text-sm font-semibold text-surface-950">Research ↔ politics links</h3>
+        </div>
+        {loading && <Loader2 className="w-3.5 h-3.5 text-surface-600 animate-spin" />}
+      </div>
+      {links.length === 0 ? (
+        <p className="text-xs text-surface-600">
+          No linked research claims yet. Extract intelligence on a politics research entry to match
+          tickers/topics against Check the Vote trades and votes.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {links.slice(0, 5).map((link) => (
+            <div key={`${link.entryId}-${link.claimId}`} className="border-l border-border/60 pl-3">
+              <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                {link.tickers.map((ticker) => (
+                  <span key={ticker} className="text-[10px] font-mono text-accent-400">
+                    {ticker}
+                  </span>
+                ))}
+                {link.topics.map((topic) => (
+                  <span key={topic} className="text-[10px] text-surface-600">
+                    #{topic}
+                  </span>
+                ))}
+                {link.stance && (
+                  <span className="text-[10px] uppercase text-surface-500">{link.stance}</span>
+                )}
+              </div>
+              <p className="text-xs text-surface-800 leading-relaxed">{link.claimText}</p>
+              <p className="text-[11px] text-surface-600 mt-1">
+                {link.title ?? 'Research entry'} · {link.matchedTrades.length} trade match
+                {link.matchedTrades.length === 1 ? '' : 'es'} · {link.matchedVotes.length} vote/bill
+                match{link.matchedVotes.length === 1 ? '' : 'es'}
+                {link.sourceUrl && (
+                  <>
+                    {' · '}
+                    <a
+                      href={link.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-accent-400 hover:underline"
+                    >
+                      source
+                    </a>
+                  </>
+                )}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export function PoliticsView() {
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6">
@@ -224,6 +321,8 @@ export function PoliticsView() {
       </div>
 
       <CheckTheVoteDashboard />
+
+      <ResearchPoliticsLinksCard />
 
       <ResearchPanel
         domain="politics"
