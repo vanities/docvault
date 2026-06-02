@@ -199,6 +199,21 @@ export interface Settings {
     parsing?: ModelRef;
     research?: ModelRef;
   };
+  /**
+   * Chat agent backend. 'claude' (default) drives Claude Code via the agent SDK
+   * with curated in-process MCP tools. 'codex' drives `codex app-server` on the
+   * OpenAI/ChatGPT subscription with NATIVE tools over a secrets-excluded view
+   * of the data dir (no MCP — matches t3code). See server/llm/codex-chat.ts.
+   */
+  chat?: {
+    backend?: 'claude' | 'codex';
+    /** Codex model, e.g. 'gpt-5.5'. */
+    codexModel?: string;
+    /** CODEX_HOME on the host — dir holding auth.json from `codex login`. */
+    codexHome?: string;
+    /** Codex binary path; default 'codex' (resolved on PATH). */
+    codexBinary?: string;
+  };
 }
 
 export interface FileInfo {
@@ -318,6 +333,31 @@ export async function getParsingModel(): Promise<ModelRef> {
 export async function getResearchModel(): Promise<ModelRef> {
   const settings = await loadSettings();
   return resolveModel(settings, settings.modelRouting?.research);
+}
+
+export type ChatBackend = 'claude' | 'codex';
+
+/** Which agent backend powers chat: 'claude' (default) or 'codex' (OpenAI sub). */
+export async function getChatBackend(): Promise<ChatBackend> {
+  const settings = await loadSettings();
+  return settings.chat?.backend === 'codex' ? 'codex' : 'claude';
+}
+
+/**
+ * Codex chat config. An unset model lets codex pick its account/plan default
+ * rather than us guessing a slug. Settings override environment.
+ */
+export async function getCodexChatConfig(): Promise<{
+  model?: string;
+  codexHome?: string;
+  binaryPath?: string;
+}> {
+  const settings = await loadSettings();
+  return {
+    model: settings.chat?.codexModel || undefined,
+    codexHome: settings.chat?.codexHome || process.env.CODEX_HOME || undefined,
+    binaryPath: settings.chat?.codexBinary || process.env.CODEX_BINARY || undefined,
+  };
 }
 
 /** OpenAI (or OpenAI-compatible) credentials. Settings override environment. */
