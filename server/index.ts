@@ -291,6 +291,7 @@ async function handleRequest(req: Request): Promise<Response> {
       openaiBaseUrl: settings.openai?.baseUrl ?? '',
       modelRouting: settings.modelRouting ?? {},
       chat: settings.chat ?? {},
+      deepResearch: settings.deepResearch ?? {},
       hasCodexAuth: (await getCodexAuthStatus()).signedIn,
     });
   }
@@ -405,6 +406,24 @@ async function handleRequest(req: Request): Promise<Response> {
       for (const k of ['codexModel', 'codexHome', 'codexBinary'] as const) {
         const v = c[k];
         if (typeof v === 'string') settings.chat[k] = v.trim() || undefined;
+      }
+    }
+
+    // Deep Research engine: mode ('api' | 'agent') + API-mode model.
+    if (body.deepResearch && typeof body.deepResearch === 'object') {
+      settings.deepResearch = settings.deepResearch ?? {};
+      const dr = body.deepResearch as { mode?: unknown; model?: unknown };
+      if (dr.mode === 'agent' || dr.mode === 'api') settings.deepResearch.mode = dr.mode;
+      const ref = dr.model as { provider?: unknown; model?: unknown } | null | undefined;
+      if (ref === null) {
+        delete settings.deepResearch.model;
+      } else if (
+        ref &&
+        (ref.provider === 'anthropic' || ref.provider === 'openai') &&
+        typeof ref.model === 'string' &&
+        ref.model.trim()
+      ) {
+        settings.deepResearch.model = { provider: ref.provider, model: ref.model.trim() };
       }
     }
 
