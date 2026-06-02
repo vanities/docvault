@@ -1,0 +1,9 @@
+{
+  "id": "george-gammon-youtube-daily",
+  "label": "George Gammon YouTube daily metadata pull",
+  "kind": "local-script",
+  "schedule": "daily",
+  "script": "scripts/george-gammon-youtube.local.sh",
+  "enabled": false,
+  "tags": ["research", "youtube", "george-gammon", "macro", "finance"]
+}

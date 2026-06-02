@@ -607,6 +607,35 @@ export function SettingsView() {
     setNewJobEnabled(manifest.enabled);
   };
 
+  // One-click enable/disable: re-POST the manifest with the flag flipped and no
+  // scriptContent, which the backend treats as "keep the existing script". Lets
+  // a user switch on a seeded example without re-opening the editor.
+  const handleToggleCustomJob = async (manifest: CustomJobManifest) => {
+    try {
+      const res = await fetch(`${API_BASE}/jobs?overwrite=true`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: manifest.id,
+          label: manifest.label,
+          schedule: manifest.schedule,
+          script: manifest.script,
+          enabled: !manifest.enabled,
+          tags: manifest.tags,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        addToast(data.error || 'Failed to update job', 'error');
+        return;
+      }
+      addToast(`Job ${manifest.enabled ? 'disabled' : 'enabled'}`, 'success');
+      void loadJobs();
+    } catch {
+      addToast('Failed to update job', 'error');
+    }
+  };
+
   const clearCustomJobForm = () => {
     setEditingJobId(null);
     setNewJobId('');
@@ -1908,6 +1937,16 @@ export function SettingsView() {
                             <span className="text-[10px] px-2 py-0.5 rounded-full bg-surface-200/40 text-surface-600">
                               {job.manifest.enabled ? 'enabled' : 'disabled'}
                             </span>
+                            <Button
+                              onClick={() => void handleToggleCustomJob(job.manifest)}
+                              className={
+                                job.manifest.enabled
+                                  ? 'bg-surface-200/50 hover:bg-surface-200 text-surface-700 text-[11px] px-2 py-1'
+                                  : 'bg-emerald-500 hover:bg-emerald-400 text-[11px] px-2 py-1'
+                              }
+                            >
+                              {job.manifest.enabled ? 'Disable' : 'Enable'}
+                            </Button>
                             <Button
                               onClick={() => handleEditCustomJob(job.manifest)}
                               className="bg-surface-200/50 hover:bg-surface-200 text-surface-700 text-[11px] px-2 py-1"

@@ -1,0 +1,9 @@
+{
+  "id": "benjamin-cowen-reports-daily",
+  "label": "Benjamin Cowen reports PDF daily pull",
+  "kind": "local-script",
+  "schedule": "daily",
+  "script": "scripts/benjamin-cowen-reports.local.sh",
+  "enabled": false,
+  "tags": ["research", "reports", "benjamin-cowen", "pdf", "macro", "finance"]
+}

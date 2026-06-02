@@ -45,8 +45,6 @@ scripts/*
 # directory — matching contents lets the !-rules below take effect.
 !scripts/sync-to-dropbox.sh
 !scripts/docker-entrypoint.sh
-# Exception: host-side NAS cron script (deployed to the Unraid flash, not the image)
-!scripts/zerohedge-scrape.mjs
 # Exception: skill helper scripts are sanitized and meant to be public
 !skills/*/scripts/
 !skills/*/scripts/**
@@ -72,6 +70,8 @@ scripts/*
 !server/parsers/apple-health-clinical.test.ts
 # Exception: kraken reconcile tests are pure merge logic with fabricated figures, no personal data
 !server/crypto-kraken-reconcile.test.ts
+# Exception: example-job seeding test uses synthetic tmpdir fixtures, no personal data
+!server/seed-example-jobs.test.ts
 # Exception: external-sources tests are generic git/url/sync logic with fabricated fixtures, no personal data
 !server/external-sources.test.ts
 # Exception: pdf-forms tests build fabricated fillable PDFs in-memory, no personal data
