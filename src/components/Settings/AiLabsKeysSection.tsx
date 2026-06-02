@@ -37,6 +37,8 @@ export function AiLabsKeysSection() {
   const [anthropicHint, setAnthropicHint] = useState<string | undefined>();
   const [showAnthropic, setShowAnthropic] = useState(false);
   const [claudeModel, setClaudeModel] = useState(DEFAULT_CLAUDE_MODEL);
+  const [anthropicModels, setAnthropicModels] = useState<string[]>([]);
+  const [customModel, setCustomModel] = useState(false);
 
   // OpenAI
   const [openaiInput, setOpenaiInput] = useState('');
@@ -67,6 +69,16 @@ export function AiLabsKeysSection() {
 
   useEffect(() => {
     void load();
+  }, []);
+
+  // Live Anthropic model list for the Default Claude model dropdown.
+  useEffect(() => {
+    fetch(`${API_BASE}/models?provider=anthropic`)
+      .then((r) => r.json())
+      .then((d: { models?: string[] }) => setAnthropicModels(d.models ?? []))
+      .catch(() => {
+        /* dropdown falls back to the current value + Custom */
+      });
   }, []);
 
   const post = async (body: Record<string, unknown>): Promise<boolean> => {
@@ -248,20 +260,46 @@ export function AiLabsKeysSection() {
           <label className="block text-[12px] font-medium text-surface-700 mt-3 mb-1">
             Default Claude model
           </label>
-          <Input
-            type="text"
-            value={claudeModel}
-            onChange={(e) => setClaudeModel(e.target.value)}
-            onBlur={() => void saveClaudeModel(claudeModel)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void saveClaudeModel(claudeModel);
-            }}
-            placeholder={DEFAULT_CLAUDE_MODEL}
-            className="text-[13px] font-mono"
-          />
+          {customModel ? (
+            <Input
+              type="text"
+              autoFocus
+              value={claudeModel}
+              onChange={(e) => setClaudeModel(e.target.value)}
+              onBlur={() => void saveClaudeModel(claudeModel)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void saveClaudeModel(claudeModel);
+              }}
+              placeholder={DEFAULT_CLAUDE_MODEL}
+              className="text-[13px] font-mono"
+            />
+          ) : (
+            <select
+              value={claudeModel}
+              onChange={(e) => {
+                if (e.target.value === '__custom__') {
+                  setCustomModel(true);
+                  return;
+                }
+                setClaudeModel(e.target.value);
+                void saveClaudeModel(e.target.value);
+              }}
+              className="w-full text-[13px] font-mono bg-surface-100/60 border border-border/40 rounded-lg px-2 py-1.5"
+            >
+              {!anthropicModels.includes(claudeModel) && claudeModel && (
+                <option value={claudeModel}>{claudeModel}</option>
+              )}
+              {anthropicModels.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+              <option value="__custom__">Custom…</option>
+            </select>
+          )}
           <p className="text-[11px] text-surface-500 mt-1">
-            Fallback for any task not given an explicit model in the Models section. Saves on blur
-            or Enter.
+            Fallback for any task not given an explicit model in the Models section. Live Anthropic
+            list — pick “Custom…” to type any id.
           </p>
         </div>
 
