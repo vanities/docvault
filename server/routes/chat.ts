@@ -60,6 +60,8 @@ import {
   scanDirectory,
   getEntityPath,
   getClaudeModel,
+  getChatBackend,
+  getCodexChatConfig,
   getAnthropicKey,
   getAnthropicAuthToken,
   ensureDir,
@@ -69,6 +71,7 @@ import {
   type DocMetadata,
   type ParsedData,
 } from '../data.js';
+import { runCodexChat } from '../llm/codex-chat.js';
 import { loadHealthStore } from '../health-store.js';
 import { searchMarkdown, readSourceFile, listSourceFiles } from '../external-sources.js';
 import { handleNutritionRoutes } from './nutrition.js';
@@ -1206,6 +1209,18 @@ export async function handleChatRoutes(
     );
   }
 
+  // Codex backend — diverges entirely from the Claude path here. Codex brings
+  // its own auth (codex login) and native tools, so we skip the Anthropic
+  // credential / in-process-MCP setup below and stream from codex instead.
+  if ((await getChatBackend()) === 'codex') {
+    return streamCodexChat({
+      userText: last.content,
+      entity: body.entity,
+      resumeSessionId: body.resumeSessionId,
+      signal: req.signal,
+    });
+  }
+
   // Resolve credentials from settings (override env). The SDK reads
   // CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY from the env we pass to
   // its bundled Claude Code subprocess, so we layer settings on top of
@@ -1405,6 +1420,62 @@ export async function handleChatRoutes(
     },
   });
 
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+}
+
+// Codex backend path — a fully separate SSE stream from the Claude one. No
+// Anthropic creds, no in-process MCP: codex uses its native tools over a
+// read-only, secrets-excluded view of the data dir (server/llm/codex-chat.ts).
+// Attachments aren't wired for codex yet (text-only first cut).
+function streamCodexChat(opts: {
+  userText: string;
+  entity?: string;
+  resumeSessionId?: string;
+  signal: AbortSignal;
+}): Response {
+  const encoder = new TextEncoder();
+  const systemPrompt = buildSystemPrompt(opts.entity);
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (event: object) => {
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        } catch {
+          /* stream already closed */
+        }
+      };
+      try {
+        const cfg = await getCodexChatConfig();
+        await runCodexChat({
+          userText: opts.userText,
+          model: cfg.model,
+          systemPrompt,
+          codexHome: cfg.codexHome,
+          binaryPath: cfg.binaryPath,
+          resumeThreadId: opts.resumeSessionId,
+          signal: opts.signal,
+          send,
+        });
+      } catch (err) {
+        send({ type: 'error', message: err instanceof Error ? err.message : 'codex chat failed' });
+      } finally {
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
+        }
+      }
+    },
+  });
   return new Response(stream, {
     status: 200,
     headers: {
