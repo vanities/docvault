@@ -22,6 +22,7 @@ interface SettingsData {
   hasOpenaiKey?: boolean;
   openaiKeyHint?: string;
   openaiBaseUrl?: string;
+  hasCodexAuth?: boolean;
 }
 
 export function AiLabsKeysSection() {
@@ -52,6 +53,7 @@ export function AiLabsKeysSection() {
   const [openaiBaseUrl, setOpenaiBaseUrl] = useState('');
 
   // Codex sign-in (device-auth)
+  const [hasCodexAuth, setHasCodexAuth] = useState(false);
   const [loggingIntoCodex, setLoggingIntoCodex] = useState(false);
   const [codexLoginOutput, setCodexLoginOutput] = useState<string[]>([]);
 
@@ -70,6 +72,7 @@ export function AiLabsKeysSection() {
       setOpenaiHint(d.openaiKeyHint);
       setOpenaiBaseUrl(d.openaiBaseUrl ?? '');
       setOpenaiInput('');
+      setHasCodexAuth(!!d.hasCodexAuth);
     } catch {
       /* ignore — keys just show as unset */
     } finally {
@@ -210,6 +213,10 @@ export function AiLabsKeysSection() {
             ev.ok ? 'Signed in to Codex' : 'Codex sign-in failed',
             ev.ok ? 'success' : 'error'
           );
+          if (ev.ok) {
+            setCodexLoginOutput([]);
+            void load();
+          }
         } else if (ev.type === 'error') {
           es.close();
           setLoggingIntoCodex(false);
@@ -453,24 +460,38 @@ export function AiLabsKeysSection() {
             Codex sign-in
             <span className="font-normal text-surface-500">(ChatGPT subscription)</span>
           </label>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleCodexLogin}
-            disabled={loggingIntoCodex}
-          >
-            <LogIn className="w-4 h-4" />
-            {loggingIntoCodex ? 'Waiting for authorization…' : 'Sign in to Codex'}
-          </Button>
-          <p className="text-[11px] text-surface-500 mt-1">
-            Runs codex device-auth on the server — a verification link + code appears below. Open it
-            in any browser, authorize, and the token saves to the NAS. Used by the Codex chat
-            backend (set in Models &amp; Chat).
-          </p>
-          {codexLoginOutput.length > 0 && (
-            <pre className="mt-2 bg-surface-0 border border-border/40 rounded p-2 text-[11px] overflow-x-auto whitespace-pre-wrap break-words">
-              {codexLoginOutput.join('\n')}
-            </pre>
+          {hasCodexAuth && !loggingIntoCodex && codexLoginOutput.length === 0 ? (
+            <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+              <CheckCircle className="w-5 h-5 text-emerald-400" />
+              <span className="flex-1 text-[13px] text-emerald-400 font-medium">
+                Signed in to Codex
+              </span>
+              <Button variant="ghost" size="xs" onClick={handleCodexLogin}>
+                Re-authorize
+              </Button>
+            </div>
+          ) : (
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleCodexLogin}
+                disabled={loggingIntoCodex}
+              >
+                <LogIn className="w-4 h-4" />
+                {loggingIntoCodex ? 'Waiting for authorization…' : 'Sign in to Codex'}
+              </Button>
+              <p className="text-[11px] text-surface-500 mt-1">
+                Runs codex device-auth on the server — a verification link + code appears below.
+                Open it in any browser, authorize, and the token saves to the NAS. Used by the Codex
+                chat backend (set in Models &amp; Chat).
+              </p>
+              {codexLoginOutput.length > 0 && (
+                <pre className="mt-2 bg-surface-0 border border-border/40 rounded p-2 text-[11px] overflow-x-auto whitespace-pre-wrap break-words">
+                  {codexLoginOutput.join('\n')}
+                </pre>
+              )}
+            </>
           )}
         </div>
       </div>

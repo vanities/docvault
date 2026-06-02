@@ -360,6 +360,20 @@ export async function getCodexChatConfig(): Promise<{
   };
 }
 
+/** Whether codex has a usable auth.json (from `codex login`) in CODEX_HOME. */
+export async function getCodexAuthStatus(): Promise<{ signedIn: boolean }> {
+  const { codexHome } = await getCodexChatConfig();
+  const home = codexHome || (process.env.HOME ? path.join(process.env.HOME, '.codex') : '');
+  if (!home) return { signedIn: false };
+  try {
+    const raw = await fs.readFile(path.join(home, 'auth.json'), 'utf-8');
+    const auth = JSON.parse(raw) as { tokens?: { access_token?: string } };
+    return { signedIn: !!auth.tokens?.access_token };
+  } catch {
+    return { signedIn: false };
+  }
+}
+
 /** OpenAI (or OpenAI-compatible) credentials. Settings override environment. */
 export async function getOpenAIConfig(): Promise<{ apiKey?: string; baseUrl?: string }> {
   const settings = await loadSettings();

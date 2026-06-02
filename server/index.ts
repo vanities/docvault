@@ -54,6 +54,7 @@ import {
   loadConfig,
   saveConfig,
   loadSettings,
+  getCodexAuthStatus,
   saveSettings,
   migrateSettingsEncryption,
   loadParsedData,
@@ -290,6 +291,7 @@ async function handleRequest(req: Request): Promise<Response> {
       openaiBaseUrl: settings.openai?.baseUrl ?? '',
       modelRouting: settings.modelRouting ?? {},
       chat: settings.chat ?? {},
+      hasCodexAuth: (await getCodexAuthStatus()).signedIn,
     });
   }
 
