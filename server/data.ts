@@ -213,6 +213,12 @@ export interface Settings {
     /** Codex binary path; default 'codex' (resolved on PATH). */
     codexBinary?: string;
   };
+  /**
+   * Deep Research engine: 'api' (direct web_search call, provider-flexible) or
+   * 'agent' (Claude Code + WebSearch on the subscription). `model` is the
+   * API-mode model.
+   */
+  deepResearch?: { mode?: 'agent' | 'api'; model?: ModelRef };
 }
 
 export interface FileInfo {
@@ -310,22 +316,38 @@ export async function migrateSettingsEncryption(): Promise<{
   return { encrypted: plaintextCount, skipped: encryptedCount };
 }
 
-// Get the Claude model
+/** The Claude model for Claude chat (settings.claudeModel, else DEFAULT_MODEL). */
 export async function getClaudeModel(): Promise<string> {
   const settings = await loadSettings();
   return settings.claudeModel || DEFAULT_MODEL;
 }
 
-/** Resolve {provider, model} for a direct-API scope. Defaults to Anthropic + claudeModel. */
-function resolveModel(settings: Settings, ref: ModelRef | undefined): ModelRef {
+/** Resolve a direct-API {provider, model}; unset falls back to Anthropic + DEFAULT_MODEL. */
+function resolveModel(ref: ModelRef | undefined): ModelRef {
   if (ref?.provider && ref.model) return { provider: ref.provider, model: ref.model };
-  return { provider: 'anthropic', model: settings.claudeModel || DEFAULT_MODEL };
+  return { provider: 'anthropic', model: DEFAULT_MODEL };
 }
 
 /** Provider + model for the parsing scope (all parsers + form decode/autofill). */
 export async function getParsingModel(): Promise<ModelRef> {
   const settings = await loadSettings();
-  return resolveModel(settings, settings.modelRouting?.parsing);
+  return resolveModel(settings.modelRouting?.parsing);
+}
+
+export type DeepResearchMode = 'agent' | 'api';
+
+/**
+ * Deep Research config: 'api' = direct messages.create + native web_search
+ * (provider-flexible); 'agent' = Claude Code + WebSearch on the subscription
+ * (agentic loop). `model` is used by API mode.
+ */
+export async function getDeepResearchConfig(): Promise<{
+  mode: DeepResearchMode;
+  model: ModelRef;
+}> {
+  const settings = await loadSettings();
+  const mode: DeepResearchMode = settings.deepResearch?.mode === 'agent' ? 'agent' : 'api';
+  return { mode, model: resolveModel(settings.deepResearch?.model) };
 }
 
 export type ChatBackend = 'claude' | 'codex';

@@ -1,13 +1,13 @@
-// Models & Chat — choose what runs each task. Default model is the fallback;
-// Document parsing/forms and Deep Research are direct-API scopes; Chat backend
-// picks the chat AGENT (Claude Code vs Codex on the OpenAI sub). Credentials
-// (keys, tokens, Codex sign-in) live in the AI Credentials card above.
-//
-// Model lists load live from each provider's /v1/models (GET /api/models), so
-// new releases show up automatically; "Custom…" types any id.
+// Models & Chat — every task carries its own explicit model (no global default):
+//   • Document parsing & forms — provider + model
+//   • Chat backend — Claude (+ its model) or Codex (+ its model)
+//   • Deep Research — Agent (Claude Code + WebSearch on the subscription) or
+//     API (direct web_search; provider + model)
+// Credentials (keys, tokens, Codex sign-in) live in the AI Credentials card.
+// Model lists load live from each provider's /v1/models (GET /api/models).
 
 import { useEffect, useState } from 'react';
-import { Bot, Cpu, RefreshCw, Save } from 'lucide-react';
+import { Bot, Cpu, RefreshCw, Save, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -23,35 +23,37 @@ interface SettingsData {
   claudeModel?: string;
   modelRouting?: { parsing?: ModelRef };
   chat?: { backend?: 'claude' | 'codex'; codexModel?: string };
+  deepResearch?: { mode?: 'agent' | 'api'; model?: ModelRef };
 }
 
 const DEFAULTS: Record<Provider, string> = { anthropic: 'claude-sonnet-4-6', openai: 'gpt-4o' };
 const PROVIDERS: Provider[] = ['anthropic', 'openai'];
 const CUSTOM = '__custom__';
 const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-4-6';
+const selectClass =
+  'w-full text-[13px] bg-surface-100/60 border border-border/40 rounded-lg px-2 py-1.5';
 
 export function ModelsSettingsSection() {
   const { addToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const [defaultModel, setDefaultModel] = useState(DEFAULT_CLAUDE_MODEL);
-  const [defaultCustom, setDefaultCustom] = useState(false);
+  const [claudeModel, setClaudeModel] = useState(DEFAULT_CLAUDE_MODEL);
   const [parsing, setParsing] = useState<ModelRef>({
     provider: 'anthropic',
     model: DEFAULTS.anthropic,
   });
   const [chatBackend, setChatBackend] = useState<'claude' | 'codex'>('claude');
   const [codexModel, setCodexModel] = useState('');
+  const [drMode, setDrMode] = useState<'agent' | 'api'>('api');
+  const [drModel, setDrModel] = useState<ModelRef>({
+    provider: 'anthropic',
+    model: DEFAULTS.anthropic,
+  });
 
-  // Live model lists per provider, fetched from /api/models.
   const [modelsByProvider, setModelsByProvider] = useState<Record<Provider, string[]>>({
     anthropic: [],
     openai: [],
-  });
-  const [modelSource, setModelSource] = useState<Record<Provider, string>>({
-    anthropic: '',
-    openai: '',
   });
   const [refreshing, setRefreshing] = useState(false);
 
@@ -59,14 +61,16 @@ export function ModelsSettingsSection() {
     try {
       const res = await fetch(`${API_BASE}/settings`);
       const d: SettingsData = await res.json();
-      const fallback: ModelRef = {
+      const anthropicFallback: ModelRef = {
         provider: 'anthropic',
         model: d.claudeModel || DEFAULTS.anthropic,
       };
-      setDefaultModel(d.claudeModel || DEFAULT_CLAUDE_MODEL);
-      setParsing(d.modelRouting?.parsing ?? fallback);
+      setClaudeModel(d.claudeModel || DEFAULT_CLAUDE_MODEL);
+      setParsing(d.modelRouting?.parsing ?? anthropicFallback);
       setChatBackend(d.chat?.backend === 'codex' ? 'codex' : 'claude');
       setCodexModel(d.chat?.codexModel ?? '');
+      setDrMode(d.deepResearch?.mode === 'agent' ? 'agent' : 'api');
+      setDrModel(d.deepResearch?.model ?? anthropicFallback);
     } catch {
       /* ignore */
     } finally {
@@ -90,15 +94,12 @@ export function ModelsSettingsSection() {
         )
       );
       const byProvider: Record<Provider, string[]> = { anthropic: [], openai: [] };
-      const bySource: Record<Provider, string> = { anthropic: '', openai: '' };
-      for (const { p, models, source } of results) {
+      for (const { p, models } of results) {
         byProvider[p] = models;
-        bySource[p] = source;
       }
       setModelsByProvider(byProvider);
-      setModelSource(bySource);
       if (refresh) {
-        const live = PROVIDERS.filter((p) => bySource[p] === 'live').length;
+        const live = results.filter((r) => r.source === 'live').length;
         addToast(
           live
             ? `Refreshed model lists (${live}/2 live)`
@@ -114,8 +115,6 @@ export function ModelsSettingsSection() {
   useEffect(() => {
     void load();
     void fetchModels();
-    // The AI Credentials card broadcasts this after the OpenAI key/base URL
-    // changes, since a freshly-added key unlocks the live model list.
     const onRefresh = () => {
       void load();
       void fetchModels(true);
@@ -131,9 +130,10 @@ export function ModelsSettingsSection() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          claudeModel: defaultModel.trim() || DEFAULT_CLAUDE_MODEL,
+          claudeModel: claudeModel.trim() || DEFAULT_CLAUDE_MODEL,
           modelRouting: { parsing },
           chat: { backend: chatBackend, codexModel: codexModel.trim() },
+          deepResearch: { mode: drMode, model: drModel },
         }),
       });
       if ((await res.json()).ok) {
@@ -157,11 +157,7 @@ export function ModelsSettingsSection() {
     );
   }
 
-  const usesOpenai = parsing.provider === 'openai';
-  const openaiFallback = modelSource.openai === 'fallback';
-  const anthropicModels = modelsByProvider.anthropic;
-  const selectClass =
-    'w-full text-[13px] bg-surface-100/60 border border-border/40 rounded-lg px-2 py-1.5';
+  const drApiOpenaiFallback = drMode === 'api' && drModel.provider === 'openai';
 
   return (
     <Card variant="glass" className="p-6 mb-8">
@@ -182,55 +178,11 @@ export function ModelsSettingsSection() {
         </Button>
       </div>
       <p className="text-[12px] text-surface-600 mb-4">
-        What runs each task. PDFs always parse on Anthropic (OpenAI can't read PDFs directly). Keys
-        live in the AI Credentials card above.
+        Each task uses its own explicit model. PDFs always parse on Anthropic (OpenAI can't read
+        PDFs directly). Keys live in the AI Credentials card above.
       </p>
 
       <div className="space-y-5">
-        {/* Default (fallback) model — Anthropic */}
-        <div className="flex flex-col sm:flex-row sm:items-end gap-2">
-          <div className="flex-1">
-            <label className="block text-[13px] font-medium text-surface-800 mb-1">
-              Default Claude model{' '}
-              <span className="font-normal text-surface-500">
-                (Deep Research, image analysis, Claude chat; parsing fallback)
-              </span>
-            </label>
-            {defaultCustom ? (
-              <Input
-                type="text"
-                autoFocus
-                value={defaultModel}
-                onChange={(e) => setDefaultModel(e.target.value)}
-                placeholder={DEFAULT_CLAUDE_MODEL}
-                className="text-[13px] font-mono"
-              />
-            ) : (
-              <select
-                value={defaultModel}
-                onChange={(e) => {
-                  if (e.target.value === CUSTOM) {
-                    setDefaultCustom(true);
-                    return;
-                  }
-                  setDefaultModel(e.target.value);
-                }}
-                className={`${selectClass} font-mono`}
-              >
-                {!anthropicModels.includes(defaultModel) && defaultModel && (
-                  <option value={defaultModel}>{defaultModel}</option>
-                )}
-                {anthropicModels.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-                <option value={CUSTOM}>Custom…</option>
-              </select>
-            )}
-          </div>
-        </div>
-
         <ScopeRow
           label="Document parsing & forms"
           value={parsing}
@@ -238,7 +190,7 @@ export function ModelsSettingsSection() {
           models={modelsByProvider}
         />
 
-        {/* Chat agent backend */}
+        {/* Chat backend + its model */}
         <div className="pt-3 border-t border-border/30">
           <label className="flex items-center gap-2 text-[13px] font-medium text-surface-800 mb-1">
             <Bot className="w-4 h-4" />
@@ -253,12 +205,21 @@ export function ModelsSettingsSection() {
             <option value="claude">Claude (Claude Code — curated tools)</option>
             <option value="codex">Codex (OpenAI subscription — native tools)</option>
           </select>
-          {chatBackend === 'codex' && (
+          {chatBackend === 'claude' ? (
+            <div className="mt-2">
+              <label className="block text-[11px] text-surface-500 mb-1">Claude model</label>
+              <ModelSelect
+                value={claudeModel}
+                onChange={setClaudeModel}
+                models={modelsByProvider.anthropic}
+              />
+            </div>
+          ) : (
             <div className="mt-2 space-y-2">
               <p className="text-[11px] text-surface-600 leading-relaxed">
-                Codex runs server-side on your ChatGPT subscription with native file tools over a
-                read-only, secrets-excluded view of the data dir. Sign in via the{' '}
-                <span className="font-medium">Sign in to Codex</span> button in AI Credentials.
+                Codex runs server-side on your ChatGPT subscription with native file tools. Sign in
+                via the <span className="font-medium">Sign in to Codex</span> button in AI
+                Credentials.
               </p>
               <label className="block text-[11px] text-surface-500">Codex model (optional)</label>
               <Input
@@ -272,12 +233,43 @@ export function ModelsSettingsSection() {
           )}
         </div>
 
-        {usesOpenai && openaiFallback && (
-          <p className="text-[11px] text-amber-500/90 -mt-2">
-            Showing a built-in fallback list for OpenAI — add your OpenAI key in the AI Credentials
-            card above to load the live model list.
-          </p>
-        )}
+        {/* Deep Research engine */}
+        <div className="pt-3 border-t border-border/30">
+          <label className="flex items-center gap-2 text-[13px] font-medium text-surface-800 mb-1">
+            <Sparkles className="w-4 h-4" />
+            Deep Research
+            <span className="font-normal text-surface-500">(how research runs)</span>
+          </label>
+          <select
+            value={drMode}
+            onChange={(e) => setDrMode(e.target.value as 'agent' | 'api')}
+            className={selectClass}
+          >
+            <option value="api">API — direct web_search call (provider + model)</option>
+            <option value="agent">Agent — Claude Code + WebSearch on your subscription</option>
+          </select>
+          {drMode === 'api' ? (
+            <div className="mt-2">
+              <ScopeRow
+                label="Research model"
+                value={drModel}
+                onChange={setDrModel}
+                models={modelsByProvider}
+              />
+              {drApiOpenaiFallback && (
+                <p className="text-[11px] text-amber-500/90 mt-1">
+                  Native web search is Anthropic-only for now — an OpenAI pick falls back to a
+                  Claude model until per-provider search is wired.
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-[11px] text-surface-600 mt-2 leading-relaxed">
+              Runs Claude Code with WebSearch on your Claude subscription — an agentic loop (search
+              → read → iterate). Uses the OAuth token from AI Credentials; no API billing.
+            </p>
+          )}
+        </div>
 
         <Button onClick={save} size="sm" disabled={saving}>
           <Save className="w-4 h-4" />
@@ -285,6 +277,52 @@ export function ModelsSettingsSection() {
         </Button>
       </div>
     </Card>
+  );
+}
+
+/** Anthropic-only model dropdown (live list + Custom…). For Claude chat model. */
+function ModelSelect({
+  value,
+  onChange,
+  models,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  models: string[];
+}) {
+  const [custom, setCustom] = useState(false);
+  if (custom) {
+    return (
+      <Input
+        type="text"
+        autoFocus
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={DEFAULT_CLAUDE_MODEL}
+        className="text-[13px] font-mono"
+      />
+    );
+  }
+  return (
+    <select
+      value={value}
+      onChange={(e) => {
+        if (e.target.value === CUSTOM) {
+          setCustom(true);
+          return;
+        }
+        onChange(e.target.value);
+      }}
+      className={`${selectClass} font-mono`}
+    >
+      {!models.includes(value) && value && <option value={value}>{value}</option>}
+      {models.map((m) => (
+        <option key={m} value={m}>
+          {m}
+        </option>
+      ))}
+      <option value={CUSTOM}>Custom…</option>
+    </select>
   );
 }
 
@@ -307,8 +345,6 @@ function ScopeRow({
 
   const list = models[value.provider] ?? [];
   const knownValue = list.includes(value.model);
-  const selectClass =
-    'w-full text-[13px] bg-surface-100/60 border border-border/40 rounded-lg px-2 py-1.5';
 
   return (
     <div className="flex flex-col sm:flex-row sm:items-end gap-2">
@@ -340,7 +376,6 @@ function ScopeRow({
           }}
           className={`${selectClass} font-mono`}
         >
-          {/* Preserve a saved custom/unknown id as a selectable option */}
           {!knownValue && value.model && !custom && (
             <option value={value.model}>{value.model}</option>
           )}

@@ -1,15 +1,22 @@
-// Deep Research — a thorough, cited web-research run powered by Claude's native
-// web_search server tool. A single agentic API call: the model issues many
-// searches (up to maxSearches), reads the results the API feeds back inline,
-// and synthesizes a structured markdown report. We pull the report text + the
-// deduped source URLs out of the response blocks.
-//
-// Native web_search is deliberately chosen over rebuilding odysseus's
-// search-provider + BeautifulSoup extraction stack — the model does the
-// searching and reading; we own the prompt + the report.
+// Deep Research — two engines, chosen by settings.deepResearch.mode:
+//   'api'   → one direct messages.create with the model's native web_search
+//             tool. Provider-flexible in principle; today web_search is
+//             Anthropic-only, so non-Anthropic models fall back to DEFAULT_MODEL.
+//   'agent' → Claude Code (claude-agent-sdk) with WebSearch enabled — a true
+//             agentic loop on the Claude subscription (search → read → iterate →
+//             search again), richer than the single API turn.
+// Both return the same ResearchResult (report + deduped cited sources).
 
+import { createRequire } from 'module';
+import path from 'path';
+import { query } from '@anthropic-ai/claude-agent-sdk';
 import { getClient } from './parsers/base.js';
-import { getClaudeModel } from './data.js';
+import {
+  getDeepResearchConfig,
+  getAnthropicAuthToken,
+  getAnthropicKey,
+  DEFAULT_MODEL,
+} from './data.js';
 import { logAiCall } from './ai/usage-log.js';
 import { createLogger } from './logger.js';
 
@@ -32,21 +39,56 @@ const RESEARCH_SYSTEM = [
   'You are a thorough research analyst. Research the question deeply and produce a comprehensive, well-organized report.',
   'Search the web from multiple angles and read enough sources to cover the important sub-aspects with confidence. Be thorough — pursue several distinct lines of inquiry before concluding.',
   'Synthesize rather than list: write a structured report with clear `##` section headings, comparisons, and specifics (numbers, dates, names). Open with a 2-3 sentence summary, then the detailed sections, then a short "## Bottom line".',
-  'Ground every claim in your searches and cite sources inline. Prefer primary/authoritative sources; note where sources disagree. Aim for 1200+ words when the topic warrants. Output clean markdown only — no preamble like "Here is the report".',
+  'Ground every claim in your searches and cite sources inline as markdown links. Prefer primary/authoritative sources; note where sources disagree. Aim for 1200+ words when the topic warrants. Output clean markdown only — no preamble like "Here is the report".',
 ].join('\n');
 
 const DEFAULT_MAX_SEARCHES = 18;
 
+// Claude Code binary resolution for the agent engine (mirrors chat.ts — the SDK
+// can prefer a musl variant on Debian-slim and fail; pick by platform+arch).
+const CLAUDE_BINARY_PATH: string | undefined = (() => {
+  const { platform, arch } = process;
+  let pkg: string | undefined;
+  if (platform === 'linux' && arch === 'x64') pkg = '@anthropic-ai/claude-agent-sdk-linux-x64';
+  else if (platform === 'linux' && arch === 'arm64')
+    pkg = '@anthropic-ai/claude-agent-sdk-linux-arm64';
+  else if (platform === 'darwin' && arch === 'x64')
+    pkg = '@anthropic-ai/claude-agent-sdk-darwin-x64';
+  else if (platform === 'darwin' && arch === 'arm64')
+    pkg = '@anthropic-ai/claude-agent-sdk-darwin-arm64';
+  if (!pkg) return undefined;
+  try {
+    const requireFromHere = createRequire(import.meta.url);
+    const pkgJsonPath = requireFromHere.resolve(`${pkg}/package.json`);
+    return path.join(path.dirname(pkgJsonPath), 'claude');
+  } catch {
+    return undefined;
+  }
+})();
+
+/** Entry point — dispatches to the configured engine. */
 export async function runDeepResearch(
   question: string,
   opts: { maxSearches?: number } = {}
 ): Promise<ResearchResult> {
+  const { mode } = await getDeepResearchConfig();
+  return mode === 'agent' ? runDeepResearchAgent(question) : runDeepResearchApi(question, opts);
+}
+
+/** API engine — a single agentic messages.create with native web_search. */
+async function runDeepResearchApi(
+  question: string,
+  opts: { maxSearches?: number }
+): Promise<ResearchResult> {
   const client = await getClient();
-  const model = await getClaudeModel();
+  const { model: ref } = await getDeepResearchConfig();
+  // web_search is Anthropic-only; a non-Anthropic pick falls back to the default
+  // until per-provider web search is wired.
+  const model = ref.provider === 'anthropic' ? ref.model : DEFAULT_MODEL;
   const maxUses = opts.maxSearches ?? DEFAULT_MAX_SEARCHES;
   const startedAt = Date.now();
 
-  log.info(`Deep research started (maxSearches=${maxUses}): "${question.slice(0, 80)}"`);
+  log.info(`Deep research (api) started (maxSearches=${maxUses}): "${question.slice(0, 80)}"`);
 
   const response = await client.messages.create({
     model,
@@ -95,7 +137,77 @@ export async function runDeepResearch(
   });
 
   log.info(
-    `Deep research done: ${searchCount} searches, ${sources.length} sources, ${report.length} chars`
+    `Deep research (api) done: ${searchCount} searches, ${sources.length} sources, ${report.length} chars`
+  );
+  return { question, report: report.trim(), sources, searchCount, usage };
+}
+
+/** Agent engine — Claude Code + WebSearch, an agentic loop on the subscription. */
+async function runDeepResearchAgent(question: string): Promise<ResearchResult> {
+  const oauthToken = await getAnthropicAuthToken();
+  const apiKey = await getAnthropicKey();
+  const startedAt = Date.now();
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    ...(oauthToken ? { CLAUDE_CODE_OAUTH_TOKEN: oauthToken } : {}),
+    ...(apiKey ? { ANTHROPIC_API_KEY: apiKey } : {}),
+  };
+
+  log.info(`Deep research (agent) started: "${question.slice(0, 80)}"`);
+
+  let report = '';
+  let searchCount = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
+
+  for await (const message of query({
+    prompt: question,
+    options: {
+      model: DEFAULT_MODEL,
+      systemPrompt: { type: 'preset', preset: 'claude_code', append: RESEARCH_SYSTEM },
+      // The whole point: let the agent search, read pages, and search again.
+      allowedTools: ['WebSearch', 'WebFetch'],
+      disallowedTools: ['Bash', 'Read', 'Edit', 'Write', 'Glob', 'Grep', 'NotebookEdit'],
+      env,
+      cwd: '/tmp',
+      ...(CLAUDE_BINARY_PATH ? { pathToClaudeCodeExecutable: CLAUDE_BINARY_PATH } : {}),
+    },
+  })) {
+    if (message.type === 'assistant') {
+      for (const block of message.message.content) {
+        if (block.type === 'text') report += block.text;
+        else if (block.type === 'tool_use' && block.name === 'WebSearch') searchCount++;
+      }
+    } else if (message.type === 'result') {
+      inputTokens = message.usage?.input_tokens ?? 0;
+      outputTokens = message.usage?.output_tokens ?? 0;
+    }
+  }
+
+  // The agent cites inline as markdown links — pull deduped URLs from the report.
+  const sources: ResearchSource[] = [];
+  const seen = new Set<string>();
+  for (const m of report.matchAll(/https?:\/\/[^\s)\]]+/g)) {
+    const url = m[0].replace(/[.,;]+$/, '');
+    if (!seen.has(url)) {
+      seen.add(url);
+      sources.push({ url });
+    }
+  }
+
+  const usage = { inputTokens, outputTokens };
+  void logAiCall({
+    model: `agent:${DEFAULT_MODEL}`,
+    purpose: 'deep-research',
+    latencyMs: Date.now() - startedAt,
+    usage,
+    ok: true,
+    requestId: null,
+    stopReason: null,
+  });
+
+  log.info(
+    `Deep research (agent) done: ${searchCount} searches, ${sources.length} sources, ${report.length} chars`
   );
   return { question, report: report.trim(), sources, searchCount, usage };
 }
