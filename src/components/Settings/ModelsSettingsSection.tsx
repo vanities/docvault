@@ -9,7 +9,7 @@
 // (e.g. a local model not yet in the catalog).
 
 import { useEffect, useState } from 'react';
-import { CheckCircle, Cpu, Eye, EyeOff, Key, RefreshCw, Save } from 'lucide-react';
+import { Cpu, RefreshCw, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -23,9 +23,6 @@ interface ModelRef {
 }
 interface SettingsData {
   claudeModel?: string;
-  hasOpenaiKey?: boolean;
-  openaiKeyHint?: string;
-  openaiBaseUrl?: string;
   modelRouting?: { parsing?: ModelRef; research?: ModelRef };
 }
 
@@ -46,12 +43,6 @@ export function ModelsSettingsSection() {
     provider: 'anthropic',
     model: DEFAULTS.anthropic,
   });
-
-  const [hasOpenaiKey, setHasOpenaiKey] = useState(false);
-  const [openaiKeyHint, setOpenaiKeyHint] = useState<string | undefined>();
-  const [openaiKeyInput, setOpenaiKeyInput] = useState('');
-  const [showKey, setShowKey] = useState(false);
-  const [openaiBaseUrl, setOpenaiBaseUrl] = useState('');
 
   // Live model lists per provider, fetched from /api/models.
   const [modelsByProvider, setModelsByProvider] = useState<Record<Provider, string[]>>({
@@ -74,9 +65,6 @@ export function ModelsSettingsSection() {
       };
       setParsing(d.modelRouting?.parsing ?? fallback);
       setResearch(d.modelRouting?.research ?? fallback);
-      setHasOpenaiKey(!!d.hasOpenaiKey);
-      setOpenaiKeyHint(d.openaiKeyHint);
-      setOpenaiBaseUrl(d.openaiBaseUrl ?? '');
     } catch {
       /* ignore */
     } finally {
@@ -124,46 +112,32 @@ export function ModelsSettingsSection() {
   useEffect(() => {
     void load();
     void fetchModels();
+    // The AI Labs section broadcasts this after the OpenAI key/base URL change,
+    // since a freshly-added key unlocks the live model list.
+    const onRefresh = () => {
+      void load();
+      void fetchModels(true);
+    };
+    window.addEventListener('docvault:models-refresh', onRefresh);
+    return () => window.removeEventListener('docvault:models-refresh', onRefresh);
   }, []);
 
   const save = async () => {
     setSaving(true);
     try {
-      const body: Record<string, unknown> = { modelRouting: { parsing, research }, openaiBaseUrl };
-      if (openaiKeyInput.trim()) body.openaiApiKey = openaiKeyInput.trim();
       const res = await fetch(`${API_BASE}/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ modelRouting: { parsing, research } }),
       });
       if ((await res.json()).ok) {
         addToast('Model settings saved', 'success');
-        setOpenaiKeyInput('');
         await load();
-        // A freshly-added key unlocks the live OpenAI list — re-fetch.
-        void fetchModels(true);
       } else {
         addToast('Failed to save', 'error');
       }
     } catch {
       addToast('Failed to save', 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const clearKey = async () => {
-    setSaving(true);
-    try {
-      await fetch(`${API_BASE}/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clearOpenaiApiKey: true }),
-      });
-      addToast('OpenAI key removed', 'success');
-      await load();
-    } catch {
-      addToast('Failed to remove key', 'error');
     } finally {
       setSaving(false);
     }
@@ -222,65 +196,10 @@ export function ModelsSettingsSection() {
 
         {usesOpenai && openaiFallback && (
           <p className="text-[11px] text-amber-500/90 -mt-2">
-            Showing a built-in fallback list for OpenAI — add your key below and Save to load the
-            live model list.
+            Showing a built-in fallback list for OpenAI — add your OpenAI key in the AI Labs section
+            above to load the live model list.
           </p>
         )}
-
-        <div className="pt-3 border-t border-border/30">
-          <label className="flex items-center gap-2 text-[13px] font-medium text-surface-800 mb-2">
-            <Key className="w-4 h-4" />
-            OpenAI API key
-            <span className="font-normal text-surface-500">
-              {usesOpenai
-                ? '(required for the OpenAI selections above)'
-                : '(needed if you switch a task to OpenAI)'}
-            </span>
-          </label>
-          {hasOpenaiKey && !openaiKeyInput ? (
-            <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-              <CheckCircle className="w-5 h-5 text-emerald-400" />
-              <span className="flex-1 text-[13px] text-emerald-400 font-medium">
-                Key set <span className="font-mono text-emerald-400/70">…{openaiKeyHint}</span>
-              </span>
-              <Button variant="ghost-danger" size="xs" onClick={clearKey} disabled={saving}>
-                Remove
-              </Button>
-            </div>
-          ) : (
-            <div className="relative">
-              <Input
-                type={showKey ? 'text' : 'password'}
-                value={openaiKeyInput}
-                onChange={(e) => setOpenaiKeyInput(e.target.value)}
-                placeholder="sk-…"
-                className="pr-10 text-[13px] font-mono"
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => setShowKey(!showKey)}
-                className="absolute right-2 top-1/2 -translate-y-1/2"
-              >
-                {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </Button>
-            </div>
-          )}
-          <label className="block text-[12px] font-medium text-surface-700 mt-3 mb-1">
-            Base URL{' '}
-            <span className="font-normal text-surface-500">
-              (optional — point at a local OpenAI-compatible model)
-            </span>
-          </label>
-          <Input
-            type="text"
-            value={openaiBaseUrl}
-            onChange={(e) => setOpenaiBaseUrl(e.target.value)}
-            placeholder="https://api.openai.com/v1  ·  or  http://nas:11434/v1 for Ollama"
-            className="text-[13px] font-mono"
-          />
-        </div>
 
         <Button onClick={save} size="sm" disabled={saving}>
           <Save className="w-4 h-4" />
