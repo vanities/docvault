@@ -23,7 +23,7 @@ interface SettingsData {
   claudeModel?: string;
   modelRouting?: { parsing?: ModelRef };
   chat?: { backend?: 'claude' | 'codex'; codexModel?: string };
-  deepResearch?: { mode?: 'agent' | 'api'; model?: ModelRef };
+  deepResearch?: { mode?: 'agent' | 'api'; agentBackend?: 'claude' | 'codex'; model?: ModelRef };
 }
 
 const DEFAULTS: Record<Provider, string> = { anthropic: 'claude-sonnet-4-6', openai: 'gpt-4o' };
@@ -46,6 +46,7 @@ export function ModelsSettingsSection() {
   const [chatBackend, setChatBackend] = useState<'claude' | 'codex'>('claude');
   const [codexModel, setCodexModel] = useState('');
   const [drMode, setDrMode] = useState<'agent' | 'api'>('api');
+  const [drAgentBackend, setDrAgentBackend] = useState<'claude' | 'codex'>('claude');
   const [drModel, setDrModel] = useState<ModelRef>({
     provider: 'anthropic',
     model: DEFAULTS.anthropic,
@@ -70,6 +71,7 @@ export function ModelsSettingsSection() {
       setChatBackend(d.chat?.backend === 'codex' ? 'codex' : 'claude');
       setCodexModel(d.chat?.codexModel ?? '');
       setDrMode(d.deepResearch?.mode === 'agent' ? 'agent' : 'api');
+      setDrAgentBackend(d.deepResearch?.agentBackend === 'codex' ? 'codex' : 'claude');
       setDrModel(d.deepResearch?.model ?? anthropicFallback);
     } catch {
       /* ignore */
@@ -133,7 +135,7 @@ export function ModelsSettingsSection() {
           claudeModel: claudeModel.trim() || DEFAULT_CLAUDE_MODEL,
           modelRouting: { parsing },
           chat: { backend: chatBackend, codexModel: codexModel.trim() },
-          deepResearch: { mode: drMode, model: drModel },
+          deepResearch: { mode: drMode, agentBackend: drAgentBackend, model: drModel },
         }),
       });
       if ((await res.json()).ok) {
@@ -264,10 +266,22 @@ export function ModelsSettingsSection() {
               )}
             </div>
           ) : (
-            <p className="text-[11px] text-surface-600 mt-2 leading-relaxed">
-              Runs Claude Code with WebSearch on your Claude subscription — an agentic loop (search
-              → read → iterate). Uses the OAuth token from AI Credentials; no API billing.
-            </p>
+            <div className="mt-2 space-y-2">
+              <label className="block text-[11px] text-surface-500">Agent (subscription)</label>
+              <select
+                value={drAgentBackend}
+                onChange={(e) => setDrAgentBackend(e.target.value as 'claude' | 'codex')}
+                className={selectClass}
+              >
+                <option value="claude">Claude — Claude Code + WebSearch (Claude sub)</option>
+                <option value="codex">Codex — app-server + web_search (OpenAI sub)</option>
+              </select>
+              <p className="text-[11px] text-surface-600 leading-relaxed">
+                {drAgentBackend === 'codex'
+                  ? 'Runs codex with web search on your OpenAI/ChatGPT subscription — an agentic loop, no API billing. Sign in via AI Credentials.'
+                  : 'Runs Claude Code with WebSearch on your Claude subscription — an agentic loop (search → read → iterate), no API billing. Uses the OAuth token from AI Credentials.'}
+              </p>
+            </div>
           )}
         </div>
 

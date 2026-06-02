@@ -412,8 +412,10 @@ async function handleRequest(req: Request): Promise<Response> {
     // Deep Research engine: mode ('api' | 'agent') + API-mode model.
     if (body.deepResearch && typeof body.deepResearch === 'object') {
       settings.deepResearch = settings.deepResearch ?? {};
-      const dr = body.deepResearch as { mode?: unknown; model?: unknown };
+      const dr = body.deepResearch as { mode?: unknown; agentBackend?: unknown; model?: unknown };
       if (dr.mode === 'agent' || dr.mode === 'api') settings.deepResearch.mode = dr.mode;
+      if (dr.agentBackend === 'claude' || dr.agentBackend === 'codex')
+        settings.deepResearch.agentBackend = dr.agentBackend;
       const ref = dr.model as { provider?: unknown; model?: unknown } | null | undefined;
       if (ref === null) {
         delete settings.deepResearch.model;

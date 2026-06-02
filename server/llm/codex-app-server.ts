@@ -49,6 +49,8 @@ export interface CodexClientOptions {
   env?: Record<string, string>;
   /** CODEX_HOME — dir holding auth.json (from `codex login`) and config.toml. */
   codexHome?: string;
+  /** Extra args after `app-server` (e.g. `-c tools.web_search=true` for research). */
+  extraArgs?: string[];
   /** Streaming events (item/agentMessage/delta, turn/completed, …). */
   onNotification?: (n: CodexNotification) => void;
   /** Codex asks us something (approvals, auth refresh, …); resolve to the result. */
@@ -84,7 +86,7 @@ export class CodexAppServerClient {
       ...(opts.env ?? {}),
       ...(opts.codexHome ? { CODEX_HOME: opts.codexHome } : {}),
     };
-    this.proc = spawn(bin, ['app-server'], { cwd: opts.cwd, env });
+    this.proc = spawn(bin, ['app-server', ...(opts.extraArgs ?? [])], { cwd: opts.cwd, env });
     this.proc.stdout.setEncoding('utf8');
     this.proc.stdout.on('data', (chunk: string) => this.onStdout(chunk));
     this.proc.stderr.setEncoding('utf8');

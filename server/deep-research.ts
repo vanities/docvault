@@ -9,10 +9,14 @@
 
 import { createRequire } from 'module';
 import path from 'path';
+import { promises as fs } from 'fs';
+import os from 'os';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { getClient } from './parsers/base.js';
+import { CodexAppServerClient, type CodexNotification } from './llm/codex-app-server.js';
 import {
   getDeepResearchConfig,
+  getCodexChatConfig,
   getAnthropicAuthToken,
   getAnthropicKey,
   DEFAULT_MODEL,
@@ -71,8 +75,11 @@ export async function runDeepResearch(
   question: string,
   opts: { maxSearches?: number } = {}
 ): Promise<ResearchResult> {
-  const { mode } = await getDeepResearchConfig();
-  return mode === 'agent' ? runDeepResearchAgent(question) : runDeepResearchApi(question, opts);
+  const { mode, agentBackend } = await getDeepResearchConfig();
+  if (mode !== 'agent') return runDeepResearchApi(question, opts);
+  return agentBackend === 'codex'
+    ? runDeepResearchCodexAgent(question)
+    : runDeepResearchClaudeAgent(question);
 }
 
 /** API engine — a single agentic messages.create with native web_search. */
@@ -142,8 +149,8 @@ async function runDeepResearchApi(
   return { question, report: report.trim(), sources, searchCount, usage };
 }
 
-/** Agent engine — Claude Code + WebSearch, an agentic loop on the subscription. */
-async function runDeepResearchAgent(question: string): Promise<ResearchResult> {
+/** Claude agent engine — Claude Code + WebSearch, an agentic loop on the Claude sub. */
+async function runDeepResearchClaudeAgent(question: string): Promise<ResearchResult> {
   const oauthToken = await getAnthropicAuthToken();
   const apiKey = await getAnthropicKey();
   const startedAt = Date.now();
@@ -207,7 +214,93 @@ async function runDeepResearchAgent(question: string): Promise<ResearchResult> {
   });
 
   log.info(
-    `Deep research (agent) done: ${searchCount} searches, ${sources.length} sources, ${report.length} chars`
+    `Deep research (claude agent) done: ${searchCount} searches, ${sources.length} sources, ${report.length} chars`
+  );
+  return { question, report: report.trim(), sources, searchCount, usage };
+}
+
+/** Codex agent engine — codex app-server + web_search on the OpenAI subscription. */
+async function runDeepResearchCodexAgent(question: string): Promise<ResearchResult> {
+  const { codexHome, binaryPath, model } = await getCodexChatConfig();
+  const startedAt = Date.now();
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'docvault-research-'));
+
+  let report = '';
+  let searchCount = 0;
+  let done = false;
+  let resolveDone!: () => void;
+  const donePromise = new Promise<void>((r) => {
+    resolveDone = r;
+  });
+  const finish = () => {
+    if (!done) {
+      done = true;
+      resolveDone();
+    }
+  };
+
+  const onNotification = (n: CodexNotification) => {
+    const p = (n.params ?? {}) as Record<string, unknown>;
+    if (n.method === 'item/agentMessage/delta') {
+      if (typeof p.delta === 'string') report += p.delta;
+    } else if (n.method === 'item/started') {
+      const item = (p.item ?? {}) as Record<string, unknown>;
+      if (item.type === 'webSearch') searchCount++;
+    } else if (n.method === 'turn/completed' || n.method === 'error') {
+      finish();
+    }
+  };
+
+  const client = new CodexAppServerClient({
+    binaryPath,
+    cwd,
+    codexHome,
+    // Enable the native Responses web_search tool (equivalent to `codex --search`).
+    extraArgs: ['-c', 'tools.web_search=true'],
+    onNotification,
+    onServerRequest: () => null,
+    onExit: () => finish(),
+  });
+
+  try {
+    await client.initialize({ name: 'docvault', title: 'DocVault', version: '1.0.0' });
+    const threadId = await client.startThread({
+      cwd,
+      ...(model ? { model } : {}),
+      modelProvider: 'openai',
+      approvalPolicy: 'never',
+      sandbox: 'read-only',
+      developerInstructions: RESEARCH_SYSTEM,
+    });
+    await client.startTurn({ threadId, input: [{ type: 'text', text: question }] });
+    await donePromise;
+  } finally {
+    client.kill();
+    await fs.rm(cwd, { recursive: true, force: true }).catch(() => undefined);
+  }
+
+  const sources: ResearchSource[] = [];
+  const seen = new Set<string>();
+  for (const m of report.matchAll(/https?:\/\/[^\s)\]]+/g)) {
+    const url = m[0].replace(/[.,;]+$/, '');
+    if (!seen.has(url)) {
+      seen.add(url);
+      sources.push({ url });
+    }
+  }
+
+  const usage = { inputTokens: 0, outputTokens: 0 };
+  void logAiCall({
+    model: 'codex-agent',
+    purpose: 'deep-research',
+    latencyMs: Date.now() - startedAt,
+    usage,
+    ok: true,
+    requestId: null,
+    stopReason: null,
+  });
+  log.info(
+    `Deep research (codex agent) done: ${searchCount} searches, ${sources.length} sources, ${report.length} chars`
   );
   return { question, report: report.trim(), sources, searchCount, usage };
 }

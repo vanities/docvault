@@ -218,7 +218,7 @@ export interface Settings {
    * 'agent' (Claude Code + WebSearch on the subscription). `model` is the
    * API-mode model.
    */
-  deepResearch?: { mode?: 'agent' | 'api'; model?: ModelRef };
+  deepResearch?: { mode?: 'agent' | 'api'; agentBackend?: 'claude' | 'codex'; model?: ModelRef };
 }
 
 export interface FileInfo {
@@ -343,11 +343,13 @@ export type DeepResearchMode = 'agent' | 'api';
  */
 export async function getDeepResearchConfig(): Promise<{
   mode: DeepResearchMode;
+  agentBackend: 'claude' | 'codex';
   model: ModelRef;
 }> {
   const settings = await loadSettings();
   const mode: DeepResearchMode = settings.deepResearch?.mode === 'agent' ? 'agent' : 'api';
-  return { mode, model: resolveModel(settings.deepResearch?.model) };
+  const agentBackend = settings.deepResearch?.agentBackend === 'codex' ? 'codex' : 'claude';
+  return { mode, agentBackend, model: resolveModel(settings.deepResearch?.model) };
 }
 
 export type ChatBackend = 'claude' | 'codex';
