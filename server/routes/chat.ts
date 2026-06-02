@@ -1217,6 +1217,7 @@ export async function handleChatRoutes(
       userText: last.content,
       entity: body.entity,
       resumeSessionId: body.resumeSessionId,
+      attachments,
       signal: req.signal,
     });
   }
@@ -1440,6 +1441,7 @@ function streamCodexChat(opts: {
   userText: string;
   entity?: string;
   resumeSessionId?: string;
+  attachments?: IncomingAttachment[];
   signal: AbortSignal;
 }): Response {
   const encoder = new TextEncoder();
@@ -1462,6 +1464,9 @@ function streamCodexChat(opts: {
           codexHome: cfg.codexHome,
           binaryPath: cfg.binaryPath,
           resumeThreadId: opts.resumeSessionId,
+          images: (opts.attachments ?? [])
+            .filter((a) => a.mimeType.startsWith('image/'))
+            .map((a) => ({ url: a.dataUrl })),
           signal: opts.signal,
           send,
         });
