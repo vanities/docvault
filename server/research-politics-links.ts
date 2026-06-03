@@ -55,6 +55,20 @@ export type ResearchPoliticsLink = {
   matchedVotes: ResearchPoliticsVoteMatch[];
 };
 
+export type ResearchPoliticsBrief = {
+  key: string;
+  kind: 'ticker' | 'topic';
+  label: string;
+  claimCount: number;
+  tradeMatchCount: number;
+  voteMatchCount: number;
+  stances: string[];
+  sourceUrls: string[];
+  sampleClaims: Array<{ entryId: string; claimId: string; text: string; title?: string }>;
+  matchedTrades: ResearchPoliticsTradeMatch[];
+  matchedVotes: ResearchPoliticsVoteMatch[];
+};
+
 export type ResearchPoliticsLinkInput = {
   entries: ResearchEntryLike[];
   politics: PoliticsPayload;
@@ -209,4 +223,106 @@ export function buildResearchPoliticsLinks({
   }
 
   return links;
+}
+
+function uniqueStrings(values: Array<string | undefined>): string[] {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))].sort();
+}
+
+function uniqueTrades(trades: ResearchPoliticsTradeMatch[]): ResearchPoliticsTradeMatch[] {
+  const seen = new Set<string>();
+  return trades.filter((trade) => {
+    const key = [
+      trade.politicianName,
+      trade.ticker,
+      trade.category,
+      trade.tradeDate,
+      trade.amount,
+    ].join('|');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function uniqueVotes(votes: ResearchPoliticsVoteMatch[]): ResearchPoliticsVoteMatch[] {
+  const seen = new Set<string>();
+  return votes.filter((vote) => {
+    const key = vote.externalId ?? vote.label;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function briefFromLinks(
+  key: string,
+  kind: ResearchPoliticsBrief['kind'],
+  label: string,
+  links: ResearchPoliticsLink[],
+  ticker?: string
+): ResearchPoliticsBrief {
+  const trades = uniqueTrades(
+    links.flatMap((link) =>
+      ticker ? link.matchedTrades.filter((trade) => trade.ticker === ticker) : link.matchedTrades
+    )
+  ).slice(0, 6);
+  const votes =
+    kind === 'topic' ? uniqueVotes(links.flatMap((link) => link.matchedVotes)).slice(0, 6) : [];
+
+  return {
+    key,
+    kind,
+    label,
+    claimCount: links.length,
+    tradeMatchCount: trades.length,
+    voteMatchCount: votes.length,
+    stances: uniqueStrings(links.map((link) => link.stance)),
+    sourceUrls: uniqueStrings(links.map((link) => link.sourceUrl)),
+    sampleClaims: links.slice(0, 3).map((link) => ({
+      entryId: link.entryId,
+      claimId: link.claimId,
+      text: link.claimText,
+      title: link.title,
+    })),
+    matchedTrades: trades,
+    matchedVotes: votes,
+  };
+}
+
+export function buildResearchPoliticsBriefs(
+  links: ResearchPoliticsLink[],
+  limit = 12
+): ResearchPoliticsBrief[] {
+  const tickerGroups = new Map<string, ResearchPoliticsLink[]>();
+  const topicGroups = new Map<string, ResearchPoliticsLink[]>();
+
+  for (const link of links) {
+    for (const ticker of link.tickers) {
+      const key = ticker.toUpperCase();
+      tickerGroups.set(key, [...(tickerGroups.get(key) ?? []), link]);
+    }
+    for (const topic of link.topics) {
+      topicGroups.set(topic, [...(topicGroups.get(topic) ?? []), link]);
+    }
+  }
+
+  const briefs = [
+    ...[...tickerGroups.entries()].map(([ticker, group]) =>
+      briefFromLinks(`ticker:${ticker}`, 'ticker', ticker, group, ticker)
+    ),
+    ...[...topicGroups.entries()].map(([topic, group]) =>
+      briefFromLinks(`topic:${topic}`, 'topic', `#${topic}`, group)
+    ),
+  ];
+
+  return briefs
+    .sort((a, b) => {
+      if (a.kind !== b.kind) return a.kind === 'ticker' ? -1 : 1;
+      const scoreA = a.claimCount + a.tradeMatchCount + a.voteMatchCount;
+      const scoreB = b.claimCount + b.tradeMatchCount + b.voteMatchCount;
+      if (scoreA !== scoreB) return scoreB - scoreA;
+      return a.label.localeCompare(b.label);
+    })
+    .slice(0, limit);
 }

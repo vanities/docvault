@@ -37,7 +37,10 @@ import {
 import { createLogger } from '../logger.js';
 import { normalizeTickers } from '../tickers.js';
 import { buildResearchIntelligence, type ResearchIntelligence } from '../research-intelligence.js';
-import { buildResearchPoliticsLinks } from '../research-politics-links.js';
+import {
+  buildResearchPoliticsBriefs,
+  buildResearchPoliticsLinks,
+} from '../research-politics-links.js';
 import { loadCheckTheVotePolitics } from '../check-the-vote.js';
 
 const log = createLogger('Research');
@@ -474,7 +477,8 @@ export async function handleResearchRoutes(
     const [store, politics] = await Promise.all([loadStore(), loadCheckTheVotePolitics()]);
     const entries = Object.values(store.entries).filter((entry) => entry.domain === 'politics');
     const links = buildResearchPoliticsLinks({ entries, politics });
-    return jsonResponse({ ok: politics.configured && politics.ok, links });
+    const briefs = buildResearchPoliticsBriefs(links);
+    return jsonResponse({ ok: politics.configured && politics.ok, links, briefs });
   }
 
   // GET /api/research?domain=health — list newest first (by reportDate if
