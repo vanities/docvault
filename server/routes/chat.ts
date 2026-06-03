@@ -74,10 +74,13 @@ import {
 import { runCodexChat } from '../llm/codex-chat.js';
 import { loadHealthStore } from '../health-store.js';
 import { searchMarkdown, readSourceFile, listSourceFiles } from '../external-sources.js';
-import { getCachedPredictions } from './quant.js';
+import { getCachedPredictions, handleQuantRoutes } from './quant.js';
 import { handleNutritionRoutes } from './nutrition.js';
 import { handleSicknessRoutes } from './sickness.js';
 import { handleHealthSnapshotRoutes } from './health-snapshot.js';
+import { handleResearchRoutes, type ResearchEntry } from './research.js';
+import { handleFinancialSnapshotRoutes } from './financial-snapshot.js';
+import { listRuns, getRun } from '../deep-research-store.js';
 import { logAiCall } from '../ai/usage-log.js';
 import { createLogger } from '../logger.js';
 
@@ -89,6 +92,9 @@ const log = createLogger('Chat');
 
 const MAX_FILE_RESULTS = 100;
 const MAX_PARSED_TEXT_CHARS = 8000;
+// Deep Research reports are meant to be read whole; this only caps pathological
+// sizes so a single run can't blow out the agent's context window.
+const MAX_REPORT_CHARS = 30000;
 const MCP_SERVER_NAME = 'docvault';
 
 // Per-chat attachment store. Mirrors t3code's per-thread folder pattern
@@ -161,6 +167,13 @@ const TOOL_NAMES = [
   'read_external_file',
   'list_external_source_files',
   'get_prediction_markets',
+  'list_research',
+  'search_research',
+  'read_research',
+  'list_deep_research',
+  'read_deep_research',
+  'get_financial_snapshot',
+  'get_quant_signals',
   // --- Writes (require user confirmation per system prompt) ---
   'set_metadata',
   'add_reminder',
@@ -747,6 +760,215 @@ async function toolGetPredictionMarkets(input: {
   }
 }
 
+// -- Research library (filed PDFs, pasted articles, YouTube transcripts) -----
+// These reuse the same /api/research handler the UI calls, so the chat sees
+// exactly what the Research tab shows. Entries carry extracted text plus
+// deterministic "intelligence" (summary bullets + source-grounded claims).
+
+/** One-line metadata view of a research entry — omits the (large) full text. */
+function summarizeResearchEntry(e: ResearchEntry) {
+  return {
+    id: e.id,
+    domain: e.domain,
+    title: e.title ?? e.filename ?? null,
+    author: e.author ?? null,
+    publisher: e.publisher ?? null,
+    reportDate: e.reportDate ?? null,
+    uploadedAt: e.uploadedAt,
+    sourceUrl: e.sourceUrl ?? null,
+    mediaType: e.mediaType,
+    pageCount: e.pageCount ?? null,
+    tickers: e.tickers ?? [],
+    tags: e.tags ?? [],
+    hasIntelligence: Boolean(e.intelligence),
+    hasText: typeof e.text === 'string' && e.text.length > 0,
+  };
+}
+
+/** Pull ~240 chars of context around the first match so the model can see why
+ *  an entry matched without reading the whole document. */
+function researchSnippet(text: string, q: string): string {
+  const idx = text.toLowerCase().indexOf(q);
+  if (idx < 0) return '';
+  const start = Math.max(0, idx - 120);
+  const end = Math.min(text.length, idx + q.length + 120);
+  return (
+    (start > 0 ? '…' : '') +
+    text.slice(start, end).replace(/\s+/g, ' ').trim() +
+    (end < text.length ? '…' : '')
+  );
+}
+
+async function toolListResearch(input: {
+  domain?: 'finance' | 'health' | 'politics';
+  limit?: number;
+}): Promise<unknown> {
+  const qs = input.domain ? `?domain=${input.domain}` : '';
+  const { status, data } = await invokeRoute(handleResearchRoutes, 'GET', `/api/research${qs}`);
+  if (status !== 200) return { error: data, status };
+  const entries = (data as { entries?: ResearchEntry[] }).entries ?? [];
+  const limit = Math.max(1, Math.min(input.limit ?? 30, 100));
+  return {
+    domain: input.domain ?? 'all',
+    totalFound: entries.length,
+    truncated: entries.length > limit,
+    entries: entries.slice(0, limit).map(summarizeResearchEntry),
+  };
+}
+
+async function toolSearchResearch(input: {
+  query: string;
+  domain?: 'finance' | 'health' | 'politics';
+  limit?: number;
+}): Promise<unknown> {
+  const q = input.query.trim().toLowerCase();
+  if (q.length < 2) return { error: 'query must be at least 2 characters' };
+  const { status, data } = await invokeRoute(handleResearchRoutes, 'GET', '/api/research');
+  if (status !== 200) return { error: data, status };
+  let entries = (data as { entries?: ResearchEntry[] }).entries ?? [];
+  if (input.domain) entries = entries.filter((e) => e.domain === input.domain);
+  const limit = Math.max(1, Math.min(input.limit ?? 20, 50));
+  const hits: Array<Record<string, unknown>> = [];
+  for (const e of entries) {
+    if (hits.length >= limit) break;
+    const meta = [
+      e.title,
+      e.author,
+      e.publisher,
+      e.notes,
+      e.sourceUrl,
+      ...(e.tags ?? []),
+      ...(e.tickers ?? []),
+    ]
+      .filter((v): v is string => typeof v === 'string')
+      .join('\n')
+      .toLowerCase();
+    let matchedIn: 'metadata' | 'content' | null = null;
+    let snippet: string | null = null;
+    if (meta.includes(q)) {
+      matchedIn = 'metadata';
+    } else if (typeof e.text === 'string' && e.text.toLowerCase().includes(q)) {
+      matchedIn = 'content';
+      snippet = researchSnippet(e.text, q);
+    }
+    if (matchedIn) {
+      hits.push({
+        id: e.id,
+        domain: e.domain,
+        title: e.title ?? e.filename ?? null,
+        sourceUrl: e.sourceUrl ?? null,
+        reportDate: e.reportDate ?? null,
+        tickers: e.tickers ?? [],
+        matchedIn,
+        snippet,
+      });
+    }
+  }
+  return { query: input.query, totalHits: hits.length, hits };
+}
+
+async function toolReadResearch(input: { id: string }): Promise<unknown> {
+  const { status, data } = await invokeRoute(
+    handleResearchRoutes,
+    'GET',
+    `/api/research/${encodeURIComponent(input.id)}`
+  );
+  if (status !== 200) return { error: data, status };
+  const entry = (data as { entry?: ResearchEntry }).entry;
+  if (!entry) return { error: `No research entry "${input.id}". Call list_research first.` };
+  const text = typeof entry.text === 'string' ? entry.text : null;
+  const truncated = text !== null && text.length > MAX_PARSED_TEXT_CHARS;
+  return {
+    id: entry.id,
+    domain: entry.domain,
+    title: entry.title ?? entry.filename ?? null,
+    author: entry.author ?? null,
+    publisher: entry.publisher ?? null,
+    reportDate: entry.reportDate ?? null,
+    sourceUrl: entry.sourceUrl ?? null,
+    mediaType: entry.mediaType,
+    pageCount: entry.pageCount ?? null,
+    tickers: entry.tickers ?? [],
+    tags: entry.tags ?? [],
+    notes: entry.notes ?? null,
+    intelligence: entry.intelligence ?? null,
+    textTruncated: truncated,
+    text: text === null ? null : truncated ? text.slice(0, MAX_PARSED_TEXT_CHARS) : text,
+  };
+}
+
+// -- Deep Research (async, cited web-research runs) --------------------------
+
+async function toolListDeepResearch(): Promise<unknown> {
+  const runs = await listRuns();
+  return { totalFound: runs.length, runs };
+}
+
+async function toolReadDeepResearch(input: { id: string }): Promise<unknown> {
+  const run = await getRun(input.id);
+  if (!run) return { error: `No deep research run "${input.id}". Call list_deep_research first.` };
+  const report = typeof run.report === 'string' ? run.report : null;
+  const truncated = report !== null && report.length > MAX_REPORT_CHARS;
+  return {
+    id: run.id,
+    question: run.question,
+    status: run.status,
+    createdAt: run.createdAt,
+    completedAt: run.completedAt ?? null,
+    searchCount: run.searchCount ?? null,
+    sources: run.sources ?? [],
+    error: run.error ?? null,
+    reportTruncated: truncated,
+    report: report === null ? null : truncated ? report.slice(0, MAX_REPORT_CHARS) : report,
+  };
+}
+
+// -- Financial snapshot (full money picture for a tax year) ------------------
+// Returns the same markdown the financial-snapshot skill consumes: net worth,
+// crypto, brokerage, real estate, liabilities, retirement, bank — far beyond
+// get_tax_summary's income/expense-by-category view.
+
+async function toolGetFinancialSnapshot(input: { year: number }): Promise<unknown> {
+  const { status, data } = await invokeRoute(
+    handleFinancialSnapshotRoutes,
+    'GET',
+    `/api/financial-snapshot/${input.year}?format=md`
+  );
+  if (status !== 200) return { error: data, status };
+  return { year: input.year, markdown: typeof data === 'string' ? data : JSON.stringify(data) };
+}
+
+// -- Quant signals (consolidated daily market/macro snapshot) ----------------
+// Reads the append-only daily snapshot log (populated by the quant scheduler),
+// so one call yields the whole dashboard without fanning out across the ~30
+// per-signal /api/quant/* endpoints.
+
+async function toolGetQuantSignals(input: { days?: number }): Promise<unknown> {
+  const days = Math.max(1, Math.min(input.days ?? 1, 90));
+  const { status, data } = await invokeRoute(
+    handleQuantRoutes,
+    'GET',
+    `/api/quant/snapshots?days=${days}`
+  );
+  if (status !== 200) return { error: data, status };
+  const snapshots = (data as { snapshots?: unknown[] }).snapshots ?? [];
+  if (snapshots.length === 0) {
+    return {
+      note: 'No quant snapshots recorded yet — the daily scheduler (or POST /api/quant/refresh) populates these. Live per-signal endpoints under /api/quant/* are also available.',
+      latest: null,
+    };
+  }
+  const latest = snapshots[snapshots.length - 1];
+  return {
+    asOf: (latest as { date?: string }).date ?? null,
+    totalAll: (data as { totalAll?: number }).totalAll ?? snapshots.length,
+    returned: snapshots.length,
+    latest,
+    // Only include the daily series when a window was requested (trend view).
+    ...(days > 1 ? { history: snapshots } : {}),
+  };
+}
+
 function jsonResult(value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value) }] };
 }
@@ -859,6 +1081,74 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
           limit: z.number().optional().describe('Max rows per bucket (default 20, max 50).'),
         },
         async (args) => jsonResult(await toolGetPredictionMarkets(args))
+      ),
+      tool(
+        'list_research',
+        'List the user\'s filed Research entries — PDFs, pasted articles/transcripts, and YouTube videos they\'ve saved (including auto-filed feeds like ZeroHedge). Each row shows title, source, date, domain (finance/health/politics), any tickers, and whether claim "intelligence" has been extracted. Optionally filter by domain. Use this to see what research exists before reading or searching it.',
+        {
+          domain: z
+            .enum(['finance', 'health', 'politics'])
+            .optional()
+            .describe('Restrict to one Research tab. Omit for all.'),
+          limit: z.number().optional().describe('Max entries (default 30, max 100). Newest first.'),
+        },
+        async (args) => jsonResult(await toolListResearch(args))
+      ),
+      tool(
+        'search_research',
+        'Case-insensitive substring search across the Research library — matches BOTH metadata (title, author, publisher, notes, tickers, tags, source URL) and the full extracted text of every entry. Returns hits with a short snippet around the match. Prefer this over list_research when the user asks about a topic, person, or ticker mentioned inside their saved articles/transcripts.',
+        {
+          query: z.string().describe('Substring to find; minimum 2 chars.'),
+          domain: z
+            .enum(['finance', 'health', 'politics'])
+            .optional()
+            .describe('Restrict to one Research tab. Omit for all.'),
+          limit: z.number().optional().describe('Max hits (default 20, max 50).'),
+        },
+        async (args) => jsonResult(await toolSearchResearch(args))
+      ),
+      tool(
+        'read_research',
+        'Return one Research entry in full — metadata, the extracted text (transcript / article / PDF text, truncated if very long), and any extracted intelligence (summary bullets + source-grounded claims with tickers, topics, and stance). Use the id from list_research or search_research. READ-ONLY.',
+        {
+          id: z.string().describe('Research entry id (from list_research / search_research).'),
+        },
+        async (args) => jsonResult(await toolReadResearch(args))
+      ),
+      tool(
+        'list_deep_research',
+        'List the Deep Research runs — async, multi-source, cited web-research reports the user has commissioned. Each shows the question, status (running / done / error), number of sources, and timestamps. Use this to find a completed report to read.',
+        {},
+        async () => jsonResult(await toolListDeepResearch())
+      ),
+      tool(
+        'read_deep_research',
+        "Return one Deep Research run by id — its question, status, the full cited report (markdown, truncated only if pathologically long), and the list of sources. Use the report's findings to answer the user, and cite its sources. READ-ONLY.",
+        {
+          id: z.string().describe('Deep research run id (from list_deep_research).'),
+        },
+        async (args) => jsonResult(await toolReadDeepResearch(args))
+      ),
+      tool(
+        'get_financial_snapshot',
+        "The user's FULL financial picture for a tax year, rendered as markdown — net worth, crypto balances, brokerage holdings, real estate equity, liabilities, retirement contributions, bank accounts, and tax summary. Use this for 'what's my net worth', 'how much crypto do I hold', balance-sheet, or deduction questions. This is far broader than get_tax_summary (which is only income/expense by category). READ-ONLY; may take a moment if live prices need refreshing.",
+        {
+          year: z.number().describe('Tax year, e.g. 2025.'),
+        },
+        async (args) => jsonResult(await toolGetFinancialSnapshot(args))
+      ),
+      tool(
+        'get_quant_signals',
+        'The consolidated daily quant/market snapshot — BTC risk & drawdown, crypto Fear & Greed, BTC/ETH dominance, the ETH/BTC flippening progress, hash-ribbon regime, the yield-curve regime, business-cycle/recession signals, and inflation. One call returns the whole dashboard. Use it when the user asks about overall market conditions, crypto risk, macro regime, or "what are the signals saying". For live odds on specific events use get_prediction_markets instead. READ-ONLY.',
+        {
+          days: z
+            .number()
+            .optional()
+            .describe(
+              'Days of daily history to include for trend (default 1 = latest only, max 90).'
+            ),
+        },
+        async (args) => jsonResult(await toolGetQuantSignals(args))
       ),
       tool(
         'set_metadata',
@@ -1084,6 +1374,10 @@ function buildSystemPrompt(activeEntity: string | undefined): string {
     "When making a supplement, dosing, or regimen recommendation, ground it in the user's actual data: call get_health_snapshot for the relevant person FIRST, then call list_supplements to see what they're already taking, and only after that synthesize advice. Cross-reference against any labs (kidney/liver function, electrolytes) before recommending dosage.",
     'WebSearch is enabled. Use it to research products, brands, dosages, and primary literature (PubMed, journal articles) when the user asks for a recommendation or a comparison. Cite sources. Prefer primary literature over marketing pages.',
     'get_prediction_markets returns live Kalshi + Polymarket odds on finance and political questions (Fed, recession, crypto, elections, control of Congress, geopolitics). Use it when the user asks what the markets/odds imply about an event or current market sentiment — quote the probability, source, and link, and frame them as real-money-weighted forecasts, not certainties. READ-ONLY, free to chain.',
+    'The user maintains a Research library — saved PDFs, pasted articles/transcripts, and YouTube videos (some auto-filed from feeds like ZeroHedge), each tagged finance/health/politics and often carrying extracted claims. For questions about what an article/analyst/video said, or what the user has been reading on a topic or ticker: use search_research (substring over metadata AND full text), list_research to browse, and read_research for the full text + extracted claims. Cite the entry title and id. READ-ONLY, free to chain.',
+    'Deep Research runs are async, cited web-research reports the user commissioned: list_deep_research to find them, read_deep_research to read a completed report. When a question matches an existing report, ground your answer in it and pass through its citations.',
+    "get_financial_snapshot is the user's FULL money picture for a year (net worth, crypto, brokerage, real estate, liabilities, retirement, bank). Use it for balance-sheet / net-worth / holdings questions — get_tax_summary only covers income and expenses by category, so reach for the snapshot when the question is about wealth or balances rather than taxable income.",
+    'get_quant_signals returns the consolidated daily market/macro snapshot (BTC risk & drawdown, Fear & Greed, dominance, yield-curve regime, business-cycle/recession signals, inflation). Use it for "what do the signals say" / overall market-condition questions; use get_prediction_markets for odds on a specific named event.',
     'The user may have configured External Sources — cloned git repos of their own markdown (for example a personal knowledge or creative vault). For questions about their notes, projects, writing, or anything outside the tax, financial, and health data: call list_external_sources, then either search_external_sources (substring over BOTH file paths and content) or list_external_source_files (browse the tree or a folder when you have no obvious search term), then read_external_file for the full text. These are READ-ONLY and free to chain. Cite the source name and file path when you quote them.',
     'Use the provided tools to answer factually. Never invent file names, vendors, amounts, dates, lab values, supplement brands, or citations. If a file has not been parsed yet or a supplement is not in the regimen, say so — do not guess.',
     'Be concise. Use markdown tables for structured data. When citing a specific document, include its path so the user can find it.',
