@@ -72,9 +72,23 @@ const TOPIC_RULES: Array<[topic: string, pattern: RegExp]> = [
   ],
   ['rates', /\b(fed|fomc|rates?|yield curve|treasurys?|treasuries|inflation|cpi)\b/i],
   ['crypto', /\b(bitcoin|btc|ethereum|eth|crypto|stablecoin|token)\b/i],
-  ['energy', /\b(oil|gas|lng|pipeline|solar|wind|uranium|nuclear|energy)\b/i],
+  ['energy', /\b(oil|gas|lng|pipeline|solar|wind|uranium|nuclear|energy|iran|hormuz)\b/i],
   ['healthcare', /\b(fda|medicare|medicaid|drug|pharma|biotech|hospital|healthcare)\b/i],
-  ['defense', /\b(defense|pentagon|missile|aerospace|weapons?|dod)\b/i],
+  ['defense', /\b(defense|pentagon|missile|aerospace|weapons?|dod|hezbollah|israel|iran)\b/i],
+];
+
+const TICKER_RULES: Array<[ticker: string, pattern: RegExp]> = [
+  ['NVDA', /\b(nvda|nvidia)\b/i],
+  ['TSM', /\b(tsm|taiwan semiconductor)\b/i],
+  ['ORCL', /\b(orcl|oracle)\b/i],
+  ['AMD', /\b(amd|advanced micro devices)\b/i],
+  ['QCOM', /\b(qcom|qualcomm)\b/i],
+  ['AAPL', /\b(aapl|apple)\b/i],
+  ['XOM', /\b(xom|exxon|exxon mobil)\b/i],
+  ['CVX', /\b(cvx|chevron)\b/i],
+  ['OXY', /\b(oxy|occidental petroleum)\b/i],
+  ['DE', /\b(deere|john deere)\b/i],
+  ['CAT', /\b(caterpillar)\b/i],
 ];
 
 function cleanOptional(value: string | null | undefined): string | undefined {
@@ -146,21 +160,26 @@ function provenanceFor(source: ResearchSourceProvenance, span: TextSpan): Resear
 }
 
 function tickersForSpan(span: TextSpan, tickers: string[]): string[] {
-  const text = span.text.toUpperCase();
-  return tickers.filter((ticker) =>
-    new RegExp(`(^|[^A-Z0-9])${escapeRegExp(ticker)}([^A-Z0-9]|$)`).test(text)
+  const explicitTickers = tickers.filter((ticker) =>
+    new RegExp(`(^|[^A-Z0-9])${escapeRegExp(ticker)}([^A-Z0-9]|$)`).test(span.text.toUpperCase())
   );
+  const inferredTickers = TICKER_RULES.filter(([, pattern]) => pattern.test(span.text)).map(
+    ([ticker]) => ticker
+  );
+  return Array.from(new Set([...explicitTickers, ...inferredTickers]));
 }
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function topicsForSpan(span: TextSpan): string[] {
-  const topics = TOPIC_RULES.filter(([, pattern]) => pattern.test(span.text)).map(
-    ([topic]) => topic
-  );
+function topicsForText(text: string): string[] {
+  const topics = TOPIC_RULES.filter(([, pattern]) => pattern.test(text)).map(([topic]) => topic);
   return Array.from(new Set(topics));
+}
+
+function topicsForSpan(span: TextSpan, contextTopics: string[] = []): string[] {
+  return Array.from(new Set([...topicsForText(span.text), ...contextTopics]));
 }
 
 function stanceForSpan(span: TextSpan): ResearchClaim['stance'] {
@@ -178,13 +197,17 @@ function stanceForSpan(span: TextSpan): ResearchClaim['stance'] {
   return 'neutral';
 }
 
-function scoreSpan(span: TextSpan, tickers: string[]): number {
+function scoreSpan(span: TextSpan, tickers: string[], contextTopics: string[] = []): number {
   if (/\b(without|no|not)\b[^.!?]{0,40}\b(claim|signal|takeaway)\b/i.test(span.text)) return 0;
 
+  const spanTickers = tickersForSpan(span, tickers);
+  const spanTopics = topicsForText(span.text);
+  const hasClaimCue = CLAIM_CUE_RE.test(span.text);
   let score = 0;
-  score += tickersForSpan(span, tickers).length * 4;
-  if (CLAIM_CUE_RE.test(span.text)) score += 3;
-  score += topicsForSpan(span).length;
+  score += spanTickers.length * 4;
+  if (hasClaimCue) score += 3;
+  score += spanTopics.length;
+  if (hasClaimCue || spanTickers.length > 0 || spanTopics.length > 0) score += contextTopics.length;
   if (span.text.length > 220) score -= 1;
   return score;
 }
@@ -192,9 +215,10 @@ function scoreSpan(span: TextSpan, tickers: string[]): number {
 export function buildResearchIntelligence(entry: ResearchIntelligenceInput): ResearchIntelligence {
   const source = sourceFor(entry);
   const tickers = normalizeTickerList(entry.tickers);
+  const contextTopics = topicsForText([entry.title, entry.publisher].filter(Boolean).join(' '));
   const spans = sentenceSpans(entry.text ?? '');
   const scored = spans
-    .map((span) => ({ span, score: scoreSpan(span, tickers) }))
+    .map((span) => ({ span, score: scoreSpan(span, tickers, contextTopics) }))
     .filter(({ score }) => score > 0)
     .sort((a, b) => b.score - a.score || a.span.charStart - b.span.charStart);
 
@@ -210,7 +234,7 @@ export function buildResearchIntelligence(entry: ResearchIntelligenceInput): Res
       id: `claim-${index + 1}`,
       text: span.text,
       tickers: tickersForSpan(span, tickers),
-      topics: topicsForSpan(span),
+      topics: topicsForSpan(span, contextTopics),
       stance: stanceForSpan(span),
       provenance: provenanceFor(source, span),
     }));

@@ -73,9 +73,9 @@ export type CheckTheVotePolitics =
 const POLITICS_PATHS = [
   ['health', '/api/v1/health'],
   ['sync', '/api/v1/sync'],
-  ['votes', '/api/v1/votes/recent'],
-  ['trades', '/api/v1/trades/recent'],
-  ['filings', '/api/v1/trade-filings/recent'],
+  ['votes', '/api/v1/votes/recent?limit=100'],
+  ['trades', '/api/v1/trades/recent?limit=100'],
+  ['filings', '/api/v1/trade-filings/recent?limit=100'],
 ] as const;
 
 export async function loadCheckTheVotePolitics(

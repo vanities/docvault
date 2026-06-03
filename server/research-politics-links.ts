@@ -90,9 +90,18 @@ const TOPIC_KEYWORDS: Record<string, string[]> = {
   ],
   rates: ['fed', 'fomc', 'rate', 'rates', 'inflation', 'treasury', 'treasuries'],
   crypto: ['bitcoin', 'ethereum', 'crypto', 'stablecoin', 'token'],
-  energy: ['oil', 'gas', 'lng', 'pipeline', 'energy', 'nuclear', 'uranium'],
+  energy: ['oil', 'gas', 'lng', 'pipeline', 'energy', 'nuclear', 'uranium', 'iran', 'hormuz'],
   healthcare: ['fda', 'medicare', 'medicaid', 'drug', 'pharma', 'biotech', 'healthcare'],
-  defense: ['defense', 'pentagon', 'missile', 'aerospace', 'dod'],
+  defense: ['defense', 'pentagon', 'missile', 'aerospace', 'dod', 'weapons', 'israel', 'iran'],
+};
+
+const TOPIC_TICKERS: Record<string, string[]> = {
+  ai: ['NVDA', 'ORCL', 'AMD', 'QCOM', 'AAPL', 'GOOGL', 'MSFT', 'TSM'],
+  semiconductors: ['NVDA', 'AMD', 'QCOM', 'TSM', 'TXN', 'ADI', 'AVGO', 'INTC'],
+  energy: ['XOM', 'CVX', 'OXY', 'COP', 'SLB', 'HAL', 'LNG', 'URA', 'CCJ'],
+  healthcare: ['UNH', 'LLY', 'PFE', 'JNJ', 'MRK', 'ABBV', 'MEDP', 'THC'],
+  rates: ['JPM', 'GS', 'BAC', 'MS', 'STT', 'BRK.B'],
+  crypto: ['COIN', 'MSTR', 'HOOD', 'IBIT', 'BITO'],
 };
 
 function asRecord(value: unknown): UnknownRecord {
@@ -128,11 +137,41 @@ function tickerFromTrade(trade: UnknownRecord): string | undefined {
   return stringValue(trade.ticker)?.toUpperCase() ?? stringValue(trade.assetTicker)?.toUpperCase();
 }
 
+function tradeText(trade: UnknownRecord): string {
+  return [
+    trade.assetName,
+    trade.assetType,
+    trade.assetTypeDescription,
+    trade.transactionDescription,
+    trade.transactionType,
+    trade.filerName,
+  ]
+    .map((part) => stringValue(part))
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+function tradeMatchesTopics(trade: UnknownRecord, topics: string[]): boolean {
+  const ticker = tickerFromTrade(trade);
+  if (ticker && topics.some((topic) => (TOPIC_TICKERS[topic] ?? []).includes(ticker))) {
+    return true;
+  }
+  const haystack = tradeText(trade);
+  return topics.some((topic) =>
+    (TOPIC_KEYWORDS[topic] ?? [topic]).some((word) => haystack.includes(word))
+  );
+}
+
 function tradeMatchFor(trade: UnknownRecord): ResearchPoliticsTradeMatch | null {
   const ticker = tickerFromTrade(trade);
   if (!ticker) return null;
+  const politician = asRecord(trade.politician);
   return {
-    politicianName: stringValue(trade.politicianName) ?? stringValue(trade.filerName),
+    politicianName:
+      stringValue(trade.politicianName) ??
+      stringValue(politician.fullName) ??
+      stringValue(trade.filerName),
     ticker,
     category: stringValue(trade.category),
     transactionType: stringValue(trade.transactionType) ?? stringValue(trade.type),
@@ -194,7 +233,8 @@ export function buildResearchPoliticsLinks({
       const matchedTrades = trades
         .filter((trade) => {
           const ticker = tickerFromTrade(trade);
-          return ticker ? tickers.includes(ticker) : false;
+          const tickerMatched = ticker ? tickers.includes(ticker) : false;
+          return tickerMatched || (tickers.length === 0 && tradeMatchesTopics(trade, topics));
         })
         .map(tradeMatchFor)
         .filter((trade): trade is ResearchPoliticsTradeMatch => trade != null)
