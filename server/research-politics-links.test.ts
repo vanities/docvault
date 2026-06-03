@@ -101,6 +101,53 @@ describe('buildResearchPoliticsLinks', () => {
     ).toEqual([]);
   });
 
+  test('matches trades by topic-derived asset exposure when claims have no explicit ticker', () => {
+    const links = buildResearchPoliticsLinks({
+      entries: [
+        {
+          id: 'research-energy',
+          title: 'Oil risk note',
+          intelligence: {
+            claims: [
+              {
+                id: 'claim-1',
+                text: 'Oil prices may spike if Iran talks fail.',
+                tickers: [],
+                topics: ['energy'],
+                stance: 'risk',
+              },
+            ],
+          },
+        },
+      ],
+      politics: {
+        configured: true,
+        ok: true,
+        baseUrl: 'http://check-the-vote.test',
+        checkedAt: '2026-06-02T00:00:00.000Z',
+        trades: {
+          trades: [
+            {
+              politicianName: 'Jane Doe',
+              assetName: 'Exxon Mobil Corporation Common Stock',
+              ticker: 'XOM',
+              category: 'buy',
+              tradeDate: '2026-06-01',
+            },
+          ],
+        },
+        votes: { votes: [] },
+      },
+    });
+
+    expect(links).toEqual([
+      expect.objectContaining({
+        topics: ['energy'],
+        matchedTrades: [expect.objectContaining({ ticker: 'XOM', politicianName: 'Jane Doe' })],
+      }),
+    ]);
+  });
+
   test('groups linked claims into ticker and topic briefs with provenance counts', () => {
     const links = [
       {

@@ -56,6 +56,31 @@ describe('buildResearchIntelligence', () => {
     ]);
   });
 
+  test('uses title context and company-name rules to tag political-market claims', () => {
+    const intelligence = buildResearchIntelligence({
+      id: 'entry-oil',
+      title: 'Oil spikes as Iran deal talks halt',
+      mediaType: 'text/plain',
+      sourceUrl: 'https://example.test/oil',
+      text: [
+        'Washington expects a broader Iran deal over the next week, but officials warn talks could stall.',
+        'Nvidia demand may accelerate if data center export waivers survive the tariff fight.',
+      ].join('\n'),
+    });
+
+    expect(intelligence.claims).toEqual([
+      expect.objectContaining({
+        text: 'Nvidia demand may accelerate if data center export waivers survive the tariff fight.',
+        tickers: ['NVDA'],
+        topics: expect.arrayContaining(['ai', 'semiconductors', 'trade-policy', 'energy']),
+      }),
+      expect.objectContaining({
+        text: 'Washington expects a broader Iran deal over the next week, but officials warn talks could stall.',
+        topics: expect.arrayContaining(['energy']),
+      }),
+    ]);
+  });
+
   test('returns an empty intelligence payload when no text is available', () => {
     const intelligence = buildResearchIntelligence({
       id: 'empty',

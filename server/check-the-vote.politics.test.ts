@@ -45,10 +45,16 @@ describe('loadCheckTheVotePolitics', () => {
     expect(calls).toEqual([
       { url: 'http://pi.local:3000/api/v1/health', authorization: 'Bearer secret' },
       { url: 'http://pi.local:3000/api/v1/sync', authorization: 'Bearer secret' },
-      { url: 'http://pi.local:3000/api/v1/votes/recent', authorization: 'Bearer secret' },
-      { url: 'http://pi.local:3000/api/v1/trades/recent', authorization: 'Bearer secret' },
       {
-        url: 'http://pi.local:3000/api/v1/trade-filings/recent',
+        url: 'http://pi.local:3000/api/v1/votes/recent?limit=100',
+        authorization: 'Bearer secret',
+      },
+      {
+        url: 'http://pi.local:3000/api/v1/trades/recent?limit=100',
+        authorization: 'Bearer secret',
+      },
+      {
+        url: 'http://pi.local:3000/api/v1/trade-filings/recent?limit=100',
         authorization: 'Bearer secret',
       },
     ]);
@@ -83,7 +89,7 @@ describe('loadCheckTheVotePolitics', () => {
       configured: true,
       ok: false,
       baseUrl: 'http://pi.local:3000',
-      error: 'Check the Vote request failed for /api/v1/trades/recent: HTTP 503',
+      error: 'Check the Vote request failed for /api/v1/trades/recent?limit=100: HTTP 503',
     });
     expect(JSON.stringify(result)).not.toContain('secret');
   });
