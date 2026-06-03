@@ -86,6 +86,7 @@ describe('research politics links route', () => {
     const body = (await linksResponse!.json()) as {
       ok: boolean;
       links: Array<{ claimText: string; matchedTrades: unknown[]; matchedVotes: unknown[] }>;
+      briefs: Array<{ key: string; label: string; claimCount: number; tradeMatchCount: number }>;
     };
     expect(body.ok).toBe(true);
     expect(body.links[0]).toEqual(
@@ -96,6 +97,14 @@ describe('research politics links route', () => {
           expect.objectContaining({ ticker: 'NVDA', politicianName: 'Donald J. Trump' }),
         ],
         matchedVotes: [expect.objectContaining({ label: 'AI Accelerator Export Waiver Act' })],
+      })
+    );
+    expect(body.briefs[0]).toEqual(
+      expect.objectContaining({
+        key: 'ticker:NVDA',
+        label: 'NVDA',
+        claimCount: 1,
+        tradeMatchCount: 1,
       })
     );
     expect(fetchCalls.every((call) => call.authorization === 'Bearer secret')).toBe(true);

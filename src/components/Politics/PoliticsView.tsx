@@ -28,6 +28,20 @@ interface ResearchPoliticsLink {
   matchedVotes: Array<{ externalId?: string; label: string }>;
 }
 
+interface ResearchPoliticsBrief {
+  key: string;
+  kind: 'ticker' | 'topic';
+  label: string;
+  claimCount: number;
+  tradeMatchCount: number;
+  voteMatchCount: number;
+  stances: string[];
+  sourceUrls: string[];
+  sampleClaims: Array<{ entryId: string; claimId: string; text: string; title?: string }>;
+  matchedTrades: Array<{ politicianName?: string; ticker: string; category?: string }>;
+  matchedVotes: Array<{ externalId?: string; label: string }>;
+}
+
 function CheckTheVoteDashboard() {
   const [payload, setPayload] = useState<CheckTheVotePoliticsPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -223,18 +237,31 @@ function FeedCard({
 
 function ResearchPoliticsLinksCard() {
   const [links, setLinks] = useState<ResearchPoliticsLink[]>([]);
+  const [briefs, setBriefs] = useState<ResearchPoliticsBrief[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     fetch('/api/research/politics-links')
-      .then((res) => res.json() as Promise<{ links?: ResearchPoliticsLink[] }>)
+      .then(
+        (res) =>
+          res.json() as Promise<{
+            links?: ResearchPoliticsLink[];
+            briefs?: ResearchPoliticsBrief[];
+          }>
+      )
       .then((data) => {
-        if (!cancelled) setLinks(data.links ?? []);
+        if (!cancelled) {
+          setLinks(data.links ?? []);
+          setBriefs(data.briefs ?? []);
+        }
       })
       .catch(() => {
-        if (!cancelled) setLinks([]);
+        if (!cancelled) {
+          setLinks([]);
+          setBriefs([]);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -249,10 +276,54 @@ function ResearchPoliticsLinksCard() {
       <div className="flex items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2">
           <Link2 className="w-4 h-4 text-surface-600" />
-          <h3 className="text-sm font-semibold text-surface-950">Research ↔ politics links</h3>
+          <h3 className="text-sm font-semibold text-surface-950">Asset/topic intelligence radar</h3>
         </div>
         {loading && <Loader2 className="w-3.5 h-3.5 text-surface-600 animate-spin" />}
       </div>
+      {briefs.length > 0 && (
+        <div className="mb-4 grid gap-3 md:grid-cols-2">
+          {briefs.slice(0, 4).map((brief) => (
+            <div
+              key={brief.key}
+              className="rounded-lg border border-border/50 bg-surface-100/50 p-3"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs font-semibold text-surface-950">{brief.label}</p>
+                  <p className="text-[11px] uppercase tracking-wide text-surface-500">
+                    {brief.kind === 'ticker' ? 'Asset' : 'Topic'} signal
+                  </p>
+                </div>
+                <div className="text-right text-[11px] text-surface-600">
+                  <div>
+                    {brief.claimCount} claim{brief.claimCount === 1 ? '' : 's'}
+                  </div>
+                  <div>
+                    {brief.tradeMatchCount} trade · {brief.voteMatchCount} vote
+                  </div>
+                </div>
+              </div>
+              {brief.stances.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {brief.stances.map((stance) => (
+                    <span
+                      key={stance}
+                      className="rounded-full bg-surface-200 px-2 py-0.5 text-[10px] uppercase text-surface-600"
+                    >
+                      {stance}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {brief.sampleClaims[0] && (
+                <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-surface-700">
+                  {brief.sampleClaims[0].text}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       {links.length === 0 ? (
         <p className="text-xs text-surface-600">
           No linked research claims yet. Extract intelligence on a politics research entry to match

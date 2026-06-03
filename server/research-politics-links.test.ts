@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vite-plus/test';
-import { buildResearchPoliticsLinks } from './research-politics-links';
+import { buildResearchPoliticsBriefs, buildResearchPoliticsLinks } from './research-politics-links';
 
 describe('buildResearchPoliticsLinks', () => {
   test('links research claims to Check the Vote trades by ticker and votes by policy topic', () => {
@@ -99,5 +99,69 @@ describe('buildResearchPoliticsLinks', () => {
         politics: { configured: false, ok: false, reason: 'missing_api_key' },
       })
     ).toEqual([]);
+  });
+
+  test('groups linked claims into ticker and topic briefs with provenance counts', () => {
+    const links = [
+      {
+        entryId: 'research-1',
+        title: 'AI export waiver transcript',
+        claimId: 'claim-1',
+        claimText: 'NVDA demand will accelerate if export waivers remain in place.',
+        sourceUrl: 'https://example.test/video',
+        tickers: ['NVDA'],
+        topics: ['ai', 'trade-policy'],
+        stance: 'bullish',
+        matchedTrades: [
+          {
+            politicianName: 'Donald J. Trump',
+            ticker: 'NVDA',
+            category: 'buy',
+            tradeDate: '2026-03-23',
+          },
+        ],
+        matchedVotes: [{ externalId: 'house-119-2-7', label: 'AI Accelerator Export Waiver Act' }],
+      },
+      {
+        entryId: 'research-2',
+        title: 'Semis note',
+        claimId: 'claim-2',
+        claimText: 'NVDA capex risk rises if data-center demand slows.',
+        tickers: ['NVDA'],
+        topics: ['ai'],
+        stance: 'bearish',
+        matchedTrades: [{ politicianName: 'Jane Doe', ticker: 'NVDA', category: 'sell' }],
+        matchedVotes: [],
+      },
+    ];
+
+    expect(buildResearchPoliticsBriefs(links)).toEqual([
+      expect.objectContaining({
+        key: 'ticker:NVDA',
+        kind: 'ticker',
+        label: 'NVDA',
+        claimCount: 2,
+        tradeMatchCount: 2,
+        voteMatchCount: 0,
+        stances: ['bearish', 'bullish'],
+        sourceUrls: ['https://example.test/video'],
+      }),
+      expect.objectContaining({
+        key: 'topic:ai',
+        kind: 'topic',
+        label: '#ai',
+        claimCount: 2,
+        tradeMatchCount: 2,
+        voteMatchCount: 1,
+      }),
+      expect.objectContaining({
+        key: 'topic:trade-policy',
+        kind: 'topic',
+        label: '#trade-policy',
+        claimCount: 1,
+        tradeMatchCount: 1,
+        voteMatchCount: 1,
+      }),
+    ]);
   });
 });
