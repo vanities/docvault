@@ -13,6 +13,7 @@ import { fetchRecentBills } from './congress-bills.js';
 import { fetchRecentExecutiveActions } from './federal-register.js';
 import { ingestHousePtr } from './house-ptr.js';
 import { ingestOge278t } from './oge-278t.js';
+import { ingestSenatePtr } from './senate-ptr.js';
 import {
   loadPoliticsCache,
   mergeBills,
@@ -94,6 +95,22 @@ export async function refreshPolitics(
     const error = err instanceof Error ? err.message : String(err);
     log.warn(`OGE-278-T refresh failed: ${error}`);
     results.push({ source: 'oge-278t', ok: false, added: 0, error });
+  }
+
+  // --- Senate PTR trades (eFD). The most fragile source — its stateful CSRF
+  // handshake can rot — but this try/catch isolates any failure from the rest.
+  try {
+    const senate = await ingestSenatePtr(cache, { fetchFn: opts.fetchFn });
+    results.push({
+      source: 'senate-ptr',
+      ok: !senate.error,
+      added: senate.added,
+      error: senate.error,
+    });
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    log.warn(`Senate PTR refresh failed: ${error}`);
+    results.push({ source: 'senate-ptr', ok: false, added: 0, error });
   }
 
   const generatedAt = new Date().toISOString();

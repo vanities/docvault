@@ -14,6 +14,7 @@ import {
 import { ingestHousePtr, parseHouseDisclosureIndex, parseHousePtrText } from './house-ptr.js';
 import { inferOgeTicker } from './oge-asset-normalization.js';
 import { parseOge278Transactions } from './oge-parser.js';
+import { parseReportDataRows, parseSenatePtrHtml } from './senate-ptr.js';
 import { mergeTrades } from './feed-store.js';
 import type { BillRecord, TradeRecord } from './types.js';
 
@@ -276,6 +277,64 @@ describe('OGE-278-T parser', () => {
     expect(inferOgeTicker('NVIDIA CORP', 'ST')).toBe('NVDA');
     expect(inferOgeTicker('UNITED STATES TREAS BILL DUE 2030', 'BOND')).toBeNull();
     expect(inferOgeTicker('MORGAN STANLEY 04.250% DUE 041530', null)).toBeNull();
+  });
+});
+
+describe('Senate eFD parsers', () => {
+  test('parseReportDataRows splits electronic PTRs from scanned paper filings', () => {
+    const rows = parseReportDataRows([
+      [
+        'James',
+        'Banks',
+        'James Banks (Senator)',
+        '<a href="/search/view/ptr/abc-123/">View</a>',
+        '04/20/2026',
+      ],
+      [
+        'Richard',
+        'Blumenthal',
+        '—',
+        '<a href="/search/view/paper/def-456/">View</a>',
+        '05/19/2026',
+      ],
+    ]);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      reportKind: 'ptr',
+      filingDocId: 'abc-123',
+      filingDate: '2026-04-20',
+    });
+    expect(rows[1]).toMatchObject({ reportKind: 'paper', filingDocId: 'def-456' });
+  });
+
+  test('parseSenatePtrHtml extracts ticker/category/amount from the transactions table', () => {
+    const html = `
+      <h3>Transactions</h3>
+      <table><tbody>
+        <tr>
+          <td>1</td><td>04/15/2026</td><td>Self</td>
+          <td><a href="https://finance.yahoo.com/quote/SBUX">SBUX</a></td>
+          <td>Starbucks Corporation - Common Stock</td><td>Stock</td>
+          <td>Sale (Full)</td><td>$1,001 - $15,000</td><td>--</td>
+        </tr>
+      </tbody></table>`;
+    const trades = parseSenatePtrHtml(html, {
+      filingDocId: 'abc-123',
+      filerName: 'James Banks',
+      filingDate: '2026-04-20',
+      filingYear: 2026,
+      filingUrl: 'https://efdsearch.senate.gov/search/view/ptr/abc-123/',
+    });
+    expect(trades).toHaveLength(1);
+    expect(trades[0]).toMatchObject({
+      chamber: 'senate',
+      source: 'senate-ptr',
+      ticker: 'SBUX',
+      category: 'sell',
+      tradeDate: '2026-04-15',
+      amountMin: 1001,
+      amountMax: 15000,
+    });
   });
 });
 
