@@ -33,7 +33,24 @@ export interface RefreshPoliticsOptions {
   backfill?: boolean;
 }
 
-export async function refreshPolitics(
+// Serialize politics refreshes so the boot warm-up, the daily task, a manual
+// refresh, and a backfill never run concurrently and clobber each other's cache
+// write. One in-process promise chain suffices (single server process).
+let refreshChain: Promise<unknown> = Promise.resolve();
+
+export function refreshPolitics(opts: RefreshPoliticsOptions = {}): Promise<PoliticsRefreshResult> {
+  const run = refreshChain.then(
+    () => refreshPoliticsInner(opts),
+    () => refreshPoliticsInner(opts)
+  );
+  refreshChain = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
+}
+
+async function refreshPoliticsInner(
   opts: RefreshPoliticsOptions = {}
 ): Promise<PoliticsRefreshResult> {
   const settings = opts.settings ?? (await loadSettings());

@@ -71,10 +71,20 @@ export async function handlePoliticsRoutes(
   }
 
   if (pathname === '/api/politics/backfill' && req.method === 'POST') {
-    // One-time: parse the full current year of House/Senate/OGE filings. Slow
-    // (minutes) and idempotent — dedup-by-id means re-running only adds new rows.
-    const result = await refreshPolitics({ backfill: true });
-    return jsonResponse(result, result.errors.length > 0 ? 207 : 200);
+    // One-time: parse the full current year of House/Senate/OGE filings. This
+    // takes minutes — far longer than the socket idle timeout — so fire it
+    // server-side and return immediately. refreshPolitics serializes internally,
+    // so this queues behind any in-flight refresh. Poll /api/politics/feed
+    // (checkedAt / trades count) for completion. Idempotent (dedup by externalId).
+    void refreshPolitics({ backfill: true }).catch(() => {});
+    return jsonResponse(
+      {
+        ok: true,
+        started: true,
+        note: 'Backfill running; poll /api/politics/feed for the result.',
+      },
+      202
+    );
   }
 
   return null;
