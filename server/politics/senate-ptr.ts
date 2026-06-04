@@ -371,7 +371,9 @@ export async function ingestSenatePtr(
   const allRows = await fetchSenateFilings(year, session, fetchFn);
 
   const seen = new Set(cache.seen.senateFilingIds);
-  const newRows = allRows.filter((row) => !seen.has(row.filingDocId));
+  // Backfill re-scans the whole year regardless of the seen ledger (a prior
+  // forward-only first run may have seed-skipped every filing id into it).
+  const newRows = allRows.filter((row) => opts.backfill || !seen.has(row.filingDocId));
 
   const firstRun = cache.cursors.senateLastSeen == null;
   const cutoff = new Date(now.getTime() - firstRunDays * 86_400_000).toISOString().slice(0, 10);

@@ -253,6 +253,35 @@ describe('ingestHousePtr (forward-only)', () => {
     // Both PTR docIds are now seen (the older one was seeded without parsing).
     expect(cache.seen.houseDocIds.sort()).toEqual(['20030001', '20030003']);
   });
+
+  test('backfill re-scans filings already in the seen ledger', async () => {
+    const indexText = [
+      'Prefix\tLast\tFirst\tSuffix\tFilingType\tStateDst\tYear\tFilingDate\tDocID',
+      'Hon.\tPublic\tJohn\t\tP\tCA01\t2026\t1/20/2026\t20030001',
+    ].join('\n');
+    const ptrText =
+      'Name: John Q Public\nApple Inc (AAPL) [ST]  P  01/15/2026  01/18/2026  $1,001 - $15,000';
+    const fetchFn = (async (input: URL | string) => {
+      const u = String(input);
+      if (u.includes('/financial-pdfs/') && u.endsWith('FD.txt')) {
+        return { ok: true, status: 200, text: async () => indexText } as Response;
+      }
+      return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(8) } as Response;
+    }) as unknown as typeof fetch;
+
+    const cache = emptyPoliticsCache();
+    cache.cursors.houseYear = 2026; // not a first run
+    cache.seen.houseDocIds = ['20030001']; // already seed-skipped as seen
+    const result = await ingestHousePtr(cache, {
+      backfill: true,
+      fetchFn,
+      extractText: async () => ptrText,
+      now: new Date('2026-06-01T00:00:00Z'),
+    });
+
+    expect(result.added).toBe(1); // parsed despite being in the seen ledger
+    expect(cache.trades[0].ticker).toBe('AAPL');
+  });
 });
 
 describe('OGE-278-T parser', () => {

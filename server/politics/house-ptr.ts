@@ -415,7 +415,10 @@ export async function ingestHousePtr(
   const rows = parseHouseDisclosureIndex(await res.text());
 
   const seen = new Set(cache.seen.houseDocIds);
-  const ptrRows = rows.filter((row) => row.isPtr && !seen.has(row.docId));
+  // Backfill re-scans the whole year regardless of the seen ledger (a prior
+  // forward-only first run may have seed-skipped every docId into it). Trade
+  // externalIds keep re-processing idempotent.
+  const ptrRows = rows.filter((row) => row.isPtr && (opts.backfill || !seen.has(row.docId)));
 
   // First-run bounding (the "forward-only" guarantee): the very first time we
   // ingest House, mark EVERY current PTR DocId as seen so history is never
