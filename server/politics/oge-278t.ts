@@ -8,6 +8,7 @@
 // OCR-hardened dual-strategy parser (`oge-parser.ts`).
 
 import { createLogger } from '../logger.js';
+import { timeoutFetch } from './http.js';
 import {
   extractPdfTextWithPdftotext,
   pdftotextAvailable,
@@ -94,7 +95,7 @@ function extractDocId(url: string): string | null {
 }
 
 /** Query the OGE presidential-disclosure API for Trump's 278-T (transaction) PDFs. */
-export async function fetchTrumpOgePdfs(fetchFn: typeof fetch = fetch): Promise<OgePdf[]> {
+export async function fetchTrumpOgePdfs(fetchFn: typeof fetch = timeoutFetch()): Promise<OgePdf[]> {
   const params = new URLSearchParams({
     draw: '1',
     start: '0',
@@ -219,7 +220,7 @@ export async function ingestOge278t(
   cache: PoliticsCache,
   opts: IngestOgeOptions = {}
 ): Promise<IngestOgeResult> {
-  const fetchFn = opts.fetchFn ?? fetch;
+  const fetchFn = opts.fetchFn ?? timeoutFetch();
   const extractText = opts.extractText ?? extractPdfTextWithPdftotext;
   const maxPdfs = opts.maxPdfs ?? (opts.backfill ? 20 : 3);
   const maxTradesPerFiling = opts.maxTradesPerFiling ?? 250;

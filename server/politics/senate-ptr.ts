@@ -9,6 +9,7 @@
 // session is established ONCE per run and reused for every report fetch.
 
 import { createLogger } from '../logger.js';
+import { timeoutFetch } from './http.js';
 import { markSeen, mergeFilings, mergeTrades } from './feed-store.js';
 import { normalizeTradeCategory, parseDisclosureAmountRange } from './trade-transform.js';
 import type { FilingRecord, PoliticsCache, TradeRecord } from './types.js';
@@ -110,7 +111,7 @@ function csrfFromHtml(html: string): string {
 // --- Session handshake -------------------------------------------------------
 
 export async function establishSenateSession(
-  fetchFn: typeof fetch = fetch
+  fetchFn: typeof fetch = timeoutFetch()
 ): Promise<SenateSession> {
   const cookies: CookieMap = new Map();
 
@@ -361,7 +362,7 @@ export async function ingestSenatePtr(
   cache: PoliticsCache,
   opts: IngestSenateOptions = {}
 ): Promise<IngestSenateResult> {
-  const fetchFn = opts.fetchFn ?? fetch;
+  const fetchFn = opts.fetchFn ?? timeoutFetch();
   const now = opts.now ?? new Date();
   const firstRunDays = opts.firstRunDays ?? 7;
   const maxFilings = opts.maxFilings ?? (opts.backfill ? 120 : 40);

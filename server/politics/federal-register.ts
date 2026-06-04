@@ -5,6 +5,7 @@
 // proclamations, memoranda) — the President's analog to "bills".
 
 import { createLogger } from '../logger.js';
+import { timeoutFetch } from './http.js';
 import type { ExecutiveActionRecord, ExecutiveActionType } from './types.js';
 
 const log = createLogger('PoliticsExecActions');
@@ -67,7 +68,7 @@ export interface FetchExecutiveActionsOptions {
 export async function fetchRecentExecutiveActions(
   opts: FetchExecutiveActionsOptions = {}
 ): Promise<{ actions: ExecutiveActionRecord[]; newestIssuedDate?: string }> {
-  const fetchFn = opts.fetchFn ?? fetch;
+  const fetchFn = opts.fetchFn ?? timeoutFetch();
   const url = new URL(`${BASE_URL}/documents.json`);
   url.searchParams.set('conditions[type][]', 'PRESDOCU');
   url.searchParams.set('per_page', String(opts.perPage ?? 50));
