@@ -15,6 +15,7 @@ import { ingestHousePtr, parseHouseDisclosureIndex, parseHousePtrText } from './
 import { inferOgeTicker } from './oge-asset-normalization.js';
 import { parseOge278Transactions } from './oge-parser.js';
 import { parseReportDataRows, parseSenatePtrHtml } from './senate-ptr.js';
+import { buildResolverFromEntries, imageUrlForBioguide } from './legislators.js';
 import { filterTrades, mergeTrades, topSpenders } from './feed-store.js';
 import type { BillRecord, TradeRecord } from './types.js';
 
@@ -477,6 +478,37 @@ describe('topSpenders + filterTrades', () => {
     expect(filterTrades(cache, { politician: 'pelosi' })).toHaveLength(2);
     expect(filterTrades(cache, { chamber: 'senate' })).toHaveLength(1);
     expect(filterTrades(cache, { politician: 'pelosi', category: 'buy' })[0].ticker).toBe('NVDA');
+  });
+});
+
+describe('headshot resolver (fuzzy name match)', () => {
+  const entries = [
+    { bioguide: 'P000197', first: 'Nancy', last: 'Pelosi', official: 'Nancy Pelosi' },
+    { bioguide: 'M001243', first: 'David', last: 'McCormick', official: 'David McCormick' },
+    {
+      bioguide: 'R000605',
+      first: 'Mike',
+      last: 'Rounds',
+      official: 'Mike Rounds',
+      nickname: 'Mike',
+    },
+    { bioguide: 'S001234', first: 'John', last: 'Smith', official: 'John Smith' },
+    { bioguide: 'S005678', first: 'Jane', last: 'Smith', official: 'Jane Smith' },
+  ];
+  const resolve = buildResolverFromEntries(entries);
+
+  test('matches Hon.-prefixed names and drops middle initials', () => {
+    expect(resolve('Hon. Nancy Pelosi')).toBe(imageUrlForBioguide('P000197'));
+    expect(resolve('David H McCormick')).toBe(imageUrlForBioguide('M001243'));
+  });
+
+  test('falls back to a unique last name', () => {
+    expect(resolve('M. Michael Rounds')).toBe(imageUrlForBioguide('R000605'));
+  });
+
+  test('returns null for ambiguous last names and non-members', () => {
+    expect(resolve('Pat Smith')).toBeNull(); // two Smiths → ambiguous
+    expect(resolve('Donald J. Trump')).toBeNull(); // not in Congress
   });
 });
 

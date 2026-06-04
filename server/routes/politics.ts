@@ -17,6 +17,7 @@ import {
   type FeedSyncJob,
 } from '../politics/feed-store.js';
 import { refreshPolitics } from '../politics/refresh.js';
+import { buildHeadshotResolver } from '../politics/legislators.js';
 
 async function syncJobsFromSchedule(): Promise<FeedSyncJob[]> {
   const status = await loadScheduleStatus();
@@ -49,8 +50,15 @@ export async function handlePoliticsRoutes(
   }
 
   if (pathname === '/api/politics/top-spenders' && req.method === 'GET') {
-    const cache = await loadPoliticsCache();
-    return jsonResponse({ spenders: topSpenders(cache, intParam(url, 'limit', 25, 200)) });
+    const [cache, resolveHeadshot] = await Promise.all([
+      loadPoliticsCache(),
+      buildHeadshotResolver(),
+    ]);
+    const spenders = topSpenders(cache, intParam(url, 'limit', 25, 200)).map((s) => ({
+      ...s,
+      imageUrl: resolveHeadshot(s.politician),
+    }));
+    return jsonResponse({ spenders });
   }
 
   if (pathname === '/api/politics/trades' && req.method === 'GET') {
