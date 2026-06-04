@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { ResearchPanel } from '../Quant/ResearchPanel';
+import { TradeExplorer } from './TradeExplorer';
 import { summarizePoliticsData, type PoliticsFeedPayload } from './politicsData';
 
 interface ResearchPoliticsLink {
@@ -395,6 +396,8 @@ export function PoliticsView() {
       </div>
 
       <CongressDashboard />
+
+      <TradeExplorer />
 
       <ResearchPoliticsLinksCard />
 

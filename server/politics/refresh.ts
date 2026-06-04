@@ -28,6 +28,9 @@ export interface RefreshPoliticsOptions {
   dataDir?: string;
   settings?: Settings;
   fetchFn?: typeof fetch;
+  /** One-time: parse the full current year of House/Senate/OGE filings, not just
+   *  the recent forward window. */
+  backfill?: boolean;
 }
 
 export async function refreshPolitics(
@@ -74,7 +77,7 @@ export async function refreshPolitics(
 
   // --- House PTR trades (Clerk of the House) — forward-only; needs pdftotext.
   try {
-    const house = await ingestHousePtr(cache, { fetchFn: opts.fetchFn });
+    const house = await ingestHousePtr(cache, { fetchFn: opts.fetchFn, backfill: opts.backfill });
     results.push({
       source: 'house-ptr',
       ok: !house.error,
@@ -89,7 +92,7 @@ export async function refreshPolitics(
 
   // --- Trump OGE-278-T trades (executive-branch periodic transaction reports).
   try {
-    const oge = await ingestOge278t(cache, { fetchFn: opts.fetchFn });
+    const oge = await ingestOge278t(cache, { fetchFn: opts.fetchFn, backfill: opts.backfill });
     results.push({ source: 'oge-278t', ok: !oge.error, added: oge.added, error: oge.error });
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
@@ -100,7 +103,7 @@ export async function refreshPolitics(
   // --- Senate PTR trades (eFD). The most fragile source — its stateful CSRF
   // handshake can rot — but this try/catch isolates any failure from the rest.
   try {
-    const senate = await ingestSenatePtr(cache, { fetchFn: opts.fetchFn });
+    const senate = await ingestSenatePtr(cache, { fetchFn: opts.fetchFn, backfill: opts.backfill });
     results.push({
       source: 'senate-ptr',
       ok: !senate.error,

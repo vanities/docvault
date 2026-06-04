@@ -21,12 +21,21 @@ import type {
 // that the file stays light and the UI stays fast.
 const CAP_BILLS = 250;
 const CAP_EXEC = 200;
-// Trades are capped PER SOURCE (house-ptr / senate-ptr / oge-278t) so a single
-// high-volume filer — e.g. Trump's ~1,100-row OGE-278-T bond filings — can't
-// crowd congressional stock trades out of the feed.
-const CAP_TRADES_PER_SOURCE = 250;
-const CAP_FILINGS = 100;
-const CAP_SEEN = 4000; // per-ledger LRU ceiling
+// Trades are capped PER SOURCE so one high-volume filer can't dominate. House and
+// Senate hold a full year of filings (so the browse/top-spenders view is real);
+// OGE-278-T (Trump) stays bounded because his ~1,100-row bond filings would
+// otherwise balloon the cache.
+const TRADE_CAP_BY_SOURCE: Record<string, number> = {
+  'house-ptr': 6000,
+  'senate-ptr': 6000,
+  'oge-278t': 600,
+};
+const DEFAULT_TRADE_CAP = 2000;
+function tradeCapForSource(source: string): number {
+  return TRADE_CAP_BY_SOURCE[source] ?? DEFAULT_TRADE_CAP;
+}
+const CAP_FILINGS = 500;
+const CAP_SEEN = 12000; // per-ledger LRU ceiling (holds a year of filing ids)
 
 export function emptyPoliticsCache(): PoliticsCache {
   return {
@@ -126,7 +135,7 @@ export function mergeTrades(cache: PoliticsCache, incoming: TradeRecord[]): void
   const kept: TradeRecord[] = [];
   for (const trade of merged) {
     const count = perSource.get(trade.source) ?? 0;
-    if (count >= CAP_TRADES_PER_SOURCE) continue;
+    if (count >= tradeCapForSource(trade.source)) continue;
     perSource.set(trade.source, count + 1);
     kept.push(trade);
   }
@@ -206,4 +215,73 @@ export async function loadPoliticsFeedPayload(
   dataDir: string = DATA_DIR
 ): Promise<PoliticsFeedPayload> {
   return buildFeedPayload(await loadPoliticsCache(dataDir));
+}
+
+// --- Browse / aggregate ------------------------------------------------------
+
+export interface SpenderSummary {
+  politician: string;
+  chamber: string;
+  trades: number;
+  buys: number;
+  sells: number;
+  estMin: number; // Σ amountMin (lower bound of disclosed bands)
+  estMax: number; // Σ amountMax (upper bound)
+  tickers: string[];
+  lastTradeDate: string | null;
+}
+
+/** Aggregate cached trades by politician, ranked by upper-bound dollar volume. */
+export function topSpenders(cache: PoliticsCache, limit = 25): SpenderSummary[] {
+  const byName = new Map<string, TradeRecord[]>();
+  for (const trade of cache.trades) {
+    const list = byName.get(trade.politicianName);
+    if (list) list.push(trade);
+    else byName.set(trade.politicianName, [trade]);
+  }
+  const out: SpenderSummary[] = [];
+  for (const [politician, list] of byName) {
+    out.push({
+      politician,
+      chamber: list[0].chamber,
+      trades: list.length,
+      buys: list.filter((t) => t.category === 'buy').length,
+      sells: list.filter((t) => t.category === 'sell').length,
+      estMin: list.reduce((sum, t) => sum + (t.amountMin ?? 0), 0),
+      estMax: list.reduce((sum, t) => sum + (t.amountMax ?? 0), 0),
+      tickers: [...new Set(list.map((t) => t.ticker).filter((x): x is string => Boolean(x)))].slice(
+        0,
+        12
+      ),
+      lastTradeDate: list.reduce<string | null>(
+        (max, t) => (max == null || t.tradeDate > max ? t.tradeDate : max),
+        null
+      ),
+    });
+  }
+  return out.sort((a, b) => b.estMax - a.estMax).slice(0, limit);
+}
+
+export interface TradeFilter {
+  politician?: string;
+  chamber?: string;
+  category?: string;
+  ticker?: string;
+  limit?: number;
+}
+
+/** Filter cached trades (case-insensitive politician/ticker substring), newest first. */
+export function filterTrades(cache: PoliticsCache, filter: TradeFilter): TradeRecord[] {
+  const pol = filter.politician?.trim().toLowerCase();
+  const tkr = filter.ticker?.trim().toUpperCase();
+  return cache.trades
+    .filter((t) => {
+      if (pol && !t.politicianName.toLowerCase().includes(pol)) return false;
+      if (filter.chamber && t.chamber !== filter.chamber) return false;
+      if (filter.category && t.category !== filter.category) return false;
+      if (tkr && (t.ticker?.toUpperCase() ?? '') !== tkr) return false;
+      return true;
+    })
+    .sort((a, b) => b.tradeDate.localeCompare(a.tradeDate))
+    .slice(0, filter.limit ?? 200);
 }

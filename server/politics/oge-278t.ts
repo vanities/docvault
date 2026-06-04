@@ -204,6 +204,8 @@ export interface IngestOgeOptions {
   maxPdfs?: number;
   /** Keep only the most-recent N transactions from each filing. */
   maxTradesPerFiling?: number;
+  /** One-time: pull all of Trump's available filings, not just the newest few. */
+  backfill?: boolean;
 }
 
 export interface IngestOgeResult {
@@ -219,7 +221,7 @@ export async function ingestOge278t(
 ): Promise<IngestOgeResult> {
   const fetchFn = opts.fetchFn ?? fetch;
   const extractText = opts.extractText ?? extractPdfTextWithPdftotext;
-  const maxPdfs = opts.maxPdfs ?? 3;
+  const maxPdfs = opts.maxPdfs ?? (opts.backfill ? 20 : 3);
   const maxTradesPerFiling = opts.maxTradesPerFiling ?? 250;
 
   if (!opts.extractText && !(await pdftotextAvailable())) {
