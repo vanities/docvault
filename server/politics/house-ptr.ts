@@ -13,6 +13,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { promisify } from 'util';
 import { createLogger } from '../logger.js';
+import { timeoutFetch } from './http.js';
 import { parseDisclosureAmountRange } from './trade-transform.js';
 import { markSeen, mergeFilings, mergeTrades } from './feed-store.js';
 import type { FilingRecord, PoliticsCache, TradeCategory, TradeRecord } from './types.js';
@@ -396,7 +397,7 @@ export async function ingestHousePtr(
   cache: PoliticsCache,
   opts: IngestHouseOptions = {}
 ): Promise<IngestHouseResult> {
-  const fetchFn = opts.fetchFn ?? fetch;
+  const fetchFn = opts.fetchFn ?? timeoutFetch();
   const extractText = opts.extractText ?? extractPdfTextWithPdftotext;
   const now = opts.now ?? new Date();
   const firstRunDays = opts.firstRunDays ?? 7;

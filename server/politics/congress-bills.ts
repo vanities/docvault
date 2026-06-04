@@ -9,6 +9,7 @@
 // `settings.congressApiKey`. 5,000 req/hour — daily forward pulls use a handful.
 
 import { createLogger } from '../logger.js';
+import { timeoutFetch } from './http.js';
 import type { BillRecord, BillStatus } from './types.js';
 
 const log = createLogger('PoliticsBills');
@@ -91,7 +92,7 @@ export interface FetchRecentBillsOptions {
 export async function fetchRecentBills(
   opts: FetchRecentBillsOptions
 ): Promise<{ bills: BillRecord[]; newestUpdateDate?: string }> {
-  const fetchFn = opts.fetchFn ?? fetch;
+  const fetchFn = opts.fetchFn ?? timeoutFetch();
   const congress = opts.congress ?? DEFAULT_CONGRESS;
   const maxPages = opts.maxPages ?? DEFAULT_MAX_PAGES;
   const since = opts.sinceUpdateDate;
