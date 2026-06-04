@@ -324,6 +324,8 @@ export interface IngestSenateOptions {
   now?: Date;
   firstRunDays?: number;
   maxFilings?: number;
+  /** One-time: parse EVERY not-seen filing for the year (ignore the window). */
+  backfill?: boolean;
 }
 
 export interface IngestSenateResult {
@@ -362,7 +364,7 @@ export async function ingestSenatePtr(
   const fetchFn = opts.fetchFn ?? fetch;
   const now = opts.now ?? new Date();
   const firstRunDays = opts.firstRunDays ?? 7;
-  const maxFilings = opts.maxFilings ?? 40;
+  const maxFilings = opts.maxFilings ?? (opts.backfill ? 120 : 40);
   const year = now.getUTCFullYear();
 
   const session = await establishSenateSession(fetchFn);
@@ -373,12 +375,18 @@ export async function ingestSenatePtr(
 
   const firstRun = cache.cursors.senateLastSeen == null;
   const cutoff = new Date(now.getTime() - firstRunDays * 86_400_000).toISOString().slice(0, 10);
-  const toProcess = (firstRun ? newRows.filter((r) => r.filingDate >= cutoff) : newRows)
+  const windowed = opts.backfill
+    ? newRows
+    : firstRun
+      ? newRows.filter((r) => r.filingDate >= cutoff)
+      : newRows;
+  const toProcess = windowed
     .sort((a, b) => b.filingDate.localeCompare(a.filingDate))
     .slice(0, maxFilings);
 
-  if (firstRun) {
-    // Seed every current filing as seen so history is never back-filled.
+  // Seed-skip (mark history seen without parsing) only on a normal first run; in
+  // backfill we WANT the history.
+  if (firstRun && !opts.backfill) {
     cache.seen.senateFilingIds = markSeen(
       cache.seen.senateFilingIds,
       newRows.map((r) => r.filingDocId)

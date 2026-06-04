@@ -371,6 +371,8 @@ export interface IngestHouseOptions {
   firstRunDays?: number;
   /** Max PDFs to fetch+parse per run (forward-only daily never needs many). */
   maxPdfs?: number;
+  /** One-time: parse EVERY not-seen PTR for the year (ignore the recent window). */
+  backfill?: boolean;
 }
 
 export interface IngestHouseResult {
@@ -398,7 +400,7 @@ export async function ingestHousePtr(
   const extractText = opts.extractText ?? extractPdfTextWithPdftotext;
   const now = opts.now ?? new Date();
   const firstRunDays = opts.firstRunDays ?? 7;
-  const maxPdfs = opts.maxPdfs ?? 60;
+  const maxPdfs = opts.maxPdfs ?? (opts.backfill ? 250 : 60);
   const year = now.getUTCFullYear();
 
   // Without poppler there's no point fetching PDFs — skip cleanly rather than
@@ -420,11 +422,20 @@ export async function ingestHousePtr(
   // back-filled, but only actually parse the last `firstRunDays`.
   const firstRun = cache.cursors.houseYear == null;
   const cutoff = daysAgoIso(now, firstRunDays);
-  const toProcess = (firstRun ? ptrRows.filter((r) => (r.filingDate ?? '') >= cutoff) : ptrRows)
+  // Backfill parses every not-seen PTR for the year; a normal first run is bounded
+  // to the recent window (forward-only).
+  const windowed = opts.backfill
+    ? ptrRows
+    : firstRun
+      ? ptrRows.filter((r) => (r.filingDate ?? '') >= cutoff)
+      : ptrRows;
+  const toProcess = windowed
     .sort((a, b) => (b.filingDate ?? '').localeCompare(a.filingDate ?? ''))
     .slice(0, maxPdfs);
 
-  if (firstRun)
+  // Seed-skip (mark history seen without parsing) only applies to a normal
+  // first run. In backfill we WANT the history, so don't pre-mark it.
+  if (firstRun && !opts.backfill)
     cache.seen.houseDocIds = markSeen(
       cache.seen.houseDocIds,
       ptrRows.map((r) => r.docId)

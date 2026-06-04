@@ -15,7 +15,7 @@ import { ingestHousePtr, parseHouseDisclosureIndex, parseHousePtrText } from './
 import { inferOgeTicker } from './oge-asset-normalization.js';
 import { parseOge278Transactions } from './oge-parser.js';
 import { parseReportDataRows, parseSenatePtrHtml } from './senate-ptr.js';
-import { mergeTrades } from './feed-store.js';
+import { filterTrades, mergeTrades, topSpenders } from './feed-store.js';
 import type { BillRecord, TradeRecord } from './types.js';
 
 /** Minimal fake `fetch` that replays a queue of JSON bodies, one per call. */
@@ -367,13 +367,87 @@ describe('mergeTrades per-source cap', () => {
         sourceUrl: null,
       }));
     const cache = emptyPoliticsCache();
-    mergeTrades(cache, [...mk('house-ptr', 3), ...mk('oge-278t', 260)]);
+    mergeTrades(cache, [...mk('house-ptr', 3), ...mk('oge-278t', 700)]);
     const counts = cache.trades.reduce<Record<string, number>>((acc, t) => {
       acc[t.source] = (acc[t.source] ?? 0) + 1;
       return acc;
     }, {});
     expect(counts['house-ptr']).toBe(3); // congressional trades never crowded out
-    expect(counts['oge-278t']).toBe(250); // Trump's bond churn capped
+    expect(counts['oge-278t']).toBe(600); // Trump's bond churn capped (per-source OGE cap)
+  });
+});
+
+describe('topSpenders + filterTrades', () => {
+  const trade = (over: Partial<TradeRecord>): TradeRecord => ({
+    externalId: Math.random().toString(36).slice(2),
+    source: 'house-ptr',
+    chamber: 'house',
+    politicianName: 'X',
+    filerName: 'X',
+    owner: null,
+    assetName: 'A',
+    ticker: null,
+    assetType: null,
+    transactionType: 'P',
+    transactionDescription: 'Purchase',
+    category: 'buy',
+    tradeDate: '2026-01-01',
+    filingDate: null,
+    amount: null,
+    amountRange: null,
+    amountMin: 0,
+    amountMax: 0,
+    filingDocId: null,
+    filingYear: 2026,
+    filingUrl: null,
+    sourceUrl: null,
+    ...over,
+  });
+
+  const cache = emptyPoliticsCache();
+  mergeTrades(cache, [
+    trade({
+      politicianName: 'Nancy Pelosi',
+      ticker: 'NVDA',
+      category: 'buy',
+      amountMax: 250000,
+      tradeDate: '2026-05-01',
+    }),
+    trade({
+      politicianName: 'Nancy Pelosi',
+      ticker: 'AAPL',
+      category: 'sell',
+      amountMax: 50000,
+      tradeDate: '2026-05-10',
+    }),
+    trade({
+      politicianName: 'Some Senator',
+      chamber: 'senate',
+      source: 'senate-ptr',
+      ticker: 'TSLA',
+      amountMax: 15000,
+      tradeDate: '2026-04-01',
+    }),
+  ]);
+
+  test('topSpenders ranks by upper-bound dollar volume with buy/sell split', () => {
+    const spenders = topSpenders(cache, 10);
+    expect(spenders[0]).toMatchObject({
+      politician: 'Nancy Pelosi',
+      trades: 2,
+      buys: 1,
+      sells: 1,
+      estMax: 300000,
+      lastTradeDate: '2026-05-10',
+    });
+    expect(spenders[0].tickers.sort()).toEqual(['AAPL', 'NVDA']);
+    expect(spenders[1].politician).toBe('Some Senator');
+  });
+
+  test('filterTrades narrows by politician (substring) and chamber', () => {
+    expect(filterTrades(cache, { politician: 'pelosi' })).toHaveLength(2);
+    expect(filterTrades(cache, { chamber: 'senate' })).toHaveLength(1);
+    expect(filterTrades(cache, { politician: 'pelosi', category: 'buy' })[0].ticker).toBe('NVDA');
   });
 });
 
