@@ -484,7 +484,9 @@ describe('topSpenders + filterTrades', () => {
 describe('headshot resolver (fuzzy name match)', () => {
   const entries = [
     { bioguide: 'P000197', first: 'Nancy', last: 'Pelosi', official: 'Nancy Pelosi' },
-    { bioguide: 'M001243', first: 'David', last: 'McCormick', official: 'David McCormick' },
+    // Senator's `first` is the nickname "Dave"; disclosures use legal "David".
+    { bioguide: 'M001243', first: 'Dave', last: 'McCormick', official: 'David McCormick' },
+    { bioguide: 'M001218', first: 'Rich', last: 'McCormick', official: 'Richard McCormick' },
     {
       bioguide: 'R000605',
       first: 'Mike',
@@ -497,8 +499,9 @@ describe('headshot resolver (fuzzy name match)', () => {
   ];
   const resolve = buildResolverFromEntries(entries);
 
-  test('matches Hon.-prefixed names and drops middle initials', () => {
+  test('matches Hon.-prefixed names, drops middle initials, uses legal first names', () => {
     expect(resolve('Hon. Nancy Pelosi')).toBe(imageUrlForBioguide('P000197'));
+    // "David H McCormick" → the senator (legal first via official name), not Rep. Rich McCormick.
     expect(resolve('David H McCormick')).toBe(imageUrlForBioguide('M001243'));
   });
 

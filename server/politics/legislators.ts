@@ -61,6 +61,16 @@ export function buildResolverFromEntries(entries: LegislatorEntry[]): HeadshotRe
     }
     byFirstLast.set(normalize(`${e.first} ${e.last}`), e.bioguide);
     if (e.nickname) byFirstLast.set(normalize(`${e.nickname} ${e.last}`), e.bioguide);
+    // Also index the OFFICIAL name's first+last. Disclosures use the legal first
+    // name ("David") while `first` may hold a nickname ("Dave"), so this is what
+    // catches e.g. "David H McCormick" → Sen. Dave McCormick.
+    const officialTokens = normalize(e.official).split(' ').filter(Boolean);
+    if (officialTokens.length >= 2) {
+      byFirstLast.set(
+        `${officialTokens[0]} ${officialTokens[officialTokens.length - 1]}`,
+        e.bioguide
+      );
+    }
     const last = normalize(e.last);
     byLast.set(last, (byLast.get(last) ?? new Set()).add(e.bioguide));
   }
