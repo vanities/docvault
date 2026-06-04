@@ -1,5 +1,14 @@
 # Political + Finance Data Platform — Next Steps
 
+> **Update (June 2026):** DocVault now ingests political data **natively and
+> forward-only** — recent congressional bills (Congress.gov), presidential
+> executive actions (Federal Register), House PTR trades, and Trump's OGE-278-T
+> trades — via the built-in `politicsRefresh` scheduler task (`server/politics/`),
+> writing a rolling cache to `.docvault-politics.json`. The external **Check the
+> Vote** Pi bridge and its `CHECKTHEVOTE_*` env vars have been **removed**. Senate
+> eFD is the one source not yet ported (brittle CSRF handshake; deferred). The
+> sections below predate this change and are kept for historical context.
+
 This document is the pushed, repo-safe version of the working cross-context plan. It keeps the durable project direction in version control without relying on a local scratch file.
 
 ## Goal

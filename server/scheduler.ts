@@ -26,6 +26,7 @@ import { fetchAllBalances } from './crypto.js';
 import { buildPortfolio, fetchAllSnapTradeHoldings } from './brokers.js';
 import { fetchBalances as fetchSimplefinBalances } from './simplefin.js';
 import { refreshAllQuantData } from './routes/quant.js';
+import { refreshPolitics } from './politics/refresh.js';
 import { createLogger } from './logger.js';
 
 // Scheduler — built-in cron-like recurring tasks
@@ -38,21 +39,29 @@ const logSimpleFIN = createLogger('SimpleFIN');
 const logDropbox = createLogger('Dropbox');
 const logGold = createLogger('Gold');
 const logQuant = createLogger('Quant');
+const logPolitics = createLogger('Politics');
 
 export const DEFAULT_SNAPSHOT_INTERVAL = 1440; // 24 hours in minutes
 export const DEFAULT_DROPBOX_SYNC_INTERVAL = 15; // 15 minutes
 export const DEFAULT_QUANT_REFRESH_INTERVAL = 1440; // 24 hours in minutes
+export const DEFAULT_POLITICS_REFRESH_INTERVAL = 1440; // 24 hours in minutes
 
 let snapshotTimer: ReturnType<typeof setInterval> | null = null;
 let dropboxSyncTimer: ReturnType<typeof setInterval> | null = null;
 let quantRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let politicsRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
 // ============================================================================
 // Schedule status tracking — persists last-ran timestamps per task to
 // .docvault-schedule-status.json so the UI can surface staleness + errors.
 // ============================================================================
 
-export type ScheduleTaskName = 'snapshot' | 'dropboxSync' | 'quantRefresh' | 'encryptedBackup';
+export type ScheduleTaskName =
+  | 'snapshot'
+  | 'dropboxSync'
+  | 'quantRefresh'
+  | 'politicsRefresh'
+  | 'encryptedBackup';
 
 export interface ScheduleTaskStatus {
   lastRanAt: string | null;
@@ -79,6 +88,7 @@ export async function loadScheduleStatus(): Promise<ScheduleStatusMap> {
     snapshot: emptyStatus(),
     dropboxSync: emptyStatus(),
     quantRefresh: emptyStatus(),
+    politicsRefresh: emptyStatus(),
     encryptedBackup: emptyStatus(),
   };
   try {
@@ -380,6 +390,27 @@ export async function runQuantRefresh(): Promise<void> {
   });
 }
 
+/** Daily politics refresh — forward-only ingest of recent bills, executive
+ *  actions, and (later phases) politician trades into the politics feed cache.
+ *  A missing Congress key or a single dead source is a soft error: the task only
+ *  fails if EVERY source failed, so a partial feed still counts as success. */
+export async function runPoliticsRefresh(): Promise<void> {
+  return trackRun('politicsRefresh', async () => {
+    logPolitics.info('Starting politics feed refresh...');
+    const result = await refreshPolitics();
+    if (result.errors.length > 0) {
+      const anyOk = result.results.some((r) => r.ok);
+      if (!anyOk) throw new Error(result.errors.join('; '));
+      logPolitics.warn(`Politics refresh had soft errors: ${result.errors.join('; ')}`);
+    }
+    logPolitics.info(
+      `Politics refresh complete (bills=${result.counts.bills} exec=${result.counts.executiveActions} trades=${result.counts.trades})`
+    );
+  }).catch((err) => {
+    logPolitics.error('Politics refresh failed:', String(err));
+  });
+}
+
 export async function runDropboxSync(): Promise<void> {
   return trackRun('dropboxSync', async () => {
     // Create encrypted config backup before syncing (if password is configured)
@@ -429,9 +460,11 @@ export function startScheduler(schedules: Settings['schedules'] = {}): void {
   if (snapshotTimer) clearInterval(snapshotTimer);
   if (dropboxSyncTimer) clearInterval(dropboxSyncTimer);
   if (quantRefreshTimer) clearInterval(quantRefreshTimer);
+  if (politicsRefreshTimer) clearInterval(politicsRefreshTimer);
   snapshotTimer = null;
   dropboxSyncTimer = null;
   quantRefreshTimer = null;
+  politicsRefreshTimer = null;
 
   const snapshotEnabled = schedules?.snapshotEnabled !== false; // default on
   const snapshotMinutes = schedules?.snapshotIntervalMinutes || DEFAULT_SNAPSHOT_INTERVAL;
@@ -441,6 +474,10 @@ export function startScheduler(schedules: Settings['schedules'] = {}): void {
 
   const quantEnabled = schedules?.quantRefreshEnabled !== false; // default on
   const quantMinutes = schedules?.quantRefreshIntervalMinutes || DEFAULT_QUANT_REFRESH_INTERVAL;
+
+  const politicsEnabled = schedules?.politicsRefreshEnabled !== false; // default on
+  const politicsMinutes =
+    schedules?.politicsRefreshIntervalMinutes || DEFAULT_POLITICS_REFRESH_INTERVAL;
 
   if (snapshotEnabled) {
     snapshotTimer = setInterval(takePortfolioSnapshot, snapshotMinutes * 60 * 1000);
@@ -462,6 +499,13 @@ export function startScheduler(schedules: Settings['schedules'] = {}): void {
   } else {
     logScheduler.info('Quant refresh: disabled');
   }
+
+  if (politicsEnabled) {
+    politicsRefreshTimer = setInterval(runPoliticsRefresh, politicsMinutes * 60 * 1000);
+    logScheduler.info(`Politics refresh: every ${politicsMinutes}m`);
+  } else {
+    logScheduler.info('Politics refresh: disabled');
+  }
 }
 
 // Initialize scheduler on startup — take an immediate snapshot then start intervals
@@ -475,6 +519,10 @@ loadSettings()
     if (settings.schedules?.quantRefreshEnabled !== false) {
       logScheduler.info('Taking initial quant refresh on startup...');
       void runQuantRefresh();
+    }
+    if (settings.schedules?.politicsRefreshEnabled !== false) {
+      logScheduler.info('Taking initial politics refresh on startup...');
+      void runPoliticsRefresh();
     }
     // Run an initial Dropbox sync on boot so the encrypted backup stays fresh
     // even when container restarts happen more often than the sync interval.

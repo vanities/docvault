@@ -1,5 +1,11 @@
 # Political Intelligence Roadmap
 
+> **Update (June 2026):** Sections 1–2 below are superseded. DocVault no longer
+> calls an external Check the Vote service; it ports the forward-going slice of
+> that ingest in-process (`server/politics/`, built-in `politicsRefresh` task):
+> bills, executive actions, House PTR + Trump OGE-278-T trades. Senate PTR is
+> deferred (brittle eFD CSRF handshake). Kept below for historical context.
+
 This document connects the three related efforts discussed for DocVault / Check the Vote / predictive headlines.
 
 ## 1. Check the Vote Pi service

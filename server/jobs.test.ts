@@ -187,6 +187,7 @@ describe('listBuiltInJobRecords', () => {
       'dropbox-sync',
       'encrypted-backup',
       'quant-refresh',
+      'politics-refresh',
     ]);
     expect(jobs[0]).toMatchObject({
       kind: 'built-in',

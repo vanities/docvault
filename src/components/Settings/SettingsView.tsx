@@ -70,6 +70,8 @@ interface SettingsData {
   geoapifyKeyHint?: string;
   hasFredKey?: boolean;
   fredKeyHint?: string;
+  hasCongressKey?: boolean;
+  congressKeyHint?: string;
 }
 
 function formatRelativeTime(isoStr: string): string {
@@ -338,6 +340,10 @@ export function SettingsView() {
   const [hasFredKey, setHasFredKey] = useState(false);
   const [fredKeyHint, setFredKeyHint] = useState<string | undefined>();
   const [newFredKey, setNewFredKey] = useState('');
+  // Congress.gov API key — powers the Politics tab's recent-bills feed
+  const [hasCongressKey, setHasCongressKey] = useState(false);
+  const [congressKeyHint, setCongressKeyHint] = useState<string | undefined>();
+  const [newCongressKey, setNewCongressKey] = useState('');
 
   // Sync status state
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
@@ -402,6 +408,8 @@ export function SettingsView() {
   const [dropboxSyncInterval, setDropboxSyncInterval] = useState(15);
   const [quantRefreshEnabled, setQuantRefreshEnabled] = useState(true);
   const [quantRefreshInterval, setQuantRefreshInterval] = useState(1440);
+  const [politicsRefreshEnabled, setPoliticsRefreshEnabled] = useState(true);
+  const [politicsRefreshInterval, setPoliticsRefreshInterval] = useState(1440);
   const [autoBackupPasswordSet, setAutoBackupPasswordSet] = useState(false);
   const [autoBackupPassword, setAutoBackupPassword] = useState('');
   const [isScheduleSaving, setIsScheduleSaving] = useState(false);
@@ -741,6 +749,8 @@ export function SettingsView() {
       setGeoapifyKeyHint(data.geoapifyKeyHint);
       setHasFredKey(data.hasFredKey || false);
       setFredKeyHint(data.fredKeyHint);
+      setHasCongressKey(data.hasCongressKey || false);
+      setCongressKeyHint(data.congressKeyHint);
     } catch (err) {
       console.error('Failed to load settings:', err);
     }
@@ -821,6 +831,46 @@ export function SettingsView() {
       }
     } catch {
       addToast('Failed to remove FRED key', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveCongressKey = async () => {
+    if (!newCongressKey) return;
+    setIsSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ congressApiKey: newCongressKey.trim() }),
+      });
+      if ((await res.json()).ok) {
+        addToast('Congress.gov key saved', 'success');
+        setNewCongressKey('');
+        void loadSettings();
+      }
+    } catch {
+      addToast('Failed to save Congress.gov key', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRemoveCongressKey = async () => {
+    setIsSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ congressApiKey: '' }),
+      });
+      if ((await res.json()).ok) {
+        addToast('Congress.gov key removed', 'success');
+        void loadSettings();
+      }
+    } catch {
+      addToast('Failed to remove Congress.gov key', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -1041,6 +1091,8 @@ export function SettingsView() {
         setDropboxSyncInterval(data.dropboxSyncIntervalMinutes);
         setQuantRefreshEnabled(data.quantRefreshEnabled ?? true);
         setQuantRefreshInterval(data.quantRefreshIntervalMinutes ?? 1440);
+        setPoliticsRefreshEnabled(data.politicsRefreshEnabled ?? true);
+        setPoliticsRefreshInterval(data.politicsRefreshIntervalMinutes ?? 1440);
         setAutoBackupPasswordSet(data.backupPasswordSet ?? false);
       }
     } catch {
@@ -1061,6 +1113,8 @@ export function SettingsView() {
           dropboxSyncIntervalMinutes: dropboxSyncInterval,
           quantRefreshEnabled,
           quantRefreshIntervalMinutes: quantRefreshInterval,
+          politicsRefreshEnabled,
+          politicsRefreshIntervalMinutes: politicsRefreshInterval,
           ...(autoBackupPassword ? { backupPassword: autoBackupPassword } : {}),
         }),
       });
@@ -1761,6 +1815,48 @@ export function SettingsView() {
                   )}
                 </div>
 
+                {/* Politics Refresh */}
+                <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="text-[13px] font-medium text-surface-900">
+                        Congress / Politics Refresh
+                      </p>
+                      <p className="text-[11px] text-surface-500">
+                        Ingests recent bills, executive actions, and politician trades
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setPoliticsRefreshEnabled(!politicsRefreshEnabled)}
+                      className={`relative w-10 h-5 rounded-full transition-colors ${politicsRefreshEnabled ? 'bg-violet-500' : 'bg-surface-400'}`}
+                    >
+                      <span
+                        className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
+                        style={{ left: politicsRefreshEnabled ? 22 : 2 }}
+                      />
+                    </button>
+                  </div>
+                  {politicsRefreshEnabled && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-[12px] text-surface-600">Every</label>
+                      <Select
+                        value={String(politicsRefreshInterval)}
+                        onValueChange={(val) => setPoliticsRefreshInterval(Number(val))}
+                      >
+                        <SelectTrigger className="text-[13px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="360">6 hours</SelectItem>
+                          <SelectItem value="720">12 hours</SelectItem>
+                          <SelectItem value="1440">24 hours</SelectItem>
+                          <SelectItem value="10080">7 days</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+
                 {/* Encrypted Config Backup */}
                 <div className="border-t border-border pt-4">
                   <p className="text-[13px] font-medium text-surface-900 mb-1">
@@ -2108,6 +2204,11 @@ export function SettingsView() {
                       key: 'quantRefresh',
                       label: 'Quant Refresh',
                       intervalMin: quantRefreshInterval,
+                    },
+                    {
+                      key: 'politicsRefresh',
+                      label: 'Congress / Politics Refresh',
+                      intervalMin: politicsRefreshInterval,
                     },
                     {
                       key: 'encryptedBackup',
@@ -3302,6 +3403,58 @@ export function SettingsView() {
                   Shiller dataset on GitHub
                 </a>{' '}
                 (monthly back to 1871, no key needed). FRED powers the macro overlays.
+              </p>
+
+              <label className="block text-[13px] font-medium text-surface-800 mb-2 mt-6">
+                Congress.gov API Key
+              </label>
+              {hasCongressKey ? (
+                <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                  <CheckCircle className="w-4 h-4 text-emerald-400" />
+                  <span className="text-[13px] text-emerald-400 font-medium flex-1">
+                    Key set
+                    {congressKeyHint && (
+                      <span className="text-emerald-400/70 ml-2 font-mono">
+                        ****{congressKeyHint}
+                      </span>
+                    )}
+                  </span>
+                  <Button
+                    variant="ghost-danger"
+                    size="xs"
+                    onClick={handleRemoveCongressKey}
+                    disabled={isSaving}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Input
+                    type="password"
+                    value={newCongressKey}
+                    onChange={(e) => setNewCongressKey(e.target.value)}
+                    placeholder="Congress.gov API key..."
+                    className="flex-1 text-[13px] font-mono"
+                  />
+                  <Button onClick={handleSaveCongressKey} disabled={isSaving || !newCongressKey}>
+                    <Save className="w-4 h-4" />
+                    Save
+                  </Button>
+                </div>
+              )}
+              <p className="text-[11px] text-surface-500 mt-3">
+                Powers the Politics tab&apos;s recent-bills feed (signings, vetoes, status). Free
+                key at{' '}
+                <a
+                  href="https://api.congress.gov/sign-up/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent-400 hover:underline"
+                >
+                  api.congress.gov/sign-up
+                </a>
+                . House/Senate trades, Trump&apos;s OGE filings, and executive actions need no key.
               </p>
             </Card>
           </>

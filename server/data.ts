@@ -162,6 +162,9 @@ export interface Settings {
    *  for long-history SP500, treasury yields, macro series. Free at
    *  https://fred.stlouisfed.org/docs/api/api_key.html */
   fredApiKey?: string;
+  /** Congress.gov API key — used by the Politics section to ingest recent bills
+   *  (and signings/vetoes). Free at https://api.congress.gov/sign-up/ */
+  congressApiKey?: string;
   schedules?: {
     snapshotIntervalMinutes?: number; // default 1440 (24h)
     dropboxSyncIntervalMinutes?: number; // default 15
@@ -169,6 +172,8 @@ export interface Settings {
     snapshotEnabled?: boolean;
     quantRefreshIntervalMinutes?: number; // default 1440 (24h)
     quantRefreshEnabled?: boolean;
+    politicsRefreshIntervalMinutes?: number; // default 1440 (24h)
+    politicsRefreshEnabled?: boolean;
     backupPassword?: string; // if set, encrypted config backup is pushed to Dropbox on sync
   };
   /**
@@ -893,6 +898,7 @@ export const GOLD_FILE = path.join(DATA_DIR, '.docvault-gold.json');
 export const PROPERTY_FILE = path.join(DATA_DIR, '.docvault-property.json');
 export const CRYPTO_CACHE_FILE = path.join(DATA_DIR, '.docvault-crypto-cache.json');
 export const QUANT_SNAPSHOTS_FILE = path.join(DATA_DIR, '.docvault-quant-snapshots.json');
+export const POLITICS_CACHE_FILE = path.join(DATA_DIR, '.docvault-politics.json');
 export const STRATEGY_HISTORY_FILE = path.join(DATA_DIR, '.docvault-strategy-history.json');
 export const HEALTH_ANALYSIS_HISTORY_FILE = path.join(
   DATA_DIR,

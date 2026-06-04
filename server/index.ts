@@ -156,7 +156,7 @@ import { handleSicknessRoutes } from './routes/sickness.js';
 import { handleHealthAnalysisRoutes } from './routes/health-analysis.js';
 import { handleStrategyRoutes } from './routes/strategy.js';
 import { handleResearchRoutes } from './routes/research.js';
-import { handleCheckTheVoteRoutes } from './routes/check-the-vote.js';
+import { handlePoliticsRoutes } from './routes/politics.js';
 import { handleJobRoutes } from './routes/jobs.js';
 import { handlePoliticalJobRoutes } from './routes/political-jobs.js';
 import { handleCryptoYieldsRoutes } from './routes/crypto-yields.js';
@@ -275,6 +275,8 @@ async function handleRequest(req: Request): Promise<Response> {
       geoapifyKeyHint: settings.geoapifyApiKey ? settings.geoapifyApiKey.slice(-4) : undefined,
       hasFredKey: !!settings.fredApiKey,
       fredKeyHint: settings.fredApiKey ? settings.fredApiKey.slice(-4) : undefined,
+      hasCongressKey: !!settings.congressApiKey,
+      congressKeyHint: settings.congressApiKey ? settings.congressApiKey.slice(-4) : undefined,
       transcribeUrl: settings.transcribeUrl ?? '',
       transcribeModel: settings.transcribeModel ?? '',
       hasTranscribeApiKey: !!settings.transcribeApiKey,
@@ -328,6 +330,14 @@ async function handleRequest(req: Request): Promise<Response> {
         settings.fredApiKey = body.fredApiKey;
       } else {
         delete settings.fredApiKey;
+      }
+    }
+
+    if (body.congressApiKey !== undefined) {
+      if (body.congressApiKey) {
+        settings.congressApiKey = body.congressApiKey;
+      } else {
+        delete settings.congressApiKey;
       }
     }
 
@@ -1997,9 +2007,9 @@ async function handleRequest(req: Request): Promise<Response> {
   const strategyResponse = await handleStrategyRoutes(req, url, pathname);
   if (strategyResponse) return strategyResponse;
 
-  // Check the Vote Pi API bridge for Politics tab status/cards
-  const checkTheVoteResponse = await handleCheckTheVoteRoutes(req, url, pathname);
-  if (checkTheVoteResponse) return checkTheVoteResponse;
+  // Politics feed — in-container ingest of bills, executive actions, and trades
+  const politicsResponse = await handlePoliticsRoutes(req, url, pathname);
+  if (politicsResponse) return politicsResponse;
 
   // research routes (analyst PDF uploads + text extraction for Quant/Politics sections)
   const researchResponse = await handleResearchRoutes(req, url, pathname);
@@ -2324,6 +2334,9 @@ async function handleRequest(req: Request): Promise<Response> {
       quantRefreshEnabled: schedules.quantRefreshEnabled !== false,
       quantRefreshIntervalMinutes:
         schedules.quantRefreshIntervalMinutes || DEFAULT_QUANT_REFRESH_INTERVAL,
+      politicsRefreshEnabled: schedules.politicsRefreshEnabled !== false,
+      politicsRefreshIntervalMinutes:
+        schedules.politicsRefreshIntervalMinutes || DEFAULT_POLITICS_REFRESH_INTERVAL,
       backupPasswordSet: !!schedules.backupPassword,
     });
   }
@@ -2388,6 +2401,9 @@ async function handleRequest(req: Request): Promise<Response> {
         quantRefreshEnabled: body.quantRefreshEnabled ?? true,
         quantRefreshIntervalMinutes:
           body.quantRefreshIntervalMinutes || DEFAULT_QUANT_REFRESH_INTERVAL,
+        politicsRefreshEnabled: body.politicsRefreshEnabled ?? true,
+        politicsRefreshIntervalMinutes:
+          body.politicsRefreshIntervalMinutes || DEFAULT_POLITICS_REFRESH_INTERVAL,
         backupPassword: body.backupPassword || settings.schedules?.backupPassword,
       };
       await saveSettings(settings);
@@ -2651,6 +2667,7 @@ import {
   DEFAULT_SNAPSHOT_INTERVAL,
   DEFAULT_DROPBOX_SYNC_INTERVAL,
   DEFAULT_QUANT_REFRESH_INTERVAL,
+  DEFAULT_POLITICS_REFRESH_INTERVAL,
 } from './scheduler.js';
 import { getRecentLogs, listLogDates, readLogsForDate, SERVER_BOOT_ID } from './logger.js';
 import { readRecentAiCalls, summarizeUsage } from './ai/usage-log.js';
