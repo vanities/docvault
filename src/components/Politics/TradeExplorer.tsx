@@ -56,6 +56,11 @@ function categoryClass(category: string): string {
   return 'text-surface-500';
 }
 
+/** Yahoo Finance quote page for a disclosed ticker. */
+function tickerUrl(ticker: string): string {
+  return `https://finance.yahoo.com/quote/${encodeURIComponent(ticker.replace(/\./g, '-'))}`;
+}
+
 function initialsOf(name: string): string {
   return name
     .replace(/^(Hon\.|Rep\.|Sen\.|Mr\.|Mrs\.|Ms\.|Dr\.)\s*/i, '')
@@ -498,7 +503,21 @@ function PoliticianTrades({
                   <td className={`px-2.5 py-1.5 font-medium ${categoryClass(t.category)}`}>
                     {t.transactionDescription || t.category}
                   </td>
-                  <td className="px-2.5 py-1.5 font-mono text-accent-400">{t.ticker ?? '—'}</td>
+                  <td className="px-2.5 py-1.5 font-mono">
+                    {t.ticker ? (
+                      <a
+                        href={tickerUrl(t.ticker)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-accent-400 hover:underline"
+                        title={`Open ${t.ticker} on Yahoo Finance`}
+                      >
+                        {t.ticker}
+                      </a>
+                    ) : (
+                      <span className="text-surface-500">—</span>
+                    )}
+                  </td>
                   <td
                     className="px-2.5 py-1.5 text-surface-700 max-w-[14rem] truncate"
                     title={t.assetName}

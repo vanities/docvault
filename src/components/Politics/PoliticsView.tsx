@@ -10,11 +10,11 @@ import {
   RefreshCw,
   Scale,
   TrendingUp,
-  Vote,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { ResearchPanel } from '../Quant/ResearchPanel';
 import { TradeExplorer } from './TradeExplorer';
+import { DashboardFeeds } from './DashboardFeeds';
 import { summarizePoliticsData, type PoliticsFeedPayload } from './politicsData';
 
 interface ResearchPoliticsLink {
@@ -137,37 +137,7 @@ function CongressDashboard() {
         />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <FeedCard
-          title="Recent bills"
-          icon={Vote}
-          empty="No recent bills yet. Add a Congress.gov key in Settings."
-          items={summary?.recentVoteLabels ?? []}
-        />
-        <FeedCard
-          title="Recent trades"
-          icon={TrendingUp}
-          empty="No recent politician trades yet."
-          items={summary?.recentTradeLabels ?? []}
-        />
-        <FeedCard
-          title="Executive actions"
-          icon={Scale}
-          empty="No recent executive actions yet."
-          items={summary?.recentExecutiveActionLabels ?? []}
-        />
-        <FeedCard
-          title="Filings needing attention"
-          icon={FileWarning}
-          empty="No filing warnings in the recent feed."
-          items={summary?.attentionLabels ?? []}
-          badge={
-            summary
-              ? `${summary.filingsNeedingAttentionCount}/${summary.recentFilingCount}`
-              : undefined
-          }
-        />
-      </div>
+      <DashboardFeeds payload={payload} />
     </section>
   );
 }
@@ -194,46 +164,6 @@ function MetricCard({
         </div>
         <Icon className="w-5 h-5 text-surface-600" />
       </div>
-    </Card>
-  );
-}
-
-function FeedCard({
-  title,
-  icon: Icon,
-  items,
-  empty,
-  badge,
-}: {
-  title: string;
-  icon: React.ComponentType<{ className?: string }>;
-  items: string[];
-  empty: string;
-  badge?: string;
-}) {
-  return (
-    <Card variant="glass" className="p-4 border-border/50 min-h-48">
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <div className="flex items-center gap-2">
-          <Icon className="w-4 h-4 text-surface-600" />
-          <h3 className="text-sm font-semibold text-surface-950">{title}</h3>
-        </div>
-        {badge && <span className="text-xs text-surface-600 font-mono">{badge}</span>}
-      </div>
-      {items.length > 0 ? (
-        <ul className="space-y-2">
-          {items.map((item, index) => (
-            <li
-              key={`${item}-${index}`}
-              className="text-xs text-surface-700 leading-relaxed border-l border-border/60 pl-3"
-            >
-              {item}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-xs text-surface-600">{empty}</p>
-      )}
     </Card>
   );
 }
