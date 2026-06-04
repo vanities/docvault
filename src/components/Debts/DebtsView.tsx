@@ -10,6 +10,8 @@ import {
   Check,
   Calculator,
   AlertTriangle,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { API_BASE } from '../../constants';
 import { Card } from '@/components/ui/card';
@@ -17,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Money } from '../common/Money';
+import { LoanAmortization } from '../common/LoanAmortization';
 
 type LiabilityType =
   | 'equipment-loan'
@@ -92,6 +95,7 @@ export function DebtsView() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [snapshotSummary, setSnapshotSummary] = useState<SnapshotPortfolioSummary | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // DTI calculator inputs
   const [proposedLoan, setProposedLoan] = useState('815000');
@@ -520,6 +524,7 @@ export function DebtsView() {
             <div className="space-y-3">
               {entries.map((e) => {
                 const typeLabel = TYPE_OPTIONS.find((t) => t.value === e.type)?.label || e.type;
+                const isExpanded = expandedId === e.id;
                 return (
                   <Card key={e.id} variant="glass" className="p-4">
                     <div className="flex items-center justify-between">
@@ -562,6 +567,18 @@ export function DebtsView() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
+                            onClick={() => setExpandedId((id) => (id === e.id ? null : e.id))}
+                            title={isExpanded ? 'Hide payoff' : 'Show payoff'}
+                          >
+                            {isExpanded ? (
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            ) : (
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
                             onClick={() => handleEdit(e)}
                             title="Edit"
                           >
@@ -578,6 +595,17 @@ export function DebtsView() {
                         </div>
                       </div>
                     </div>
+                    {isExpanded && (
+                      <div className="mt-4 pt-4 border-t border-border">
+                        <LoanAmortization
+                          name={e.name}
+                          lender={e.lender}
+                          balance={e.balance}
+                          annualRate={e.rate}
+                          monthlyPayment={e.monthlyPayment}
+                        />
+                      </div>
+                    )}
                   </Card>
                 );
               })}
