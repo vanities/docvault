@@ -54,10 +54,8 @@ scripts/*
 **/*.test.tsx
 **/*.spec.ts
 **/*.spec.tsx
-# Exception: Politics dashboard tests use synthetic Check the Vote payloads, no personal data
+# Exception: Politics dashboard tests use synthetic congressional payloads, no personal data
 !src/components/Politics/politicsData.test.ts
-# Exception: Check the Vote connector tests use synthetic HTTP payloads, no personal data
-!server/check-the-vote.politics.test.ts
 # Exception: quant math tests are pure computation, no personal data
 !server/routes/quant.test.ts
 # Exception: crypto-keys tests are pure crypto primitives, no personal data
@@ -78,6 +76,8 @@ scripts/*
 !server/pdf-forms.test.ts
 # Exception: prediction-market normalization tests use synthetic Kalshi/Polymarket payloads, no personal data
 !server/prediction-markets.test.ts
+# Exception: politics ingest tests use synthetic/public congressional payloads, no personal data
+!server/politics/feed.test.ts
 
 # Internal design docs
 docs/PRD-shadcn-migration.md

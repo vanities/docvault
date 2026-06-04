@@ -8,12 +8,13 @@ import {
   Loader2,
   RadioTower,
   RefreshCw,
+  Scale,
   TrendingUp,
   Vote,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { ResearchPanel } from '../Quant/ResearchPanel';
-import { summarizePoliticsData, type CheckTheVotePoliticsPayload } from './politicsData';
+import { summarizePoliticsData, type PoliticsFeedPayload } from './politicsData';
 
 interface ResearchPoliticsLink {
   entryId: string;
@@ -42,16 +43,16 @@ interface ResearchPoliticsBrief {
   matchedVotes: Array<{ externalId?: string; label: string }>;
 }
 
-function CheckTheVoteDashboard() {
-  const [payload, setPayload] = useState<CheckTheVotePoliticsPayload | null>(null);
+function CongressDashboard() {
+  const [payload, setPayload] = useState<PoliticsFeedPayload | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetch('/api/check-the-vote/politics')
+    fetch('/api/politics/feed')
       .then((res) => res.json())
-      .then((data: CheckTheVotePoliticsPayload) => {
+      .then((data: PoliticsFeedPayload) => {
         if (!cancelled) setPayload(data);
       })
       .catch((err: unknown) => {
@@ -84,7 +85,7 @@ function CheckTheVoteDashboard() {
       : 'text-amber-400';
 
   return (
-    <section className="space-y-4" aria-label="Check the Vote dashboard">
+    <section className="space-y-4" aria-label="Congress feed dashboard">
       <Card variant="glass" className="p-4 border-border/50">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="flex items-start gap-3">
@@ -94,23 +95,18 @@ function CheckTheVoteDashboard() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <RadioTower className="w-3.5 h-3.5 text-surface-600" />
-                <h2 className="text-sm font-semibold text-surface-950">Check the Vote feed</h2>
+                <h2 className="text-sm font-semibold text-surface-950">Congress feed</h2>
               </div>
               {loading ? (
-                <p className="text-xs text-surface-600 mt-1">Loading Pi politics data…</p>
-              ) : !summary?.configured ? (
-                <p className="text-xs text-surface-700 mt-1">
-                  Not configured yet. Set <code>CHECKTHEVOTE_BASE_URL</code> and{' '}
-                  <code>CHECKTHEVOTE_API_KEY</code> on the Doc Vault server.
-                </p>
+                <p className="text-xs text-surface-600 mt-1">Loading politics feed…</p>
               ) : ok ? (
                 <p className="text-xs text-surface-700 mt-1">
-                  Connected to <span className="font-mono">{summary.baseUrl}</span>
-                  {summary.service ? ` (${summary.service})` : ''}.
+                  Bills, executive actions, and politician trades — ingested in-house, refreshed
+                  daily.
                 </p>
               ) : (
                 <p className="text-xs text-amber-300 mt-1">
-                  Configured but needs attention: {summary?.errorLabel ?? 'unknown error'}
+                  {summary?.errorLabel ?? 'No data yet — the daily politics refresh hasn’t run.'}
                 </p>
               )}
             </div>
@@ -125,33 +121,39 @@ function CheckTheVoteDashboard() {
       </Card>
 
       <div className="grid gap-3 md:grid-cols-4">
-        <MetricCard icon={Landmark} label="Sync events" value={summary?.syncJobCount ?? 0} />
+        <MetricCard icon={Landmark} label="Bills" value={summary?.recentVoteCount ?? 0} />
+        <MetricCard
+          icon={Scale}
+          label="Executive actions"
+          value={summary?.recentExecutiveActionCount ?? 0}
+        />
+        <MetricCard icon={TrendingUp} label="Trades" value={summary?.recentTradeCount ?? 0} />
         <MetricCard
           icon={FileWarning}
-          label="Warnings"
-          value={summary?.syncWarningCount ?? 0}
-          tone={(summary?.syncWarningCount ?? 0) > 0 ? 'warn' : 'ok'}
-        />
-        <MetricCard icon={Vote} label="Recent votes" value={summary?.recentVoteCount ?? 0} />
-        <MetricCard
-          icon={TrendingUp}
-          label="Recent trades"
-          value={summary?.recentTradeCount ?? 0}
+          label="Needs attention"
+          value={summary?.filingsNeedingAttentionCount ?? 0}
+          tone={(summary?.filingsNeedingAttentionCount ?? 0) > 0 ? 'warn' : 'ok'}
         />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <FeedCard
-          title="Recent votes"
+          title="Recent bills"
           icon={Vote}
-          empty="No recent votes loaded yet."
+          empty="No recent bills yet. Add a Congress.gov key in Settings."
           items={summary?.recentVoteLabels ?? []}
         />
         <FeedCard
           title="Recent trades"
           icon={TrendingUp}
-          empty="No recent trades loaded yet."
+          empty="No recent politician trades yet."
           items={summary?.recentTradeLabels ?? []}
+        />
+        <FeedCard
+          title="Executive actions"
+          icon={Scale}
+          empty="No recent executive actions yet."
+          items={summary?.recentExecutiveActionLabels ?? []}
         />
         <FeedCard
           title="Filings needing attention"
@@ -327,7 +329,7 @@ function ResearchPoliticsLinksCard() {
       {links.length === 0 ? (
         <p className="text-xs text-surface-600">
           No linked research claims yet. Extract intelligence on a politics research entry to match
-          tickers/topics against Check the Vote trades and votes.
+          tickers/topics against politician trades and bills.
         </p>
       ) : (
         <div className="space-y-3">
@@ -386,12 +388,13 @@ export function PoliticsView() {
           Political intelligence
         </h1>
         <p className="text-sm text-surface-700 mt-2 max-w-3xl">
-          Monitor Check the Vote sync health, recent votes, politician trades, filings that need
-          attention, and local commentary/source notes from a single politics workspace.
+          Recent congressional bills, presidential executive actions, and politician stock trades
+          (House PTRs + Trump&apos;s OGE disclosures) — ingested in-house and refreshed daily —
+          alongside your local commentary and source notes.
         </p>
       </div>
 
-      <CheckTheVoteDashboard />
+      <CongressDashboard />
 
       <ResearchPoliticsLinksCard />
 

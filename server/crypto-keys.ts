@@ -183,6 +183,7 @@ export function walkSensitiveFields(settings: Settings, transform: Transformer):
   if (out.anthropicAuthToken) out.anthropicAuthToken = transform(out.anthropicAuthToken);
   if (out.transcribeApiKey) out.transcribeApiKey = transform(out.transcribeApiKey);
   if (out.fredApiKey) out.fredApiKey = transform(out.fredApiKey);
+  if (out.congressApiKey) out.congressApiKey = transform(out.congressApiKey);
   if (out.geoapifyApiKey) out.geoapifyApiKey = transform(out.geoapifyApiKey);
   if (out.healthIngestToken) out.healthIngestToken = transform(out.healthIngestToken);
   if (out.schedules?.backupPassword) {

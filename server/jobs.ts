@@ -339,6 +339,15 @@ const BUILT_IN_JOBS: BuiltInDefinition[] = [
     enabled: (schedules) => schedules?.quantRefreshEnabled !== false,
     schedule: (schedules) => `every ${schedules?.quantRefreshIntervalMinutes || 1440}m`,
   },
+  {
+    id: 'politics-refresh',
+    label: 'Congress / Politics Refresh',
+    description: 'Forward-only ingest of recent bills, executive actions, and politician trades.',
+    taskName: 'politicsRefresh',
+    tags: ['built-in', 'politics'],
+    enabled: (schedules) => schedules?.politicsRefreshEnabled !== false,
+    schedule: (schedules) => `every ${schedules?.politicsRefreshIntervalMinutes || 1440}m`,
+  },
 ];
 
 export function listBuiltInJobRecords(

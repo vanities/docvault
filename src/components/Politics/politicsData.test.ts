@@ -2,52 +2,53 @@ import { describe, expect, test } from 'vite-plus/test';
 import { summarizePoliticsData } from './politicsData';
 
 describe('summarizePoliticsData', () => {
-  test('summarizes Check the Vote politics payload for dashboard cards', () => {
+  test('summarizes the politics feed payload for dashboard cards', () => {
     const summary = summarizePoliticsData({
       configured: true,
       ok: true,
-      baseUrl: 'http://pi.local:3000',
-      checkedAt: '2026-05-30T12:00:00.000Z',
-      health: { service: 'checkthevote' },
+      baseUrl: 'local',
+      service: 'docvault-politics',
+      checkedAt: '2026-06-04T12:00:00.000Z',
+      health: { service: 'docvault-politics' },
       sync: {
-        cron: {
-          recentJobs: [
-            { name: 'trades:house-ptr', status: 'done', lastSuccessAt: '2026-05-30T11:00:00Z' },
-          ],
-          partialJobs: [{ name: 'photos', status: 'warning', message: '3 missing images' }],
-          failedJobs: [],
-        },
-        historical: {
-          latestWarning: { job: 'capitol-api', message: 'upstream 503' },
-          recentWarnings: [{ job: 'ocr', message: 'blank PDF' }],
-          recentErrors: [],
-          staleRunningCount: 0,
-        },
+        jobs: [{ name: 'politicsRefresh', status: 'ok', ranAt: '2026-06-04T11:00:00Z' }],
       },
       votes: {
         votes: [
           {
-            externalId: 'senate-119-2-44',
-            question: 'On Passage of H.R. 7148',
-            bill: { title: 'Consolidated Appropriations Act, 2026', officialId: 'HR-7148-119' },
+            externalId: 'hr-7148-119',
+            question: 'Became Public Law',
+            bill: { title: 'Consolidated Appropriations Act, 2026', officialId: 'HR 7148' },
           },
-          { externalId: 'house-119-2-35', question: 'On Motion to Suspend the Rules' },
+          { externalId: 's-200-119', billTitle: 'A Senate Bill' },
         ],
       },
       trades: {
         trades: [
           {
-            politicianName: 'Nancy Pelosi',
+            politicianName: 'John Q Public',
             ticker: 'NVDA',
-            transactionType: 'purchase',
+            transactionDescription: 'Purchase',
             amountRange: '$1,001 - $15,000',
           },
         ],
       },
+      executiveActions: [
+        {
+          slug: 'eo-14200',
+          type: 'executive_order',
+          title: 'Establishing the National AI Initiative',
+          issuedDate: '2026-05-30',
+        },
+      ],
       filings: {
         filings: [
-          { filerName: 'Jane Doe', source: 'house-clerk-ptr', warning: 'ptr_pdf_text_blank' },
-          { filerName: 'John Doe', source: 'senate-efd-ptr' },
+          {
+            filerName: 'Jane Doe',
+            source: 'house-ptr',
+            status: 'needs_attention',
+            warning: 'scanned/blank PDF',
+          },
         ],
       },
     });
@@ -55,43 +56,35 @@ describe('summarizePoliticsData', () => {
     expect(summary).toMatchObject({
       configured: true,
       ok: true,
-      baseUrl: 'http://pi.local:3000',
-      service: 'checkthevote',
-      syncJobCount: 4,
-      syncWarningCount: 3,
+      statusLabel: 'Active',
+      service: 'docvault-politics',
       recentVoteCount: 2,
       recentTradeCount: 1,
-      recentFilingCount: 2,
+      recentExecutiveActionCount: 1,
+      recentFilingCount: 1,
       filingsNeedingAttentionCount: 1,
     });
-    expect(summary.recentVoteLabels[0]).toBe('Consolidated Appropriations Act, 2026 · HR-7148-119');
-    expect(summary.recentTradeLabels[0]).toContain('Nancy Pelosi');
+    expect(summary.recentVoteLabels[0]).toBe('Consolidated Appropriations Act, 2026 · HR 7148');
+    expect(summary.recentTradeLabels[0]).toContain('John Q Public');
+    expect(summary.recentExecutiveActionLabels[0]).toContain(
+      'Establishing the National AI Initiative'
+    );
+    expect(summary.recentExecutiveActionLabels[0]).toContain('Executive Order');
     expect(summary.attentionLabels[0]).toContain('Jane Doe');
   });
 
-  test('summarizes missing config and upstream failures safely', () => {
-    expect(
-      summarizePoliticsData({ configured: false, ok: false, reason: 'missing_api_key' })
-    ).toMatchObject({
-      configured: false,
-      ok: false,
-      statusLabel: 'Not configured',
-      errorLabel: 'Missing CHECKTHEVOTE_API_KEY',
-    });
-
+  test('surfaces a refresh error without a config branch', () => {
     expect(
       summarizePoliticsData({
         configured: true,
         ok: false,
-        baseUrl: 'http://pi.local:3000',
-        checkedAt: '2026-05-30T12:00:00.000Z',
-        error: 'Check the Vote request failed for /api/v1/sync: HTTP 503',
+        error: 'bills: Congress API key not set',
       })
     ).toMatchObject({
       configured: true,
       ok: false,
       statusLabel: 'Needs attention',
-      errorLabel: 'Check the Vote request failed for /api/v1/sync: HTTP 503',
+      errorLabel: 'bills: Congress API key not set',
     });
   });
 });

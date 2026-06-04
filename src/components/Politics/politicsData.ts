@@ -1,19 +1,23 @@
 type UnknownRecord = Record<string, unknown>;
 
-export type CheckTheVotePoliticsPayload =
-  | { configured: false; ok: false; reason: 'missing_base_url' | 'missing_api_key' }
-  | {
-      configured: true;
-      ok: boolean;
-      baseUrl: string;
-      checkedAt: string;
-      health?: unknown;
-      sync?: unknown;
-      votes?: unknown;
-      trades?: unknown;
-      filings?: unknown;
-      error?: string;
-    };
+// Shape of GET /api/politics/feed. The in-container feed is always "configured"
+// (sources are keyless or use a settings key that doesn't gate the feed itself),
+// so unlike the old Check the Vote bridge there is no missing-config branch.
+export type PoliticsFeedPayload = {
+  configured: boolean;
+  ok: boolean;
+  baseUrl?: string;
+  service?: string;
+  checkedAt?: string;
+  health?: unknown;
+  sync?: unknown;
+  votes?: unknown;
+  trades?: unknown;
+  filings?: unknown;
+  bills?: unknown;
+  executiveActions?: unknown;
+  error?: string;
+};
 
 export type PoliticsSummary = {
   configured: boolean;
@@ -28,9 +32,11 @@ export type PoliticsSummary = {
   recentVoteCount: number;
   recentTradeCount: number;
   recentFilingCount: number;
+  recentExecutiveActionCount: number;
   filingsNeedingAttentionCount: number;
   recentVoteLabels: string[];
   recentTradeLabels: string[];
+  recentExecutiveActionLabels: string[];
   attentionLabels: string[];
 };
 
@@ -45,6 +51,11 @@ function arrayFromRecord(value: unknown, keys: string[]): UnknownRecord[] {
     if (Array.isArray(maybeArray)) return maybeArray.map(asRecord);
   }
   return [];
+}
+
+/** For top-level arrays (e.g. payload.executiveActions is the array itself). */
+function asArray(value: unknown): UnknownRecord[] {
+  return Array.isArray(value) ? value.map(asRecord) : [];
 }
 
 function stringValue(value: unknown): string | undefined {
@@ -94,7 +105,7 @@ function voteLabel(vote: UnknownRecord): string {
   const title =
     stringValue(bill.title) ?? stringValue(vote.billTitle) ?? stringValue(vote.question);
   const officialId = stringValue(bill.officialId) ?? stringValue(vote.billOfficialId);
-  const fallback = stringValue(vote.externalId) ?? 'Vote';
+  const fallback = stringValue(vote.externalId) ?? 'Bill';
   if (title && officialId) return `${title} · ${officialId}`;
   return title ?? officialId ?? fallback;
 }
@@ -107,9 +118,23 @@ function tradeLabel(trade: UnknownRecord): string {
     'Unknown filer';
   const ticker =
     stringValue(trade.ticker) ?? stringValue(trade.assetTicker) ?? stringValue(trade.assetName);
-  const type = stringValue(trade.transactionType) ?? stringValue(trade.type);
+  const type = stringValue(trade.transactionDescription) ?? stringValue(trade.transactionType);
   const amount = stringValue(trade.amountRange) ?? stringValue(trade.amount);
   return [name, ticker, type, amount].filter(Boolean).join(' · ');
+}
+
+const EXEC_TYPE_LABELS: Record<string, string> = {
+  executive_order: 'Executive Order',
+  proclamation: 'Proclamation',
+  signing_statement: 'Memo',
+};
+
+function executiveActionLabel(action: UnknownRecord): string {
+  const title = stringValue(action.title) ?? 'Presidential document';
+  const type = stringValue(action.type);
+  const typeLabel = type ? (EXEC_TYPE_LABELS[type] ?? type) : undefined;
+  const date = stringValue(action.issuedDate);
+  return [title, typeLabel, date].filter(Boolean).join(' · ');
 }
 
 function filingNeedsAttention(filing: UnknownRecord): boolean {
@@ -120,6 +145,7 @@ function filingNeedsAttention(filing: UnknownRecord): boolean {
     Boolean(warning) ||
     status.includes('error') ||
     status.includes('warn') ||
+    status.includes('attention') ||
     status.includes('ocr')
   );
 }
@@ -133,51 +159,33 @@ function filingLabel(filing: UnknownRecord): string {
   return [filer, source, warning].filter(Boolean).join(' · ');
 }
 
-export function summarizePoliticsData(payload: CheckTheVotePoliticsPayload): PoliticsSummary {
-  if (!payload.configured) {
-    return {
-      configured: false,
-      ok: false,
-      statusLabel: 'Not configured',
-      errorLabel:
-        payload.reason === 'missing_api_key'
-          ? 'Missing CHECKTHEVOTE_API_KEY'
-          : 'Missing CHECKTHEVOTE_BASE_URL',
-      syncJobCount: 0,
-      syncWarningCount: 0,
-      recentVoteCount: 0,
-      recentTradeCount: 0,
-      recentFilingCount: 0,
-      filingsNeedingAttentionCount: 0,
-      recentVoteLabels: [],
-      recentTradeLabels: [],
-      attentionLabels: [],
-    };
-  }
-
+export function summarizePoliticsData(payload: PoliticsFeedPayload): PoliticsSummary {
   const health = asRecord(payload.health);
   const jobs = syncJobs(payload.sync);
   const votes = arrayFromRecord(payload.votes, ['votes', 'items', 'data']);
   const trades = arrayFromRecord(payload.trades, ['trades', 'items', 'data']);
   const filings = arrayFromRecord(payload.filings, ['filings', 'items', 'data']);
+  const execActions = asArray(payload.executiveActions);
   const attentionFilings = filings.filter(filingNeedsAttention);
 
   return {
-    configured: true,
+    configured: payload.configured !== false,
     ok: payload.ok,
-    statusLabel: payload.ok ? 'Connected' : 'Needs attention',
+    statusLabel: payload.ok ? 'Active' : 'Needs attention',
     errorLabel: payload.error,
     baseUrl: payload.baseUrl,
-    service: stringValue(health.service),
+    service: stringValue(health.service) ?? stringValue(payload.service),
     checkedAt: payload.checkedAt,
     syncJobCount: jobs.length,
     syncWarningCount: countWarningJobs(payload.sync),
     recentVoteCount: votes.length,
     recentTradeCount: trades.length,
     recentFilingCount: filings.length,
+    recentExecutiveActionCount: execActions.length,
     filingsNeedingAttentionCount: attentionFilings.length,
     recentVoteLabels: votes.slice(0, 5).map(voteLabel),
     recentTradeLabels: trades.slice(0, 5).map(tradeLabel),
+    recentExecutiveActionLabels: execActions.slice(0, 5).map(executiveActionLabel),
     attentionLabels: attentionFilings.slice(0, 5).map(filingLabel),
   };
 }

@@ -1,0 +1,209 @@
+// Politics feed store — the single rolling-window cache (.docvault-politics.json)
+// plus the forward-only merge helpers and the consumer-shaped payload builder.
+//
+// Two merge strategies:
+//   - upsertByKey  : bills/executive actions get UPDATED in place (a bill goes
+//                    introduced → signed), keyed by id, newest kept, capped.
+//   - appendNew    : trades/filings are immutable once parsed — only genuinely
+//                    new keys are prepended; the rest are dropped.
+
+import { promises as fs } from 'fs';
+import { DATA_DIR, POLITICS_CACHE_FILE } from '../data.js';
+import type {
+  BillRecord,
+  ExecutiveActionRecord,
+  FilingRecord,
+  PoliticsCache,
+  TradeRecord,
+} from './types.js';
+
+// Rolling-window caps — generous enough for a forward-only feed, small enough
+// that the file stays light and the UI stays fast.
+const CAP_BILLS = 250;
+const CAP_EXEC = 200;
+// Trades are capped PER SOURCE (house-ptr / senate-ptr / oge-278t) so a single
+// high-volume filer — e.g. Trump's ~1,100-row OGE-278-T bond filings — can't
+// crowd congressional stock trades out of the feed.
+const CAP_TRADES_PER_SOURCE = 250;
+const CAP_FILINGS = 100;
+const CAP_SEEN = 4000; // per-ledger LRU ceiling
+
+export function emptyPoliticsCache(): PoliticsCache {
+  return {
+    generatedAt: null,
+    bills: [],
+    executiveActions: [],
+    trades: [],
+    filings: [],
+    cursors: {},
+    seen: { houseDocIds: [], ogeDocIds: [], senateFilingIds: [] },
+  };
+}
+
+function cachePath(dataDir: string): string {
+  return dataDir === DATA_DIR ? POLITICS_CACHE_FILE : `${dataDir}/.docvault-politics.json`;
+}
+
+export async function loadPoliticsCache(dataDir: string = DATA_DIR): Promise<PoliticsCache> {
+  try {
+    const raw = await fs.readFile(cachePath(dataDir), 'utf8');
+    return { ...emptyPoliticsCache(), ...(JSON.parse(raw) as Partial<PoliticsCache>) };
+  } catch {
+    return emptyPoliticsCache();
+  }
+}
+
+export async function savePoliticsCache(
+  cache: PoliticsCache,
+  dataDir: string = DATA_DIR
+): Promise<void> {
+  const finalPath = cachePath(dataDir);
+  const tmpPath = `${finalPath}.${process.pid}.tmp`;
+  await fs.writeFile(tmpPath, `${JSON.stringify(cache, null, 2)}\n`);
+  await fs.rename(tmpPath, finalPath); // atomic swap — never truncate the live file
+}
+
+/** Replace-by-key merge: incoming wins, sorted newest-first by `dateOf`, capped. */
+export function upsertByKey<T>(
+  existing: T[],
+  incoming: T[],
+  keyOf: (item: T) => string,
+  dateOf: (item: T) => string,
+  cap: number
+): T[] {
+  const byKey = new Map<string, T>();
+  for (const item of existing) byKey.set(keyOf(item), item);
+  for (const item of incoming) byKey.set(keyOf(item), item);
+  return [...byKey.values()].sort((a, b) => dateOf(b).localeCompare(dateOf(a))).slice(0, cap);
+}
+
+/** Append-only merge: prepend genuinely-new keys, drop the rest, capped. */
+export function appendNew<T>(
+  existing: T[],
+  incoming: T[],
+  keyOf: (item: T) => string,
+  cap: number
+): T[] {
+  const have = new Set(existing.map(keyOf));
+  const fresh = incoming.filter((item) => !have.has(keyOf(item)));
+  return [...fresh, ...existing].slice(0, cap);
+}
+
+export function mergeBills(cache: PoliticsCache, incoming: BillRecord[]): void {
+  cache.bills = upsertByKey(
+    cache.bills,
+    incoming,
+    (b) => b.externalId,
+    (b) => b.updateDate,
+    CAP_BILLS
+  );
+}
+
+export function mergeExecutiveActions(
+  cache: PoliticsCache,
+  incoming: ExecutiveActionRecord[]
+): void {
+  cache.executiveActions = upsertByKey(
+    cache.executiveActions,
+    incoming,
+    (a) => a.slug,
+    (a) => a.issuedDate,
+    CAP_EXEC
+  );
+}
+
+export function mergeTrades(cache: PoliticsCache, incoming: TradeRecord[]): void {
+  // Upsert everything newest-first, then keep at most CAP_TRADES_PER_SOURCE of
+  // each source so no single filer dominates, then re-sort the combined set.
+  const merged = upsertByKey(
+    cache.trades,
+    incoming,
+    (t) => t.externalId,
+    (t) => t.tradeDate,
+    Number.MAX_SAFE_INTEGER
+  );
+  const perSource = new Map<string, number>();
+  const kept: TradeRecord[] = [];
+  for (const trade of merged) {
+    const count = perSource.get(trade.source) ?? 0;
+    if (count >= CAP_TRADES_PER_SOURCE) continue;
+    perSource.set(trade.source, count + 1);
+    kept.push(trade);
+  }
+  cache.trades = kept;
+}
+
+export function mergeFilings(cache: PoliticsCache, incoming: FilingRecord[]): void {
+  cache.filings = appendNew(cache.filings, incoming, (f) => f.externalId, CAP_FILINGS);
+}
+
+/** Record processed source-document ids so we never re-fetch/re-parse them. */
+export function markSeen(seen: string[], ids: string[]): string[] {
+  return [...new Set([...ids, ...seen])].slice(0, CAP_SEEN);
+}
+
+/** Map a bill to the "vote"-shaped object the existing Politics consumers read
+ *  (`vote.bill.title`, `vote.billTitle`, `vote.question`, `vote.externalId`). */
+function billToVote(bill: BillRecord): Record<string, unknown> {
+  return {
+    externalId: bill.externalId,
+    title: bill.title,
+    billTitle: bill.title,
+    question: bill.latestAction ?? bill.title,
+    status: bill.status,
+    latestAction: bill.latestAction,
+    latestActionDate: bill.latestActionDate,
+    updateDate: bill.updateDate,
+    url: bill.url,
+    bill: { title: bill.title, officialId: bill.officialId },
+  };
+}
+
+export interface FeedSyncJob {
+  name: string;
+  status: string;
+  error?: string | null;
+  ranAt?: string | null;
+}
+
+/** The `/api/politics/feed` response. The index signature lets it stand in for
+ *  the structural payload the research↔politics linker consumes. */
+export interface PoliticsFeedPayload {
+  configured: true;
+  ok: boolean;
+  baseUrl: string;
+  service: string;
+  checkedAt: string;
+  [key: string]: unknown;
+}
+
+/** Reshape the cache into the `/api/politics/feed` response. Field names mirror
+ *  the old Check the Vote success payload so the existing consumers keep working. */
+export function buildFeedPayload(
+  cache: PoliticsCache,
+  sync: { jobs: FeedSyncJob[] } = { jobs: [] }
+): PoliticsFeedPayload {
+  return {
+    configured: true,
+    ok: cache.generatedAt != null,
+    baseUrl: 'local',
+    service: 'docvault-politics',
+    checkedAt: cache.generatedAt ?? new Date().toISOString(),
+    health: { service: 'docvault-politics' },
+    sync,
+    votes: { votes: cache.bills.map(billToVote) },
+    trades: { trades: cache.trades },
+    filings: { filings: cache.filings },
+    // New first-class arrays for the rewired UI:
+    bills: cache.bills,
+    executiveActions: cache.executiveActions,
+  };
+}
+
+/** Load the cache and reshape it into the feed payload — used by the
+ *  research↔politics linker route (replaces the old Check the Vote fetch). */
+export async function loadPoliticsFeedPayload(
+  dataDir: string = DATA_DIR
+): Promise<PoliticsFeedPayload> {
+  return buildFeedPayload(await loadPoliticsCache(dataDir));
+}
