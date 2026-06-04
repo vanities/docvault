@@ -9,7 +9,6 @@ import {
   ChevronUp,
   Edit3,
   RefreshCw,
-  BarChart3,
 } from 'lucide-react';
 import type { PropertyEntry, PropertyData, PropertyType, PropertyAddress } from '../../types';
 import { Money } from '../common/Money';
@@ -906,7 +905,17 @@ function PropertyList({
                         </p>
                       </div>
                     </div>
-                    <MortgageProjection name={entry.name} mortgage={entry.mortgage} />
+                    {entry.mortgage.monthlyPayment > 0 && entry.mortgage.balance > 0 && (
+                      <div className="mt-3 pt-3 border-t border-border/60">
+                        <LoanAmortization
+                          name={entry.name}
+                          lender={entry.mortgage.lender}
+                          balance={entry.mortgage.balance}
+                          annualRate={entry.mortgage.rate}
+                          monthlyPayment={entry.mortgage.monthlyPayment}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -934,49 +943,6 @@ function PropertyList({
           </Card>
         );
       })}
-    </div>
-  );
-}
-
-// =============================================================================
-// Mortgage Payoff Projection (collapsible)
-// =============================================================================
-
-function MortgageProjection({
-  name,
-  mortgage,
-}: {
-  name: string;
-  mortgage: NonNullable<PropertyEntry['mortgage']>;
-}) {
-  const [open, setOpen] = useState(false);
-
-  if (!mortgage.monthlyPayment || mortgage.balance <= 0) return null;
-
-  return (
-    <div className="mt-3 pt-3 border-t border-border/60">
-      <Button
-        type="button"
-        variant="ghost"
-        size="xs"
-        onClick={() => setOpen((o) => !o)}
-        className="text-surface-600"
-      >
-        <BarChart3 className="w-3.5 h-3.5" />
-        {open ? 'Hide payoff & amortization' : 'Show payoff & amortization'}
-        {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-      </Button>
-      {open && (
-        <div className="mt-3">
-          <LoanAmortization
-            name={name}
-            lender={mortgage.lender}
-            balance={mortgage.balance}
-            annualRate={mortgage.rate}
-            monthlyPayment={mortgage.monthlyPayment}
-          />
-        </div>
-      )}
     </div>
   );
 }
