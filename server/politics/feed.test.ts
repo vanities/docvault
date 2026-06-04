@@ -16,7 +16,13 @@ import { inferOgeTicker } from './oge-asset-normalization.js';
 import { parseOge278Transactions } from './oge-parser.js';
 import { parseReportDataRows, parseSenatePtrHtml } from './senate-ptr.js';
 import { buildResolverFromEntries, imageUrlForBioguide } from './legislators.js';
-import { filterTrades, mergeTrades, topSpenders } from './feed-store.js';
+import {
+  filterTrades,
+  mergeTrades,
+  monthlyBuySell,
+  recentMonths,
+  topSpenders,
+} from './feed-store.js';
 import type { BillRecord, TradeRecord } from './types.js';
 
 /** Minimal fake `fetch` that replays a queue of JSON bodies, one per call. */
@@ -478,6 +484,51 @@ describe('topSpenders + filterTrades', () => {
     expect(filterTrades(cache, { politician: 'pelosi' })).toHaveLength(2);
     expect(filterTrades(cache, { chamber: 'senate' })).toHaveLength(1);
     expect(filterTrades(cache, { politician: 'pelosi', category: 'buy' })[0].ticker).toBe('NVDA');
+  });
+});
+
+describe('monthly buy/sell series', () => {
+  const t = (category: string, tradeDate: string): TradeRecord => ({
+    externalId: `${category}-${tradeDate}`,
+    source: 'house-ptr',
+    chamber: 'house',
+    politicianName: 'X',
+    filerName: 'X',
+    owner: null,
+    assetName: 'A',
+    ticker: null,
+    assetType: null,
+    transactionType: 'P',
+    transactionDescription: 'x',
+    category: category as TradeRecord['category'],
+    tradeDate,
+    filingDate: null,
+    amount: null,
+    amountRange: null,
+    amountMin: null,
+    amountMax: null,
+    filingDocId: null,
+    filingYear: 2026,
+    filingUrl: null,
+    sourceUrl: null,
+  });
+
+  test('recentMonths returns N months ending at the anchor, oldest first', () => {
+    expect(recentMonths('2026-03', 4)).toEqual(['2025-12', '2026-01', '2026-02', '2026-03']);
+  });
+
+  test('monthlyBuySell buckets buys/sells by month and ignores other categories', () => {
+    const trades = [
+      t('buy', '2026-03-10'),
+      t('buy', '2026-03-20'),
+      t('sell', '2026-02-05'),
+      t('other', '2026-03-01'), // bonds etc. — not counted
+    ];
+    expect(monthlyBuySell(trades, recentMonths('2026-03', 3))).toEqual([
+      { m: '2026-01', b: 0, s: 0 },
+      { m: '2026-02', b: 0, s: 1 },
+      { m: '2026-03', b: 2, s: 0 },
+    ]);
   });
 });
 

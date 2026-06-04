@@ -219,6 +219,13 @@ export async function loadPoliticsFeedPayload(
 
 // --- Browse / aggregate ------------------------------------------------------
 
+/** One month of buy/sell counts — feeds the leaderboard sparklines. */
+export interface MonthBucket {
+  m: string; // YYYY-MM
+  b: number; // buy count
+  s: number; // sell count
+}
+
 export interface SpenderSummary {
   politician: string;
   chamber: string;
@@ -229,16 +236,51 @@ export interface SpenderSummary {
   estMax: number; // Σ amountMax (upper bound)
   tickers: string[];
   lastTradeDate: string | null;
+  monthly: MonthBucket[]; // last 12 months of buy/sell counts (shared axis)
+}
+
+function monthKey(date: string): string {
+  return date.slice(0, 7);
+}
+
+/** The `count` calendar months ending at `anchor` (YYYY-MM), oldest first. */
+export function recentMonths(anchor: string, count: number): string[] {
+  const [y, m] = anchor.split('-').map(Number);
+  const out: string[] = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(y, m - 1 - i, 1));
+    out.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
+  }
+  return out;
+}
+
+/** Bucket a politician's trades into the given months (buy/sell counts). */
+export function monthlyBuySell(trades: TradeRecord[], months: string[]): MonthBucket[] {
+  const idx = new Map(months.map((m, i) => [m, i]));
+  const buckets: MonthBucket[] = months.map((m) => ({ m, b: 0, s: 0 }));
+  for (const t of trades) {
+    const i = idx.get(monthKey(t.tradeDate));
+    if (i == null) continue;
+    if (t.category === 'buy') buckets[i].b += 1;
+    else if (t.category === 'sell') buckets[i].s += 1;
+  }
+  return buckets;
 }
 
 /** Aggregate cached trades by politician, ranked by upper-bound dollar volume. */
 export function topSpenders(cache: PoliticsCache, limit = 25): SpenderSummary[] {
   const byName = new Map<string, TradeRecord[]>();
+  let latestMonth = '';
   for (const trade of cache.trades) {
     const list = byName.get(trade.politicianName);
     if (list) list.push(trade);
     else byName.set(trade.politicianName, [trade]);
+    const mk = monthKey(trade.tradeDate);
+    if (mk > latestMonth) latestMonth = mk;
   }
+  // All sparklines share one axis (the 12 months ending at the cache's latest trade).
+  const months = latestMonth ? recentMonths(latestMonth, 12) : [];
+
   const out: SpenderSummary[] = [];
   for (const [politician, list] of byName) {
     out.push({
@@ -257,6 +299,7 @@ export function topSpenders(cache: PoliticsCache, limit = 25): SpenderSummary[] 
         (max, t) => (max == null || t.tradeDate > max ? t.tradeDate : max),
         null
       ),
+      monthly: monthlyBuySell(list, months),
     });
   }
   return out.sort((a, b) => b.estMax - a.estMax).slice(0, limit);
