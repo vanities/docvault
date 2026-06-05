@@ -1,0 +1,92 @@
+{
+  "rows": [
+    {
+      "ownerText": "TT",
+      "assetText": "Global X Fds Global X Def Tech ETF - SHLD",
+      "tradeDateText": "04/28/26",
+      "notifiedDateText": "05/01/26",
+      "typeDark": [436, 0, 0],
+      "amountDark": [665, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    },
+    {
+      "ownerText": "T",
+      "assetText": "Ishares Tr 3-7 yr Treas Bd ETF - IEI",
+      "tradeDateText": "04/28/26",
+      "notifiedDateText": "05/01/26",
+      "typeDark": [0, 477, 0],
+      "amountDark": [627, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    },
+    {
+      "ownerText": "TT",
+      "assetText": "Ishares Tr BB Rated Corp Bd ETF - HYBB",
+      "tradeDateText": "04/28/26",
+      "notifiedDateText": "05/01/26",
+      "typeDark": [0, 490, 0],
+      "amountDark": [0, 678, 0, 0, 0, 0, 0, 0, 0, 0]
+    },
+    {
+      "ownerText": "TT",
+      "assetText": "SPDR Index Shs Fds State Str Spdr - SPDW",
+      "tradeDateText": "04/28/26",
+      "notifiedDateText": "05/01/26",
+      "typeDark": [0, 496, 0],
+      "amountDark": [637, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    },
+    {
+      "ownerText": "T",
+      "assetText": "SPDR Ser Tr State Str Spdr - SPMB",
+      "tradeDateText": "94/28/26",
+      "notifiedDateText": "05/01/26",
+      "typeDark": [0, 504, 0],
+      "amountDark": [649, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    },
+    {
+      "ownerText": "TT",
+      "assetText": "SPDR Ser Tr State Str Spdr - SPYG",
+      "tradeDateText": "04/28/26",
+      "notifiedDateText": "05/01/26",
+      "typeDark": [435, 0, 0],
+      "amountDark": [680, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    },
+    {
+      "ownerText": null,
+      "assetText": "SPDR Ser Tr State STR Spdr - SPYV",
+      "tradeDateText": "04/28/26",
+      "notifiedDateText": "05/01/26",
+      "typeDark": [476, 0, 0],
+      "amountDark": [643, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    },
+    {
+      "ownerText": "TT",
+      "assetText": "SPDR Ser Tr State Street Spdr - SDY",
+      "tradeDateText": "04/28/26",
+      "notifiedDateText": "05/01/26",
+      "typeDark": [474, 0, 0],
+      "amountDark": [671, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    },
+    {
+      "ownerText": null,
+      "assetText": "Select Sec Spdr Tr State Street - XLE",
+      "tradeDateText": "04/28/26",
+      "notifiedDateText": "05/01/26",
+      "typeDark": [449, 0, 0],
+      "amountDark": [662, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    },
+    {
+      "ownerText": "TS",
+      "assetText": "Vanguard Intl Equity Index- VPL_-",
+      "tradeDateText": "04/28/26",
+      "notifiedDateText": "05/01/26",
+      "typeDark": [446, 0, 0],
+      "amountDark": [594, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    },
+    {
+      "ownerText": "TT",
+      "assetText": "World Gold Tr Spdr Gold Minishares - GLDM",
+      "tradeDateText": "04/28/26",
+      "notifiedDateText": "05/01/26",
+      "typeDark": [458, 0, 0],
+      "amountDark": [565, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  ]
+}
