@@ -47,11 +47,17 @@ const FETCH_UA = 'Mozilla/5.0 (DocVault ZeroHedge cron)';
 // DRY_RUN=1 prints what would be filed (domain/title/tags) and writes nothing —
 // no POSTs, no seen-ledger update. The DocVault custom-job runner injects
 // DOCVAULT_DRY_RUN for its own dry-run mode, so honor both. Handy for tuning.
-const DRY_RUN = !!(
-  process.env.DRY_RUN ||
-  process.env.DOCVAULT_DRY_RUN ||
-  process.env.DOCVAULT_JOB_DRY_RUN
-);
+//
+// Parse the value — don't coerce with `!!`. Env vars are strings and the runner
+// injects DOCVAULT_DRY_RUN="0" for REAL runs; `!!"0"` is true, which would force
+// every real run into dry-run mode (matched>0, posted=0) while still exiting 0.
+function envFlag(value) {
+  return value === '1' || value === 'true' || value === 'yes';
+}
+const DRY_RUN =
+  envFlag(process.env.DRY_RUN) ||
+  envFlag(process.env.DOCVAULT_DRY_RUN) ||
+  envFlag(process.env.DOCVAULT_JOB_DRY_RUN);
 
 // Match the headline only by default. ZH bodies almost always mention some
 // macro/geo keyword, so body-matching would file ~everything and defeat the
