@@ -1,0 +1,9 @@
+{
+  "id": "lyn-alden-newsletter-daily",
+  "label": "Lyn Alden newsletter to Research (finance)",
+  "kind": "local-script",
+  "schedule": "daily",
+  "script": "scripts/lyn-alden-newsletter.local.js",
+  "enabled": false,
+  "tags": ["research", "scrape", "lyn-alden", "newsletter", "macro", "finance"]
+}
