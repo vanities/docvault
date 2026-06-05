@@ -15,6 +15,7 @@ import {
   type PdfTextExtractor,
 } from './house-ptr.js';
 import { markSeen, mergeFilings, mergeTrades } from './feed-store.js';
+import { archiveFiling } from './filing-archive.js';
 import { inferOgeTicker } from './oge-asset-normalization.js';
 import {
   categoryFor,
@@ -140,7 +141,7 @@ async function parseOgePdf(
   filingYear: number,
   fetchFn: typeof fetch,
   extractText: PdfTextExtractor
-): Promise<OgeTransaction[]> {
+): Promise<{ transactions: OgeTransaction[]; pdfBytes: ArrayBuffer; text: string }> {
   const response = await fetchFn(pdf.url, { headers: { Accept: 'application/pdf' } });
   if (!response.ok) throw new Error(`OGE 278-T PDF fetch failed: ${response.status}`);
   const pdfBytes = await response.arrayBuffer();
@@ -151,7 +152,7 @@ async function parseOgePdf(
   const bboxText = await extractText(pdfBytes, ['-bbox-layout']);
   const bbox = parseOge278TransactionsFromBboxLayout(bboxText, filingYear);
 
-  return mergeOgeTransactions(layout, bbox);
+  return { transactions: mergeOgeTransactions(layout, bbox), pdfBytes, text: layoutText };
 }
 
 function toTradeRecord(
@@ -207,6 +208,8 @@ export interface IngestOgeOptions {
   maxTradesPerFiling?: number;
   /** One-time: pull all of Trump's available filings, not just the newest few. */
   backfill?: boolean;
+  /** Force-enable filing archiving even when `extractText` is injected (tests). */
+  archive?: boolean;
 }
 
 export interface IngestOgeResult {
@@ -242,12 +245,17 @@ export async function ingestOge278t(
   const filings: FilingRecord[] = [];
   const handled: string[] = [];
   const errors: string[] = [];
+  let archived = 0;
 
   for (const pdf of pdfs) {
     const filingDate = asDateOnly(pdf.docDate);
     const filingYear = filingDate ? Number(filingDate.slice(0, 4)) : new Date().getUTCFullYear();
     try {
-      const txns = await parseOgePdf(pdf, filingYear, fetchFn, extractText);
+      const {
+        transactions: txns,
+        pdfBytes,
+        text,
+      } = await parseOgePdf(pdf, filingYear, fetchFn, extractText);
       // Drop transactions dated after the filing (an OCR year mis-read), then
       // keep only the most-recent N — a single filing can hold ~1,100 rows.
       const usable = txns
@@ -258,6 +266,23 @@ export async function ingestOge278t(
         filings.push(needsAttention(pdf, filingDate, 'no transactions parsed (scanned/illegible)'));
       } else {
         trades.push(...usable.map((t) => toTradeRecord(pdf, filingDate, filingYear, t)));
+      }
+      if (!opts.extractText || opts.archive) {
+        await archiveFiling({
+          source: 'oge-278t',
+          docId: pdf.docId,
+          chamber: 'executive',
+          filerName: TRUMP_NAME,
+          filingYear,
+          filingDate,
+          filingUrl: pdf.url,
+          pdfBytes,
+          text,
+          parseMethod: usable.length > 0 ? 'text' : 'none',
+          tradeCount: usable.length,
+        });
+        archived += 1;
+        log.debug(`archived oge-278t/${pdf.docId} (${usable.length} trades)`);
       }
       handled.push(pdf.docId);
     } catch (err) {
@@ -271,7 +296,9 @@ export async function ingestOge278t(
   if (pdfs[0]?.docDate) cache.cursors.ogeLastDocDate = asDateOnly(pdfs[0].docDate) ?? undefined;
 
   if (errors.length) log.warn(`OGE-278-T transient errors: ${errors.slice(0, 3).join('; ')}`);
-  log.info(`OGE-278-T: parsed ${trades.length} Trump trades from ${handled.length} filing(s)`);
+  log.info(
+    `OGE-278-T: parsed ${trades.length} Trump trades from ${handled.length} filing(s), archived ${archived}`
+  );
   return {
     added: trades.length,
     filings: filings.length,
