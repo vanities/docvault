@@ -63,7 +63,7 @@ const BY_ID = new Map(DAILY_NEWS_THEMES.map((t) => [t.id, t]));
 
 /** Style-guidance text for a theme id; falls back to the 'standard' voice. */
 export function getThemePrompt(id: string | undefined): string {
-  return (BY_ID.get(id ?? 'standard') ?? BY_ID.get('standard'))?.prompt ?? '';
+  return (BY_ID.get(id ?? 'brew') ?? BY_ID.get('brew'))?.prompt ?? '';
 }
 
 /** {id,label} pairs for the Settings dropdown. */

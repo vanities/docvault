@@ -65,7 +65,7 @@ export function ModelsSettingsSection() {
     model: DEFAULTS.anthropic,
   });
   const [dnTitle, setDnTitle] = useState('');
-  const [dnTheme, setDnTheme] = useState('standard');
+  const [dnTheme, setDnTheme] = useState('brew');
   const [themes, setThemes] = useState<Array<{ id: string; label: string }>>([]);
 
   const [modelsByProvider, setModelsByProvider] = useState<Record<Provider, string[]>>({
@@ -93,7 +93,7 @@ export function ModelsSettingsSection() {
       setDnAgentBackend(d.dailyNews?.agentBackend === 'codex' ? 'codex' : 'claude');
       setDnModel(d.dailyNews?.model ?? anthropicFallback);
       setDnTitle(d.dailyNews?.title ?? '');
-      setDnTheme(d.dailyNews?.theme ?? 'standard');
+      setDnTheme(d.dailyNews?.theme ?? 'brew');
     } catch {
       /* ignore */
     } finally {
@@ -369,13 +369,11 @@ export function ModelsSettingsSection() {
               onChange={(e) => setDnTheme(e.target.value)}
               className={selectClass}
             >
-              {(themes.length ? themes : [{ id: 'standard', label: 'Newspaper of record' }]).map(
-                (t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label}
-                  </option>
-                )
-              )}
+              {(themes.length ? themes : [{ id: 'brew', label: 'Morning Brew' }]).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
             </select>
           </div>
           <div className="mt-3">

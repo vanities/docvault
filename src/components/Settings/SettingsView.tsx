@@ -2003,7 +2003,7 @@ export function SettingsView() {
                     </div>
                     <button
                       onClick={() => setDailyNewsEnabled(!dailyNewsEnabled)}
-                      className={`relative w-10 h-5 rounded-full transition-colors ${dailyNewsEnabled ? 'bg-amber-500' : 'bg-surface-400'}`}
+                      className={`relative w-10 h-5 rounded-full transition-colors ${dailyNewsEnabled ? 'bg-violet-500' : 'bg-surface-400'}`}
                     >
                       <span
                         className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"

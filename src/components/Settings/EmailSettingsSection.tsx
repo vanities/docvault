@@ -124,7 +124,7 @@ export function EmailSettingsSection() {
           </div>
           <button
             onClick={() => setEnabled(!enabled)}
-            className={`relative w-10 h-5 rounded-full transition-colors ${enabled ? 'bg-amber-500' : 'bg-surface-400'}`}
+            className={`relative w-10 h-5 rounded-full transition-colors ${enabled ? 'bg-violet-500' : 'bg-surface-400'}`}
           >
             <span
               className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"

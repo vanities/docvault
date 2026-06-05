@@ -434,7 +434,7 @@ export async function getDailyNewsConfig(): Promise<{
     mode,
     agentBackend,
     model: resolveModel(settings.dailyNews?.model),
-    theme: settings.dailyNews?.theme || 'standard',
+    theme: settings.dailyNews?.theme || 'brew', // default house style: Morning Brew
   };
 }
 
