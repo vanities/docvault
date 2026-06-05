@@ -88,6 +88,23 @@ Open <http://localhost:5174> and sign in with `admin` / `demo` — full app, fak
 </tr>
 </table>
 
+### Politics & Congressional Trading
+
+In-house ingest of congressional and executive-branch disclosures — no external service, and **no API key for the trading data** (it's all public government filings).
+
+- **Politician stock trades** — House & Senate Periodic Transaction Reports plus Trump's OGE-278-T disclosures, parsed into one normalized feed. Scanned / hand-filed PTRs that `pdftotext` can't read are recovered by **checkbox-form OCR** (gridline detection + per-cell pixel reading; poppler + tesseract are baked into the Docker image).
+- **Options contract detail** — strike, expiry, call/put, and contract count are pulled from the filing's free-text `DESCRIPTION` field (e.g. Pelosi's _"Purchased 20 call options, strike $150, exp 1/15/27"_), not just the underlying ticker.
+- **Consensus clustering** — surfaces when several members buy (or sell) the same ticker in the same direction within a window.
+- **Copy-trade backtest** — a performance leaderboard: _"if you'd mirrored each politician's stock buys at the disclosed size, where would you be now?"_ Stock buys get real P&L (exact share counts when the filer states them, else estimated from the amount range and flagged); options report the underlying's move (the contract isn't priced). Recomputed daily; prices via yahoo-finance2 (keyless).
+- **Filings archive** — every fetched PDF + extracted text + metadata is saved under the data dir, searchable and re-parseable without re-fetching.
+- **Full-screen browse** — click a dashboard metric to search/filter/see-all of trades, bills, executive actions, or archived filings.
+- **Bills & executive actions** — recent Congress.gov bills (the one piece needing a free [Congress.gov API key](https://api.congress.gov/sign-up/), set in Settings) + presidential executive actions (keyless, via the Federal Register).
+- **Self-hosted member headshots** — portraits downloaded once and served from DocVault, not hot-linked.
+
+**Populate it:** the feed refreshes daily on a forward-only schedule (new filings only). To pull the current year's history in one pass, `POST /api/politics/backfill` — it runs server-side (poll `/api/politics/feed` for progress). Everything except the Bills stream works with zero credentials.
+
+> ⚠️ Disclosures carry a ~45-day legal reporting lag and report dollar **ranges**, not exact sizes — the backtest is honest about both (estimates flagged, options labeled as the underlying's move).
+
 ### AI Chat
 
 Heavily inspired by [t3.chat](https://t3.chat) — a multi-thread Claude chat that can read across your entire vault. The sidebar lists every thread; the active conversation streams in the main panel with markdown rendering, image/PDF attachments, and tool calls shown as collapsible cards.
