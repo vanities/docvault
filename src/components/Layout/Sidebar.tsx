@@ -27,6 +27,7 @@ import {
   Brain,
   MessageCircle,
   Library,
+  Newspaper,
   Telescope,
   X,
 } from 'lucide-react';
@@ -727,6 +728,16 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               icon={Telescope}
               activeColor="bg-violet-500/10"
               activeTextColor="text-violet-400"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
+            <NavButton
+              view="daily-news"
+              label="Daily News"
+              icon={Newspaper}
+              activeColor="bg-amber-500/10"
+              activeTextColor="text-amber-400"
               activeView={activeView}
               isProcessing={isProcessing}
               onClick={handleViewClick}

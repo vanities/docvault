@@ -110,6 +110,7 @@ export type NavView =
   | 'chat'
   | 'external-sources'
   | 'deep-research'
+  | 'daily-news'
   | 'settings'
   | 'tn-tax'
   | 'solo-401k'
@@ -341,6 +342,7 @@ export function AppProvider({ children }: AppProviderProps) {
     'chat',
     'external-sources',
     'deep-research',
+    'daily-news',
     'settings',
     'tn-tax',
     'crypto',

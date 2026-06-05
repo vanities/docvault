@@ -7,7 +7,7 @@
 // Model lists load live from each provider's /v1/models (GET /api/models).
 
 import { useEffect, useState } from 'react';
-import { Bot, Cpu, RefreshCw, Save, Sparkles } from 'lucide-react';
+import { Bot, Cpu, Newspaper, RefreshCw, Save, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -24,6 +24,13 @@ interface SettingsData {
   modelRouting?: { parsing?: ModelRef };
   chat?: { backend?: 'claude' | 'codex'; codexModel?: string };
   deepResearch?: { mode?: 'agent' | 'api'; agentBackend?: 'claude' | 'codex'; model?: ModelRef };
+  dailyNews?: {
+    mode?: 'agent' | 'api';
+    agentBackend?: 'claude' | 'codex';
+    model?: ModelRef;
+    title?: string;
+    theme?: string;
+  };
 }
 
 const DEFAULTS: Record<Provider, string> = { anthropic: 'claude-sonnet-4-6', openai: 'gpt-4o' };
@@ -51,6 +58,15 @@ export function ModelsSettingsSection() {
     provider: 'anthropic',
     model: DEFAULTS.anthropic,
   });
+  const [dnMode, setDnMode] = useState<'agent' | 'api'>('api');
+  const [dnAgentBackend, setDnAgentBackend] = useState<'claude' | 'codex'>('claude');
+  const [dnModel, setDnModel] = useState<ModelRef>({
+    provider: 'anthropic',
+    model: DEFAULTS.anthropic,
+  });
+  const [dnTitle, setDnTitle] = useState('');
+  const [dnTheme, setDnTheme] = useState('standard');
+  const [themes, setThemes] = useState<Array<{ id: string; label: string }>>([]);
 
   const [modelsByProvider, setModelsByProvider] = useState<Record<Provider, string[]>>({
     anthropic: [],
@@ -73,6 +89,11 @@ export function ModelsSettingsSection() {
       setDrMode(d.deepResearch?.mode === 'agent' ? 'agent' : 'api');
       setDrAgentBackend(d.deepResearch?.agentBackend === 'codex' ? 'codex' : 'claude');
       setDrModel(d.deepResearch?.model ?? anthropicFallback);
+      setDnMode(d.dailyNews?.mode === 'agent' ? 'agent' : 'api');
+      setDnAgentBackend(d.dailyNews?.agentBackend === 'codex' ? 'codex' : 'claude');
+      setDnModel(d.dailyNews?.model ?? anthropicFallback);
+      setDnTitle(d.dailyNews?.title ?? '');
+      setDnTheme(d.dailyNews?.theme ?? 'standard');
     } catch {
       /* ignore */
     } finally {
@@ -117,6 +138,10 @@ export function ModelsSettingsSection() {
   useEffect(() => {
     void load();
     void fetchModels();
+    void fetch(`${API_BASE}/daily-news/themes`)
+      .then((r) => r.json())
+      .then((d) => setThemes(d.themes ?? []))
+      .catch(() => setThemes([]));
     const onRefresh = () => {
       void load();
       void fetchModels(true);
@@ -136,6 +161,13 @@ export function ModelsSettingsSection() {
           modelRouting: { parsing },
           chat: { backend: chatBackend, codexModel: codexModel.trim() },
           deepResearch: { mode: drMode, agentBackend: drAgentBackend, model: drModel },
+          dailyNews: {
+            mode: dnMode,
+            agentBackend: dnAgentBackend,
+            model: dnModel,
+            title: dnTitle.trim(),
+            theme: dnTheme,
+          },
         }),
       });
       if ((await res.json()).ok) {
@@ -283,6 +315,79 @@ export function ModelsSettingsSection() {
               </p>
             </div>
           )}
+        </div>
+
+        {/* Daily News engine — same three-way choice as Deep Research, but no
+            web search (it synthesizes your own data), so any provider works. */}
+        <div className="pt-3 border-t border-border/30">
+          <label className="flex items-center gap-2 text-[13px] font-medium text-surface-800 mb-1">
+            <Newspaper className="w-4 h-4" />
+            Daily News
+            <span className="font-normal text-surface-500">(how the newspaper is written)</span>
+          </label>
+          <select
+            value={dnMode}
+            onChange={(e) => setDnMode(e.target.value as 'agent' | 'api')}
+            className={selectClass}
+          >
+            <option value="api">API — direct call (provider + model)</option>
+            <option value="agent">Agent — Claude Code or Codex on your subscription</option>
+          </select>
+          {dnMode === 'api' ? (
+            <div className="mt-2">
+              <ScopeRow
+                label="Edition model"
+                value={dnModel}
+                onChange={setDnModel}
+                models={modelsByProvider}
+              />
+              <p className="text-[11px] text-surface-500 mt-1">
+                Daily News synthesizes your own data (no web search), so any provider works here.
+              </p>
+            </div>
+          ) : (
+            <div className="mt-2 space-y-2">
+              <label className="block text-[11px] text-surface-500">Agent (subscription)</label>
+              <select
+                value={dnAgentBackend}
+                onChange={(e) => setDnAgentBackend(e.target.value as 'claude' | 'codex')}
+                className={selectClass}
+              >
+                <option value="claude">Claude — Claude Code (Claude sub)</option>
+                <option value="codex">Codex — app-server (OpenAI sub)</option>
+              </select>
+              <p className="text-[11px] text-surface-600 leading-relaxed">
+                Runs on your subscription (no API billing). API mode is recommended for the
+                unattended morning run — a stored API key doesn't expire like an OAuth session.
+              </p>
+            </div>
+          )}
+          <div className="mt-3">
+            <label className="block text-[11px] text-surface-500 mb-1">Theme (house style)</label>
+            <select
+              value={dnTheme}
+              onChange={(e) => setDnTheme(e.target.value)}
+              className={selectClass}
+            >
+              {(themes.length ? themes : [{ id: 'standard', label: 'Newspaper of record' }]).map(
+                (t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
+                  </option>
+                )
+              )}
+            </select>
+          </div>
+          <div className="mt-3">
+            <label className="block text-[11px] text-surface-500 mb-1">Masthead title</label>
+            <Input
+              type="text"
+              value={dnTitle}
+              onChange={(e) => setDnTitle(e.target.value)}
+              placeholder="The DocVault Dispatch"
+              className="text-[13px]"
+            />
+          </div>
         </div>
 
         <Button onClick={save} size="sm" disabled={saving}>

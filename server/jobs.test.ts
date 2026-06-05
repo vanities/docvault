@@ -188,6 +188,7 @@ describe('listBuiltInJobRecords', () => {
       'encrypted-backup',
       'quant-refresh',
       'politics-refresh',
+      'daily-news',
     ]);
     expect(jobs[0]).toMatchObject({
       kind: 'built-in',

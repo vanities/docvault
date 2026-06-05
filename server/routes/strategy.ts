@@ -63,6 +63,12 @@ async function saveHistory(data: StrategyHistoryFile): Promise<void> {
   await fs.writeFile(STRATEGY_HISTORY_FILE, JSON.stringify(data, null, 2));
 }
 
+/** The most recent strategy entry, or null. In-process accessor for the Daily News digest. */
+export async function getLatestStrategy(): Promise<StrategyEntry | null> {
+  const data = await loadHistory();
+  return data.entries.length > 0 ? data.entries[data.entries.length - 1] : null;
+}
+
 export async function handleStrategyRoutes(
   req: Request,
   _url: URL,
@@ -79,9 +85,7 @@ export async function handleStrategyRoutes(
 
   // GET /api/strategy/latest — most recent entry only
   if (pathname === '/api/strategy/latest' && req.method === 'GET') {
-    const data = await loadHistory();
-    const latest = data.entries.length > 0 ? data.entries[data.entries.length - 1] : null;
-    return jsonResponse({ entry: latest });
+    return jsonResponse({ entry: await getLatestStrategy() });
   }
 
   // POST /api/strategy — create a new entry

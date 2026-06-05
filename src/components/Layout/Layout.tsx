@@ -13,6 +13,7 @@ import { ChatView } from '../Chat/ChatView';
 import { SettingsView } from '../Settings/SettingsView';
 import { ExternalSourcesView } from '../ExternalSources/ExternalSourcesView';
 import { ResearchView } from '../Research/ResearchView';
+import { DailyNewsView } from '../DailyNews/DailyNewsView';
 import { TnTaxView } from '../TnTax/TnTaxView';
 import { CryptoView } from '../Crypto/CryptoView';
 import { BrokersView } from '../Brokers/BrokersView';
@@ -108,6 +109,8 @@ export function Layout() {
         return <ExternalSourcesView />;
       case 'deep-research':
         return <ResearchView />;
+      case 'daily-news':
+        return <DailyNewsView />;
       case 'settings':
         return <SettingsView />;
       case 'tn-tax':

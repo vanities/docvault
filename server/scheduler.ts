@@ -27,6 +27,13 @@ import { buildPortfolio, fetchAllSnapTradeHoldings } from './brokers.js';
 import { fetchBalances as fetchSimplefinBalances } from './simplefin.js';
 import { refreshAllQuantData } from './routes/quant.js';
 import { refreshPolitics } from './politics/refresh.js';
+import {
+  startEdition,
+  editionExistsForDate,
+  weeklyEditionExistsForWeek,
+  type EditionType,
+} from './daily-news-store.js';
+import { dailyNewsPlan } from './daily-news-schedule.js';
 import { createLogger } from './logger.js';
 
 // Scheduler — built-in cron-like recurring tasks
@@ -45,11 +52,15 @@ export const DEFAULT_SNAPSHOT_INTERVAL = 1440; // 24 hours in minutes
 export const DEFAULT_DROPBOX_SYNC_INTERVAL = 15; // 15 minutes
 export const DEFAULT_QUANT_REFRESH_INTERVAL = 1440; // 24 hours in minutes
 export const DEFAULT_POLITICS_REFRESH_INTERVAL = 1440; // 24 hours in minutes
+// Daily News ticks frequently but publishes at most once/day (past the target
+// hour) — this interval is the polling cadence, not the publish cadence.
+export const DEFAULT_DAILY_NEWS_TICK_INTERVAL = 60; // 1 hour in minutes
 
 let snapshotTimer: ReturnType<typeof setInterval> | null = null;
 let dropboxSyncTimer: ReturnType<typeof setInterval> | null = null;
 let quantRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let politicsRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let dailyNewsTimer: ReturnType<typeof setInterval> | null = null;
 
 // ============================================================================
 // Schedule status tracking — persists last-ran timestamps per task to
@@ -61,6 +72,7 @@ export type ScheduleTaskName =
   | 'dropboxSync'
   | 'quantRefresh'
   | 'politicsRefresh'
+  | 'dailyNewsRefresh'
   | 'encryptedBackup';
 
 export interface ScheduleTaskStatus {
@@ -89,6 +101,7 @@ export async function loadScheduleStatus(): Promise<ScheduleStatusMap> {
     dropboxSync: emptyStatus(),
     quantRefresh: emptyStatus(),
     politicsRefresh: emptyStatus(),
+    dailyNewsRefresh: emptyStatus(),
     encryptedBackup: emptyStatus(),
   };
   try {
@@ -415,6 +428,31 @@ export async function runPoliticsRefresh(): Promise<void> {
   });
 }
 
+/**
+ * Daily News tick — runs hourly but generates at most ONE edition per local
+ * day, only once the clock passes the configured hour (see dailyNewsPlan). On
+ * the configured weekday (and if none was made in the last 6 days) it produces
+ * a weekly deep-dive; otherwise a daily digest. A silent no-op when not due —
+ * trackRun only fires when an edition is actually kicked off, so the status
+ * file isn't rewritten every hour.
+ */
+export async function runDailyNewsTick(): Promise<void> {
+  try {
+    const plan = dailyNewsPlan(new Date(), (await loadSettings()).schedules);
+    if (!plan) return;
+    if (await editionExistsForDate(plan.today)) return;
+    const wantWeekly = plan.isWeeklyDay && !(await weeklyEditionExistsForWeek(plan.weekStart));
+    const editionType: EditionType = wantWeekly ? 'weekly' : 'daily';
+
+    await trackRun('dailyNewsRefresh', async () => {
+      logScheduler.info(`Daily News due — generating ${editionType} edition for ${plan.today}`);
+      await startEdition(editionType, plan.today);
+    });
+  } catch (err) {
+    logScheduler.error('Daily News tick failed:', String(err));
+  }
+}
+
 export async function runDropboxSync(): Promise<void> {
   return trackRun('dropboxSync', async () => {
     // Create encrypted config backup before syncing (if password is configured)
@@ -465,10 +503,12 @@ export function startScheduler(schedules: Settings['schedules'] = {}): void {
   if (dropboxSyncTimer) clearInterval(dropboxSyncTimer);
   if (quantRefreshTimer) clearInterval(quantRefreshTimer);
   if (politicsRefreshTimer) clearInterval(politicsRefreshTimer);
+  if (dailyNewsTimer) clearInterval(dailyNewsTimer);
   snapshotTimer = null;
   dropboxSyncTimer = null;
   quantRefreshTimer = null;
   politicsRefreshTimer = null;
+  dailyNewsTimer = null;
 
   const snapshotEnabled = schedules?.snapshotEnabled !== false; // default on
   const snapshotMinutes = schedules?.snapshotIntervalMinutes || DEFAULT_SNAPSHOT_INTERVAL;
@@ -510,6 +550,17 @@ export function startScheduler(schedules: Settings['schedules'] = {}): void {
   } else {
     logScheduler.info('Politics refresh: disabled');
   }
+
+  // Daily News is OPT-IN (default off). Ticks hourly; the tick itself decides
+  // whether an edition is actually due (past the hour, none yet today).
+  if (schedules?.dailyNewsEnabled === true) {
+    dailyNewsTimer = setInterval(runDailyNewsTick, DEFAULT_DAILY_NEWS_TICK_INTERVAL * 60 * 1000);
+    logScheduler.info(
+      `Daily News: checking hourly (publishes ~${String(schedules.dailyNewsHour ?? 7).padStart(2, '0')}:00 local, weekly day ${schedules.dailyNewsWeeklyDay ?? 0})`
+    );
+  } else {
+    logScheduler.info('Daily News: disabled');
+  }
 }
 
 // Initialize scheduler on startup — take an immediate snapshot then start intervals
@@ -527,6 +578,12 @@ loadSettings()
     if (settings.schedules?.politicsRefreshEnabled !== false) {
       logScheduler.info('Taking initial politics refresh on startup...');
       void runPoliticsRefresh();
+    }
+    // Daily News opt-in: the tick is a no-op unless an edition is due, so this
+    // safely catches "server was down at the publish hour, came up later".
+    if (settings.schedules?.dailyNewsEnabled === true) {
+      logScheduler.info('Checking Daily News on startup...');
+      void runDailyNewsTick();
     }
     // Run an initial Dropbox sync on boot so the encrypted backup stays fresh
     // even when container restarts happen more often than the sync interval.

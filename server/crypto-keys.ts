@@ -214,5 +214,8 @@ export function walkSensitiveFields(settings: Settings, transform: Transformer):
   if (out.openai?.apiKey) {
     out.openai.apiKey = transform(out.openai.apiKey);
   }
+  if (out.email?.resendApiKey) {
+    out.email.resendApiKey = transform(out.email.resendApiKey);
+  }
   return out;
 }

@@ -348,6 +348,17 @@ const BUILT_IN_JOBS: BuiltInDefinition[] = [
     enabled: (schedules) => schedules?.politicsRefreshEnabled !== false,
     schedule: (schedules) => `every ${schedules?.politicsRefreshIntervalMinutes || 1440}m`,
   },
+  {
+    id: 'daily-news',
+    label: 'Daily News',
+    description:
+      'Synthesizes a newspaper edition each morning (weekly deep-dive on the configured day).',
+    taskName: 'dailyNewsRefresh',
+    tags: ['built-in', 'news'],
+    enabled: (schedules) => schedules?.dailyNewsEnabled === true,
+    schedule: (schedules) =>
+      `daily at ${String(schedules?.dailyNewsHour ?? 7).padStart(2, '0')}:00`,
+  },
 ];
 
 export function listBuiltInJobRecords(
