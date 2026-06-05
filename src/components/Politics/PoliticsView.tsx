@@ -14,6 +14,7 @@ import {
 import { Card } from '@/components/ui/card';
 import { ResearchPanel } from '../Quant/ResearchPanel';
 import { TradeExplorer } from './TradeExplorer';
+import { ConsensusPanel } from './ConsensusPanel';
 import { DashboardFeeds } from './DashboardFeeds';
 import { summarizePoliticsData, type PoliticsFeedPayload } from './politicsData';
 
@@ -326,6 +327,8 @@ export function PoliticsView() {
       </div>
 
       <CongressDashboard />
+
+      <ConsensusPanel />
 
       <TradeExplorer />
 
