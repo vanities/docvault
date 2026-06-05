@@ -29,6 +29,17 @@ interface WalletConfig {
   label: string;
 }
 
+// A hand-entered holding for an asset with no fetchable source (e.g. Monero).
+// Mirrors CryptoManualHolding in server/data.ts; kept local to avoid a
+// cross-module type dependency, matching the existing Exchange/WalletConfig duplication.
+interface ManualHolding {
+  id: string;
+  asset: string;
+  amount: number;
+  label?: string;
+  note?: string;
+}
+
 interface Balance {
   asset: string;
   amount: number;
@@ -37,7 +48,7 @@ interface Balance {
 
 interface SourceBalance {
   sourceId: string;
-  sourceType: 'exchange' | 'wallet';
+  sourceType: 'exchange' | 'wallet' | 'manual';
   label: string;
   balances: Balance[];
   totalUsdValue: number;
@@ -124,6 +135,7 @@ export const COINGECKO_IDS: Record<string, string> = {
   ATOM: 'cosmos',
   XRP: 'ripple',
   LTC: 'litecoin',
+  XMR: 'monero',
   // Liquid staking
   STETH: 'staked-ether',
   RETH: 'rocket-pool-eth',
@@ -1461,10 +1473,40 @@ export async function fetchSourceBalance(
   throw new Error(`Source not found: ${sourceId}`);
 }
 
+/**
+ * Turn hand-entered holdings into synthetic balance sources so they flow through
+ * the same byAsset/totalUsdValue aggregation as fetched exchanges and wallets.
+ * Each holding becomes its own source (mirroring how each wallet is one source),
+ * so multiple wallets of the same coin stay individually labeled while still
+ * summing correctly in the per-asset rollup.
+ *
+ * Pure (no network, no clock): `prices` is the symbol→USD map from fetchPrices()
+ * and `now` is the caller's timestamp. An asset missing from the map prices to 0,
+ * matching the attachPrices() convention used for fetched balances.
+ */
+export function manualHoldingsToSources(
+  holdings: ManualHolding[],
+  prices: Record<string, number>,
+  now: string
+): SourceBalance[] {
+  return holdings.map((h) => {
+    const usdValue = h.amount * (prices[h.asset] || prices[h.asset.toUpperCase()] || 0);
+    return {
+      sourceId: h.id,
+      sourceType: 'manual' as const,
+      label: h.label || `${h.asset} (manual)`,
+      balances: [{ asset: h.asset, amount: h.amount, usdValue }],
+      totalUsdValue: usdValue,
+      lastUpdated: now,
+    };
+  });
+}
+
 export async function fetchAllBalances(
   exchanges: ExchangeConfig[],
   wallets: WalletConfig[],
   etherscanKey_?: string,
+  manualHoldings: ManualHolding[] = [],
   onProgress?: (current: number, total: number, label: string) => void,
   onSource?: (source: SourceBalance) => void
 ): Promise<{
@@ -1582,6 +1624,16 @@ export async function fetchAllBalances(
       error,
       lastUpdated: new Date().toISOString(),
     };
+    sources.push(source);
+    onSource?.(source);
+  }
+
+  // Manual holdings — self-custodied / untracked assets (e.g. Monero) the user
+  // records by hand. Nothing to fetch, so we trust the entered amount and price
+  // it with the already-loaded price map. Each becomes its own source so it lands
+  // in byAsset + totalUsdValue exactly like a fetched wallet.
+  for (const source of manualHoldingsToSources(manualHoldings, prices, new Date().toISOString())) {
+    source.balances.forEach((b) => allAssets.add(b.asset));
     sources.push(source);
     onSource?.(source);
   }

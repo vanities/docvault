@@ -28,6 +28,8 @@ export async function handleCryptoRoutes(
         chain: w.chain,
         label: w.label,
       })),
+      // Manual holdings carry no secrets, so they're returned verbatim.
+      manualHoldings: cryptoConfig.manualHoldings || [],
       hasEtherscanKey: !!cryptoConfig.etherscanKey,
       etherscanKeyHint: cryptoConfig.etherscanKey ? cryptoConfig.etherscanKey.slice(-4) : undefined,
     });
@@ -83,6 +85,40 @@ export async function handleCryptoRoutes(
       settings.crypto.wallets = settings.crypto.wallets.filter((w) => w.id !== body.removeWallet);
     }
 
+    // Handle manual holdings (assets with no fetchable source, e.g. Monero)
+    if (body.addManualHolding) {
+      const { asset, amount, label, note } = body.addManualHolding;
+      if (!asset || typeof amount !== 'number' || !Number.isFinite(amount)) {
+        return jsonResponse({ error: 'Missing or invalid holding asset/amount' }, 400);
+      }
+      if (!settings.crypto.manualHoldings) settings.crypto.manualHoldings = [];
+      const id = `${String(asset).toLowerCase()}-${Date.now()}-${settings.crypto.manualHoldings.length}`;
+      settings.crypto.manualHoldings.push({
+        id,
+        asset: String(asset).toUpperCase(),
+        amount,
+        label: label || undefined,
+        note: note || undefined,
+      });
+    }
+
+    if (body.updateManualHolding) {
+      const { id, asset, amount, label, note } = body.updateManualHolding;
+      const holding = (settings.crypto.manualHoldings || []).find((h) => h.id === id);
+      if (holding) {
+        if (asset !== undefined) holding.asset = String(asset).toUpperCase();
+        if (amount !== undefined && Number.isFinite(amount)) holding.amount = amount;
+        if (label !== undefined) holding.label = label || undefined;
+        if (note !== undefined) holding.note = note || undefined;
+      }
+    }
+
+    if (body.removeManualHolding) {
+      settings.crypto.manualHoldings = (settings.crypto.manualHoldings || []).filter(
+        (h) => h.id !== body.removeManualHolding
+      );
+    }
+
     // Handle Etherscan key
     if (body.etherscanKey !== undefined) {
       settings.crypto.etherscanKey = body.etherscanKey || undefined;
@@ -97,13 +133,17 @@ export async function handleCryptoRoutes(
     const settings = await loadSettings();
     const cryptoConfig = settings.crypto || { exchanges: [], wallets: [] };
 
-    if (cryptoConfig.exchanges.length === 0 && cryptoConfig.wallets.length === 0) {
+    if (
+      cryptoConfig.exchanges.length === 0 &&
+      cryptoConfig.wallets.length === 0 &&
+      (cryptoConfig.manualHoldings?.length ?? 0) === 0
+    ) {
       return jsonResponse({
         sources: [],
         totalUsdValue: 0,
         byAsset: [],
         lastUpdated: new Date().toISOString(),
-        message: 'No exchanges or wallets configured. Add them in Settings.',
+        message: 'No exchanges, wallets, or manual holdings configured. Add them in Settings.',
       });
     }
 
@@ -141,6 +181,7 @@ export async function handleCryptoRoutes(
             cryptoConfig.exchanges,
             cryptoConfig.wallets,
             cryptoConfig.etherscanKey,
+            cryptoConfig.manualHoldings,
             (current, total, label) => {
               send({ type: 'progress', current, total, label });
             },
@@ -169,7 +210,8 @@ export async function handleCryptoRoutes(
     const portfolio = await fetchAllBalances(
       cryptoConfig.exchanges,
       cryptoConfig.wallets,
-      cryptoConfig.etherscanKey
+      cryptoConfig.etherscanKey,
+      cryptoConfig.manualHoldings
     );
     await saveCryptoCache(portfolio);
     return jsonResponse(portfolio);
