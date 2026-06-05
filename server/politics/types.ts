@@ -11,6 +11,8 @@
 // `server/research-politics-links.ts`) so the producer can be swapped under them
 // with only cosmetic edits.
 
+import type { OptionDetail } from './option-description.js';
+
 export type TradeCategory = 'buy' | 'sell' | 'exchange' | 'gift' | 'other';
 
 export type TradeChamber = 'house' | 'senate' | 'executive' | 'unknown';
@@ -42,6 +44,12 @@ export interface TradeRecord {
   /** Consumers read `sourceUrl`; keep `filingUrl` as an alias. */
   filingUrl: string | null;
   sourceUrl: string | null;
+  /** Filer's free-text DESCRIPTION field (House PTR), when present — carries the
+   *  option contract, exercise notes, gift context, etc. */
+  description?: string | null;
+  /** Structured option contract parsed from `description` (call/put, strike,
+   *  expiry, contracts) — the copy-trade-grade detail the asset row omits. */
+  option?: OptionDetail | null;
 }
 
 export type BillStatus =

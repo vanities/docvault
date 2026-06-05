@@ -82,6 +82,7 @@ scripts/*
 !server/politics/feed.test.ts
 !server/politics/scanned-house-ptr.test.ts
 !server/politics/clusters.test.ts
+!server/politics/option-description.test.ts
 # Exception: amortization math tests are pure computation, no personal data
 !src/utils/amortization.test.ts
 
