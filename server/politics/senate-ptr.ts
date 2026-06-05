@@ -11,6 +11,7 @@
 import { createLogger } from '../logger.js';
 import { timeoutFetch } from './http.js';
 import { markSeen, mergeFilings, mergeTrades } from './feed-store.js';
+import { archiveFiling } from './filing-archive.js';
 import { normalizeTradeCategory, parseDisclosureAmountRange } from './trade-transform.js';
 import type { FilingRecord, PoliticsCache, TradeRecord } from './types.js';
 
@@ -327,6 +328,8 @@ export interface IngestSenateOptions {
   maxFilings?: number;
   /** One-time: parse EVERY not-seen filing for the year (ignore the window). */
   backfill?: boolean;
+  /** Force-enable filing archiving even when `fetchFn` is injected (tests). */
+  archive?: boolean;
 }
 
 export interface IngestSenateResult {
@@ -401,6 +404,8 @@ export async function ingestSenatePtr(
   const handled: string[] = [];
   const errors: string[] = [];
   let paper = 0;
+  let archived = 0;
+  const shouldArchive = !opts.fetchFn || opts.archive;
 
   for (const row of toProcess) {
     try {
@@ -423,6 +428,22 @@ export async function ingestSenatePtr(
       } else {
         trades.push(...parsed);
       }
+      if (shouldArchive) {
+        await archiveFiling({
+          source: 'senate-ptr',
+          docId: row.filingDocId,
+          chamber: 'senate',
+          filerName: row.filerName,
+          filingYear: year,
+          filingDate: row.filingDate,
+          filingUrl: row.filingUrl,
+          text: html, // Senate eFD is HTML, not a PDF
+          parseMethod: parsed.length > 0 ? 'text' : 'none',
+          tradeCount: parsed.length,
+        });
+        archived += 1;
+        log.debug(`archived senate-ptr/${row.filingDocId} (${parsed.length} trades)`);
+      }
       handled.push(row.filingDocId);
     } catch (err) {
       errors.push(`${row.filingDocId}: ${msg(err)}`);
@@ -436,7 +457,9 @@ export async function ingestSenatePtr(
   if (newestDate) cache.cursors.senateLastSeen = newestDate;
 
   if (errors.length) log.warn(`Senate PTR transient errors: ${errors.slice(0, 3).join('; ')}`);
-  log.info(`Senate PTR: parsed ${trades.length} trades, ${filings.length} needs-attention`);
+  log.info(
+    `Senate PTR: parsed ${trades.length} trades, ${filings.length} needs-attention, archived ${archived}`
+  );
   return {
     added: trades.length,
     filings: filings.length,

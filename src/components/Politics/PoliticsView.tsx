@@ -15,6 +15,7 @@ import { Card } from '@/components/ui/card';
 import { ResearchPanel } from '../Quant/ResearchPanel';
 import { TradeExplorer } from './TradeExplorer';
 import { ConsensusPanel } from './ConsensusPanel';
+import { BrowseOverlay, type BrowseCategory } from './BrowseOverlay';
 import { DashboardFeeds } from './DashboardFeeds';
 import { summarizePoliticsData, type PoliticsFeedPayload } from './politicsData';
 
@@ -46,6 +47,7 @@ interface ResearchPoliticsBrief {
 }
 
 function CongressDashboard() {
+  const [browse, setBrowse] = useState<BrowseCategory | null>(null);
   const [payload, setPayload] = useState<PoliticsFeedPayload | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -123,22 +125,38 @@ function CongressDashboard() {
       </Card>
 
       <div className="grid gap-3 md:grid-cols-4">
-        <MetricCard icon={Landmark} label="Bills" value={summary?.recentVoteCount ?? 0} />
+        <MetricCard
+          icon={Landmark}
+          label="Bills"
+          value={summary?.recentVoteCount ?? 0}
+          onClick={() => setBrowse('bills')}
+        />
         <MetricCard
           icon={Scale}
           label="Executive actions"
           value={summary?.recentExecutiveActionCount ?? 0}
+          onClick={() => setBrowse('executiveActions')}
         />
-        <MetricCard icon={TrendingUp} label="Trades" value={summary?.recentTradeCount ?? 0} />
+        <MetricCard
+          icon={TrendingUp}
+          label="Trades"
+          value={summary?.recentTradeCount ?? 0}
+          onClick={() => setBrowse('trades')}
+        />
         <MetricCard
           icon={FileWarning}
-          label="Needs attention"
+          label="Filings"
           value={summary?.filingsNeedingAttentionCount ?? 0}
           tone={(summary?.filingsNeedingAttentionCount ?? 0) > 0 ? 'warn' : 'ok'}
+          onClick={() => setBrowse('filings')}
         />
       </div>
 
       <DashboardFeeds payload={payload} />
+
+      {browse && (
+        <BrowseOverlay category={browse} payload={payload} onClose={() => setBrowse(null)} />
+      )}
     </section>
   );
 }
@@ -148,19 +166,28 @@ function MetricCard({
   label,
   value,
   tone = 'neutral',
+  onClick,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   value: number;
   tone?: 'neutral' | 'ok' | 'warn';
+  onClick?: () => void;
 }) {
   const toneClass =
     tone === 'warn' ? 'text-amber-300' : tone === 'ok' ? 'text-emerald-400' : 'text-surface-950';
   return (
-    <Card variant="glass" className="p-4 border-border/50">
+    <Card
+      variant="glass"
+      onClick={onClick}
+      className={`p-4 border-border/50 ${onClick ? 'cursor-pointer hover:border-accent-500/60 transition-colors' : ''}`}
+    >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-surface-600">{label}</p>
+          <p className="text-xs uppercase tracking-wide text-surface-600 flex items-center gap-1">
+            {label}
+            {onClick && <span className="text-surface-700">→</span>}
+          </p>
           <p className={`text-2xl font-semibold mt-1 ${toneClass}`}>{value.toLocaleString()}</p>
         </div>
         <Icon className="w-5 h-5 text-surface-600" />
