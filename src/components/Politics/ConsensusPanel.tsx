@@ -224,8 +224,8 @@ export function ConsensusPanel() {
   const [clusters, setClusters] = useState<Cluster[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [direction, setDirection] = useState<DirectionFilter>('all');
-  const [windowDays, setWindowDays] = useState(60);
-  const [sort, setSort] = useState<SortKey>('members');
+  const [windowDays, setWindowDays] = useState(30);
+  const [sort, setSort] = useState<SortKey>('recent');
 
   const sorted = useMemo(() => sortClusters(clusters ?? [], sort), [clusters, sort]);
 
