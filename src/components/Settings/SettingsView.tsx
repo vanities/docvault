@@ -3,6 +3,7 @@ import {
   Key,
   Save,
   CheckCircle,
+  Brain,
   Building2,
   Pencil,
   Trash2,
@@ -46,6 +47,7 @@ import { ChatSettingsSection } from './ChatSettingsSection';
 import { ModelsSettingsSection } from './ModelsSettingsSection';
 import { AiLabsKeysSection } from './AiLabsKeysSection';
 import { ExternalSourcesSection } from './ExternalSourcesSection';
+import { BrainSection } from './BrainSection';
 import {
   AVAILABLE_ICONS,
   DEFAULT_ENTITY_ICONS,
@@ -382,9 +384,19 @@ export function SettingsView() {
   const [etherscanKeyHint, setEtherscanKeyHint] = useState<string | undefined>();
   const [newEtherscanKey, setNewEtherscanKey] = useState('');
 
+  // Manual holdings — assets with no fetchable source (e.g. Monero)
+  const [cryptoHoldings, setCryptoHoldings] = useState<
+    { id: string; asset: string; amount: number; label?: string; note?: string }[]
+  >([]);
+  const [showAddHolding, setShowAddHolding] = useState(false);
+  const [newHoldingAsset, setNewHoldingAsset] = useState('');
+  const [newHoldingAmount, setNewHoldingAmount] = useState('');
+  const [newHoldingLabel, setNewHoldingLabel] = useState('');
+
   // Show/hide toggles for collapsible lists
   const [showAllExchanges, setShowAllExchanges] = useState(false);
   const [showAllWallets, setShowAllWallets] = useState(false);
+  const [showAllHoldings, setShowAllHoldings] = useState(false);
   const [showAllEntities, setShowAllEntities] = useState(false);
 
   // SimpleFIN settings state
@@ -919,6 +931,7 @@ export function SettingsView() {
       const data = await res.json();
       setCryptoExchanges(data.exchanges || []);
       setCryptoWallets(data.wallets || []);
+      setCryptoHoldings(data.manualHoldings || []);
       setHasEtherscanKey(data.hasEtherscanKey || false);
       setEtherscanKeyHint(data.etherscanKeyHint);
     } catch {
@@ -1008,6 +1021,67 @@ export function SettingsView() {
       }
     } catch {
       addToast('Failed to add wallet', 'error');
+    } finally {
+      setIsCryptoSaving(false);
+    }
+  };
+
+  const handleAddHolding = async () => {
+    const amount = Number(newHoldingAmount);
+    if (!newHoldingAsset.trim() || !Number.isFinite(amount) || amount <= 0) {
+      addToast('Enter a valid asset and amount', 'error');
+      return;
+    }
+    setIsCryptoSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/crypto/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          addManualHolding: {
+            asset: newHoldingAsset.trim().toUpperCase(),
+            amount,
+            label: newHoldingLabel.trim() || undefined,
+          },
+        }),
+      });
+      if ((await res.json()).ok) {
+        addToast(`${newHoldingAsset.trim().toUpperCase()} holding added`, 'success');
+        setShowAddHolding(false);
+        setNewHoldingAsset('');
+        setNewHoldingAmount('');
+        setNewHoldingLabel('');
+        void loadCryptoSettings();
+      }
+    } catch {
+      addToast('Failed to add holding', 'error');
+    } finally {
+      setIsCryptoSaving(false);
+    }
+  };
+
+  const handleRemoveHolding = async (holdingId: string) => {
+    if (
+      !(await confirm({
+        description: 'Remove this manual holding?',
+        confirmLabel: 'Remove',
+        destructive: true,
+      }))
+    )
+      return;
+    setIsCryptoSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/crypto/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ removeManualHolding: holdingId }),
+      });
+      if ((await res.json()).ok) {
+        addToast('Holding removed', 'success');
+        void loadCryptoSettings();
+      }
+    } catch {
+      addToast('Failed to remove holding', 'error');
     } finally {
       setIsCryptoSaving(false);
     }
@@ -1390,6 +1464,10 @@ export function SettingsView() {
             <Library className="w-3.5 h-3.5" />
             Sources
           </TabsTrigger>
+          <TabsTrigger value="brain">
+            <Brain className="w-3.5 h-3.5" />
+            Brain
+          </TabsTrigger>
           <TabsTrigger value="status">
             <Activity className="w-3.5 h-3.5" />
             Status
@@ -1525,6 +1603,8 @@ export function SettingsView() {
         )}
 
         {showIn(['sources']) && <ExternalSourcesSection />}
+
+        {showIn(['brain']) && <BrainSection />}
 
         {showIn(['all']) && (
           <>
@@ -3007,6 +3087,131 @@ export function SettingsView() {
                         Save
                       </Button>
                     </div>
+                  )}
+                </div>
+
+                {/* Manual Holdings — assets DocVault can't fetch on its own (e.g. Monero) */}
+                <div className="mt-4 pt-4 border-t border-border">
+                  <label className="block text-[11px] font-medium text-surface-600 mb-2">
+                    Manual Holdings{' '}
+                    <span className="text-surface-500 font-normal">
+                      (self-custodied assets with no fetchable balance, e.g. Monero &mdash; priced
+                      live via CoinGecko, counts toward your crypto total)
+                    </span>
+                  </label>
+
+                  {cryptoHoldings.length > 0 && (
+                    <div className="space-y-2 mb-3">
+                      {(showAllHoldings ? cryptoHoldings : cryptoHoldings.slice(0, 3)).map((h) => (
+                        <div
+                          key={h.id}
+                          className="flex items-center justify-between p-3 bg-surface-200/30 border border-surface-400/20 rounded-xl"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] font-mono font-bold text-surface-700 uppercase">
+                                {h.asset}
+                              </span>
+                              <span className="text-[13px] font-medium text-surface-900">
+                                {h.label || `${h.asset} (manual)`}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-surface-500 font-mono truncate">
+                              {h.amount} {h.asset}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => handleRemoveHolding(h.id)}
+                            disabled={isCryptoSaving}
+                            className="p-1.5 text-surface-600 hover:text-danger-400 hover:bg-danger-500/10 rounded-lg transition-colors flex-shrink-0 ml-2"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                      {cryptoHoldings.length > 3 && (
+                        <button
+                          onClick={() => setShowAllHoldings(!showAllHoldings)}
+                          className="flex items-center gap-1.5 text-[12px] text-accent-400 hover:text-accent-300 transition-colors"
+                        >
+                          {showAllHoldings ? (
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          ) : (
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          )}
+                          {showAllHoldings ? 'Show less' : `Show ${cryptoHoldings.length - 3} more`}
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {showAddHolding ? (
+                    <div className="p-4 bg-surface-200/20 border border-border rounded-xl space-y-3">
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-medium text-surface-600 mb-1">
+                            Asset
+                          </label>
+                          <input
+                            type="text"
+                            value={newHoldingAsset}
+                            onChange={(e) => setNewHoldingAsset(e.target.value)}
+                            placeholder="XMR"
+                            className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 font-mono uppercase placeholder:text-surface-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-medium text-surface-600 mb-1">
+                            Amount
+                          </label>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            step="any"
+                            value={newHoldingAmount}
+                            onChange={(e) => setNewHoldingAmount(e.target.value)}
+                            placeholder="0.0"
+                            className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 font-mono placeholder:text-surface-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-medium text-surface-600 mb-1">
+                            Label
+                          </label>
+                          <input
+                            type="text"
+                            value={newHoldingLabel}
+                            onChange={(e) => setNewHoldingLabel(e.target.value)}
+                            placeholder="e.g. Cold wallet"
+                            className="w-full px-3 py-2 bg-surface-200/50 border border-border rounded-xl text-[13px] text-surface-900 placeholder:text-surface-500"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <Button
+                          variant="ghost"
+                          onClick={() => {
+                            setShowAddHolding(false);
+                            setNewHoldingAsset('');
+                            setNewHoldingAmount('');
+                            setNewHoldingLabel('');
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={handleAddHolding}
+                          disabled={isCryptoSaving || !newHoldingAsset.trim() || !newHoldingAmount}
+                        >
+                          {isCryptoSaving ? 'Saving...' : 'Add Holding'}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button variant="ghost" onClick={() => setShowAddHolding(true)}>
+                      <Plus className="w-3.5 h-3.5" />
+                      Add Holding
+                    </Button>
                   )}
                 </div>
               </div>

@@ -74,6 +74,7 @@ import {
 import { runCodexChat } from '../llm/codex-chat.js';
 import { loadHealthStore } from '../health-store.js';
 import { searchMarkdown, readSourceFile, listSourceFiles } from '../external-sources.js';
+import { readBrain, readBrainContent, appendBrainEntry } from '../brain.js';
 import { getCachedPredictions, handleQuantRoutes } from './quant.js';
 import { handleNutritionRoutes } from './nutrition.js';
 import { handleSicknessRoutes } from './sickness.js';
@@ -174,7 +175,9 @@ const TOOL_NAMES = [
   'read_deep_research',
   'get_financial_snapshot',
   'get_quant_signals',
+  'read_brain',
   // --- Writes (require user confirmation per system prompt) ---
+  'remember',
   'set_metadata',
   'add_reminder',
   'create_supplement',
@@ -973,6 +976,33 @@ function jsonResult(value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value) }] };
 }
 
+// --- Brain (long-term memory) tools ---------------------------------------
+// The brain is a single user-owned markdown file (DATA_DIR/.docvault-brain.md)
+// that is also injected whole into the system prompt. read_brain re-reads the
+// current text (useful after a truncated injection or before proposing edits);
+// remember appends one durable note.
+
+async function toolReadBrain(): Promise<unknown> {
+  const brain = await readBrain();
+  return {
+    content: brain.content,
+    bytes: brain.bytes,
+    updatedAt: brain.updatedAt,
+    empty: !brain.content.trim(),
+  };
+}
+
+async function toolRemember(input: { text: string; tag?: string }): Promise<unknown> {
+  const text = (input.text ?? '').trim();
+  if (!text) return { error: 'text is required and must be non-empty.' };
+  try {
+    const result = await appendBrainEntry(text, { tag: input.tag });
+    return { ok: true, appended: result.appended, bytes: result.bytes };
+  } catch (err) {
+    return { error: (err as Error).message };
+  }
+}
+
 function buildDocVaultMcpServer(ctx: ToolContext) {
   return createSdkMcpServer({
     name: MCP_SERVER_NAME,
@@ -1057,6 +1087,28 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
             .describe('Optional path prefix to filter to, e.g. "vault/05_PROJECTS/".'),
         },
         async (args) => jsonResult(await toolListExternalSourceFiles(args))
+      ),
+      tool(
+        'read_brain',
+        "Return the user's Brain — their long-term memory: a single markdown document of durable facts, preferences, decisions, and context they want remembered across every conversation. The Brain is ALREADY included in your system prompt, so call this only to get the exact current text before proposing an edit, or when the injected copy was truncated. READ-ONLY.",
+        {},
+        async () => jsonResult(await toolReadBrain())
+      ),
+      tool(
+        'remember',
+        "Append ONE durable note to the user's Brain (long-term memory) so it is recalled in every future chat. Use ONLY for things worth remembering long-term — a stable preference, a decision, an ongoing project, household/context facts. Do NOT use it for one-off task details, transient state, or anything the app's own data already stores (balances, document contents, lab values). WRITE TOOL: state the exact text you will save and get the user's confirmation first. Keep each note to one short sentence.",
+        {
+          text: z
+            .string()
+            .describe(
+              'The single durable fact/preference/decision to remember. One short sentence.'
+            ),
+          tag: z
+            .string()
+            .optional()
+            .describe('Optional one-word category, e.g. "preference", "decision", "project".'),
+        },
+        async (args) => jsonResult(await toolRemember(args))
       ),
       tool(
         'get_tax_summary',
@@ -1363,13 +1415,36 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
 // caches the system prompt across turns.
 // ---------------------------------------------------------------------------
 
-function buildSystemPrompt(activeEntity: string | undefined): string {
+// The brain (long-term memory) is injected whole. Cap the injected copy so a
+// runaway brain can't blow the context budget; the model can still pull the
+// full text on demand via read_brain.
+const MAX_BRAIN_INJECT = 8000;
+
+function brainSection(brainContent: string): string {
+  const brain = brainContent.trim();
+  if (!brain) {
+    return 'The user has not saved anything to their Brain (long-term memory) yet. When they share a durable fact, preference, or decision worth recalling in future chats, offer to save it with the remember tool.';
+  }
+  const body =
+    brain.length > MAX_BRAIN_INJECT
+      ? `${brain.slice(0, MAX_BRAIN_INJECT)}\n…(truncated — call read_brain for the full text)`
+      : brain;
+  return [
+    'LONG-TERM MEMORY — the user\'s "Brain". Durable facts, preferences, and decisions the user has saved for you to remember across every conversation. Treat them as established, already-confirmed context and weave them into your answers without being asked or re-confirming. The user maintains this in Settings → Brain; you may add to it with the remember tool.',
+    '<brain>',
+    body,
+    '</brain>',
+  ].join('\n');
+}
+
+function buildSystemPrompt(activeEntity: string | undefined, brainContent = ''): string {
   const today = new Date().toISOString().slice(0, 10);
   return [
     `You are the DocVault chat assistant — answering questions about the user's tax documents, financial records, personal files, AND DocVault Health data (Apple Health, clinical labs, DNA, current supplement regimen, sickness log). Today is ${today}.`,
     activeEntity
       ? `The user currently has entity "${activeEntity}" selected in the UI; prefer it when entity context is ambiguous, but call list_entities if they ask about something different.`
       : 'No entity is currently selected in the UI.',
+    brainSection(brainContent),
     'DocVault Health is multi-person — the user, their partner, and any children each have their own person record. ALWAYS call list_health_people first when a health question comes in, and if the user did not specify whose health they mean, ASK before calling any health tool. Default to the user themselves only when there is exactly one non-archived person.',
     "When making a supplement, dosing, or regimen recommendation, ground it in the user's actual data: call get_health_snapshot for the relevant person FIRST, then call list_supplements to see what they're already taking, and only after that synthesize advice. Cross-reference against any labs (kidney/liver function, electrolytes) before recommending dosage.",
     'WebSearch is enabled. Use it to research products, brands, dosages, and primary literature (PubMed, journal articles) when the user asks for a recommendation or a comparison. Cite sources. Prefer primary literature over marketing pages.',
@@ -1383,8 +1458,9 @@ function buildSystemPrompt(activeEntity: string | undefined): string {
     'Be concise. Use markdown tables for structured data. When citing a specific document, include its path so the user can find it.',
     [
       "WRITE TOOLS — these make persistent changes to the user's data:",
-      '  set_metadata, add_reminder, create_supplement, update_supplement, delete_supplement, log_sickness',
+      '  remember, set_metadata, add_reminder, create_supplement, update_supplement, delete_supplement, log_sickness',
       'ALWAYS state what you are about to write (which entry, which fields, what values) and wait for explicit user confirmation BEFORE invoking any of them. Read tools can be chained freely without asking.',
+      "remember saves ONE durable note to the user's Brain (long-term memory, shown above). Use it sparingly — only for stable preferences, decisions, or context worth recalling in every future chat, never for one-off task details or anything the app already stores. Show the exact text and confirm before saving.",
       'delete_supplement is destructive — prefer update_supplement with status:"past" if the user might want the history back.',
       'create_supplement defaults to status:"considering" — that is intentional so research-grounded suggestions never silently join the active stack.',
     ].join('\n'),
@@ -1595,7 +1671,7 @@ export async function handleChatRoutes(
   // JSONL — no need to fold prior turns into the system prompt. For brand-new
   // sessions, history is empty anyway (this is the first turn), so dropping
   // the fold is a no-op there too.
-  const systemPrompt = buildSystemPrompt(body.entity);
+  const systemPrompt = buildSystemPrompt(body.entity, await readBrainContent());
   const mcpServer = buildDocVaultMcpServer(ctx);
 
   // If attachments came in this turn, we switch from the simple
@@ -1795,9 +1871,9 @@ function streamCodexChat(opts: {
   signal: AbortSignal;
 }): Response {
   const encoder = new TextEncoder();
-  const systemPrompt = buildSystemPrompt(opts.entity);
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      const systemPrompt = buildSystemPrompt(opts.entity, await readBrainContent());
       const send = (event: object) => {
         try {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));

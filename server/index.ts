@@ -163,6 +163,7 @@ import { handleCryptoYieldsRoutes } from './routes/crypto-yields.js';
 import { handleChatRoutes } from './routes/chat.js';
 import { handleTranscribeRoutes } from './routes/transcribe.js';
 import { handleExternalSourcesRoutes } from './routes/external-sources.js';
+import { handleBrainRoutes } from './routes/brain.js';
 import { handleFormsRoutes } from './routes/forms.js';
 import { handleDeepResearchRoutes } from './routes/deep-research.js';
 import { handleModelsRoutes } from './routes/models.js';
@@ -2021,6 +2022,10 @@ async function handleRequest(req: Request): Promise<Response> {
 
   const externalSourcesResponse = await handleExternalSourcesRoutes(req, url, pathname);
   if (externalSourcesResponse) return externalSourcesResponse;
+
+  // Brain — the user-owned markdown long-term memory the chat always sees.
+  const brainResponse = await handleBrainRoutes(req, url, pathname);
+  if (brainResponse) return brainResponse;
 
   const formsResponse = await handleFormsRoutes(req, url, pathname);
   if (formsResponse) return formsResponse;
