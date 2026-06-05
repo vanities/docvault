@@ -17,6 +17,7 @@ import { timeoutFetch } from './http.js';
 import { ocrAvailable } from './ocr.js';
 import { parseScannedHousePtr } from './scanned-house-ptr.js';
 import { parseDisclosureAmountRange } from './trade-transform.js';
+import { parseOptionDescription } from './option-description.js';
 import { markSeen, mergeFilings, mergeTrades } from './feed-store.js';
 import type { FilingRecord, PoliticsCache, TradeCategory, TradeRecord } from './types.js';
 
@@ -304,6 +305,37 @@ export interface HousePtrParseContext {
   filerNameFallback?: string;
 }
 
+// In `-layout` text the filer's "DESCRIPTION:" field renders as "D    : {text}"
+// (the long label spills across table columns). It sits a few lines below its
+// transaction and can wrap. Scan forward from a transaction for it, joining wraps,
+// and stop at the next transaction so a description never attaches to the wrong row.
+const DESC_MARKER = /^\s*D\s{2,}:\s*(.+\S)\s*$/;
+
+function captureDescription(lines: string[], start: number): string | null {
+  for (let k = start; k < lines.length; k++) {
+    if (TX_RE.test(lines[k])) return null; // hit the next transaction first
+    const m = lines[k].match(DESC_MARKER);
+    if (!m) continue;
+    let desc = m[1].trim();
+    // Join up to 2 wrapped continuation lines (e.g. an expiry date that wrapped).
+    for (let n = k + 1; n < lines.length && n <= k + 2; n++) {
+      const cont = lines[n].trim();
+      if (
+        !cont ||
+        TX_RE.test(lines[n]) ||
+        /^(JT|SP|DC)\s/.test(cont) || // next owner row
+        /^[A-Z]\s{0,6}(S\s{0,6})?:/.test(cont) || // next D:/F S: marker
+        /Owner\s+Asset/.test(cont) // table header
+      ) {
+        break;
+      }
+      desc += ` ${cont}`;
+    }
+    return desc.replace(/\s+/g, ' ').trim();
+  }
+  return null;
+}
+
 export function parseHousePtrText(text: string, context: HousePtrParseContext): TradeRecord[] {
   const filerName =
     text.match(/Name:\s+([^\n]+)/)?.[1]?.trim() ?? context.filerNameFallback ?? 'Unknown filer';
@@ -332,6 +364,7 @@ export function parseHousePtrText(text: string, context: HousePtrParseContext): 
     );
     const index = trades.length + 1;
     const tx = match.groups.tx;
+    const description = captureDescription(lines, i + 1);
 
     trades.push({
       externalId: `house-ptr:${context.filingYear}:${context.docId}:${index}`,
@@ -356,6 +389,8 @@ export function parseHousePtrText(text: string, context: HousePtrParseContext): 
       filingYear: context.filingYear,
       filingUrl: context.filingUrl,
       sourceUrl: context.filingUrl,
+      description,
+      option: parseOptionDescription(description),
     });
   }
 

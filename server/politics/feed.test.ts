@@ -225,6 +225,44 @@ describe('parseHousePtrText', () => {
     });
     expect(trades[1]).toMatchObject({ ticker: 'MSFT', category: 'sell', owner: null });
   });
+
+  test('captures the DESCRIPTION field + parses the option contract (call/strike/expiry)', () => {
+    // Mirrors real -layout output: "DESCRIPTION:" renders as "D    :" a few lines
+    // below the transaction, and the expiry wraps onto the next line.
+    const text = [
+      'Name: Hon. Nancy Pelosi',
+      '   SP   Alphabet Inc. - Class A Common   P   12/30/2025  12/30/2025   $250,001 - $500,000',
+      '        Stock (GOOGL) [OP]',
+      '        F      S      : New',
+      '        D           : Purchased 20 call options with a strike price of $150 and an expiration date',
+      '        of 1/15/27.',
+      '   SP   Amazon.com, Inc. - Common Stock   S   12/24/2025  12/24/2025   $1,000,001 - $5,000,000',
+      '        (AMZN) [ST]',
+      '        D           : Sold 20,000 shares.',
+    ].join('\n');
+    const trades = parseHousePtrText(text, {
+      docId: '20033725',
+      filingYear: 2026,
+      filingDate: '2026-01-20',
+      filingUrl: 'https://example/ptr.pdf',
+    });
+    expect(trades).toHaveLength(2);
+    expect(trades[0].ticker).toBe('GOOGL');
+    expect(trades[0].description).toBe(
+      'Purchased 20 call options with a strike price of $150 and an expiration date of 1/15/27.'
+    );
+    expect(trades[0].option).toEqual({
+      optionType: 'call',
+      action: 'purchase',
+      contracts: 20,
+      strike: 150,
+      expiry: '2027-01-15',
+      shares: null,
+    });
+    // A plain share-sale description is captured but yields no option contract.
+    expect(trades[1].description).toBe('Sold 20,000 shares.');
+    expect(trades[1].option).toBeNull();
+  });
 });
 
 describe('ingestHousePtr (forward-only)', () => {

@@ -22,6 +22,15 @@ interface Spender {
   monthly?: MonthBucket[];
 }
 
+interface OptionDetail {
+  optionType: 'call' | 'put';
+  action: string | null;
+  contracts: number | null;
+  strike: number | null;
+  expiry: string | null;
+  shares: number | null;
+}
+
 interface Trade {
   politicianName: string;
   chamber: string;
@@ -34,6 +43,20 @@ interface Trade {
   amountMin: number | null;
   amountMax: number | null;
   sourceUrl: string | null;
+  option?: OptionDetail | null;
+}
+
+/** Compact option-contract badge text, e.g. "$150 CALL · exp 1/15/27 · 20×". */
+function optionLabel(o: OptionDetail): string {
+  const parts: string[] = [];
+  if (o.strike != null) parts.push(`$${o.strike}`);
+  parts.push(o.optionType === 'call' ? 'CALL' : 'PUT');
+  if (o.expiry) {
+    const [y, m, d] = o.expiry.split('-');
+    parts.push(`exp ${Number(m)}/${Number(d)}/${y.slice(2)}`);
+  }
+  if (o.contracts != null) parts.push(`${o.contracts}×`);
+  return parts.join(' · ');
 }
 
 const CHAMBER_LABEL: Record<string, string> = {
@@ -518,11 +541,20 @@ function PoliticianTrades({
                       <span className="text-surface-500">—</span>
                     )}
                   </td>
-                  <td
-                    className="px-2.5 py-1.5 text-surface-700 max-w-[14rem] truncate"
-                    title={t.assetName}
-                  >
-                    {t.assetName}
+                  <td className="px-2.5 py-1.5 text-surface-700 max-w-[16rem]" title={t.assetName}>
+                    <div className="truncate">{t.assetName}</div>
+                    {t.option && (
+                      <div
+                        className={`mt-0.5 inline-flex items-center gap-1 text-[11px] font-mono font-semibold px-1.5 py-0.5 rounded ${
+                          t.option.optionType === 'call'
+                            ? 'bg-emerald-500/15 text-emerald-300'
+                            : 'bg-rose-500/15 text-rose-300'
+                        }`}
+                        title={`${t.option.action ?? ''} ${t.option.optionType} option contract`}
+                      >
+                        {optionLabel(t.option)}
+                      </div>
+                    )}
                   </td>
                   <td className="px-2.5 py-1.5 text-surface-800 text-right whitespace-nowrap tabular-nums">
                     {t.amount ?? ''}
