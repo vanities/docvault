@@ -2,6 +2,7 @@
 
 import { describe, expect, test } from 'vite-plus/test';
 import {
+  aggregatePerformance,
   amountMidpoint,
   sharesFromDescription,
   simInputFromTrade,
@@ -141,5 +142,54 @@ describe('simInputFromTrade — finds the share count where it hides', () => {
       option: null,
     });
     expect(input).toMatchObject({ knownShares: 25000, isOption: false });
+  });
+});
+
+describe('aggregatePerformance — leaderboard roll-up', () => {
+  const sims = [
+    simulateTrade(buy({ ticker: 'NVDA', knownShares: 1000 }), {
+      entryPrice: 100,
+      currentPrice: 150,
+    }), // +50k
+    simulateTrade(buy({ ticker: 'AAPL', knownShares: 1000 }), {
+      entryPrice: 200,
+      currentPrice: 100,
+    }), // -100k
+    simulateTrade(buy({ ticker: 'GOOGL', isOption: true }), { entryPrice: 100, currentPrice: 130 }), // option, +30% underlying
+    simulateTrade(buy({ ticker: 'MSFT', category: 'sell', knownShares: 500 }), {
+      entryPrice: 100,
+      currentPrice: 90,
+    }), // sell → excluded from the position totals
+  ];
+  const perf = aggregatePerformance('Rep X', sims);
+
+  test('blended return over stock buys only', () => {
+    expect(perf.buyCount).toBe(2);
+    expect(perf.totalCostBasis).toBe(300_000);
+    expect(perf.totalCurrentValue).toBe(250_000);
+    expect(perf.totalGainAbs).toBe(-50_000);
+    expect(perf.returnPct).toBeCloseTo(-50_000 / 300_000);
+    expect(perf.winRate).toBe(0.5); // 1 of 2 priced buys up
+  });
+
+  test('options counted separately via the underlying proxy', () => {
+    expect(perf.optionBuyCount).toBe(1);
+    expect(perf.optionUnderlyingAvgPct).toBeCloseTo(0.3);
+  });
+
+  test('share-quality signal: 0 when all share counts are disclosed', () => {
+    expect(perf.estimatedShareFraction).toBe(0);
+  });
+
+  test('a politician with no stock buys yields null returns (not NaN)', () => {
+    const empty = aggregatePerformance('Rep Y', [
+      simulateTrade(buy({ category: 'sell', knownShares: 100 }), {
+        entryPrice: 10,
+        currentPrice: 12,
+      }),
+    ]);
+    expect(empty.buyCount).toBe(0);
+    expect(empty.returnPct).toBeNull();
+    expect(empty.winRate).toBeNull();
   });
 });

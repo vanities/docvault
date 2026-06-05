@@ -18,6 +18,16 @@ const SOURCE_URL = 'https://unitedstates.github.io/congress-legislators/legislat
 const IMAGE_BASE = 'https://unitedstates.github.io/images/congress/225x275';
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+// One-off: Trump files OGE disclosures but was never in Congress, so he has no
+// bioguide id in the unitedstates/images set. Point his portrait at his public-
+// domain official Wikimedia file (Special:FilePath redirects to the current file,
+// so no fragile hash path). Keyed by the sentinel id "TRUMP".
+const TRUMP_HEADSHOT_ID = 'TRUMP';
+// Public-domain official portrait via Wikimedia Special:FilePath (stable — no
+// fragile hash path), downscaled to 440px with the documented ?width= param.
+const TRUMP_PORTRAIT_URL =
+  'https://commons.wikimedia.org/wiki/Special:FilePath/Donald_Trump_official_portrait.jpg?width=440';
+
 export interface LegislatorEntry {
   bioguide: string;
   first: string;
@@ -60,9 +70,12 @@ export async function getCachedHeadshot(bioguide: string): Promise<Buffer | null
   } catch {
     /* not cached yet */
   }
+  const downloadUrl = safe === TRUMP_HEADSHOT_ID ? TRUMP_PORTRAIT_URL : imageUrlForBioguide(safe);
   try {
-    const res = await timeoutFetch(15_000)(imageUrlForBioguide(safe), {
-      headers: { Accept: 'image/jpeg' },
+    // A descriptive User-Agent is required by Wikimedia (Trump's portrait host) —
+    // it 403s blank/generic agents — and is harmless for the GitHub-Pages set.
+    const res = await timeoutFetch(15_000)(downloadUrl, {
+      headers: { Accept: 'image/jpeg', 'User-Agent': 'docvault-politics/1.0 (self-hosted)' },
     });
     if (!res.ok) {
       if (res.status === 404) missingHeadshots.add(safe);
@@ -125,6 +138,9 @@ export function buildResolverFromEntries(entries: LegislatorEntry[]): HeadshotRe
   return (name: string): string | null => {
     const norm = normalize(name);
     if (!norm) return null;
+    // One-off: Trump isn't in the bioguide set — serve his Wikimedia portrait.
+    if (/\bdonald\b/.test(norm) && /\btrump\b/.test(norm))
+      return localHeadshotUrl(TRUMP_HEADSHOT_ID);
     const tokens = norm.split(' ');
     const firstLast = tokens.length >= 2 ? `${tokens[0]} ${tokens[tokens.length - 1]}` : norm;
     const lastOnly = tokens[tokens.length - 1];

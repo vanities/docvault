@@ -14,6 +14,7 @@ import { fetchRecentExecutiveActions } from './federal-register.js';
 import { ingestHousePtr } from './house-ptr.js';
 import { ingestOge278t } from './oge-278t.js';
 import { ingestSenatePtr } from './senate-ptr.js';
+import { runBacktest } from './backtest-runner.js';
 import {
   loadPoliticsCache,
   mergeBills,
@@ -136,6 +137,14 @@ async function refreshPoliticsInner(
   const generatedAt = new Date().toISOString();
   cache.generatedAt = generatedAt;
   await savePoliticsCache(cache, opts.dataDir);
+
+  // Recompute the copy-trade backtest off the fresh trade set (best-effort — a
+  // Yahoo hiccup must never fail the refresh). Cached for the leaderboard view.
+  try {
+    await runBacktest(cache.trades);
+  } catch (err) {
+    log.warn(`backtest recompute failed: ${err instanceof Error ? err.message : err}`);
+  }
 
   const errors = results.filter((r) => !r.ok && r.error).map((r) => `${r.source}: ${r.error}`);
   const counts = {

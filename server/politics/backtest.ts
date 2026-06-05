@@ -32,6 +32,7 @@ export interface PriceData {
 
 export interface TradeSimulation {
   ticker: string;
+  category: string;
   tradeDate: string;
   entryPrice: number | null;
   currentPrice: number | null;
@@ -76,6 +77,7 @@ export function simulateTrade(input: SimInput, prices: PriceData): TradeSimulati
   const underlyingPct = pctMove(entryPrice, currentPrice);
   const base = {
     ticker: input.ticker,
+    category: input.category,
     tradeDate: input.tradeDate,
     entryPrice,
     currentPrice,
@@ -151,5 +153,70 @@ export function simInputFromTrade(t: {
     amountMax: t.amountMax,
     knownShares: t.option?.shares ?? sharesFromDescription(t.description),
     isOption: !!t.option,
+  };
+}
+
+export interface PoliticianPerformance {
+  politician: string;
+  /** Stock buys with a computable position (the leaderboard basis). */
+  buyCount: number;
+  /** Option buys — reported via the underlying proxy, not in the $ totals. */
+  optionBuyCount: number;
+  totalCostBasis: number;
+  totalCurrentValue: number;
+  totalGainAbs: number;
+  /** Blended copy-trade return: total gain / total cost basis. */
+  returnPct: number | null;
+  /** Fraction of priced stock buys that are up. */
+  winRate: number | null;
+  /** Fraction of stock buys whose share count was ESTIMATED (quality signal). */
+  estimatedShareFraction: number;
+  /** Average underlying % move across the politician's option buys. */
+  optionUnderlyingAvgPct: number | null;
+}
+
+/** Pure: roll a politician's trade simulations into one performance row. The
+ *  leaderboard ranks on `returnPct` — "if you'd copied every stock buy at the
+ *  disclosed size, what's your blended return now". Options sit alongside as the
+ *  underlying-move proxy; sells are excluded (no position to copy). */
+export function aggregatePerformance(
+  politician: string,
+  sims: TradeSimulation[]
+): PoliticianPerformance {
+  const stockBuys = sims.filter(
+    (s) => !s.isOption && s.category === 'buy' && s.costBasis != null && s.currentValue != null
+  );
+  const optionBuys = sims.filter((s) => s.isOption && s.category === 'buy');
+
+  let totalCostBasis = 0;
+  let totalCurrentValue = 0;
+  let wins = 0;
+  let priced = 0;
+  let estimated = 0;
+  for (const s of stockBuys) {
+    totalCostBasis += s.costBasis!;
+    totalCurrentValue += s.currentValue!;
+    if (!s.sharesKnown) estimated += 1;
+    if (s.gainPct != null) {
+      priced += 1;
+      if (s.gainPct > 0) wins += 1;
+    }
+  }
+  const totalGainAbs = totalCurrentValue - totalCostBasis;
+  const optPcts = optionBuys.map((s) => s.underlyingPct).filter((p): p is number => p != null);
+
+  return {
+    politician,
+    buyCount: stockBuys.length,
+    optionBuyCount: optionBuys.length,
+    totalCostBasis,
+    totalCurrentValue,
+    totalGainAbs,
+    returnPct: totalCostBasis > 0 ? totalGainAbs / totalCostBasis : null,
+    winRate: priced > 0 ? wins / priced : null,
+    estimatedShareFraction: stockBuys.length > 0 ? estimated / stockBuys.length : 0,
+    optionUnderlyingAvgPct: optPcts.length
+      ? optPcts.reduce((a, b) => a + b, 0) / optPcts.length
+      : null,
   };
 }
