@@ -8,7 +8,15 @@
 //   POST /api/politics/backfill      — one-time: parse the full current year
 
 import { jsonResponse } from '../data.js';
+import { createLogger } from '../logger.js';
 import { loadScheduleStatus } from '../scheduler.js';
+import {
+  getFilingMeta,
+  listFilings,
+  readFilingPdf,
+  readFilingText,
+  searchFilings,
+} from '../politics/filing-archive.js';
 import {
   buildFeedPayload,
   filterTrades,
@@ -19,6 +27,8 @@ import {
 import { refreshPolitics } from '../politics/refresh.js';
 import { buildHeadshotResolver, getCachedHeadshot } from '../politics/legislators.js';
 import { detectTradeClusters } from '../politics/clusters.js';
+
+const log = createLogger('PoliticsRoutes');
 
 async function syncJobsFromSchedule(): Promise<FeedSyncJob[]> {
   const status = await loadScheduleStatus();
@@ -53,6 +63,61 @@ export async function handlePoliticsRoutes(
     return new Response(new Uint8Array(img), {
       headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=604800' },
     });
+  }
+
+  // --- Filings archive (raw PDF + extracted text + parse metadata) ---
+  if (pathname === '/api/politics/filings/search' && req.method === 'GET') {
+    const q = url.searchParams.get('q') ?? '';
+    const results = await searchFilings(q, intParam(url, 'limit', 50, 200));
+    log.info(`filings full-text search ${JSON.stringify(q)} → ${results.length} hit(s)`);
+    return jsonResponse({ query: q, count: results.length, filings: results });
+  }
+
+  const filingMatch = pathname.match(
+    /^\/api\/politics\/filings\/([^/]+)\/([^/]+?)(\/pdf|\/text)?$/
+  );
+  if (filingMatch && req.method === 'GET') {
+    const source = decodeURIComponent(filingMatch[1]);
+    const docId = decodeURIComponent(filingMatch[2]);
+    const sub = filingMatch[3];
+    if (sub === '/pdf') {
+      const pdf = await readFilingPdf(source, docId);
+      if (!pdf) {
+        log.warn(`filing PDF not in archive: ${source}/${docId}`);
+        return new Response(null, { status: 404 });
+      }
+      log.info(`served archived PDF ${source}/${docId} (${pdf.length}B)`);
+      return new Response(new Uint8Array(pdf), {
+        headers: { 'Content-Type': 'application/pdf', 'Cache-Control': 'public, max-age=86400' },
+      });
+    }
+    if (sub === '/text') {
+      const text = await readFilingText(source, docId);
+      if (text == null) return new Response(null, { status: 404 });
+      return new Response(text, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+    }
+    const meta = await getFilingMeta(source, docId);
+    if (!meta) {
+      log.warn(`filing metadata not in archive: ${source}/${docId}`);
+      return jsonResponse({ error: 'filing not found in archive' }, 404);
+    }
+    const cache = await loadPoliticsCache();
+    const trades = cache.trades.filter((t) => t.filingDocId === docId && t.source === source);
+    log.info(`filing detail ${source}/${docId} → ${trades.length} linked trade(s)`);
+    return jsonResponse({ filing: meta, trades });
+  }
+
+  if (pathname === '/api/politics/filings' && req.method === 'GET') {
+    const filings = await listFilings({
+      source: url.searchParams.get('source') ?? undefined,
+      chamber: url.searchParams.get('chamber') ?? undefined,
+      filer: url.searchParams.get('filer') ?? undefined,
+      year: url.searchParams.get('year') ? Number(url.searchParams.get('year')) : undefined,
+      hasTrades: url.searchParams.get('hasTrades') === 'true' ? true : undefined,
+      limit: intParam(url, 'limit', 200, 5000),
+    });
+    log.info(`filings list → ${filings.length} filing(s)`);
+    return jsonResponse({ count: filings.length, filings });
   }
 
   if (pathname === '/api/politics/feed' && req.method === 'GET') {

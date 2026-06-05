@@ -18,6 +18,7 @@ import { ocrAvailable } from './ocr.js';
 import { parseScannedHousePtr } from './scanned-house-ptr.js';
 import { parseDisclosureAmountRange } from './trade-transform.js';
 import { parseOptionDescription } from './option-description.js';
+import { archiveFiling } from './filing-archive.js';
 import { markSeen, mergeFilings, mergeTrades } from './feed-store.js';
 import type { FilingRecord, PoliticsCache, TradeCategory, TradeRecord } from './types.js';
 
@@ -411,6 +412,10 @@ export interface IngestHouseOptions {
   maxPdfs?: number;
   /** One-time: parse EVERY not-seen PTR for the year (ignore the recent window). */
   backfill?: boolean;
+  /** Force-enable filing archiving even when `extractText` is injected (tests).
+   *  Real runs archive by default; tests opt in + point DOCVAULT_FILINGS_DIR at a
+   *  temp dir to avoid writing into the data dir. */
+  archive?: boolean;
 }
 
 export interface IngestHouseResult {
@@ -492,6 +497,8 @@ export async function ingestHousePtr(
   const handled: string[] = [];
   let scanned = 0;
   let recovered = 0;
+  let archived = 0;
+  let archivedBytes = 0;
   const errors: string[] = [];
 
   // OCR fallback availability — checked once. Tests inject `extractText`, so OCR
@@ -529,6 +536,7 @@ export async function ingestHousePtr(
       // per-cell pixel-darkness for the Type/Amount X-marks). Handles the printed
       // A–J/3-type and A–K/4-type variants; handwritten or "see attached" filings
       // still come back empty and stay needs-attention.
+      let usedOcr = false;
       if (parsed.length === 0 && canOcr) {
         try {
           const ocrTrades = await parseScannedHousePtr(pdfBytes, {
@@ -541,10 +549,37 @@ export async function ingestHousePtr(
           if (ocrTrades.length > 0) {
             parsed = ocrTrades;
             recovered += 1;
+            usedOcr = true;
+            log.debug(`OCR recovered ${ocrTrades.length} trade(s) from scanned ${row.docId}`);
           }
         } catch (ocrErr) {
           log.warn(`Scanned-form recovery failed for ${row.docId}: ${msg(ocrErr)}`);
         }
+      }
+
+      // Archive every fetched filing (raw PDF + extracted text + parse metadata)
+      // for search / re-parse / backtest / audit. Best-effort; real pipeline only
+      // (tests inject extractText and shouldn't touch the data dir).
+      const parseMethod = parsed.length > 0 ? (usedOcr ? 'ocr' : 'text') : 'none';
+      if (!opts.extractText || opts.archive) {
+        await archiveFiling({
+          source: 'house-ptr',
+          docId: row.docId,
+          chamber: 'house',
+          filerName: filerName(row),
+          filingYear: year,
+          filingDate: row.filingDate,
+          filingUrl: url,
+          pdfBytes,
+          text,
+          parseMethod,
+          tradeCount: parsed.length,
+        });
+        archived += 1;
+        archivedBytes += pdfBytes.byteLength;
+        log.debug(
+          `archived house-ptr/${row.docId} (${parseMethod}, ${parsed.length} trades, ${(pdfBytes.byteLength / 1024).toFixed(0)}KB)`
+        );
       }
 
       if (parsed.length === 0) {
@@ -571,7 +606,7 @@ export async function ingestHousePtr(
 
   if (errors.length) log.warn(`House PTR transient errors: ${errors.slice(0, 3).join('; ')}`);
   log.info(
-    `House PTR: parsed ${trades.length} trades (${recovered} via OCR), ${filings.length} needs-attention`
+    `House PTR: parsed ${trades.length} trades (${recovered} via OCR), ${filings.length} needs-attention, archived ${archived} filing(s) (${(archivedBytes / 1024 / 1024).toFixed(1)}MB)`
   );
   return {
     added: trades.length,

@@ -2,6 +2,10 @@
 // synthetic/public congressional payloads.
 
 import { describe, expect, test } from 'vite-plus/test';
+import { mkdtemp, rm } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { listFilings, resetArchiveCache } from './filing-archive.js';
 import { fetchRecentBills, inferBillStatus, transformBill } from './congress-bills.js';
 import { transformExecutiveAction } from './federal-register.js';
 import {
@@ -326,6 +330,52 @@ describe('ingestHousePtr (forward-only)', () => {
 
     expect(result.added).toBe(1); // parsed despite being in the seen ledger
     expect(cache.trades[0].ticker).toBe('AAPL');
+  });
+
+  test('archives each fetched filing (PDF + text + metadata) to disk', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'docvault-ingest-archive-'));
+    process.env.DOCVAULT_FILINGS_DIR = dir;
+    resetArchiveCache();
+    try {
+      const indexText = [
+        'Prefix\tLast\tFirst\tSuffix\tFilingType\tStateDst\tYear\tFilingDate\tDocID',
+        'Hon.\tPublic\tJohn\t\tP\tCA01\t2026\t1/20/2026\t20030009',
+      ].join('\n');
+      const ptrText =
+        'Name: John Q Public\nApple Inc (AAPL) [ST]  P  01/15/2026  01/18/2026  $1,001 - $15,000';
+      const pdfBytes = new TextEncoder().encode('%PDF-1.4 mock filing bytes').buffer;
+      const fetchFn = (async (input: URL | string) => {
+        const u = String(input);
+        if (u.endsWith('FD.txt')) {
+          return { ok: true, status: 200, text: async () => indexText } as Response;
+        }
+        return { ok: true, status: 200, arrayBuffer: async () => pdfBytes } as Response;
+      }) as unknown as typeof fetch;
+
+      const cache = emptyPoliticsCache();
+      await ingestHousePtr(cache, {
+        fetchFn,
+        extractText: async () => ptrText,
+        archive: true, // opt in despite the injected extractText
+        now: new Date('2026-01-22T00:00:00Z'),
+        firstRunDays: 7,
+      });
+
+      const archived = await listFilings();
+      expect(archived).toHaveLength(1);
+      expect(archived[0]).toMatchObject({
+        docId: '20030009',
+        source: 'house-ptr',
+        chamber: 'house',
+        parseMethod: 'text',
+        tradeCount: 1,
+        hasPdf: true,
+      });
+    } finally {
+      delete process.env.DOCVAULT_FILINGS_DIR;
+      resetArchiveCache();
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 
