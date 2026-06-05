@@ -14,6 +14,7 @@ import path from 'path';
 import { DATA_DIR } from './data.js';
 import { createLogger } from './logger.js';
 import { generateEdition, notifyEditionReady, type GenerateResult } from './daily-news.js';
+import { generateHeadlineImage } from './daily-news-image.js';
 
 const log = createLogger('DailyNewsStore');
 const STORE_PATH = path.join(DATA_DIR, '.docvault-daily-news.json');
@@ -32,6 +33,8 @@ export interface Edition {
   body?: string;
   digestMeta?: { sources: string[]; sinceISO: string; itemCount: number };
   usage?: { inputTokens: number; outputTokens: number };
+  /** Saved headline-image filename (set when headline images are enabled). */
+  imagePath?: string;
   error?: string;
   createdAt: string;
   completedAt?: string;
@@ -140,6 +143,14 @@ export async function startEdition(
       log.info(
         `[done] id=${id} bodyChars=${result.body.length} items=${result.digestMeta.itemCount}`
       );
+      // Generate the headline image (best-effort) before emailing so the edition carries it.
+      const imagePath = await generateHeadlineImage({
+        editionId: id,
+        title: result.title,
+        body: result.body,
+        themeId: result.theme,
+      }).catch(() => null);
+      if (imagePath) await patchEdition(id, { imagePath });
       const edition = await getEdition(id);
       if (edition) await notifyEditionReady(edition);
     })

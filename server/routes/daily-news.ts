@@ -18,6 +18,7 @@ import {
 } from '../daily-news-store.js';
 import { renderEditionHtml, editionFilename } from '../daily-news-report.js';
 import { listThemes } from '../daily-news-themes.js';
+import { readEditionImage } from '../daily-news-image.js';
 import { sendEmail } from '../email.js';
 
 /** Today's date in the server's local timezone as YYYY-MM-DD (matches the
@@ -63,6 +64,16 @@ export async function handleDailyNewsRoutes(
     return jsonResponse({ themes: listThemes() });
   }
 
+  // GET /api/daily-news/:id/image.png — the generated headline image (if any)
+  const imgMatch = pathname.match(/^\/api\/daily-news\/([^/]+)\/image\.png$/);
+  if (imgMatch && req.method === 'GET') {
+    const bytes = await readEditionImage(decodeURIComponent(imgMatch[1]));
+    if (!bytes) return jsonResponse({ error: 'no image' }, 404);
+    return new Response(new Uint8Array(bytes), {
+      headers: { 'Content-Type': 'image/png', 'Cache-Control': 'private, max-age=86400' },
+    });
+  }
+
   // GET /api/daily-news/:id/edition.html — downloadable self-contained newspaper
   const htmlMatch = pathname.match(/^\/api\/daily-news\/([^/]+)\/edition\.html$/);
   if (htmlMatch && req.method === 'GET') {
@@ -70,7 +81,13 @@ export async function handleDailyNewsRoutes(
     if (!edition || edition.status !== 'done') {
       return jsonResponse({ error: 'no completed edition' }, 404);
     }
-    return new Response(renderEditionHtml(edition), {
+    // Inline the headline image as a data URI so the download is self-contained.
+    let heroSrc: string | undefined;
+    if (edition.imagePath) {
+      const bytes = await readEditionImage(edition.id);
+      if (bytes) heroSrc = `data:image/png;base64,${bytes.toString('base64')}`;
+    }
+    return new Response(renderEditionHtml(edition, heroSrc), {
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
         'Content-Disposition': `attachment; filename="${editionFilename(edition)}.html"`,
