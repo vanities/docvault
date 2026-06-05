@@ -1997,8 +1997,9 @@ export function SettingsView() {
                     <div>
                       <p className="text-[13px] font-medium text-surface-900">Daily News</p>
                       <p className="text-[11px] text-surface-500">
-                        Synthesizes a newspaper edition each morning (weekly deep-dive on the chosen
-                        day). Emailed if email is configured.
+                        Auto-generate a newspaper edition every morning. Turn this on, then choose
+                        the publish time and which weekday gets the deeper weekly edition. Emailed
+                        if email is set up.
                       </p>
                     </div>
                     <button
@@ -2013,7 +2014,7 @@ export function SettingsView() {
                   </div>
                   {dailyNewsEnabled && (
                     <div className="flex flex-wrap items-center gap-2">
-                      <label className="text-[12px] text-surface-600">Publish at</label>
+                      <label className="text-[12px] text-surface-600">Publish daily at</label>
                       <Select
                         value={String(dailyNewsHour)}
                         onValueChange={(val) => setDailyNewsHour(Number(val))}
@@ -2029,7 +2030,7 @@ export function SettingsView() {
                           ))}
                         </SelectContent>
                       </Select>
-                      <label className="text-[12px] text-surface-600">· Weekly on</label>
+                      <label className="text-[12px] text-surface-600">· Weekly deep-dive on</label>
                       <Select
                         value={String(dailyNewsWeeklyDay)}
                         onValueChange={(val) => setDailyNewsWeeklyDay(Number(val))}

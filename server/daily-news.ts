@@ -29,12 +29,20 @@ import {
   loadReminders,
   loadSalesData,
   loadMileageData,
+  loadTodos,
+  loadConfig,
+  scanDirectory,
+  DATA_DIR,
+  BROKER_ACTIVITIES_FILE,
+  CRYPTO_CACHE_FILE,
   DEFAULT_MODEL,
   type ModelRef,
 } from './data.js';
 import { listResearchEntries } from './routes/research.js';
 import { getLatestStrategy } from './routes/strategy.js';
 import { getLatestHealthAnalysis } from './routes/health-analysis.js';
+import { loadHealthStore } from './health-store.js';
+import { listRuns } from './deep-research-store.js';
 import { loadQuantCache } from './routes/quant.js';
 import { fetchTickerPrices } from './ticker-prices.js';
 import { loadPoliticsFeedPayload } from './politics/feed-store.js';
@@ -107,6 +115,47 @@ const CLAUDE_BINARY_PATH: string | undefined = (() => {
 // ===========================================================================
 
 type AfterSince = (d?: string | null) => boolean;
+
+/** Last element of an array (or undefined) — avoids relying on Array.prototype.at. */
+function last<T>(a: readonly T[] | undefined): T | undefined {
+  return a && a.length ? a[a.length - 1] : undefined;
+}
+
+/** Most-recent per-person record from a `${personId}/${file}`-keyed store map. */
+function latestByPerson<T extends { generatedAt?: string }>(
+  rec: Record<string, T> | undefined,
+  personId: string
+): T | undefined {
+  if (!rec) return undefined;
+  const prefix = `${personId}/`;
+  const vals = Object.entries(rec)
+    .filter(([k]) => k.startsWith(prefix))
+    .map(([, v]) => v)
+    .sort((a, b) => (a.generatedAt ?? '').localeCompare(b.generatedAt ?? ''));
+  return last(vals);
+}
+
+// Minimal shapes for defensively reading the nested Apple Health snapshot +
+// clinical store — their full types are large and versioned, so optional
+// chaining against these keeps the digest robust to schema drift.
+interface SnapMetrics {
+  activity?: { daily?: Array<{ steps?: number | null }> };
+  heart?: { daily?: Array<{ restingHR?: number | null; hrv?: number | null }> };
+  sleep?: { daily?: Array<{ asleepMinutes?: number | null }> };
+  body?: { headline?: { currentLb?: number | null } };
+}
+interface ClinicalLabs {
+  labsByTest?: Array<{
+    latest?: {
+      name?: string;
+      value?: number | null;
+      valueString?: string | null;
+      unit?: string | null;
+      date?: string | null;
+      interpretation?: string | null;
+    } | null;
+  }>;
+}
 
 // Markets shows the CURRENT market state (signals, watchlist, net-worth delta),
 // so it isn't windowed by sinceISO like the other desks.
@@ -262,11 +311,127 @@ async function gatherFinance(afterSince: AfterSince, includeBodies: boolean): Pr
     log.warn(`[digest] finance/strategy failed: ${errMsg(err)}`);
   }
 
+  // Broker activity — recent trades/dividends (read the activities cache directly).
+  try {
+    const raw = await fs.readFile(BROKER_ACTIVITIES_FILE, 'utf-8');
+    const cache = JSON.parse(raw) as {
+      accounts?: Record<
+        string,
+        {
+          activities?: Array<{
+            type?: string;
+            tradeDate?: string;
+            ticker?: string | null;
+            description?: string;
+            amount?: number;
+          }>;
+        }
+      >;
+    };
+    const acts = Object.values(cache.accounts ?? {})
+      .flatMap((a) => a.activities ?? [])
+      .filter((a) => afterSince(a.tradeDate))
+      .slice(0, 10);
+    for (const a of acts) {
+      const sym = a.ticker ?? a.description ?? 'activity';
+      const amt = typeof a.amount === 'number' ? ` $${Math.abs(a.amount).toLocaleString()}` : '';
+      items.push(
+        `Broker ${a.type ?? 'activity'}: ${sym}${amt} (${(a.tradeDate ?? '').slice(0, 10)}).`
+      );
+    }
+  } catch (err) {
+    log.warn(`[digest] finance/broker-activity failed: ${errMsg(err)}`);
+  }
+
+  // Crypto holdings snapshot — weekly only (no in-process tx history; the daily
+  // Markets desk already carries the portfolio net-worth delta).
+  if (includeBodies) {
+    try {
+      const raw = await fs.readFile(CRYPTO_CACHE_FILE, 'utf-8');
+      const portfolio = JSON.parse(raw) as {
+        totalUsdValue?: number;
+        byAsset?: Array<{ asset?: string; usdValue?: number }>;
+      };
+      if (typeof portfolio.totalUsdValue === 'number') {
+        const top = (portfolio.byAsset ?? [])
+          .slice()
+          .sort((a, b) => (b.usdValue ?? 0) - (a.usdValue ?? 0))
+          .slice(0, 4)
+          .map((b) => b.asset)
+          .filter(Boolean)
+          .join(', ');
+        items.push(
+          `Crypto holdings ~$${Math.round(portfolio.totalUsdValue).toLocaleString()}${top ? ` (top: ${top})` : ''}.`
+        );
+      }
+    } catch (err) {
+      log.warn(`[digest] finance/crypto failed: ${errMsg(err)}`);
+    }
+  }
+
   return items;
 }
 
 async function gatherHealth(afterSince: AfterSince, includeBodies: boolean): Promise<string[]> {
   const items: string[] = [];
+
+  // Apple Health daily metrics + new labs + active sickness, per active person.
+  try {
+    const store = await loadHealthStore();
+    const people = (store.people ?? []).filter((p) => !p.archivedAt).slice(0, 4);
+    for (const person of people) {
+      const parts: string[] = [];
+
+      const snap = latestByPerson(store.snapshots, person.id) as unknown as SnapMetrics | undefined;
+      if (snap) {
+        const bits: string[] = [];
+        const steps = last(snap.activity?.daily)?.steps;
+        const rhr = last(snap.heart?.daily)?.restingHR;
+        const hrv = last(snap.heart?.daily)?.hrv;
+        const sleepMin = last(snap.sleep?.daily)?.asleepMinutes;
+        const lb = snap.body?.headline?.currentLb;
+        if (typeof steps === 'number') bits.push(`${steps.toLocaleString()} steps`);
+        if (typeof rhr === 'number') bits.push(`resting HR ${rhr}`);
+        if (typeof hrv === 'number') bits.push(`HRV ${Math.round(hrv)}`);
+        if (typeof sleepMin === 'number') bits.push(`${(sleepMin / 60).toFixed(1)}h sleep`);
+        if (typeof lb === 'number') bits.push(`${Math.round(lb)} lb`);
+        if (bits.length) parts.push(bits.join(', '));
+      }
+
+      const clinical = latestByPerson(
+        store.clinical as unknown as Record<string, { generatedAt?: string }>,
+        person.id
+      ) as unknown as ClinicalLabs | undefined;
+      const newLabs = (clinical?.labsByTest ?? [])
+        .map((t) => t.latest)
+        .filter((l) => l && afterSince(l.date))
+        .slice(0, 4);
+      for (const l of newLabs) {
+        if (!l) continue;
+        const v =
+          l.value != null ? `${l.value}${l.unit ? ` ${l.unit}` : ''}` : (l.valueString ?? '');
+        const flag = l.interpretation && l.interpretation !== 'N' ? ` (${l.interpretation})` : '';
+        parts.push(`new lab ${l.name ?? ''} ${v}${flag}`.replace(/\s+/g, ' ').trim());
+      }
+
+      const sickness = Object.values(store.sicknessLogs ?? {})
+        .filter((s) => s.personId === person.id && !s.endDate)
+        .sort((a, b) => b.startDate.localeCompare(a.startDate))[0];
+      if (sickness) {
+        parts.push(
+          `under the weather — ${sickness.title} (${sickness.severity}, since ${sickness.startDate})`
+        );
+      }
+
+      if (parts.length) items.push(`${person.name}: ${parts.join('; ')}.`);
+    }
+
+    const activeSupps = Object.values(store.nutrition ?? {}).filter((n) => n.status === 'active');
+    if (activeSupps.length) items.push(`${activeSupps.length} active supplements in the regimen.`);
+  } catch (err) {
+    log.warn(`[digest] health/store failed: ${errMsg(err)}`);
+  }
+
   try {
     const ha = await getLatestHealthAnalysis();
     if (ha && afterSince(ha.createdAt)) {
@@ -274,29 +439,79 @@ async function gatherHealth(afterSince: AfterSince, includeBodies: boolean): Pro
       if (includeBodies) items.push(ha.body);
     }
   } catch (err) {
-    log.warn(`[digest] health failed: ${errMsg(err)}`);
+    log.warn(`[digest] health/analysis failed: ${errMsg(err)}`);
   }
+
   return items;
 }
 
-async function gatherDocs(afterSince: AfterSince, editionType: EditionType): Promise<string[]> {
+async function gatherDocs(
+  afterSince: AfterSince,
+  editionType: EditionType,
+  sinceMs: number
+): Promise<string[]> {
   const items: string[] = [];
 
+  // New research filed (any domain) — with a one-line intelligence snippet.
   try {
     const entries = await listResearchEntries();
     const recent = entries
       .filter((e) => afterSince(e.reportDate ? `${e.reportDate}T12:00:00` : e.uploadedAt))
-      .slice(0, 12);
+      .slice(0, 14);
     for (const e of recent) {
+      const snippet = e.intelligence?.summary?.[0]?.text;
       items.push(
         `Filed (${e.domain}): ${e.title ?? e.filename ?? 'untitled'}` +
-          `${e.publisher ? ` — ${e.publisher}` : ''}.`
+          `${e.publisher ? ` — ${e.publisher}` : ''}${snippet ? ` — ${snippet}` : ''}.`
       );
     }
   } catch (err) {
     log.warn(`[digest] docs/research failed: ${errMsg(err)}`);
   }
 
+  // Documents uploaded recently across EVERY entity (tax docs, receipts, etc.).
+  try {
+    const config = await loadConfig();
+    const fileLines: string[] = [];
+    for (const entity of config.entities) {
+      const files = await scanDirectory(path.join(DATA_DIR, entity.path));
+      for (const f of files) {
+        if (f.lastModified >= sinceMs) fileLines.push(`${entity.name}/${f.name}`);
+      }
+    }
+    if (fileLines.length) {
+      items.push(
+        `${fileLines.length} document(s) uploaded: ${fileLines.slice(0, 8).join(', ')}` +
+          `${fileLines.length > 8 ? ', …' : ''}.`
+      );
+    }
+  } catch (err) {
+    log.warn(`[digest] docs/files failed: ${errMsg(err)}`);
+  }
+
+  // Deep Research reports finished in the window.
+  try {
+    const runs = await listRuns();
+    const done = runs
+      .filter((r) => r.status === 'done' && afterSince(r.completedAt ?? r.createdAt))
+      .slice(0, 5);
+    for (const r of done) items.push(`Deep Research completed: ${r.question}.`);
+  } catch (err) {
+    log.warn(`[digest] docs/deep-research failed: ${errMsg(err)}`);
+  }
+
+  // Open to-dos touched recently.
+  try {
+    const todos = await loadTodos();
+    const recent = todos
+      .filter((t) => t.status === 'pending' && afterSince(t.updatedAt))
+      .slice(0, 8);
+    for (const t of recent) items.push(`To-do: ${t.title}.`);
+  } catch (err) {
+    log.warn(`[digest] docs/todos failed: ${errMsg(err)}`);
+  }
+
+  // Upcoming reminders / deadlines.
   try {
     const reminders = await loadReminders();
     const horizonDays = editionType === 'weekly' ? 30 : 7;
@@ -337,7 +552,7 @@ export async function gatherDigest(editionType: EditionType, sinceISO: string): 
     gatherPolitics(afterSince),
     gatherFinance(afterSince, includeBodies),
     gatherHealth(afterSince, includeBodies),
-    gatherDocs(afterSince, editionType),
+    gatherDocs(afterSince, editionType, since),
   ]);
 
   const desks: Array<[string, string[]]> = [
@@ -379,6 +594,7 @@ function buildSystem(
       : 'This is a DAILY edition: keep it concise — a 3–5 minute read.',
     'Use ONLY facts present in the digest — do not invent data, prices, or events, and do not speculate beyond what is given. If the digest is sparse, write a short edition; never pad.',
     'Output clean markdown only — no preamble like "Here is the edition".',
+    'Do NOT write your own masthead, publication name, dateline, or "Edition" header — the page already renders the title and date. Start directly with the front-page lede.',
   ];
   if (themePrompt.trim()) {
     parts.push(`House style — write it ${themePrompt.trim()}`);
