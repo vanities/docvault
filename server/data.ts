@@ -77,6 +77,25 @@ export interface CryptoWalletConfig {
 }
 
 /**
+ * A manually-recorded crypto holding — for assets DocVault can't fetch on its
+ * own. The canonical case is Monero: a privacy coin with no queryable public
+ * block explorer, so there's no address-based balance lookup the way BTC
+ * (Blockstream) or ETH (Etherscan) have. The user enters the amount by hand and
+ * we price it like any other asset via CoinGecko. This is the asset-side mirror
+ * of the manual `LiabilityEntry` mechanism (debts SimpleFIN can't see).
+ */
+export interface CryptoManualHolding {
+  id: string;
+  /** Ticker symbol, e.g. 'XMR'. Priced via COINGECKO_IDS in server/crypto.ts. */
+  asset: string;
+  /** Quantity held. Trusted as-entered — there is nothing to reconcile against. */
+  amount: number;
+  /** Display label for the source card, e.g. 'Monero — cold wallet'. */
+  label?: string;
+  note?: string;
+}
+
+/**
  * A single External Source: a git repository of markdown that DocVault clones
  * into DATA_DIR/.external-sources/<id>/ and exposes to the UI + Chat. Only the
  * clean HTTPS URL is stored here — the auth token lives once on
@@ -150,6 +169,8 @@ export interface Settings {
   crypto?: {
     exchanges: CryptoExchangeConfig[];
     wallets: CryptoWalletConfig[];
+    /** Hand-entered holdings for assets with no fetchable source (e.g. Monero). */
+    manualHoldings?: CryptoManualHolding[];
     etherscanKey?: string;
   };
   brokers?: {

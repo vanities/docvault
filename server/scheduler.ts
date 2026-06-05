@@ -180,13 +180,17 @@ async function takePortfolioSnapshotInner(): Promise<void> {
   // Fetch live crypto balances from exchanges/wallets and update cache
   let cryptoValue = 0;
   const cryptoConfig = settings.crypto || { exchanges: [], wallets: [] };
-  const hasCryptoSources = cryptoConfig.exchanges.length > 0 || cryptoConfig.wallets.length > 0;
+  const hasCryptoSources =
+    cryptoConfig.exchanges.length > 0 ||
+    cryptoConfig.wallets.length > 0 ||
+    (cryptoConfig.manualHoldings?.length ?? 0) > 0;
   if (hasCryptoSources) {
     try {
       const cryptoPortfolio = await fetchAllBalances(
         cryptoConfig.exchanges,
         cryptoConfig.wallets,
-        cryptoConfig.etherscanKey
+        cryptoConfig.etherscanKey,
+        cryptoConfig.manualHoldings
       );
       cryptoValue = cryptoPortfolio.totalUsdValue || 0;
       await fs.writeFile(CRYPTO_CACHE_FILE, JSON.stringify(cryptoPortfolio, null, 2));
