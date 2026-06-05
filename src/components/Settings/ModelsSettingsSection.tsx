@@ -31,6 +31,7 @@ interface SettingsData {
     title?: string;
     theme?: string;
     headlineImage?: boolean;
+    imageModel?: string;
   };
 }
 
@@ -68,6 +69,7 @@ export function ModelsSettingsSection() {
   const [dnTitle, setDnTitle] = useState('');
   const [dnTheme, setDnTheme] = useState('brew');
   const [dnHeadlineImage, setDnHeadlineImage] = useState(false);
+  const [dnImageModel, setDnImageModel] = useState('gpt-image-2');
   const [themes, setThemes] = useState<Array<{ id: string; label: string }>>([]);
 
   const [modelsByProvider, setModelsByProvider] = useState<Record<Provider, string[]>>({
@@ -97,6 +99,7 @@ export function ModelsSettingsSection() {
       setDnTitle(d.dailyNews?.title ?? '');
       setDnTheme(d.dailyNews?.theme ?? 'brew');
       setDnHeadlineImage(d.dailyNews?.headlineImage ?? false);
+      setDnImageModel(d.dailyNews?.imageModel ?? 'gpt-image-2');
     } catch {
       /* ignore */
     } finally {
@@ -171,6 +174,7 @@ export function ModelsSettingsSection() {
             title: dnTitle.trim(),
             theme: dnTheme,
             headlineImage: dnHeadlineImage,
+            imageModel: dnImageModel,
           },
         }),
       });
@@ -411,6 +415,22 @@ export function ModelsSettingsSection() {
               />
             </button>
           </div>
+          {dnHeadlineImage && (
+            <div className="mt-2">
+              <label className="block text-[11px] text-surface-500 mb-1">
+                Image model (OpenAI)
+              </label>
+              <ModelSelect
+                value={dnImageModel}
+                onChange={setDnImageModel}
+                models={modelsByProvider.openai.filter((m) => /image|dall-?e/i.test(m))}
+              />
+              <p className="text-[11px] text-surface-500 mt-1">
+                Pulled from your OpenAI models. Defaults to gpt-image-2 (OpenAI's newest); falls
+                back to it if the chosen model isn't available to your account.
+              </p>
+            </div>
+          )}
         </div>
 
         <Button onClick={save} size="sm" disabled={saving}>

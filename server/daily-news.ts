@@ -586,8 +586,10 @@ export async function gatherDigest(editionType: EditionType, sinceISO: string): 
   const sources = sections.map((s) => s.desk);
 
   log.info(
-    `[digest] type=${editionType} since=${sinceISO} sections=${sections.length} ` +
-      `items=${itemCount} in ${Date.now() - t0}ms`
+    `[digest] type=${editionType} since=${sinceISO} ` +
+      `markets=${markets.length} politics=${politics.length} finance=${finance.length} ` +
+      `health=${health.length} docs=${docs.length} ` +
+      `(sections=${sections.length} items=${itemCount}) in ${Date.now() - t0}ms`
   );
   return { editionType, sinceISO, sections, itemCount, sources };
 }

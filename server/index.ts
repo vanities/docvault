@@ -465,6 +465,7 @@ async function handleRequest(req: Request): Promise<Response> {
         title?: unknown;
         theme?: unknown;
         headlineImage?: unknown;
+        imageModel?: unknown;
       };
       if (dn.mode === 'agent' || dn.mode === 'api') settings.dailyNews.mode = dn.mode;
       if (dn.agentBackend === 'claude' || dn.agentBackend === 'codex')
@@ -492,6 +493,11 @@ async function handleRequest(req: Request): Promise<Response> {
       }
       if (typeof dn.headlineImage === 'boolean') {
         settings.dailyNews.headlineImage = dn.headlineImage;
+      }
+      if (typeof dn.imageModel === 'string') {
+        const m = dn.imageModel.trim();
+        if (m) settings.dailyNews.imageModel = m;
+        else delete settings.dailyNews.imageModel;
       }
     }
 
