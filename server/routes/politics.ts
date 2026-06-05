@@ -18,6 +18,7 @@ import {
 } from '../politics/feed-store.js';
 import { refreshPolitics } from '../politics/refresh.js';
 import { buildHeadshotResolver } from '../politics/legislators.js';
+import { detectTradeClusters } from '../politics/clusters.js';
 
 async function syncJobsFromSchedule(): Promise<FeedSyncJob[]> {
   const status = await loadScheduleStatus();
@@ -71,6 +72,28 @@ export async function handlePoliticsRoutes(
       limit: intParam(url, 'limit', 200, 2000),
     });
     return jsonResponse({ trades });
+  }
+
+  if (pathname === '/api/politics/clusters' && req.method === 'GET') {
+    // Consensus activity: ≥N distinct politicians trading the same ticker in the
+    // same direction within a window. ?direction=buy|sell, ?windowDays, ?minPoliticians.
+    const [cache, resolveHeadshot] = await Promise.all([
+      loadPoliticsCache(),
+      buildHeadshotResolver(),
+    ]);
+    let clusters = detectTradeClusters(cache.trades, {
+      windowDays: intParam(url, 'windowDays', 60, 365),
+      minPoliticians: intParam(url, 'minPoliticians', 2, 50),
+    });
+    const direction = url.searchParams.get('direction');
+    if (direction === 'buy' || direction === 'sell') {
+      clusters = clusters.filter((c) => c.direction === direction);
+    }
+    const enriched = clusters.slice(0, intParam(url, 'limit', 50, 500)).map((c) => ({
+      ...c,
+      politicianImages: c.politicians.map((name) => ({ name, imageUrl: resolveHeadshot(name) })),
+    }));
+    return jsonResponse({ clusters: enriched });
   }
 
   if (pathname === '/api/politics/refresh' && req.method === 'POST') {
