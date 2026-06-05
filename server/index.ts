@@ -464,6 +464,7 @@ async function handleRequest(req: Request): Promise<Response> {
         model?: unknown;
         title?: unknown;
         theme?: unknown;
+        headlineImage?: unknown;
       };
       if (dn.mode === 'agent' || dn.mode === 'api') settings.dailyNews.mode = dn.mode;
       if (dn.agentBackend === 'claude' || dn.agentBackend === 'codex')
@@ -488,6 +489,9 @@ async function handleRequest(req: Request): Promise<Response> {
         const t = dn.theme.trim();
         if (t) settings.dailyNews.theme = t;
         else delete settings.dailyNews.theme;
+      }
+      if (typeof dn.headlineImage === 'boolean') {
+        settings.dailyNews.headlineImage = dn.headlineImage;
       }
     }
 

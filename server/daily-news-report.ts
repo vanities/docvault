@@ -94,6 +94,7 @@ body { margin:0; background:var(--bg); color:var(--fg); font:18px/1.6 Georgia,'T
 .edition blockquote { border-left:3px solid var(--accent); margin:.8em 0; padding:.1em .9em; color:var(--muted); font-style:italic; }
 .edition table { border-collapse:collapse; width:100%; font:13px/1.4 system-ui,sans-serif; margin:.6em 0; }
 .edition th,.edition td { border:1px solid var(--rule); padding:5px 8px; text-align:left; }
+.hero-img { display:block; width:100%; max-height:360px; object-fit:cover; border-radius:8px; margin:0 0 14px; }
 footer { margin-top:40px; border-top:1px solid var(--rule); padding-top:16px; color:var(--muted);
   font:12px/1.5 system-ui,sans-serif; text-align:center; }
 @media (max-width:640px) { .edition { columns:1; } }
@@ -101,8 +102,9 @@ footer { margin-top:40px; border-top:1px solid var(--rule); padding-top:16px; co
 `.trim();
 
 /** The full, self-contained newspaper edition (download + in-app "view as newspaper"). */
-export function renderEditionHtml(edition: Edition): string {
+export function renderEditionHtml(edition: Edition, heroSrc?: string): string {
   const { body, toc } = renderBody(edition.body ?? '');
+  const hero = heroSrc ? `<img class="hero-img" src="${heroSrc}" alt="">` : '';
   const indexHtml = toc.length
     ? `<nav class="index"><span class="label">In this edition</span>${toc
         .map((t) => `<a href="#${t.id}">${escapeHtml(t.text)}</a>`)
@@ -115,6 +117,7 @@ export function renderEditionHtml(edition: Edition): string {
   )} — ${escapeHtml(edition.editionDate)}</title><style>${CSS}</style></head>
 <body>
 <div class="paper">
+  ${hero}
   <header class="masthead"><h1>${escapeHtml(edition.title ?? 'Daily News')}</h1></header>
   <div class="dateline"><span>${escapeHtml(formatEditionDate(edition.editionDate))}</span><span class="badge">${editionBadge(
     edition
@@ -128,12 +131,16 @@ export function renderEditionHtml(edition: Edition): string {
 
 /** Email-safe variant: single column, inline-styled masthead, no media queries.
  *  The fully-formatted edition is attached as an .html file alongside. */
-export function renderEditionEmailHtml(edition: Edition): string {
+export function renderEditionEmailHtml(edition: Edition, heroSrc?: string): string {
   const { body } = renderBody(edition.body ?? '');
+  const hero = heroSrc
+    ? `<img src="${heroSrc}" alt="" style="display:block;width:100%;max-height:320px;object-fit:cover;border-radius:8px;margin:0 0 14px;">`
+    : '';
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
 <body style="margin:0;background:#f7f4ed;color:#1a1814;font-family:Georgia,'Times New Roman',serif;">
 <div style="max-width:660px;margin:0 auto;padding:24px 22px 48px;">
+  ${hero}
   <h1 style="font-family:Georgia,serif;font-weight:800;font-size:34px;line-height:1.1;text-align:center;margin:8px 0 4px;border-bottom:3px double #1a1814;padding-bottom:10px;">${escapeHtml(
     edition.title ?? 'Daily News'
   )}</h1>

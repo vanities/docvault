@@ -29,6 +29,7 @@ interface Edition extends EditionSummary {
   body?: string;
   digestMeta?: { sources: string[]; sinceISO: string; itemCount: number };
   usage?: { inputTokens: number; outputTokens: number };
+  imagePath?: string;
 }
 
 const MD_COMPONENTS = {
@@ -281,6 +282,13 @@ export function DailyNewsView() {
           </div>
         ) : (
           <article className="max-w-3xl mx-auto px-8 py-6">
+            {active.imagePath && (
+              <img
+                src={`${API_BASE}/daily-news/${active.id}/image.png`}
+                alt=""
+                className="w-full max-h-72 object-cover rounded-lg mb-4"
+              />
+            )}
             <div className="flex items-start justify-between gap-4 mb-4">
               <div className="text-[12px] text-surface-500">
                 <span className="uppercase tracking-wide text-amber-400 font-semibold">

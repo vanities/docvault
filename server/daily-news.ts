@@ -56,6 +56,7 @@ import {
   formatEditionDate,
 } from './daily-news-report.js';
 import { getThemePrompt } from './daily-news-themes.js';
+import { readEditionImage } from './daily-news-image.js';
 import { logAiCall } from './ai/usage-log.js';
 import { createLogger } from './logger.js';
 import type { Edition, EditionType } from './daily-news-store.js';
@@ -85,6 +86,8 @@ export interface Digest {
 export interface GenerateResult {
   title: string;
   body: string;
+  /** Theme id used — passed to the store so it can render a matching hero image. */
+  theme: string;
   usage: { inputTokens: number; outputTokens: number };
   digestMeta: { sources: string[]; sinceISO: string; itemCount: number };
 }
@@ -143,6 +146,14 @@ interface SnapMetrics {
   heart?: { daily?: Array<{ restingHR?: number | null; hrv?: number | null }> };
   sleep?: { daily?: Array<{ asleepMinutes?: number | null }> };
   body?: { headline?: { currentLb?: number | null } };
+  workouts?: {
+    headline?: {
+      thisWeekCount?: number;
+      thisWeekMinutes?: number;
+      currentStreakDays?: number;
+      favoriteType?: string | null;
+    };
+  };
 }
 interface ClinicalLabs {
   labsByTest?: Array<{
@@ -343,30 +354,28 @@ async function gatherFinance(afterSince: AfterSince, includeBodies: boolean): Pr
     log.warn(`[digest] finance/broker-activity failed: ${errMsg(err)}`);
   }
 
-  // Crypto holdings snapshot — weekly only (no in-process tx history; the daily
-  // Markets desk already carries the portfolio net-worth delta).
-  if (includeBodies) {
-    try {
-      const raw = await fs.readFile(CRYPTO_CACHE_FILE, 'utf-8');
-      const portfolio = JSON.parse(raw) as {
-        totalUsdValue?: number;
-        byAsset?: Array<{ asset?: string; usdValue?: number }>;
-      };
-      if (typeof portfolio.totalUsdValue === 'number') {
-        const top = (portfolio.byAsset ?? [])
-          .slice()
-          .sort((a, b) => (b.usdValue ?? 0) - (a.usdValue ?? 0))
-          .slice(0, 4)
-          .map((b) => b.asset)
-          .filter(Boolean)
-          .join(', ');
-        items.push(
-          `Crypto holdings ~$${Math.round(portfolio.totalUsdValue).toLocaleString()}${top ? ` (top: ${top})` : ''}.`
-        );
-      }
-    } catch (err) {
-      log.warn(`[digest] finance/crypto failed: ${errMsg(err)}`);
+  // Crypto holdings snapshot (balances — no in-process tx history; the Markets
+  // desk carries the net-worth delta). Included in both daily + weekly.
+  try {
+    const raw = await fs.readFile(CRYPTO_CACHE_FILE, 'utf-8');
+    const portfolio = JSON.parse(raw) as {
+      totalUsdValue?: number;
+      byAsset?: Array<{ asset?: string; usdValue?: number }>;
+    };
+    if (typeof portfolio.totalUsdValue === 'number') {
+      const top = (portfolio.byAsset ?? [])
+        .slice()
+        .sort((a, b) => (b.usdValue ?? 0) - (a.usdValue ?? 0))
+        .slice(0, 4)
+        .map((b) => b.asset)
+        .filter(Boolean)
+        .join(', ');
+      items.push(
+        `Crypto holdings ~$${Math.round(portfolio.totalUsdValue).toLocaleString()}${top ? ` (top: ${top})` : ''}.`
+      );
     }
+  } catch (err) {
+    log.warn(`[digest] finance/crypto failed: ${errMsg(err)}`);
   }
 
   return items;
@@ -395,6 +404,14 @@ async function gatherHealth(afterSince: AfterSince, includeBodies: boolean): Pro
         if (typeof hrv === 'number') bits.push(`HRV ${Math.round(hrv)}`);
         if (typeof sleepMin === 'number') bits.push(`${(sleepMin / 60).toFixed(1)}h sleep`);
         if (typeof lb === 'number') bits.push(`${Math.round(lb)} lb`);
+        const w = snap.workouts?.headline;
+        if (w && typeof w.thisWeekCount === 'number' && w.thisWeekCount > 0) {
+          bits.push(
+            `${w.thisWeekCount} workout${w.thisWeekCount === 1 ? '' : 's'} this week` +
+              `${typeof w.thisWeekMinutes === 'number' ? ` (${w.thisWeekMinutes} min)` : ''}` +
+              `${w.favoriteType ? `, mostly ${w.favoriteType}` : ''}`
+          );
+        }
         if (bits.length) parts.push(bits.join(', '));
       }
 
@@ -666,6 +683,7 @@ export async function generateEdition(
   return {
     title,
     body: body.trim(),
+    theme,
     usage,
     digestMeta: { sources: digest.sources, sinceISO, itemCount: digest.itemCount },
   };
@@ -872,14 +890,23 @@ export async function notifyEditionReady(edition: Edition): Promise<void> {
 
   const kind = edition.editionType === 'weekly' ? 'Weekly' : 'Daily';
   const subject = `${edition.title ?? 'Daily News'} — ${kind}, ${formatEditionDate(edition.editionDate)}`;
+
+  // Inline the headline image (if any) as a data URI so both the email body and
+  // the self-contained .html attachment carry it.
+  let heroSrc: string | undefined;
+  if (edition.imagePath) {
+    const bytes = await readEditionImage(edition.id);
+    if (bytes) heroSrc = `data:image/png;base64,${bytes.toString('base64')}`;
+  }
+
   const attachment = {
     filename: `${editionFilename(edition)}.html`,
-    content: Buffer.from(renderEditionHtml(edition), 'utf-8').toString('base64'),
+    content: Buffer.from(renderEditionHtml(edition, heroSrc), 'utf-8').toString('base64'),
     contentType: 'text/html',
   };
   const res = await sendEmail({
     subject,
-    html: renderEditionEmailHtml(edition),
+    html: renderEditionEmailHtml(edition, heroSrc),
     attachments: [attachment],
   });
   if (res.ok) log.info(`[notify] emailed id=${edition.id} resendId=${res.id ?? '?'}`);

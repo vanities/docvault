@@ -30,6 +30,7 @@ interface SettingsData {
     model?: ModelRef;
     title?: string;
     theme?: string;
+    headlineImage?: boolean;
   };
 }
 
@@ -66,6 +67,7 @@ export function ModelsSettingsSection() {
   });
   const [dnTitle, setDnTitle] = useState('');
   const [dnTheme, setDnTheme] = useState('brew');
+  const [dnHeadlineImage, setDnHeadlineImage] = useState(false);
   const [themes, setThemes] = useState<Array<{ id: string; label: string }>>([]);
 
   const [modelsByProvider, setModelsByProvider] = useState<Record<Provider, string[]>>({
@@ -94,6 +96,7 @@ export function ModelsSettingsSection() {
       setDnModel(d.dailyNews?.model ?? anthropicFallback);
       setDnTitle(d.dailyNews?.title ?? '');
       setDnTheme(d.dailyNews?.theme ?? 'brew');
+      setDnHeadlineImage(d.dailyNews?.headlineImage ?? false);
     } catch {
       /* ignore */
     } finally {
@@ -167,6 +170,7 @@ export function ModelsSettingsSection() {
             model: dnModel,
             title: dnTitle.trim(),
             theme: dnTheme,
+            headlineImage: dnHeadlineImage,
           },
         }),
       });
@@ -385,6 +389,27 @@ export function ModelsSettingsSection() {
               placeholder="The DocVault Dispatch"
               className="text-[13px]"
             />
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <div>
+              <label className="block text-[12px] font-medium text-surface-800">
+                Headline image
+              </label>
+              <p className="text-[11px] text-surface-500">
+                Generate an AI hero image per edition, matched to the theme (OpenAI · costs per
+                image).
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDnHeadlineImage(!dnHeadlineImage)}
+              className={`relative w-10 h-5 rounded-full flex-shrink-0 transition-colors ${dnHeadlineImage ? 'bg-violet-500' : 'bg-surface-400'}`}
+            >
+              <span
+                className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
+                style={{ left: dnHeadlineImage ? 22 : 2 }}
+              />
+            </button>
           </div>
         </div>
 

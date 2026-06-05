@@ -70,3 +70,24 @@ export function getThemePrompt(id: string | undefined): string {
 export function listThemes(): Array<{ id: string; label: string }> {
   return DAILY_NEWS_THEMES.map(({ id, label }) => ({ id, label }));
 }
+
+// Visual-style descriptors for the optional headline image — kept parallel to
+// the prose themes above so each edition's hero matches its voice.
+const THEME_VISUALS: Record<string, string> = {
+  standard: 'restrained documentary editorial photography, muted neutral tones, serious and clean',
+  economist:
+    'minimalist conceptual editorial illustration, bold flat shapes, limited palette with a single red accent',
+  brew: 'playful modern flat illustration, bright friendly colors, energetic and approachable',
+  analyst:
+    'sleek financial aesthetic with abstract charts and market motifs, cool blues, crisp and professional',
+  tabloid:
+    'bold high-contrast collage, dramatic lighting, punchy saturated colors, sensational energy',
+  noir: 'moody black-and-white film noir, deep shadows, rain-slicked streets, cinematic 1940s detective mood',
+  victorian:
+    'ornate 19th-century steel-engraving illustration, sepia tones, intricate cross-hatched linework',
+};
+
+/** Visual-style descriptor for a theme id (feeds the headline-image prompt). */
+export function getThemeVisual(id: string | undefined): string {
+  return THEME_VISUALS[id ?? 'brew'] ?? THEME_VISUALS.brew;
+}
