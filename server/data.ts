@@ -269,6 +269,8 @@ export interface Settings {
     theme?: string;
     /** Generate an AI headline image per edition (OpenAI; opt-in, costs per image). */
     headlineImage?: boolean;
+    /** OpenAI image model id (from /v1/models); defaults to gpt-image-1. */
+    imageModel?: string;
   };
   /**
    * Outbound email via Resend — delivers the Daily News edition + test pings.
@@ -429,6 +431,7 @@ export async function getDailyNewsConfig(): Promise<{
   model: ModelRef;
   theme: string;
   headlineImage: boolean;
+  imageModel: string;
 }> {
   const settings = await loadSettings();
   const mode: DeepResearchMode = settings.dailyNews?.mode === 'agent' ? 'agent' : 'api';
@@ -439,6 +442,7 @@ export async function getDailyNewsConfig(): Promise<{
     model: resolveModel(settings.dailyNews?.model),
     theme: settings.dailyNews?.theme || 'brew', // default house style: Morning Brew
     headlineImage: settings.dailyNews?.headlineImage ?? false,
+    imageModel: settings.dailyNews?.imageModel || 'gpt-image-2',
   };
 }
 
