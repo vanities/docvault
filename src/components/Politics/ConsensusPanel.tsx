@@ -3,7 +3,7 @@
 // /api/politics/clusters (server/politics/clusters.ts). One member buying a name
 // is noise; a cluster of them in a few weeks is the signal worth seeing.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ExternalLink, Loader2, TrendingDown, TrendingUp, Users } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 
@@ -32,6 +32,37 @@ interface Cluster {
 }
 
 type DirectionFilter = 'all' | 'buy' | 'sell';
+type SortKey = 'members' | 'recent' | 'amount' | 'trades';
+
+const SORT_LABELS: Record<SortKey, string> = {
+  members: 'Most members',
+  recent: 'Most recent',
+  amount: 'Largest $',
+  trades: 'Most trades',
+};
+
+/** Client-side re-sort of the already-fetched clusters. */
+function sortClusters(clusters: Cluster[], key: SortKey): Cluster[] {
+  const out = [...clusters];
+  out.sort((a, b) => {
+    switch (key) {
+      case 'recent':
+        return b.lastDate.localeCompare(a.lastDate) || b.politicianCount - a.politicianCount;
+      case 'amount':
+        return (b.amountMax ?? 0) - (a.amountMax ?? 0) || b.politicianCount - a.politicianCount;
+      case 'trades':
+        return b.tradeCount - a.tradeCount || b.politicianCount - a.politicianCount;
+      case 'members':
+      default:
+        return (
+          b.politicianCount - a.politicianCount ||
+          b.tradeCount - a.tradeCount ||
+          b.lastDate.localeCompare(a.lastDate)
+        );
+    }
+  });
+  return out;
+}
 
 /** Compact USD: 1_500_000 → "$1.5M", 250_000 → "$250K". */
 function usd(n: number): string {
@@ -194,6 +225,9 @@ export function ConsensusPanel() {
   const [loading, setLoading] = useState(true);
   const [direction, setDirection] = useState<DirectionFilter>('all');
   const [windowDays, setWindowDays] = useState(60);
+  const [sort, setSort] = useState<SortKey>('members');
+
+  const sorted = useMemo(() => sortClusters(clusters ?? [], sort), [clusters, sort]);
 
   useEffect(() => {
     let alive = true;
@@ -260,6 +294,18 @@ export function ConsensusPanel() {
             <option value={60}>60 days</option>
             <option value={90}>90 days</option>
           </select>
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+            title="Sort clusters"
+            className="text-sm bg-surface-900 border border-border/60 rounded-md px-2 py-1 text-surface-300"
+          >
+            {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
+              <option key={k} value={k}>
+                {SORT_LABELS[k]}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -268,9 +314,9 @@ export function ConsensusPanel() {
           <div className="flex items-center justify-center py-10 text-surface-500">
             <Loader2 className="w-5 h-5 animate-spin" />
           </div>
-        ) : clusters && clusters.length > 0 ? (
+        ) : sorted.length > 0 ? (
           <div className="grid gap-3 sm:grid-cols-2">
-            {clusters.map((c) => (
+            {sorted.map((c) => (
               <ClusterCard key={`${c.ticker}-${c.direction}-${c.firstDate}`} cluster={c} />
             ))}
           </div>
