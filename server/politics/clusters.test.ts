@@ -139,15 +139,39 @@ describe('detectTradeClusters', () => {
     expect(clusters[0].politicians).toEqual(['Early Rep', 'Mid Rep', 'Late Rep']);
   });
 
-  test('a sustained streak chains into one cluster; trades returned newest first', () => {
+  test('bounds a cluster to the window — a multi-month streak does NOT chain', () => {
+    // 3 members spread over 117 days; with a 60-day window the densest bounded
+    // window holds only 2 of them — it must not collapse into one 3-member blob.
     const clusters = detectTradeClusters([
       trade({ politicianName: 'Rep A', ticker: 'SOFI', tradeDate: '2026-01-01' }),
-      trade({ politicianName: 'Rep B', ticker: 'SOFI', tradeDate: '2026-02-15' }), // 45d gap
-      trade({ politicianName: 'Rep C', ticker: 'SOFI', tradeDate: '2026-03-30' }), // 43d gap
+      trade({ politicianName: 'Rep B', ticker: 'SOFI', tradeDate: '2026-02-28' }),
+      trade({ politicianName: 'Rep C', ticker: 'SOFI', tradeDate: '2026-04-28' }),
     ]);
     expect(clusters).toHaveLength(1);
-    expect(clusters[0].politicianCount).toBe(3);
-    expect(clusters[0].trades[0].tradeDate).toBe('2026-03-30'); // newest first
+    expect(clusters[0].politicianCount).toBe(2);
+    expect(clusters[0].spanDays).toBeLessThanOrEqual(60);
+  });
+
+  test('surfaces multiple distinct events for the same ticker + direction', () => {
+    const clusters = detectTradeClusters([
+      // January sell-off
+      trade({ politicianName: 'Rep A', ticker: 'COST', tradeDate: '2026-01-05', category: 'sell' }),
+      trade({ politicianName: 'Rep B', ticker: 'COST', tradeDate: '2026-01-12', category: 'sell' }),
+      // June sell-off (separate event, >60d later)
+      trade({ politicianName: 'Rep C', ticker: 'COST', tradeDate: '2026-06-05', category: 'sell' }),
+      trade({ politicianName: 'Rep D', ticker: 'COST', tradeDate: '2026-06-12', category: 'sell' }),
+    ]);
+    expect(clusters).toHaveLength(2);
+    expect(clusters.every((c) => c.direction === 'sell' && c.politicianCount === 2)).toBe(true);
+    expect(clusters.map((c) => c.firstDate).sort()).toEqual(['2026-01-05', '2026-06-05']);
+  });
+
+  test("returns a cluster's trades newest first", () => {
+    const clusters = detectTradeClusters([
+      trade({ politicianName: 'Rep A', ticker: 'WMT', tradeDate: '2026-04-01' }),
+      trade({ politicianName: 'Rep B', ticker: 'WMT', tradeDate: '2026-04-20' }),
+    ]);
+    expect(clusters[0].trades[0].tradeDate).toBe('2026-04-20');
   });
 
   test('respects a custom minPoliticians threshold', () => {
