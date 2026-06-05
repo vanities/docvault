@@ -46,6 +46,7 @@ import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { ChatSettingsSection } from './ChatSettingsSection';
 import { ModelsSettingsSection } from './ModelsSettingsSection';
 import { AiLabsKeysSection } from './AiLabsKeysSection';
+import { EmailSettingsSection } from './EmailSettingsSection';
 import { ExternalSourcesSection } from './ExternalSourcesSection';
 import { BrainSection } from './BrainSection';
 import {
@@ -422,6 +423,9 @@ export function SettingsView() {
   const [quantRefreshInterval, setQuantRefreshInterval] = useState(1440);
   const [politicsRefreshEnabled, setPoliticsRefreshEnabled] = useState(true);
   const [politicsRefreshInterval, setPoliticsRefreshInterval] = useState(1440);
+  const [dailyNewsEnabled, setDailyNewsEnabled] = useState(false);
+  const [dailyNewsHour, setDailyNewsHour] = useState(7);
+  const [dailyNewsWeeklyDay, setDailyNewsWeeklyDay] = useState(0);
   // Politics tab one-shot actions (fire-and-forget server jobs).
   const [politicsBackfilling, setPoliticsBackfilling] = useState(false);
   const [backtestRunning, setBacktestRunning] = useState(false);
@@ -1206,6 +1210,9 @@ export function SettingsView() {
         setQuantRefreshInterval(data.quantRefreshIntervalMinutes ?? 1440);
         setPoliticsRefreshEnabled(data.politicsRefreshEnabled ?? true);
         setPoliticsRefreshInterval(data.politicsRefreshIntervalMinutes ?? 1440);
+        setDailyNewsEnabled(data.dailyNewsEnabled === true);
+        setDailyNewsHour(data.dailyNewsHour ?? 7);
+        setDailyNewsWeeklyDay(data.dailyNewsWeeklyDay ?? 0);
         setAutoBackupPasswordSet(data.backupPasswordSet ?? false);
       }
     } catch {
@@ -1228,6 +1235,9 @@ export function SettingsView() {
           quantRefreshIntervalMinutes: quantRefreshInterval,
           politicsRefreshEnabled,
           politicsRefreshIntervalMinutes: politicsRefreshInterval,
+          dailyNewsEnabled,
+          dailyNewsHour,
+          dailyNewsWeeklyDay,
           ...(autoBackupPassword ? { backupPassword: autoBackupPassword } : {}),
         }),
       });
@@ -1581,6 +1591,7 @@ export function SettingsView() {
 
             <AiLabsKeysSection />
             <ModelsSettingsSection />
+            <EmailSettingsSection />
 
             {/* Maps & Location — Geoapify (geocoding for mileage autocomplete) */}
             <Card variant="glass" className="p-6 mb-8">
@@ -1974,6 +1985,72 @@ export function SettingsView() {
                           <SelectItem value="720">12 hours</SelectItem>
                           <SelectItem value="1440">24 hours</SelectItem>
                           <SelectItem value="10080">7 days</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+
+                {/* Daily News */}
+                <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="text-[13px] font-medium text-surface-900">Daily News</p>
+                      <p className="text-[11px] text-surface-500">
+                        Synthesizes a newspaper edition each morning (weekly deep-dive on the chosen
+                        day). Emailed if email is configured.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setDailyNewsEnabled(!dailyNewsEnabled)}
+                      className={`relative w-10 h-5 rounded-full transition-colors ${dailyNewsEnabled ? 'bg-amber-500' : 'bg-surface-400'}`}
+                    >
+                      <span
+                        className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
+                        style={{ left: dailyNewsEnabled ? 22 : 2 }}
+                      />
+                    </button>
+                  </div>
+                  {dailyNewsEnabled && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="text-[12px] text-surface-600">Publish at</label>
+                      <Select
+                        value={String(dailyNewsHour)}
+                        onValueChange={(val) => setDailyNewsHour(Number(val))}
+                      >
+                        <SelectTrigger className="text-[13px] w-28">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 24 }, (_, h) => (
+                            <SelectItem key={h} value={String(h)}>
+                              {String(h).padStart(2, '0')}:00
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <label className="text-[12px] text-surface-600">· Weekly on</label>
+                      <Select
+                        value={String(dailyNewsWeeklyDay)}
+                        onValueChange={(val) => setDailyNewsWeeklyDay(Number(val))}
+                      >
+                        <SelectTrigger className="text-[13px] w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[
+                            'Sunday',
+                            'Monday',
+                            'Tuesday',
+                            'Wednesday',
+                            'Thursday',
+                            'Friday',
+                            'Saturday',
+                          ].map((d, i) => (
+                            <SelectItem key={d} value={String(i)}>
+                              {d}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>

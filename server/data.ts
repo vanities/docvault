@@ -195,6 +195,14 @@ export interface Settings {
     quantRefreshEnabled?: boolean;
     politicsRefreshIntervalMinutes?: number; // default 1440 (24h)
     politicsRefreshEnabled?: boolean;
+    /**
+     * Daily News — a synthesized morning newspaper. The task ticks hourly but
+     * generates at most one edition per local day, only once the clock passes
+     * `dailyNewsHour`. On `dailyNewsWeeklyDay` it produces a weekly deep-dive.
+     */
+    dailyNewsEnabled?: boolean;
+    dailyNewsHour?: number; // 0-23, server-local time, default 7
+    dailyNewsWeeklyDay?: number; // 0-6 (0=Sunday), weekly deep-dive day, default 0
     backupPassword?: string; // if set, encrypted config backup is pushed to Dropbox on sync
   };
   /**
@@ -245,6 +253,35 @@ export interface Settings {
    * API-mode model.
    */
   deepResearch?: { mode?: 'agent' | 'api'; agentBackend?: 'claude' | 'codex'; model?: ModelRef };
+  /**
+   * Daily News engine — same three-way shape as deepResearch. 'api' (direct
+   * messages.create, any provider) or 'agent' (Claude Code / Codex on the
+   * subscription). Unlike Deep Research it uses NO web_search — it synthesizes
+   * the owner's own data — so an OpenAI API-mode pick works directly.
+   * `title` is the masthead name (generic default in getDailyNewsTitle).
+   */
+  dailyNews?: {
+    mode?: 'agent' | 'api';
+    agentBackend?: 'claude' | 'codex';
+    model?: ModelRef;
+    title?: string;
+    /** Selected house-style theme id (see server/daily-news-themes.ts). */
+    theme?: string;
+  };
+  /**
+   * Outbound email via Resend — delivers the Daily News edition + test pings.
+   * `resendApiKey` is encrypted at rest (walkSensitiveFields) and falls back to
+   * the RESEND_API_KEY env var. The `fromEmail` domain must be verified in the
+   * Resend dashboard (or use onboarding@resend.dev for testing).
+   */
+  email?: {
+    provider?: 'resend';
+    resendApiKey?: string;
+    fromEmail?: string;
+    fromName?: string;
+    toEmail?: string;
+    enabled?: boolean;
+  };
 }
 
 export interface FileInfo {
@@ -376,6 +413,57 @@ export async function getDeepResearchConfig(): Promise<{
   const mode: DeepResearchMode = settings.deepResearch?.mode === 'agent' ? 'agent' : 'api';
   const agentBackend = settings.deepResearch?.agentBackend === 'codex' ? 'codex' : 'claude';
   return { mode, agentBackend, model: resolveModel(settings.deepResearch?.model) };
+}
+
+/**
+ * Daily News config — mirrors getDeepResearchConfig. 'api' uses `model` (any
+ * provider; no web_search dependency, so OpenAI works directly); 'agent' runs
+ * Claude Code or Codex on the subscription. Defaults to 'api' (the most robust
+ * for unattended cron — a stored API key doesn't expire like an OAuth session).
+ */
+export async function getDailyNewsConfig(): Promise<{
+  mode: DeepResearchMode;
+  agentBackend: 'claude' | 'codex';
+  model: ModelRef;
+  theme: string;
+}> {
+  const settings = await loadSettings();
+  const mode: DeepResearchMode = settings.dailyNews?.mode === 'agent' ? 'agent' : 'api';
+  const agentBackend = settings.dailyNews?.agentBackend === 'codex' ? 'codex' : 'claude';
+  return {
+    mode,
+    agentBackend,
+    model: resolveModel(settings.dailyNews?.model),
+    theme: settings.dailyNews?.theme || 'standard',
+  };
+}
+
+/** Masthead title for the Daily News edition. Generic default — repo is public. */
+export async function getDailyNewsTitle(): Promise<string> {
+  const settings = await loadSettings();
+  return settings.dailyNews?.title?.trim() || 'The DocVault Dispatch';
+}
+
+export interface EmailConfig {
+  provider: 'resend';
+  apiKey?: string;
+  fromEmail?: string;
+  fromName?: string;
+  toEmail?: string;
+  enabled: boolean;
+}
+
+/** Outbound email (Resend) config. apiKey: settings value overrides RESEND_API_KEY env. */
+export async function getEmailConfig(): Promise<EmailConfig> {
+  const settings = await loadSettings();
+  return {
+    provider: 'resend',
+    apiKey: settings.email?.resendApiKey || process.env.RESEND_API_KEY,
+    fromEmail: settings.email?.fromEmail,
+    fromName: settings.email?.fromName,
+    toEmail: settings.email?.toEmail,
+    enabled: settings.email?.enabled ?? false,
+  };
 }
 
 export type ChatBackend = 'claude' | 'codex';

@@ -147,6 +147,21 @@ async function loadStore(): Promise<ResearchStore> {
   }
 }
 
+/** All research entries (optionally one domain), newest-first by reportDate
+ *  then upload time. Exported for in-process consumers (the Daily News digest)
+ *  that need entries without an HTTP round-trip. */
+export async function listResearchEntries(domain?: ResearchDomain): Promise<ResearchEntry[]> {
+  const store = await loadStore();
+  let entries = Object.values(store.entries);
+  if (domain) entries = entries.filter((e) => e.domain === domain);
+  entries.sort((a, b) => {
+    const aDate = a.reportDate ?? a.uploadedAt.slice(0, 10);
+    const bDate = b.reportDate ?? b.uploadedAt.slice(0, 10);
+    return bDate.localeCompare(aDate);
+  });
+  return entries;
+}
+
 /** Parse the `domain` value supplied by a client. Unknown values fall back to
  *  "finance" — keeps the legacy Quant ingest path working when callers don't
  *  send a domain at all. */
@@ -487,18 +502,12 @@ export async function handleResearchRoutes(
   // single tab's entries should always pass ?domain=finance, ?domain=health,
   // or ?domain=politics.
   if (sub === '' && req.method === 'GET') {
-    const store = await loadStore();
     const domainParam = url.searchParams.get('domain');
-    let entries = Object.values(store.entries);
-    if (domainParam === 'finance' || domainParam === 'health' || domainParam === 'politics') {
-      entries = entries.filter((e) => e.domain === domainParam);
-    }
-    entries.sort((a, b) => {
-      const aDate = a.reportDate ?? a.uploadedAt.slice(0, 10);
-      const bDate = b.reportDate ?? b.uploadedAt.slice(0, 10);
-      return bDate.localeCompare(aDate);
-    });
-    return jsonResponse({ entries });
+    const domain =
+      domainParam === 'finance' || domainParam === 'health' || domainParam === 'politics'
+        ? domainParam
+        : undefined;
+    return jsonResponse({ entries: await listResearchEntries(domain) });
   }
 
   // Per-entry subpaths

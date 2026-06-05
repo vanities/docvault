@@ -53,7 +53,7 @@ interface CacheEntry<T> {
   data: T;
 }
 
-type QuantCache = {
+export type QuantCache = {
   presidentialCycle?: CacheEntry<PresidentialCycleResponse>;
   btcLogRegression?: CacheEntry<BtcLogRegressionResponse>;
   sectorRotation?: CacheEntry<SectorRotationResponse>;
@@ -92,6 +92,12 @@ async function loadCache(): Promise<QuantCache> {
   } catch {
     return {};
   }
+}
+
+/** Read the cached quant signals (read-only — never triggers a network refresh).
+ *  Exported for the Daily News digest's Markets desk. */
+export async function loadQuantCache(): Promise<QuantCache> {
+  return loadCache();
 }
 
 async function saveCache(cache: QuantCache): Promise<void> {

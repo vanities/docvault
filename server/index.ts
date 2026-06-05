@@ -166,6 +166,7 @@ import { handleExternalSourcesRoutes } from './routes/external-sources.js';
 import { handleBrainRoutes } from './routes/brain.js';
 import { handleFormsRoutes } from './routes/forms.js';
 import { handleDeepResearchRoutes } from './routes/deep-research.js';
+import { handleDailyNewsRoutes } from './routes/daily-news.js';
 import { handleModelsRoutes } from './routes/models.js';
 import { handleCodexAuthRoutes } from './routes/codex-auth.js';
 
@@ -295,6 +296,20 @@ async function handleRequest(req: Request): Promise<Response> {
       modelRouting: settings.modelRouting ?? {},
       chat: settings.chat ?? {},
       deepResearch: settings.deepResearch ?? {},
+      dailyNews: settings.dailyNews ?? {},
+      email: {
+        provider: 'resend',
+        fromEmail: settings.email?.fromEmail ?? '',
+        fromName: settings.email?.fromName ?? '',
+        toEmail: settings.email?.toEmail ?? '',
+        enabled: settings.email?.enabled ?? false,
+        hasResendApiKey: !!(settings.email?.resendApiKey || process.env.RESEND_API_KEY),
+        resendApiKeyHint: settings.email?.resendApiKey
+          ? settings.email.resendApiKey.slice(-4)
+          : process.env.RESEND_API_KEY
+            ? process.env.RESEND_API_KEY.slice(-4)
+            : undefined,
+      },
       hasCodexAuth: (await getCodexAuthStatus()).signedIn,
     });
   }
@@ -437,6 +452,66 @@ async function handleRequest(req: Request): Promise<Response> {
         ref.model.trim()
       ) {
         settings.deepResearch.model = { provider: ref.provider, model: ref.model.trim() };
+      }
+    }
+
+    // Daily News engine: same shape as deepResearch (mode/agentBackend/model) + masthead title.
+    if (body.dailyNews && typeof body.dailyNews === 'object') {
+      settings.dailyNews = settings.dailyNews ?? {};
+      const dn = body.dailyNews as {
+        mode?: unknown;
+        agentBackend?: unknown;
+        model?: unknown;
+        title?: unknown;
+        theme?: unknown;
+      };
+      if (dn.mode === 'agent' || dn.mode === 'api') settings.dailyNews.mode = dn.mode;
+      if (dn.agentBackend === 'claude' || dn.agentBackend === 'codex')
+        settings.dailyNews.agentBackend = dn.agentBackend;
+      const ref = dn.model as { provider?: unknown; model?: unknown } | null | undefined;
+      if (ref === null) {
+        delete settings.dailyNews.model;
+      } else if (
+        ref &&
+        (ref.provider === 'anthropic' || ref.provider === 'openai') &&
+        typeof ref.model === 'string' &&
+        ref.model.trim()
+      ) {
+        settings.dailyNews.model = { provider: ref.provider, model: ref.model.trim() };
+      }
+      if (typeof dn.title === 'string') {
+        const t = dn.title.trim();
+        if (t) settings.dailyNews.title = t;
+        else delete settings.dailyNews.title;
+      }
+      if (typeof dn.theme === 'string') {
+        const t = dn.theme.trim();
+        if (t) settings.dailyNews.theme = t;
+        else delete settings.dailyNews.theme;
+      }
+    }
+
+    // Outbound email (Resend) — resendApiKey is encrypted at rest via walkSensitiveFields.
+    if (body.email && typeof body.email === 'object') {
+      settings.email = settings.email ?? { provider: 'resend' };
+      settings.email.provider = 'resend';
+      const em = body.email as {
+        fromEmail?: unknown;
+        fromName?: unknown;
+        toEmail?: unknown;
+        enabled?: unknown;
+        resendApiKey?: unknown;
+        clearResendApiKey?: unknown;
+      };
+      for (const k of ['fromEmail', 'fromName', 'toEmail'] as const) {
+        const v = em[k];
+        if (typeof v === 'string') settings.email[k] = v.trim() || undefined;
+      }
+      if (typeof em.enabled === 'boolean') settings.email.enabled = em.enabled;
+      if (em.clearResendApiKey) {
+        delete settings.email.resendApiKey;
+      } else if (typeof em.resendApiKey === 'string' && em.resendApiKey.trim()) {
+        settings.email.resendApiKey = em.resendApiKey.trim();
       }
     }
 
@@ -2033,6 +2108,10 @@ async function handleRequest(req: Request): Promise<Response> {
   const deepResearchResponse = await handleDeepResearchRoutes(req, url, pathname);
   if (deepResearchResponse) return deepResearchResponse;
 
+  // Daily News — scheduled newspaper editions + the email-test endpoint.
+  const dailyNewsResponse = await handleDailyNewsRoutes(req, url, pathname);
+  if (dailyNewsResponse) return dailyNewsResponse;
+
   const modelsResponse = await handleModelsRoutes(req, url, pathname);
   if (modelsResponse) return modelsResponse;
 
@@ -2342,6 +2421,9 @@ async function handleRequest(req: Request): Promise<Response> {
       politicsRefreshEnabled: schedules.politicsRefreshEnabled !== false,
       politicsRefreshIntervalMinutes:
         schedules.politicsRefreshIntervalMinutes || DEFAULT_POLITICS_REFRESH_INTERVAL,
+      dailyNewsEnabled: schedules.dailyNewsEnabled === true,
+      dailyNewsHour: schedules.dailyNewsHour ?? 7,
+      dailyNewsWeeklyDay: schedules.dailyNewsWeeklyDay ?? 0,
       backupPasswordSet: !!schedules.backupPassword,
     });
   }
@@ -2409,6 +2491,15 @@ async function handleRequest(req: Request): Promise<Response> {
         politicsRefreshEnabled: body.politicsRefreshEnabled ?? true,
         politicsRefreshIntervalMinutes:
           body.politicsRefreshIntervalMinutes || DEFAULT_POLITICS_REFRESH_INTERVAL,
+        dailyNewsEnabled: body.dailyNewsEnabled === true,
+        dailyNewsHour:
+          typeof body.dailyNewsHour === 'number'
+            ? Math.min(Math.max(Math.round(body.dailyNewsHour), 0), 23)
+            : (settings.schedules?.dailyNewsHour ?? 7),
+        dailyNewsWeeklyDay:
+          typeof body.dailyNewsWeeklyDay === 'number'
+            ? Math.min(Math.max(Math.round(body.dailyNewsWeeklyDay), 0), 6)
+            : (settings.schedules?.dailyNewsWeeklyDay ?? 0),
         backupPassword: body.backupPassword || settings.schedules?.backupPassword,
       };
       await saveSettings(settings);

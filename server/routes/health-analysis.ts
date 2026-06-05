@@ -77,6 +77,12 @@ async function saveHistory(data: HealthAnalysisHistoryFile): Promise<void> {
   await fs.writeFile(HEALTH_ANALYSIS_HISTORY_FILE, JSON.stringify(data, null, 2));
 }
 
+/** The most recent health-analysis entry, or null. In-process accessor for the Daily News digest. */
+export async function getLatestHealthAnalysis(): Promise<HealthAnalysisEntry | null> {
+  const data = await loadHistory();
+  return data.entries.length > 0 ? data.entries[data.entries.length - 1] : null;
+}
+
 export async function handleHealthAnalysisRoutes(
   req: Request,
   _url: URL,
@@ -93,9 +99,7 @@ export async function handleHealthAnalysisRoutes(
 
   // GET /api/health-analysis/latest — most recent entry only
   if (pathname === '/api/health-analysis/latest' && req.method === 'GET') {
-    const data = await loadHistory();
-    const latest = data.entries.length > 0 ? data.entries[data.entries.length - 1] : null;
-    return jsonResponse({ entry: latest });
+    return jsonResponse({ entry: await getLatestHealthAnalysis() });
   }
 
   // POST /api/health-analysis — create a new entry
