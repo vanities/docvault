@@ -3661,6 +3661,23 @@ export function SettingsView() {
                 </a>
                 . House/Senate trades, Trump&apos;s OGE filings, and executive actions need no key.
               </p>
+
+              <div className="mt-5 pt-4 border-t border-border/40">
+                <p className="text-[13px] font-medium text-surface-800 mb-1">
+                  Populating the Politics feed
+                </p>
+                <p className="text-[11px] text-surface-500">
+                  The feed refreshes automatically once a day, pulling only <em>new</em> filings
+                  (forward-only). To load the current year&apos;s full history in one pass, run a
+                  one-time <strong>backfill</strong>:{' '}
+                  <code className="font-mono text-surface-600 bg-surface-200/60 px-1 rounded">
+                    POST /api/politics/backfill
+                  </code>{' '}
+                  — it runs server-side (takes a few minutes) and the Politics tab fills in as
+                  filings parse. Ask Claude Code to trigger it, or curl the endpoint from a machine
+                  on your network.
+                </p>
+              </div>
             </Card>
           </>
         )}
