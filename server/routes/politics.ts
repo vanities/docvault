@@ -27,6 +27,7 @@ import {
 import { refreshPolitics } from '../politics/refresh.js';
 import { buildHeadshotResolver, getCachedHeadshot } from '../politics/legislators.js';
 import { detectTradeClusters } from '../politics/clusters.js';
+import { loadBacktest, runBacktest } from '../politics/backtest-runner.js';
 
 const log = createLogger('PoliticsRoutes');
 
@@ -170,6 +171,54 @@ export async function handlePoliticsRoutes(
       politicianImages: c.politicians.map((name) => ({ name, imageUrl: resolveHeadshot(name) })),
     }));
     return jsonResponse({ clusters: enriched });
+  }
+
+  if (pathname === '/api/politics/backtest' && req.method === 'GET') {
+    // Copy-trade backtest: per-politician P&L leaderboard, or one politician's
+    // per-trade simulations via ?politician=. Recomputed daily with the refresh.
+    const result = await loadBacktest();
+    if (!result) {
+      return jsonResponse({
+        generatedAt: null,
+        leaderboard: [],
+        note: 'Backtest not computed yet — runs with the daily refresh (or POST /backtest/run).',
+      });
+    }
+    const politician = url.searchParams.get('politician');
+    if (politician) {
+      const perf = result.leaderboard.find((p) => p.politician === politician) ?? null;
+      log.info(`backtest detail ${politician} → ${(result.trades[politician] ?? []).length} sims`);
+      return jsonResponse({
+        generatedAt: result.generatedAt,
+        politician,
+        performance: perf,
+        trades: result.trades[politician] ?? [],
+      });
+    }
+    const resolveHeadshot = await buildHeadshotResolver();
+    const leaderboard = result.leaderboard
+      .slice(0, intParam(url, 'limit', 200, 500))
+      .map((p) => ({ ...p, imageUrl: resolveHeadshot(p.politician) }));
+    return jsonResponse({
+      generatedAt: result.generatedAt,
+      pricedTickers: result.pricedTickers,
+      totalTickers: result.totalTickers,
+      leaderboard,
+    });
+  }
+
+  if (pathname === '/api/politics/backtest/run' && req.method === 'POST') {
+    // Fetches a year of prices for every disclosed ticker — minutes — so fire it
+    // server-side and return immediately.
+    void runBacktest().catch(() => {});
+    return jsonResponse(
+      {
+        ok: true,
+        started: true,
+        note: 'Backtest running; GET /api/politics/backtest for the result.',
+      },
+      202
+    );
   }
 
   if (pathname === '/api/politics/refresh' && req.method === 'POST') {

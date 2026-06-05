@@ -648,9 +648,14 @@ describe('headshot resolver (fuzzy name match)', () => {
     expect(resolve('M. Michael Rounds')).toBe(localHeadshotUrl('R000605'));
   });
 
-  test('returns null for ambiguous last names and non-members', () => {
+  test('returns null for ambiguous last names and unmatched non-members', () => {
     expect(resolve('Pat Smith')).toBeNull(); // two Smiths → ambiguous
-    expect(resolve('Donald J. Trump')).toBeNull(); // not in Congress
+    expect(resolve('Jane Q Nobody')).toBeNull(); // not in the set
+  });
+
+  test('one-off: Trump (no bioguide) resolves to his Wikimedia portrait', () => {
+    expect(resolve('Donald J. Trump')).toBe(localHeadshotUrl('TRUMP'));
+    expect(resolve('Donald Trump')).toBe(localHeadshotUrl('TRUMP'));
   });
 });
 
