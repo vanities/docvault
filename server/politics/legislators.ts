@@ -31,8 +31,55 @@ interface LegislatorCache {
   entries: LegislatorEntry[];
 }
 
+/** The external CDN portrait URL — used only as the DOWNLOAD source now; the UI
+ *  is pointed at the self-hosted endpoint below. */
 export function imageUrlForBioguide(bioguide: string): string {
   return `${IMAGE_BASE}/${bioguide}.jpg`;
+}
+
+/** DocVault-served portrait URL (what the resolver returns). Lazily backed by the
+ *  on-disk cache in getCachedHeadshot — keeps the Politics view self-contained
+ *  instead of hot-linking the GitHub-Pages CDN on every render. */
+export function localHeadshotUrl(bioguide: string): string {
+  return `/api/politics/headshot/${bioguide}`;
+}
+
+const HEADSHOT_DIR = path.join(DATA_DIR, '.docvault-headshots');
+// Bioguide ids with no portrait in the set — avoid re-hammering the CDN this run.
+const missingHeadshots = new Set<string>();
+
+/** Read a member's portrait from the on-disk cache, downloading + storing it from
+ *  the CDN on first request. Returns null (→ 404 → initials avatar) if there's no
+ *  portrait. Only [A-Za-z0-9] ids are accepted (no path traversal). */
+export async function getCachedHeadshot(bioguide: string): Promise<Buffer | null> {
+  const safe = bioguide.replace(/[^A-Za-z0-9]/g, '');
+  if (!safe || missingHeadshots.has(safe)) return null;
+  const file = path.join(HEADSHOT_DIR, `${safe}.jpg`);
+  try {
+    return await fs.readFile(file);
+  } catch {
+    /* not cached yet */
+  }
+  try {
+    const res = await timeoutFetch(15_000)(imageUrlForBioguide(safe), {
+      headers: { Accept: 'image/jpeg' },
+    });
+    if (!res.ok) {
+      if (res.status === 404) missingHeadshots.add(safe);
+      return null;
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    await fs.mkdir(HEADSHOT_DIR, { recursive: true });
+    const tmp = `${file}.${process.pid}.tmp`;
+    await fs.writeFile(tmp, buf);
+    await fs.rename(tmp, file);
+    return buf;
+  } catch (err) {
+    log.warn(
+      `headshot fetch failed for ${safe}: ${err instanceof Error ? err.message : String(err)}`
+    );
+    return null;
+  }
 }
 
 /** Strip titles/suffixes/punctuation → lowercase token string for matching. */
@@ -87,7 +134,7 @@ export function buildResolverFromEntries(entries: LegislatorEntry[]): HeadshotRe
       byFirstLast.get(norm) ??
       byFirstLast.get(firstLast) ??
       (lastMatches && lastMatches.size === 1 ? [...lastMatches][0] : undefined);
-    return bioguide ? imageUrlForBioguide(bioguide) : null;
+    return bioguide ? localHeadshotUrl(bioguide) : null;
   };
 }
 

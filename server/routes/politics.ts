@@ -17,7 +17,7 @@ import {
   type FeedSyncJob,
 } from '../politics/feed-store.js';
 import { refreshPolitics } from '../politics/refresh.js';
-import { buildHeadshotResolver } from '../politics/legislators.js';
+import { buildHeadshotResolver, getCachedHeadshot } from '../politics/legislators.js';
 import { detectTradeClusters } from '../politics/clusters.js';
 
 async function syncJobsFromSchedule(): Promise<FeedSyncJob[]> {
@@ -44,6 +44,17 @@ export async function handlePoliticsRoutes(
   url: URL,
   pathname: string
 ): Promise<Response | null> {
+  if (pathname.startsWith('/api/politics/headshot/') && req.method === 'GET') {
+    // Self-hosted member portrait: served from the on-disk cache, lazily filled
+    // from the CDN on first hit. 404 → the UI falls back to an initials avatar.
+    const bioguide = decodeURIComponent(pathname.slice('/api/politics/headshot/'.length));
+    const img = await getCachedHeadshot(bioguide);
+    if (!img) return new Response(null, { status: 404 });
+    return new Response(new Uint8Array(img), {
+      headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=604800' },
+    });
+  }
+
   if (pathname === '/api/politics/feed' && req.method === 'GET') {
     const [cache, jobs] = await Promise.all([loadPoliticsCache(), syncJobsFromSchedule()]);
     // Always 200 — an empty-but-configured feed (e.g. before the first run) is valid.

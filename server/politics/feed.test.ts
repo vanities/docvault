@@ -15,7 +15,7 @@ import { ingestHousePtr, parseHouseDisclosureIndex, parseHousePtrText } from './
 import { inferOgeTicker } from './oge-asset-normalization.js';
 import { parseOge278Transactions } from './oge-parser.js';
 import { parseReportDataRows, parseSenatePtrHtml } from './senate-ptr.js';
-import { buildResolverFromEntries, imageUrlForBioguide } from './legislators.js';
+import { buildResolverFromEntries, localHeadshotUrl } from './legislators.js';
 import {
   filterTrades,
   mergeTrades,
@@ -551,13 +551,13 @@ describe('headshot resolver (fuzzy name match)', () => {
   const resolve = buildResolverFromEntries(entries);
 
   test('matches Hon.-prefixed names, drops middle initials, uses legal first names', () => {
-    expect(resolve('Hon. Nancy Pelosi')).toBe(imageUrlForBioguide('P000197'));
+    expect(resolve('Hon. Nancy Pelosi')).toBe(localHeadshotUrl('P000197'));
     // "David H McCormick" → the senator (legal first via official name), not Rep. Rich McCormick.
-    expect(resolve('David H McCormick')).toBe(imageUrlForBioguide('M001243'));
+    expect(resolve('David H McCormick')).toBe(localHeadshotUrl('M001243'));
   });
 
   test('falls back to a unique last name', () => {
-    expect(resolve('M. Michael Rounds')).toBe(imageUrlForBioguide('R000605'));
+    expect(resolve('M. Michael Rounds')).toBe(localHeadshotUrl('R000605'));
   });
 
   test('returns null for ambiguous last names and non-members', () => {
