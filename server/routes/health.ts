@@ -1008,11 +1008,12 @@ export async function handleHealthRoutes(
         await fs.writeFile(tmp, JSON.stringify(delta, null, 2));
         await fs.rename(tmp, targetPath);
       }
-      const store = await loadHealthStore();
-      for (const k of Object.keys(store.snapshots)) {
-        if (k.startsWith(`${personId}/`)) delete store.snapshots[k];
-      }
-      await saveHealthStore(store);
+      // No explicit snapshot drop + 31MB store rewrite here: writing the delta
+      // files bumps the deltas-dir mtime, which already invalidates the cached
+      // snapshot on the next read (getDeltasDirMtime > generatedAt). Skipping
+      // the store save avoids a read-modify-write race on .docvault-health.json
+      // that intermittently surfaced as "Failed to persist sync" under the
+      // large multi-day payload.
     } catch (writeErr) {
       const errMsg = writeErr instanceof Error ? writeErr.message : String(writeErr);
       log.error(`Sync write failed for ${personId}: ${errMsg}`);
