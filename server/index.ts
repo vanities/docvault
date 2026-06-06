@@ -155,7 +155,7 @@ import { handleNutritionRoutes } from './routes/nutrition.js';
 import { handleSicknessRoutes } from './routes/sickness.js';
 import { handleHealthAnalysisRoutes } from './routes/health-analysis.js';
 import { handleStrategyRoutes } from './routes/strategy.js';
-import { handleResearchRoutes } from './routes/research.js';
+import { handleResearchRoutes, recoverStaleTranscriptions } from './routes/research.js';
 import { handlePoliticsRoutes } from './routes/politics.js';
 import { handleJobRoutes } from './routes/jobs.js';
 import { handlePoliticalJobRoutes } from './routes/political-jobs.js';
@@ -2814,7 +2814,7 @@ const server = Bun.serve({
   port: PORT,
   fetch: handleRequest,
   idleTimeout: 120, // 2 minutes for AI parsing
-  maxRequestBodySize: 1024 * 1024 * 1024, // 1 GB — large PDFs, manuals, etc.
+  maxRequestBodySize: 2 * 1024 * 1024 * 1024, // 2 GB — large PDFs/manuals + uploaded research video/audio
 });
 
 logServer.info(`DocVault API running on http://localhost:${server.port}`);
@@ -2824,5 +2824,15 @@ try {
 } catch (err) {
   logServer.error(
     `Custom job scheduler startup failed: ${err instanceof Error ? err.message : err}`
+  );
+}
+try {
+  // Any research video/audio transcription left mid-flight by a restart is
+  // flipped from pending/running → error so it isn't stuck forever (retry via
+  // the Re-transcribe action; the media file is still on disk).
+  await recoverStaleTranscriptions();
+} catch (err) {
+  logServer.error(
+    `Stale transcription recovery failed: ${err instanceof Error ? err.message : err}`
   );
 }

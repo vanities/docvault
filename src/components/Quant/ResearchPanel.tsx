@@ -13,6 +13,7 @@ import {
   Brain,
   X,
   Youtube,
+  Video,
 } from 'lucide-react';
 import { Line, LineChart, ResponsiveContainer } from 'recharts';
 import { Card } from '@/components/ui/card';
@@ -29,13 +30,27 @@ interface ResearchEntry {
   domain: ResearchPanelDomain;
   filename: string | null;
   filePath: string;
-  mediaType: 'application/pdf' | 'text/plain';
+  mediaType:
+    | 'application/pdf'
+    | 'text/plain'
+    | 'video/mp4'
+    | 'video/quicktime'
+    | 'video/x-matroska'
+    | 'video/webm'
+    | 'audio/mpeg'
+    | 'audio/mp4'
+    | 'audio/wav'
+    | 'audio/webm';
   uploadedAt: string;
   text: string | null;
   pageCount: number | null;
   extractedAt: string | null;
   extractorVersion: string | null;
   extractError: string | null;
+  // Background transcription lifecycle — present on uploaded video/audio only.
+  transcribeStatus?: 'pending' | 'running' | 'done' | 'error';
+  transcribeError?: string;
+  durationSec?: number;
   title?: string;
   author?: string;
   publisher?: string;
@@ -100,6 +115,22 @@ function formatDate(iso: string | undefined | null): string {
   const d = new Date(iso.length === 10 ? `${iso}T00:00:00` : iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+/** Uploaded video/audio entries (vs PDF / pasted text) — these carry a stored
+ *  media file plus a background transcript. */
+function isMediaEntry(mediaType: ResearchEntry['mediaType']): boolean {
+  return mediaType.startsWith('video/') || mediaType.startsWith('audio/');
+}
+
+/** Seconds → "M:SS" (or "H:MM:SS" past an hour), for media duration display. */
+function formatDuration(totalSec: number): string {
+  const s = Math.max(0, Math.floor(totalSec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const mm = h > 0 ? String(m).padStart(2, '0') : String(m);
+  return `${h > 0 ? `${h}:` : ''}${mm}:${String(sec).padStart(2, '0')}`;
 }
 
 // The "Paste text" form draft. A factory (not a const) so each reset hands
@@ -343,7 +374,7 @@ function TickerPriceStrip({ tickers }: { tickers: string[] }) {
 export function ResearchPanel({
   domain = 'finance',
   title = 'Research',
-  description = 'Upload PDFs, paste transcripts/articles, or fetch YouTube captions into the research store.',
+  description = 'Upload PDFs or video/audio, paste transcripts/articles, or fetch YouTube captions into the research store.',
   pdfHint = 'Research PDFs from Cowen, Lyn Alden, Fidelity, Raoul Pal, etc. Text is extracted automatically — no AI parsing.',
 }: {
   domain?: ResearchPanelDomain;
@@ -359,9 +390,11 @@ export function ResearchPanel({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const videoInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Ingest mode: PDF drop, raw text paste, or fetch from a YouTube URL.
-  const [mode, setMode] = useState<'pdf' | 'text' | 'youtube'>('pdf');
+  // Ingest mode: PDF drop, raw text paste, fetch a YouTube URL, or upload a
+  // video/audio file (kept as media + transcribed in the background).
+  const [mode, setMode] = useState<'pdf' | 'text' | 'youtube' | 'video'>('pdf');
   const [textDraft, setTextDraft] = useState(blankTextDraft);
   const [savingText, setSavingText] = useState(false);
   const [textError, setTextError] = useState<string | null>(null);
@@ -428,6 +461,64 @@ export function ResearchPanel({
     },
     [uploadFiles]
   );
+
+  // Upload a single video/audio file. The server stores it as media, returns
+  // immediately with transcribeStatus='pending', and transcribes in the
+  // background — the polling effect below refreshes until it lands. One at a
+  // time: the server runs a single transcription (429 while busy).
+  const uploadMedia = useCallback(
+    async (files: FileList | File[]) => {
+      const file = Array.from(files)[0];
+      if (!file) return;
+      setUploadError(null);
+      setUploading(true);
+      try {
+        const body = await file.arrayBuffer();
+        const res = await fetch(
+          `/api/research/video?filename=${encodeURIComponent(file.name)}&domain=${domain}`,
+          { method: 'POST', body }
+        );
+        if (!res.ok) {
+          const err = (await res.json().catch(() => ({}))) as { error?: string };
+          setUploadError(err.error ?? `Upload failed (${res.status}) for ${file.name}`);
+          return;
+        }
+        await fetch(`/api/research?domain=${domain}`)
+          .then((r) => r.json())
+          .then((d: { entries: ResearchEntry[] }) => setEntries(d.entries ?? []));
+      } finally {
+        setUploading(false);
+      }
+    },
+    [domain]
+  );
+
+  const handleMediaDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragging(false);
+      if (e.dataTransfer.files?.length) void uploadMedia(e.dataTransfer.files);
+    },
+    [uploadMedia]
+  );
+
+  // While any entry is mid-transcription, poll the list so the "Transcribing…"
+  // rows flip to their transcript (or error) without a manual refresh. The
+  // effect only re-arms when the in-flight boolean changes, not on every poll.
+  const anyTranscribing = entries.some(
+    (e) => e.transcribeStatus === 'pending' || e.transcribeStatus === 'running'
+  );
+  useEffect(() => {
+    if (!anyTranscribing) return;
+    const interval = setInterval(() => {
+      void fetch(`/api/research?domain=${domain}`)
+        .then((r) => r.json())
+        .then((d: { entries: ResearchEntry[] }) => setEntries(d.entries ?? []))
+        .catch(() => {});
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [anyTranscribing, domain]);
 
   // Save a pasted transcript / article / note straight to the research store.
   // No file involved — the text itself is the body of a POST /api/research/text.
@@ -526,6 +617,14 @@ export function ResearchPanel({
     }
   };
 
+  const reTranscribe = async (id: string) => {
+    const res = await fetch(`/api/research/${id}/re-transcribe`, { method: 'POST' });
+    if (res.ok) {
+      const data = (await res.json()) as { entry: ResearchEntry };
+      setEntries((prev) => prev.map((e) => (e.id === id ? data.entry : e)));
+    }
+  };
+
   const buildIntelligence = async (id: string) => {
     const res = await fetch(`/api/research/${id}/intelligence`, { method: 'POST' });
     if (res.ok) {
@@ -546,10 +645,18 @@ export function ResearchPanel({
       <Card variant="glass" className="mb-6">
         {/* Mode toggle */}
         <div className="flex gap-1 px-4 pt-4">
-          {(['pdf', 'text', 'youtube'] as const).map((m) => {
+          {(['pdf', 'text', 'youtube', 'video'] as const).map((m) => {
             const active = mode === m;
-            const Icon = m === 'pdf' ? Upload : m === 'text' ? AlignLeft : Youtube;
-            const label = m === 'pdf' ? 'Upload PDF' : m === 'text' ? 'Paste text' : 'From YouTube';
+            const Icon =
+              m === 'pdf' ? Upload : m === 'text' ? AlignLeft : m === 'youtube' ? Youtube : Video;
+            const label =
+              m === 'pdf'
+                ? 'Upload PDF'
+                : m === 'text'
+                  ? 'Paste text'
+                  : m === 'youtube'
+                    ? 'From YouTube'
+                    : 'Upload video/audio';
             return (
               <button
                 key={m}
@@ -694,7 +801,7 @@ export function ResearchPanel({
               </div>
             )}
           </div>
-        ) : (
+        ) : mode === 'youtube' ? (
           <div className="p-4 pt-3 space-y-3">
             <Input
               type="url"
@@ -734,6 +841,64 @@ export function ResearchPanel({
               </div>
             )}
           </div>
+        ) : (
+          <>
+            <div
+              onDragEnter={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                setIsDragging(false);
+              }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={handleMediaDrop}
+              className={`p-6 mx-4 mb-4 mt-3 border-2 border-dashed rounded-lg transition-all cursor-pointer ${
+                isDragging
+                  ? 'border-accent-400 bg-accent-500/5'
+                  : 'border-surface-500 hover:border-surface-400'
+              }`}
+              onClick={() => videoInputRef.current?.click()}
+            >
+              <div className="flex flex-col items-center text-center">
+                {uploading ? (
+                  <>
+                    <Loader2 className="w-8 h-8 mb-2 text-accent-400 animate-spin" />
+                    <p className="text-[13px] text-surface-700">Uploading…</p>
+                  </>
+                ) : (
+                  <>
+                    <Video className="w-8 h-8 mb-2 text-surface-600" />
+                    <p className="text-[13px] text-surface-700 mb-1">
+                      <span className="font-medium text-accent-400">Click to upload</span> or drag &
+                      drop
+                    </p>
+                    <p className="text-[12px] text-surface-600">
+                      Video or audio (mp4, mov, mkv, webm, mp3, m4a, wav). The file is kept here and
+                      transcribed automatically via Parakeet — no captions needed.
+                    </p>
+                  </>
+                )}
+                <input
+                  ref={videoInputRef}
+                  type="file"
+                  accept="video/*,audio/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files?.length) void uploadMedia(e.target.files);
+                    e.target.value = '';
+                  }}
+                />
+              </div>
+            </div>
+            {uploadError && (
+              <div className="px-4 pb-4 flex items-center gap-2 text-[12px] text-red-400">
+                <AlertCircle className="w-3.5 h-3.5" />
+                {uploadError}
+              </div>
+            )}
+          </>
         )}
       </Card>
 
@@ -758,6 +923,7 @@ export function ResearchPanel({
               onPatch={(body) => patchEntry(entry.id, body)}
               onDelete={() => deleteEntry(entry.id)}
               onReExtract={() => reExtract(entry.id)}
+              onReTranscribe={() => reTranscribe(entry.id)}
               onBuildIntelligence={() => buildIntelligence(entry.id)}
             />
           ))}
@@ -890,6 +1056,7 @@ function ResearchRow({
   onPatch,
   onDelete,
   onReExtract,
+  onReTranscribe,
   onBuildIntelligence,
 }: {
   entry: ResearchEntry;
@@ -898,8 +1065,11 @@ function ResearchRow({
   onPatch: (body: PatchBody) => Promise<void>;
   onDelete: () => void;
   onReExtract: () => Promise<void>;
+  onReTranscribe: () => Promise<void>;
   onBuildIntelligence: () => Promise<void>;
 }) {
+  const media = isMediaEntry(entry.mediaType);
+  const transcribing = entry.transcribeStatus === 'pending' || entry.transcribeStatus === 'running';
   // Local edit buffers — flushed to the server on blur so every keystroke
   // doesn't fire a PATCH. Kept in refs-ish state so parent re-renders don't
   // wipe user input mid-edit.
@@ -916,6 +1086,7 @@ function ResearchRow({
   // immediately on every chip add/remove, debounced by an equality check.
   const [draftTickers, setDraftTickers] = useState<string[]>(entry.tickers ?? []);
   const [reExtracting, setReExtracting] = useState(false);
+  const [reTranscribing, setReTranscribing] = useState(false);
   const [buildingIntelligence, setBuildingIntelligence] = useState(false);
 
   useEffect(() => {
@@ -956,6 +1127,15 @@ function ResearchRow({
     }
   };
 
+  const handleReTranscribe = async () => {
+    setReTranscribing(true);
+    try {
+      await onReTranscribe();
+    } finally {
+      setReTranscribing(false);
+    }
+  };
+
   const handleBuildIntelligence = async () => {
     setBuildingIntelligence(true);
     try {
@@ -979,6 +1159,8 @@ function ResearchRow({
         )}
         {entry.mediaType === 'application/pdf' ? (
           <FileText className="w-4 h-4 text-amber-400 flex-shrink-0" />
+        ) : media ? (
+          <Video className="w-4 h-4 text-sky-400 flex-shrink-0" />
         ) : (
           <AlignLeft className="w-4 h-4 text-purple-400 flex-shrink-0" />
         )}
@@ -995,11 +1177,21 @@ function ResearchRow({
           <div className="flex items-center gap-2 text-[11px] text-surface-600 mt-0.5">
             <span>{formatDate(entry.reportDate ?? entry.uploadedAt)}</span>
             {entry.pageCount !== null && <span>· {entry.pageCount}p</span>}
-            {entry.extractError && (
-              <span className="text-red-400 flex items-center gap-1">
-                <AlertCircle className="w-3 h-3" />
-                extract failed
+            {entry.durationSec != null && entry.durationSec > 0 && (
+              <span>· {formatDuration(entry.durationSec)}</span>
+            )}
+            {transcribing ? (
+              <span className="text-sky-400 flex items-center gap-1">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Transcribing…
               </span>
+            ) : (
+              entry.extractError && (
+                <span className="text-red-400 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {media ? 'transcription failed' : 'extract failed'}
+                </span>
+              )
             )}
           </div>
         </div>
@@ -1093,6 +1285,28 @@ function ResearchRow({
           {/* Tagged ticker prices (renders nothing when no tickers) */}
           <TickerPriceStrip tickers={draftTickers} />
 
+          {/* Media player — the uploaded video/audio is kept in DocVault and
+              served with Range support, so it streams + scrubs inline here. */}
+          {media && (
+            <div>
+              {entry.mediaType.startsWith('video/') ? (
+                <video
+                  controls
+                  preload="metadata"
+                  src={`/api/research/${entry.id}/file`}
+                  className="w-full max-h-80 rounded-lg border border-border/40 bg-black"
+                />
+              ) : (
+                <audio
+                  controls
+                  preload="metadata"
+                  src={`/api/research/${entry.id}/file`}
+                  className="w-full"
+                />
+              )}
+            </div>
+          )}
+
           {/* Notes */}
           <div>
             <label className="text-[10px] uppercase tracking-wider text-surface-600 font-semibold">
@@ -1114,7 +1328,11 @@ function ResearchRow({
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="text-[10px] uppercase tracking-wider text-surface-600 font-semibold">
-                {entry.mediaType === 'application/pdf' ? 'Extracted text' : 'Content'}
+                {entry.mediaType === 'application/pdf'
+                  ? 'Extracted text'
+                  : media
+                    ? 'Transcript'
+                    : 'Content'}
                 {entry.pageCount !== null && (
                   <span className="ml-2 font-normal text-surface-500 normal-case tracking-normal">
                     {entry.pageCount} page{entry.pageCount === 1 ? '' : 's'}
@@ -1144,6 +1362,20 @@ function ResearchRow({
                     Re-extract
                   </Button>
                 )}
+                {media && (
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={handleReTranscribe}
+                    disabled={reTranscribing || transcribing}
+                    title="Re-run transcription"
+                  >
+                    <RefreshCw
+                      className={`w-3 h-3 ${reTranscribing || transcribing ? 'animate-spin' : ''}`}
+                    />
+                    Re-transcribe
+                  </Button>
+                )}
               </div>
             </div>
             {entry.extractError ? (
@@ -1154,8 +1386,15 @@ function ResearchRow({
               <pre className="p-2 rounded bg-surface-200/30 border border-border/40 text-[11px] text-surface-800 whitespace-pre-wrap max-h-80 overflow-y-auto font-mono leading-relaxed">
                 {entry.text}
               </pre>
+            ) : transcribing ? (
+              <div className="text-[11px] text-surface-600 italic flex items-center gap-1.5">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Transcribing… long videos can take a few minutes.
+              </div>
             ) : (
-              <div className="text-[11px] text-surface-600 italic">No text extracted yet.</div>
+              <div className="text-[11px] text-surface-600 italic">
+                {media ? 'No transcript yet.' : 'No text extracted yet.'}
+              </div>
             )}
           </div>
 
@@ -1169,7 +1408,11 @@ function ResearchRow({
                   rel="noopener noreferrer"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  {entry.mediaType === 'application/pdf' ? 'Open PDF' : 'Open raw text'}
+                  {entry.mediaType === 'application/pdf'
+                    ? 'Open PDF'
+                    : media
+                      ? 'Open media'
+                      : 'Open raw text'}
                 </a>
               </Button>
               {entry.sourceUrl && (

@@ -34,6 +34,10 @@ import {
   extractVideoId,
   fetchYouTubeTranscript,
 } from '../parsers/youtube-transcript.js';
+import {
+  MEDIA_TRANSCRIBE_EXTRACTOR_VERSION,
+  transcribeMediaFile,
+} from '../parsers/media-transcribe.js';
 import { createLogger } from '../logger.js';
 import { normalizeTickers } from '../tickers.js';
 import { buildResearchIntelligence, type ResearchIntelligence } from '../research-intelligence.js';
@@ -54,6 +58,24 @@ const RESEARCH_DATA_DIR = path.join(DATA_DIR, 'research');
 
 export type ResearchDomain = 'finance' | 'health' | 'politics';
 
+/**
+ * Stored media types. PDF and plain text are the original ingest paths; the
+ * video/* and audio/* types back the "Upload video/audio" path, where the file
+ * is kept as playable media and transcribed in the background. The value also
+ * doubles as the Content-Type when serving the file back.
+ */
+export type ResearchMediaType =
+  | 'application/pdf'
+  | 'text/plain'
+  | 'video/mp4'
+  | 'video/quicktime'
+  | 'video/x-matroska'
+  | 'video/webm'
+  | 'audio/mpeg'
+  | 'audio/mp4'
+  | 'audio/wav'
+  | 'audio/webm';
+
 export interface ResearchEntry {
   id: string;
   /**
@@ -69,10 +91,11 @@ export interface ResearchEntry {
   filePath: string;
   /**
    * 'application/pdf' for uploaded PDFs, 'text/plain' for pasted text
-   * (transcripts, articles, notes). Determines the ingest path and which
-   * per-entry actions apply — e.g. re-extract is PDF-only.
+   * (transcripts, articles, notes), or a video/* | audio/* type for uploaded
+   * media. Determines the ingest path and which per-entry actions apply — e.g.
+   * re-extract is PDF-only, re-transcribe is media-only.
    */
-  mediaType: 'application/pdf' | 'text/plain';
+  mediaType: ResearchMediaType;
   uploadedAt: string;
   /**
    * The entry's text. For PDFs: extracted via unpdf, pages separated by
@@ -86,6 +109,18 @@ export interface ResearchEntry {
   extractorVersion: string | null;
   /** Error message if extraction failed. */
   extractError: string | null;
+
+  // Background transcription lifecycle — video/audio entries only; absent on
+  // PDF/text. The entry is created immediately (file on disk, text=null,
+  // transcribeStatus='pending'); a background job flips it 'running' → 'done'
+  // (text populated) or 'error' (transcribeError set). Polling rides the
+  // existing GET /api/research/:id — there is no separate job store.
+  /** Lifecycle of background transcription. Undefined for non-media entries. */
+  transcribeStatus?: 'pending' | 'running' | 'done' | 'error';
+  /** Failure message when transcribeStatus === 'error'. */
+  transcribeError?: string;
+  /** Source media duration in seconds (from ffmpeg), for display. */
+  durationSec?: number;
 
   // User-editable metadata —
   /** User-supplied or inferred (first-line) title. */
@@ -222,6 +257,97 @@ function looksLikePdf(buf: Buffer): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Media (video/audio) detection — magic bytes first, filename extension as a
+// tiebreaker/fallback. Backs the /video ingest path; PDFs go through /upload.
+// ---------------------------------------------------------------------------
+
+const MEDIA_EXT_TO_TYPE: Record<string, ResearchMediaType> = {
+  mp4: 'video/mp4',
+  m4v: 'video/mp4',
+  mov: 'video/quicktime',
+  mkv: 'video/x-matroska',
+  webm: 'video/webm',
+  mp3: 'audio/mpeg',
+  m4a: 'audio/mp4',
+  wav: 'audio/wav',
+  weba: 'audio/webm', // audio-only WebM
+};
+
+function extOf(filename: string | null): string {
+  if (!filename) return '';
+  const m = filename.toLowerCase().match(/\.([a-z0-9]+)$/);
+  return m ? m[1] : '';
+}
+
+/**
+ * Identify an uploaded video/audio file from its leading bytes, falling back to
+ * the filename extension when the container is ambiguous (e.g. an ISO-BMFF
+ * `ftyp` box that's an .m4a rather than .mp4). Returns the stored mediaType and
+ * the on-disk extension, or null when nothing recognizable matches.
+ */
+export function detectMediaType(
+  buf: Buffer,
+  filename: string | null
+): { mediaType: ResearchMediaType; extension: string } | null {
+  const ext = extOf(filename);
+
+  // ISO base media (MP4/MOV/M4A): bytes 4-7 are "ftyp".
+  if (
+    buf.length >= 12 &&
+    buf[4] === 0x66 &&
+    buf[5] === 0x74 &&
+    buf[6] === 0x79 &&
+    buf[7] === 0x70
+  ) {
+    const brand = buf.toString('ascii', 8, 12).trim().toLowerCase();
+    if (brand === 'qt') return { mediaType: 'video/quicktime', extension: ext || 'mov' };
+    if (brand.startsWith('m4a')) return { mediaType: 'audio/mp4', extension: ext || 'm4a' };
+    // Ambiguous brand — trust an audio/quicktime extension when present.
+    if (ext === 'm4a') return { mediaType: 'audio/mp4', extension: 'm4a' };
+    if (ext === 'mov') return { mediaType: 'video/quicktime', extension: 'mov' };
+    return { mediaType: 'video/mp4', extension: ext || 'mp4' };
+  }
+
+  // Matroska / WebM: EBML header 1A 45 DF A3; DocType distinguishes them.
+  if (buf.length >= 4 && buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3) {
+    const head = buf.toString('latin1', 0, Math.min(buf.length, 64));
+    if (head.includes('webm')) return { mediaType: 'video/webm', extension: ext || 'webm' };
+    return { mediaType: 'video/x-matroska', extension: ext || 'mkv' };
+  }
+
+  // MP3: ID3 tag ("ID3") or MPEG frame sync (0xFF 0xEx/0xFx).
+  if (
+    (buf.length >= 3 && buf[0] === 0x49 && buf[1] === 0x44 && buf[2] === 0x33) ||
+    (buf.length >= 2 && buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0)
+  ) {
+    return { mediaType: 'audio/mpeg', extension: ext || 'mp3' };
+  }
+
+  // WAV: "RIFF"…."WAVE".
+  if (
+    buf.length >= 12 &&
+    buf[0] === 0x52 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x46 &&
+    buf[3] === 0x46 &&
+    buf[8] === 0x57 &&
+    buf[9] === 0x41 &&
+    buf[10] === 0x56 &&
+    buf[11] === 0x45
+  ) {
+    return { mediaType: 'audio/wav', extension: ext || 'wav' };
+  }
+
+  // Last resort: trust a known media extension even when magic didn't match
+  // (some containers carry leading junk or unusual brands).
+  if (ext && MEDIA_EXT_TO_TYPE[ext]) {
+    return { mediaType: MEDIA_EXT_TO_TYPE[ext], extension: ext };
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Entry creation — shared file-write + store-save path for every ingest
 // route (`/upload`, `/text`, `/youtube`). Keeping it in one place means
 // every ingest path lands in the store the same way, which matters because
@@ -232,8 +358,9 @@ function looksLikePdf(buf: Buffer): boolean {
 async function createResearchEntry(params: {
   /** File bytes (PDF) or string content (text). */
   content: Buffer | string;
-  /** File extension on disk. Drives the stored filename, not the mediaType. */
-  extension: 'pdf' | 'txt';
+  /** File extension on disk. Drives the stored filename, not the mediaType.
+   *  Free-form so media uploads keep their original ext (mp4, mov, m4a, …). */
+  extension: string;
   mediaType: ResearchEntry['mediaType'];
   /** Which tab this entry belongs to — drives where it surfaces. */
   domain: ResearchDomain;
@@ -294,6 +421,95 @@ async function createResearchEntry(params: {
   store.entries[id] = entry;
   await saveStore(store);
   return entry;
+}
+
+// ---------------------------------------------------------------------------
+// Background transcription — video/audio entries are created immediately (file
+// on disk, text=null, status 'pending'), then transcribed off the request
+// path. State lives on the entry itself, so the client just polls
+// GET /api/research/:id and a crash leaves a durable record for boot recovery.
+// Parakeet is a single box and ffmpeg is heavy on the NAS, so we run at most
+// one transcription at a time (single-flight).
+// ---------------------------------------------------------------------------
+
+let transcribeBusy = false;
+
+/** Whether a transcription job currently holds the single-flight slot. */
+export function isTranscribeBusy(): boolean {
+  return transcribeBusy;
+}
+
+/** Merge a patch onto an entry + bump lastUpdated, atomically. No-op if the
+ *  entry was deleted while a job was running. */
+async function setTranscribeStatus(id: string, patch: Partial<ResearchEntry>): Promise<void> {
+  const store = await loadStore();
+  const entry = store.entries[id];
+  if (!entry) return;
+  Object.assign(entry, patch, { lastUpdated: new Date().toISOString() });
+  await saveStore(store);
+}
+
+/** Run extraction + transcription for one entry in the background. Never throws
+ *  — every failure is recorded on the entry. The media file is left on disk
+ *  regardless, so a failed transcription can be retried via re-transcribe. */
+async function runTranscriptionJob(id: string): Promise<void> {
+  const jobMs = log.timer();
+  try {
+    await setTranscribeStatus(id, { transcribeStatus: 'running' });
+    const store = await loadStore();
+    const entry = store.entries[id];
+    if (!entry) return; // deleted mid-flight
+    const abs = path.join(DATA_DIR, entry.filePath);
+
+    const { text, durationSec } = await transcribeMediaFile(abs);
+    await setTranscribeStatus(id, {
+      transcribeStatus: 'done',
+      text,
+      durationSec: durationSec ?? undefined,
+      extractedAt: new Date().toISOString(),
+      extractorVersion: MEDIA_TRANSCRIBE_EXTRACTOR_VERSION,
+      transcribeError: undefined,
+      extractError: null,
+    });
+    log.info(`Transcription done: id=${id} chars=${text.length} in ${jobMs()}ms`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log.error(`Transcription failed: id=${id}: ${msg}`);
+    // Mirror into extractError so the existing "extraction failed" badge shows.
+    await setTranscribeStatus(id, {
+      transcribeStatus: 'error',
+      transcribeError: msg,
+      extractError: msg,
+    });
+  } finally {
+    transcribeBusy = false;
+  }
+}
+
+/**
+ * On boot, flip any transcription left mid-flight by a restart from
+ * pending/running → error so it doesn't appear stuck forever. The media file is
+ * still on disk, so the user can retry with re-transcribe. Called once from the
+ * server boot block.
+ */
+export async function recoverStaleTranscriptions(): Promise<void> {
+  const store = await loadStore();
+  let changed = 0;
+  const now = new Date().toISOString();
+  for (const entry of Object.values(store.entries)) {
+    if (entry.transcribeStatus === 'pending' || entry.transcribeStatus === 'running') {
+      entry.transcribeStatus = 'error';
+      entry.transcribeError =
+        'Transcription was interrupted by a server restart. Use Re-transcribe to retry.';
+      entry.extractError = entry.transcribeError;
+      entry.lastUpdated = now;
+      changed++;
+    }
+  }
+  if (changed > 0) {
+    await saveStore(store);
+    log.warn(`Recovered ${changed} stale transcription(s) → error on boot`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -485,6 +701,75 @@ export async function handleResearchRoutes(
     return jsonResponse({ entry });
   }
 
+  // POST /api/research/video — upload a video/audio file, keep it as playable
+  // media, and transcribe it in the background (ffmpeg → Parakeet). Mirrors
+  // /upload's raw-bytes shape; metadata rides the query string. Matched before
+  // the per-entry routes below so "/video" isn't read as an id.
+  if (sub === '/video' && req.method === 'POST') {
+    const filename = url.searchParams.get('filename');
+    const titleOverride = url.searchParams.get('title');
+    const domain = parseDomain(url.searchParams.get('domain'));
+    const raw = Buffer.from(await req.arrayBuffer());
+    if (raw.length === 0) {
+      return jsonResponse({ error: 'Empty upload' }, 400);
+    }
+
+    const detected = detectMediaType(raw, filename);
+    if (!detected) {
+      return jsonResponse(
+        {
+          error:
+            'Unsupported media. Allowed: mp4, m4v, mov, mkv, webm (video); mp3, m4a, wav, weba (audio).',
+        },
+        400
+      );
+    }
+
+    // Single-flight: refuse a second job while one is running (Parakeet is one
+    // box; ffmpeg is heavy on the NAS). Checked before we write anything.
+    if (transcribeBusy) {
+      return jsonResponse(
+        { error: 'A transcription is already in progress. Try again once it finishes.' },
+        429
+      );
+    }
+    // Reserve the slot before the file write so two near-simultaneous uploads
+    // can't both pass the check; release it if creation fails.
+    transcribeBusy = true;
+    let entry: ResearchEntry;
+    try {
+      entry = await createResearchEntry({
+        content: raw,
+        extension: detected.extension,
+        mediaType: detected.mediaType,
+        domain,
+        filename,
+        text: null, // filled in by the background job
+        pageCount: null,
+        extractedAt: null,
+        extractorVersion: null,
+        extractError: null,
+        title: titleOverride ?? filename ?? undefined,
+      });
+    } catch (err) {
+      transcribeBusy = false;
+      throw err;
+    }
+
+    // Persist 'pending' before firing the job so a crash in the gap is still
+    // caught by boot recovery, then fire-and-forget (client polls GET /:id).
+    // Best-effort: even if this write fails, the job runs and sets its own
+    // state, releasing the single-flight slot in its finally.
+    await setTranscribeStatus(entry.id, { transcribeStatus: 'pending' }).catch(() => {});
+    void runTranscriptionJob(entry.id);
+
+    log.info(
+      `Research media upload: id=${entry.id} type=${detected.mediaType} bytes=${raw.length} ` +
+        `domain=${domain}`
+    );
+    return jsonResponse({ entry: { ...entry, transcribeStatus: 'pending' } });
+  }
+
   // GET /api/research/politics-links — joins politics-domain research claims
   // to the protected Check the Vote feed by ticker/topic. The upstream bearer
   // token stays server-side; only derived, source-grounded links are returned.
@@ -511,7 +796,7 @@ export async function handleResearchRoutes(
   }
 
   // Per-entry subpaths
-  const idMatch = sub.match(/^\/([a-z0-9]+)(?:\/(file|re-extract|intelligence))?$/i);
+  const idMatch = sub.match(/^\/([a-z0-9]+)(?:\/(file|re-extract|intelligence|re-transcribe))?$/i);
   if (idMatch) {
     const id = idMatch[1];
     const action = idMatch[2];
@@ -526,21 +811,23 @@ export async function handleResearchRoutes(
     // (PDF reader, or plain-text view) handles it.
     if (action === 'file' && req.method === 'GET') {
       const abs = path.join(DATA_DIR, entry.filePath);
-      try {
-        const bytes = await fs.readFile(abs);
-        const ext = entry.mediaType === 'application/pdf' ? 'pdf' : 'txt';
-        const contentType =
-          entry.mediaType === 'text/plain' ? 'text/plain; charset=utf-8' : entry.mediaType;
-        return new Response(new Uint8Array(bytes), {
-          headers: {
-            'Content-Type': contentType,
-            'Cache-Control': 'private, max-age=3600',
-            'Content-Disposition': `inline; filename="${entry.filename ?? `${id}.${ext}`}"`,
-          },
-        });
-      } catch {
+      const file = Bun.file(abs);
+      if (!(await file.exists())) {
         return jsonResponse({ error: 'File missing on disk' }, 410);
       }
+      const contentType =
+        entry.mediaType === 'text/plain' ? 'text/plain; charset=utf-8' : entry.mediaType;
+      // Hand the BunFile to Response so Bun.serve honours incoming Range
+      // requests (206 + Content-Range) — required for <video>/<audio> seeking.
+      // The mediaType doubles as the Content-Type for pdf/video/audio.
+      return new Response(file, {
+        headers: {
+          'Content-Type': contentType,
+          'Accept-Ranges': 'bytes',
+          'Cache-Control': 'private, max-age=3600',
+          'Content-Disposition': `inline; filename="${entry.filename ?? entry.id}"`,
+        },
+      });
     }
 
     // POST /api/research/:id/re-extract — re-run text extraction (PDF only;
@@ -583,6 +870,48 @@ export async function handleResearchRoutes(
       entry.lastUpdated = now;
       await saveStore(store);
       return jsonResponse({ entry });
+    }
+
+    // POST /api/research/:id/re-transcribe — retry background transcription for
+    // a video/audio entry (also the recovery path for entries the boot sweep
+    // marked 'error'). Media-only; the file must still be on disk.
+    if (action === 're-transcribe' && req.method === 'POST') {
+      const isMedia = entry.mediaType.startsWith('video/') || entry.mediaType.startsWith('audio/');
+      if (!isMedia) {
+        return jsonResponse({ error: 'Re-transcribe applies to video/audio entries only.' }, 400);
+      }
+      const abs = path.join(DATA_DIR, entry.filePath);
+      try {
+        await fs.access(abs);
+      } catch {
+        return jsonResponse({ error: 'Media file missing on disk' }, 410);
+      }
+      if (transcribeBusy) {
+        return jsonResponse(
+          { error: 'A transcription is already in progress. Try again once it finishes.' },
+          429
+        );
+      }
+      transcribeBusy = true;
+      // Reset to pending and clear prior errors, then fire-and-forget. The
+      // pending write is best-effort (a failure here still lets the job run,
+      // which sets its own state and releases the slot in its finally).
+      await setTranscribeStatus(id, {
+        transcribeStatus: 'pending',
+        text: null,
+        transcribeError: undefined,
+        extractError: null,
+      }).catch(() => {});
+      void runTranscriptionJob(id);
+      return jsonResponse({
+        entry: {
+          ...entry,
+          transcribeStatus: 'pending',
+          text: null,
+          extractError: null,
+          lastUpdated: new Date().toISOString(),
+        },
+      });
     }
 
     // POST /api/research/:id/intelligence — extract deterministic summary
