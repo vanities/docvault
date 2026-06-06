@@ -19,6 +19,8 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { useTopN } from '@/hooks/useTopN';
+import { ShowMore } from '@/components/ui/ShowMore';
 
 type ResearchPanelDomain = 'finance' | 'politics';
 
@@ -350,6 +352,7 @@ export function ResearchPanel({
   pdfHint?: string;
 }) {
   const [entries, setEntries] = useState<ResearchEntry[]>([]);
+  const list = useTopN(entries, 10);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -746,7 +749,7 @@ export function ResearchPanel({
         </div>
       ) : (
         <div className="space-y-2">
-          {entries.map((entry) => (
+          {list.visible.map((entry) => (
             <ResearchRow
               key={entry.id}
               entry={entry}
@@ -758,6 +761,12 @@ export function ResearchPanel({
               onBuildIntelligence={() => buildIntelligence(entry.id)}
             />
           ))}
+          <ShowMore
+            expanded={list.expanded}
+            hiddenCount={list.hiddenCount}
+            onToggle={list.toggle}
+            className="mt-1"
+          />
         </div>
       )}
     </div>

@@ -166,6 +166,25 @@ export function DashboardFeeds({ payload }: { payload: PoliticsFeedPayload | nul
       </Panel>
 
       <Panel
+        icon={Scale}
+        title="Executive actions"
+        count={execActions.length}
+        empty="No recent executive actions yet."
+      >
+        {execActions.slice(0, 8).map((a) => (
+          <LinkRow key={a.slug} href={a.url}>
+            <span className="block text-xs text-surface-800 leading-snug line-clamp-2 group-hover:text-accent-300">
+              {a.title}
+            </span>
+            <div className="flex items-center gap-1.5 mt-1">
+              <Pill cls="bg-violet-500/15 text-violet-300">{EXEC_TYPE[a.type] ?? a.type}</Pill>
+              <span className="text-[10px] text-surface-500">{a.issuedDate}</span>
+            </div>
+          </LinkRow>
+        ))}
+      </Panel>
+
+      <Panel
         icon={TrendingUp}
         title="Recent trades"
         count={trades.length}
@@ -200,25 +219,6 @@ export function DashboardFeeds({ payload }: { payload: PoliticsFeedPayload | nul
               {t.tradeDate}
             </div>
           </li>
-        ))}
-      </Panel>
-
-      <Panel
-        icon={Scale}
-        title="Executive actions"
-        count={execActions.length}
-        empty="No recent executive actions yet."
-      >
-        {execActions.slice(0, 8).map((a) => (
-          <LinkRow key={a.slug} href={a.url}>
-            <span className="block text-xs text-surface-800 leading-snug line-clamp-2 group-hover:text-accent-300">
-              {a.title}
-            </span>
-            <div className="flex items-center gap-1.5 mt-1">
-              <Pill cls="bg-violet-500/15 text-violet-300">{EXEC_TYPE[a.type] ?? a.type}</Pill>
-              <span className="text-[10px] text-surface-500">{a.issuedDate}</span>
-            </div>
-          </LinkRow>
         ))}
       </Panel>
 

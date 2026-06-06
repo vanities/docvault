@@ -6,6 +6,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ExternalLink, Loader2, TrendingDown, TrendingUp, Users } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { useTopN } from '@/hooks/useTopN';
+import { ShowMore } from '@/components/ui/ShowMore';
 
 interface ClusterTrade {
   politicianName: string;
@@ -228,6 +230,7 @@ export function ConsensusPanel() {
   const [sort, setSort] = useState<SortKey>('recent');
 
   const sorted = useMemo(() => sortClusters(clusters ?? [], sort), [clusters, sort]);
+  const list = useTopN(sorted, 10);
 
   useEffect(() => {
     let alive = true;
@@ -315,11 +318,19 @@ export function ConsensusPanel() {
             <Loader2 className="w-5 h-5 animate-spin" />
           </div>
         ) : sorted.length > 0 ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {sorted.map((c) => (
-              <ClusterCard key={`${c.ticker}-${c.direction}-${c.firstDate}`} cluster={c} />
-            ))}
-          </div>
+          <>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {list.visible.map((c) => (
+                <ClusterCard key={`${c.ticker}-${c.direction}-${c.firstDate}`} cluster={c} />
+              ))}
+            </div>
+            <ShowMore
+              expanded={list.expanded}
+              hiddenCount={list.hiddenCount}
+              onToggle={list.toggle}
+              className="mt-2"
+            />
+          </>
         ) : (
           <p className="text-sm text-surface-600 py-8 text-center">
             No consensus clusters in this window yet — needs ≥2 members trading the same ticker the
