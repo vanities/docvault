@@ -1,24 +1,13 @@
-// Apple Shortcuts `.shortcut` file generator — v12 (adds workouts).
+// Apple Shortcuts `.shortcut` file generator — v11 (surfaces server response).
 //
 // Produces a binary plist that:
 //   1. Gets current date + formats as yyyy-MM-dd
 //   2. Subtracts 1 day → yesterday (for the JSON date field)
 //   3. Finds Health Samples for 8 metrics, filtered yesterday→today
-//   4. Finds Workouts for the same window (a separate HealthKit sample class)
-//   5. Builds a JSON body as a Text action — the 8 metric values plus a
-//      `workoutsRaw` block of four newline-joined parallel lists (workout
-//      Type / Start / End / Duration), all via property Aggrandizements
-//   6. POSTs to the DocVault ingest endpoint with auth header (UUID'd output)
-//   7. Shows the actual server response — `ok/message` on success,
+//   4. Builds a JSON body as a Text action with .Value Aggrandizements
+//   5. POSTs to the DocVault ingest endpoint with auth header (UUID'd output)
+//   6. Shows the actual server response — `ok/message` on success,
 //      `error` on failure — so iOS stops pretending a 4xx is a success.
-//
-// Workouts ride the SAME interpolation mechanism as metrics — a list variable
-// interpolated into text, which Shortcuts joins with newlines — so the server
-// reassembles them with the same split-on-newline approach (`raw: true`). The
-// ingest endpoint tolerates empty/malformed workout data, so a wrong workout
-// property name degrades to "no workouts" rather than ever failing the metrics
-// sync. The four workout property names are the one thing to verify on a first
-// device run (watch for ", N workouts" in the shortcut's result alert).
 //
 // Action IDs are confirmed from decompiling a real shortcut on the user's
 // Mac via Shortcuts.sqlite → plutil. The Text-based JSON approach avoids
@@ -204,96 +193,20 @@ export function buildHealthShortcut(opts: ShortcutOptions): Buffer {
     sampleUuids.push({ key: m.key, uuid: samplesUuid });
   }
 
-  // 5b. Find Workouts — same yesterday→today window, sorted Latest First.
-  //
-  // Workouts are a DIFFERENT HealthKit sample class than the 8 quantity
-  // metrics above, so they get their own finder. The JSON step below
-  // interpolates this single result four times (Type / Start / End /
-  // Duration); Shortcuts joins each into a newline-separated list, giving the
-  // server four index-aligned parallel lists to zip back into sessions (see
-  // workoutsRawToObjects). Same low-risk shape as the metrics path — no
-  // repeat-loop, no Dictionary action.
-  const workoutsUuid = uuid();
-  actions.push({
-    WFWorkflowActionIdentifier: 'is.workflow.actions.filter.workouts',
-    WFWorkflowActionParameters: {
-      UUID: workoutsUuid,
-      WFContentItemFilter: {
-        Value: {
-          WFActionParameterFilterPrefix: 1,
-          WFContentPredicateBoundedDate: false,
-          WFActionParameterFilterTemplates: [
-            {
-              Bounded: true,
-              Operator: 1003,
-              Property: 'Start Date',
-              Removable: false,
-              Values: {
-                Date: {
-                  Value: {
-                    OutputName: 'Current Date',
-                    OutputUUID: dateUuid,
-                    Type: 'ActionOutput',
-                  },
-                  WFSerializationType: 'WFTextTokenAttachment',
-                },
-                AnotherDate: {
-                  Value: {
-                    OutputName: 'Adjusted Date',
-                    OutputUUID: yesterdayUuid,
-                    Type: 'ActionOutput',
-                  },
-                  WFSerializationType: 'WFTextTokenAttachment',
-                },
-                Number: '1',
-                Unit: 16,
-              },
-            },
-          ],
-        },
-        WFSerializationType: 'WFContentPredicateTableTemplate',
-      },
-      WFContentItemInputParameter: 'Library',
-      WFContentItemLimitEnabled: false,
-      WFContentItemSortOrder: 'Latest First',
-      WFContentItemSortProperty: 'Start Date',
-    },
-  });
-
-  // 6. Build JSON body as Text with variable interpolation + property Aggrandizements
-  // Per-workout properties, interpolated as four parallel newline-joined lists.
-  // Only universally-present properties are used (every workout has all four),
-  // so the lists stay index-aligned — optional stats like distance/energy would
-  // shorten some lists and misalign them, so they're left to the bulk export.
-  const workoutProps = [
-    { field: 'type', property: 'Workout Type' },
-    { field: 'start', property: 'Start Date' },
-    { field: 'end', property: 'End Date' },
-    { field: 'duration', property: 'Duration' },
-  ];
-
+  // 6. Build JSON body as Text with variable interpolation + .Value Aggrandizements
   let template =
-    '{\\n  "date": "' + PH + '",\\n  "source": "shortcut-v2",\\n  "raw": true,\\n  "metrics": {\\n';
+    '{\\n  "date": "' + PH + '",\\n  "source": "shortcut-v1",\\n  "raw": true,\\n  "metrics": {\\n';
   const refs: Array<{
     uuid: string;
     name: string;
-    aggrandizement?: string;
-  }> = [{ uuid: yesterdayStrUuid, name: 'Formatted Date' }];
+    aggr: boolean;
+  }> = [{ uuid: yesterdayStrUuid, name: 'Formatted Date', aggr: false }];
 
   for (let i = 0; i < sampleUuids.length; i++) {
     const s = sampleUuids[i];
     const comma = i < sampleUuids.length - 1 ? ',' : '';
     template += '    "' + s.key + '": "' + PH + '"' + comma + '\\n';
-    refs.push({ uuid: s.uuid, name: 'Health Samples', aggrandizement: 'Value' });
-  }
-  // Close `metrics`, then append the workouts block as parallel lists. An empty
-  // workout day yields empty strings here — the server simply finds 0 workouts.
-  template += '  },\\n  "workoutsRaw": {\\n';
-  for (let i = 0; i < workoutProps.length; i++) {
-    const p = workoutProps[i];
-    const comma = i < workoutProps.length - 1 ? ',' : '';
-    template += '    "' + p.field + '": "' + PH + '"' + comma + '\\n';
-    refs.push({ uuid: workoutsUuid, name: 'Workouts', aggrandizement: p.property });
+    refs.push({ uuid: s.uuid, name: 'Health Samples', aggr: true });
   }
   template += '  }\\n}';
 
@@ -309,9 +222,9 @@ export function buildHealthShortcut(opts: ShortcutOptions): Buffer {
         OutputUUID: ref.uuid,
         Type: 'ActionOutput',
       };
-      if (ref.aggrandizement) {
+      if (ref.aggr) {
         attachment.Aggrandizements = [
-          { PropertyName: ref.aggrandizement, Type: 'WFPropertyVariableAggrandizement' },
+          { PropertyName: 'Value', Type: 'WFPropertyVariableAggrandizement' },
         ];
       }
       attachmentsByRange[`{${charOffset}, 1}`] = attachment;

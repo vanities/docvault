@@ -17,6 +17,7 @@
 //     (segment = activity|heart|sleep|workouts|body|all)
 //   GET    /api/health/:personId/clinical                 — FHIR clinical summary (labs, panels, vitals, conditions, …)
 //   POST   /api/health/:personId/ingest                   — daily delta POST from iOS Shortcut (auth: X-Docvault-Auth)
+//   POST   /api/health/:personId/workouts                 — workout sessions from the DocVault Sync iOS app (auth: X-Docvault-Auth)
 //   GET    /api/health/:personId/ingest-log?limit=100     — recent ingest audit entries (bootId-stamped NDJSON)
 //
 // Storage:
@@ -50,11 +51,13 @@ import {
   parseAppleHealthExport,
   PARSER_VERSION as CURRENT_PARSER_VERSION,
   type AppleHealthSummary,
+  type WorkoutEntry,
 } from '../parsers/apple-health.js';
 import { normalizeDeltaWorkouts, workoutsRawToObjects } from '../parsers/delta-workouts.js';
 import {
   computeSnapshots,
   SNAPSHOT_SCHEMA_VERSION,
+  workoutDedupeKey,
   type DeltaFile,
   type PersonSnapshots,
   type HealthSegment,
@@ -402,10 +405,19 @@ export async function handleHealthRoutes(
     // Also include the download URL for the generated .shortcut file
     const shortcutDownloadUrl = `${proto}://${host}/api/health/${personId}/shortcut.shortcut`;
 
+    // Deep link for the DocVault Sync iOS app (workouts). Rendered as a QR in
+    // the setup UI; scanning it opens the app pre-filled with this DocVault's
+    // origin + person + token — no typing a long token on a phone keyboard.
+    const origin = `${proto}://${host}`;
+    const appDeepLink =
+      `docvaultsync://configure?baseURL=${encodeURIComponent(origin)}` +
+      `&personId=${encodeURIComponent(personId)}&token=${encodeURIComponent(token)}`;
+
     return jsonResponse({
       personId,
       ingestUrl,
       shortcutDownloadUrl,
+      appDeepLink,
       authHeader: 'X-Docvault-Auth',
       authToken: token,
       scheduleTime: '06:00', // 6 AM user-local, configurable
@@ -729,6 +741,137 @@ export async function handleHealthRoutes(
         `${workouts.length > 0 ? `, ${workouts.length} workouts` : ''}`,
       filename: `deltas/${date}.json`,
       updated: metricKeys,
+    });
+  }
+
+  // POST /api/health/:personId/workouts
+  //
+  // Companion to /ingest, for the DocVault Sync iOS app (which holds the
+  // HealthKit entitlement a Shortcut can't). Body: { source, workouts: [...] }
+  // where each workout is the flat shape normalizeDeltaWorkouts accepts. Unlike
+  // /ingest this is multi-date and metrics-free: workouts are grouped by their
+  // start date and merged into that date's delta file (created with empty
+  // metrics if absent), deduped by start-minute+type so re-syncing the same
+  // window is idempotent. No ±2-day window — the app syncs a rolling history.
+  const workoutsMatch = pathname.match(/^\/api\/health\/([^/]+)\/workouts$/);
+  if (workoutsMatch && req.method === 'POST') {
+    const personId = workoutsMatch[1];
+    const ts = new Date().toISOString();
+
+    const providedToken = req.headers.get('x-docvault-auth') ?? '';
+    const expectedToken = await getOrCreateHealthIngestToken();
+    if (!providedToken || providedToken !== expectedToken) {
+      log.warn(`Workouts ingest auth rejected for ${personId}`);
+      await appendIngestLog(personId, {
+        ts,
+        bootId: SERVER_BOOT_ID,
+        status: 'error',
+        http: 401,
+        error: 'auth',
+      });
+      return jsonResponse(
+        { ok: false, error: 'Unauthorized — bad or missing X-Docvault-Auth header' },
+        401
+      );
+    }
+    try {
+      await requirePerson(personId);
+    } catch {
+      return jsonResponse({ ok: false, error: 'Person not found' }, 404);
+    }
+
+    let body: { source?: string; workouts?: unknown };
+    try {
+      body = (await req.json()) as { source?: string; workouts?: unknown };
+    } catch (err) {
+      return jsonResponse(
+        { ok: false, error: `Invalid JSON: ${err instanceof Error ? err.message : String(err)}` },
+        400
+      );
+    }
+
+    const { workouts: normalized, dropped } = normalizeDeltaWorkouts(body.workouts);
+    const source = typeof body.source === 'string' ? body.source : 'ios-app';
+    if (normalized.length === 0) {
+      log.info(`Workouts ingest ${personId}: 0 valid workouts (${dropped} dropped)`);
+      return jsonResponse({
+        ok: true,
+        message: 'No valid workouts',
+        received: 0,
+        added: 0,
+        dropped,
+      });
+    }
+
+    // Group by calendar date (start's YYYY-MM-DD).
+    const byDate = new Map<string, WorkoutEntry[]>();
+    for (const w of normalized) {
+      const date = w.start.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+      const arr = byDate.get(date);
+      if (arr) arr.push(w);
+      else byDate.set(date, [w]);
+    }
+
+    let added = 0;
+    const dir = getPersonDeltasDir(personId);
+    await ensureDir(dir);
+    try {
+      for (const [date, dayWorkouts] of byDate) {
+        const targetPath = path.join(dir, `${date}.json`);
+        let delta: DeltaFile;
+        try {
+          delta = JSON.parse(await fs.readFile(targetPath, 'utf-8')) as DeltaFile;
+          if (!delta.metrics || typeof delta.metrics !== 'object') delta.metrics = {};
+        } catch {
+          delta = { date, source, receivedAt: ts, metrics: {} };
+        }
+        const merged = delta.workouts ? [...delta.workouts] : [];
+        const seen = new Set(merged.map(workoutDedupeKey));
+        for (const w of dayWorkouts) {
+          const key = workoutDedupeKey(w);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          merged.push(w);
+          added++;
+        }
+        delta.workouts = merged.sort((a, b) => a.start.localeCompare(b.start));
+        const tmp = `${targetPath}.tmp-${Date.now()}`;
+        await fs.writeFile(tmp, JSON.stringify(delta, null, 2));
+        await fs.rename(tmp, targetPath);
+      }
+
+      // Drop cached snapshots so the next read recomputes with the new workouts.
+      const store = await loadHealthStore();
+      for (const k of Object.keys(store.snapshots)) {
+        if (k.startsWith(`${personId}/`)) delete store.snapshots[k];
+      }
+      await saveHealthStore(store);
+    } catch (writeErr) {
+      const errMsg = writeErr instanceof Error ? writeErr.message : String(writeErr);
+      log.error(`Workouts ingest write failed for ${personId}: ${errMsg}`);
+      return jsonResponse({ ok: false, error: 'Failed to persist workouts', details: errMsg }, 500);
+    }
+
+    log.info(
+      `Workouts ingest ${personId}: +${added} new across ${byDate.size} day(s) ` +
+        `(${normalized.length} received, ${dropped} dropped) from "${source}"`
+    );
+    await appendIngestLog(personId, {
+      ts,
+      bootId: SERVER_BOOT_ID,
+      status: 'ok',
+      http: 200,
+      source,
+      date: [...byDate.keys()].sort()[0],
+      workoutCount: added,
+    });
+    return jsonResponse({
+      ok: true,
+      message: `Synced ${added} workout(s) across ${byDate.size} day(s)`,
+      received: normalized.length,
+      added,
+      dropped,
     });
   }
 

@@ -43,6 +43,7 @@ import { useHealthApi } from './useHealthApi';
 import type { AppleHealthSummary, ClinicalSummary, ExportInfo, PersonSnapshots } from './types';
 import { DailySummaryTable } from './DailySummaryTable';
 import { ShortcutSetupGuide } from './ShortcutSetupGuide';
+import { WorkoutSyncCard } from './WorkoutSyncCard';
 import { HealthChart } from './HealthChart';
 import { ChartCard } from './ChartCard';
 import { ScoreGauge } from './ScoreGauge';
@@ -354,6 +355,8 @@ export function PersonDetail({ person }: PersonDetailProps) {
       )}
 
       {hasParsedExport && <ShortcutSetupGuide personId={person.id} personName={person.name} />}
+
+      {hasParsedExport && <WorkoutSyncCard personId={person.id} personName={person.name} />}
 
       {/* Health at a Glance — charts + scores from snapshot */}
       {snapshot && (
