@@ -43,6 +43,20 @@ export async function handleCodexAuthRoutes(
         }
       };
 
+      // After the URL + code, device-auth just WAITS on the user (open browser,
+      // sign in, authorize) with no output for up to a minute. With no traffic an
+      // idle proxy can close the SSE — which aborts the request and kills codex
+      // BEFORE it writes auth.json (the "entered the code, saw no confirmation,
+      // auth.json never updated" failure). A periodic SSE comment keeps the
+      // connection alive so the process runs to completion and `done` lands.
+      const heartbeat = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(`: ping\n\n`));
+        } catch {
+          /* stream already closed */
+        }
+      }, 15000);
+
       const proc = spawn(bin, ['login', '--device-auth'], { env });
       // codex styles its output with ANSI CSI sequences (colored URL + code);
       // strip them so the browser shows clean text. Built from the ESC char at
@@ -62,6 +76,7 @@ export async function handleCodexAuthRoutes(
       const finish = (ok: boolean, code: number | null) => {
         if (!inFlight) return;
         inFlight = false;
+        clearInterval(heartbeat);
         send({ type: 'done', ok, code });
         try {
           controller.close();

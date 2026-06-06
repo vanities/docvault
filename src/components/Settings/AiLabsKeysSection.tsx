@@ -5,11 +5,12 @@
 // SettingsView's import is stable.)
 
 import { useEffect, useState } from 'react';
-import { CheckCircle, Eye, EyeOff, Key, LogIn, Save, Sparkles } from 'lucide-react';
+import { CheckCircle, Copy, Eye, EyeOff, Key, LogIn, Save, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { useToast } from '../../hooks/useToast';
+import { copyToClipboard } from '@/lib/utils';
 import { API_BASE } from '../../constants';
 
 interface SettingsData {
@@ -24,6 +25,11 @@ interface SettingsData {
   openaiBaseUrl?: string;
   hasCodexAuth?: boolean;
 }
+
+// Codex device-auth output is a verification URL on its own line plus a one-time
+// code like "7MLM-0UU2W". Linkify the URL; make the code click-to-copy.
+const URL_RE = /(https?:\/\/[^\s]+)/;
+const CODE_RE = /^[A-Z0-9]{3,6}-[A-Z0-9]{3,6}$/;
 
 export function AiLabsKeysSection() {
   const { addToast } = useToast();
@@ -189,12 +195,23 @@ export function AiLabsKeysSection() {
     }
   };
 
+  const copyCode = async (code: string) => {
+    const ok = await copyToClipboard(code);
+    addToast(
+      ok ? 'Code copied to clipboard' : 'Copy failed — select it manually',
+      ok ? 'success' : 'error'
+    );
+  };
+
   // Drive `codex login --device-auth` on the server over SSE. Codex streams a
   // verification URL + code (shown below the button); the user authorizes in any
   // browser and codex writes auth.json to CODEX_HOME on the NAS.
   const handleCodexLogin = () => {
     setCodexLoginOutput([]);
     setLoggingIntoCodex(true);
+    // Once we get a done/error event the stream is finished on purpose — a
+    // trailing onerror (the server closing the stream) is then NOT a failure.
+    let settled = false;
     const es = new EventSource(`${API_BASE}/codex/login`);
     es.onmessage = (e) => {
       try {
@@ -207,6 +224,7 @@ export function AiLabsKeysSection() {
         if (ev.type === 'line' && ev.text) {
           setCodexLoginOutput((prev) => [...prev, ev.text as string]);
         } else if (ev.type === 'done') {
+          settled = true;
           es.close();
           setLoggingIntoCodex(false);
           addToast(
@@ -218,6 +236,7 @@ export function AiLabsKeysSection() {
             void load();
           }
         } else if (ev.type === 'error') {
+          settled = true;
           es.close();
           setLoggingIntoCodex(false);
           addToast(`Codex sign-in error: ${ev.message ?? 'unknown'}`, 'error');
@@ -229,6 +248,9 @@ export function AiLabsKeysSection() {
     es.onerror = () => {
       es.close();
       setLoggingIntoCodex(false);
+      if (!settled) {
+        addToast('Codex sign-in connection dropped — please try again.', 'error');
+      }
     };
   };
 
@@ -487,9 +509,51 @@ export function AiLabsKeysSection() {
                 chat backend (set in Models &amp; Chat).
               </p>
               {codexLoginOutput.length > 0 && (
-                <pre className="mt-2 bg-surface-0 border border-border/40 rounded p-2 text-[11px] overflow-x-auto whitespace-pre-wrap break-words">
-                  {codexLoginOutput.join('\n')}
-                </pre>
+                <div className="mt-2 bg-surface-0 border border-border/40 rounded p-2 text-[11px] space-y-1 break-words">
+                  {codexLoginOutput.map((line, i) => {
+                    const trimmed = line.trim();
+                    // The one-time code → a click-to-copy chip.
+                    if (CODE_RE.test(trimmed)) {
+                      return (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => void copyCode(trimmed)}
+                          title="Click to copy"
+                          className="flex items-center gap-1.5 font-mono text-[13px] font-semibold text-accent-300 hover:text-accent-200 bg-accent-500/10 hover:bg-accent-500/20 rounded px-2 py-1 transition-colors"
+                        >
+                          {trimmed}
+                          <Copy className="w-3 h-3" />
+                        </button>
+                      );
+                    }
+                    // The verification URL → a clickable link (open in a new tab).
+                    const m = line.match(URL_RE);
+                    if (m) {
+                      const url = m[1];
+                      const [before, after] = line.split(url);
+                      return (
+                        <div key={i} className="whitespace-pre-wrap text-surface-700">
+                          {before}
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-accent-400 underline break-all"
+                          >
+                            {url}
+                          </a>
+                          {after}
+                        </div>
+                      );
+                    }
+                    return (
+                      <div key={i} className="whitespace-pre-wrap text-surface-700">
+                        {line}
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </>
           )}
