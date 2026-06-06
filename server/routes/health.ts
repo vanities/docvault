@@ -50,8 +50,8 @@ import {
   parseAppleHealthExport,
   PARSER_VERSION as CURRENT_PARSER_VERSION,
   type AppleHealthSummary,
-  type WorkoutEntry,
 } from '../parsers/apple-health.js';
+import { normalizeDeltaWorkouts, workoutsRawToObjects } from '../parsers/delta-workouts.js';
 import {
   computeSnapshots,
   SNAPSHOT_SCHEMA_VERSION,
@@ -257,98 +257,6 @@ function isDateWithinRange(date: string, now: Date = new Date()): boolean {
   const today = new Date(`${now.toISOString().slice(0, 10)}T00:00:00Z`);
   const deltaDays = Math.abs(target.getTime() - today.getTime()) / 86_400_000;
   return deltaDays <= 2;
-}
-
-/**
- * Coerce a value that may be a number OR a numeric string into a finite
- * number, else undefined. Shortcuts interpolates health values as text, so
- * workout fields arrive as strings ("52.1") just like the `raw: true` metric
- * path — this is the workout-side equivalent of that coercion.
- */
-function toFiniteNumber(v: unknown): number | undefined {
-  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
-  if (typeof v === 'string') {
-    const n = Number(v.trim());
-    return Number.isFinite(n) ? n : undefined;
-  }
-  return undefined;
-}
-
-/**
- * Normalize the loose workout shape an iOS Shortcut can produce into the
- * canonical WorkoutEntry the snapshot computer expects. The shortcut sends
- * flat per-session fields — type / start / end / durationMinutes plus optional
- * distance / energy / avgHR — all possibly as strings. We coerce numbers and
- * fold the flat stats into the `statistics` map keyed exactly as the bulk XML
- * parser keys them, so `overlayDeltas` + `computeWorkoutsSnapshot` treat delta
- * workouts and export workouts identically (same dedupe key, same aggregation).
- *
- * Defensive by design: a non-array input yields [], and any entry missing a
- * usable `type` or a date-prefixed `start` is dropped. A malformed workouts
- * payload therefore degrades to "metrics-only ingest" instead of failing the
- * POST — the daily metrics sync can never be broken by a bad workout entry.
- */
-function normalizeDeltaWorkouts(raw: unknown): WorkoutEntry[] {
-  if (!Array.isArray(raw)) return [];
-  const out: WorkoutEntry[] = [];
-  let dropped = 0;
-  for (const item of raw) {
-    if (!item || typeof item !== 'object') {
-      dropped++;
-      continue;
-    }
-    const w = item as Record<string, unknown>;
-
-    // type — required. Strip the HKWorkoutActivityType prefix if the shortcut
-    // sent the raw enum identifier rather than a friendly label ("Running").
-    const type = (typeof w.type === 'string' ? w.type.trim() : '').replace(
-      /^HKWorkoutActivityType/,
-      ''
-    );
-    // start — required, and must begin with YYYY-MM-DD so the snapshot's
-    // date-slicing (w.start.slice(0,10)) and lexical sort behave.
-    const start = typeof w.start === 'string' ? w.start.trim() : '';
-    if (!type || !/^\d{4}-\d{2}-\d{2}/.test(start)) {
-      dropped++;
-      continue;
-    }
-    const end = typeof w.end === 'string' && w.end.trim() ? w.end.trim() : start;
-
-    // statistics — accept a pre-built map, else fold flat fields in. Distance
-    // routes to DistanceCycling for cycling, DistanceWalkingRunning otherwise
-    // (computeWorkoutsSnapshot sums both for a workout's distance).
-    const statistics: WorkoutEntry['statistics'] =
-      w.statistics && typeof w.statistics === 'object'
-        ? (w.statistics as WorkoutEntry['statistics'])
-        : {};
-    const distance = toFiniteNumber(w.distance);
-    if (distance !== undefined && distance > 0) {
-      statistics[/cycl/i.test(type) ? 'DistanceCycling' : 'DistanceWalkingRunning'] = {
-        sum: distance,
-      };
-    }
-    const energy = toFiniteNumber(w.energy);
-    if (energy !== undefined && energy > 0) statistics.ActiveEnergyBurned = { sum: energy };
-    const avgHR = toFiniteNumber(w.avgHR);
-    if (avgHR !== undefined && avgHR > 0) statistics.HeartRate = { avg: avgHR };
-
-    const durationMinutes = toFiniteNumber(w.durationMinutes);
-    const sourceName = typeof w.sourceName === 'string' ? w.sourceName : undefined;
-
-    out.push({
-      type,
-      start,
-      end,
-      ...(durationMinutes !== undefined ? { durationMinutes } : {}),
-      ...(sourceName ? { sourceName } : {}),
-      statistics,
-      metadata: {},
-    });
-  }
-  if (dropped > 0) {
-    log.warn(`normalizeDeltaWorkouts: dropped ${dropped} malformed workout entr(ies)`);
-  }
-  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -736,10 +644,25 @@ export async function handleHealthRoutes(
       metrics = parsed;
     }
 
-    // Optional discrete workout sessions (shortcut-v2+). Parsed leniently and
-    // coerced to canonical WorkoutEntry shape; absent/malformed → [] so a
-    // metrics-only (shortcut-v1) payload behaves exactly as before.
-    const workouts = normalizeDeltaWorkouts((body as { workouts?: unknown }).workouts);
+    // Optional discrete workout sessions (shortcut-v2+). Two shapes accepted:
+    //   • `workouts`    — array of structured {type,start,end,…} (curl / tests)
+    //   • `workoutsRaw` — the parallel newline-joined lists the generated
+    //                     Shortcut emits, reassembled + date-anchored to this
+    //                     delta's `date`.
+    // Both run through the same normalizer; absent/malformed → [] so a metrics-
+    // only (shortcut-v1) payload behaves exactly as before — workouts can never
+    // fail the POST.
+    const structured = normalizeDeltaWorkouts((body as { workouts?: unknown }).workouts);
+    const fromRaw = normalizeDeltaWorkouts(
+      workoutsRawToObjects((body as { workoutsRaw?: unknown }).workoutsRaw, date)
+    );
+    const workouts = [...structured.workouts, ...fromRaw.workouts];
+    const workoutsDropped = structured.dropped + fromRaw.dropped;
+    if (workoutsDropped > 0) {
+      log.warn(
+        `Ingest ${personId}/${date}: dropped ${workoutsDropped} malformed workout entr(ies)`
+      );
+    }
 
     // Normalize the stored shape so merge logic can rely on known fields
     const normalized: DeltaFile = {
