@@ -272,7 +272,7 @@ export function ConsensusPanel() {
             clustered buying or selling worth a closer look.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-md border border-border/60 overflow-hidden text-sm">
             {tabs.map((t) => (
               <button

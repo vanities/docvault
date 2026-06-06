@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ChevronRight, Loader2, Search, Users } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { useTopN } from '@/hooks/useTopN';
+import { ShowMore } from '@/components/ui/ShowMore';
 
 interface MonthBucket {
   m: string; // YYYY-MM
@@ -331,9 +333,9 @@ export function TradeExplorer() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const rows = q ? spenders.filter((s) => s.politician.toLowerCase().includes(q)) : spenders;
-    return rows.slice(0, q ? 50 : 20);
+    return q ? spenders.filter((s) => s.politician.toLowerCase().includes(q)) : spenders;
   }, [spenders, query]);
+  const list = useTopN(filtered, 10);
 
   const selectedSpender = useMemo(
     () => spenders.find((s) => s.politician === selected) ?? null,
@@ -342,7 +344,7 @@ export function TradeExplorer() {
 
   return (
     <Card variant="glass" className="p-4 border-border/50">
-      <div className="flex items-center justify-between gap-2 mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2">
           {selected ? (
             <button
@@ -360,13 +362,13 @@ export function TradeExplorer() {
           )}
         </div>
         {!selected && (
-          <div className="relative">
+          <div className="relative w-full sm:w-auto">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-surface-500" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search politician (e.g. Pelosi)…"
-              className="pl-7 pr-2 py-1 text-xs bg-surface-100/60 border border-border/50 rounded-md text-surface-900 placeholder:text-surface-500 focus:outline-none focus:border-accent-400/60 w-56"
+              className="pl-7 pr-2 py-1 text-xs bg-surface-100/60 border border-border/50 rounded-md text-surface-900 placeholder:text-surface-500 focus:outline-none focus:border-accent-400/60 w-full sm:w-56"
             />
           </div>
         )}
@@ -391,7 +393,7 @@ export function TradeExplorer() {
         </p>
       ) : (
         <div className="space-y-1">
-          {filtered.map((s, i) => (
+          {list.visible.map((s, i) => (
             <button
               key={s.politician}
               onClick={() => setSelected(s.politician)}
@@ -432,6 +434,12 @@ export function TradeExplorer() {
               <ChevronRight className="w-4 h-4 text-surface-400 shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:text-surface-700" />
             </button>
           ))}
+          <ShowMore
+            expanded={list.expanded}
+            hiddenCount={list.hiddenCount}
+            onToggle={list.toggle}
+            className="mt-1"
+          />
         </div>
       )}
     </Card>
