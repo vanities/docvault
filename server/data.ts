@@ -286,6 +286,18 @@ export interface Settings {
     toEmail?: string;
     enabled?: boolean;
   };
+  /**
+   * Weather location for the Daily News forecast (Open-Meteo — no API key).
+   * Disabled/empty by default so a fork shows no weather until a location is set.
+   */
+  weather?: {
+    enabled?: boolean;
+    latitude?: number;
+    longitude?: number;
+    /** Human label for the forecast box, e.g. "Spring Hill, TN". */
+    label?: string;
+    units?: 'F' | 'C';
+  };
 }
 
 export interface FileInfo {
@@ -471,6 +483,27 @@ export async function getEmailConfig(): Promise<EmailConfig> {
     fromName: settings.email?.fromName,
     toEmail: settings.email?.toEmail,
     enabled: settings.email?.enabled ?? false,
+  };
+}
+
+export interface WeatherConfig {
+  enabled: boolean;
+  latitude?: number;
+  longitude?: number;
+  label: string;
+  units: 'F' | 'C';
+}
+
+/** Daily News weather location (Open-Meteo). Enabled only with a lat/lon set. */
+export async function getWeatherConfig(): Promise<WeatherConfig> {
+  const w = (await loadSettings()).weather;
+  return {
+    enabled:
+      w?.enabled === true && typeof w.latitude === 'number' && typeof w.longitude === 'number',
+    latitude: w?.latitude,
+    longitude: w?.longitude,
+    label: w?.label || 'Local',
+    units: w?.units === 'C' ? 'C' : 'F',
   };
 }
 

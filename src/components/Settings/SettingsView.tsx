@@ -49,6 +49,7 @@ import { ChatSettingsSection } from './ChatSettingsSection';
 import { ModelsSettingsSection } from './ModelsSettingsSection';
 import { AiLabsKeysSection } from './AiLabsKeysSection';
 import { EmailSettingsSection } from './EmailSettingsSection';
+import { WeatherSettingsSection } from './WeatherSettingsSection';
 import { ExternalSourcesSection } from './ExternalSourcesSection';
 import { BrainSection } from './BrainSection';
 import {
@@ -1673,6 +1674,8 @@ export function SettingsView() {
             </div>
           </Card>
         )}
+
+        {showIn(['maps']) && <WeatherSettingsSection />}
 
         {showIn(['voice']) && <ChatSettingsSection />}
 

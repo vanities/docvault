@@ -23,6 +23,7 @@ import {
   getDailyNewsConfig,
   getDailyNewsTitle,
   getEmailConfig,
+  getWeatherConfig,
   getCodexChatConfig,
   getAnthropicAuthToken,
   getAnthropicKey,
@@ -42,6 +43,7 @@ import {
   DEFAULT_MODEL,
   type ModelRef,
 } from './data.js';
+import { fetchWeekForecast, forecastToLines, type WeatherForecast } from './weather.js';
 import { listResearchEntries } from './routes/research.js';
 import { getLatestStrategy } from './routes/strategy.js';
 import { getLatestHealthAnalysis } from './routes/health-analysis.js';
@@ -85,6 +87,8 @@ export interface Digest {
   itemCount: number;
   /** Desk names that contributed at least one item. */
   sources: string[];
+  /** Week-ahead forecast for the rendered weather box (Open-Meteo); optional. */
+  weather?: WeatherForecast;
 }
 
 export interface GenerateResult {
@@ -94,6 +98,8 @@ export interface GenerateResult {
   theme: string;
   usage: { inputTokens: number; outputTokens: number };
   digestMeta: { sources: string[]; sinceISO: string; itemCount: number };
+  /** Forecast carried through so the renderer can draw the weather box. */
+  weather?: WeatherForecast;
 }
 
 // Claude Code binary resolution for the agent engine (mirrors deep-research.ts).
@@ -715,6 +721,25 @@ async function gatherResearchDeep(afterSince: AfterSince): Promise<string[]> {
   return items;
 }
 
+/** Week-ahead forecast for the configured location (Open-Meteo); null when
+ *  weather is disabled/unconfigured or the fetch fails. Not windowed by sinceISO
+ *  — it's a forward forecast, the same in daily and weekly editions. */
+async function gatherWeather(): Promise<WeatherForecast | null> {
+  try {
+    const cfg = await getWeatherConfig();
+    if (!cfg.enabled || cfg.latitude == null || cfg.longitude == null) return null;
+    return await fetchWeekForecast({
+      latitude: cfg.latitude,
+      longitude: cfg.longitude,
+      label: cfg.label,
+      units: cfg.units,
+    });
+  } catch (err) {
+    log.warn(`[digest] weather failed: ${errMsg(err)}`);
+    return null;
+  }
+}
+
 /** Gather the full digest across all desks, windowed by `sinceISO`. */
 export async function gatherDigest(editionType: EditionType, sinceISO: string): Promise<Digest> {
   const since = new Date(sinceISO).getTime();
@@ -738,13 +763,14 @@ export async function gatherDigest(editionType: EditionType, sinceISO: string): 
   const includeState = editionType === 'weekly';
   const t0 = Date.now();
 
-  const [markets, politics, finance, health, docs, researchDeep] = await Promise.all([
+  const [markets, politics, finance, health, docs, researchDeep, weather] = await Promise.all([
     gatherMarkets(),
     gatherPolitics(afterSince),
     gatherFinance(afterSince, includeBodies, includeState),
     gatherHealth(afterSince, includeBodies, includeState),
     gatherDocs(afterSince, editionType, since),
     gatherResearchDeep(afterSince),
+    gatherWeather(),
   ]);
 
   const desks: Array<[string, string[]]> = [
@@ -765,9 +791,10 @@ export async function gatherDigest(editionType: EditionType, sinceISO: string): 
     `[digest] type=${editionType} since=${sinceISO} ` +
       `markets=${markets.length} politics=${politics.length} finance=${finance.length} ` +
       `health=${health.length} research=${researchDeep.length} docs=${docs.length} ` +
+      `weather=${weather ? `${weather.days.length}d` : 'off'} ` +
       `(sections=${sections.length} items=${itemCount}) in ${Date.now() - t0}ms`
   );
-  return { editionType, sinceISO, sections, itemCount, sources };
+  return { editionType, sinceISO, sections, itemCount, sources, weather: weather ?? undefined };
 }
 
 // ===========================================================================
@@ -816,6 +843,15 @@ function renderDigestPrompt(digest: Digest, title: string, dateLabel: string): s
   for (const s of digest.sections) {
     lines.push(`## ${s.desk}`);
     for (const item of s.items) lines.push(`- ${item}`);
+    lines.push('');
+  }
+  if (digest.weather) {
+    lines.push(
+      `Weather — week ahead for ${digest.weather.label} (a weather box is rendered ` +
+        `separately, so do NOT write a dedicated weather section; you MAY work it into ` +
+        `one brief line of the lede if it's relevant):`
+    );
+    for (const line of forecastToLines(digest.weather)) lines.push(`- ${line}`);
     lines.push('');
   }
   return lines.join('\n');
@@ -884,6 +920,7 @@ export async function synthesizeEdition(
     theme,
     usage,
     digestMeta: { sources: digest.sources, sinceISO, itemCount: digest.itemCount },
+    weather: digest.weather,
   };
 }
 
