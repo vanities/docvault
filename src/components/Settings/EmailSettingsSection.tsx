@@ -154,15 +154,20 @@ export function EmailSettingsSection() {
               className="text-[13px]"
             />
           </div>
-          <div>
-            <label className="block text-[12px] text-surface-600 mb-1">To email</label>
-            <Input
-              type="email"
+          <div className="sm:col-span-2">
+            <label className="block text-[12px] text-surface-600 mb-1">
+              To (one address per line, or comma-separated)
+            </label>
+            <textarea
               value={toEmail}
               onChange={(e) => setToEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="text-[13px]"
+              placeholder={'you@example.com\nspouse@example.com'}
+              rows={2}
+              className="w-full text-[13px] bg-surface-100/60 border border-border/40 rounded-lg px-2.5 py-1.5 resize-y"
             />
+            <p className="text-[11px] text-surface-500 mt-1">
+              Every edition is sent to all of these recipients.
+            </p>
           </div>
           <div>
             <label className="block text-[12px] text-surface-600 mb-1">
