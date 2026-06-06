@@ -42,8 +42,15 @@ import type { ClinicalSummary, LabResult } from './apple-health-clinical.js';
  *       reading to the one before it). WorkoutsSnapshot.periods truncates
  *       previous range to match current-period length, fixing the
  *       "first-of-month -93%" bug for cumulative metrics.
+ *   9 — Workouts segment now merges discrete workout sessions that arrive
+ *       via daily deltas (shortcut-v2+ `workouts[]`) into the bulk-export
+ *       workout list, deduped by start|type. Previously workouts advanced
+ *       ONLY when a full export ZIP was re-uploaded — daily syncs carried
+ *       metrics but never sessions, so streaks / this-week / recent froze
+ *       at the last export's date. Bumped so cached snapshots recompute and
+ *       pick up any workouts already sitting in ingested deltas.
  */
-export const SNAPSHOT_SCHEMA_VERSION = 8;
+export const SNAPSHOT_SCHEMA_VERSION = 9;
 
 /**
  * A delta file — written by the /api/health/:personId/ingest endpoint when
@@ -66,6 +73,16 @@ export interface DeltaFile {
    * `DailySummary.numeric[type]` entirely — it's an overwrite, not a merge.
    */
   metrics: Record<string, DeltaMetric>;
+  /**
+   * Discrete workout sessions for this day, posted by shortcut-v2+. Stored
+   * already-normalized to canonical WorkoutEntry shape — the ingest endpoint
+   * coerces the shortcut's flat distance/energy/HR fields into `statistics`.
+   * `overlayDeltas` merges these into `summary.workouts` (deduped by
+   * start|type) so a later full-export re-upload covering the same days does
+   * not double-count. Absent on shortcut-v1 deltas (metrics only), which is
+   * why workouts historically froze at the last bulk export.
+   */
+  workouts?: WorkoutEntry[];
 }
 
 /**
@@ -2497,6 +2514,22 @@ export function computeClinicalVitalsSnapshot(
  *     sum=0 (or the scalar equivalent), etc. Enough to satisfy downstream
  *     aggregators without lying about what the shortcut actually reported.
  */
+/**
+ * Stable natural key for a workout, used to dedupe sessions that arrive from
+ * BOTH a daily delta and a later full-export re-upload. Keyed on the start
+ * date+minute and the (prefix-stripped) type — strong enough that a collision
+ * means the same session, since two workouts of one type starting in the same
+ * minute don't happen. Deliberately format-agnostic: it normalizes the
+ * "YYYY-MM-DD HH:MM" (export) and "YYYY-MM-DDTHH:MM" (shortcut/ISO) shapes to
+ * the same value, and ignores seconds + timezone suffix so minor formatter
+ * differences between the two ingest paths still collapse to one key.
+ */
+export function workoutDedupeKey(w: { start: string; type: string }): string {
+  const m = w.start.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/);
+  const stamp = m ? `${m[1]}T${m[2]}` : w.start.slice(0, 16);
+  return `${stamp}|${w.type}`;
+}
+
 export function overlayDeltas(
   summary: AppleHealthSummary,
   deltas: readonly DeltaFile[]
@@ -2545,13 +2578,44 @@ export function overlayDeltas(
     if (!existing) newTotal += 1;
   }
 
+  // Merge any delta-supplied workout sessions into the summary's workout list.
+  // Dedupe by start-minute + type (see workoutDedupeKey): if a full export is
+  // later re-uploaded and now covers these days, the export becomes
+  // authoritative and we must not count the same session twice. Crucially the
+  // key is format-agnostic — Apple's export writes "2026-04-13 09:02:51 -0500"
+  // while the shortcut may send ISO "2026-04-13T09:02:51-05:00"; both collapse
+  // to the same key so re-upload is idempotent. Daily deltas and an old export
+  // normally cover disjoint dates, so in practice every delta workout is an
+  // addition — but the dedupe protects the backfill (re-export) path.
+  let newWorkouts = summary.workouts;
+  const deltaWorkouts = deltas.flatMap((d) => d.workouts ?? []);
+  if (deltaWorkouts.length > 0) {
+    const seen = new Set(summary.workouts.map(workoutDedupeKey));
+    const additions: WorkoutEntry[] = [];
+    for (const w of deltaWorkouts) {
+      const dedupeKey = workoutDedupeKey(w);
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      additions.push(w);
+    }
+    if (additions.length > 0) {
+      // Keep start-ascending order, matching the bulk parser's output
+      // (apple-health.ts sorts workouts by start before returning).
+      newWorkouts = [...summary.workouts, ...additions].sort((a, b) =>
+        a.start.localeCompare(b.start)
+      );
+    }
+  }
+
   return {
     ...summary,
     dailySummaries: newDaily,
     dateRange: newDateRange,
+    workouts: newWorkouts,
     recordCounts: {
       ...summary.recordCounts,
       totalRecords: newTotal,
+      totalWorkouts: newWorkouts.length,
     },
   };
 }

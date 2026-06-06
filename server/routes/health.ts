@@ -50,6 +50,7 @@ import {
   parseAppleHealthExport,
   PARSER_VERSION as CURRENT_PARSER_VERSION,
   type AppleHealthSummary,
+  type WorkoutEntry,
 } from '../parsers/apple-health.js';
 import {
   computeSnapshots,
@@ -134,6 +135,7 @@ interface IngestLogEntry {
   source?: string;
   metricCount?: number;
   metricKeys?: string[];
+  workoutCount?: number;
   bytes?: number;
   error?: string;
   preview?: string;
@@ -255,6 +257,98 @@ function isDateWithinRange(date: string, now: Date = new Date()): boolean {
   const today = new Date(`${now.toISOString().slice(0, 10)}T00:00:00Z`);
   const deltaDays = Math.abs(target.getTime() - today.getTime()) / 86_400_000;
   return deltaDays <= 2;
+}
+
+/**
+ * Coerce a value that may be a number OR a numeric string into a finite
+ * number, else undefined. Shortcuts interpolates health values as text, so
+ * workout fields arrive as strings ("52.1") just like the `raw: true` metric
+ * path — this is the workout-side equivalent of that coercion.
+ */
+function toFiniteNumber(v: unknown): number | undefined {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
+  if (typeof v === 'string') {
+    const n = Number(v.trim());
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Normalize the loose workout shape an iOS Shortcut can produce into the
+ * canonical WorkoutEntry the snapshot computer expects. The shortcut sends
+ * flat per-session fields — type / start / end / durationMinutes plus optional
+ * distance / energy / avgHR — all possibly as strings. We coerce numbers and
+ * fold the flat stats into the `statistics` map keyed exactly as the bulk XML
+ * parser keys them, so `overlayDeltas` + `computeWorkoutsSnapshot` treat delta
+ * workouts and export workouts identically (same dedupe key, same aggregation).
+ *
+ * Defensive by design: a non-array input yields [], and any entry missing a
+ * usable `type` or a date-prefixed `start` is dropped. A malformed workouts
+ * payload therefore degrades to "metrics-only ingest" instead of failing the
+ * POST — the daily metrics sync can never be broken by a bad workout entry.
+ */
+function normalizeDeltaWorkouts(raw: unknown): WorkoutEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: WorkoutEntry[] = [];
+  let dropped = 0;
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') {
+      dropped++;
+      continue;
+    }
+    const w = item as Record<string, unknown>;
+
+    // type — required. Strip the HKWorkoutActivityType prefix if the shortcut
+    // sent the raw enum identifier rather than a friendly label ("Running").
+    const type = (typeof w.type === 'string' ? w.type.trim() : '').replace(
+      /^HKWorkoutActivityType/,
+      ''
+    );
+    // start — required, and must begin with YYYY-MM-DD so the snapshot's
+    // date-slicing (w.start.slice(0,10)) and lexical sort behave.
+    const start = typeof w.start === 'string' ? w.start.trim() : '';
+    if (!type || !/^\d{4}-\d{2}-\d{2}/.test(start)) {
+      dropped++;
+      continue;
+    }
+    const end = typeof w.end === 'string' && w.end.trim() ? w.end.trim() : start;
+
+    // statistics — accept a pre-built map, else fold flat fields in. Distance
+    // routes to DistanceCycling for cycling, DistanceWalkingRunning otherwise
+    // (computeWorkoutsSnapshot sums both for a workout's distance).
+    const statistics: WorkoutEntry['statistics'] =
+      w.statistics && typeof w.statistics === 'object'
+        ? (w.statistics as WorkoutEntry['statistics'])
+        : {};
+    const distance = toFiniteNumber(w.distance);
+    if (distance !== undefined && distance > 0) {
+      statistics[/cycl/i.test(type) ? 'DistanceCycling' : 'DistanceWalkingRunning'] = {
+        sum: distance,
+      };
+    }
+    const energy = toFiniteNumber(w.energy);
+    if (energy !== undefined && energy > 0) statistics.ActiveEnergyBurned = { sum: energy };
+    const avgHR = toFiniteNumber(w.avgHR);
+    if (avgHR !== undefined && avgHR > 0) statistics.HeartRate = { avg: avgHR };
+
+    const durationMinutes = toFiniteNumber(w.durationMinutes);
+    const sourceName = typeof w.sourceName === 'string' ? w.sourceName : undefined;
+
+    out.push({
+      type,
+      start,
+      end,
+      ...(durationMinutes !== undefined ? { durationMinutes } : {}),
+      ...(sourceName ? { sourceName } : {}),
+      statistics,
+      metadata: {},
+    });
+  }
+  if (dropped > 0) {
+    log.warn(`normalizeDeltaWorkouts: dropped ${dropped} malformed workout entr(ies)`);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -642,12 +736,18 @@ export async function handleHealthRoutes(
       metrics = parsed;
     }
 
+    // Optional discrete workout sessions (shortcut-v2+). Parsed leniently and
+    // coerced to canonical WorkoutEntry shape; absent/malformed → [] so a
+    // metrics-only (shortcut-v1) payload behaves exactly as before.
+    const workouts = normalizeDeltaWorkouts((body as { workouts?: unknown }).workouts);
+
     // Normalize the stored shape so merge logic can rely on known fields
     const normalized: DeltaFile = {
       date,
       source: body.source ?? 'unknown',
       receivedAt: new Date().toISOString(),
       metrics: metrics as DeltaFile['metrics'],
+      ...(workouts.length > 0 ? { workouts } : {}),
     };
     const metricKeys = Object.keys(normalized.metrics);
 
@@ -684,7 +784,8 @@ export async function handleHealthRoutes(
     }
 
     log.info(
-      `Ingested ${personId}/${date} with ${metricKeys.length} metric(s) from "${normalized.source}"`
+      `Ingested ${personId}/${date} with ${metricKeys.length} metric(s)` +
+        `${workouts.length > 0 ? ` and ${workouts.length} workout(s)` : ''} from "${normalized.source}"`
     );
     await appendIngestLog(personId, {
       ts,
@@ -696,10 +797,13 @@ export async function handleHealthRoutes(
       source: normalized.source,
       metricCount: metricKeys.length,
       metricKeys,
+      ...(workouts.length > 0 ? { workoutCount: workouts.length } : {}),
     });
     return jsonResponse({
       ok: true,
-      message: `Synced ${date} — ${metricKeys.length} metrics`,
+      message:
+        `Synced ${date} — ${metricKeys.length} metrics` +
+        `${workouts.length > 0 ? `, ${workouts.length} workouts` : ''}`,
       filename: `deltas/${date}.json`,
       updated: metricKeys,
     });
