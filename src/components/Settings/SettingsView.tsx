@@ -31,6 +31,8 @@ import {
   Copy,
   Check,
   MapPin,
+  Mail,
+  Mic,
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { SyncStatus, CryptoExchangeId, CryptoChain } from '../../types';
@@ -1503,7 +1505,19 @@ export function SettingsView() {
           </TabsTrigger>
           <TabsTrigger value="keys">
             <KeyRound className="w-3.5 h-3.5" />
-            Keys
+            AI
+          </TabsTrigger>
+          <TabsTrigger value="email">
+            <Mail className="w-3.5 h-3.5" />
+            Email
+          </TabsTrigger>
+          <TabsTrigger value="maps">
+            <MapPin className="w-3.5 h-3.5" />
+            Maps
+          </TabsTrigger>
+          <TabsTrigger value="voice">
+            <Mic className="w-3.5 h-3.5" />
+            Voice
           </TabsTrigger>
           <TabsTrigger value="sync">
             <RefreshCw className="w-3.5 h-3.5" />
@@ -1584,77 +1598,80 @@ export function SettingsView() {
 
         {showIn(['keys']) && (
           <>
-            {/* ── AI & API Keys ──────────────────────────────── */}
+            {/* ── AI ──────────────────────────────── */}
             <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
-              AI & API Keys
+              AI
             </p>
 
             <AiLabsKeysSection />
             <ModelsSettingsSection />
-            <EmailSettingsSection />
-
-            {/* Maps & Location — Geoapify (geocoding for mileage autocomplete) */}
-            <Card variant="glass" className="p-6 mb-8">
-              <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
-                <MapPin className="w-5 h-5" />
-                Maps & Location
-              </h3>
-              <div>
-                <label className="block text-[13px] font-medium text-surface-800 mb-2">
-                  Geoapify API Key{' '}
-                  <span className="text-surface-500 font-normal">
-                    (for mileage address autocomplete &mdash;{' '}
-                    <a
-                      href="https://myprojects.geoapify.com/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-accent-400 hover:underline"
-                    >
-                      get one free
-                    </a>
-                    )
-                  </span>
-                </label>
-                {hasGeoapifyKey ? (
-                  <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-                    <CheckCircle className="w-4 h-4 text-emerald-400" />
-                    <span className="text-[13px] text-emerald-400 font-medium flex-1">
-                      Key set
-                      {geoapifyKeyHint && (
-                        <span className="text-emerald-400/70 ml-2 font-mono">
-                          ****{geoapifyKeyHint}
-                        </span>
-                      )}
-                    </span>
-                    <Button
-                      variant="ghost-danger"
-                      size="xs"
-                      onClick={handleRemoveGeoapifyKey}
-                      disabled={isSaving}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="flex gap-2">
-                    <Input
-                      type="password"
-                      value={newGeoapifyKey}
-                      onChange={(e) => setNewGeoapifyKey(e.target.value)}
-                      placeholder="Geoapify API key..."
-                      className="flex-1 text-[13px] font-mono"
-                    />
-                    <Button onClick={handleSaveGeoapifyKey} disabled={isSaving || !newGeoapifyKey}>
-                      Save
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </Card>
-
-            <ChatSettingsSection />
           </>
         )}
+
+        {showIn(['email']) && <EmailSettingsSection />}
+
+        {/* Maps & Location — Geoapify (geocoding for mileage autocomplete) */}
+        {showIn(['maps']) && (
+          <Card variant="glass" className="p-6 mb-8">
+            <h3 className="text-lg font-semibold text-surface-950 mb-4 flex items-center gap-2">
+              <MapPin className="w-5 h-5" />
+              Maps & Location
+            </h3>
+            <div>
+              <label className="block text-[13px] font-medium text-surface-800 mb-2">
+                Geoapify API Key{' '}
+                <span className="text-surface-500 font-normal">
+                  (for mileage address autocomplete &mdash;{' '}
+                  <a
+                    href="https://myprojects.geoapify.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent-400 hover:underline"
+                  >
+                    get one free
+                  </a>
+                  )
+                </span>
+              </label>
+              {hasGeoapifyKey ? (
+                <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                  <CheckCircle className="w-4 h-4 text-emerald-400" />
+                  <span className="text-[13px] text-emerald-400 font-medium flex-1">
+                    Key set
+                    {geoapifyKeyHint && (
+                      <span className="text-emerald-400/70 ml-2 font-mono">
+                        ****{geoapifyKeyHint}
+                      </span>
+                    )}
+                  </span>
+                  <Button
+                    variant="ghost-danger"
+                    size="xs"
+                    onClick={handleRemoveGeoapifyKey}
+                    disabled={isSaving}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Input
+                    type="password"
+                    value={newGeoapifyKey}
+                    onChange={(e) => setNewGeoapifyKey(e.target.value)}
+                    placeholder="Geoapify API key..."
+                    className="flex-1 text-[13px] font-mono"
+                  />
+                  <Button onClick={handleSaveGeoapifyKey} disabled={isSaving || !newGeoapifyKey}>
+                    Save
+                  </Button>
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
+
+        {showIn(['voice']) && <ChatSettingsSection />}
 
         {showIn(['sources']) && <ExternalSourcesSection />}
 

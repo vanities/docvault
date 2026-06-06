@@ -202,7 +202,7 @@ export function Layout() {
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header />
-        <main className="flex-1 overflow-auto pb-[env(safe-area-inset-bottom)]">
+        <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden pb-[env(safe-area-inset-bottom)]">
           {renderContent()}
         </main>
       </div>

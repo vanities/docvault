@@ -180,9 +180,9 @@ export function ResearchView() {
   };
 
   return (
-    <div className="flex h-full min-h-0">
-      {/* History rail */}
-      <aside className="w-64 flex-shrink-0 border-r border-border/40 flex flex-col min-h-0">
+    <div className="flex flex-col md:flex-row h-full min-h-0">
+      {/* History rail — full-width scrollable strip on mobile, side rail on desktop */}
+      <aside className="w-full md:w-64 flex-shrink-0 max-h-44 md:max-h-none border-b md:border-b-0 md:border-r border-border/40 flex flex-col min-h-0">
         <div className="p-3 border-b border-border/40">
           <Button size="sm" onClick={newResearch} className="w-full">
             <Plus className="w-4 h-4" /> New research
@@ -219,7 +219,7 @@ export function ResearchView() {
       </aside>
 
       {/* Main */}
-      <main className="flex-1 overflow-y-auto min-h-0">
+      <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden min-h-0">
         {!active ? (
           <div className="max-w-2xl mx-auto px-8 py-10">
             <h2 className="text-xl font-semibold text-surface-950 mb-1 flex items-center gap-2">
