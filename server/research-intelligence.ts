@@ -6,7 +6,21 @@ export type ResearchIntelligenceInput = {
   sourceUrl?: string | null;
   publisher?: string | null;
   reportDate?: string | null;
-  mediaType: 'application/pdf' | 'text/plain';
+  // Mirrors ResearchMediaType in routes/research.ts (inlined to avoid a
+  // circular import — research.ts already imports this module). video/* and
+  // audio/* entries carry a transcript in `text`, so intelligence works on them
+  // just like PDFs/pasted text.
+  mediaType:
+    | 'application/pdf'
+    | 'text/plain'
+    | 'video/mp4'
+    | 'video/quicktime'
+    | 'video/x-matroska'
+    | 'video/webm'
+    | 'audio/mpeg'
+    | 'audio/mp4'
+    | 'audio/wav'
+    | 'audio/webm';
   text?: string | null;
   tickers?: string[] | null;
 };

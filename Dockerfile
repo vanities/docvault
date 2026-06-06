@@ -32,8 +32,9 @@ FROM oven/bun:1-slim
 # (used by the entrypoint script to fall back to a fresh yt-dlp binary download
 # when self-update fails), poppler-utils (pdftotext + pdftoppm, for parsing and
 # rasterizing House/Senate PTR and OGE-278-T disclosure PDFs), tesseract-ocr
-# (OCR fallback for scanned/paper filings), and ca-certificates (TLS).
-RUN apt-get update && apt-get install -y --no-install-recommends git rclone curl poppler-utils tesseract-ocr ca-certificates && rm -rf /var/lib/apt/lists/*
+# (OCR fallback for scanned/paper filings), ffmpeg (extract audio from uploaded
+# research video/audio for background transcription), and ca-certificates (TLS).
+RUN apt-get update && apt-get install -y --no-install-recommends git rclone curl poppler-utils tesseract-ocr ffmpeg ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Install yt-dlp standalone binary, arch-specific. Used by the YouTube
 # research-ingest endpoint to fetch captions + metadata. The entrypoint
