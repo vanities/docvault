@@ -23,6 +23,7 @@ import {
 } from './daily-news.js';
 import { generateHeadlineImage } from './daily-news-image.js';
 import { listThemes } from './daily-news-themes.js';
+import type { WeatherForecast } from './weather.js';
 
 const log = createLogger('DailyNewsStore');
 const STORE_PATH = path.join(DATA_DIR, '.docvault-daily-news.json');
@@ -41,6 +42,8 @@ export interface Edition {
   theme?: string;
   /** True for theme-sampler editions — excluded from dedup, never emailed. */
   sample?: boolean;
+  /** Week-ahead weather forecast for the rendered box (Open-Meteo); optional. */
+  weather?: WeatherForecast;
   /** Synthesized newspaper markdown. */
   body?: string;
   digestMeta?: { sources: string[]; sinceISO: string; itemCount: number };
@@ -151,6 +154,7 @@ export async function startEdition(
         title: result.title,
         body: result.body,
         theme: result.theme,
+        weather: result.weather,
         digestMeta: result.digestMeta,
         usage: result.usage,
         completedAt: new Date().toISOString(),
@@ -250,6 +254,7 @@ export async function startThemeSamples(
           title: result.title,
           body: result.body,
           theme: result.theme,
+          weather: result.weather,
           digestMeta: result.digestMeta,
           usage: result.usage,
           completedAt: new Date().toISOString(),

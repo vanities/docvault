@@ -29,11 +29,52 @@ interface EditionSummary {
   createdAt: string;
   completedAt?: string;
 }
+interface WeatherDay {
+  date: string;
+  hi: number;
+  lo: number;
+  emoji: string;
+  label: string;
+  precipPct: number;
+}
+interface WeatherForecast {
+  label: string;
+  units: 'F' | 'C';
+  days: WeatherDay[];
+}
 interface Edition extends EditionSummary {
   body?: string;
   digestMeta?: { sources: string[]; sinceISO: string; itemCount: number };
   usage?: { inputTokens: number; outputTokens: number };
   imagePath?: string;
+  weather?: WeatherForecast;
+}
+
+/** Compact week-ahead weather strip shown above the edition body. */
+function WeatherStrip({ w }: { w: WeatherForecast }) {
+  if (!w.days?.length) return null;
+  return (
+    <div className="mb-4 flex gap-2 overflow-x-auto border-y border-border/40 py-2.5">
+      <span className="self-center text-[10px] font-semibold uppercase tracking-wider text-surface-500 whitespace-nowrap pr-1">
+        {w.label} · °{w.units}
+      </span>
+      {w.days.map((d) => {
+        const day = new Date(`${d.date}T12:00:00`).toLocaleDateString('en-US', {
+          weekday: 'short',
+        });
+        return (
+          <div key={d.date} className="flex-shrink-0 min-w-[58px] text-center">
+            <div className="text-[10px] font-semibold uppercase text-surface-500">{day}</div>
+            <div className="text-lg leading-tight">{d.emoji}</div>
+            <div className="text-[12px] text-surface-800 whitespace-nowrap">
+              {d.hi}°<span className="text-surface-500"> {d.lo}°</span>
+            </div>
+            {d.precipPct >= 20 && <div className="text-[10px] text-accent-400">{d.precipPct}%</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 const MD_COMPONENTS = {
@@ -355,6 +396,7 @@ export function DailyNewsView() {
                 </Button>
               </div>
             </div>
+            {active.weather && <WeatherStrip w={active.weather} />}
             <div className="text-[14px] leading-relaxed text-surface-900">
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
                 {active.body ?? ''}

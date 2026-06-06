@@ -5,6 +5,7 @@ import { createLogger } from './logger.js';
 import { parseWithAI } from './parsers/ai.js';
 import { withAILimit } from './aiLimiter.js';
 import { fetchAllBalances, fetchSourceBalance, fetchCryptoGains } from './crypto.js';
+import { geocodePlace } from './weather.js';
 import {
   buildPortfolio,
   registerSnapTradeUser,
@@ -310,6 +311,7 @@ async function handleRequest(req: Request): Promise<Response> {
             ? process.env.RESEND_API_KEY.slice(-4)
             : undefined,
       },
+      weather: settings.weather ?? {},
       hasCodexAuth: (await getCodexAuthStatus()).signedIn,
     });
   }
@@ -523,6 +525,27 @@ async function handleRequest(req: Request): Promise<Response> {
       } else if (typeof em.resendApiKey === 'string' && em.resendApiKey.trim()) {
         settings.email.resendApiKey = em.resendApiKey.trim();
       }
+    }
+
+    // Weather location for the Daily News forecast (Open-Meteo — keyless).
+    if (body.weather && typeof body.weather === 'object') {
+      settings.weather = settings.weather ?? {};
+      const w = body.weather as {
+        enabled?: unknown;
+        latitude?: unknown;
+        longitude?: unknown;
+        label?: unknown;
+        units?: unknown;
+      };
+      if (typeof w.enabled === 'boolean') settings.weather.enabled = w.enabled;
+      if (typeof w.latitude === 'number' && w.latitude >= -90 && w.latitude <= 90) {
+        settings.weather.latitude = w.latitude;
+      }
+      if (typeof w.longitude === 'number' && w.longitude >= -180 && w.longitude <= 180) {
+        settings.weather.longitude = w.longitude;
+      }
+      if (typeof w.label === 'string') settings.weather.label = w.label.trim() || undefined;
+      if (w.units === 'F' || w.units === 'C') settings.weather.units = w.units;
     }
 
     await saveSettings(settings);
@@ -2147,6 +2170,12 @@ async function handleRequest(req: Request): Promise<Response> {
   if (pathname === '/api/geocode/enabled' && req.method === 'GET') {
     const settings = await loadSettings();
     return jsonResponse({ enabled: !!settings.geoapifyApiKey });
+  }
+
+  // GET /api/weather/geocode?q=... - keyless place lookup (Open-Meteo) for the
+  // Daily News weather location picker (no Geoapify key required).
+  if (pathname === '/api/weather/geocode' && req.method === 'GET') {
+    return jsonResponse({ results: await geocodePlace(url.searchParams.get('q') ?? '') });
   }
 
   // GET /api/geocode/autocomplete?text=... - Proxy to Geoapify autocomplete
