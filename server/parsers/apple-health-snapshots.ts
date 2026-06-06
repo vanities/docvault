@@ -7,7 +7,12 @@
 //
 // All helpers are exported for unit testing. Do not add I/O to this module.
 
-import type { AppleHealthSummary, DailySummary, WorkoutEntry } from './apple-health.js';
+import type {
+  AppleHealthSummary,
+  CategoryAggregate,
+  DailySummary,
+  WorkoutEntry,
+} from './apple-health.js';
 import type { ClinicalSummary, LabResult } from './apple-health-clinical.js';
 
 /**
@@ -49,8 +54,13 @@ import type { ClinicalSummary, LabResult } from './apple-health-clinical.js';
  *       metrics but never sessions, so streaks / this-week / recent froze
  *       at the last export's date. Bumped so cached snapshots recompute and
  *       pick up any workouts already sitting in ingested deltas.
+ *  10 — overlayDeltas now overlays delta `category` aggregates (e.g.
+ *       SleepAnalysis) too, not just numeric — the DocVault Sync app syncs
+ *       sleep + quantity metrics historically via the multi-day /sync
+ *       endpoint. Bumped so cached snapshots recompute and pick up any
+ *       category data already sitting in ingested deltas.
  */
-export const SNAPSHOT_SCHEMA_VERSION = 9;
+export const SNAPSHOT_SCHEMA_VERSION = 10;
 
 /**
  * A delta file — written by the /api/health/:personId/ingest endpoint when
@@ -83,6 +93,12 @@ export interface DeltaFile {
    * why workouts historically froze at the last bulk export.
    */
   workouts?: WorkoutEntry[];
+  /**
+   * Category-type aggregates for this day (e.g. `SleepAnalysis`), posted by the
+   * DocVault Sync app. Overwrites `DailySummary.category[type]` like `metrics`
+   * does for numeric — lets sleep stay current between bulk exports.
+   */
+  category?: Record<string, CategoryAggregate>;
 }
 
 /**
@@ -2567,6 +2583,12 @@ export function overlayDeltas(
         last: m.last ?? fallback,
         unit: m.unit,
       };
+    }
+
+    // Overlay category aggregates (e.g. SleepAnalysis) — full overwrite per
+    // type, same semantics as numeric. Lets the app keep sleep current.
+    for (const [type, agg] of Object.entries(delta.category ?? {})) {
+      dayCopy.category[type] = agg;
     }
 
     newDaily[delta.date] = dayCopy;

@@ -18,6 +18,7 @@
 //   GET    /api/health/:personId/clinical                 — FHIR clinical summary (labs, panels, vitals, conditions, …)
 //   POST   /api/health/:personId/ingest                   — daily delta POST from iOS Shortcut (auth: X-Docvault-Auth)
 //   POST   /api/health/:personId/workouts                 — workout sessions from the DocVault Sync iOS app (auth: X-Docvault-Auth)
+//   POST   /api/health/:personId/sync                     — multi-day metrics + sleep + workouts from the DocVault Sync iOS app (auth: X-Docvault-Auth)
 //   GET    /api/health/:personId/ingest-log?limit=100     — recent ingest audit entries (bootId-stamped NDJSON)
 //
 // Storage:
@@ -51,6 +52,7 @@ import {
   parseAppleHealthExport,
   PARSER_VERSION as CURRENT_PARSER_VERSION,
   type AppleHealthSummary,
+  type CategoryAggregate,
   type WorkoutEntry,
 } from '../parsers/apple-health.js';
 import { normalizeDeltaWorkouts, workoutsRawToObjects } from '../parsers/delta-workouts.js';
@@ -59,6 +61,7 @@ import {
   SNAPSHOT_SCHEMA_VERSION,
   workoutDedupeKey,
   type DeltaFile,
+  type DeltaMetric,
   type PersonSnapshots,
   type HealthSegment,
 } from '../parsers/apple-health-snapshots.js';
@@ -872,6 +875,170 @@ export async function handleHealthRoutes(
       received: normalized.length,
       added,
       dropped,
+    });
+  }
+
+  // POST /api/health/:personId/sync
+  //
+  // Comprehensive multi-day ingest from the DocVault Sync iOS app. Unlike
+  // /ingest (single date, ±2-day window) this backfills a rolling history —
+  // body { source, days: [{date, metrics?, category?}], workouts? }. Per-day
+  // numeric metrics + category aggregates (e.g. SleepAnalysis) are merged into
+  // that date's delta; workouts merge deduped by start-minute+type. No date
+  // window: the app syncs ~90 days each run. Snapshots recompute on next read.
+  const syncMatch = pathname.match(/^\/api\/health\/([^/]+)\/sync$/);
+  if (syncMatch && req.method === 'POST') {
+    const personId = syncMatch[1];
+    const ts = new Date().toISOString();
+
+    const providedToken = req.headers.get('x-docvault-auth') ?? '';
+    const expectedToken = await getOrCreateHealthIngestToken();
+    if (!providedToken || providedToken !== expectedToken) {
+      await appendIngestLog(personId, {
+        ts,
+        bootId: SERVER_BOOT_ID,
+        status: 'error',
+        http: 401,
+        error: 'auth',
+      });
+      return jsonResponse(
+        { ok: false, error: 'Unauthorized — bad or missing X-Docvault-Auth header' },
+        401
+      );
+    }
+    try {
+      await requirePerson(personId);
+    } catch {
+      return jsonResponse({ ok: false, error: 'Person not found' }, 404);
+    }
+
+    let body: {
+      source?: string;
+      days?: Array<{
+        date?: string;
+        metrics?: Record<string, DeltaMetric>;
+        category?: Record<string, CategoryAggregate>;
+      }>;
+      workouts?: unknown;
+    };
+    try {
+      body = (await req.json()) as typeof body;
+    } catch (err) {
+      return jsonResponse(
+        { ok: false, error: `Invalid JSON: ${err instanceof Error ? err.message : String(err)}` },
+        400
+      );
+    }
+
+    const source = typeof body.source === 'string' ? body.source : 'ios-app';
+    const days = Array.isArray(body.days) ? body.days : [];
+    const { workouts: normWorkouts } = normalizeDeltaWorkouts(body.workouts);
+
+    type DayPatch = {
+      metrics?: Record<string, DeltaMetric>;
+      category?: Record<string, CategoryAggregate>;
+      workouts: WorkoutEntry[];
+    };
+    const patches = new Map<string, DayPatch>();
+    const ensure = (date: string): DayPatch => {
+      let p = patches.get(date);
+      if (!p) {
+        p = { workouts: [] };
+        patches.set(date, p);
+      }
+      return p;
+    };
+    let metricCount = 0;
+    for (const d of days) {
+      const date = typeof d.date === 'string' ? d.date : '';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+      const p = ensure(date);
+      if (d.metrics && typeof d.metrics === 'object') {
+        p.metrics = d.metrics;
+        metricCount += Object.keys(d.metrics).length;
+      }
+      if (d.category && typeof d.category === 'object') p.category = d.category;
+    }
+    for (const w of normWorkouts) {
+      const date = w.start.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+      ensure(date).workouts.push(w);
+    }
+
+    if (patches.size === 0) {
+      return jsonResponse({
+        ok: true,
+        message: 'Nothing to sync',
+        days: 0,
+        metrics: 0,
+        workouts: 0,
+      });
+    }
+
+    let workoutsAdded = 0;
+    const dir = getPersonDeltasDir(personId);
+    await ensureDir(dir);
+    try {
+      for (const [date, patch] of patches) {
+        const targetPath = path.join(dir, `${date}.json`);
+        let delta: DeltaFile;
+        try {
+          delta = JSON.parse(await fs.readFile(targetPath, 'utf-8')) as DeltaFile;
+          if (!delta.metrics || typeof delta.metrics !== 'object') delta.metrics = {};
+        } catch {
+          delta = { date, source, receivedAt: ts, metrics: {} };
+        }
+        delta.source = source;
+        delta.receivedAt = ts;
+        if (patch.metrics) delta.metrics = { ...delta.metrics, ...patch.metrics };
+        if (patch.category) delta.category = { ...(delta.category ?? {}), ...patch.category };
+        if (patch.workouts.length > 0) {
+          const merged = delta.workouts ? [...delta.workouts] : [];
+          const seen = new Set(merged.map(workoutDedupeKey));
+          for (const w of patch.workouts) {
+            const key = workoutDedupeKey(w);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            merged.push(w);
+            workoutsAdded++;
+          }
+          delta.workouts = merged.sort((a, b) => a.start.localeCompare(b.start));
+        }
+        const tmp = `${targetPath}.tmp-${Date.now()}`;
+        await fs.writeFile(tmp, JSON.stringify(delta, null, 2));
+        await fs.rename(tmp, targetPath);
+      }
+      const store = await loadHealthStore();
+      for (const k of Object.keys(store.snapshots)) {
+        if (k.startsWith(`${personId}/`)) delete store.snapshots[k];
+      }
+      await saveHealthStore(store);
+    } catch (writeErr) {
+      const errMsg = writeErr instanceof Error ? writeErr.message : String(writeErr);
+      log.error(`Sync write failed for ${personId}: ${errMsg}`);
+      return jsonResponse({ ok: false, error: 'Failed to persist sync', details: errMsg }, 500);
+    }
+
+    log.info(
+      `Sync ${personId}: ${patches.size} day(s), ${metricCount} metric value(s), ` +
+        `+${workoutsAdded} workout(s) from "${source}"`
+    );
+    await appendIngestLog(personId, {
+      ts,
+      bootId: SERVER_BOOT_ID,
+      status: 'ok',
+      http: 200,
+      source,
+      date: [...patches.keys()].sort()[0],
+      metricCount,
+      workoutCount: workoutsAdded,
+    });
+    return jsonResponse({
+      ok: true,
+      message: `Synced ${patches.size} day(s) — ${metricCount} metrics, ${workoutsAdded} new workouts`,
+      days: patches.size,
+      metrics: metricCount,
+      workouts: workoutsAdded,
     });
   }
 
