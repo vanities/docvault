@@ -19,6 +19,7 @@
 //   POST   /api/health/:personId/ingest                   — daily delta POST from iOS Shortcut (auth: X-Docvault-Auth)
 //   POST   /api/health/:personId/workouts                 — workout sessions from the DocVault Sync iOS app (auth: X-Docvault-Auth)
 //   POST   /api/health/:personId/sync                     — multi-day metrics + sleep + workouts from the DocVault Sync iOS app (auth: X-Docvault-Auth)
+//   POST   /api/health/:personId/clinical                 — FHIR clinical records from the DocVault Sync iOS app (auth: X-Docvault-Auth)
 //   GET    /api/health/:personId/ingest-log?limit=100     — recent ingest audit entries (bootId-stamped NDJSON)
 //
 // Storage:
@@ -1040,6 +1041,119 @@ export async function handleHealthRoutes(
       days: patches.size,
       metrics: metricCount,
       workouts: workoutsAdded,
+    });
+  }
+
+  // POST /api/health/:personId/clinical
+  //
+  // Clinical (FHIR) records from the DocVault Sync app. Each resource is written
+  // to clinical-records/<resourceType>-<id>.json keyed by its FHIR id, so
+  // re-posting the same record OVERWRITES it (never duplicates). The
+  // ClinicalSummary is then rebuilt from all records on disk and attached to the
+  // person's summaries; cached snapshots are dropped so the next read reflects
+  // the new records.
+  const clinicalMatch = pathname.match(/^\/api\/health\/([^/]+)\/clinical$/);
+  if (clinicalMatch && req.method === 'POST') {
+    const personId = clinicalMatch[1];
+    const ts = new Date().toISOString();
+
+    const providedToken = req.headers.get('x-docvault-auth') ?? '';
+    const expectedToken = await getOrCreateHealthIngestToken();
+    if (!providedToken || providedToken !== expectedToken) {
+      await appendIngestLog(personId, {
+        ts,
+        bootId: SERVER_BOOT_ID,
+        status: 'error',
+        http: 401,
+        error: 'auth',
+      });
+      return jsonResponse(
+        { ok: false, error: 'Unauthorized — bad or missing X-Docvault-Auth header' },
+        401
+      );
+    }
+    try {
+      await requirePerson(personId);
+    } catch {
+      return jsonResponse({ ok: false, error: 'Person not found' }, 404);
+    }
+
+    let body: { source?: string; resources?: unknown };
+    try {
+      body = (await req.json()) as typeof body;
+    } catch (err) {
+      return jsonResponse(
+        { ok: false, error: `Invalid JSON: ${err instanceof Error ? err.message : String(err)}` },
+        400
+      );
+    }
+    const resources = Array.isArray(body.resources) ? body.resources : [];
+    if (resources.length === 0) {
+      return jsonResponse({ ok: true, message: 'No clinical records', resources: 0 });
+    }
+
+    const dir = getPersonClinicalDir(personId);
+    await ensureDir(dir);
+    let written = 0;
+    let skipped = 0;
+    try {
+      for (const r of resources) {
+        if (!r || typeof r !== 'object') {
+          skipped++;
+          continue;
+        }
+        const res = r as { resourceType?: unknown; id?: unknown };
+        const type = typeof res.resourceType === 'string' ? res.resourceType : '';
+        const id = typeof res.id === 'string' ? res.id : '';
+        if (!type || !id) {
+          skipped++;
+          continue;
+        }
+        // Stable, filesystem-safe name keyed by resourceType + FHIR id, so
+        // re-posting the same record overwrites it (dedupe).
+        const safe = `${type}-${id}`.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 200);
+        const targetPath = path.join(dir, `${safe}.json`);
+        const tmp = `${targetPath}.tmp-${Date.now()}-${written}`;
+        await fs.writeFile(tmp, JSON.stringify(r, null, 2));
+        await fs.rename(tmp, targetPath);
+        written++;
+      }
+
+      const allResources = await loadClinicalRecords(dir);
+      const summary = buildClinicalSummary(allResources);
+      const store = await loadHealthStore();
+      if (!store.clinical) store.clinical = {};
+      const keys = Object.keys(store.summaries).filter((k) => k.startsWith(`${personId}/`));
+      for (const k of keys) {
+        store.clinical[k] = summary;
+        delete store.snapshots[k];
+      }
+      await saveHealthStore(store);
+    } catch (writeErr) {
+      const errMsg = writeErr instanceof Error ? writeErr.message : String(writeErr);
+      log.error(`Clinical ingest failed for ${personId}: ${errMsg}`);
+      return jsonResponse(
+        { ok: false, error: 'Failed to persist clinical records', details: errMsg },
+        500
+      );
+    }
+
+    const source = typeof body.source === 'string' ? body.source : 'ios-app';
+    log.info(
+      `Clinical ingest ${personId}: ${written} record(s) written, ${skipped} skipped from "${source}"`
+    );
+    await appendIngestLog(personId, {
+      ts,
+      bootId: SERVER_BOOT_ID,
+      status: 'ok',
+      http: 200,
+      source,
+    });
+    return jsonResponse({
+      ok: true,
+      message: `Stored ${written} clinical record(s)`,
+      resources: written,
+      skipped,
     });
   }
 
