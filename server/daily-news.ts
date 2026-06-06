@@ -997,6 +997,31 @@ async function runDailyNewsClaudeAgent(
   return { body, usage };
 }
 
+/** Defensively pull input/output token counts out of a codex app-server
+ *  notification — the token-usage payload shape has varied across codex
+ *  versions, so try the common wrapper keys + field names. */
+function readCodexUsage(p: Record<string, unknown>): { input: number; output: number } | null {
+  const numOf = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? v : null;
+  const fromObj = (o: unknown): { input: number; output: number } | null => {
+    if (!o || typeof o !== 'object') return null;
+    const r = o as Record<string, unknown>;
+    const input = numOf(r.input_tokens) ?? numOf(r.inputTokens) ?? numOf(r.prompt_tokens);
+    const output = numOf(r.output_tokens) ?? numOf(r.outputTokens) ?? numOf(r.completion_tokens);
+    return input != null || output != null ? { input: input ?? 0, output: output ?? 0 } : null;
+  };
+  const rec = p as Record<string, unknown>;
+  return (
+    fromObj(rec.usage) ??
+    fromObj(rec.tokenUsage) ??
+    fromObj(rec.total_token_usage) ??
+    fromObj(rec.last_token_usage) ??
+    fromObj(rec.info) ??
+    fromObj(rec) ??
+    null
+  );
+}
+
 /** Codex agent engine — codex app-server on the OpenAI subscription, NO web_search. */
 async function runDailyNewsCodexAgent(
   system: string,
@@ -1008,6 +1033,8 @@ async function runDailyNewsCodexAgent(
 
   let body = '';
   let turnError: string | null = null;
+  let inputTokens = 0;
+  let outputTokens = 0;
   let done = false;
   let resolveDone!: () => void;
   const donePromise = new Promise<void>((r) => {
@@ -1031,11 +1058,29 @@ async function runDailyNewsCodexAgent(
       if (!body && item.type === 'agentMessage' && typeof item.text === 'string') {
         body += item.text;
       }
+    } else if (/token/i.test(n.method)) {
+      // Token usage — codex streams this (e.g. thread/tokenUsage/updated) as the
+      // turn runs; keep the latest. Log the raw shape so readCodexUsage's field
+      // mapping can be confirmed/extended for this codex version.
+      const u = readCodexUsage(p);
+      if (u) {
+        inputTokens = u.input;
+        outputTokens = u.output;
+      }
+      log.info(
+        `[codex] usage method=${n.method} in=${inputTokens} out=${outputTokens} raw=${JSON.stringify(p).slice(0, 300)}`
+      );
     } else if (n.method === 'error') {
       turnError = typeof p.message === 'string' ? p.message : 'codex error';
       log.warn(`[codex] error notification: ${turnError}`);
       finish();
     } else if (n.method === 'turn/completed') {
+      // Final usage sometimes rides on turn/completed rather than a separate event.
+      const u = readCodexUsage(p);
+      if (u) {
+        inputTokens = u.input;
+        outputTokens = u.output;
+      }
       finish();
     }
   };
@@ -1074,7 +1119,7 @@ async function runDailyNewsCodexAgent(
     await fs.rm(cwd, { recursive: true, force: true }).catch(() => undefined);
   }
 
-  const usage = { inputTokens: 0, outputTokens: 0 };
+  const usage = { inputTokens, outputTokens };
   const ok = body.trim().length > 0;
   void logAiCall({
     model: 'codex-agent',

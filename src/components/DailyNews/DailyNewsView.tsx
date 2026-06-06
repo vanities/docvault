@@ -335,8 +335,8 @@ export function DailyNewsView() {
                 {active.theme ? ` · ${themeLabels[active.theme] ?? active.theme}` : ''}
                 {active.sample ? ' · sample' : ''}
                 {active.digestMeta ? ` · ${active.digestMeta.itemCount} items` : ''}
-                {active.usage
-                  ? ` · ${Math.round((active.usage.inputTokens + active.usage.outputTokens) / 1000)}k tokens`
+                {active.usage && active.usage.inputTokens + active.usage.outputTokens > 0
+                  ? ` · ${active.usage.inputTokens.toLocaleString()} in / ${active.usage.outputTokens.toLocaleString()} out`
                   : ''}
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
