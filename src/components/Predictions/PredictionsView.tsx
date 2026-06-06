@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useTopN } from '@/hooks/useTopN';
+import { ShowMore } from '@/components/ui/ShowMore';
 
 // Mirrors the server's PredictionMarketsResponse (server/prediction-markets.ts),
 // plus the cache envelope fields the /api/quant/predictions route adds.
@@ -205,6 +207,7 @@ function MarketSection({
   markets: PredictionMarket[];
 }) {
   const totalVol = markets.reduce((s, m) => s + (m.volumeUsd || 0), 0);
+  const list = useTopN(markets, 10);
   return (
     <section className="animate-fade-in">
       <div className="flex items-center gap-2 mb-2">
@@ -229,9 +232,14 @@ function MarketSection({
         </Card>
       ) : (
         <Card variant="glass" className="px-4 border-border/50 divide-y divide-border/40">
-          {markets.map((m) => (
+          {list.visible.map((m) => (
             <MarketRow key={`${m.source}:${m.id}`} m={m} />
           ))}
+          <ShowMore
+            expanded={list.expanded}
+            hiddenCount={list.hiddenCount}
+            onToggle={list.toggle}
+          />
         </Card>
       )}
     </section>

@@ -7,6 +7,8 @@
 import { useEffect, useState } from 'react';
 import { ChevronDown, Loader2, TrendingUp } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { useTopN } from '@/hooks/useTopN';
+import { ShowMore } from '@/components/ui/ShowMore';
 
 interface Perf {
   politician: string;
@@ -142,6 +144,7 @@ export function PerformancePanel() {
     note?: string;
   }>({ generatedAt: null });
   const [expanded, setExpanded] = useState<string | null>(null);
+  const list = useTopN(rows ?? [], 10);
 
   useEffect(() => {
     let alive = true;
@@ -196,7 +199,7 @@ export function PerformancePanel() {
           </p>
         ) : (
           <div className="space-y-1">
-            {rows.map((p, i) => (
+            {list.visible.map((p, i) => (
               <div
                 key={p.politician}
                 className="rounded-lg border border-border/50 bg-surface-900/30"
@@ -236,6 +239,12 @@ export function PerformancePanel() {
                 )}
               </div>
             ))}
+            <ShowMore
+              expanded={list.expanded}
+              hiddenCount={list.hiddenCount}
+              onToggle={list.toggle}
+              className="mt-1"
+            />
           </div>
         )}
       </div>
