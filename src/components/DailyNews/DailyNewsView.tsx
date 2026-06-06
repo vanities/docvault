@@ -7,7 +7,15 @@
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { CalendarDays, Download, ExternalLink, Loader2, Newspaper, Trash2 } from 'lucide-react';
+import {
+  CalendarDays,
+  Download,
+  ExternalLink,
+  Loader2,
+  Newspaper,
+  Palette,
+  Trash2,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '../../hooks/useToast';
 import { API_BASE } from '../../constants';
@@ -20,6 +28,10 @@ interface EditionSummary {
   editionDate: string;
   status: 'running' | 'done' | 'error';
   title?: string;
+  /** House style (themes id) — set on sampler editions and recent normal ones. */
+  theme?: string;
+  /** True for theme-sampler editions. */
+  sample?: boolean;
   itemCount: number;
   error?: string;
   createdAt: string;
@@ -76,7 +88,10 @@ export function DailyNewsView() {
   const [history, setHistory] = useState<EditionSummary[]>([]);
   const [active, setActive] = useState<Edition | null>(null);
   const [starting, setStarting] = useState(false);
+  const [sampling, setSampling] = useState(false);
+  const [themeLabels, setThemeLabels] = useState<Record<string, string>>({});
   const pollRef = useRef<number | null>(null);
+  const historyPollRef = useRef<number | null>(null); // refreshes the rail while samples complete
   const viewingRef = useRef<string | null>(null); // which edition the user is looking at
 
   const loadHistory = async (): Promise<EditionSummary[]> => {
@@ -100,8 +115,25 @@ export function DailyNewsView() {
     })();
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
+      if (historyPollRef.current) clearInterval(historyPollRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Theme id → label, so the rail can name each sampled house style.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/daily-news/themes`);
+        const data = await res.json();
+        const map: Record<string, string> = {};
+        for (const t of (data.themes ?? []) as Array<{ id: string; label: string }>)
+          map[t.id] = t.label;
+        setThemeLabels(map);
+      } catch {
+        /* labels are cosmetic — ignore */
+      }
+    })();
   }, []);
 
   const stopPolling = () => {
@@ -171,6 +203,46 @@ export function DailyNewsView() {
     }
   };
 
+  // Poll the history list (not a single edition) while sampler editions complete
+  // one by one, so the rail fills in. Stops once nothing is 'running'.
+  const startHistoryPoll = () => {
+    if (historyPollRef.current) clearInterval(historyPollRef.current);
+    historyPollRef.current = window.setInterval(async () => {
+      const eds = await loadHistory();
+      if (!eds.some((e) => e.status === 'running') && historyPollRef.current) {
+        clearInterval(historyPollRef.current);
+        historyPollRef.current = null;
+      }
+    }, 5000);
+  };
+
+  // Generate one sample edition per theme (a "taste" of every house style) from a
+  // single shared digest. They appear in the rail and fill in serially.
+  const sampleAllThemes = async () => {
+    if (sampling) return;
+    setSampling(true);
+    try {
+      const res = await fetch(`${API_BASE}/daily-news/sample-themes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ editionType: 'daily' }),
+      });
+      const data = await res.json();
+      if (!data.ids?.length) throw new Error('no ids');
+      addToast(
+        `Generating ${data.count} themed samples — they'll fill in here one at a time.`,
+        'success'
+      );
+      await loadHistory();
+      void loadEdition(data.ids[0] as string); // open the first so progress is visible
+      startHistoryPoll();
+    } catch {
+      addToast('Failed to start theme samples', 'error');
+    } finally {
+      setSampling(false);
+    }
+  };
+
   const remove = async (id: string) => {
     try {
       await fetch(`${API_BASE}/daily-news/${id}`, { method: 'DELETE' });
@@ -205,9 +277,18 @@ export function DailyNewsView() {
     <div className="flex flex-col md:flex-row h-full min-h-0">
       {/* History rail — full-width scrollable strip on mobile, side rail on desktop */}
       <aside className="w-full md:w-64 flex-shrink-0 max-h-44 md:max-h-none border-b md:border-b-0 md:border-r border-border/40 flex flex-col min-h-0">
-        <div className="p-3 border-b border-border/40">
-          <Button size="sm" onClick={newEdition} className="w-full">
+        <div className="p-3 border-b border-border/40 flex gap-2">
+          <Button size="sm" onClick={newEdition} className="flex-1">
             <Newspaper className="w-4 h-4" /> New edition
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => void sampleAllThemes()}
+            disabled={sampling}
+            title="Sample every theme"
+          >
+            <Palette className="w-4 h-4" />
           </Button>
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
@@ -229,12 +310,20 @@ export function DailyNewsView() {
                     <Loader2 className="w-3 h-3 animate-spin flex-shrink-0" />
                   )}
                   {h.status === 'error' && <span className="text-rose-400 flex-shrink-0">!</span>}
-                  <span className="truncate flex-1">{editionLabel(h)}</span>
-                  {h.editionType === 'weekly' && (
+                  <span className="truncate flex-1">
+                    {h.sample
+                      ? (themeLabels[h.theme ?? ''] ?? h.theme ?? 'Sample')
+                      : editionLabel(h)}
+                  </span>
+                  {h.sample ? (
+                    <span className="text-[9px] uppercase tracking-wide text-violet-400 flex-shrink-0">
+                      sample
+                    </span>
+                  ) : h.editionType === 'weekly' ? (
                     <span className="text-[9px] uppercase tracking-wide text-amber-400 flex-shrink-0">
                       wk
                     </span>
-                  )}
+                  ) : null}
                 </div>
                 <div className="text-[10px] text-surface-500 mt-0.5">
                   {h.editionDate}
@@ -273,6 +362,23 @@ export function DailyNewsView() {
               Synthesizes your data through the configured model · takes a minute or two · no web
               search
             </p>
+
+            <div className="mt-5 pt-4 border-t border-border/40">
+              <p className="text-[13px] text-surface-600 mb-2">
+                Not sure which house style you like? Sample <em>today&apos;s</em> edition in every
+                theme — each with its own voice <em>and</em> its own hero image — then flip through
+                them:
+              </p>
+              <Button variant="ghost" onClick={() => void sampleAllThemes()} disabled={sampling}>
+                <Palette className="w-4 h-4" />
+                {sampling ? 'Starting…' : 'Sample all themes'}
+              </Button>
+              <p className="text-[11px] text-surface-500 mt-2">
+                One edition per theme from a single shared digest · they appear in the list here ·
+                aren&apos;t emailed and don&apos;t count as your daily edition · complete one at a
+                time
+              </p>
+            </div>
           </div>
         ) : active.status === 'running' ? (
           <div className="flex flex-col items-center justify-center h-full text-surface-600 gap-3 px-6 text-center">
@@ -303,6 +409,8 @@ export function DailyNewsView() {
                   {active.editionType === 'weekly' ? 'Weekly deep-dive' : 'Daily edition'}
                 </span>{' '}
                 · {active.editionDate}
+                {active.theme ? ` · ${themeLabels[active.theme] ?? active.theme}` : ''}
+                {active.sample ? ' · sample' : ''}
                 {active.digestMeta ? ` · ${active.digestMeta.itemCount} items` : ''}
                 {active.usage
                   ? ` · ${Math.round((active.usage.inputTokens + active.usage.outputTokens) / 1000)}k tokens`

@@ -146,7 +146,7 @@ export function ModelsSettingsSection() {
     void fetchModels();
     void fetch(`${API_BASE}/daily-news/themes`)
       .then((r) => r.json())
-      .then((d) => setThemes(d.themes ?? []))
+      .then((d) => setThemes(d.cycle ? [d.cycle, ...(d.themes ?? [])] : (d.themes ?? [])))
       .catch(() => setThemes([]));
     const onRefresh = () => {
       void load();
@@ -383,6 +383,12 @@ export function ModelsSettingsSection() {
                 </option>
               ))}
             </select>
+            {dnTheme === 'cycle' && (
+              <p className="text-[11px] text-surface-500 mt-1">
+                Each day&apos;s edition uses the next house style, rotating through them all across
+                the week.
+              </p>
+            )}
           </div>
           <div className="mt-3">
             <label className="block text-[11px] text-surface-500 mb-1">Masthead title</label>

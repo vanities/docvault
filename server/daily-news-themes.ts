@@ -66,9 +66,31 @@ export function getThemePrompt(id: string | undefined): string {
   return (BY_ID.get(id ?? 'brew') ?? BY_ID.get('brew'))?.prompt ?? '';
 }
 
-/** {id,label} pairs for the Settings dropdown. */
+/** {id,label} pairs for the Settings dropdown (real styles only — the sampler
+ *  iterates this, so the 'cycle' meta-option is intentionally NOT included). */
 export function listThemes(): Array<{ id: string; label: string }> {
   return DAILY_NEWS_THEMES.map(({ id, label }) => ({ id, label }));
+}
+
+/** The special "rotate through every style" pick. NOT a real theme — it's
+ *  resolved per edition date by resolveTheme(), so a week of daily editions
+ *  walks the whole set. Offered in Settings alongside the fixed styles. */
+export const THEME_CYCLE = { id: 'cycle', label: 'Cycle — a different style each day' } as const;
+
+/** Resolve a configured theme to a CONCRETE style id: a real id passes through;
+ *  'cycle' rotates deterministically by date (so consecutive daily editions step
+ *  through every style and a 7-day week covers all 7); anything unknown falls
+ *  back to the 'brew' default. */
+export function resolveTheme(configTheme: string | undefined, dateKey: string): string {
+  if (configTheme && BY_ID.has(configTheme)) return configTheme;
+  if (configTheme === THEME_CYCLE.id) {
+    const ms = new Date(`${dateKey}T12:00:00`).getTime();
+    const n = DAILY_NEWS_THEMES.length;
+    if (!Number.isFinite(ms)) return DAILY_NEWS_THEMES[0].id;
+    const dayNum = Math.floor(ms / 86_400_000); // whole days since epoch (local noon)
+    return DAILY_NEWS_THEMES[((dayNum % n) + n) % n].id;
+  }
+  return 'brew';
 }
 
 // Visual-style descriptors for the optional headline image — kept parallel to

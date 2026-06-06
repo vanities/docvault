@@ -11,13 +11,14 @@
 import { jsonResponse } from '../data.js';
 import {
   startEdition,
+  startThemeSamples,
   getEdition,
   listEditions,
   deleteEdition,
   type EditionType,
 } from '../daily-news-store.js';
 import { renderEditionHtml, editionFilename } from '../daily-news-report.js';
-import { listThemes } from '../daily-news-themes.js';
+import { listThemes, THEME_CYCLE } from '../daily-news-themes.js';
 import { readEditionImage } from '../daily-news-image.js';
 import { sendEmail } from '../email.js';
 
@@ -54,14 +55,26 @@ export async function handleDailyNewsRoutes(
     return jsonResponse({ id, status: 'running' }, 201);
   }
 
+  // POST /api/daily-news/sample-themes — generate one sample edition per theme
+  // (a "taste" of every house style) from a single shared digest. Returns the
+  // ids immediately; the client polls history as each completes. Samples are
+  // excluded from dedup and are never emailed.
+  if (pathname === '/api/daily-news/sample-themes' && req.method === 'POST') {
+    const body = (await req.json().catch(() => ({}))) as { editionType?: unknown };
+    const editionType: EditionType = body.editionType === 'weekly' ? 'weekly' : 'daily';
+    const { ids } = await startThemeSamples(editionType, localYMD());
+    return jsonResponse({ ids, count: ids.length, status: 'running' }, 201);
+  }
+
   // GET /api/daily-news — history
   if (pathname === '/api/daily-news' && req.method === 'GET') {
     return jsonResponse({ editions: await listEditions() });
   }
 
-  // GET /api/daily-news/themes — selectable house styles for the Settings dropdown
+  // GET /api/daily-news/themes — selectable house styles for the Settings
+  // dropdown, plus the special "cycle" meta-option (rotates styles by day).
   if (pathname === '/api/daily-news/themes' && req.method === 'GET') {
-    return jsonResponse({ themes: listThemes() });
+    return jsonResponse({ themes: listThemes(), cycle: THEME_CYCLE });
   }
 
   // GET /api/daily-news/:id/image.png — the generated headline image (if any)
