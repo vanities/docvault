@@ -65,14 +65,120 @@ function renderBody(markdown: string): { body: string; toc: Array<{ text: string
   return { body, toc };
 }
 
-const CSS = `
-:root { --bg:#f7f4ed; --fg:#1a1814; --muted:#6b6457; --accent:#7c2d12; --rule:#d9d2c4; --card:#fffdf8; }
-@media (prefers-color-scheme: dark) { :root { --bg:#16140f; --fg:#ece7dd; --muted:#9c9486; --accent:#d98a5a; --rule:#322d24; --card:#1d1a14; } }
+// Per-theme visual identity — palette + masthead/body fonts. The theme changes
+// not just the prose voice (server/daily-news-themes.ts) and hero-image style,
+// but the look of the rendered paper itself, so a sampled edition LOOKS like its
+// theme. Each theme is a complete, fixed palette (no auto dark-mode switch — the
+// aesthetic is deliberate; noir is meant to be dark). Fonts are web-safe stacks
+// (the edition is self-contained, no remote font loads).
+interface ThemeStyle {
+  bg: string;
+  fg: string;
+  muted: string;
+  accent: string;
+  rule: string;
+  card: string;
+  /** `font` shorthand for the masthead <h1>. */
+  masthead: string;
+  /** `font` shorthand for the body. */
+  body: string;
+}
+
+const THEME_STYLES: Record<string, ThemeStyle> = {
+  // Classic sepia paper of record (also the fallback for older, theme-less editions).
+  standard: {
+    bg: '#f7f4ed',
+    fg: '#1a1814',
+    muted: '#6b6457',
+    accent: '#7c2d12',
+    rule: '#d9d2c4',
+    card: '#fffdf8',
+    masthead: "800 clamp(34px,6vw,58px)/1.05 Georgia,'Times New Roman',serif",
+    body: "18px/1.6 Georgia,'Times New Roman',serif",
+  },
+  // The Economist: crisp white, signature red accent, serif.
+  economist: {
+    bg: '#ffffff',
+    fg: '#121212',
+    muted: '#6b6b6b',
+    accent: '#e3120b',
+    rule: '#e1e1e1',
+    card: '#f6f6f6',
+    masthead: "800 clamp(34px,6vw,56px)/1.05 Georgia,'Times New Roman',serif",
+    body: "17px/1.65 Georgia,'Times New Roman',serif",
+  },
+  // Morning Brew: bright, friendly, modern sans.
+  brew: {
+    bg: '#fffef7',
+    fg: '#16182b',
+    muted: '#6a6c84',
+    accent: '#2b50aa',
+    rule: '#ece7d5',
+    card: '#fff8de',
+    masthead: "800 clamp(32px,6vw,54px)/1.05 system-ui,'Segoe UI',Helvetica,sans-serif",
+    body: "17px/1.65 system-ui,'Segoe UI',Helvetica,sans-serif",
+  },
+  // Equity research desk: cool, professional, tight sans.
+  analyst: {
+    bg: '#f4f6f8',
+    fg: '#0f1722',
+    muted: '#5a6b7b',
+    accent: '#0a6cff',
+    rule: '#d5dde6',
+    card: '#ffffff',
+    masthead: "800 clamp(30px,5.5vw,50px)/1.05 system-ui,'Segoe UI',Helvetica,sans-serif",
+    body: "16px/1.6 system-ui,'Segoe UI',Helvetica,sans-serif",
+  },
+  // Tabloid: punchy, high-contrast, heavy condensed masthead.
+  tabloid: {
+    bg: '#fffef9',
+    fg: '#0a0a0a',
+    muted: '#555555',
+    accent: '#d6001c',
+    rule: '#111111',
+    card: '#ffffff',
+    masthead:
+      "900 clamp(40px,8vw,74px)/.92 Impact,Haettenschweiler,'Arial Narrow',system-ui,sans-serif",
+    body: "17px/1.55 system-ui,'Segoe UI',Helvetica,sans-serif",
+  },
+  // Noir: moody dark monochrome with a dim gold accent.
+  noir: {
+    bg: '#141318',
+    fg: '#e7e5e0',
+    muted: '#8f8b84',
+    accent: '#c2a24a',
+    rule: '#2c2a31',
+    card: '#1c1b21',
+    masthead: "800 clamp(34px,6vw,56px)/1.05 'Iowan Old Style',Georgia,serif",
+    body: "18px/1.65 'Iowan Old Style',Georgia,'Times New Roman',serif",
+  },
+  // Victorian gazette: ornate parchment, period serif.
+  victorian: {
+    bg: '#f3e9cf',
+    fg: '#2b2118',
+    muted: '#7a6a4f',
+    accent: '#6b4423',
+    rule: '#cbb78c',
+    card: '#faf3dd',
+    masthead: "800 clamp(34px,6vw,58px)/1.05 'Palatino Linotype',Palatino,Georgia,serif",
+    body: "18px/1.7 'Palatino Linotype',Palatino,Georgia,serif",
+  },
+};
+
+/** Visual style for a theme id; falls back to the classic sepia paper. */
+function themeStyle(id?: string): ThemeStyle {
+  return THEME_STYLES[id ?? 'standard'] ?? THEME_STYLES.standard;
+}
+
+/** Build the self-contained stylesheet for a given theme's palette + fonts. */
+function buildCss(s: ThemeStyle): string {
+  return `
+:root { --bg:${s.bg}; --fg:${s.fg}; --muted:${s.muted}; --accent:${s.accent}; --rule:${s.rule}; --card:${s.card}; }
 * { box-sizing:border-box; }
-body { margin:0; background:var(--bg); color:var(--fg); font:18px/1.6 Georgia,'Times New Roman',serif; }
+body { margin:0; background:var(--bg); color:var(--fg); font:${s.body}; }
 .paper { max-width:980px; margin:0 auto; padding:0 28px 72px; }
 .masthead { text-align:center; padding:36px 0 12px; border-bottom:3px double var(--fg); }
-.masthead h1 { font:800 clamp(34px,6vw,58px)/1.05 'Playfair Display',Georgia,serif; letter-spacing:-.01em; margin:0; }
+.masthead h1 { font:${s.masthead}; letter-spacing:-.01em; margin:0; }
 .dateline { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;
   font:600 12px/1 system-ui,sans-serif; letter-spacing:.14em; text-transform:uppercase; color:var(--muted);
   border-bottom:1px solid var(--rule); padding:10px 0; margin-bottom:8px; }
@@ -84,7 +190,7 @@ body { margin:0; background:var(--bg); color:var(--fg); font:18px/1.6 Georgia,'T
 .index a:hover { color:var(--accent); text-decoration:underline; }
 .edition { columns:2 320px; column-gap:34px; margin-top:22px; }
 .edition > p:first-of-type { font-size:1.06em; }
-.edition h2 { font:800 22px/1.2 Georgia,serif; margin:0 0 .4em; padding-top:.3em; color:var(--fg);
+.edition h2 { font-weight:800; font-size:22px; line-height:1.2; margin:0 0 .4em; padding-top:.3em; color:var(--fg);
   border-top:2px solid var(--fg); break-after:avoid; column-span:all; }
 .edition h3 { font:700 16px/1.3 system-ui,sans-serif; margin:1.1em 0 .3em; }
 .edition p { margin:0 0 .8em; }
@@ -98,11 +204,13 @@ body { margin:0; background:var(--bg); color:var(--fg); font:18px/1.6 Georgia,'T
 footer { margin-top:40px; border-top:1px solid var(--rule); padding-top:16px; color:var(--muted);
   font:12px/1.5 system-ui,sans-serif; text-align:center; }
 @media (max-width:640px) { .edition { columns:1; } }
-@media print { body { background:#fff; } .edition { columns:2; } }
+@media print { .edition { columns:2; } }
 `.trim();
+}
 
 /** The full, self-contained newspaper edition (download + in-app "view as newspaper"). */
 export function renderEditionHtml(edition: Edition, heroSrc?: string): string {
+  const css = buildCss(themeStyle(edition.theme));
   const { body, toc } = renderBody(edition.body ?? '');
   const hero = heroSrc ? `<img class="hero-img" src="${heroSrc}" alt="">` : '';
   const indexHtml = toc.length
@@ -114,7 +222,7 @@ export function renderEditionHtml(edition: Edition, heroSrc?: string): string {
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(
     edition.title ?? 'Daily News'
-  )} — ${escapeHtml(edition.editionDate)}</title><style>${CSS}</style></head>
+  )} — ${escapeHtml(edition.editionDate)}</title><style>${css}</style></head>
 <body>
 <div class="paper">
   ${hero}
@@ -132,23 +240,24 @@ export function renderEditionHtml(edition: Edition, heroSrc?: string): string {
 /** Email-safe variant: single column, inline-styled masthead, no media queries.
  *  The fully-formatted edition is attached as an .html file alongside. */
 export function renderEditionEmailHtml(edition: Edition, heroSrc?: string): string {
+  const s = themeStyle(edition.theme);
   const { body } = renderBody(edition.body ?? '');
   const hero = heroSrc
     ? `<img src="${heroSrc}" alt="" style="display:block;width:100%;max-height:320px;object-fit:cover;border-radius:8px;margin:0 0 14px;">`
     : '';
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
-<body style="margin:0;background:#f7f4ed;color:#1a1814;font-family:Georgia,'Times New Roman',serif;">
+<body style="margin:0;background:${s.bg};color:${s.fg};font-family:Georgia,'Times New Roman',serif;">
 <div style="max-width:660px;margin:0 auto;padding:24px 22px 48px;">
   ${hero}
-  <h1 style="font-family:Georgia,serif;font-weight:800;font-size:34px;line-height:1.1;text-align:center;margin:8px 0 4px;border-bottom:3px double #1a1814;padding-bottom:10px;">${escapeHtml(
+  <h1 style="font-family:Georgia,serif;font-weight:800;font-size:34px;line-height:1.1;text-align:center;margin:8px 0 4px;border-bottom:3px double ${s.fg};padding-bottom:10px;">${escapeHtml(
     edition.title ?? 'Daily News'
   )}</h1>
-  <div style="font:600 12px/1 system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#6b6457;text-align:center;margin:0 0 18px;">${escapeHtml(
+  <div style="font:600 12px/1 system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:${s.muted};text-align:center;margin:0 0 18px;">${escapeHtml(
     formatEditionDate(edition.editionDate)
   )} · ${editionBadge(edition)}</div>
   <div style="font-size:16px;line-height:1.6;">${body}</div>
-  <p style="margin-top:28px;padding-top:16px;border-top:1px solid #d9d2c4;color:#6b6457;font:13px/1.6 system-ui,sans-serif;">
+  <p style="margin-top:28px;padding-top:16px;border-top:1px solid ${s.rule};color:${s.muted};font:13px/1.6 system-ui,sans-serif;">
     📎 The fully formatted edition is attached as an HTML file — open it for the two-column newspaper layout.<br>
     Generated by DocVault.
   </p>

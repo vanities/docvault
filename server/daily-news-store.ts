@@ -13,8 +13,16 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { DATA_DIR } from './data.js';
 import { createLogger } from './logger.js';
-import { generateEdition, notifyEditionReady, type GenerateResult } from './daily-news.js';
+import {
+  generateEdition,
+  gatherDigest,
+  synthesizeEdition,
+  notifyEditionReady,
+  type GenerateResult,
+  type Digest,
+} from './daily-news.js';
 import { generateHeadlineImage } from './daily-news-image.js';
+import { listThemes } from './daily-news-themes.js';
 
 const log = createLogger('DailyNewsStore');
 const STORE_PATH = path.join(DATA_DIR, '.docvault-daily-news.json');
@@ -29,6 +37,10 @@ export interface Edition {
   editionDate: string;
   status: 'running' | 'done' | 'error';
   title?: string;
+  /** House style this edition was written + illustrated in (themes.ts id). */
+  theme?: string;
+  /** True for theme-sampler editions — excluded from dedup, never emailed. */
+  sample?: boolean;
   /** Synthesized newspaper markdown. */
   body?: string;
   digestMeta?: { sources: string[]; sinceISO: string; itemCount: number };
@@ -47,6 +59,8 @@ export interface EditionSummary {
   editionDate: string;
   status: Edition['status'];
   title?: string;
+  theme?: string;
+  sample?: boolean;
   itemCount: number;
   error?: string;
   createdAt: string;
@@ -94,7 +108,7 @@ function isoDaysAgo(days: number): string {
 async function lastDoneEditionTimestamp(): Promise<string | null> {
   const editions = await loadEditions();
   const stamps = Object.values(editions)
-    .filter((e) => e.status === 'done')
+    .filter((e) => e.status === 'done' && !e.sample)
     .map((e) => e.completedAt ?? e.createdAt)
     .sort();
   return stamps.length ? stamps[stamps.length - 1] : null;
@@ -136,6 +150,7 @@ export async function startEdition(
         status: 'done',
         title: result.title,
         body: result.body,
+        theme: result.theme,
         digestMeta: result.digestMeta,
         usage: result.usage,
         completedAt: new Date().toISOString(),
@@ -167,6 +182,105 @@ export async function startEdition(
   return id;
 }
 
+/**
+ * Generate one SAMPLE edition per theme from a single shared digest — a "taste"
+ * of every house style. Persists a `running` record per theme up front (so the
+ * UI shows them immediately), then runs SERIALLY in ONE background task: gather
+ * the digest ONCE, synthesize each theme's voice over that same digest, render
+ * its theme-styled hero image (if headline images are enabled), and patch each
+ * to `done`. Samples are NEVER emailed and are excluded from per-day dedup, so
+ * they never block (or masquerade as) the real scheduled edition.
+ */
+export async function startThemeSamples(
+  editionType: EditionType,
+  editionDate: string
+): Promise<{ ids: string[] }> {
+  const themes = listThemes();
+  // Same window logic as startEdition — resolved before persisting the records.
+  const sinceISO =
+    editionType === 'weekly'
+      ? isoDaysAgo(7)
+      : ((await lastDoneEditionTimestamp()) ?? isoDaysAgo(2));
+
+  const editions = await loadEditions();
+  const now = new Date().toISOString();
+  const entries = themes.map((t) => {
+    const id = crypto.randomUUID();
+    editions[id] = {
+      id,
+      editionType,
+      editionDate,
+      status: 'running',
+      sample: true,
+      theme: t.id,
+      createdAt: now,
+    };
+    return { id, theme: t.id };
+  });
+  await saveEditions(editions);
+  log.info(
+    `[samples] start n=${entries.length} type=${editionType} date=${editionDate} since=${sinceISO}`
+  );
+
+  // Background — the caller does not await; the client polls listEditions().
+  void (async () => {
+    let digest: Digest;
+    try {
+      digest = await gatherDigest(editionType, sinceISO);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.error(`[samples] shared digest failed, erroring all: ${message}`);
+      for (const e of entries) {
+        await patchEdition(e.id, {
+          status: 'error',
+          error: message,
+          completedAt: new Date().toISOString(),
+        });
+      }
+      return;
+    }
+
+    for (const e of entries) {
+      const t0 = Date.now();
+      try {
+        // Same digest, this theme's voice.
+        const result = await synthesizeEdition(editionType, editionDate, sinceISO, digest, e.theme);
+        await patchEdition(e.id, {
+          status: 'done',
+          title: result.title,
+          body: result.body,
+          theme: result.theme,
+          digestMeta: result.digestMeta,
+          usage: result.usage,
+          completedAt: new Date().toISOString(),
+        });
+        // Theme-styled hero (best-effort, no-ops if headline images are disabled).
+        const imagePath = await generateHeadlineImage({
+          editionId: e.id,
+          title: result.title,
+          body: result.body,
+          themeId: result.theme,
+        }).catch(() => null);
+        if (imagePath) await patchEdition(e.id, { imagePath });
+        log.info(
+          `[samples] done theme=${e.theme} bodyChars=${result.body.length} image=${imagePath ? 'yes' : 'no'} in ${Date.now() - t0}ms`
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        log.error(`[samples] theme=${e.theme} failed: ${message}`);
+        await patchEdition(e.id, {
+          status: 'error',
+          error: message,
+          completedAt: new Date().toISOString(),
+        });
+      }
+    }
+    log.info(`[samples] all complete n=${entries.length}`);
+  })();
+
+  return { ids: entries.map((e) => e.id) };
+}
+
 export async function getEdition(id: string): Promise<Edition | null> {
   return (await loadEditions())[id] ?? null;
 }
@@ -183,6 +297,8 @@ export async function listEditions(): Promise<EditionSummary[]> {
       editionDate: e.editionDate,
       status: e.status,
       title: e.title,
+      theme: e.theme,
+      sample: e.sample,
       itemCount: e.digestMeta?.itemCount ?? 0,
       error: e.error,
       createdAt: e.createdAt,
@@ -202,6 +318,7 @@ export async function deleteEdition(id: string): Promise<void> {
 export async function editionExistsForDate(date: string): Promise<boolean> {
   const editions = await loadEditions();
   return Object.values(editions).some((e) => {
+    if (e.sample) return false; // sampler editions never count as "the day's edition"
     if (e.editionDate !== date) return false;
     if (e.status === 'running' && Date.now() - new Date(e.createdAt).getTime() > STALE_RUNNING_MS) {
       return false;
@@ -214,6 +331,7 @@ export async function editionExistsForDate(date: string): Promise<boolean> {
 export async function weeklyEditionExistsForWeek(weekStart: string): Promise<boolean> {
   const editions = await loadEditions();
   return Object.values(editions).some(
-    (e) => e.editionType === 'weekly' && e.status !== 'error' && e.editionDate >= weekStart
+    (e) =>
+      !e.sample && e.editionType === 'weekly' && e.status !== 'error' && e.editionDate >= weekStart
   );
 }

@@ -58,7 +58,7 @@ import {
   editionFilename,
   formatEditionDate,
 } from './daily-news-report.js';
-import { getThemePrompt } from './daily-news-themes.js';
+import { getThemePrompt, resolveTheme } from './daily-news-themes.js';
 import { readEditionImage } from './daily-news-image.js';
 import { logAiCall } from './ai/usage-log.js';
 import { createLogger } from './logger.js';
@@ -293,7 +293,11 @@ async function gatherPolitics(afterSince: AfterSince): Promise<string[]> {
   return items;
 }
 
-async function gatherFinance(afterSince: AfterSince, includeBodies: boolean): Promise<string[]> {
+async function gatherFinance(
+  afterSince: AfterSince,
+  includeBodies: boolean,
+  includeState: boolean
+): Promise<string[]> {
   const items: string[] = [];
 
   try {
@@ -394,9 +398,11 @@ async function gatherFinance(afterSince: AfterSince, includeBodies: boolean): Pr
     log.warn(`[digest] finance/crypto failed: ${errMsg(err)}`);
   }
 
-  // Balance sheet (weekly) — assets from the latest portfolio snapshot (already
-  // tracks crypto/broker/bank/gold/property), debts from liabilities + property.
-  if (includeBodies) {
+  // Balance sheet — the current "state of things"; WEEKLY only (the
+  // over-the-week review, not "stuff fetched today"). Assets from the latest
+  // portfolio snapshot (already tracks crypto/broker/bank/gold/property), debts
+  // from liabilities + property.
+  if (includeState) {
     try {
       const snaps = await loadSnapshots();
       const cur = snaps[snaps.length - 1];
@@ -470,7 +476,11 @@ async function gatherFinance(afterSince: AfterSince, includeBodies: boolean): Pr
   return items;
 }
 
-async function gatherHealth(afterSince: AfterSince, includeBodies: boolean): Promise<string[]> {
+async function gatherHealth(
+  afterSince: AfterSince,
+  includeBodies: boolean,
+  includeState: boolean
+): Promise<string[]> {
   const items: string[] = [];
 
   // Apple Health daily metrics + new labs + active sickness, per active person.
@@ -538,8 +548,9 @@ async function gatherHealth(afterSince: AfterSince, includeBodies: boolean): Pro
     log.warn(`[digest] health/store failed: ${errMsg(err)}`);
   }
 
-  // Weekly deep-dive — full supplement regimen + DNA metadata (no decode).
-  if (includeBodies) {
+  // Full supplement regimen + DNA metadata (no decode) — current "state of
+  // things", WEEKLY only.
+  if (includeState) {
     try {
       const store = await loadHealthStore();
       const supps = Object.values(store.nutrition ?? {})
@@ -678,9 +689,11 @@ async function gatherDocs(
   return items;
 }
 
-// Weekly deep-dive only — the FULL text of the week's research, grouped by
-// publisher (ZeroHedge, Lyn Alden, George Gammon, political transcripts, …) so
-// the editor can actually read and synthesize the analysis, not just the titles.
+// The FULL text of research filed in-window, grouped by publisher (ZeroHedge,
+// Lyn Alden, George Gammon, political transcripts, …) so the editor can actually
+// read and synthesize the analysis, not just the titles. Runs for BOTH editions
+// — the window scopes it: the day's filings for the daily, the week's for the
+// weekly.
 async function gatherResearchDeep(afterSince: AfterSince): Promise<string[]> {
   const items: string[] = [];
   try {
@@ -712,16 +725,25 @@ export async function gatherDigest(editionType: EditionType, sinceISO: string): 
     const t = new Date(iso).getTime();
     return Number.isFinite(t) && t >= since;
   };
-  const includeBodies = editionType === 'weekly';
+  // Two independent axes of depth:
+  //  • includeBodies — the FULL TEXT of items fetched in-window (research full
+  //    text, strategy + health-analysis bodies). ON for BOTH editions so the
+  //    DAILY treats the day's fetched items with real depth, not just headlines;
+  //    the window (narrow for daily, 7d for weekly) is what scopes it.
+  //  • includeState — the current "state of things" (balance sheet, debts,
+  //    property, metals, DNA, full supplement roster). WEEKLY only — that's the
+  //    over-the-week review, not "stuff fetched that day".
+  const includeBodies = true;
+  const includeState = editionType === 'weekly';
   const t0 = Date.now();
 
   const [markets, politics, finance, health, docs, researchDeep] = await Promise.all([
     gatherMarkets(),
     gatherPolitics(afterSince),
-    gatherFinance(afterSince, includeBodies),
-    gatherHealth(afterSince, includeBodies),
+    gatherFinance(afterSince, includeBodies, includeState),
+    gatherHealth(afterSince, includeBodies, includeState),
     gatherDocs(afterSince, editionType, since),
-    includeBodies ? gatherResearchDeep(afterSince) : Promise.resolve<string[]>([]),
+    gatherResearchDeep(afterSince),
   ]);
 
   const desks: Array<[string, string[]]> = [
@@ -761,9 +783,10 @@ function buildSystem(
     `You are the editor-in-chief of "${title}", a personal daily newspaper for a single reader (the owner of this data).`,
     "You are given a structured digest of everything that changed across the owner's data since the last edition, organized by desk.",
     'Write a cohesive newspaper edition in clean markdown. Open with a one-paragraph front-page lede summarizing the single most important development. Then write one `##` section per desk, in the order given, in tight journalistic prose (not bullet dumps) — lead with what changed and why it matters, cite the specific numbers, dates, and names from the digest. Cover EVERY desk that has material (the digest is comprehensive — markets, politics, personal finance, health, research, documents); omit only a desk with genuinely no items.',
+    'When the "Research & Analysis" desk is present it carries the FULL text of newly-filed research (ZeroHedge, Lyn Alden, George Gammon, political transcripts, etc.) — actually read it and synthesize the key arguments, attributing analysts by name, rather than merely noting that a piece was filed.',
     editionType === 'weekly'
-      ? 'This is the WEEKLY DEEP-DIVE edition: be substantial and thorough. The "Research & Analysis" desk contains the FULL text of the week\'s research (ZeroHedge, Lyn Alden, George Gammon, political transcripts, etc.) — actually read it and synthesize the key arguments, attributing analysts by name. Draw connections across desks, surface the week\'s through-lines, and end with a "## The Week in Review" synthesis and a "## Looking Ahead" section. Let the length match the depth of the material — a rich week warrants a long edition.'
-      : 'This is a DAILY edition: keep it concise — a 3–5 minute read.',
+      ? 'This is the WEEKLY DEEP-DIVE, covering the whole week: be substantial and thorough. Draw connections across desks, surface the week\'s through-lines, weave in the "state of things" the digest provides (balance sheet, holdings, health baselines), and end with a "## The Week in Review" synthesis and a "## Looking Ahead" section. Let the length match the depth of the material — a rich week warrants a long edition.'
+      : "This is the DAILY edition, covering only what arrived since the last edition — the day's developments. Be substantive about that day: read and synthesize the full research filed today and report the concrete new items with their numbers and names. Keep the scope to the day — do not recap the whole week or restate standing balances (the weekly deep-dive does the week-in-review).",
     'Use ONLY facts present in the digest — do not invent data, prices, or events, and do not speculate beyond what is given. If the digest is sparse, write a short edition; never pad.',
     'Output clean markdown only — no preamble like "Here is the edition".',
     'Do NOT write your own masthead, publication name, dateline, or "Edition" header — the page already renders the title and date. Start directly with the front-page lede.',
@@ -808,19 +831,38 @@ export async function generateEdition(
   editionDate: string,
   sinceISO: string
 ): Promise<GenerateResult> {
+  const digest = await gatherDigest(editionType, sinceISO);
+  return synthesizeEdition(editionType, editionDate, sinceISO, digest);
+}
+
+/** Synthesize one edition from an ALREADY-GATHERED digest. `themeOverride`
+ *  forces a specific theme's voice + hero-image style; without it the configured
+ *  theme is used. Gathering is split out so the theme sampler can gather ONCE
+ *  and synthesize the same digest in every house style. */
+export async function synthesizeEdition(
+  editionType: EditionType,
+  editionDate: string,
+  sinceISO: string,
+  digest: Digest,
+  themeOverride?: string
+): Promise<GenerateResult> {
   const startedAt = Date.now();
-  const [{ mode, agentBackend, model, theme }, title, brain, digest] = await Promise.all([
+  const [{ mode, agentBackend, model, theme: configTheme }, title, brain] = await Promise.all([
     getDailyNewsConfig(),
     getDailyNewsTitle(),
     readBrainContent().catch(() => ''),
-    gatherDigest(editionType, sinceISO),
   ]);
+  // A sampler override wins; otherwise resolve the config theme — which turns
+  // the special 'cycle' pick into a concrete style based on the edition date.
+  const theme = themeOverride ?? resolveTheme(configTheme, editionDate);
 
   const system = buildSystem(editionType, title, brain, getThemePrompt(theme));
   const prompt = renderDigestPrompt(digest, title, formatEditionDate(editionDate));
   const backend =
     mode === 'agent' ? `agent/${agentBackend}` : `api/${model.provider}:${model.model}`;
-  log.info(`[generate] type=${editionType} backend=${backend} digestItems=${digest.itemCount}`);
+  log.info(
+    `[generate] type=${editionType} theme=${theme} backend=${backend} digestItems=${digest.itemCount}`
+  );
 
   let body: string;
   let usage: { inputTokens: number; outputTokens: number };
@@ -833,7 +875,7 @@ export async function generateEdition(
   }
 
   log.info(
-    `[generate] done type=${editionType} bodyChars=${body.length} in ${Date.now() - startedAt}ms`
+    `[generate] done type=${editionType} theme=${theme} bodyChars=${body.length} in ${Date.now() - startedAt}ms`
   );
   return {
     title,
