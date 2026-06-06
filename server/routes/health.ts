@@ -1583,9 +1583,9 @@ export async function handleHealthRoutes(
   // against the persisted FHIR JSONs in data/health/<personId>/clinical-records/.
   // No re-unzip needed (the JSONs are already extracted on disk). This is
   // cheap: ~few MB of JSON parse, ~hundreds of ms for a typical export.
-  const clinicalMatch = pathname.match(/^\/api\/health\/([^/]+)\/clinical$/);
-  if (clinicalMatch && req.method === 'GET') {
-    const personId = clinicalMatch[1];
+  const clinicalGetMatch = pathname.match(/^\/api\/health\/([^/]+)\/clinical$/);
+  if (clinicalGetMatch && req.method === 'GET') {
+    const personId = clinicalGetMatch[1];
     await requirePerson(personId);
 
     const store = await loadHealthStore();
