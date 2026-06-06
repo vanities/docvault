@@ -32,6 +32,9 @@ import {
   loadTodos,
   loadConfig,
   scanDirectory,
+  loadLiabilities,
+  loadGoldData,
+  loadPropertyData,
   DATA_DIR,
   BROKER_ACTIVITIES_FILE,
   CRYPTO_CACHE_FILE,
@@ -199,6 +202,19 @@ async function gatherMarkets(): Promise<string[]> {
         `Altcoin Season Index ${alt.indexValue}/100 (${alt.regime.replace(/-/g, ' ')}); ` +
           `BTC 90-day return ${(alt.btcReturn90d * 100).toFixed(0)}%.`
       );
+    }
+    // Prediction markets (Kalshi/Polymarket) — live cache, not daily-archived.
+    const preds = q.predictions?.data;
+    if (preds) {
+      const top = [...(preds.finance ?? []), ...(preds.politics ?? [])]
+        .filter((m) => typeof m.probability === 'number')
+        .sort((a, b) => (b.volumeUsd ?? 0) - (a.volumeUsd ?? 0))
+        .slice(0, 6);
+      for (const m of top) {
+        items.push(
+          `Prediction (${m.source}): "${m.question}" — ${Math.round(m.probability)}% yes.`
+        );
+      }
     }
   } catch (err) {
     log.warn(`[digest] markets/quant failed: ${errMsg(err)}`);
@@ -378,6 +394,79 @@ async function gatherFinance(afterSince: AfterSince, includeBodies: boolean): Pr
     log.warn(`[digest] finance/crypto failed: ${errMsg(err)}`);
   }
 
+  // Balance sheet (weekly) — assets from the latest portfolio snapshot (already
+  // tracks crypto/broker/bank/gold/property), debts from liabilities + property.
+  if (includeBodies) {
+    try {
+      const snaps = await loadSnapshots();
+      const cur = snaps[snaps.length - 1];
+      if (cur) {
+        const fmt = (n?: number) => `$${Math.round(n ?? 0).toLocaleString()}`;
+        const parts = [
+          `crypto ${fmt(cur.cryptoValue)}`,
+          `brokerage ${fmt(cur.brokerValue)}`,
+          typeof cur.bankValue === 'number' ? `bank ${fmt(cur.bankValue)}` : '',
+          typeof cur.goldValue === 'number' && cur.goldValue > 0
+            ? `metals ${fmt(cur.goldValue)}`
+            : '',
+          typeof cur.propertyValue === 'number' && cur.propertyValue > 0
+            ? `property equity ${fmt(cur.propertyValue)}`
+            : '',
+        ].filter(Boolean);
+        items.push(
+          `Balance sheet (${cur.date}): net worth ${fmt(cur.totalValue)} — ${parts.join(', ')}.`
+        );
+      }
+    } catch (err) {
+      log.warn(`[digest] finance/balance-sheet failed: ${errMsg(err)}`);
+    }
+
+    try {
+      const { entries } = await loadLiabilities();
+      const debts = entries.filter((d) => (d.balance ?? 0) > 0);
+      if (debts.length) {
+        const total = debts.reduce((s, d) => s + (d.balance ?? 0), 0);
+        const lines = debts
+          .slice(0, 8)
+          .map(
+            (d) =>
+              `${d.name} $${Math.round(d.balance).toLocaleString()} @ ${(d.rate * 100).toFixed(2)}%`
+          );
+        items.push(
+          `Debts (${debts.length}, total $${Math.round(total).toLocaleString()}): ${lines.join('; ')}.`
+        );
+      }
+    } catch (err) {
+      log.warn(`[digest] finance/liabilities failed: ${errMsg(err)}`);
+    }
+
+    // Real estate detail (weekly).
+    try {
+      const { entries } = await loadPropertyData();
+      for (const p of entries.slice(0, 4)) {
+        const mort = p.mortgage
+          ? `, mortgage $${Math.round(p.mortgage.balance).toLocaleString()}`
+          : '';
+        items.push(
+          `Property: ${p.name} valued $${Math.round(p.currentValue).toLocaleString()}${mort}.`
+        );
+      }
+    } catch (err) {
+      log.warn(`[digest] finance/property failed: ${errMsg(err)}`);
+    }
+
+    // Precious metals holdings (weekly) — count + weight, no spot fetch.
+    try {
+      const { entries } = await loadGoldData();
+      if (entries.length) {
+        const oz = entries.reduce((s, g) => s + (g.weightOz ?? 0) * (g.quantity ?? 0), 0);
+        items.push(`Precious metals: ${entries.length} holdings, ${oz.toFixed(2)} oz total.`);
+      }
+    } catch (err) {
+      log.warn(`[digest] finance/gold failed: ${errMsg(err)}`);
+    }
+  }
+
   return items;
 }
 
@@ -447,6 +536,45 @@ async function gatherHealth(afterSince: AfterSince, includeBodies: boolean): Pro
     if (activeSupps.length) items.push(`${activeSupps.length} active supplements in the regimen.`);
   } catch (err) {
     log.warn(`[digest] health/store failed: ${errMsg(err)}`);
+  }
+
+  // Weekly deep-dive — full supplement regimen + DNA metadata (no decode).
+  if (includeBodies) {
+    try {
+      const store = await loadHealthStore();
+      const supps = Object.values(store.nutrition ?? {})
+        .filter((n) => n.status === 'active')
+        .map((n) => {
+          const p = n.parsed as { productName?: string; brandName?: string } | null;
+          return p?.productName ?? p?.brandName ?? 'supplement';
+        })
+        .slice(0, 30);
+      if (supps.length) items.push(`Active supplement regimen: ${supps.join(', ')}.`);
+
+      for (const person of (store.people ?? []).filter((p) => !p.archivedAt).slice(0, 4)) {
+        try {
+          const metaRaw = await fs.readFile(
+            path.join(DATA_DIR, 'health', person.id, 'dna', 'metadata.json'),
+            'utf-8'
+          );
+          const meta = JSON.parse(metaRaw) as {
+            snpsLoaded?: number;
+            traitsFound?: number;
+            apoeGenotyped?: boolean;
+          };
+          if (meta.snpsLoaded) {
+            items.push(
+              `${person.name} DNA on file: ${meta.snpsLoaded.toLocaleString()} SNPs, ` +
+                `${meta.traitsFound ?? 0} traits${meta.apoeGenotyped ? ', APOE genotyped' : ''}.`
+            );
+          }
+        } catch {
+          /* no DNA for this person */
+        }
+      }
+    } catch (err) {
+      log.warn(`[digest] health/weekly-detail failed: ${errMsg(err)}`);
+    }
   }
 
   try {
@@ -550,6 +678,29 @@ async function gatherDocs(
   return items;
 }
 
+// Weekly deep-dive only — the FULL text of the week's research, grouped by
+// publisher (ZeroHedge, Lyn Alden, George Gammon, political transcripts, …) so
+// the editor can actually read and synthesize the analysis, not just the titles.
+async function gatherResearchDeep(afterSince: AfterSince): Promise<string[]> {
+  const items: string[] = [];
+  try {
+    const entries = (await listResearchEntries())
+      .filter((e) => afterSince(e.reportDate ? `${e.reportDate}T12:00:00` : e.uploadedAt))
+      .filter((e) => (e.text ?? '').trim().length > 0)
+      .slice(0, 20);
+    for (const e of entries) {
+      const who = e.publisher ?? e.author ?? e.domain;
+      const when = e.reportDate ?? e.uploadedAt.slice(0, 10);
+      const body = (e.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 2800);
+      items.push(`### ${e.title ?? 'Untitled'} — ${who} (${e.domain}, ${when})\n${body}`);
+    }
+    log.info(`[digest] research-deep: ${items.length} full-text entries`);
+  } catch (err) {
+    log.warn(`[digest] research-deep failed: ${errMsg(err)}`);
+  }
+  return items;
+}
+
 /** Gather the full digest across all desks, windowed by `sinceISO`. */
 export async function gatherDigest(editionType: EditionType, sinceISO: string): Promise<Digest> {
   const since = new Date(sinceISO).getTime();
@@ -564,12 +715,13 @@ export async function gatherDigest(editionType: EditionType, sinceISO: string): 
   const includeBodies = editionType === 'weekly';
   const t0 = Date.now();
 
-  const [markets, politics, finance, health, docs] = await Promise.all([
+  const [markets, politics, finance, health, docs, researchDeep] = await Promise.all([
     gatherMarkets(),
     gatherPolitics(afterSince),
     gatherFinance(afterSince, includeBodies),
     gatherHealth(afterSince, includeBodies),
     gatherDocs(afterSince, editionType, since),
+    includeBodies ? gatherResearchDeep(afterSince) : Promise.resolve<string[]>([]),
   ]);
 
   const desks: Array<[string, string[]]> = [
@@ -577,6 +729,7 @@ export async function gatherDigest(editionType: EditionType, sinceISO: string): 
     ['Politics', politics],
     ['Personal Finance & Business', finance],
     ['Health', health],
+    ['Research & Analysis', researchDeep],
     ['Documents & Deadlines', docs],
   ];
   const sections = desks
@@ -588,7 +741,7 @@ export async function gatherDigest(editionType: EditionType, sinceISO: string): 
   log.info(
     `[digest] type=${editionType} since=${sinceISO} ` +
       `markets=${markets.length} politics=${politics.length} finance=${finance.length} ` +
-      `health=${health.length} docs=${docs.length} ` +
+      `health=${health.length} research=${researchDeep.length} docs=${docs.length} ` +
       `(sections=${sections.length} items=${itemCount}) in ${Date.now() - t0}ms`
   );
   return { editionType, sinceISO, sections, itemCount, sources };
@@ -607,9 +760,9 @@ function buildSystem(
   const parts = [
     `You are the editor-in-chief of "${title}", a personal daily newspaper for a single reader (the owner of this data).`,
     "You are given a structured digest of everything that changed across the owner's data since the last edition, organized by desk.",
-    'Write a cohesive newspaper edition in clean markdown. Open with a one-paragraph front-page lede summarizing the single most important development. Then write one `##` section per desk, in the order given, in tight journalistic prose (not bullet dumps) — lead with what changed and why it matters, cite the specific numbers, dates, and names from the digest, and omit any desk with no material news.',
+    'Write a cohesive newspaper edition in clean markdown. Open with a one-paragraph front-page lede summarizing the single most important development. Then write one `##` section per desk, in the order given, in tight journalistic prose (not bullet dumps) — lead with what changed and why it matters, cite the specific numbers, dates, and names from the digest. Cover EVERY desk that has material (the digest is comprehensive — markets, politics, personal finance, health, research, documents); omit only a desk with genuinely no items.',
     editionType === 'weekly'
-      ? 'This is the WEEKLY DEEP-DIVE edition: go deeper, draw connections across desks, and end with a "## The Week in Review" synthesis and a "## Looking Ahead" section.'
+      ? 'This is the WEEKLY DEEP-DIVE edition: be substantial and thorough. The "Research & Analysis" desk contains the FULL text of the week\'s research (ZeroHedge, Lyn Alden, George Gammon, political transcripts, etc.) — actually read it and synthesize the key arguments, attributing analysts by name. Draw connections across desks, surface the week\'s through-lines, and end with a "## The Week in Review" synthesis and a "## Looking Ahead" section. Let the length match the depth of the material — a rich week warrants a long edition.'
       : 'This is a DAILY edition: keep it concise — a 3–5 minute read.',
     'Use ONLY facts present in the digest — do not invent data, prices, or events, and do not speculate beyond what is given. If the digest is sparse, write a short edition; never pad.',
     'Output clean markdown only — no preamble like "Here is the edition".',

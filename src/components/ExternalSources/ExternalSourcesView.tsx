@@ -144,9 +144,9 @@ export function ExternalSourcesView() {
   }
 
   return (
-    <div className="flex h-full min-h-0">
-      {/* Left: source picker + file list */}
-      <aside className="w-72 flex-shrink-0 border-r border-border/40 flex flex-col min-h-0">
+    <div className="flex flex-col md:flex-row h-full min-h-0">
+      {/* Left: source picker + file list — stacks on top on mobile */}
+      <aside className="w-full md:w-72 flex-shrink-0 max-h-56 md:max-h-none border-b md:border-b-0 md:border-r border-border/40 flex flex-col min-h-0">
         <div className="p-3 border-b border-border/40">
           <label className="flex items-center gap-2 text-[11px] font-semibold text-surface-600 uppercase tracking-wider mb-2">
             <GitBranch className="w-3.5 h-3.5" />
@@ -193,7 +193,7 @@ export function ExternalSourcesView() {
       </aside>
 
       {/* Right: rendered markdown */}
-      <main className="flex-1 overflow-y-auto min-h-0">
+      <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden min-h-0">
         {!selectedFile ? (
           <div className="flex items-center justify-center h-full text-surface-500 text-[13px]">
             Select a file to read it.
@@ -203,7 +203,7 @@ export function ExternalSourcesView() {
             <Loader2 className="w-5 h-5 animate-spin" />
           </div>
         ) : (
-          <article className="max-w-3xl mx-auto px-8 py-6 text-[14px] leading-relaxed text-surface-900">
+          <article className="max-w-3xl mx-auto px-4 md:px-8 py-6 text-[14px] leading-relaxed text-surface-900">
             <div className="text-[11px] font-mono text-surface-500 mb-4">{selectedFile}</div>
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
