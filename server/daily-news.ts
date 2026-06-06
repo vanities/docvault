@@ -1011,9 +1011,15 @@ function readCodexUsage(p: Record<string, unknown>): { input: number; output: nu
     return input != null || output != null ? { input: input ?? 0, output: output ?? 0 } : null;
   };
   const rec = p as Record<string, unknown>;
+  // codex v0.136 shape: params.tokenUsage.total.{inputTokens,outputTokens,...}
+  // (inputTokens already includes cachedInputTokens). Prefer the cumulative
+  // `total`; fall back through `last` and older/looser shapes.
+  const tu = (rec.tokenUsage ?? {}) as Record<string, unknown>;
   return (
-    fromObj(rec.usage) ??
+    fromObj(tu.total) ??
+    fromObj(tu.last) ??
     fromObj(rec.tokenUsage) ??
+    fromObj(rec.usage) ??
     fromObj(rec.total_token_usage) ??
     fromObj(rec.last_token_usage) ??
     fromObj(rec.info) ??
@@ -1067,9 +1073,7 @@ async function runDailyNewsCodexAgent(
         inputTokens = u.input;
         outputTokens = u.output;
       }
-      log.info(
-        `[codex] usage method=${n.method} in=${inputTokens} out=${outputTokens} raw=${JSON.stringify(p).slice(0, 300)}`
-      );
+      log.info(`[codex] tokenUsage in=${inputTokens} out=${outputTokens}`);
     } else if (n.method === 'error') {
       turnError = typeof p.message === 'string' ? p.message : 'codex error';
       log.warn(`[codex] error notification: ${turnError}`);
