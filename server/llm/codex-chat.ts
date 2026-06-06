@@ -93,7 +93,7 @@ export async function runCodexChat(opts: CodexChatOptions): Promise<void> {
     cwd,
     codexHome: opts.codexHome,
     onNotification: (n) => translateNotification(n, send, finish),
-    onServerRequest: (r) => handleServerRequest(r, opts.codexHome),
+    onServerRequest: (r) => handleCodexServerRequest(r, opts.codexHome),
     onExit: (code) => {
       if (!done && code !== 0 && code !== null) {
         send({ type: 'error', message: `codex app-server exited (code ${code})` });
@@ -190,7 +190,10 @@ function translateNotification(
  * refreshes its own auth.json via the stored refresh_token (t3code implements
  * no OAuth flow of its own), and the client just hands the tokens back.
  */
-async function handleServerRequest(r: CodexServerRequest, codexHome?: string): Promise<unknown> {
+export async function handleCodexServerRequest(
+  r: CodexServerRequest,
+  codexHome?: string
+): Promise<unknown> {
   if (r.method.endsWith('requestApproval') || r.method === 'applyPatchApproval') {
     return { decision: 'deny' };
   }
