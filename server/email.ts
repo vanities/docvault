@@ -49,6 +49,24 @@ function redactEmail(email: string): string {
   return `${user.slice(0, 1)}***@${domain.replace(/^[^.]+/, (m) => m.slice(0, 1) + '***')}`;
 }
 
+/** Split a recipients string (comma / semicolon / newline separated) into a
+ *  deduped list of addresses — lets the single `toEmail` setting hold a list of
+ *  people. Resend's `to` accepts up to 50 addresses. */
+function parseRecipients(s: string | undefined): string[] {
+  if (!s) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of s.split(/[,;\n]+/)) {
+    const addr = raw.trim();
+    const key = addr.toLowerCase();
+    if (addr && !seen.has(key)) {
+      seen.add(key);
+      out.push(addr);
+    }
+  }
+  return out;
+}
+
 /**
  * Send an email via Resend. Best-effort — never throws. Returns
  * { ok:false, error } when unconfigured or the API rejects the request.
@@ -62,13 +80,13 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     return { ok: false, error: 'No Resend API key configured' };
   }
   const from = input.from || defaultFrom(cfg.fromEmail, cfg.fromName);
-  const to = input.to || cfg.toEmail;
+  const recipients = parseRecipients(input.to ?? cfg.toEmail);
   if (!from) return { ok: false, error: 'No from address configured' };
-  if (!to) return { ok: false, error: 'No to address configured' };
+  if (!recipients.length) return { ok: false, error: 'No to address configured' };
 
   const payload: Record<string, unknown> = {
     from,
-    to: [to],
+    to: recipients,
     subject: input.subject,
     html: input.html,
   };
@@ -82,7 +100,8 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
   }
 
   log.info(
-    `[send] to=${redactEmail(to)} subject="${input.subject.slice(0, 60)}" ` +
+    `[send] to=${recipients.length} recipient(s) [${recipients.map(redactEmail).join(', ')}] ` +
+      `subject="${input.subject.slice(0, 60)}" ` +
       `attachments=${input.attachments?.length ?? 0} htmlBytes=${input.html.length}`
   );
   try {

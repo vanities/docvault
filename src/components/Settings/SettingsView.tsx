@@ -1598,10 +1598,13 @@ export function SettingsView() {
 
         {showIn(['keys']) && (
           <>
-            {/* ── AI ──────────────────────────────── */}
-            <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
-              AI
-            </p>
+            {/* The "AI" group header only adds value in the combined "All" view —
+                in the dedicated AI tab it just repeats the tab name. */}
+            {activeTab === 'all' && (
+              <p className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em] mb-2 mt-2 px-1">
+                AI
+              </p>
+            )}
 
             <AiLabsKeysSection />
             <ModelsSettingsSection />
