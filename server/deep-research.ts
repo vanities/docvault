@@ -14,6 +14,7 @@ import os from 'os';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { getClient } from './parsers/base.js';
 import { CodexAppServerClient, type CodexNotification } from './llm/codex-app-server.js';
+import { handleCodexServerRequest } from './llm/codex-chat.js';
 import {
   getDeepResearchConfig,
   getCodexChatConfig,
@@ -258,7 +259,9 @@ async function runDeepResearchCodexAgent(question: string): Promise<ResearchResu
     // Enable the native Responses web_search tool (equivalent to `codex --search`).
     extraArgs: ['-c', 'tools.web_search=true'],
     onNotification,
-    onServerRequest: () => null,
+    // Relay codex's ChatGPT auth-token refresh from auth.json (deny approvals).
+    // Returning null here makes codex fail fast with an empty turn.
+    onServerRequest: (r) => handleCodexServerRequest(r, codexHome),
     onExit: () => finish(),
   });
 

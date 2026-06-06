@@ -18,6 +18,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import { getClient } from './parsers/base.js';
 import { openaiComplete } from './llm/openai.js';
 import { CodexAppServerClient, type CodexNotification } from './llm/codex-app-server.js';
+import { handleCodexServerRequest } from './llm/codex-chat.js';
 import {
   getDailyNewsConfig,
   getDailyNewsTitle,
@@ -1006,6 +1007,7 @@ async function runDailyNewsCodexAgent(
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'docvault-dailynews-'));
 
   let body = '';
+  let turnError: string | null = null;
   let done = false;
   let resolveDone!: () => void;
   const donePromise = new Promise<void>((r) => {
@@ -1022,7 +1024,18 @@ async function runDailyNewsCodexAgent(
     const p = (n.params ?? {}) as Record<string, unknown>;
     if (n.method === 'item/agentMessage/delta') {
       if (typeof p.delta === 'string') body += p.delta;
-    } else if (n.method === 'turn/completed' || n.method === 'error') {
+    } else if (n.method === 'item/completed') {
+      // Fallback: a turn can deliver the message as one completed item rather
+      // than streamed deltas — capture it if no deltas arrived.
+      const item = (p.item ?? {}) as { type?: string; text?: string };
+      if (!body && item.type === 'agentMessage' && typeof item.text === 'string') {
+        body += item.text;
+      }
+    } else if (n.method === 'error') {
+      turnError = typeof p.message === 'string' ? p.message : 'codex error';
+      log.warn(`[codex] error notification: ${turnError}`);
+      finish();
+    } else if (n.method === 'turn/completed') {
       finish();
     }
   };
@@ -1032,8 +1045,16 @@ async function runDailyNewsCodexAgent(
     cwd,
     codexHome,
     onNotification,
-    onServerRequest: () => null,
-    onExit: () => finish(),
+    // Answer codex's server-requests — crucially the ChatGPT auth-token refresh
+    // (relayed from auth.json). Returning null here is what made codex fail fast
+    // with an empty turn; reuse the working chat path's handler.
+    onServerRequest: (r) => handleCodexServerRequest(r, codexHome),
+    onExit: (code) => {
+      if (!done && code != null && code !== 0) {
+        turnError = turnError ?? `codex app-server exited (code ${code})`;
+      }
+      finish();
+    },
   });
 
   try {
@@ -1054,15 +1075,21 @@ async function runDailyNewsCodexAgent(
   }
 
   const usage = { inputTokens: 0, outputTokens: 0 };
+  const ok = body.trim().length > 0;
   void logAiCall({
     model: 'codex-agent',
     purpose: 'daily-news',
     latencyMs: Date.now() - startedAt,
     usage,
-    ok: true,
+    ok,
     requestId: null,
-    stopReason: null,
+    stopReason: turnError,
   });
+  // An empty edition is never useful — surface it as an error instead of
+  // completing a blank paper (which would still trigger an image + email).
+  if (!ok) {
+    throw new Error(turnError ?? 'codex returned an empty edition (no text emitted)');
+  }
   return { body, usage };
 }
 
