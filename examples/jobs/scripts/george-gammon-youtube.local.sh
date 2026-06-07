@@ -3,7 +3,13 @@ set -euo pipefail
 
 DATA_DIR="${DOCVAULT_DATA_DIR:-/data}"
 JOB_ID="${DOCVAULT_JOB_ID:-george-gammon-youtube-daily}"
-SOURCE_URL="https://www.youtube.com/channel/UCpvyOqtEc86X8w8_Se0t4-w/videos"
+# George Gammon publishes to TWO channels — "George Gammon" and his main
+# "Rebel Capitalist" channel. Scrape both; the dedup below merges them so a
+# cross-posted video is only filed once.
+SOURCE_URLS=(
+  "https://www.youtube.com/channel/UCpvyOqtEc86X8w8_Se0t4-w/videos"
+  "https://www.youtube.com/channel/UCNjyEXSvYUUCzagFAKmaJ1Q/videos"
+)
 DOMAIN="finance"
 TAGS_JSON='["george-gammon","youtube","macro","finance"]'
 BASE_URL="${DOCVAULT_URL:-http://127.0.0.1:${DOCVAULT_PORT:-3005}}"
@@ -17,23 +23,34 @@ PROCESSED_URLS="$STATE_DIR/processed-source-urls.txt"
 mkdir -p "$OUT_DIR" "$(dirname "$LATEST_DIR")" "$STATE_DIR"
 touch "$PROCESSED_URLS"
 
-printf '[%s] Fetching George Gammon YouTube metadata from %s\n' "$JOB_ID" "$SOURCE_URL"
 command -v yt-dlp >/dev/null 2>&1 || { printf '[%s] ERROR: yt-dlp not found\n' "$JOB_ID" >&2; exit 127; }
-yt-dlp --ignore-errors --no-warnings --flat-playlist --playlist-end "$PLAYLIST_END" --dump-single-json "$SOURCE_URL" > "$OUT_DIR/youtube-channel.json"
-printf '%s\n' "$SOURCE_URL" > "$OUT_DIR/source-url.txt"
+CHANNEL_FILES=()
+idx=0
+for url in "${SOURCE_URLS[@]}"; do
+  cf="$OUT_DIR/youtube-channel-$idx.json"
+  printf '[%s] Fetching George Gammon YouTube metadata from %s\n' "$JOB_ID" "$url"
+  yt-dlp --ignore-errors --no-warnings --flat-playlist --playlist-end "$PLAYLIST_END" --dump-single-json "$url" > "$cf" || printf '{}' > "$cf"
+  CHANNEL_FILES+=("$cf")
+  idx=$((idx + 1))
+done
+CHANNELS_CSV="$(IFS=,; printf '%s' "${CHANNEL_FILES[*]}")"
+printf '%s\n' "${SOURCE_URLS[@]}" > "$OUT_DIR/source-url.txt"
 
 bun -e '
 const fs = require("fs");
-const [channelPath, storePath, processedPath, queuePath, limitRaw] = process.argv.slice(1);
+const [channelPathsRaw, storePath, processedPath, queuePath, limitRaw] = process.argv.slice(1);
 const limit = Number(limitRaw || 5);
 const norm = (s) => String(s || "").toLowerCase().replace(/\b(19|20)\d{2}[-/.]\d{1,2}[-/.]\d{1,2}\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
 const seenUrls = new Set();
 const seenTitles = new Set();
 try { const store = JSON.parse(fs.readFileSync(storePath, "utf8")); for (const e of Object.values(store.entries || {})) { if (e?.sourceUrl) seenUrls.add(String(e.sourceUrl)); if (e?.title) seenTitles.add(norm(e.title)); } } catch {}
 try { for (const line of fs.readFileSync(processedPath, "utf8").split(/\r?\n/)) if (line.trim()) seenUrls.add(line.trim()); } catch {}
-const channel = JSON.parse(fs.readFileSync(channelPath, "utf8"));
+const entries = [];
+for (const cp of String(channelPathsRaw).split(",").filter(Boolean)) {
+  try { const ch = JSON.parse(fs.readFileSync(cp, "utf8")); for (const e of ch.entries || []) entries.push(e); } catch {}
+}
 const rows = [];
-for (const e of channel.entries || []) {
+for (const e of entries) {
   const id = e?.id || (String(e?.url || "").match(/[?&]v=([^&]+)/) || [])[1];
   if (!id) continue;
   const url = String(e?.url || "").startsWith("http") ? String(e.url) : `https://www.youtube.com/watch?v=${id}`;
@@ -47,7 +64,7 @@ for (const e of channel.entries || []) {
 }
 fs.writeFileSync(queuePath, rows.map((r) => r.map((v) => String(v).replace(/[\t\r\n]+/g, " ")).join("\t")).join("\n") + (rows.length ? "\n" : ""));
 console.log(rows.length);
-' "$OUT_DIR/youtube-channel.json" "$DATA_DIR/.docvault-research.json" "$PROCESSED_URLS" "$OUT_DIR/new-videos.tsv" "$LIMIT" > "$OUT_DIR/new-count.txt"
+' "$CHANNELS_CSV" "$DATA_DIR/.docvault-research.json" "$PROCESSED_URLS" "$OUT_DIR/new-videos.tsv" "$LIMIT" > "$OUT_DIR/new-count.txt"
 
 SUCCESS_COUNT=0
 FAIL_COUNT=0
