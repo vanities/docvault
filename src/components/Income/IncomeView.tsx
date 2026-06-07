@@ -346,18 +346,20 @@ export function IncomeView() {
             const monthly = toMonthly(source.amount, source.frequency);
             return (
               <Card key={source.id} variant="glass" className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div
-                      className={`p-2 rounded-lg ${source.taxable ? 'bg-amber-500/10' : 'bg-emerald-500/10'}`}
+                      className={`shrink-0 p-2 rounded-lg ${source.taxable ? 'bg-amber-500/10' : 'bg-emerald-500/10'}`}
                     >
                       <DollarSign
                         className={`w-4 h-4 ${source.taxable ? 'text-amber-500' : 'text-emerald-500'}`}
                       />
                     </div>
-                    <div>
-                      <p className="text-[14px] font-medium text-surface-950">{source.name}</p>
-                      <div className="flex items-center gap-2 text-[11px] text-surface-500">
+                    <div className="min-w-0">
+                      <p className="text-[14px] font-medium text-surface-950 truncate">
+                        {source.name}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-surface-500">
                         <span>
                           {formatUsd(source.amount)}/{source.frequency}
                         </span>
@@ -376,7 +378,7 @@ export function IncomeView() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 shrink-0">
                     <p className="text-[16px] font-mono font-semibold text-surface-950 tabular-nums">
                       <Money>{formatUsd(monthly)}</Money>
                       <span className="text-[11px] text-surface-500 font-normal">/mo</span>

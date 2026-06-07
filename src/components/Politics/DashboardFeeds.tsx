@@ -96,7 +96,7 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <Card variant="glass" className="p-4 border-border/50 min-h-48">
+    <Card variant="glass" className="p-4 border-border/50 min-h-48 min-w-0">
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="flex items-center gap-2">
           <Icon className="w-4 h-4 text-surface-600" />
@@ -143,7 +143,7 @@ export function DashboardFeeds({ payload }: { payload: PoliticsFeedPayload | nul
   const filings = arr<FilingItem>((payload?.filings as { filings?: unknown } | undefined)?.filings);
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
       <Panel
         icon={Landmark}
         title="Recent bills"
