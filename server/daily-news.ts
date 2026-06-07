@@ -134,6 +134,23 @@ function last<T>(a: readonly T[] | undefined): T | undefined {
   return a && a.length ? a[a.length - 1] : undefined;
 }
 
+/** Mean of the last `n` numeric values pulled from a daily series (skips
+ *  null/undefined). Used to turn a daily metric into a weekly average so a
+ *  weekly edition reports the week, not a single (possibly atypical) day. */
+function avgLastN<T>(
+  arr: readonly T[] | undefined,
+  pick: (x: T) => number | null | undefined,
+  n = 7
+): number | undefined {
+  if (!arr?.length) return undefined;
+  const vals = arr
+    .slice(-n)
+    .map(pick)
+    .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+  if (!vals.length) return undefined;
+  return vals.reduce((s, v) => s + v, 0) / vals.length;
+}
+
 /** Most-recent per-person record from a `${personId}/${file}`-keyed store map. */
 function latestByPerson<T extends { generatedAt?: string }>(
   rec: Record<string, T> | undefined,
@@ -152,7 +169,9 @@ function latestByPerson<T extends { generatedAt?: string }>(
 // clinical store — their full types are large and versioned, so optional
 // chaining against these keeps the digest robust to schema drift.
 interface SnapMetrics {
-  activity?: { daily?: Array<{ steps?: number | null }> };
+  activity?: {
+    daily?: Array<{ date?: string; steps?: number | null; steps7dAvg?: number | null }>;
+  };
   heart?: { daily?: Array<{ restingHR?: number | null; hrv?: number | null }> };
   sleep?: { daily?: Array<{ asleepMinutes?: number | null }> };
   body?: { headline?: { currentLb?: number | null } };
@@ -178,9 +197,10 @@ interface ClinicalLabs {
   }>;
 }
 
-// Markets shows the CURRENT market state (signals, watchlist, net-worth delta),
-// so it isn't windowed by sinceISO like the other desks.
-async function gatherMarkets(): Promise<string[]> {
+// Markets shows the CURRENT market state (signals, watchlist) plus the net-worth
+// change over the edition's window (weekly = the week, daily = since the last
+// edition) — so it needs editionType + sinceISO for that delta.
+async function gatherMarkets(editionType: EditionType, sinceISO: string): Promise<string[]> {
   const items: string[] = [];
 
   // Cached quant signals — read-only, never triggers a network refresh.
@@ -197,10 +217,12 @@ async function gatherMarkets(): Promise<string[]> {
     }
     const dd = q.btcDrawdown?.data?.latest;
     if (dd) {
+      // No absolute price here — the live watchlist quote below is the single
+      // source of BTC's spot price; printing this signal's (often staler) price
+      // too produced two different BTC prices in the same edition.
       items.push(
-        `Bitcoin ${(dd.drawdown * 100).toFixed(1)}% from its all-time high ` +
-          `($${Math.round(dd.price).toLocaleString()} vs ATH $${Math.round(dd.ath).toLocaleString()}), ` +
-          `${dd.daysSinceAth}d since the peak.`
+        `Bitcoin ${Math.abs(dd.drawdown * 100).toFixed(1)}% below its all-time high ` +
+          `of $${Math.round(dd.ath).toLocaleString()}, ${dd.daysSinceAth}d past the peak.`
       );
     }
     const alt = q.altcoinSeason?.data;
@@ -248,17 +270,36 @@ async function gatherMarkets(): Promise<string[]> {
     log.warn(`[digest] markets/tickers failed: ${errMsg(err)}`);
   }
 
-  // Portfolio net-worth delta (last two snapshots).
+  // Portfolio net-worth change over the edition's WINDOW (weekly = the week,
+  // daily = since the last edition). Baseline = the first snapshot on/after the
+  // window start, NOT merely the previous snapshot — which for a weekly would
+  // report a single overnight move as the whole week's story. Starting in-window
+  // also sidesteps a pre-window data glitch (e.g. a partial-load outlier).
   try {
-    const snaps = await loadSnapshots();
-    if (snaps.length >= 2) {
-      const prev = snaps[snaps.length - 2];
-      const cur = snaps[snaps.length - 1];
-      const delta = cur.totalValue - prev.totalValue;
-      const pct = prev.totalValue ? (delta / prev.totalValue) * 100 : 0;
+    const snaps = (await loadSnapshots()).slice().sort((a, b) => a.date.localeCompare(b.date));
+    const cur = last(snaps);
+    const sinceDate = sinceISO.slice(0, 10);
+    let base = snaps.find((s) => s.date >= sinceDate);
+    // Outlier guard: a baseline wildly off its next snapshot (>25%) is almost
+    // certainly a bad snapshot (partial load) — step forward one.
+    if (base) {
+      const nxt = snaps[snaps.indexOf(base) + 1];
+      if (
+        nxt &&
+        base.totalValue > 0 &&
+        Math.abs(nxt.totalValue - base.totalValue) / base.totalValue > 0.25
+      ) {
+        base = nxt;
+      }
+    }
+    if (cur && base && base !== cur && base.totalValue > 0) {
+      const delta = cur.totalValue - base.totalValue;
+      const pct = Math.abs((delta / base.totalValue) * 100);
+      const span = editionType === 'weekly' ? 'this week' : 'since the last edition';
       items.push(
-        `Portfolio net worth ${delta >= 0 ? 'up' : 'down'} ${pct >= 0 ? '+' : ''}${pct.toFixed(1)}% ` +
-          `since ${prev.date} (latest snapshot ${cur.date}).`
+        `Portfolio net worth ${delta >= 0 ? 'up' : 'down'} ${pct.toFixed(1)}% ${span} ` +
+          `($${Math.round(base.totalValue).toLocaleString()} on ${base.date} → ` +
+          `$${Math.round(cur.totalValue).toLocaleString()} on ${cur.date}).`
       );
     }
   } catch (err) {
@@ -486,7 +527,8 @@ async function gatherFinance(
 async function gatherHealth(
   afterSince: AfterSince,
   includeBodies: boolean,
-  includeState: boolean
+  includeState: boolean,
+  editionType: EditionType
 ): Promise<string[]> {
   const items: string[] = [];
 
@@ -500,15 +542,35 @@ async function gatherHealth(
       const snap = latestByPerson(store.snapshots, person.id) as unknown as SnapMetrics | undefined;
       if (snap) {
         const bits: string[] = [];
-        const steps = last(snap.activity?.daily)?.steps;
-        const rhr = last(snap.heart?.daily)?.restingHR;
-        const hrv = last(snap.heart?.daily)?.hrv;
-        const sleepMin = last(snap.sleep?.daily)?.asleepMinutes;
+        const dailyAct = snap.activity?.daily;
+        const lastAct = last(dailyAct);
+        const healthDate = lastAct?.date ?? undefined;
+        // Stale = the latest health day predates the edition's window (no data
+        // arrived this period) — flag it instead of passing it off as current.
+        const stale = healthDate ? !afterSince(healthDate) : false;
+        // Weekly → 7-day averages (the week, not one possibly-atypical day);
+        // daily → the latest single day. A stale snapshot keeps single-day
+        // values but is labelled "as of <date>" rather than averaged.
+        const useAvg = editionType === 'weekly' && !stale;
+        const steps = useAvg
+          ? (lastAct?.steps7dAvg ?? avgLastN(dailyAct, (d) => d.steps))
+          : lastAct?.steps;
+        const rhr = useAvg
+          ? avgLastN(snap.heart?.daily, (d) => d.restingHR)
+          : last(snap.heart?.daily)?.restingHR;
+        const hrv = useAvg
+          ? avgLastN(snap.heart?.daily, (d) => d.hrv)
+          : last(snap.heart?.daily)?.hrv;
+        const sleepMin = useAvg
+          ? avgLastN(snap.sleep?.daily, (d) => d.asleepMinutes)
+          : last(snap.sleep?.daily)?.asleepMinutes;
         const lb = snap.body?.headline?.currentLb;
-        if (typeof steps === 'number') bits.push(`${steps.toLocaleString()} steps`);
-        if (typeof rhr === 'number') bits.push(`resting HR ${rhr}`);
+        if (typeof steps === 'number')
+          bits.push(`${Math.round(steps).toLocaleString()} steps${useAvg ? '/day' : ''}`);
+        if (typeof rhr === 'number') bits.push(`resting HR ${Math.round(rhr)}`);
         if (typeof hrv === 'number') bits.push(`HRV ${Math.round(hrv)}`);
-        if (typeof sleepMin === 'number') bits.push(`${(sleepMin / 60).toFixed(1)}h sleep`);
+        if (typeof sleepMin === 'number')
+          bits.push(`${(sleepMin / 60).toFixed(1)}h sleep${useAvg ? '/night' : ''}`);
         if (typeof lb === 'number') bits.push(`${Math.round(lb)} lb`);
         const w = snap.workouts?.headline;
         if (w && typeof w.thisWeekCount === 'number' && w.thisWeekCount > 0) {
@@ -518,7 +580,11 @@ async function gatherHealth(
               `${w.favoriteType ? `, mostly ${w.favoriteType}` : ''}`
           );
         }
-        if (bits.length) parts.push(bits.join(', '));
+        if (bits.length) {
+          const tag =
+            stale && healthDate ? ` (as of ${healthDate})` : useAvg ? ' (7-day avgs)' : '';
+          parts.push(bits.join(', ') + tag);
+        }
       }
 
       const clinical = latestByPerson(
@@ -764,10 +830,10 @@ export async function gatherDigest(editionType: EditionType, sinceISO: string): 
   const t0 = Date.now();
 
   const [markets, politics, finance, health, docs, researchDeep, weather] = await Promise.all([
-    gatherMarkets(),
+    gatherMarkets(editionType, sinceISO),
     gatherPolitics(afterSince),
     gatherFinance(afterSince, includeBodies, includeState),
-    gatherHealth(afterSince, includeBodies, includeState),
+    gatherHealth(afterSince, includeBodies, includeState, editionType),
     gatherDocs(afterSince, editionType, since),
     gatherResearchDeep(afterSince),
     gatherWeather(),
