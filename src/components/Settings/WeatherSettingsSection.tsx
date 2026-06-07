@@ -1,4 +1,4 @@
-// Weather location for the Daily News forecast (Open-Meteo — no API key). Type a
+// Weather location for the Newsstand forecast (Open-Meteo — no API key). Type a
 // city, look it up via keyless geocoding, and it's stored as lat/lon. A week-ahead
 // forecast box then renders in each edition.
 
@@ -113,10 +113,10 @@ export function WeatherSettingsSection() {
     <Card variant="glass" className="p-6 mb-8">
       <h3 className="text-lg font-semibold text-surface-950 flex items-center gap-2 mb-1">
         <CloudSun className="w-5 h-5" />
-        Weather (Daily News)
+        Weather (Newsstand)
       </h3>
       <p className="text-[12px] text-surface-600 mb-4">
-        Adds a week-ahead forecast box to each Daily News edition. Powered by{' '}
+        Adds a week-ahead forecast box to each Newsstand edition. Powered by{' '}
         <span className="font-medium">Open-Meteo</span> — no API key needed.
       </p>
 

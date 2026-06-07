@@ -5,6 +5,7 @@
 //   GET    /api/daily-news                    → { editions: [summary...] }   (history)
 //   GET    /api/daily-news/:id                 → the full edition
 //   GET    /api/daily-news/:id/edition.html    → downloadable newspaper HTML
+//   POST   /api/daily-news/:id/email           → email this edition on demand
 //   DELETE /api/daily-news/:id                 → remove an edition
 //   POST   /api/email/test                     → send a test email (verify Resend)
 
@@ -17,6 +18,7 @@ import {
   deleteEdition,
   type EditionType,
 } from '../daily-news-store.js';
+import { notifyEditionReady } from '../daily-news.js';
 import { renderEditionHtml, editionFilename } from '../daily-news-report.js';
 import { listThemes, THEME_CYCLE } from '../daily-news-themes.js';
 import { readEditionImage } from '../daily-news-image.js';
@@ -32,7 +34,7 @@ function localYMD(d = new Date()): string {
 
 export async function handleDailyNewsRoutes(
   req: Request,
-  _url: URL,
+  url: URL,
   pathname: string
 ): Promise<Response | null> {
   if (!pathname.startsWith('/api/daily-news') && pathname !== '/api/email/test') return null;
@@ -47,12 +49,28 @@ export async function handleDailyNewsRoutes(
     return jsonResponse(res, res.ok ? 200 : 400);
   }
 
-  // POST /api/daily-news/run — generate now, return the id immediately
+  // POST /api/daily-news/run — generate now, return the id immediately.
+  // notify:false → an on-demand edition does NOT auto-email (only scheduled
+  // editions do); the user sends it explicitly via POST /:id/email below.
   if (pathname === '/api/daily-news/run' && req.method === 'POST') {
     const body = (await req.json().catch(() => ({}))) as { editionType?: unknown };
     const editionType: EditionType = body.editionType === 'weekly' ? 'weekly' : 'daily';
-    const id = await startEdition(editionType, localYMD());
+    const id = await startEdition(editionType, localYMD(), undefined, false);
     return jsonResponse({ id, status: 'running' }, 201);
+  }
+
+  // POST /api/daily-news/:id/email — email a finished edition on demand. This is
+  // the "split out" manual send: the generate button no longer auto-emails, so
+  // this is how you push an edition to your inbox. Forces past the email.enabled
+  // AUTO-delivery toggle (the click is the intent) but still needs Resend set up.
+  const emailMatch = pathname.match(/^\/api\/daily-news\/([^/]+)\/email$/);
+  if (emailMatch && req.method === 'POST') {
+    const edition = await getEdition(emailMatch[1]);
+    if (!edition) return jsonResponse({ error: 'Edition not found' }, 404);
+    if (edition.status !== 'done') return jsonResponse({ error: 'Edition is not ready yet' }, 409);
+    const result = await notifyEditionReady(edition, { force: true });
+    if (!result.ok) return jsonResponse({ error: result.error ?? 'Send failed' }, 400);
+    return jsonResponse({ ok: true });
   }
 
   // POST /api/daily-news/sample-themes — generate one sample edition per theme
@@ -87,25 +105,29 @@ export async function handleDailyNewsRoutes(
     });
   }
 
-  // GET /api/daily-news/:id/edition.html — downloadable self-contained newspaper
+  // GET /api/daily-news/:id/edition.html — the self-contained newspaper HTML.
+  //   ?inline=1 → render in the browser (the in-app iframe + "open in new tab")
+  //   default   → Content-Disposition: attachment (the "Download HTML" button)
+  // Same render, different disposition: an `attachment` response is DOWNLOADED by
+  // the browser even inside an <iframe>, so inline viewing needs the header off.
   const htmlMatch = pathname.match(/^\/api\/daily-news\/([^/]+)\/edition\.html$/);
   if (htmlMatch && req.method === 'GET') {
     const edition = await getEdition(decodeURIComponent(htmlMatch[1]));
     if (!edition || edition.status !== 'done') {
       return jsonResponse({ error: 'no completed edition' }, 404);
     }
-    // Inline the headline image as a data URI so the download is self-contained.
+    // Inline the headline image as a data URI so the page is self-contained.
     let heroSrc: string | undefined;
     if (edition.imagePath) {
       const bytes = await readEditionImage(edition.id);
       if (bytes) heroSrc = `data:image/png;base64,${bytes.toString('base64')}`;
     }
-    return new Response(renderEditionHtml(edition, heroSrc), {
-      headers: {
-        'Content-Type': 'text/html; charset=utf-8',
-        'Content-Disposition': `attachment; filename="${editionFilename(edition)}.html"`,
-      },
-    });
+    const inline = url.searchParams.get('inline') === '1';
+    const headers: Record<string, string> = { 'Content-Type': 'text/html; charset=utf-8' };
+    if (!inline) {
+      headers['Content-Disposition'] = `attachment; filename="${editionFilename(edition)}.html"`;
+    }
+    return new Response(renderEditionHtml(edition, heroSrc), { headers });
   }
 
   // /api/daily-news/:id

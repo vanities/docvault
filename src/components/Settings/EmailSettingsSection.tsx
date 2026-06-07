@@ -1,4 +1,4 @@
-// Email (Resend) — outbound delivery for the Daily News edition. The API key is
+// Email (Resend) — outbound delivery for Newsstand editions. The API key is
 // stored encrypted server-side (walkSensitiveFields) and falls back to the
 // RESEND_API_KEY env var; this card only ever sees a "set · …1234" hint, never
 // the full key. "Send test" hits POST /api/email/test to verify config + a
@@ -109,18 +109,19 @@ export function EmailSettingsSection() {
         Email (Resend)
       </h3>
       <p className="text-[12px] text-surface-600 mb-4">
-        Delivers the Daily News edition to your inbox. The <span className="font-medium">
-          From
-        </span>{' '}
-        domain must be verified in your Resend dashboard (or use{' '}
-        <code className="font-mono">onboarding@resend.dev</code> for testing).
+        Delivers Newsstand editions to your inbox — scheduled editions send automatically when this
+        is on; you can also email any edition on demand from the Newsstand. The{' '}
+        <span className="font-medium">From</span> domain must be verified in your Resend dashboard
+        (or use <code className="font-mono">onboarding@resend.dev</code> for testing).
       </p>
 
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-[13px] font-medium text-surface-900">Enable email delivery</p>
-            <p className="text-[11px] text-surface-500">Email each edition when it's generated.</p>
+            <p className="text-[11px] text-surface-500">
+              Auto-email scheduled editions when they publish.
+            </p>
           </div>
           <button
             onClick={() => setEnabled(!enabled)}

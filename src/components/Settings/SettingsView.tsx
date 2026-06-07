@@ -2014,11 +2014,11 @@ export function SettingsView() {
                   )}
                 </div>
 
-                {/* Daily News */}
+                {/* Newsstand */}
                 <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30">
                   <div className="flex items-center justify-between mb-3">
                     <div>
-                      <p className="text-[13px] font-medium text-surface-900">Daily News</p>
+                      <p className="text-[13px] font-medium text-surface-900">Newsstand</p>
                       <p className="text-[11px] text-surface-500">
                         Auto-generate a newspaper edition every morning. Turn this on, then choose
                         the publish time and which weekday gets the deeper weekly edition. Emailed
