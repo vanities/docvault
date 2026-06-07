@@ -576,7 +576,7 @@ async function gatherHealth(
         if (w && typeof w.thisWeekCount === 'number' && w.thisWeekCount > 0) {
           bits.push(
             `${w.thisWeekCount} workout${w.thisWeekCount === 1 ? '' : 's'} this week` +
-              `${typeof w.thisWeekMinutes === 'number' ? ` (${w.thisWeekMinutes} min)` : ''}` +
+              `${typeof w.thisWeekMinutes === 'number' ? ` (${Math.round(w.thisWeekMinutes)} min)` : ''}` +
               `${w.favoriteType ? `, mostly ${w.favoriteType}` : ''}`
           );
         }
