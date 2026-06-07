@@ -7,7 +7,16 @@
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { CalendarDays, Download, ExternalLink, Loader2, Newspaper, Trash2 } from 'lucide-react';
+import {
+  CalendarDays,
+  Download,
+  ExternalLink,
+  FileText,
+  Loader2,
+  Mail,
+  Newspaper,
+  Trash2,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '../../hooks/useToast';
 import { API_BASE } from '../../constants';
@@ -112,8 +121,21 @@ function localToday(): string {
   ).padStart(2, '0')}`;
 }
 
-function editionLabel(e: { title?: string; editionType: EditionType }): string {
-  return e.title || (e.editionType === 'weekly' ? 'Weekly deep-dive' : 'Daily edition');
+/** "2026-06-07" → "Sunday, Jun 7". The noon-local parse dodges the UTC
+ *  off-by-one that makes `new Date('2026-06-07')` render as the previous day in
+ *  US timezones. Mirrors the server's formatEditionDate (which the masthead uses). */
+function formatEditionDay(ymd: string): string {
+  const d = new Date(`${ymd}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return ymd;
+  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+}
+
+// The rail label is the edition's TYPE, not its title — `title` holds the static
+// masthead/paper name ("The DocVault Dispatch"), which is identical across every
+// edition and so makes a useless list label. The date + item count sit on the
+// row's second line.
+function editionLabel(e: { editionType: EditionType }): string {
+  return e.editionType === 'weekly' ? 'Weekly deep-dive' : 'Daily edition';
 }
 
 export function DailyNewsView() {
@@ -121,6 +143,9 @@ export function DailyNewsView() {
   const [history, setHistory] = useState<EditionSummary[]>([]);
   const [active, setActive] = useState<Edition | null>(null);
   const [starting, setStarting] = useState(false);
+  const [emailing, setEmailing] = useState(false);
+  // Reader (in-app markdown) vs. Paper (the themed newspaper HTML in an iframe).
+  const [paperMode, setPaperMode] = useState(false);
   const [themeLabels, setThemeLabels] = useState<Record<string, string>>({});
   const pollRef = useRef<number | null>(null);
   const viewingRef = useRef<string | null>(null); // which edition the user is looking at
@@ -253,8 +278,26 @@ export function DailyNewsView() {
     a.click();
   };
 
+  // Email a finished edition on demand. Generating an edition no longer
+  // auto-sends it (only scheduled editions do) — this is the explicit send.
+  const emailEdition = async (id: string) => {
+    if (emailing) return;
+    setEmailing(true);
+    try {
+      const res = await fetch(`${API_BASE}/daily-news/${id}/email`, { method: 'POST' });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (res.ok) addToast('Edition emailed', 'success');
+      else addToast(data.error || 'Failed to email edition', 'error');
+    } catch {
+      addToast('Failed to email edition', 'error');
+    } finally {
+      setEmailing(false);
+    }
+  };
+
   const openNewspaper = (id: string) => {
-    window.open(`${API_BASE}/daily-news/${id}/edition.html`, '_blank', 'noopener');
+    // inline=1 → renders in the tab; without it the attachment header downloads.
+    window.open(`${API_BASE}/daily-news/${id}/edition.html?inline=1`, '_blank', 'noopener');
   };
 
   const newEdition = () => {
@@ -300,14 +343,10 @@ export function DailyNewsView() {
                     <span className="text-[9px] uppercase tracking-wide text-violet-400 flex-shrink-0">
                       sample
                     </span>
-                  ) : h.editionType === 'weekly' ? (
-                    <span className="text-[9px] uppercase tracking-wide text-amber-400 flex-shrink-0">
-                      wk
-                    </span>
                   ) : null}
                 </div>
                 <div className="text-[10px] text-surface-500 mt-0.5">
-                  {h.editionDate}
+                  {formatEditionDay(h.editionDate)}
                   {h.status === 'done' ? ` · ${h.itemCount} items` : ''}
                 </div>
               </button>
@@ -322,13 +361,14 @@ export function DailyNewsView() {
           <div className="max-w-2xl mx-auto px-8 py-10">
             <h2 className="text-xl font-semibold text-surface-950 mb-1 flex items-center gap-2">
               <Newspaper className="w-5 h-5" />
-              Daily News
+              Newsstand
             </h2>
             <p className="text-[13px] text-surface-600 mb-4">
-              A personal newspaper synthesized from everything that changed across DocVault —
-              markets, politics, your finances, health, and recent documents. Editions publish
-              automatically on a schedule (configure it in Settings → Jobs) and can be emailed to
-              you. Generate one now:
+              Your personal newspaper — daily editions and weekly deep-dives synthesized from
+              everything that changed across DocVault: markets, politics, your finances, health, and
+              recent documents. Scheduled editions (Settings → Jobs) are emailed to you
+              automatically; editions you generate here aren't sent until you hit{' '}
+              <span className="font-medium">Email</span> on them. Generate one now:
             </p>
             <div className="flex items-center gap-2">
               <Button onClick={() => void start('daily')} disabled={starting}>
@@ -359,20 +399,14 @@ export function DailyNewsView() {
             <p className="text-[12px] text-surface-500 max-w-md">{active.error}</p>
           </div>
         ) : (
-          <article className="max-w-3xl mx-auto px-8 py-6">
-            {active.imagePath && (
-              <img
-                src={`${API_BASE}/daily-news/${active.id}/image.png`}
-                alt=""
-                className="w-full max-h-72 object-cover rounded-lg mb-4"
-              />
-            )}
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <div className="text-[12px] text-surface-500">
+          <div className="flex flex-col h-full min-h-0">
+            {/* Toolbar — always visible, above either the reader or the paper view */}
+            <div className="flex items-start justify-between gap-4 px-6 md:px-8 py-3 border-b border-border/40 flex-shrink-0">
+              <div className="text-[12px] text-surface-500 min-w-0">
                 <span className="uppercase tracking-wide text-amber-400 font-semibold">
                   {active.editionType === 'weekly' ? 'Weekly deep-dive' : 'Daily edition'}
                 </span>{' '}
-                · {active.editionDate}
+                · {formatEditionDay(active.editionDate)}
                 {active.theme ? ` · ${themeLabels[active.theme] ?? active.theme}` : ''}
                 {active.sample ? ' · sample' : ''}
                 {active.digestMeta ? ` · ${active.digestMeta.itemCount} items` : ''}
@@ -381,11 +415,45 @@ export function DailyNewsView() {
                   : ''}
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
-                <Button variant="ghost" size="xs" onClick={() => openNewspaper(active.id)}>
-                  <ExternalLink className="w-3.5 h-3.5" /> Newspaper
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => setPaperMode((m) => !m)}
+                  title={
+                    paperMode
+                      ? 'Switch to the plain reader view'
+                      : 'Switch to the themed newspaper layout'
+                  }
+                >
+                  {paperMode ? (
+                    <>
+                      <FileText className="w-3.5 h-3.5" /> Reader
+                    </>
+                  ) : (
+                    <>
+                      <Newspaper className="w-3.5 h-3.5" /> Newspaper
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => openNewspaper(active.id)}
+                  title="Open the newspaper in a new tab"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
                 </Button>
                 <Button variant="ghost" size="xs" onClick={() => downloadEdition(active.id)}>
                   <Download className="w-3.5 h-3.5" /> HTML
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => void emailEdition(active.id)}
+                  disabled={emailing}
+                  title="Email this edition to the addresses in Settings → Email"
+                >
+                  <Mail className="w-3.5 h-3.5" /> {emailing ? 'Sending…' : 'Email'}
                 </Button>
                 <Button
                   variant="ghost-danger"
@@ -396,13 +464,34 @@ export function DailyNewsView() {
                 </Button>
               </div>
             </div>
-            {active.weather && <WeatherStrip w={active.weather} />}
-            <div className="text-[14px] leading-relaxed text-surface-900">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
-                {active.body ?? ''}
-              </ReactMarkdown>
-            </div>
-          </article>
+
+            {/* Body — the themed newspaper (iframe) or the in-app reader */}
+            {paperMode ? (
+              <iframe
+                title="Newspaper edition"
+                src={`${API_BASE}/daily-news/${active.id}/edition.html?inline=1`}
+                className="flex-1 w-full min-h-0 border-0 bg-white"
+              />
+            ) : (
+              <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
+                <article className="max-w-3xl mx-auto px-6 md:px-8 py-6">
+                  {active.imagePath && (
+                    <img
+                      src={`${API_BASE}/daily-news/${active.id}/image.png`}
+                      alt=""
+                      className="w-full max-h-72 object-cover rounded-lg mb-4"
+                    />
+                  )}
+                  {active.weather && <WeatherStrip w={active.weather} />}
+                  <div className="text-[14px] leading-relaxed text-surface-900">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+                      {active.body ?? ''}
+                    </ReactMarkdown>
+                  </div>
+                </article>
+              </div>
+            )}
+          </div>
         )}
       </main>
     </div>

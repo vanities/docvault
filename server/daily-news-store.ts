@@ -119,12 +119,16 @@ async function lastDoneEditionTimestamp(): Promise<string | null> {
 
 /**
  * Persist a `running` edition, fire the generator in the background, return its
- * id. On success the edition is emailed (notifyEditionReady, best-effort).
+ * id. When `notify` (default true — the scheduler's behavior), the finished
+ * edition is auto-emailed (notifyEditionReady, best-effort). The manual UI
+ * generate button passes `notify:false` so on-demand editions do NOT auto-send;
+ * the user emails them explicitly via the "Email" button (POST /:id/email).
  */
 export async function startEdition(
   editionType: EditionType,
   editionDate: string,
-  generator: Generator = generateEdition
+  generator: Generator = generateEdition,
+  notify = true
 ): Promise<string> {
   // Window: weekly always looks back 7 days; daily picks up since the last
   // completed edition (fallback 48h on a fresh install). Resolved BEFORE we
@@ -170,8 +174,10 @@ export async function startEdition(
         themeId: result.theme,
       }).catch(() => null);
       if (imagePath) await patchEdition(id, { imagePath });
-      const edition = await getEdition(id);
-      if (edition) await notifyEditionReady(edition);
+      if (notify) {
+        const edition = await getEdition(id);
+        if (edition) await notifyEditionReady(edition);
+      }
     })
     .catch(async (err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);

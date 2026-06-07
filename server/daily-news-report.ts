@@ -236,6 +236,35 @@ function renderWeatherBox(w: Edition['weather']): string {
   return `<div class="weather"><span class="wx-label">${escapeHtml(w.label)} · °${w.units}</span>${days}</div>`;
 }
 
+/** Email-safe weather row — a <table> with fully inline styles (email clients
+ *  strip <style> blocks + classes, so the class-based renderWeatherBox above
+ *  won't show; this is the same forecast laid out for the inline email body). */
+function renderWeatherEmail(w: Edition['weather'], s: ReturnType<typeof themeStyle>): string {
+  if (!w || !w.days.length) return '';
+  const cells = w.days
+    .map((d) => {
+      const day = new Date(`${d.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short' });
+      const precip =
+        d.precipPct >= 20
+          ? `<div style="color:${s.accent};font-size:10px;">${d.precipPct}%</div>`
+          : '';
+      return (
+        `<td style="text-align:center;padding:4px 6px;font-family:system-ui,sans-serif;vertical-align:top;">` +
+        `<div style="font-weight:700;color:${s.muted};text-transform:uppercase;font-size:10px;letter-spacing:.04em;">${escapeHtml(day)}</div>` +
+        `<div style="font-size:18px;line-height:1.3;">${d.emoji}</div>` +
+        `<div style="font-size:12px;color:${s.fg};white-space:nowrap;">${d.hi}°<span style="color:${s.muted};"> ${d.lo}°</span></div>` +
+        `${precip}</td>`
+      );
+    })
+    .join('');
+  return (
+    `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:4px 0 18px;border-collapse:collapse;border-top:1px solid ${s.rule};border-bottom:1px solid ${s.rule};">` +
+    `<tr><td style="font:700 11px/1 system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:${s.muted};padding:8px 6px;white-space:nowrap;vertical-align:middle;">${escapeHtml(
+      w.label
+    )} · °${w.units}</td>${cells}</tr></table>`
+  );
+}
+
 /** The full, self-contained newspaper edition (download + in-app "view as newspaper"). */
 export function renderEditionHtml(edition: Edition, heroSrc?: string): string {
   const css = buildCss(themeStyle(edition.theme));
@@ -286,6 +315,7 @@ export function renderEditionEmailHtml(edition: Edition, heroSrc?: string): stri
   <div style="font:600 12px/1 system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:${s.muted};text-align:center;margin:0 0 18px;">${escapeHtml(
     formatEditionDate(edition.editionDate)
   )} · ${editionBadge(edition)}</div>
+  ${renderWeatherEmail(edition.weather, s)}
   <div style="font-size:16px;line-height:1.6;">${body}</div>
   <p style="margin-top:28px;padding-top:16px;border-top:1px solid ${s.rule};color:${s.muted};font:13px/1.6 system-ui,sans-serif;">
     📎 The fully formatted edition is attached as an HTML file — open it for the two-column newspaper layout.<br>

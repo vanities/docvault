@@ -1185,21 +1185,33 @@ async function runDailyNewsCodexAgent(
 
 /** Email a completed edition if email is enabled. The fully-formatted edition
  *  rides along as an .html attachment; the body is an email-safe summary. */
-export async function notifyEditionReady(edition: Edition): Promise<void> {
+/**
+ * Email a finished edition. Best-effort; returns a small result so callers (the
+ * manual "Email this edition" route) can surface success/failure.
+ *
+ * `force` bypasses the `email.enabled` AUTO-delivery toggle — that toggle only
+ * governs *automatic* sends (scheduled editions). An explicit user click IS the
+ * intent, so the manual route forces past it; the send still needs a configured
+ * Resend key + recipient (sendEmail enforces that and returns a clear error).
+ */
+export async function notifyEditionReady(
+  edition: Edition,
+  opts: { force?: boolean } = {}
+): Promise<{ ok: boolean; skipped?: boolean; error?: string }> {
   let cfg;
   try {
     cfg = await getEmailConfig();
   } catch (err) {
     log.warn(`[notify] could not read email config: ${errMsg(err)}`);
-    return;
+    return { ok: false, error: 'Could not read email config' };
   }
-  if (!cfg.enabled) {
+  if (!cfg.enabled && !opts.force) {
     log.info(`[notify] skipped (email disabled) id=${edition.id}`);
-    return;
+    return { ok: false, skipped: true, error: 'Email delivery is disabled in Settings → Email' };
   }
 
   const kind = edition.editionType === 'weekly' ? 'Weekly' : 'Daily';
-  const subject = `${edition.title ?? 'Daily News'} — ${kind}, ${formatEditionDate(edition.editionDate)}`;
+  const subject = `${edition.title ?? 'Newsstand'} — ${kind}, ${formatEditionDate(edition.editionDate)}`;
 
   // Inline the headline image (if any) as a data URI so both the email body and
   // the self-contained .html attachment carry it.
@@ -1219,6 +1231,10 @@ export async function notifyEditionReady(edition: Edition): Promise<void> {
     html: renderEditionEmailHtml(edition, heroSrc),
     attachments: [attachment],
   });
-  if (res.ok) log.info(`[notify] emailed id=${edition.id} resendId=${res.id ?? '?'}`);
-  else log.warn(`[notify] email failed id=${edition.id}: ${res.error}`);
+  if (res.ok) {
+    log.info(`[notify] emailed id=${edition.id} resendId=${res.id ?? '?'}`);
+    return { ok: true };
+  }
+  log.warn(`[notify] email failed id=${edition.id}: ${res.error}`);
+  return { ok: false, error: res.error };
 }

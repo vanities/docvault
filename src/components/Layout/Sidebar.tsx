@@ -734,7 +734,7 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
             />
             <NavButton
               view="daily-news"
-              label="Daily News"
+              label="Newsstand"
               icon={Newspaper}
               activeColor="bg-amber-500/10"
               activeTextColor="text-amber-400"

@@ -325,12 +325,12 @@ export function ModelsSettingsSection() {
           )}
         </div>
 
-        {/* Daily News engine — same three-way choice as Deep Research, but no
+        {/* Newsstand engine — same three-way choice as Deep Research, but no
             web search (it synthesizes your own data), so any provider works. */}
         <div className="pt-3 border-t border-border/30">
           <label className="flex items-center gap-2 text-[13px] font-medium text-surface-800 mb-1">
             <Newspaper className="w-4 h-4" />
-            Daily News
+            Newsstand
             <span className="font-normal text-surface-500">(how the newspaper is written)</span>
           </label>
           <select
@@ -350,7 +350,7 @@ export function ModelsSettingsSection() {
                 models={modelsByProvider}
               />
               <p className="text-[11px] text-surface-500 mt-1">
-                Daily News synthesizes your own data (no web search), so any provider works here.
+                Newsstand synthesizes your own data (no web search), so any provider works here.
               </p>
             </div>
           ) : (
