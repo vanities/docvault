@@ -73,7 +73,7 @@ function SignalGrid({ signals }: { signals: StrategySignals }) {
   const entries = Object.entries(signals).filter(([, v]) => v != null);
   if (entries.length === 0) return null;
   return (
-    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 mt-3">
+    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2 mt-3">
       {entries.map(([key, val]) => {
         const meta = SIGNAL_META[key];
         const label = meta?.label ?? key;
@@ -87,7 +87,7 @@ function SignalGrid({ signals }: { signals: StrategySignals }) {
             <div className="text-[9px] text-surface-700 uppercase tracking-wider font-medium">
               {label}
             </div>
-            <div className={`text-[12px] font-bold font-mono leading-tight ${color}`}>
+            <div className={`text-[12px] font-bold font-mono leading-tight break-words ${color}`}>
               {formatted}
             </div>
           </div>
