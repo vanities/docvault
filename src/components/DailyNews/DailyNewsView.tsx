@@ -400,8 +400,10 @@ export function DailyNewsView() {
           </div>
         ) : (
           <div className="flex flex-col h-full min-h-0">
-            {/* Toolbar — always visible, above either the reader or the paper view */}
-            <div className="flex items-start justify-between gap-4 px-6 md:px-8 py-3 border-b border-border/40 flex-shrink-0">
+            {/* Toolbar — always visible, above either the reader or the paper view.
+                Stacks vertically on mobile so the metadata line gets full width
+                instead of being squeezed into a narrow column by the buttons. */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4 px-4 md:px-8 py-3 border-b border-border/40 flex-shrink-0">
               <div className="text-[12px] text-surface-500 min-w-0">
                 <span className="uppercase tracking-wide text-amber-400 font-semibold">
                   {active.editionType === 'weekly' ? 'Weekly deep-dive' : 'Daily edition'}
@@ -414,7 +416,7 @@ export function DailyNewsView() {
                   ? ` · ${active.usage.inputTokens.toLocaleString()} in / ${active.usage.outputTokens.toLocaleString()} out`
                   : ''}
               </div>
-              <div className="flex items-center gap-1 flex-shrink-0">
+              <div className="flex items-center flex-wrap gap-1 flex-shrink-0">
                 <Button
                   variant="ghost"
                   size="xs"

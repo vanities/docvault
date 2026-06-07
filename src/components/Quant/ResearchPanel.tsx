@@ -643,8 +643,8 @@ export function ResearchPanel({
       </div>
       {/* Ingest card — toggle between uploading a PDF and pasting raw text. */}
       <Card variant="glass" className="mb-6">
-        {/* Mode toggle */}
-        <div className="flex gap-1 px-4 pt-4">
+        {/* Mode toggle — wraps on narrow screens so the last option isn't clipped */}
+        <div className="flex flex-wrap gap-1 px-4 pt-4">
           {(['pdf', 'text', 'youtube', 'video'] as const).map((m) => {
             const active = mode === m;
             const Icon =
@@ -661,7 +661,7 @@ export function ResearchPanel({
               <button
                 key={m}
                 onClick={() => setMode(m)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium whitespace-nowrap transition-colors ${
                   active
                     ? 'bg-surface-200/50 text-surface-950'
                     : 'text-surface-600 hover:text-surface-800'
