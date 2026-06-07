@@ -135,8 +135,8 @@ export function SegmentViewShell<S extends HealthSegment>({
   // Header (common to all states)
   // --------------------------------------------------------------------
   const header = (
-    <div className="flex items-center justify-between mb-6">
-      <div className="flex items-center gap-3">
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-6">
+      <div className="flex items-center gap-3 min-w-0">
         <Button
           variant="ghost"
           size="sm"
@@ -149,7 +149,7 @@ export function SegmentViewShell<S extends HealthSegment>({
         <div className={`w-10 h-10 rounded-lg ${bgClass} flex items-center justify-center`}>
           <Icon className={`w-5 h-5 ${textClass}`} />
         </div>
-        <div>
+        <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl italic text-surface-950">{title}</h1>
           {subtitle && <p className="text-xs text-surface-600">{subtitle}</p>}
         </div>

@@ -523,19 +523,19 @@ export function DebtsView() {
                 const typeLabel = TYPE_OPTIONS.find((t) => t.value === e.type)?.label || e.type;
                 return (
                   <Card key={e.id} variant="glass" className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-rose-500/10">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="p-2 rounded-lg bg-rose-500/10 shrink-0">
                           <CreditCard className="w-4 h-4 text-rose-500" />
                         </div>
-                        <div>
-                          <p className="text-[14px] font-medium text-surface-950">
+                        <div className="min-w-0">
+                          <p className="text-[14px] font-medium text-surface-950 truncate">
                             {e.name}
                             {e.lender && (
                               <span className="text-surface-500 font-normal"> · {e.lender}</span>
                             )}
                           </p>
-                          <div className="flex items-center gap-2 text-[11px] text-surface-500">
+                          <div className="flex flex-wrap items-center gap-2 text-[11px] text-surface-500">
                             <span className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-surface-200 text-surface-700">
                               {typeLabel}
                             </span>
@@ -550,7 +550,7 @@ export function DebtsView() {
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 shrink-0">
                         <div className="text-right">
                           <p className="text-[16px] font-mono font-semibold text-surface-950 tabular-nums">
                             <Money>{formatUsd(e.balance)}</Money>
