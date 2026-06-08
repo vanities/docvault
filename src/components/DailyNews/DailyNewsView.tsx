@@ -51,9 +51,18 @@ interface WeatherForecast {
   units: 'F' | 'C';
   days: WeatherDay[];
 }
+interface SourceWarning {
+  source: string;
+  message: string;
+}
 interface Edition extends EditionSummary {
   body?: string;
-  digestMeta?: { sources: string[]; sinceISO: string; itemCount: number };
+  digestMeta?: {
+    sources: string[];
+    sinceISO: string;
+    itemCount: number;
+    sourceWarnings?: SourceWarning[];
+  };
   usage?: { inputTokens: number; outputTokens: number };
   imagePath?: string;
   weather?: WeatherForecast;
@@ -466,6 +475,21 @@ export function DailyNewsView() {
                 </Button>
               </div>
             </div>
+
+            {active.digestMeta?.sourceWarnings?.length ? (
+              <div className="mx-4 md:mx-8 mt-3 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-900 dark:text-amber-100 flex-shrink-0">
+                <div className="font-semibold uppercase tracking-wide text-[10px] text-amber-600 dark:text-amber-300 mb-1">
+                  Source notes
+                </div>
+                <ul className="space-y-0.5">
+                  {active.digestMeta.sourceWarnings.map((w) => (
+                    <li key={`${w.source}-${w.message}`}>
+                      <span className="font-medium">{w.source}</span>: {w.message}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
             {/* Body — the themed newspaper (iframe) or the in-app reader */}
             {paperMode ? (

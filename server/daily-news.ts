@@ -44,7 +44,7 @@ import {
   type ModelRef,
 } from './data.js';
 import { fetchWeekForecast, forecastToLines, type WeatherForecast } from './weather.js';
-import { listResearchEntries } from './routes/research.js';
+import { listResearchEntries, type ResearchEntry } from './routes/research.js';
 import { getLatestStrategy } from './routes/strategy.js';
 import { getLatestHealthAnalysis } from './routes/health-analysis.js';
 import { loadHealthStore } from './health-store.js';
@@ -73,11 +73,28 @@ const MAX_OUTPUT_TOKENS = 8192;
 
 const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
+type WarningSink = (source: string, err: unknown) => void;
+
+function emitDigestWarning(warn: WarningSink | undefined, source: string, err: unknown): void {
+  if (warn) {
+    warn(source, err);
+    return;
+  }
+  log.warn(`[digest] ${source} failed: ${errMsg(err)}`);
+}
+
 export interface DigestSection {
   /** The desk heading, e.g. "Markets & Macro". */
   desk: string;
   /** Pre-summarized bullet strings — the LLM does editorial synthesis, not parsing. */
   items: string[];
+}
+
+export interface DigestSourceWarning {
+  /** Stable source id, e.g. "politics/feed" or "research/full-text". */
+  source: string;
+  /** User-safe failure note; no secrets, stack traces, or raw payloads. */
+  message: string;
 }
 
 export interface Digest {
@@ -87,6 +104,8 @@ export interface Digest {
   itemCount: number;
   /** Desk names that contributed at least one item. */
   sources: string[];
+  /** Ingestion/cache failures that were skipped while composing this edition. */
+  sourceWarnings: DigestSourceWarning[];
   /** Week-ahead forecast for the rendered weather box (Open-Meteo); optional. */
   weather?: WeatherForecast;
 }
@@ -97,7 +116,12 @@ export interface GenerateResult {
   /** Theme id used — passed to the store so it can render a matching hero image. */
   theme: string;
   usage: { inputTokens: number; outputTokens: number };
-  digestMeta: { sources: string[]; sinceISO: string; itemCount: number };
+  digestMeta: {
+    sources: string[];
+    sinceISO: string;
+    itemCount: number;
+    sourceWarnings?: DigestSourceWarning[];
+  };
   /** Forecast carried through so the renderer can draw the weather box. */
   weather?: WeatherForecast;
 }
@@ -200,7 +224,11 @@ interface ClinicalLabs {
 // Markets shows the CURRENT market state (signals, watchlist) plus the net-worth
 // change over the edition's window (weekly = the week, daily = since the last
 // edition) — so it needs editionType + sinceISO for that delta.
-async function gatherMarkets(editionType: EditionType, sinceISO: string): Promise<string[]> {
+async function gatherMarkets(
+  editionType: EditionType,
+  sinceISO: string,
+  warn?: WarningSink
+): Promise<string[]> {
   const items: string[] = [];
 
   // Cached quant signals — read-only, never triggers a network refresh.
@@ -246,7 +274,7 @@ async function gatherMarkets(editionType: EditionType, sinceISO: string): Promis
       }
     }
   } catch (err) {
-    log.warn(`[digest] markets/quant failed: ${errMsg(err)}`);
+    emitDigestWarning(warn, 'markets/quant', err);
   }
 
   // Watchlist — symbols tagged on finance research entries (cache-first quotes).
@@ -267,7 +295,7 @@ async function gatherMarkets(editionType: EditionType, sinceISO: string): Promis
       if (movers.length) items.push(`Watchlist: ${movers.join(', ')}.`);
     }
   } catch (err) {
-    log.warn(`[digest] markets/tickers failed: ${errMsg(err)}`);
+    emitDigestWarning(warn, 'markets/tickers', err);
   }
 
   // Portfolio net-worth change over the edition's WINDOW (weekly = the week,
@@ -303,19 +331,19 @@ async function gatherMarkets(editionType: EditionType, sinceISO: string): Promis
       );
     }
   } catch (err) {
-    log.warn(`[digest] markets/snapshots failed: ${errMsg(err)}`);
+    emitDigestWarning(warn, 'markets/snapshots', err);
   }
 
   return items;
 }
 
-async function gatherPolitics(afterSince: AfterSince): Promise<string[]> {
+async function gatherPolitics(afterSince: AfterSince, warn?: WarningSink): Promise<string[]> {
   const items: string[] = [];
   try {
     const feed = await loadPoliticsFeedPayload();
-    const bills = ((feed.bills as BillRecord[] | undefined) ?? [])
-      .filter((b) => afterSince(b.latestActionDate ?? b.introducedDate ?? b.updateDate))
-      .slice(0, 8);
+    const bills = ((feed.bills as BillRecord[] | undefined) ?? []).filter((b) =>
+      afterSince(b.latestActionDate ?? b.introducedDate ?? b.updateDate)
+    );
     for (const b of bills) {
       const parts = [`${b.officialId}: ${b.title}`];
       if (b.latestAction) parts.push(`Action: ${b.latestAction}`);
@@ -323,16 +351,16 @@ async function gatherPolitics(afterSince: AfterSince): Promise<string[]> {
         parts.push(`CRS summary: ${b.summary.replace(/\s+/g, ' ').trim().slice(0, 900)}`);
       items.push(`${parts.join(' — ')}.`);
     }
-    const eos = ((feed.executiveActions as ExecutiveActionRecord[] | undefined) ?? [])
-      .filter((a) => afterSince(a.issuedDate))
-      .slice(0, 6);
+    const eos = ((feed.executiveActions as ExecutiveActionRecord[] | undefined) ?? []).filter((a) =>
+      afterSince(a.issuedDate)
+    );
     for (const a of eos) {
       items.push(`${a.type.replace(/_/g, ' ')}: ${a.title} (${a.issuedDate}).`);
     }
-    const trades = ((feed.trades as { trades?: TradeRecord[] } | undefined)?.trades ?? [])
-      .filter((t) => afterSince(t.filingDate ?? t.tradeDate))
-      .slice(0, 12);
-    for (const t of trades) {
+    const trades = (feed.trades as { trades?: TradeRecord[] } | TradeRecord[] | undefined) ?? [];
+    const tradeList = Array.isArray(trades) ? trades : (trades.trades ?? []);
+    const recentTrades = tradeList.filter((t) => afterSince(t.filingDate ?? t.tradeDate));
+    for (const t of recentTrades) {
       items.push(
         `${t.politicianName} (${t.chamber}) ${t.category} ${t.ticker ?? t.assetName}` +
           `${t.amount ? ` ${t.amount}` : ''} — traded ${t.tradeDate}` +
@@ -340,7 +368,7 @@ async function gatherPolitics(afterSince: AfterSince): Promise<string[]> {
       );
     }
   } catch (err) {
-    log.warn(`[digest] politics failed: ${errMsg(err)}`);
+    emitDigestWarning(warn, 'politics/feed', err);
   }
   return items;
 }
@@ -348,7 +376,8 @@ async function gatherPolitics(afterSince: AfterSince): Promise<string[]> {
 async function gatherFinance(
   afterSince: AfterSince,
   includeBodies: boolean,
-  includeState: boolean
+  includeState: boolean,
+  warn?: WarningSink
 ): Promise<string[]> {
   const items: string[] = [];
 
@@ -367,7 +396,7 @@ async function gatherFinance(
       );
     }
   } catch (err) {
-    log.warn(`[digest] finance/sales failed: ${errMsg(err)}`);
+    emitDigestWarning(warn, 'finance/sales', err);
   }
 
   try {
@@ -381,7 +410,7 @@ async function gatherFinance(
       );
     }
   } catch (err) {
-    log.warn(`[digest] finance/mileage failed: ${errMsg(err)}`);
+    emitDigestWarning(warn, 'finance/mileage', err);
   }
 
   try {
@@ -391,7 +420,7 @@ async function gatherFinance(
       if (includeBodies) items.push(strat.body);
     }
   } catch (err) {
-    log.warn(`[digest] finance/strategy failed: ${errMsg(err)}`);
+    emitDigestWarning(warn, 'finance/strategy', err);
   }
 
   // Broker activity — recent trades/dividends (read the activities cache directly).
@@ -423,7 +452,7 @@ async function gatherFinance(
       );
     }
   } catch (err) {
-    log.warn(`[digest] finance/broker-activity failed: ${errMsg(err)}`);
+    emitDigestWarning(warn, 'finance/broker-activity', err);
   }
 
   // Crypto holdings snapshot (balances — no in-process tx history; the Markets
@@ -447,7 +476,7 @@ async function gatherFinance(
       );
     }
   } catch (err) {
-    log.warn(`[digest] finance/crypto failed: ${errMsg(err)}`);
+    emitDigestWarning(warn, 'finance/crypto', err);
   }
 
   // Balance sheet — the current "state of things"; WEEKLY only (the
@@ -476,7 +505,7 @@ async function gatherFinance(
         );
       }
     } catch (err) {
-      log.warn(`[digest] finance/balance-sheet failed: ${errMsg(err)}`);
+      emitDigestWarning(warn, 'finance/balance-sheet', err);
     }
 
     try {
@@ -495,7 +524,7 @@ async function gatherFinance(
         );
       }
     } catch (err) {
-      log.warn(`[digest] finance/liabilities failed: ${errMsg(err)}`);
+      emitDigestWarning(warn, 'finance/liabilities', err);
     }
 
     // Real estate detail (weekly).
@@ -510,7 +539,7 @@ async function gatherFinance(
         );
       }
     } catch (err) {
-      log.warn(`[digest] finance/property failed: ${errMsg(err)}`);
+      emitDigestWarning(warn, 'finance/property', err);
     }
 
     // Precious metals holdings (weekly) — count + weight, no spot fetch.
@@ -521,7 +550,7 @@ async function gatherFinance(
         items.push(`Precious metals: ${entries.length} holdings, ${oz.toFixed(2)} oz total.`);
       }
     } catch (err) {
-      log.warn(`[digest] finance/gold failed: ${errMsg(err)}`);
+      emitDigestWarning(warn, 'finance/gold', err);
     }
   }
 
@@ -532,7 +561,8 @@ async function gatherHealth(
   afterSince: AfterSince,
   includeBodies: boolean,
   includeState: boolean,
-  editionType: EditionType
+  editionType: EditionType,
+  warn?: WarningSink
 ): Promise<string[]> {
   const items: string[] = [];
 
@@ -622,7 +652,7 @@ async function gatherHealth(
     const activeSupps = Object.values(store.nutrition ?? {}).filter((n) => n.status === 'active');
     if (activeSupps.length) items.push(`${activeSupps.length} active supplements in the regimen.`);
   } catch (err) {
-    log.warn(`[digest] health/store failed: ${errMsg(err)}`);
+    emitDigestWarning(warn, 'health/store', err);
   }
 
   // Full supplement regimen + DNA metadata (no decode) — current "state of
@@ -661,7 +691,7 @@ async function gatherHealth(
         }
       }
     } catch (err) {
-      log.warn(`[digest] health/weekly-detail failed: ${errMsg(err)}`);
+      emitDigestWarning(warn, 'health/weekly-detail', err);
     }
   }
 
@@ -672,7 +702,7 @@ async function gatherHealth(
       if (includeBodies) items.push(ha.body);
     }
   } catch (err) {
-    log.warn(`[digest] health/analysis failed: ${errMsg(err)}`);
+    emitDigestWarning(warn, 'health/analysis', err);
   }
 
   return items;
@@ -681,16 +711,17 @@ async function gatherHealth(
 async function gatherDocs(
   afterSince: AfterSince,
   editionType: EditionType,
-  sinceMs: number
+  sinceMs: number,
+  warn?: WarningSink
 ): Promise<string[]> {
   const items: string[] = [];
 
   // New research filed (any domain) — with a one-line intelligence snippet.
   try {
     const entries = await listResearchEntries();
-    const recent = entries
-      .filter((e) => afterSince(e.reportDate ? `${e.reportDate}T12:00:00` : e.uploadedAt))
-      .slice(0, 14);
+    const recent = entries.filter((e) =>
+      afterSince(e.reportDate ? `${e.reportDate}T12:00:00` : e.uploadedAt)
+    );
     for (const e of recent) {
       const snippet = e.intelligence?.summary?.[0]?.text;
       items.push(
@@ -699,7 +730,7 @@ async function gatherDocs(
       );
     }
   } catch (err) {
-    log.warn(`[digest] docs/research failed: ${errMsg(err)}`);
+    emitDigestWarning(warn, 'docs/research', err);
   }
 
   // Documents uploaded recently across EVERY entity (tax docs, receipts, etc.).
@@ -713,35 +744,30 @@ async function gatherDocs(
       }
     }
     if (fileLines.length) {
-      items.push(
-        `${fileLines.length} document(s) uploaded: ${fileLines.slice(0, 8).join(', ')}` +
-          `${fileLines.length > 8 ? ', …' : ''}.`
-      );
+      items.push(`${fileLines.length} document(s) uploaded: ${fileLines.join(', ')}.`);
     }
   } catch (err) {
-    log.warn(`[digest] docs/files failed: ${errMsg(err)}`);
+    emitDigestWarning(warn, 'docs/files', err);
   }
 
   // Deep Research reports finished in the window.
   try {
     const runs = await listRuns();
-    const done = runs
-      .filter((r) => r.status === 'done' && afterSince(r.completedAt ?? r.createdAt))
-      .slice(0, 5);
+    const done = runs.filter(
+      (r) => r.status === 'done' && afterSince(r.completedAt ?? r.createdAt)
+    );
     for (const r of done) items.push(`Deep Research completed: ${r.question}.`);
   } catch (err) {
-    log.warn(`[digest] docs/deep-research failed: ${errMsg(err)}`);
+    emitDigestWarning(warn, 'docs/deep-research', err);
   }
 
   // Open to-dos touched recently.
   try {
     const todos = await loadTodos();
-    const recent = todos
-      .filter((t) => t.status === 'pending' && afterSince(t.updatedAt))
-      .slice(0, 8);
+    const recent = todos.filter((t) => t.status === 'pending' && afterSince(t.updatedAt));
     for (const t of recent) items.push(`To-do: ${t.title}.`);
   } catch (err) {
-    log.warn(`[digest] docs/todos failed: ${errMsg(err)}`);
+    emitDigestWarning(warn, 'docs/todos', err);
   }
 
   // Upcoming reminders / deadlines.
@@ -756,11 +782,10 @@ async function gatherDocs(
         const t = new Date(`${r.dueDate}T12:00:00`).getTime();
         return Number.isFinite(t) && t >= now - 24 * 60 * 60 * 1000 && t <= cutoff;
       })
-      .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-      .slice(0, 10);
+      .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
     for (const r of due) items.push(`Due ${r.dueDate}: ${r.title}.`);
   } catch (err) {
-    log.warn(`[digest] docs/reminders failed: ${errMsg(err)}`);
+    emitDigestWarning(warn, 'docs/reminders', err);
   }
 
   return items;
@@ -771,30 +796,44 @@ async function gatherDocs(
 // read and synthesize the analysis, not just the titles. Runs for BOTH editions
 // — the window scopes it: the day's filings for the daily, the week's for the
 // weekly.
-async function gatherResearchDeep(afterSince: AfterSince): Promise<string[]> {
-  const items: string[] = [];
+export function buildResearchDigestItems(
+  entries: ResearchEntry[],
+  afterSince: AfterSince,
+  opts: { maxChars?: number } = {}
+): string[] {
+  const eligible = entries
+    .filter((e) => afterSince(e.reportDate ? `${e.reportDate}T12:00:00` : e.uploadedAt))
+    .filter((e) => (e.text ?? '').trim().length > 0);
+  if (!eligible.length) return [];
+
+  const maxChars = opts.maxChars ?? 70_000;
+  const charsPerEntry = Math.max(350, Math.min(2800, Math.floor(maxChars / eligible.length)));
+  return eligible.map((e) => {
+    const who = e.publisher ?? e.author ?? e.domain;
+    const when = e.reportDate ?? e.uploadedAt.slice(0, 10);
+    const clean = (e.text ?? '').replace(/\s+/g, ' ').trim();
+    const clipped = clean.length > charsPerEntry;
+    const body = clean.slice(0, charsPerEntry);
+    const suffix = clipped ? ' … [excerpt truncated; source text remains in Research]' : '';
+    return `### ${e.title ?? 'Untitled'} — ${who} (${e.domain}, ${when})\n${body}${suffix}`;
+  });
+}
+
+async function gatherResearchDeep(afterSince: AfterSince, warn?: WarningSink): Promise<string[]> {
   try {
-    const entries = (await listResearchEntries())
-      .filter((e) => afterSince(e.reportDate ? `${e.reportDate}T12:00:00` : e.uploadedAt))
-      .filter((e) => (e.text ?? '').trim().length > 0)
-      .slice(0, 20);
-    for (const e of entries) {
-      const who = e.publisher ?? e.author ?? e.domain;
-      const when = e.reportDate ?? e.uploadedAt.slice(0, 10);
-      const body = (e.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 2800);
-      items.push(`### ${e.title ?? 'Untitled'} — ${who} (${e.domain}, ${when})\n${body}`);
-    }
+    const items = buildResearchDigestItems(await listResearchEntries(), afterSince);
     log.info(`[digest] research-deep: ${items.length} full-text entries`);
+    return items;
   } catch (err) {
-    log.warn(`[digest] research-deep failed: ${errMsg(err)}`);
+    emitDigestWarning(warn, 'research/full-text', err);
+    return [];
   }
-  return items;
 }
 
 /** Week-ahead forecast for the configured location (Open-Meteo); null when
  *  weather is disabled/unconfigured or the fetch fails. Not windowed by sinceISO
  *  — it's a forward forecast, the same in daily and weekly editions. */
-async function gatherWeather(): Promise<WeatherForecast | null> {
+async function gatherWeather(warn?: WarningSink): Promise<WeatherForecast | null> {
   try {
     const cfg = await getWeatherConfig();
     if (!cfg.enabled || cfg.latitude == null || cfg.longitude == null) return null;
@@ -805,7 +844,7 @@ async function gatherWeather(): Promise<WeatherForecast | null> {
       units: cfg.units,
     });
   } catch (err) {
-    log.warn(`[digest] weather failed: ${errMsg(err)}`);
+    emitDigestWarning(warn, 'weather', err);
     return null;
   }
 }
@@ -831,16 +870,22 @@ export async function gatherDigest(editionType: EditionType, sinceISO: string): 
   //    over-the-week review, not "stuff fetched that day".
   const includeBodies = true;
   const includeState = editionType === 'weekly';
+  const sourceWarnings: DigestSourceWarning[] = [];
+  const warn: WarningSink = (source, err) => {
+    const message = errMsg(err).replace(/\s+/g, ' ').trim().slice(0, 240) || 'unknown error';
+    sourceWarnings.push({ source, message });
+    log.warn(`[digest] ${source} failed: ${message}`);
+  };
   const t0 = Date.now();
 
   const [markets, politics, finance, health, docs, researchDeep, weather] = await Promise.all([
-    gatherMarkets(editionType, sinceISO),
-    gatherPolitics(afterSince),
-    gatherFinance(afterSince, includeBodies, includeState),
-    gatherHealth(afterSince, includeBodies, includeState, editionType),
-    gatherDocs(afterSince, editionType, since),
-    gatherResearchDeep(afterSince),
-    gatherWeather(),
+    gatherMarkets(editionType, sinceISO, warn),
+    gatherPolitics(afterSince, warn),
+    gatherFinance(afterSince, includeBodies, includeState, warn),
+    gatherHealth(afterSince, includeBodies, includeState, editionType, warn),
+    gatherDocs(afterSince, editionType, since, warn),
+    gatherResearchDeep(afterSince, warn),
+    gatherWeather(warn),
   ]);
 
   const desks: Array<[string, string[]]> = [
@@ -864,7 +909,15 @@ export async function gatherDigest(editionType: EditionType, sinceISO: string): 
       `weather=${weather ? `${weather.days.length}d` : 'off'} ` +
       `(sections=${sections.length} items=${itemCount}) in ${Date.now() - t0}ms`
   );
-  return { editionType, sinceISO, sections, itemCount, sources, weather: weather ?? undefined };
+  return {
+    editionType,
+    sinceISO,
+    sections,
+    itemCount,
+    sources,
+    sourceWarnings,
+    weather: weather ?? undefined,
+  };
 }
 
 // ===========================================================================
@@ -989,7 +1042,12 @@ export async function synthesizeEdition(
     body: body.trim(),
     theme,
     usage,
-    digestMeta: { sources: digest.sources, sinceISO, itemCount: digest.itemCount },
+    digestMeta: {
+      sources: digest.sources,
+      sinceISO,
+      itemCount: digest.itemCount,
+      sourceWarnings: digest.sourceWarnings,
+    },
     weather: digest.weather,
   };
 }

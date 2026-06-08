@@ -35,6 +35,28 @@ describe('daily-news-report', () => {
     expect(html).toContain('<a href="#markets-macro">Markets &amp; Macro</a>');
   });
 
+  test('renders source warning notes at the end of full and email renders', () => {
+    const withWarnings = {
+      ...edition('## Main\n\nBody'),
+      digestMeta: {
+        sources: ['Markets & Macro'],
+        sinceISO: '2026-06-05T00:00:00.000Z',
+        itemCount: 1,
+        sourceWarnings: [
+          { source: 'politics/feed', message: 'cache unavailable' },
+          { source: 'weather', message: 'forecast failed' },
+        ],
+      },
+    };
+
+    for (const html of [renderEditionHtml(withWarnings), renderEditionEmailHtml(withWarnings)]) {
+      expect(html).toContain('Source notes');
+      expect(html).toContain('politics/feed');
+      expect(html).toContain('cache unavailable');
+      expect(html).toContain('weather');
+    }
+  });
+
   test('strips unsafe HTML from the markdown body in full and email renders', () => {
     const body = [
       '## Safe headline',
