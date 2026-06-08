@@ -197,12 +197,20 @@ export interface Settings {
     politicsRefreshEnabled?: boolean;
     /**
      * Daily News — a synthesized morning newspaper. The task ticks hourly but
-     * generates at most one edition per local day, only once the clock passes
-     * `dailyNewsHour`. On `dailyNewsWeeklyDay` it produces a weekly deep-dive.
+     * generates at most one edition per day (in `timezone`), only once that
+     * zone's clock passes `dailyNewsHour`. On `dailyNewsWeeklyDay` it produces
+     * a weekly deep-dive.
      */
     dailyNewsEnabled?: boolean;
-    dailyNewsHour?: number; // 0-23, server-local time, default 7
+    dailyNewsHour?: number; // 0-23, interpreted in `timezone` below, default 7
     dailyNewsWeeklyDay?: number; // 0-6 (0=Sunday), weekly deep-dive day, default 0
+    /**
+     * IANA timezone (e.g. 'America/Chicago') the Daily News publish-hour,
+     * weekly-day, and edition date are evaluated in. Without it the scheduler
+     * reads the container's clock — UTC in Docker — so "publish at 9" fires at
+     * 09:00 UTC. Default 'UTC'. Set via Settings → Schedules.
+     */
+    timezone?: string;
     backupPassword?: string; // if set, encrypted config backup is pushed to Dropbox on sync
   };
   /**

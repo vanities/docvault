@@ -34,6 +34,7 @@ import {
   type EditionType,
 } from './daily-news-store.js';
 import { dailyNewsPlan } from './daily-news-schedule.js';
+import { getConfiguredTimezone } from './tz.js';
 import { createLogger } from './logger.js';
 
 // Scheduler — built-in cron-like recurring tasks
@@ -556,7 +557,7 @@ export function startScheduler(schedules: Settings['schedules'] = {}): void {
   if (schedules?.dailyNewsEnabled === true) {
     dailyNewsTimer = setInterval(runDailyNewsTick, DEFAULT_DAILY_NEWS_TICK_INTERVAL * 60 * 1000);
     logScheduler.info(
-      `Daily News: checking hourly (publishes ~${String(schedules.dailyNewsHour ?? 7).padStart(2, '0')}:00 local, weekly day ${schedules.dailyNewsWeeklyDay ?? 0})`
+      `Daily News: checking hourly (publishes ~${String(schedules.dailyNewsHour ?? 7).padStart(2, '0')}:00 ${getConfiguredTimezone(schedules)}, weekly day ${schedules.dailyNewsWeeklyDay ?? 0})`
     );
   } else {
     logScheduler.info('Daily News: disabled');

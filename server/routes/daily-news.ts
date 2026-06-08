@@ -9,7 +9,8 @@
 //   DELETE /api/daily-news/:id                 → remove an edition
 //   POST   /api/email/test                     → send a test email (verify Resend)
 
-import { jsonResponse } from '../data.js';
+import { jsonResponse, loadSettings } from '../data.js';
+import { getConfiguredTimezone, zonedYMD } from '../tz.js';
 import {
   startEdition,
   startThemeSamples,
@@ -24,12 +25,12 @@ import { listThemes, THEME_CYCLE } from '../daily-news-themes.js';
 import { readEditionImage } from '../daily-news-image.js';
 import { sendEmail } from '../email.js';
 
-/** Today's date in the server's local timezone as YYYY-MM-DD (matches the
- *  scheduler's local-date dedup key — see scheduler.ts). */
-function localYMD(d = new Date()): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-    d.getDate()
-  ).padStart(2, '0')}`;
+/** Today's date in the configured Daily News timezone as YYYY-MM-DD — matches
+ *  the scheduler's per-day dedup key (see daily-news-schedule.ts) so a manual
+ *  "generate now" lands on the same edition date as the scheduled one. */
+async function todayYMD(): Promise<string> {
+  const tz = getConfiguredTimezone((await loadSettings()).schedules);
+  return zonedYMD(new Date(), tz);
 }
 
 export async function handleDailyNewsRoutes(
@@ -55,7 +56,7 @@ export async function handleDailyNewsRoutes(
   if (pathname === '/api/daily-news/run' && req.method === 'POST') {
     const body = (await req.json().catch(() => ({}))) as { editionType?: unknown };
     const editionType: EditionType = body.editionType === 'weekly' ? 'weekly' : 'daily';
-    const id = await startEdition(editionType, localYMD(), undefined, false);
+    const id = await startEdition(editionType, await todayYMD(), undefined, false);
     return jsonResponse({ id, status: 'running' }, 201);
   }
 
@@ -80,7 +81,7 @@ export async function handleDailyNewsRoutes(
   if (pathname === '/api/daily-news/sample-themes' && req.method === 'POST') {
     const body = (await req.json().catch(() => ({}))) as { editionType?: unknown };
     const editionType: EditionType = body.editionType === 'weekly' ? 'weekly' : 'daily';
-    const { ids } = await startThemeSamples(editionType, localYMD());
+    const { ids } = await startThemeSamples(editionType, await todayYMD());
     return jsonResponse({ ids, count: ids.length, status: 'running' }, 201);
   }
 
