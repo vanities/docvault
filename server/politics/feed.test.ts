@@ -165,6 +165,9 @@ describe('Congress bill summaries', () => {
     ).toBe(
       'Retirement Fairness Act This bill lets charities & schools pool plans. It applies in 2026.'
     );
+    expect(cleanSummaryHtml('<p>Safe invalid entity: &#99999999; &#x110000;</p>')).toBe(
+      'Safe invalid entity: &#99999999; &#x110000;'
+    );
   });
 
   test('fetches the latest official CRS summary for a bill', async () => {
@@ -269,6 +272,39 @@ describe('merge helpers', () => {
     summaryUpdatedAt: null,
     updateDate: date,
     url: null,
+  });
+
+  test('mergeBills preserves cached CRS summary metadata across bill updates', () => {
+    const cache = emptyPoliticsCache();
+    const existing = {
+      ...mk('hr-10-119', '2026-06-01'),
+      title: 'Original title',
+      summary: 'Existing CRS summary',
+      summarySource: 'congress-crs' as const,
+      summaryActionDate: '2026-05-30',
+      summaryCheckedAt: '2026-06-02T00:00:00.000Z',
+      summaryUpdatedAt: '2026-06-01T12:00:00Z',
+    };
+    const incoming = {
+      ...mk('hr-10-119', '2026-06-03'),
+      title: 'Updated title',
+      latestAction: 'Reported by committee.',
+      latestActionDate: '2026-06-03',
+    };
+    cache.bills = [existing];
+
+    mergeBills(cache, [incoming]);
+
+    expect(cache.bills).toHaveLength(1);
+    expect(cache.bills[0]).toMatchObject({
+      title: 'Updated title',
+      updateDate: '2026-06-03',
+      summary: 'Existing CRS summary',
+      summarySource: 'congress-crs',
+      summaryActionDate: '2026-05-30',
+      summaryCheckedAt: '2026-06-02T00:00:00.000Z',
+      summaryUpdatedAt: '2026-06-01T12:00:00Z',
+    });
   });
 
   test('upsertByKey replaces by key, sorts newest-first, caps', () => {
