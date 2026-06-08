@@ -52,12 +52,58 @@ function editionBadge(edition: Edition): string {
   return edition.editionType === 'weekly' ? 'WEEKLY DEEP-DIVE' : 'DAILY EDITION';
 }
 
-/** marked → HTML, <script> stripped, h2/h3 given ids; returns body + TOC entries. */
+function decodeHtmlEntities(text: string): string {
+  const named: Record<string, string> = {
+    amp: '&',
+    apos: "'",
+    gt: '>',
+    lt: '<',
+    quot: '"',
+    nbsp: ' ',
+  };
+  return text.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (match, entity: string) => {
+    const lower = entity.toLowerCase();
+    if (lower.startsWith('#x')) {
+      const code = Number.parseInt(lower.slice(2), 16);
+      return Number.isInteger(code) && code >= 0 && code <= 0x10ffff
+        ? String.fromCodePoint(code)
+        : match;
+    }
+    if (lower.startsWith('#')) {
+      const code = Number.parseInt(lower.slice(1), 10);
+      return Number.isInteger(code) && code >= 0 && code <= 0x10ffff
+        ? String.fromCodePoint(code)
+        : match;
+    }
+    return named[lower] ?? match;
+  });
+}
+
+function stripUnsafeHtml(html: string): string {
+  return html
+    .replace(/<(script|style|iframe|object|embed|link|meta)\b[\s\S]*?<\/\1\s*>/gi, '')
+    .replace(/<(script|style|iframe|object|embed|link|meta)\b[^>]*\/?\s*>/gi, '')
+    .replace(/\s+on[a-z][\w:-]*\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(
+      /\s+(href|src)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi,
+      (match, attr: string, raw: string) => {
+        const value = raw
+          .replace(/^['"]|['"]$/g, '')
+          .trim()
+          .toLowerCase();
+        return /^(javascript|data):/.test(value)
+          ? ''
+          : `${match.startsWith(' ') ? ' ' : ''}${attr}=${raw}`;
+      }
+    );
+}
+
+/** marked → HTML, unsafe tags/attrs stripped, h2/h3 given ids; returns body + TOC entries. */
 function renderBody(markdown: string): { body: string; toc: Array<{ text: string; id: string }> } {
-  let body = (marked.parse(markdown) as string).replace(/<script[\s\S]*?<\/script>/gi, '');
+  let body = stripUnsafeHtml(marked.parse(markdown) as string);
   const toc: Array<{ text: string; id: string }> = [];
   body = body.replace(/<h2>([\s\S]*?)<\/h2>/g, (_m, inner: string) => {
-    const text = inner.replace(/<[^>]+>/g, '').trim();
+    const text = decodeHtmlEntities(inner.replace(/<[^>]+>/g, '').trim());
     const id = slug(text);
     toc.push({ text, id });
     return `<h2 id="${id}">${inner}</h2>`;
