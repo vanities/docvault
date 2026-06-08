@@ -15,6 +15,62 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+function decodeHtmlEntities(text: string): string {
+  const named: Record<string, string> = {
+    amp: '&',
+    apos: "'",
+    gt: '>',
+    lt: '<',
+    quot: '"',
+    nbsp: ' ',
+  };
+  return text.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (match, entity: string) => {
+    const lower = entity.toLowerCase();
+    if (lower.startsWith('#x')) {
+      const code = Number.parseInt(lower.slice(2), 16);
+      return Number.isInteger(code) && code >= 0 && code <= 0x10ffff
+        ? String.fromCodePoint(code)
+        : match;
+    }
+    if (lower.startsWith('#')) {
+      const code = Number.parseInt(lower.slice(1), 10);
+      return Number.isInteger(code) && code >= 0 && code <= 0x10ffff
+        ? String.fromCodePoint(code)
+        : match;
+    }
+    return named[lower] ?? match;
+  });
+}
+
+function safeUrlAttr(url: string | undefined): string | null {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  const decoded = decodeHtmlEntities(trimmed).replace(/[\u0000-\u001f\u007f\s]+/g, '');
+  if (/^(javascript|data|vbscript):/i.test(decoded)) return null;
+  return escapeHtml(trimmed);
+}
+
+function stripUnsafeHtml(html: string): string {
+  return html
+    .replace(/<(script|style|iframe|object|embed|link|meta)\b[\s\S]*?<\/\1\s*>/gi, '')
+    .replace(/<(script|style|iframe|object|embed|link|meta)\b[^>]*\/?\s*>/gi, '')
+    .replace(/\s+on[a-z][\w:-]*\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(
+      /\s+(href|src)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi,
+      (match, attr: string, raw: string) => {
+        const value = raw
+          .replace(/^['"]|['"]$/g, '')
+          .trim()
+          .toLowerCase();
+        const decoded = decodeHtmlEntities(value).replace(/[\u0000-\u001f\u007f\s]+/g, '');
+        return /^(javascript|data|vbscript):/.test(decoded)
+          ? ''
+          : `${match.startsWith(' ') ? ' ' : ''}${attr}=${raw}`;
+      }
+    );
+}
+
 function slug(s: string): string {
   return (
     s
@@ -64,14 +120,15 @@ footer { max-width:760px; margin:0 auto; padding:24px; color:var(--muted); font:
 `.trim();
 
 export function renderReportHtml(run: ResearchRun): string {
-  // markdown → HTML, with any <script> stripped (the report is the user's own
-  // research, opened locally, but no reason to carry executable content).
-  let body = (marked.parse(run.report ?? '') as string).replace(/<script[\s\S]*?<\/script>/gi, '');
+  // markdown → HTML, with dangerous tags/attributes stripped. Research reports
+  // can contain LLM-synthesized or web-derived markup, so treat them as an XSS
+  // boundary even though the resulting file is self-contained.
+  let body = stripUnsafeHtml(marked.parse(run.report ?? '') as string);
 
   // Add ids to h2/h3 and collect a table of contents.
   const toc: Array<{ level: number; text: string; id: string }> = [];
   body = body.replace(/<(h[23])>([\s\S]*?)<\/\1>/g, (_m, tag: string, inner: string) => {
-    const text = inner.replace(/<[^>]+>/g, '').trim();
+    const text = decodeHtmlEntities(inner.replace(/<[^>]+>/g, '').trim());
     const id = slug(text);
     toc.push({ level: tag === 'h3' ? 3 : 2, text, id });
     return `<${tag} id="${id}">${inner}</${tag}>`;
@@ -86,12 +143,14 @@ export function renderReportHtml(run: ResearchRun): string {
   const sources = run.sources ?? [];
   const sourcesHtml = sources.length
     ? `<section class="sources"><h2>Sources (${sources.length})</h2><ol>${sources
-        .map(
-          (s) =>
-            `<li><a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(
-              s.title || s.url
-            )}</a><div class="src-url">${escapeHtml(s.url)}</div></li>`
-        )
+        .map((s) => {
+          const safeUrl = safeUrlAttr(s.url);
+          const label = escapeHtml(s.title || s.url);
+          const visibleUrl = escapeHtml(s.url);
+          return safeUrl
+            ? `<li><a href="${safeUrl}" target="_blank" rel="noopener">${label}</a><div class="src-url">${visibleUrl}</div></li>`
+            : `<li>${label}<div class="src-url">${visibleUrl}</div></li>`;
+        })
         .join('')}</ol></section>`
     : '';
 
