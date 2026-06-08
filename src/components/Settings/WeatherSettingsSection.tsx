@@ -9,11 +9,13 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { useToast } from '../../hooks/useToast';
 import { API_BASE } from '../../constants';
+import { TIMEZONE_OPTIONS } from '../../utils/timezones';
 
 interface GeoResult {
   label: string;
   latitude: number;
   longitude: number;
+  timezone?: string;
 }
 
 export function WeatherSettingsSection() {
@@ -24,6 +26,7 @@ export function WeatherSettingsSection() {
   const [label, setLabel] = useState('');
   const [lat, setLat] = useState<number | null>(null);
   const [lon, setLon] = useState<number | null>(null);
+  const [timezone, setTimezone] = useState<string | null>(null);
   const [units, setUnits] = useState<'F' | 'C'>('F');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<GeoResult[]>([]);
@@ -38,6 +41,7 @@ export function WeatherSettingsSection() {
       setLabel(w.label ?? '');
       setLat(typeof w.latitude === 'number' ? w.latitude : null);
       setLon(typeof w.longitude === 'number' ? w.longitude : null);
+      setTimezone(typeof w.timezone === 'string' ? w.timezone : null);
       setUnits(w.units === 'C' ? 'C' : 'F');
     } catch {
       /* ignore */
@@ -68,6 +72,9 @@ export function WeatherSettingsSection() {
     setLabel(r.label);
     setLat(r.latitude);
     setLon(r.longitude);
+    // Open-Meteo geocoding returns the IANA zone for the place; adopt it as the
+    // app-wide timezone so scheduling/day-bucketing follow the chosen location.
+    if (r.timezone) setTimezone(r.timezone);
     setResults([]);
     setQuery('');
   };
@@ -85,6 +92,7 @@ export function WeatherSettingsSection() {
             latitude: lat ?? undefined,
             longitude: lon ?? undefined,
             units,
+            timezone: timezone ?? undefined,
           },
         }),
       });
@@ -183,6 +191,25 @@ export function WeatherSettingsSection() {
               </span>
             </p>
           )}
+        </div>
+
+        <div>
+          <label className="block text-[12px] text-surface-600 mb-1">Time zone</label>
+          <select
+            value={timezone ?? 'UTC'}
+            onChange={(e) => setTimezone(e.target.value)}
+            className="text-[13px] bg-surface-100/60 border border-border/40 rounded-lg px-2 py-1.5 max-w-full"
+          >
+            {TIMEZONE_OPTIONS.map((tz) => (
+              <option key={tz} value={tz}>
+                {tz}
+              </option>
+            ))}
+          </select>
+          <p className="text-[11px] text-surface-500 mt-1">
+            Auto-filled from your city. Drives the Newsstand publish time, day-based health stats,
+            and report dates — not just the weather.
+          </p>
         </div>
 
         <div>

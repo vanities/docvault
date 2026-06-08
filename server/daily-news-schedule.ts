@@ -4,12 +4,12 @@
 // real clock. The scheduler combines this with the store's dedup checks.
 //
 // All wall-clock reads go through `tz.ts` so the gate/dedup/weekday are computed
-// in the configured IANA timezone (schedules.timezone) — NOT the container's
-// process zone, which is UTC in Docker. That zone-mismatch is what made
-// "publish at 9" fire at 9 UTC (the small hours, locally).
+// in an explicit IANA timezone (the caller resolves it via getConfiguredTimezone)
+// — NOT the container's process zone, which is UTC in Docker. That zone-mismatch
+// is what made "publish at 9" fire at 9 UTC (the small hours, locally).
 
 import type { Settings } from './data.js';
-import { getConfiguredTimezone, zonedParts, zonedYMD } from './tz.js';
+import { zonedParts, zonedYMD } from './tz.js';
 
 type Schedules = Settings['schedules'];
 
@@ -41,18 +41,22 @@ export interface DailyNewsPlan {
  * NOT consult the store; the caller still checks editionExistsForDate /
  * weeklyEditionExistsForWeek to enforce the once-per-day / once-per-week dedup.
  *
- * Hour, weekday, and calendar date are all read in `schedules.timezone`
- * (default 'UTC' when unset) so a single zone governs every comparison.
+ * Hour, weekday, and calendar date are all read in `timezone` (an IANA zone the
+ * caller resolves via getConfiguredTimezone) so a single zone governs every
+ * comparison.
  */
-export function dailyNewsPlan(now: Date, schedules: Schedules): DailyNewsPlan | null {
+export function dailyNewsPlan(
+  now: Date,
+  schedules: Schedules,
+  timezone: string
+): DailyNewsPlan | null {
   if (schedules?.dailyNewsEnabled !== true) return null;
-  const tz = getConfiguredTimezone(schedules);
-  const parts = zonedParts(now, tz);
+  const parts = zonedParts(now, timezone);
   if (parts.hour < clampInt(schedules.dailyNewsHour ?? 7, 0, 23)) return null;
   const weeklyDay = clampInt(schedules.dailyNewsWeeklyDay ?? 0, 0, 6);
   return {
     today: parts.ymd,
-    weekStart: zonedYMD(new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000), tz),
+    weekStart: zonedYMD(new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000), timezone),
     isWeeklyDay: parts.weekday === weeklyDay,
   };
 }

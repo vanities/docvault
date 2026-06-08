@@ -39,7 +39,14 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import { jsonResponse, ensureDir, getOrCreateHealthIngestToken, DATA_DIR } from '../data.js';
+import {
+  jsonResponse,
+  ensureDir,
+  getOrCreateHealthIngestToken,
+  DATA_DIR,
+  loadSettings,
+} from '../data.js';
+import { getConfiguredTimezone } from '../tz.js';
 import type { HealthPerson } from '../data.js';
 import {
   loadHealthStore,
@@ -85,6 +92,12 @@ import('./shortcut-generator.js')
 import { createLogger, SERVER_BOOT_ID } from '../logger.js';
 
 const log = createLogger('Health');
+
+/** The app-wide timezone (location-derived), used to zone health day-buckets so
+ *  "today"/"this week" follow the user's local day, not the container's UTC. */
+async function snapshotTimezone(): Promise<string> {
+  return getConfiguredTimezone(await loadSettings());
+}
 
 const HEALTH_DATA_DIR = path.join(DATA_DIR, 'health');
 
@@ -1287,7 +1300,14 @@ export async function handleHealthRoutes(
         );
       }
 
-      const snapshots = computeSnapshots(summary, filename, new Date(), [], clinical);
+      const snapshots = computeSnapshots(
+        summary,
+        filename,
+        new Date(),
+        [],
+        clinical,
+        await snapshotTimezone()
+      );
 
       // Persist to store
       const store = await loadHealthStore();
@@ -1368,7 +1388,14 @@ export async function handleHealthRoutes(
       }
 
       // 4. Compute segment snapshots (pure, ~8ms for 8 years of data)
-      const snapshots = computeSnapshots(summary, filename, new Date(), [], clinical);
+      const snapshots = computeSnapshots(
+        summary,
+        filename,
+        new Date(),
+        [],
+        clinical,
+        await snapshotTimezone()
+      );
 
       // 5. Persist summary + snapshots + clinical to store in a single write
       const store = await loadHealthStore();
@@ -1499,7 +1526,14 @@ export async function handleHealthRoutes(
     }
     if (!snapshots) {
       log.info(`Backfilling snapshot for ${key} (${deltas.length} delta(s) overlaid)`);
-      snapshots = computeSnapshots(summary, filename, new Date(), deltas, clinicalForSnapshot);
+      snapshots = computeSnapshots(
+        summary,
+        filename,
+        new Date(),
+        deltas,
+        clinicalForSnapshot,
+        await snapshotTimezone()
+      );
       store.snapshots[key] = snapshots;
       await saveHealthStore(store);
     } else if (snapshots.parserVersion !== summary.parserVersion) {
@@ -1507,7 +1541,14 @@ export async function handleHealthRoutes(
         `Re-computing snapshot for ${key}: cached was v${snapshots.parserVersion}, ` +
           `summary is v${summary.parserVersion} (${deltas.length} delta(s))`
       );
-      snapshots = computeSnapshots(summary, filename, new Date(), deltas, clinicalForSnapshot);
+      snapshots = computeSnapshots(
+        summary,
+        filename,
+        new Date(),
+        deltas,
+        clinicalForSnapshot,
+        await snapshotTimezone()
+      );
       store.snapshots[key] = snapshots;
       await saveHealthStore(store);
     } else if (snapshots.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
@@ -1515,7 +1556,14 @@ export async function handleHealthRoutes(
         `Re-computing snapshot for ${key}: cached schema v${snapshots.schemaVersion}, ` +
           `current schema v${SNAPSHOT_SCHEMA_VERSION} (${deltas.length} delta(s))`
       );
-      snapshots = computeSnapshots(summary, filename, new Date(), deltas, clinicalForSnapshot);
+      snapshots = computeSnapshots(
+        summary,
+        filename,
+        new Date(),
+        deltas,
+        clinicalForSnapshot,
+        await snapshotTimezone()
+      );
       store.snapshots[key] = snapshots;
       await saveHealthStore(store);
     } else if (deltasChanged) {
@@ -1524,7 +1572,14 @@ export async function handleHealthRoutes(
           `newer than cached snapshot generatedAt ${snapshots.generatedAt} ` +
           `(${deltas.length} delta(s))`
       );
-      snapshots = computeSnapshots(summary, filename, new Date(), deltas, clinicalForSnapshot);
+      snapshots = computeSnapshots(
+        summary,
+        filename,
+        new Date(),
+        deltas,
+        clinicalForSnapshot,
+        await snapshotTimezone()
+      );
       store.snapshots[key] = snapshots;
       await saveHealthStore(store);
     } else if (clinicalRebuilt) {
@@ -1532,7 +1587,14 @@ export async function handleHealthRoutes(
       // derived fields (body.weightHistory merges, clinicalVitals) were
       // built against the old clinical and may now be stale. Recompute.
       log.info(`Re-computing snapshot for ${key}: clinical schema was upgraded`);
-      snapshots = computeSnapshots(summary, filename, new Date(), deltas, clinicalForSnapshot);
+      snapshots = computeSnapshots(
+        summary,
+        filename,
+        new Date(),
+        deltas,
+        clinicalForSnapshot,
+        await snapshotTimezone()
+      );
       store.snapshots[key] = snapshots;
       await saveHealthStore(store);
     }

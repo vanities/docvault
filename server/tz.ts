@@ -22,10 +22,26 @@ export function isValidTimeZone(tz: unknown): tz is string {
   }
 }
 
-/** The configured scheduling timezone, or 'UTC' when unset/invalid. */
-export function getConfiguredTimezone(schedules: Settings['schedules']): string {
-  const tz = schedules?.timezone;
-  return isValidTimeZone(tz) ? tz : FALLBACK_TZ;
+/**
+ * The app-wide timezone, in precedence order:
+ *   1. the geocoded location's zone (settings.weather.timezone) — the source of
+ *      truth; auto-derived when you pick a city in Maps → Weather.
+ *   2. a legacy/explicit schedules.timezone (installs predating step 1).
+ *   3. the runtime's own zone — honors a container `TZ` env if one is set.
+ *   4. 'UTC'.
+ */
+export function getConfiguredTimezone(settings: Settings | undefined): string {
+  const fromLocation = settings?.weather?.timezone;
+  if (isValidTimeZone(fromLocation)) return fromLocation;
+  const legacy = settings?.schedules?.timezone;
+  if (isValidTimeZone(legacy)) return legacy;
+  try {
+    const runtime = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (isValidTimeZone(runtime)) return runtime;
+  } catch {
+    /* fall through to UTC */
+  }
+  return FALLBACK_TZ;
 }
 
 const WEEKDAY_INDEX: Record<string, number> = {

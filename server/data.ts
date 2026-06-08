@@ -305,6 +305,14 @@ export interface Settings {
     /** Human label for the forecast box, e.g. "Spring Hill, TN". */
     label?: string;
     units?: 'F' | 'C';
+    /**
+     * IANA timezone for this location (e.g. 'America/Chicago'), auto-derived
+     * from the geocoded city (Open-Meteo returns it). This is the app-wide
+     * source of truth for "what zone are we in" — scheduling, health
+     * day-bucketing, and report dates all resolve through
+     * getConfiguredTimezone() (see tz.ts), which reads this first.
+     */
+    timezone?: string;
   };
 }
 

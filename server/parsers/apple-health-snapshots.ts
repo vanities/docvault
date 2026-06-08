@@ -14,6 +14,7 @@ import type {
   WorkoutEntry,
 } from './apple-health.js';
 import type { ClinicalSummary, LabResult } from './apple-health-clinical.js';
+import { zonedYMD } from '../tz.js';
 
 /**
  * Snapshot schema / computer version. Bump this when the snapshot computer's
@@ -799,15 +800,23 @@ interface DateRange {
  *   Today, Yesterday, This Week (Mon-Sun), Last Week,
  *   This Month, Last Month, This Year, Last Year.
  */
-export function buildPeriodRanges(now: Date): { current: DateRange; previous: DateRange }[] {
-  const todayStr = now.toISOString().slice(0, 10);
-  const yesterday = new Date(now);
+export function buildPeriodRanges(
+  now: Date,
+  timezone = 'UTC'
+): { current: DateRange; previous: DateRange }[] {
+  // Anchor on the LOCAL calendar date of `now` (its zoned YYYY-MM-DD), then
+  // re-base it at UTC midnight so the UTC date math below operates on
+  // local-calendar days. With timezone='UTC' the anchor is the UTC date, so
+  // this is identical to the historical behavior — only a real zone shifts it.
+  const todayStr = zonedYMD(now, timezone);
+  const today = new Date(`${todayStr}T00:00:00Z`);
+  const yesterday = new Date(today);
   yesterday.setUTCDate(yesterday.getUTCDate() - 1);
   const yesterdayStr = yesterday.toISOString().slice(0, 10);
 
   // Week boundaries (Mon-Sun)
-  const dow = (now.getUTCDay() + 6) % 7; // Mon=0
-  const thisWeekStart = new Date(now);
+  const dow = (today.getUTCDay() + 6) % 7; // Mon=0
+  const thisWeekStart = new Date(today);
   thisWeekStart.setUTCDate(thisWeekStart.getUTCDate() - dow);
   const lastWeekStart = new Date(thisWeekStart);
   lastWeekStart.setUTCDate(lastWeekStart.getUTCDate() - 7);
@@ -816,13 +825,13 @@ export function buildPeriodRanges(now: Date): { current: DateRange; previous: Da
 
   // Month boundaries
   const thisMonthStart = `${todayStr.slice(0, 7)}-01`;
-  const lastMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
-  const lastMonthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0));
+  const lastMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1));
+  const lastMonthEnd = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 0));
 
   // Year boundaries
-  const thisYearStart = `${now.getUTCFullYear()}-01-01`;
-  const lastYearStart = `${now.getUTCFullYear() - 1}-01-01`;
-  const lastYearEnd = `${now.getUTCFullYear() - 1}-12-31`;
+  const thisYearStart = `${today.getUTCFullYear()}-01-01`;
+  const lastYearStart = `${today.getUTCFullYear() - 1}-01-01`;
+  const lastYearEnd = `${today.getUTCFullYear() - 1}-12-31`;
 
   return [
     {
@@ -1239,7 +1248,8 @@ function sortedDays(summary: AppleHealthSummary): DailySummary[] {
 
 export function computeActivitySnapshot(
   summary: AppleHealthSummary,
-  now: Date = new Date()
+  now: Date = new Date(),
+  timezone = 'UTC'
 ): ActivitySnapshot {
   const days = sortedDays(summary);
 
@@ -1383,7 +1393,7 @@ export function computeActivitySnapshot(
   // -----------------------------------------------------------------------
   // Period summaries
   // -----------------------------------------------------------------------
-  const periodRanges = buildPeriodRanges(now);
+  const periodRanges = buildPeriodRanges(now, timezone);
   const periods: PeriodSummary[] = periodRanges.map(({ current, previous }) => {
     const curDays = inRange(daily, current.start, current.end);
     const prevDays = inRange(daily, previous.start, previous.end);
@@ -1453,7 +1463,8 @@ export function computeActivitySnapshot(
 
 export function computeHeartSnapshot(
   summary: AppleHealthSummary,
-  now: Date = new Date()
+  now: Date = new Date(),
+  timezone = 'UTC'
 ): HeartSnapshot {
   const days = sortedDays(summary);
 
@@ -1544,7 +1555,7 @@ export function computeHeartSnapshot(
   // -----------------------------------------------------------------------
   // Period summaries
   // -----------------------------------------------------------------------
-  const periodRanges = buildPeriodRanges(now);
+  const periodRanges = buildPeriodRanges(now, timezone);
   const periods: PeriodSummary[] = periodRanges.map(({ current, previous }) => {
     const curDays = inRange(daily, current.start, current.end);
     const prevDays = inRange(daily, previous.start, previous.end);
@@ -1595,7 +1606,8 @@ export function computeHeartSnapshot(
 
 export function computeSleepSnapshot(
   summary: AppleHealthSummary,
-  now: Date = new Date()
+  now: Date = new Date(),
+  timezone = 'UTC'
 ): SleepSnapshot {
   const days = sortedDays(summary);
 
@@ -1721,7 +1733,7 @@ export function computeSleepSnapshot(
   // -----------------------------------------------------------------------
   // Period summaries
   // -----------------------------------------------------------------------
-  const periodRanges = buildPeriodRanges(now);
+  const periodRanges = buildPeriodRanges(now, timezone);
   const periods: PeriodSummary[] = periodRanges.map(({ current, previous }) => {
     const curDays = inRange(daily, current.start, current.end);
     const prevDays = inRange(daily, previous.start, previous.end);
@@ -1777,7 +1789,8 @@ export function computeSleepSnapshot(
 
 export function computeWorkoutsSnapshot(
   summary: AppleHealthSummary,
-  now: Date = new Date()
+  now: Date = new Date(),
+  timezone = 'UTC'
 ): WorkoutsSnapshot {
   const workouts = Array.isArray(summary.workouts) ? summary.workouts : [];
 
@@ -1848,7 +1861,7 @@ export function computeWorkoutsSnapshot(
     }));
 
   // ---------- headline ----------
-  const thisWeekStart = weekStartMonday(now.toISOString().slice(0, 10));
+  const thisWeekStart = weekStartMonday(zonedYMD(now, timezone));
   const thisWeek = weekMap.get(thisWeekStart);
 
   // Streaks: compute a dense daily boolean from the earliest to latest workout date
@@ -1859,7 +1872,7 @@ export function computeWorkoutsSnapshot(
     const dates = [...datesWithWorkouts].sort();
     if (dates.length > 0) {
       const start = new Date(`${dates[0]}T00:00:00Z`);
-      const end = new Date(`${now.toISOString().slice(0, 10)}T00:00:00Z`);
+      const end = new Date(`${zonedYMD(now, timezone)}T00:00:00Z`);
       const dayBools: boolean[] = [];
       for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
         dayBools.push(datesWithWorkouts.has(d.toISOString().slice(0, 10)));
@@ -1958,7 +1971,7 @@ export function computeWorkoutsSnapshot(
   // -----------------------------------------------------------------------
   // Period summaries
   // -----------------------------------------------------------------------
-  const periodRanges = buildPeriodRanges(now);
+  const periodRanges = buildPeriodRanges(now, timezone);
   const periods: PeriodSummary[] = periodRanges.map(({ current, previous }) => {
     const curWorkouts = workouts.filter((w) => {
       const d = w.start.slice(0, 10);
@@ -2038,7 +2051,8 @@ export function computeWorkoutsSnapshot(
 export function computeBodySnapshot(
   summary: AppleHealthSummary,
   now: Date = new Date(),
-  clinicalVitals: readonly LabResult[] = []
+  clinicalVitals: readonly LabResult[] = [],
+  timezone = 'UTC'
 ): BodySnapshot {
   const days = sortedDays(summary);
   const LB_PER_KG = 2.20462;
@@ -2270,7 +2284,7 @@ export function computeBodySnapshot(
   // -----------------------------------------------------------------------
   // Period summaries
   // -----------------------------------------------------------------------
-  const periodRanges = buildPeriodRanges(now);
+  const periodRanges = buildPeriodRanges(now, timezone);
   const periods: PeriodSummary[] = periodRanges.map(({ current, previous }) => {
     const curWeights = inRange(weightHistory, current.start, current.end);
     const prevWeights = inRange(weightHistory, previous.start, previous.end);
@@ -2665,15 +2679,16 @@ export function computeSnapshots(
   sourceFilename: string,
   now: Date = new Date(),
   deltas: readonly DeltaFile[] = [],
-  clinical: ClinicalSummary | null = null
+  clinical: ClinicalSummary | null = null,
+  timezone = 'UTC'
 ): PersonSnapshots {
   const merged = overlayDeltas(summary, deltas);
   const clinicalVitalsRaw = clinical?.vitals ?? [];
-  const activity = computeActivitySnapshot(merged, now);
-  const heart = computeHeartSnapshot(merged, now);
-  const sleep = computeSleepSnapshot(merged, now);
-  const workouts = computeWorkoutsSnapshot(merged, now);
-  const body = computeBodySnapshot(merged, now, clinicalVitalsRaw);
+  const activity = computeActivitySnapshot(merged, now, timezone);
+  const heart = computeHeartSnapshot(merged, now, timezone);
+  const sleep = computeSleepSnapshot(merged, now, timezone);
+  const workouts = computeWorkoutsSnapshot(merged, now, timezone);
+  const body = computeBodySnapshot(merged, now, clinicalVitalsRaw, timezone);
 
   // Cross-segment: compute recovery scores (needs activity + heart + sleep)
   activity.recoveryScores = computeRecoveryScores(activity.daily, heart.daily, sleep.daily);

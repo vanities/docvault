@@ -150,6 +150,8 @@ export interface GeocodeResult {
   label: string;
   latitude: number;
   longitude: number;
+  /** IANA timezone for the place (Open-Meteo returns it), e.g. 'America/Chicago'. */
+  timezone?: string;
 }
 
 /** Look up a place name → coordinates via Open-Meteo's keyless geocoding API.
@@ -171,6 +173,7 @@ export async function geocodePlace(query: string): Promise<GeocodeResult[]> {
         country_code?: string;
         latitude?: number;
         longitude?: number;
+        timezone?: string;
       }>;
     };
     return (data.results ?? [])
@@ -179,6 +182,7 @@ export async function geocodePlace(query: string): Promise<GeocodeResult[]> {
         label: [r.name, r.admin1, r.country_code].filter(Boolean).join(', '),
         latitude: r.latitude as number,
         longitude: r.longitude as number,
+        timezone: typeof r.timezone === 'string' ? r.timezone : undefined,
       }));
   } catch (err) {
     log.warn(`[geocode] failed: ${err instanceof Error ? err.message : String(err)}`);

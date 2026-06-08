@@ -67,29 +67,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-// Timezone choices for the Newsstand publish schedule. Prefer the runtime's full
-// IANA list (Intl.supportedValuesOf), falling back to a common subset on the rare
-// browser that lacks it. 'UTC' is pinned first since it's the server default.
-const TIMEZONE_OPTIONS: string[] = (() => {
-  const supported = (Intl as unknown as { supportedValuesOf?: (key: string) => string[] })
-    .supportedValuesOf;
-  const zones =
-    typeof supported === 'function'
-      ? supported('timeZone')
-      : [
-          'America/New_York',
-          'America/Chicago',
-          'America/Denver',
-          'America/Los_Angeles',
-          'America/Anchorage',
-          'Pacific/Honolulu',
-          'Europe/London',
-          'Europe/Paris',
-          'Asia/Tokyo',
-        ];
-  return ['UTC', ...zones.filter((z) => z !== 'UTC')];
-})();
-
 interface SettingsData {
   hasAnthropicKey: boolean;
   keySource?: 'settings' | 'env';
@@ -1266,7 +1243,6 @@ export function SettingsView() {
           dailyNewsEnabled,
           dailyNewsHour,
           dailyNewsWeeklyDay,
-          timezone: dailyNewsTimezone,
           ...(autoBackupPassword ? { backupPassword: autoBackupPassword } : {}),
         }),
       });
@@ -2079,21 +2055,10 @@ export function SettingsView() {
                           ))}
                         </SelectContent>
                       </Select>
-                      <Select value={dailyNewsTimezone} onValueChange={setDailyNewsTimezone}>
-                        <SelectTrigger
-                          className="text-[13px] w-48"
-                          title="Timezone the publish hour is evaluated in"
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {TIMEZONE_OPTIONS.map((tz) => (
-                            <SelectItem key={tz} value={tz}>
-                              {tz}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <span className="text-[12px] text-surface-600">
+                        in <span className="font-medium text-surface-800">{dailyNewsTimezone}</span>
+                        <span className="text-surface-400"> (set in Maps → Weather)</span>
+                      </span>
                       <label className="text-[12px] text-surface-600">· Weekly deep-dive on</label>
                       <Select
                         value={String(dailyNewsWeeklyDay)}

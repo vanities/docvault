@@ -34,7 +34,7 @@ import {
   type EditionType,
 } from './daily-news-store.js';
 import { dailyNewsPlan } from './daily-news-schedule.js';
-import { getConfiguredTimezone } from './tz.js';
+import { getConfiguredTimezone, zonedYMD } from './tz.js';
 import { createLogger } from './logger.js';
 
 // Scheduler — built-in cron-like recurring tasks
@@ -328,7 +328,7 @@ async function takePortfolioSnapshotInner(): Promise<void> {
   }
 
   const brokerValue = brokerPortfolio?.totalValue || 0;
-  const today = new Date().toISOString().split('T')[0];
+  const today = zonedYMD(new Date(), getConfiguredTimezone(settings));
 
   await saveSnapshot({
     date: today,
@@ -439,7 +439,8 @@ export async function runPoliticsRefresh(): Promise<void> {
  */
 export async function runDailyNewsTick(): Promise<void> {
   try {
-    const plan = dailyNewsPlan(new Date(), (await loadSettings()).schedules);
+    const settings = await loadSettings();
+    const plan = dailyNewsPlan(new Date(), settings.schedules, getConfiguredTimezone(settings));
     if (!plan) return;
     if (await editionExistsForDate(plan.today)) return;
     const wantWeekly = plan.isWeeklyDay && !(await weeklyEditionExistsForWeek(plan.weekStart));
@@ -556,8 +557,10 @@ export function startScheduler(schedules: Settings['schedules'] = {}): void {
   // whether an edition is actually due (past the hour, none yet today).
   if (schedules?.dailyNewsEnabled === true) {
     dailyNewsTimer = setInterval(runDailyNewsTick, DEFAULT_DAILY_NEWS_TICK_INTERVAL * 60 * 1000);
-    logScheduler.info(
-      `Daily News: checking hourly (publishes ~${String(schedules.dailyNewsHour ?? 7).padStart(2, '0')}:00 ${getConfiguredTimezone(schedules)}, weekly day ${schedules.dailyNewsWeeklyDay ?? 0})`
+    void loadSettings().then((s) =>
+      logScheduler.info(
+        `Daily News: checking hourly (publishes ~${String(schedules.dailyNewsHour ?? 7).padStart(2, '0')}:00 ${getConfiguredTimezone(s)}, weekly day ${schedules.dailyNewsWeeklyDay ?? 0})`
+      )
     );
   } else {
     logScheduler.info('Daily News: disabled');
