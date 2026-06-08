@@ -6,7 +6,14 @@ import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { listFilings, resetArchiveCache } from './filing-archive.js';
-import { fetchRecentBills, inferBillStatus, transformBill } from './congress-bills.js';
+import {
+  cleanSummaryHtml,
+  enrichBillSummaries,
+  fetchBillSummary,
+  fetchRecentBills,
+  inferBillStatus,
+  transformBill,
+} from './congress-bills.js';
 import { transformExecutiveAction } from './federal-register.js';
 import {
   appendNew,
@@ -30,9 +37,10 @@ import {
 import type { BillRecord, TradeRecord } from './types.js';
 
 /** Minimal fake `fetch` that replays a queue of JSON bodies, one per call. */
-function fakeFetch(bodies: unknown[]): typeof fetch {
+function fakeFetch(bodies: unknown[], urls: string[] = []): typeof fetch {
   let i = 0;
-  return (async () => {
+  return (async (input: RequestInfo | URL) => {
+    urls.push(String(input));
     const body = bodies[Math.min(i, bodies.length - 1)];
     i++;
     return { ok: true, status: 200, json: async () => body } as Response;
@@ -148,9 +156,105 @@ describe('fetchRecentBills (forward-only)', () => {
   });
 });
 
+describe('Congress bill summaries', () => {
+  test('cleans Congress.gov summary HTML into plain text', () => {
+    expect(
+      cleanSummaryHtml(
+        '<p><strong>Retirement Fairness Act</strong></p><p>This bill lets charities &amp; schools pool plans.<br/>It applies in 2026.</p>'
+      )
+    ).toBe(
+      'Retirement Fairness Act This bill lets charities & schools pool plans. It applies in 2026.'
+    );
+  });
+
+  test('fetches the latest official CRS summary for a bill', async () => {
+    const urls: string[] = [];
+    const summary = await fetchBillSummary({
+      apiKey: 'k',
+      congress: 119,
+      billType: 'HR',
+      billNumber: '10',
+      billTitle: 'Retirement Fairness Act',
+      fetchFn: fakeFetch(
+        [
+          {
+            summaries: [
+              {
+                text: '<p><strong>Retirement Fairness Act</strong></p><p>This bill expands plan access.</p>',
+                actionDate: '2026-06-01',
+                updateDate: '2026-06-02T12:00:00Z',
+              },
+            ],
+          },
+        ],
+        urls
+      ),
+    });
+
+    expect(urls[0]).toContain('/bill/119/hr/10/summaries');
+    expect(summary).toEqual({
+      text: 'This bill expands plan access.',
+      actionDate: '2026-06-01',
+      updateDate: '2026-06-02T12:00:00Z',
+    });
+  });
+
+  test('enriches missing summaries in cached bills without touching populated ones', async () => {
+    const bills = [
+      transformBill({
+        congress: 119,
+        type: 'S',
+        number: '20',
+        title: 'School Nutrition Act',
+        updateDate: '2026-06-03',
+        url: 'u',
+      }),
+      {
+        ...transformBill({
+          congress: 119,
+          type: 'HR',
+          number: '10',
+          title: 'Already Done',
+          updateDate: '2026-06-02',
+          url: 'u',
+        }),
+        summary: 'Existing',
+      },
+    ];
+
+    const result = await enrichBillSummaries(bills, {
+      apiKey: 'k',
+      maxFetches: 5,
+      fetchFn: fakeFetch([
+        {
+          summaries: [
+            {
+              text: '<p><strong>School Nutrition Act</strong></p><p>This bill funds meals.</p>',
+              actionDate: '2026-06-01',
+              updateDate: '2026-06-02T12:00:00Z',
+            },
+          ],
+        },
+      ]),
+    });
+
+    expect(result).toEqual({ fetched: 1, populated: 1 });
+    expect(bills[0]).toMatchObject({
+      summary: 'This bill funds meals.',
+      summarySource: 'congress-crs',
+      summaryActionDate: '2026-06-01',
+      summaryUpdatedAt: '2026-06-02T12:00:00Z',
+    });
+    expect(typeof bills[0].summaryCheckedAt).toBe('string');
+    expect(bills[1].summary).toBe('Existing');
+  });
+});
+
 describe('merge helpers', () => {
   const mk = (id: string, date: string): BillRecord => ({
     externalId: id,
+    congress: 119,
+    number: id.replace(/\D/g, '') || '1',
     officialId: id.toUpperCase(),
     title: id,
     type: 'hr',
@@ -158,6 +262,11 @@ describe('merge helpers', () => {
     introducedDate: null,
     latestAction: null,
     latestActionDate: null,
+    summary: null,
+    summarySource: null,
+    summaryActionDate: null,
+    summaryCheckedAt: null,
+    summaryUpdatedAt: null,
     updateDate: date,
     url: null,
   });
@@ -663,19 +772,20 @@ describe('buildFeedPayload', () => {
   test('maps bills into the vote shape the existing Politics consumers read', () => {
     const cache = emptyPoliticsCache();
     cache.generatedAt = '2026-06-04T00:00:00Z';
-    mergeBills(cache, [
-      transformBill({
-        congress: 119,
-        type: 'HR',
-        number: '3076',
-        title: 'Postal Service Reform Act',
-        updateDate: '2026-06-03',
-        latestAction: { actionDate: '2026-06-02', text: 'Became Public Law No: 119-1.' },
-        url: 'u',
-      }),
-    ]);
+    const bill = transformBill({
+      congress: 119,
+      type: 'HR',
+      number: '3076',
+      title: 'Postal Service Reform Act',
+      updateDate: '2026-06-03',
+      latestAction: { actionDate: '2026-06-02', text: 'Became Public Law No: 119-1.' },
+      url: 'u',
+    });
+    bill.summary = 'This bill reforms postal operations.';
+    bill.summarySource = 'congress-crs';
+    mergeBills(cache, [bill]);
 
-    const payload = buildFeedPayload(cache, { jobs: [] }) as {
+    const payload = buildFeedPayload(cache, { jobs: [] }) as unknown as {
       ok: boolean;
       configured: boolean;
       votes: { votes: Array<Record<string, unknown>> };
@@ -690,6 +800,8 @@ describe('buildFeedPayload', () => {
     expect((vote.bill as { officialId: string }).officialId).toBe('HR 3076');
     expect(vote.billTitle).toBe('Postal Service Reform Act');
     expect(vote.question).toBe('Became Public Law No: 119-1.');
+    expect(vote.summary).toBe('This bill reforms postal operations.');
+    expect((vote.bill as { summary: string }).summary).toBe('This bill reforms postal operations.');
     expect(vote.externalId).toBe('hr-3076-119');
     expect(payload.bills).toHaveLength(1);
     expect(payload.executiveActions).toHaveLength(0);

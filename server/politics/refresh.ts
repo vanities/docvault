@@ -9,7 +9,7 @@
 import { loadSettings } from '../data.js';
 import type { Settings } from '../data.js';
 import { createLogger } from '../logger.js';
-import { fetchRecentBills } from './congress-bills.js';
+import { enrichBillSummaries, fetchRecentBills } from './congress-bills.js';
 import { fetchRecentExecutiveActions } from './federal-register.js';
 import { ingestHousePtr } from './house-ptr.js';
 import { ingestOge278t } from './oge-278t.js';
@@ -74,8 +74,26 @@ async function refreshPoliticsInner(
       log.warn(`Bills refresh failed: ${error}`);
       results.push({ source: 'bills', ok: false, added: 0, error });
     }
+
+    try {
+      const { populated } = await enrichBillSummaries(cache.bills, {
+        apiKey: settings.congressApiKey,
+        fetchFn: opts.fetchFn,
+      });
+      results.push({ source: 'bill-summaries', ok: true, added: populated });
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      log.warn(`Bill summary enrichment failed: ${error}`);
+      results.push({ source: 'bill-summaries', ok: false, added: 0, error });
+    }
   } else {
     results.push({ source: 'bills', ok: false, added: 0, error: 'Congress API key not set' });
+    results.push({
+      source: 'bill-summaries',
+      ok: false,
+      added: 0,
+      error: 'Congress API key not set',
+    });
   }
 
   // --- Executive actions (Federal Register) — keyless.

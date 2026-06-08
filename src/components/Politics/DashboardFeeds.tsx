@@ -9,6 +9,8 @@ interface BillItem {
   officialId: string;
   title: string;
   status: string;
+  summary?: string | null;
+  summarySource?: string | null;
   url: string | null;
 }
 interface TradeItem {
@@ -155,11 +157,19 @@ export function DashboardFeeds({ payload }: { payload: PoliticsFeedPayload | nul
             <span className="block text-xs text-surface-800 leading-snug line-clamp-2 group-hover:text-accent-300">
               {b.title}
             </span>
+            {b.summary && (
+              <span className="block text-[11px] text-surface-600 leading-snug line-clamp-3 mt-1">
+                {b.summary}
+              </span>
+            )}
             <div className="flex items-center gap-1.5 mt-1">
               <span className="font-mono text-[10px] text-surface-500">{b.officialId}</span>
               <Pill cls={(BILL_STATUS[b.status] ?? BILL_STATUS.introduced).cls}>
                 {(BILL_STATUS[b.status] ?? BILL_STATUS.introduced).label}
               </Pill>
+              {b.summarySource === 'congress-crs' && (
+                <span className="text-[10px] text-surface-500">CRS summary</span>
+              )}
             </div>
           </LinkRow>
         ))}
