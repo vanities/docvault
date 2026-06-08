@@ -4,16 +4,20 @@ set -euo pipefail
 DATA_DIR="${DOCVAULT_DATA_DIR:-/data}"
 JOB_ID="${DOCVAULT_JOB_ID:-george-gammon-youtube-daily}"
 # George Gammon publishes to TWO channels — "George Gammon" and his main
-# "Rebel Capitalist" channel. Scrape both; the dedup below merges them so a
-# cross-posted video is only filed once.
+# "Rebel Capitalist" channel — and posts much of his content as LIVE STREAMS,
+# which YouTube lists on a SEPARATE /streams tab (not /videos). Scrape both tabs
+# of both channels; the dedup below merges them so anything cross-posted or shown
+# on multiple tabs is filed only once.
 SOURCE_URLS=(
   "https://www.youtube.com/channel/UCpvyOqtEc86X8w8_Se0t4-w/videos"
+  "https://www.youtube.com/channel/UCpvyOqtEc86X8w8_Se0t4-w/streams"
   "https://www.youtube.com/channel/UCNjyEXSvYUUCzagFAKmaJ1Q/videos"
+  "https://www.youtube.com/channel/UCNjyEXSvYUUCzagFAKmaJ1Q/streams"
 )
 DOMAIN="finance"
 TAGS_JSON='["george-gammon","youtube","macro","finance"]'
 BASE_URL="${DOCVAULT_URL:-http://127.0.0.1:${DOCVAULT_PORT:-3005}}"
-LIMIT="${DOCVAULT_JOB_LIMIT:-5}"
+LIMIT="${DOCVAULT_JOB_LIMIT:-8}"
 PLAYLIST_END="${DOCVAULT_PLAYLIST_END:-5}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 OUT_DIR="$DATA_DIR/jobs/output/finance-research/$JOB_ID/$STAMP"
