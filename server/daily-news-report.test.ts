@@ -74,4 +74,15 @@ describe('daily-news-report', () => {
       expect(html).toContain('href="https://example.test/report"');
     }
   });
+
+  test('drops unsafe hero image URLs in full and email renders', () => {
+    for (const html of [
+      renderEditionHtml(edition('Body'), 'java\nscript:alert(1)'),
+      renderEditionEmailHtml(edition('Body'), 'data:text/html,<svg onload=alert(1)>'),
+    ]) {
+      expect(html.toLowerCase()).not.toContain('javascript:');
+      expect(html.toLowerCase()).not.toContain('data:text/html');
+      expect(html).not.toContain('<img');
+    }
+  });
 });

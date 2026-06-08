@@ -21,6 +21,15 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+function safeUrlAttr(url: string | undefined): string | null {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  const decoded = decodeHtmlEntities(trimmed).replace(/[\u0000-\u001f\u007f\s]+/g, '');
+  if (/^(javascript|data|vbscript):/i.test(decoded)) return null;
+  return escapeHtml(trimmed);
+}
+
 function slug(s: string): string {
   return (
     s
@@ -341,7 +350,8 @@ export function renderEditionHtml(edition: Edition, heroSrc?: string): string {
   const css = buildCss(themeStyle(edition.theme));
   const { body, toc } = renderBody(edition.body ?? '');
   const weatherHtml = renderWeatherBox(edition.weather);
-  const hero = heroSrc ? `<img class="hero-img" src="${heroSrc}" alt="">` : '';
+  const safeHeroSrc = safeUrlAttr(heroSrc);
+  const hero = safeHeroSrc ? `<img class="hero-img" src="${safeHeroSrc}" alt="">` : '';
   const sourceNotes = renderSourceNotes(edition);
   const indexHtml = toc.length
     ? `<nav class="index"><span class="label">In this edition</span>${toc
@@ -373,8 +383,9 @@ export function renderEditionHtml(edition: Edition, heroSrc?: string): string {
 export function renderEditionEmailHtml(edition: Edition, heroSrc?: string): string {
   const s = themeStyle(edition.theme);
   const { body } = renderBody(edition.body ?? '');
-  const hero = heroSrc
-    ? `<img src="${heroSrc}" alt="" style="display:block;width:100%;max-height:320px;object-fit:cover;border-radius:8px;margin:0 0 14px;">`
+  const safeHeroSrc = safeUrlAttr(heroSrc);
+  const hero = safeHeroSrc
+    ? `<img src="${safeHeroSrc}" alt="" style="display:block;width:100%;max-height:320px;object-fit:cover;border-radius:8px;margin:0 0 14px;">`
     : '';
   const sourceNotes = renderSourceNotesEmail(edition, s);
   return `<!DOCTYPE html>
