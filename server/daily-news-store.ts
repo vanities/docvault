@@ -46,7 +46,12 @@ export interface Edition {
   weather?: WeatherForecast;
   /** Synthesized newspaper markdown. */
   body?: string;
-  digestMeta?: { sources: string[]; sinceISO: string; itemCount: number };
+  digestMeta?: {
+    sources: string[];
+    sinceISO: string;
+    itemCount: number;
+    sourceWarnings?: Array<{ source: string; message: string }>;
+  };
   usage?: { inputTokens: number; outputTokens: number };
   /** Saved headline-image filename (set when headline images are enabled). */
   imagePath?: string;
