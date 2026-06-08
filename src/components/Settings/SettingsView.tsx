@@ -67,6 +67,29 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
+// Timezone choices for the Newsstand publish schedule. Prefer the runtime's full
+// IANA list (Intl.supportedValuesOf), falling back to a common subset on the rare
+// browser that lacks it. 'UTC' is pinned first since it's the server default.
+const TIMEZONE_OPTIONS: string[] = (() => {
+  const supported = (Intl as unknown as { supportedValuesOf?: (key: string) => string[] })
+    .supportedValuesOf;
+  const zones =
+    typeof supported === 'function'
+      ? supported('timeZone')
+      : [
+          'America/New_York',
+          'America/Chicago',
+          'America/Denver',
+          'America/Los_Angeles',
+          'America/Anchorage',
+          'Pacific/Honolulu',
+          'Europe/London',
+          'Europe/Paris',
+          'Asia/Tokyo',
+        ];
+  return ['UTC', ...zones.filter((z) => z !== 'UTC')];
+})();
+
 interface SettingsData {
   hasAnthropicKey: boolean;
   keySource?: 'settings' | 'env';
@@ -429,6 +452,7 @@ export function SettingsView() {
   const [dailyNewsEnabled, setDailyNewsEnabled] = useState(false);
   const [dailyNewsHour, setDailyNewsHour] = useState(7);
   const [dailyNewsWeeklyDay, setDailyNewsWeeklyDay] = useState(0);
+  const [dailyNewsTimezone, setDailyNewsTimezone] = useState('UTC');
   // Politics tab one-shot actions (fire-and-forget server jobs).
   const [politicsBackfilling, setPoliticsBackfilling] = useState(false);
   const [backtestRunning, setBacktestRunning] = useState(false);
@@ -1216,6 +1240,7 @@ export function SettingsView() {
         setDailyNewsEnabled(data.dailyNewsEnabled === true);
         setDailyNewsHour(data.dailyNewsHour ?? 7);
         setDailyNewsWeeklyDay(data.dailyNewsWeeklyDay ?? 0);
+        setDailyNewsTimezone(data.timezone ?? 'UTC');
         setAutoBackupPasswordSet(data.backupPasswordSet ?? false);
       }
     } catch {
@@ -1241,6 +1266,7 @@ export function SettingsView() {
           dailyNewsEnabled,
           dailyNewsHour,
           dailyNewsWeeklyDay,
+          timezone: dailyNewsTimezone,
           ...(autoBackupPassword ? { backupPassword: autoBackupPassword } : {}),
         }),
       });
@@ -2049,6 +2075,21 @@ export function SettingsView() {
                           {Array.from({ length: 24 }, (_, h) => (
                             <SelectItem key={h} value={String(h)}>
                               {String(h).padStart(2, '0')}:00
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={dailyNewsTimezone} onValueChange={setDailyNewsTimezone}>
+                        <SelectTrigger
+                          className="text-[13px] w-48"
+                          title="Timezone the publish hour is evaluated in"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TIMEZONE_OPTIONS.map((tz) => (
+                            <SelectItem key={tz} value={tz}>
+                              {tz}
                             </SelectItem>
                           ))}
                         </SelectContent>

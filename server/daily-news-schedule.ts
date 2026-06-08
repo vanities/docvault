@@ -1,9 +1,15 @@
 // Pure scheduling logic for Daily News — extracted so the wall-clock due-gate
 // (the bug-prone part: timezones, the publish-hour gate, weekly-day detection,
-// the local-date dedup key) is unit-testable without the store, settings, or a
+// the per-day dedup key) is unit-testable without the store, settings, or a
 // real clock. The scheduler combines this with the store's dedup checks.
+//
+// All wall-clock reads go through `tz.ts` so the gate/dedup/weekday are computed
+// in the configured IANA timezone (schedules.timezone) — NOT the container's
+// process zone, which is UTC in Docker. That zone-mismatch is what made
+// "publish at 9" fire at 9 UTC (the small hours, locally).
 
 import type { Settings } from './data.js';
+import { getConfiguredTimezone, zonedParts, zonedYMD } from './tz.js';
 
 type Schedules = Settings['schedules'];
 
@@ -11,8 +17,9 @@ export function clampInt(n: number, lo: number, hi: number): number {
   return Math.min(Math.max(Math.round(n), lo), hi);
 }
 
-/** Local-timezone YYYY-MM-DD (NOT toISOString/UTC) so the publish-hour gate and
- *  the per-day dedup key are always computed in the same timezone. */
+/** Process-local YYYY-MM-DD (NOT toISOString/UTC). Retained as a generic util;
+ *  scheduling no longer uses it — it computes dates in the configured timezone
+ *  via `zonedYMD` so the result doesn't depend on the container's process zone. */
 export function localYMD(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
     d.getDate()
@@ -33,14 +40,19 @@ export interface DailyNewsPlan {
  * caller needs — or null when disabled or before the publish hour. This does
  * NOT consult the store; the caller still checks editionExistsForDate /
  * weeklyEditionExistsForWeek to enforce the once-per-day / once-per-week dedup.
+ *
+ * Hour, weekday, and calendar date are all read in `schedules.timezone`
+ * (default 'UTC' when unset) so a single zone governs every comparison.
  */
 export function dailyNewsPlan(now: Date, schedules: Schedules): DailyNewsPlan | null {
   if (schedules?.dailyNewsEnabled !== true) return null;
-  if (now.getHours() < clampInt(schedules.dailyNewsHour ?? 7, 0, 23)) return null;
+  const tz = getConfiguredTimezone(schedules);
+  const parts = zonedParts(now, tz);
+  if (parts.hour < clampInt(schedules.dailyNewsHour ?? 7, 0, 23)) return null;
   const weeklyDay = clampInt(schedules.dailyNewsWeeklyDay ?? 0, 0, 6);
   return {
-    today: localYMD(now),
-    weekStart: localYMD(new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000)),
-    isWeeklyDay: now.getDay() === weeklyDay,
+    today: parts.ymd,
+    weekStart: zonedYMD(new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000), tz),
+    isWeeklyDay: parts.weekday === weeklyDay,
   };
 }

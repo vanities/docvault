@@ -1,9 +1,6 @@
 import { expect, test, describe } from 'vite-plus/test';
 import { clampInt, localYMD, dailyNewsPlan } from './daily-news-schedule.js';
 
-// Dates are constructed with new Date(y, monthIndex, d, h) — LOCAL time, exactly
-// how the scheduler reads the wall clock. monthIndex is 0-based (5 = June).
-
 describe('clampInt', () => {
   test('rounds then clamps to range', () => {
     expect(clampInt(7.4, 0, 23)).toBe(7);
@@ -21,40 +18,62 @@ describe('localYMD', () => {
 });
 
 describe('dailyNewsPlan', () => {
-  const enabled = { dailyNewsEnabled: true, dailyNewsHour: 7, dailyNewsWeeklyDay: 0 };
+  // Instants are fixed with Date.UTC so these tests are independent of the
+  // machine's timezone; `schedules.timezone` is what the publish-hour gate, the
+  // per-day dedup key, and the weekly-day check are evaluated against.
+  // America/Chicago is UTC-5 in June (CDT); America/Anchorage is UTC-8 (AKDT).
+  const enabled = {
+    dailyNewsEnabled: true,
+    dailyNewsHour: 7,
+    dailyNewsWeeklyDay: 0,
+    timezone: 'America/Chicago',
+  };
 
   test('null when disabled or schedules missing', () => {
-    expect(dailyNewsPlan(new Date(2026, 5, 5, 9), { dailyNewsEnabled: false })).toBeNull();
-    expect(dailyNewsPlan(new Date(2026, 5, 5, 9), undefined)).toBeNull();
-    expect(dailyNewsPlan(new Date(2026, 5, 5, 9), {})).toBeNull();
+    const afternoon = new Date(Date.UTC(2026, 5, 5, 18)); // 13:00 CDT
+    expect(dailyNewsPlan(afternoon, { dailyNewsEnabled: false })).toBeNull();
+    expect(dailyNewsPlan(afternoon, undefined)).toBeNull();
+    expect(dailyNewsPlan(afternoon, {})).toBeNull();
   });
 
-  test('null before the publish hour, a plan at/after it', () => {
-    expect(dailyNewsPlan(new Date(2026, 5, 5, 6, 59), enabled)).toBeNull();
-    const plan = dailyNewsPlan(new Date(2026, 5, 5, 7, 0), enabled);
+  test('publish-hour gate is evaluated in the configured timezone, not UTC', () => {
+    // 11:59 UTC = 06:59 CDT → before 07:00 → null.
+    expect(dailyNewsPlan(new Date(Date.UTC(2026, 5, 5, 11, 59)), enabled)).toBeNull();
+    // 12:00 UTC = 07:00 CDT → exactly the publish hour → a plan.
+    const plan = dailyNewsPlan(new Date(Date.UTC(2026, 5, 5, 12, 0)), enabled);
     expect(plan).not.toBeNull();
     expect(plan!.today).toBe('2026-06-05');
   });
 
-  test('hour defaults to 7 when unset', () => {
-    const cfg = { dailyNewsEnabled: true };
-    expect(dailyNewsPlan(new Date(2026, 5, 5, 6), cfg)).toBeNull();
-    expect(dailyNewsPlan(new Date(2026, 5, 5, 7), cfg)).not.toBeNull();
+  test('the same instant decides differently across zones', () => {
+    const instant = new Date(Date.UTC(2026, 5, 5, 12)); // 12:00 UTC
+    // 12:00 UTC ≥ 07 → a plan in UTC.
+    expect(dailyNewsPlan(instant, { ...enabled, timezone: 'UTC' })).not.toBeNull();
+    // 12:00 UTC = 04:00 AKDT → before 07 → null.
+    expect(dailyNewsPlan(instant, { ...enabled, timezone: 'America/Anchorage' })).toBeNull();
   });
 
-  test('weekStart is six local days earlier (handles month rollover)', () => {
-    // 2026-06-05 minus 6 days = 2026-05-30.
-    expect(dailyNewsPlan(new Date(2026, 5, 5, 8), enabled)!.weekStart).toBe('2026-05-30');
-    // 2026-01-03 minus 6 days = 2025-12-28 (year rollover).
-    expect(dailyNewsPlan(new Date(2026, 0, 3, 8), enabled)!.weekStart).toBe('2025-12-28');
+  test('defaults to UTC when timezone is unset', () => {
+    const cfg = { dailyNewsEnabled: true }; // no timezone; hour defaults to 7
+    expect(dailyNewsPlan(new Date(Date.UTC(2026, 5, 5, 6)), cfg)).toBeNull(); // 06:00 UTC
+    expect(dailyNewsPlan(new Date(Date.UTC(2026, 5, 5, 7)), cfg)).not.toBeNull(); // 07:00 UTC
   });
 
-  test('isWeeklyDay matches the configured weekday', () => {
-    const d = new Date(2026, 5, 7, 8);
-    const wd = d.getDay();
-    expect(dailyNewsPlan(d, { ...enabled, dailyNewsWeeklyDay: wd })!.isWeeklyDay).toBe(true);
-    expect(dailyNewsPlan(d, { ...enabled, dailyNewsWeeklyDay: (wd + 1) % 7 })!.isWeeklyDay).toBe(
-      false
-    );
+  test('today + weekStart use the calendar date in the configured zone', () => {
+    // 02:00 UTC Jun 5 = 21:00 CDT Jun 4 — still the 4th in Chicago.
+    const plan = dailyNewsPlan(new Date(Date.UTC(2026, 5, 5, 2)), { ...enabled, dailyNewsHour: 0 });
+    expect(plan!.today).toBe('2026-06-04');
+    expect(plan!.weekStart).toBe('2026-05-29'); // six days earlier, in-zone
+  });
+
+  test('isWeeklyDay matches the weekday in the configured zone', () => {
+    // 02:00 UTC Sun Jun 7 = 21:00 CDT Sat Jun 6 → Saturday (6) in Chicago.
+    const instant = new Date(Date.UTC(2026, 5, 7, 2));
+    expect(
+      dailyNewsPlan(instant, { ...enabled, dailyNewsHour: 0, dailyNewsWeeklyDay: 6 })!.isWeeklyDay
+    ).toBe(true);
+    expect(
+      dailyNewsPlan(instant, { ...enabled, dailyNewsHour: 0, dailyNewsWeeklyDay: 0 })!.isWeeklyDay
+    ).toBe(false);
   });
 });

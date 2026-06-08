@@ -133,6 +133,8 @@ import type {
 // Re-export for parsers/base.ts which imports from ./index.js
 export { getClaudeModel, getAnthropicKey } from './data.js';
 
+import { isValidTimeZone } from './tz.js';
+
 // Route modules
 import { handleFinancialSnapshotRoutes } from './routes/financial-snapshot.js';
 import { handleHealthSnapshotRoutes } from './routes/health-snapshot.js';
@@ -2463,6 +2465,7 @@ async function handleRequest(req: Request): Promise<Response> {
       dailyNewsEnabled: schedules.dailyNewsEnabled === true,
       dailyNewsHour: schedules.dailyNewsHour ?? 7,
       dailyNewsWeeklyDay: schedules.dailyNewsWeeklyDay ?? 0,
+      timezone: schedules.timezone ?? 'UTC',
       backupPasswordSet: !!schedules.backupPassword,
     });
   }
@@ -2539,6 +2542,9 @@ async function handleRequest(req: Request): Promise<Response> {
           typeof body.dailyNewsWeeklyDay === 'number'
             ? Math.min(Math.max(Math.round(body.dailyNewsWeeklyDay), 0), 6)
             : (settings.schedules?.dailyNewsWeeklyDay ?? 0),
+        timezone: isValidTimeZone(body.timezone)
+          ? body.timezone
+          : (settings.schedules?.timezone ?? 'UTC'),
         backupPassword: body.backupPassword || settings.schedules?.backupPassword,
       };
       await saveSettings(settings);
