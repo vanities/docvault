@@ -133,7 +133,7 @@ import type {
 // Re-export for parsers/base.ts which imports from ./index.js
 export { getClaudeModel, getAnthropicKey } from './data.js';
 
-import { isValidTimeZone } from './tz.js';
+import { isValidTimeZone, getConfiguredTimezone } from './tz.js';
 
 // Route modules
 import { handleFinancialSnapshotRoutes } from './routes/financial-snapshot.js';
@@ -538,6 +538,7 @@ async function handleRequest(req: Request): Promise<Response> {
         longitude?: unknown;
         label?: unknown;
         units?: unknown;
+        timezone?: unknown;
       };
       if (typeof w.enabled === 'boolean') settings.weather.enabled = w.enabled;
       if (typeof w.latitude === 'number' && w.latitude >= -90 && w.latitude <= 90) {
@@ -548,6 +549,9 @@ async function handleRequest(req: Request): Promise<Response> {
       }
       if (typeof w.label === 'string') settings.weather.label = w.label.trim() || undefined;
       if (w.units === 'F' || w.units === 'C') settings.weather.units = w.units;
+      // IANA timezone for this location — derived from the geocoded city (or a
+      // manual override). The app-wide source of truth (see tz.ts).
+      if (isValidTimeZone(w.timezone)) settings.weather.timezone = w.timezone;
     }
 
     await saveSettings(settings);
@@ -2465,7 +2469,7 @@ async function handleRequest(req: Request): Promise<Response> {
       dailyNewsEnabled: schedules.dailyNewsEnabled === true,
       dailyNewsHour: schedules.dailyNewsHour ?? 7,
       dailyNewsWeeklyDay: schedules.dailyNewsWeeklyDay ?? 0,
-      timezone: schedules.timezone ?? 'UTC',
+      timezone: getConfiguredTimezone(settings),
       backupPasswordSet: !!schedules.backupPassword,
     });
   }

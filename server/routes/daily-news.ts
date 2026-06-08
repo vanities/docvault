@@ -29,7 +29,7 @@ import { sendEmail } from '../email.js';
  *  the scheduler's per-day dedup key (see daily-news-schedule.ts) so a manual
  *  "generate now" lands on the same edition date as the scheduled one. */
 async function todayYMD(): Promise<string> {
-  const tz = getConfiguredTimezone((await loadSettings()).schedules);
+  const tz = getConfiguredTimezone(await loadSettings());
   return zonedYMD(new Date(), tz);
 }
 
