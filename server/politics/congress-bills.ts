@@ -117,11 +117,15 @@ function decodeHtmlEntities(text: string): string {
     const lower = entity.toLowerCase();
     if (lower.startsWith('#x')) {
       const code = Number.parseInt(lower.slice(2), 16);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+      return Number.isInteger(code) && code >= 0 && code <= 0x10ffff
+        ? String.fromCodePoint(code)
+        : match;
     }
     if (lower.startsWith('#')) {
       const code = Number.parseInt(lower.slice(1), 10);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+      return Number.isInteger(code) && code >= 0 && code <= 0x10ffff
+        ? String.fromCodePoint(code)
+        : match;
     }
     return named[lower] ?? match;
   });

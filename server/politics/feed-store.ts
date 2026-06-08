@@ -98,14 +98,26 @@ export function appendNew<T>(
   return [...fresh, ...existing].slice(0, cap);
 }
 
+function mergeBillRecord(existing: BillRecord | undefined, incoming: BillRecord): BillRecord {
+  if (!existing || incoming.summary) return incoming;
+  return {
+    ...incoming,
+    summary: existing.summary,
+    summarySource: existing.summarySource,
+    summaryActionDate: existing.summaryActionDate,
+    summaryCheckedAt: existing.summaryCheckedAt,
+    summaryUpdatedAt: existing.summaryUpdatedAt,
+  };
+}
+
 export function mergeBills(cache: PoliticsCache, incoming: BillRecord[]): void {
-  cache.bills = upsertByKey(
-    cache.bills,
-    incoming,
-    (b) => b.externalId,
-    (b) => b.updateDate,
-    CAP_BILLS
-  );
+  const byKey = new Map<string, BillRecord>();
+  for (const bill of cache.bills) byKey.set(bill.externalId, bill);
+  for (const bill of incoming)
+    byKey.set(bill.externalId, mergeBillRecord(byKey.get(bill.externalId), bill));
+  cache.bills = [...byKey.values()]
+    .sort((a, b) => b.updateDate.localeCompare(a.updateDate))
+    .slice(0, CAP_BILLS);
 }
 
 export function mergeExecutiveActions(
