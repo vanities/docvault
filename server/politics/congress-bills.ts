@@ -35,6 +35,25 @@ interface CongressBillListResponse {
   pagination?: { count?: number; next?: string };
 }
 
+interface CongressBillSummaryItem {
+  text?: string;
+  actionDate?: string;
+  updateDate?: string;
+  lastSummaryUpdateDate?: string;
+  actionDesc?: string;
+  versionCode?: string;
+}
+
+interface CongressBillSummariesResponse {
+  summaries?: CongressBillSummaryItem[];
+}
+
+export interface BillSummary {
+  text: string;
+  actionDate: string | null;
+  updateDate: string | null;
+}
+
 /** Map free-form latestAction text to a normalized lifecycle bucket. Errs toward
  *  "introduced" — we'd rather under-claim status than over-claim. (Ported verbatim
  *  from Check the Vote's bills/transform.ts.) */
@@ -66,6 +85,8 @@ export function transformBill(item: CongressBillListItem): BillRecord {
   const type = item.type.toLowerCase();
   return {
     externalId: `${type}-${item.number}-${item.congress}`,
+    congress: item.congress,
+    number: item.number,
     officialId: `${item.type.toUpperCase()} ${item.number}`,
     title: item.title,
     type,
@@ -73,9 +94,185 @@ export function transformBill(item: CongressBillListItem): BillRecord {
     introducedDate: item.introducedDate ?? null,
     latestAction: item.latestAction?.text ?? null,
     latestActionDate: item.latestAction?.actionDate ?? null,
+    summary: null,
+    summarySource: null,
+    summaryActionDate: null,
+    summaryCheckedAt: null,
+    summaryUpdatedAt: null,
     updateDate: item.updateDate,
     url: item.url ?? null,
   };
+}
+
+function decodeHtmlEntities(text: string): string {
+  const named: Record<string, string> = {
+    amp: '&',
+    apos: "'",
+    gt: '>',
+    lt: '<',
+    nbsp: ' ',
+    quot: '"',
+  };
+  return text.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (match, entity: string) => {
+    const lower = entity.toLowerCase();
+    if (lower.startsWith('#x')) {
+      const code = Number.parseInt(lower.slice(2), 16);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+    }
+    if (lower.startsWith('#')) {
+      const code = Number.parseInt(lower.slice(1), 10);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+    }
+    return named[lower] ?? match;
+  });
+}
+
+/** Congress.gov returns CRS summary text as lightly-invalid HTML. Strip tags,
+ * decode common entities, and collapse whitespace so the UI and Daily News can
+ * use the summary as plain prose. */
+export function cleanSummaryHtml(html: string): string {
+  return decodeHtmlEntities(
+    html
+      .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+      .replace(/<\s*\/\s*p\s*>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+  )
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function stripDuplicatedSummaryTitle(summary: string, title?: string): string {
+  if (!title) return summary;
+  const normalizedTitle = title.replace(/\s+/g, ' ').trim();
+  if (!normalizedTitle) return summary;
+  if (!summary.toLowerCase().startsWith(normalizedTitle.toLowerCase())) return summary;
+  return (
+    summary
+      .slice(normalizedTitle.length)
+      .replace(/^\s*[-–—:.;]?\s*/, '')
+      .trim() || summary
+  );
+}
+
+function parseBillLocator(
+  bill: BillRecord
+): { congress: number; type: string; number: string } | null {
+  if (bill.congress && bill.type && bill.number) {
+    return { congress: bill.congress, type: bill.type, number: bill.number };
+  }
+  const match = bill.externalId.match(/^([a-z]+)-(\d+)-(\d+)$/i);
+  if (!match) return null;
+  return { congress: Number(match[3]), type: match[1].toLowerCase(), number: match[2] };
+}
+
+function latestSummary(items: CongressBillSummaryItem[], billTitle?: string): BillSummary | null {
+  const usable = items
+    .map((item) => ({
+      ...item,
+      text: item.text ? stripDuplicatedSummaryTitle(cleanSummaryHtml(item.text), billTitle) : '',
+      sortDate: item.lastSummaryUpdateDate ?? item.updateDate ?? item.actionDate ?? '',
+    }))
+    .filter((item) => item.text);
+  if (usable.length === 0) return null;
+  usable.sort((a, b) => b.sortDate.localeCompare(a.sortDate));
+  const picked = usable[0];
+  return {
+    text: picked.text,
+    actionDate: picked.actionDate ?? null,
+    updateDate: picked.lastSummaryUpdateDate ?? picked.updateDate ?? null,
+  };
+}
+
+export interface FetchBillSummaryOptions {
+  apiKey: string;
+  congress: number;
+  billType: string;
+  billNumber: string;
+  billTitle?: string;
+  fetchFn?: typeof fetch;
+}
+
+export async function fetchBillSummary(opts: FetchBillSummaryOptions): Promise<BillSummary | null> {
+  const fetchFn = opts.fetchFn ?? timeoutFetch();
+  const started = Date.now();
+  const url = new URL(
+    `${BASE_URL}/bill/${opts.congress}/${opts.billType.toLowerCase()}/${opts.billNumber}/summaries`
+  );
+  url.searchParams.set('api_key', opts.apiKey);
+  url.searchParams.set('format', 'json');
+
+  const res = await fetchFn(url, { headers: { Accept: 'application/json' } });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(
+      `Congress.gov /bill/${opts.congress}/${opts.billType}/${opts.billNumber}/summaries failed: HTTP ${res.status}`
+    );
+  }
+  const data = (await res.json()) as CongressBillSummariesResponse;
+  const summary = latestSummary(data.summaries ?? [], opts.billTitle);
+  log.debug(
+    `[bills] summary ${opts.billType.toUpperCase()} ${opts.billNumber} in ${Date.now() - started}ms (${summary ? 'hit' : 'miss'})`
+  );
+  return summary;
+}
+
+export interface EnrichBillSummariesOptions {
+  apiKey: string;
+  maxFetches?: number;
+  /** Refetch summary misses after this many days, in case CRS publishes later. */
+  retryMissAfterDays?: number;
+  fetchFn?: typeof fetch;
+}
+
+function shouldFetchSummary(bill: BillRecord, retryMissAfterDays: number): boolean {
+  if (bill.summary) return false;
+  const checkedAt = Date.parse(bill.summaryCheckedAt ?? '');
+  if (!Number.isFinite(checkedAt)) return true;
+  return Date.now() - checkedAt > retryMissAfterDays * 24 * 60 * 60 * 1000;
+}
+
+/** Fill missing official CRS summaries for the newest bills in the rolling cache.
+ * Mutates the passed records in place and returns the number populated. */
+export async function enrichBillSummaries(
+  bills: BillRecord[],
+  opts: EnrichBillSummariesOptions
+): Promise<{ fetched: number; populated: number }> {
+  const started = Date.now();
+  const maxFetches = opts.maxFetches ?? 40;
+  const retryMissAfterDays = opts.retryMissAfterDays ?? 7;
+  let fetched = 0;
+  let populated = 0;
+
+  for (const bill of bills) {
+    if (fetched >= maxFetches) break;
+    if (!shouldFetchSummary(bill, retryMissAfterDays)) continue;
+    const locator = parseBillLocator(bill);
+    if (!locator) continue;
+    fetched++;
+    const checkedAt = new Date().toISOString();
+    const summary = await fetchBillSummary({
+      apiKey: opts.apiKey,
+      congress: locator.congress,
+      billType: locator.type,
+      billNumber: locator.number,
+      billTitle: bill.title,
+      fetchFn: opts.fetchFn,
+    });
+    bill.congress = bill.congress ?? locator.congress;
+    bill.number = bill.number ?? locator.number;
+    bill.summaryCheckedAt = checkedAt;
+    if (!summary) continue;
+    bill.summary = summary.text;
+    bill.summarySource = 'congress-crs';
+    bill.summaryActionDate = summary.actionDate;
+    bill.summaryUpdatedAt = summary.updateDate ?? checkedAt;
+    populated++;
+  }
+
+  log.info(
+    `[bills] enriched ${populated}/${fetched} bill summaries in ${Date.now() - started}ms (cap=${maxFetches})`
+  );
+  return { fetched, populated };
 }
 
 export interface FetchRecentBillsOptions {

@@ -64,6 +64,8 @@ export type BillStatus =
  *  the existing vote cards + topic matcher light up without UI changes. */
 export interface BillRecord {
   externalId: string; // "hr-3076-119"
+  congress: number; // 119
+  number: string; // "3076"
   officialId: string; // "HR 3076"
   title: string;
   type: string; // hr, s, hjres, ...
@@ -71,6 +73,13 @@ export interface BillRecord {
   introducedDate: string | null;
   latestAction: string | null;
   latestActionDate: string | null;
+  /** Official CRS/Congress.gov summary text, stripped of Congress.gov HTML. */
+  summary: string | null;
+  summarySource: 'congress-crs' | null;
+  summaryActionDate: string | null;
+  /** Last time Congress.gov summaries were checked, even if no summary existed yet. */
+  summaryCheckedAt: string | null;
+  summaryUpdatedAt: string | null;
   updateDate: string;
   url: string | null;
 }

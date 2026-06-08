@@ -317,7 +317,11 @@ async function gatherPolitics(afterSince: AfterSince): Promise<string[]> {
       .filter((b) => afterSince(b.latestActionDate ?? b.introducedDate ?? b.updateDate))
       .slice(0, 8);
     for (const b of bills) {
-      items.push(`${b.officialId}: ${b.title}${b.latestAction ? ` — ${b.latestAction}` : ''}.`);
+      const parts = [`${b.officialId}: ${b.title}`];
+      if (b.latestAction) parts.push(`Action: ${b.latestAction}`);
+      if (b.summary)
+        parts.push(`CRS summary: ${b.summary.replace(/\s+/g, ' ').trim().slice(0, 900)}`);
+      items.push(`${parts.join(' — ')}.`);
     }
     const eos = ((feed.executiveActions as ExecutiveActionRecord[] | undefined) ?? [])
       .filter((a) => afterSince(a.issuedDate))

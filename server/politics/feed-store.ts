@@ -162,9 +162,13 @@ function billToVote(bill: BillRecord): Record<string, unknown> {
     status: bill.status,
     latestAction: bill.latestAction,
     latestActionDate: bill.latestActionDate,
+    summary: bill.summary ?? null,
+    summarySource: bill.summarySource ?? null,
+    summaryCheckedAt: bill.summaryCheckedAt ?? null,
+    summaryUpdatedAt: bill.summaryUpdatedAt ?? null,
     updateDate: bill.updateDate,
     url: bill.url,
-    bill: { title: bill.title, officialId: bill.officialId },
+    bill: { title: bill.title, officialId: bill.officialId, summary: bill.summary ?? null },
   };
 }
 
