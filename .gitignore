@@ -87,8 +87,9 @@ scripts/*
 !server/politics/backtest.test.ts
 # Exception: amortization math tests are pure computation, no personal data
 !src/utils/amortization.test.ts
-# Exception: daily-news schedule tests are pure date math, no personal data
+# Exception: daily-news schedule/report tests use pure date math and fabricated edition HTML, no personal data
 !server/daily-news-schedule.test.ts
+!server/daily-news-report.test.ts
 
 # Internal design docs
 docs/PRD-shadcn-migration.md
