@@ -62,20 +62,31 @@ describe('daily-news-report', () => {
       '## Safe headline',
       '<script>alert("x")</script>',
       '<img src="javascript:alert(1)" onerror="alert(2)">',
-      '<a href="javascript:alert(3)" onclick="alert(4)">bad</a>',
+      '<img src="vbscript:msgbox(1)">',
+      '<a href="java&#x73;cript:alert(3)" onclick="alert(4)">bad</a>',
       '[safe](https://example.test/report)',
     ].join('\n\n');
 
     for (const html of [renderEditionHtml(edition(body)), renderEditionEmailHtml(edition(body))]) {
       expect(html.toLowerCase()).not.toContain('<script');
       expect(html.toLowerCase()).not.toContain('javascript:');
+      expect(html.toLowerCase()).not.toContain('java&#x73;cript:');
+      expect(html.toLowerCase()).not.toContain('vbscript:');
       expect(html.toLowerCase()).not.toContain('onerror=');
       expect(html.toLowerCase()).not.toContain('onclick=');
       expect(html).toContain('href="https://example.test/report"');
     }
   });
 
-  test('drops unsafe hero image URLs in full and email renders', () => {
+  test('preserves generated PNG hero data URIs and drops unsafe hero image URLs', () => {
+    for (const html of [
+      renderEditionHtml(edition('Body'), 'data:image/png;base64,AAAA'),
+      renderEditionEmailHtml(edition('Body'), 'data:image/png;base64,AAAA'),
+    ]) {
+      expect(html).toContain('<img');
+      expect(html).toContain('data:image/png;base64,AAAA');
+    }
+
     for (const html of [
       renderEditionHtml(edition('Body'), 'java\nscript:alert(1)'),
       renderEditionEmailHtml(edition('Body'), 'data:text/html,<svg onload=alert(1)>'),

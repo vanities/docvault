@@ -714,6 +714,13 @@ export async function scanDirectory(dirPath: string, basePath: string = ''): Pro
   return files;
 }
 
+export function resolveUnder(baseDir: string, relPath: string): string | null {
+  const base = path.resolve(baseDir);
+  const target = path.resolve(baseDir, relPath);
+  if (target !== base && !target.startsWith(`${base}${path.sep}`)) return null;
+  return target;
+}
+
 export async function ensureDir(dirPath: string): Promise<void> {
   try {
     await fs.mkdir(dirPath, { recursive: true });
@@ -748,7 +755,11 @@ export async function getEntityPath(entityId: string): Promise<string | null> {
   const entity = config.entities.find((e) => e.id === entityId);
   if (!entity) return null;
 
-  const entityPath = path.join(DATA_DIR, entity.path);
+  const entityPath = resolveUnder(DATA_DIR, entity.path);
+  if (!entityPath) {
+    logFiles.warn(`[entity] refusing path outside data dir for entity ${entityId}`);
+    return null;
+  }
 
   // Check if path exists
   try {
