@@ -495,6 +495,7 @@ export function DailyNewsView() {
             {paperMode ? (
               <iframe
                 title="Newspaper edition"
+                sandbox="allow-popups"
                 src={`${API_BASE}/daily-news/${active.id}/edition.html?inline=1`}
                 className="flex-1 w-full min-h-0 border-0 bg-white"
               />

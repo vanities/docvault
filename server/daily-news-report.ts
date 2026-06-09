@@ -21,13 +21,26 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+function normalizedUrlForProtocolCheck(url: string): string {
+  return decodeHtmlEntities(url).replace(/[\u0000-\u001f\u007f\s]+/g, '');
+}
+
 function safeUrlAttr(url: string | undefined): string | null {
   if (!url) return null;
   const trimmed = url.trim();
   if (!trimmed) return null;
-  const decoded = decodeHtmlEntities(trimmed).replace(/[\u0000-\u001f\u007f\s]+/g, '');
+  const decoded = normalizedUrlForProtocolCheck(trimmed);
   if (/^(javascript|data|vbscript):/i.test(decoded)) return null;
   return escapeHtml(trimmed);
+}
+
+function safeHeroUrlAttr(url: string | undefined): string | null {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  const decoded = normalizedUrlForProtocolCheck(trimmed);
+  if (/^data:image\/png;base64,[a-z0-9+/]+=*$/i.test(decoded)) return escapeHtml(trimmed);
+  return safeUrlAttr(trimmed);
 }
 
 function slug(s: string): string {
@@ -96,11 +109,9 @@ function stripUnsafeHtml(html: string): string {
     .replace(
       /\s+(href|src)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi,
       (match, attr: string, raw: string) => {
-        const value = raw
-          .replace(/^['"]|['"]$/g, '')
-          .trim()
-          .toLowerCase();
-        return /^(javascript|data):/.test(value)
+        const value = raw.replace(/^['"]|['"]$/g, '').trim();
+        const decoded = normalizedUrlForProtocolCheck(value);
+        return /^(javascript|data|vbscript):/i.test(decoded)
           ? ''
           : `${match.startsWith(' ') ? ' ' : ''}${attr}=${raw}`;
       }
@@ -350,7 +361,7 @@ export function renderEditionHtml(edition: Edition, heroSrc?: string): string {
   const css = buildCss(themeStyle(edition.theme));
   const { body, toc } = renderBody(edition.body ?? '');
   const weatherHtml = renderWeatherBox(edition.weather);
-  const safeHeroSrc = safeUrlAttr(heroSrc);
+  const safeHeroSrc = safeHeroUrlAttr(heroSrc);
   const hero = safeHeroSrc ? `<img class="hero-img" src="${safeHeroSrc}" alt="">` : '';
   const sourceNotes = renderSourceNotes(edition);
   const indexHtml = toc.length
@@ -383,7 +394,7 @@ export function renderEditionHtml(edition: Edition, heroSrc?: string): string {
 export function renderEditionEmailHtml(edition: Edition, heroSrc?: string): string {
   const s = themeStyle(edition.theme);
   const { body } = renderBody(edition.body ?? '');
-  const safeHeroSrc = safeUrlAttr(heroSrc);
+  const safeHeroSrc = safeHeroUrlAttr(heroSrc);
   const hero = safeHeroSrc
     ? `<img src="${safeHeroSrc}" alt="" style="display:block;width:100%;max-height:320px;object-fit:cover;border-radius:8px;margin:0 0 14px;">`
     : '';

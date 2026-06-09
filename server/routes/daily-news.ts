@@ -124,7 +124,18 @@ export async function handleDailyNewsRoutes(
       if (bytes) heroSrc = `data:image/png;base64,${bytes.toString('base64')}`;
     }
     const inline = url.searchParams.get('inline') === '1';
-    const headers: Record<string, string> = { 'Content-Type': 'text/html; charset=utf-8' };
+    const headers: Record<string, string> = {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Security-Policy': [
+        "default-src 'none'",
+        "style-src 'unsafe-inline'",
+        'img-src data:',
+        "base-uri 'none'",
+        "form-action 'none'",
+        "frame-ancestors 'self'",
+      ].join('; '),
+      'X-Content-Type-Options': 'nosniff',
+    };
     if (!inline) {
       headers['Content-Disposition'] = `attachment; filename="${editionFilename(edition)}.html"`;
     }

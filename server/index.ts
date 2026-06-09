@@ -84,6 +84,7 @@ import {
   fetchMetalSpotPrices,
   getMimeType,
   scanDirectory,
+  resolveUnder,
   ensureDir,
   jsonResponse,
   corsHeaders,
@@ -965,6 +966,10 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse({ error: 'Missing id or name' }, 400);
     }
 
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(String(id))) {
+      return jsonResponse({ error: 'Invalid entity id' }, 400);
+    }
+
     const config = await loadConfig();
 
     // Check if entity already exists
@@ -1103,7 +1108,8 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse({ error: 'Entity not found' }, 404);
     }
 
-    const yearPath = path.join(entityPath, year);
+    const yearPath = resolveUnder(entityPath, year);
+    if (!yearPath) return jsonResponse({ error: 'Access denied' }, 403);
 
     try {
       await fs.access(yearPath);
@@ -1140,7 +1146,8 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse({ files: [] });
     }
 
-    const yearPath = path.join(entityPath, year);
+    const yearPath = resolveUnder(entityPath, year);
+    if (!yearPath) return jsonResponse({ error: 'Access denied' }, 403);
 
     try {
       await fs.access(yearPath);
@@ -1162,10 +1169,8 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse({ error: 'Entity not found' }, 404);
     }
 
-    const fullPath = path.join(entityPath, filePath);
-
-    // Security: ensure we're still within entity path
-    if (!fullPath.startsWith(entityPath)) {
+    const fullPath = resolveUnder(entityPath, filePath);
+    if (!fullPath) {
       return jsonResponse({ error: 'Access denied' }, 403);
     }
 
@@ -1203,9 +1208,8 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse({ error: 'Entity not found' }, 404);
     }
 
-    const fullPath = path.join(entityPath, filePath);
-
-    if (!fullPath.startsWith(entityPath)) {
+    const fullPath = resolveUnder(entityPath, filePath);
+    if (!fullPath) {
       return jsonResponse({ error: 'Access denied' }, 403);
     }
 
@@ -1232,13 +1236,16 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse({ error: 'Entity not found' }, 404);
     }
 
-    const fullDir = path.join(entityPath, destPath);
-    let finalFilename = filename;
-    let fullPath = path.join(fullDir, finalFilename);
+    if (filename !== path.basename(filename) || filename === '.' || filename === '..') {
+      return jsonResponse({ error: 'Invalid filename' }, 400);
+    }
 
-    if (!fullPath.startsWith(entityPath)) {
+    const fullDir = resolveUnder(entityPath, destPath);
+    if (!fullDir) {
       return jsonResponse({ error: 'Access denied' }, 403);
     }
+    let finalFilename = filename;
+    let fullPath = path.join(fullDir, finalFilename);
 
     try {
       await ensureDir(fullDir);
@@ -1282,9 +1289,8 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse({ error: 'Entity not found' }, 404);
     }
 
-    const fullPath = path.join(entityPath, dirPath);
-
-    if (!fullPath.startsWith(entityPath)) {
+    const fullPath = resolveUnder(entityPath, dirPath);
+    if (!fullPath) {
       return jsonResponse({ error: 'Access denied' }, 403);
     }
 
@@ -1307,9 +1313,8 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse({ error: 'Entity not found' }, 404);
     }
 
-    const fullPath = path.join(entityPath, filePath);
-
-    if (!fullPath.startsWith(entityPath)) {
+    const fullPath = resolveUnder(entityPath, filePath);
+    if (!fullPath) {
       return jsonResponse({ error: 'Access denied' }, 403);
     }
 
@@ -1360,7 +1365,8 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse({ error: 'Entity not found' }, 404);
     }
 
-    const yearPath = path.join(entityPath, year);
+    const yearPath = resolveUnder(entityPath, year);
+    if (!yearPath) return jsonResponse({ error: 'Access denied' }, 403);
 
     try {
       await fs.access(yearPath);
@@ -1469,10 +1475,10 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse({ error: 'Entity not found' }, 404);
     }
 
-    const fromPath = path.join(entityPath, from);
-    const toPath = path.join(entityPath, to);
+    const fromPath = resolveUnder(entityPath, from);
+    const toPath = resolveUnder(entityPath, to);
 
-    if (!fromPath.startsWith(entityPath) || !toPath.startsWith(entityPath)) {
+    if (!fromPath || !toPath) {
       return jsonResponse({ error: 'Access denied' }, 403);
     }
 
@@ -1503,11 +1509,14 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse({ error: 'Entity not found' }, 404);
     }
 
-    const oldFullPath = path.join(entityPath, filePath);
+    const oldFullPath = resolveUnder(entityPath, filePath);
+    if (!oldFullPath) {
+      return jsonResponse({ error: 'Access denied' }, 403);
+    }
     const dir = path.dirname(oldFullPath);
-    const newFullPath = path.join(dir, newFilename);
+    const newFullPath = resolveUnder(dir, newFilename);
 
-    if (!oldFullPath.startsWith(entityPath) || !newFullPath.startsWith(entityPath)) {
+    if (!newFullPath || !resolveUnder(entityPath, path.relative(entityPath, newFullPath))) {
       return jsonResponse({ error: 'Access denied' }, 403);
     }
 
@@ -1645,11 +1654,11 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse({ error: 'Destination entity not found' }, 404);
     }
 
-    const fullFromPath = path.join(fromEntityPath, from);
-    const fullToPath = path.join(toEntityPath, to);
+    const fullFromPath = resolveUnder(fromEntityPath, from);
+    const fullToPath = resolveUnder(toEntityPath, to);
 
     // Security check
-    if (!fullFromPath.startsWith(fromEntityPath) || !fullToPath.startsWith(toEntityPath)) {
+    if (!fullFromPath || !fullToPath) {
       return jsonResponse({ error: 'Access denied' }, 403);
     }
 
