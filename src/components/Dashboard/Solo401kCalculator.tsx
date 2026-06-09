@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { requestJson } from '../../api/client';
 
 interface Solo401kCalculatorProps {
   defaultGross: number;
@@ -160,8 +161,7 @@ export function Solo401kCalculator({
   // Load contributions from server
   useEffect(() => {
     contribLoadedRef.current = false;
-    fetch(`/api/contributions/${entity}/${taxYear}`)
-      .then((r) => r.json())
+    requestJson<{ contributions?: Contribution[] }>(`/api/contributions/${entity}/${taxYear}`)
       .then((data) => {
         setContributions(data.contributions || []);
         contribLoadedRef.current = true;
@@ -174,7 +174,7 @@ export function Solo401kCalculator({
   // Save contributions to server when they change (skip initial load)
   useEffect(() => {
     if (!contribLoadedRef.current) return;
-    fetch(`/api/contributions/${entity}/${taxYear}`, {
+    requestJson<unknown>(`/api/contributions/${entity}/${taxYear}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contributions }),
