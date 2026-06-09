@@ -3,7 +3,6 @@ import {
   Key,
   Save,
   CheckCircle,
-  Brain,
   Building2,
   Pencil,
   Trash2,
@@ -20,21 +19,13 @@ import {
   Upload,
   Shield,
   Landmark,
-  LayoutGrid,
-  Sliders,
-  KeyRound,
-  Banknote,
   LineChart,
-  Archive,
-  Library,
   Activity,
   Copy,
   Check,
   MapPin,
-  Mail,
-  Mic,
 } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs } from '@/components/ui/tabs';
 import type { SyncStatus, CryptoExchangeId, CryptoChain } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
@@ -48,6 +39,7 @@ import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { ChatSettingsSection } from './ChatSettingsSection';
 import { ModelsSettingsSection } from './ModelsSettingsSection';
 import { DropboxConnectionSection } from './DropboxConnectionSection';
+import { SettingsTabsList } from './SettingsTabsList';
 import { AiLabsKeysSection } from './AiLabsKeysSection';
 import { EmailSettingsSection } from './EmailSettingsSection';
 import { WeatherSettingsSection } from './WeatherSettingsSection';
@@ -1299,72 +1291,7 @@ export function SettingsView() {
       <h2 className="text-2xl font-bold text-surface-950 mb-6">Settings</h2>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="gap-6">
-        <TabsList className="mb-2">
-          <TabsTrigger value="all">
-            <LayoutGrid className="w-3.5 h-3.5" />
-            All
-          </TabsTrigger>
-          <TabsTrigger value="general">
-            <Sliders className="w-3.5 h-3.5" />
-            General
-          </TabsTrigger>
-          <TabsTrigger value="keys">
-            <KeyRound className="w-3.5 h-3.5" />
-            AI
-          </TabsTrigger>
-          <TabsTrigger value="email">
-            <Mail className="w-3.5 h-3.5" />
-            Email
-          </TabsTrigger>
-          <TabsTrigger value="maps">
-            <MapPin className="w-3.5 h-3.5" />
-            Maps
-          </TabsTrigger>
-          <TabsTrigger value="voice">
-            <Mic className="w-3.5 h-3.5" />
-            Voice
-          </TabsTrigger>
-          <TabsTrigger value="sync">
-            <RefreshCw className="w-3.5 h-3.5" />
-            Sync
-          </TabsTrigger>
-          <TabsTrigger value="sources">
-            <Library className="w-3.5 h-3.5" />
-            Sources
-          </TabsTrigger>
-          <TabsTrigger value="brain">
-            <Brain className="w-3.5 h-3.5" />
-            Brain
-          </TabsTrigger>
-          <TabsTrigger value="status">
-            <Activity className="w-3.5 h-3.5" />
-            Status
-          </TabsTrigger>
-          <TabsTrigger value="jobs">
-            <Activity className="w-3.5 h-3.5" />
-            Jobs
-          </TabsTrigger>
-          <TabsTrigger value="banking">
-            <Banknote className="w-3.5 h-3.5" />
-            Banking
-          </TabsTrigger>
-          <TabsTrigger value="crypto">
-            <Bitcoin className="w-3.5 h-3.5" />
-            Crypto
-          </TabsTrigger>
-          <TabsTrigger value="quant">
-            <LineChart className="w-3.5 h-3.5" />
-            Quant
-          </TabsTrigger>
-          <TabsTrigger value="politics">
-            <Landmark className="w-3.5 h-3.5" />
-            Politics
-          </TabsTrigger>
-          <TabsTrigger value="backup">
-            <Archive className="w-3.5 h-3.5" />
-            Backup
-          </TabsTrigger>
-        </TabsList>
+        <SettingsTabsList />
 
         {showIn(['general']) && (
           <>
