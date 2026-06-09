@@ -82,7 +82,7 @@ export function SettingsTabsList() {
         </TabsTrigger>
         <TabsTrigger value="keys">
           <KeyRound className="w-3.5 h-3.5" />
-          AI
+          AI &amp; Chat
         </TabsTrigger>
         <TabsTrigger value="email">
           <Mail className="w-3.5 h-3.5" />
@@ -90,7 +90,7 @@ export function SettingsTabsList() {
         </TabsTrigger>
         <TabsTrigger value="maps">
           <MapPin className="w-3.5 h-3.5" />
-          Maps
+          Location
         </TabsTrigger>
         <TabsTrigger value="voice">
           <Mic className="w-3.5 h-3.5" />
@@ -102,7 +102,7 @@ export function SettingsTabsList() {
         </TabsTrigger>
         <TabsTrigger value="sources">
           <Library className="w-3.5 h-3.5" />
-          Sources
+          External
         </TabsTrigger>
         <TabsTrigger value="brain">
           <Brain className="w-3.5 h-3.5" />
