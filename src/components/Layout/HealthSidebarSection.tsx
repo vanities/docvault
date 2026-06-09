@@ -95,7 +95,7 @@ export function HealthSidebarSection({
         />
         <HealthNavButton
           view="health-records"
-          label="Records"
+          label="Medical Records"
           icon={ClipboardList}
           activeView={activeView}
           isProcessing={isProcessing}

@@ -674,7 +674,7 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               )}
               <NavButton
                 view="income"
-                label="Income"
+                label="Additional Income"
                 icon={Receipt}
                 activeColor="bg-teal-500/10"
                 activeTextColor="text-teal-400"
@@ -723,6 +723,16 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               onClick={handleViewClick}
             />
             <NavButton
+              view="strategy"
+              label="Strategy"
+              icon={Brain}
+              activeColor="bg-purple-500/10"
+              activeTextColor="text-purple-400"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
+            <NavButton
               view="banks"
               label="Banks"
               icon={Building2}
@@ -734,7 +744,7 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
             />
             <NavButton
               view="brokers"
-              label="Brokers"
+              label="Brokerage"
               icon={Landmark}
               activeColor="bg-accent-500/10"
               activeTextColor="text-accent-400"
@@ -754,7 +764,7 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
             />
             <NavButton
               view="gold"
-              label="Gold"
+              label="Metals"
               icon={Coins}
               activeColor="bg-yellow-500/10"
               activeTextColor="text-yellow-500"
@@ -802,16 +812,6 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               onClick={handleViewClick}
             />
             <NavButton
-              view="strategy"
-              label="Strategy"
-              icon={Brain}
-              activeColor="bg-purple-500/10"
-              activeTextColor="text-purple-400"
-              activeView={activeView}
-              isProcessing={isProcessing}
-              onClick={handleViewClick}
-            />
-            <NavButton
               view="politics"
               label="Politics"
               icon={Scale}
@@ -843,7 +843,7 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
             />
             <NavButton
               view="external-sources"
-              label="Sources"
+              label="Source Library"
               icon={Library}
               activeColor="bg-sky-500/10"
               activeTextColor="text-sky-400"
