@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vite-plus/test';
+import { buildResendPayload } from './email.js';
 import {
   formatEditionDate,
   renderEditionEmailHtml,
@@ -98,14 +99,20 @@ describe('daily-news-report', () => {
     }
   });
 
-  test('preserves generated PNG hero data URIs and drops unsafe hero image URLs', () => {
+  test('preserves generated PNG hero data URIs and CID hero images, and drops unsafe hero image URLs', () => {
     for (const html of [
       renderEditionHtml(edition('Body'), 'data:image/png;base64,AAAA'),
       renderEditionEmailHtml(edition('Body'), 'data:image/png;base64,AAAA'),
+      renderEditionEmailHtml(edition('Body'), 'cid:docvault-daily-news-hero'),
     ]) {
       expect(html).toContain('<img');
-      expect(html).toContain('data:image/png;base64,AAAA');
     }
+    expect(renderEditionHtml(edition('Body'), 'data:image/png;base64,AAAA')).toContain(
+      'data:image/png;base64,AAAA'
+    );
+    expect(renderEditionEmailHtml(edition('Body'), 'cid:docvault-daily-news-hero')).toContain(
+      'cid:docvault-daily-news-hero'
+    );
 
     for (const html of [
       renderEditionHtml(edition('Body'), 'java\nscript:alert(1)'),
@@ -115,5 +122,43 @@ describe('daily-news-report', () => {
       expect(html.toLowerCase()).not.toContain('data:text/html');
       expect(html).not.toContain('<img');
     }
+  });
+
+  test('builds Resend CID attachments for inline email hero images', () => {
+    const result = buildResendPayload(
+      {
+        subject: 'Daily News',
+        html: '<img src="cid:docvault-daily-news-hero" alt="">',
+        attachments: [
+          {
+            filename: 'daily-news-hero.png',
+            content: 'iVBORw0KGgo=',
+            contentType: 'image/png',
+            contentId: 'docvault-daily-news-hero',
+          },
+        ],
+      },
+      {
+        fromEmail: 'sender@example.test',
+        fromName: 'DocVault',
+        toEmail: 'reader@example.test',
+      }
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.payload).toMatchObject({
+      from: 'DocVault <sender@example.test>',
+      to: ['reader@example.test'],
+      subject: 'Daily News',
+      html: '<img src="cid:docvault-daily-news-hero" alt="">',
+      attachments: [
+        {
+          filename: 'daily-news-hero.png',
+          content: 'iVBORw0KGgo=',
+          content_type: 'image/png',
+          content_id: 'docvault-daily-news-hero',
+        },
+      ],
+    });
   });
 });

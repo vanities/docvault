@@ -7,6 +7,7 @@
 // onboarding@resend.dev sender for testing.
 
 import { getEmailConfig } from './data.js';
+import type { EmailConfig } from './data.js';
 import { createLogger } from './logger.js';
 
 const log = createLogger('Email');
@@ -17,6 +18,8 @@ export interface EmailAttachment {
   /** Base64-encoded file content. */
   content: string;
   contentType?: string;
+  /** Optional CID for inline images referenced as <img src="cid:...">. */
+  contentId?: string;
 }
 
 export interface SendEmailInput {
@@ -33,6 +36,13 @@ export interface SendEmailInput {
 export interface SendEmailResult {
   ok: boolean;
   id?: string;
+  error?: string;
+}
+
+interface ResendPayloadResult {
+  payload?: Record<string, unknown>;
+  recipients: string[];
+  from?: string;
   error?: string;
 }
 
@@ -67,22 +77,15 @@ function parseRecipients(s: string | undefined): string[] {
   return out;
 }
 
-/**
- * Send an email via Resend. Best-effort — never throws. Returns
- * { ok:false, error } when unconfigured or the API rejects the request.
- */
-export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult> {
-  const cfg = await getEmailConfig();
-  const startedAt = Date.now();
-
-  if (!cfg.apiKey) {
-    log.warn('[send] skipped — no Resend API key configured');
-    return { ok: false, error: 'No Resend API key configured' };
-  }
+/** Build the exact Resend API payload. Exported for regression tests. */
+export function buildResendPayload(
+  input: SendEmailInput,
+  cfg: Pick<EmailConfig, 'fromEmail' | 'fromName' | 'toEmail'>
+): ResendPayloadResult {
   const from = input.from || defaultFrom(cfg.fromEmail, cfg.fromName);
   const recipients = parseRecipients(input.to ?? cfg.toEmail);
-  if (!from) return { ok: false, error: 'No from address configured' };
-  if (!recipients.length) return { ok: false, error: 'No to address configured' };
+  if (!from) return { from, recipients, error: 'No from address configured' };
+  if (!recipients.length) return { from, recipients, error: 'No to address configured' };
 
   const payload: Record<string, unknown> = {
     from,
@@ -96,8 +99,27 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
       filename: a.filename,
       content: a.content,
       ...(a.contentType ? { content_type: a.contentType } : {}),
+      ...(a.contentId ? { content_id: a.contentId } : {}),
     }));
   }
+
+  return { payload, recipients, from };
+}
+
+/**
+ * Send an email via Resend. Best-effort — never throws. Returns
+ * { ok:false, error } when unconfigured or the API rejects the request.
+ */
+export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult> {
+  const cfg = await getEmailConfig();
+  const startedAt = Date.now();
+
+  if (!cfg.apiKey) {
+    log.warn('[send] skipped — no Resend API key configured');
+    return { ok: false, error: 'No Resend API key configured' };
+  }
+  const { payload, recipients, error } = buildResendPayload(input, cfg);
+  if (error || !payload) return { ok: false, error: error ?? 'Could not build email payload' };
 
   log.info(
     `[send] to=${recipients.length} recipient(s) [${recipients.map(redactEmail).join(', ')}] ` +
