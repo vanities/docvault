@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { TaxDocument, DocumentType, Entity, ExpenseCategory, Reminder, Todo } from '../types';
-import { isBusinessDocumentType, getBusinessSubfolder, EXPENSE_FOLDER_MAP } from '../config';
 import { API_BASE } from '../constants';
 import { requestJson } from '../api/client';
 import { mapFileToDocument } from '../utils/mapFileToDocument';
+import { getDocumentDirectory, getDocumentPath } from '../utils/documentDestination';
 
 // Health "person" — a labeled data bucket for Apple Health exports.
 // Lives in .docvault-health.json on the server, NOT in the entity config.
@@ -288,52 +288,13 @@ export function useFileSystemServer() {
       if (!isConnected) return false;
 
       try {
-        // Determine destination path based on document type
-        let destPath: string;
-
-        // Check if this is a business document (not tied to tax year)
-        if (isBusinessDocumentType(docType)) {
-          const subfolder = getBusinessSubfolder(docType);
-          destPath = `business-docs/${subfolder}`;
-        } else {
-          // Regular tax year document
-          destPath = `${taxYear}`;
-
-          if (docType === 'w2') {
-            destPath += '/income/w2';
-          } else if (docType === '1098') {
-            destPath += '/expenses/1098';
-          } else if (docType === 'retirement-statement') {
-            destPath += '/retirement';
-          } else if (docType === 'k-1') {
-            destPath += '/income/k-1';
-          } else if (docType.startsWith('1099')) {
-            destPath += '/income/1099';
-          } else if (docType === 'receipt' && expenseCategory) {
-            destPath += '/' + EXPENSE_FOLDER_MAP[expenseCategory];
-          } else if (docType === 'bank-statement') {
-            destPath += '/statements/bank';
-          } else if (docType === 'credit-card-statement') {
-            destPath += '/statements/credit-card';
-          } else if (docType === 'crypto') {
-            destPath += '/crypto';
-          } else if (docType === 'return') {
-            if (file.name.includes('.tax')) {
-              destPath += '/turbotax';
-            } else {
-              destPath += '/returns';
-            }
-          } else {
-            destPath += '/income/other';
-          }
-        }
-
         // Use custom filename if provided, otherwise use original filename
         const filename = customFilename || file.name;
+        const destPath = getDocumentDirectory(docType, taxYear, filename, expenseCategory);
 
         // Upload file with entity
         const arrayBuffer = await file.arrayBuffer();
-        const response = await fetch(
+        const data = await requestJson<{ ok?: boolean }>(
           `${API_BASE}/upload?entity=${encodeURIComponent(entity)}&path=${encodeURIComponent(destPath)}&filename=${encodeURIComponent(filename)}`,
           {
             method: 'POST',
@@ -343,14 +304,12 @@ export function useFileSystemServer() {
             },
           }
         );
-
-        const data = await response.json();
         if (!data.ok) return false;
 
         // Save parsed data separately if provided
         if (parsedData) {
           try {
-            await fetch(`${API_BASE}/save-parsed`, {
+            await requestJson<{ ok?: boolean }>(`${API_BASE}/save-parsed`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -373,55 +332,6 @@ export function useFileSystemServer() {
     [isConnected]
   );
 
-  // Compute destination path for a document type (same logic as importFile routing)
-  const getDestPath = (
-    docType: DocumentType,
-    taxYear: number,
-    fileName: string,
-    expenseCategory?: ExpenseCategory
-  ): string => {
-    if (isBusinessDocumentType(docType)) {
-      const subfolder = getBusinessSubfolder(docType);
-      return `business-docs/${subfolder}/${fileName}`;
-    }
-
-    let destPath = `${taxYear}`;
-
-    if (docType === 'w2') {
-      destPath += '/income/w2';
-    } else if (docType === '1098') {
-      destPath += '/expenses/1098';
-    } else if (docType === 'retirement-statement') {
-      destPath += '/retirement';
-    } else if (docType === 'k-1') {
-      destPath += '/income/k-1';
-    } else if (docType.startsWith('1099')) {
-      destPath += '/income/1099';
-    } else if (docType === 'receipt' && expenseCategory) {
-      destPath += '/' + EXPENSE_FOLDER_MAP[expenseCategory];
-    } else if (docType === 'receipt') {
-      destPath += '/expenses/business';
-    } else if (docType === 'bank-statement') {
-      destPath += '/statements/bank';
-    } else if (docType === 'credit-card-statement') {
-      destPath += '/statements/credit-card';
-    } else if (docType === 'crypto') {
-      destPath += '/crypto';
-    } else if (docType === 'return') {
-      if (fileName.includes('.tax')) {
-        destPath += '/turbotax';
-      } else {
-        destPath += '/returns';
-      }
-    } else if (docType === 'medical-record') {
-      destPath += '/expenses/medical';
-    } else {
-      destPath += '/income/other';
-    }
-
-    return `${destPath}/${fileName}`;
-  };
-
   // Relocate a file when type, entity, or year changes
   const relocateFile = useCallback(
     async (
@@ -436,12 +346,12 @@ export function useFileSystemServer() {
 
       try {
         const fileName = fromPath.split('/').pop() || '';
-        const toPath = getDestPath(newDocType, toYear, fileName, expenseCategory);
+        const toPath = getDocumentPath(newDocType, toYear, fileName, expenseCategory);
 
         // Skip if source and destination are the same
         if (fromEntity === toEntity && fromPath === toPath) return true;
 
-        const response = await fetch(`${API_BASE}/move-between`, {
+        const data = await requestJson<{ ok?: boolean }>(`${API_BASE}/move-between`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -451,7 +361,6 @@ export function useFileSystemServer() {
             toPath,
           }),
         });
-        const data = await response.json();
         return data.ok === true;
       } catch (err) {
         console.error('Relocate file error:', err);
@@ -482,10 +391,12 @@ export function useFileSystemServer() {
       if (!isConnected) return false;
 
       try {
-        const response = await fetch(`${API_BASE}/file/${entity}/${encodeURIComponent(filePath)}`, {
-          method: 'DELETE',
-        });
-        const data = await response.json();
+        const data = await requestJson<{ ok?: boolean }>(
+          `${API_BASE}/file/${entity}/${encodeURIComponent(filePath)}`,
+          {
+            method: 'DELETE',
+          }
+        );
         return data.ok === true;
       } catch (err) {
         console.error('Delete file error:', err);
@@ -519,7 +430,7 @@ export function useFileSystemServer() {
 
       try {
         for (const folder of folders) {
-          await fetch(`${API_BASE}/mkdir`, {
+          await requestJson<{ ok?: boolean }>(`${API_BASE}/mkdir`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ entity, path: folder }),
@@ -541,10 +452,9 @@ export function useFileSystemServer() {
 
       try {
         const url = `${API_BASE}/parse/${entity}/${encodeURIComponent(filePath)}`;
-        const response = await fetch(url, {
+        const data = await requestJson<{ parsedData?: Record<string, unknown> }>(url, {
           method: 'POST',
         });
-        const data = await response.json();
         return data.parsedData || null;
       } catch (err) {
         console.error('Parse file error:', err);
@@ -627,15 +537,18 @@ export function useFileSystemServer() {
       if (!isConnected) return null;
 
       try {
-        const response = await fetch(`${API_BASE}/entities`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, name, color }),
-        });
-        const data = await response.json();
-        if (data.ok && data.entity) {
-          setEntities((prev) => [...prev, data.entity]);
-          return data.entity;
+        const data = await requestJson<{ ok?: boolean; entity?: EntityConfig }>(
+          `${API_BASE}/entities`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, name, color }),
+          }
+        );
+        const entityResult = data.entity;
+        if (data.ok && entityResult) {
+          setEntities((prev) => [...prev, entityResult]);
+          return entityResult;
         }
         return null;
       } catch (err) {
@@ -652,10 +565,9 @@ export function useFileSystemServer() {
       if (!isConnected) return false;
 
       try {
-        const response = await fetch(`${API_BASE}/entities/${id}`, {
+        const data = await requestJson<{ ok?: boolean }>(`${API_BASE}/entities/${id}`, {
           method: 'DELETE',
         });
-        const data = await response.json();
         if (data.ok) {
           setEntities((prev) => prev.filter((e) => e.id !== id));
           return true;
@@ -678,15 +590,18 @@ export function useFileSystemServer() {
       if (!isConnected) return null;
 
       try {
-        const response = await fetch(`${API_BASE}/entities/${id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updates),
-        });
-        const data = await response.json();
-        if (data.ok && data.entity) {
-          setEntities((prev) => prev.map((e) => (e.id === id ? data.entity : e)));
-          return data.entity;
+        const data = await requestJson<{ ok?: boolean; entity?: EntityConfig }>(
+          `${API_BASE}/entities/${id}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updates),
+          }
+        );
+        const entityResult = data.entity;
+        if (data.ok && entityResult) {
+          setEntities((prev) => prev.map((e) => (e.id === id ? entityResult : e)));
+          return entityResult;
         }
         return null;
       } catch (err) {
@@ -714,7 +629,7 @@ export function useFileSystemServer() {
         const subPath = pathParts.slice(1).join('/'); // Remove year, keep rest
         const toPath = `${toYear}/${subPath}`;
 
-        const response = await fetch(`${API_BASE}/move-between`, {
+        const data = await requestJson<{ ok?: boolean }>(`${API_BASE}/move-between`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -724,7 +639,6 @@ export function useFileSystemServer() {
             toPath,
           }),
         });
-        const data = await response.json();
         return data.ok === true;
       } catch (err) {
         console.error('Move file error:', err);
@@ -900,13 +814,16 @@ export function useFileSystemServer() {
       if (!isConnected) return null;
 
       try {
-        const response = await fetch(`${API_BASE}/rename`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ entity, filePath, newFilename }),
-        });
-        const data = await response.json();
-        if (data.ok) return data.newPath;
+        const data = await requestJson<{ ok?: boolean; newPath?: string; error?: string }>(
+          `${API_BASE}/rename`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ entity, filePath, newFilename }),
+          }
+        );
+        const newPath = data.newPath;
+        if (data.ok && newPath) return newPath;
         console.error('Rename error:', data.error);
         return null;
       } catch (err) {
@@ -996,12 +913,11 @@ export function useFileSystemServer() {
     ): Promise<boolean> => {
       if (!isConnected) return false;
       try {
-        const response = await fetch(`${API_BASE}/metadata`, {
+        const data = await requestJson<{ ok?: boolean }>(`${API_BASE}/metadata`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ entity, filePath, ...updates }),
         });
-        const data = await response.json();
         return data.ok === true;
       } catch {
         return false;

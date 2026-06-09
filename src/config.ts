@@ -285,7 +285,7 @@ export function getExpenseCategoryColor(categoryId: ExpenseCategory): string {
 // EXPENSE FOLDER MAP
 // =============================================================================
 // Maps expense categories to folder paths within a tax year directory.
-// Used by importFile and getDestPath in useFileSystemServer.
+// Used by document destination routing helpers.
 
 export const EXPENSE_FOLDER_MAP: Record<ExpenseCategory, string> = {
   childcare: 'expenses/childcare',
