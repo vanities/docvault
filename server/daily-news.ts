@@ -1365,23 +1365,39 @@ export async function notifyEditionReady(
   const kind = edition.editionType === 'weekly' ? 'Weekly' : 'Daily';
   const subject = `${edition.title ?? 'Newsstand'} — ${kind}, ${formatEditionDate(edition.editionDate)}`;
 
-  // Inline the headline image (if any) as a data URI so both the email body and
-  // the self-contained .html attachment carry it.
-  let heroSrc: string | undefined;
+  // Embed the headline image as a CID-backed inline attachment. Keep the full
+  // HTML attachment self-contained with a data URI so it still opens correctly
+  // outside the email client.
+  const attachments: Parameters<typeof sendEmail>[0]['attachments'] = [];
+  let emailHeroSrc: string | undefined;
+  let attachmentHeroSrc: string | undefined;
   if (edition.imagePath) {
     const bytes = await readEditionImage(edition.id);
-    if (bytes) heroSrc = `data:image/png;base64,${bytes.toString('base64')}`;
+    if (bytes) {
+      const b64 = bytes.toString('base64');
+      const contentId = 'docvault-daily-news-hero';
+      emailHeroSrc = `cid:${contentId}`;
+      attachmentHeroSrc = `data:image/png;base64,${b64}`;
+      attachments.push({
+        filename: `${editionFilename(edition)}-hero.png`,
+        content: b64,
+        contentType: 'image/png',
+        contentId,
+      });
+    } else {
+      log.warn(`[notify] edition image missing on disk id=${edition.id}`);
+    }
   }
 
-  const attachment = {
+  attachments.push({
     filename: `${editionFilename(edition)}.html`,
-    content: Buffer.from(renderEditionHtml(edition, heroSrc), 'utf-8').toString('base64'),
+    content: Buffer.from(renderEditionHtml(edition, attachmentHeroSrc), 'utf-8').toString('base64'),
     contentType: 'text/html',
-  };
+  });
   const res = await sendEmail({
     subject,
-    html: renderEditionEmailHtml(edition, heroSrc),
-    attachments: [attachment],
+    html: renderEditionEmailHtml(edition, emailHeroSrc),
+    attachments,
   });
   if (res.ok) {
     log.info(`[notify] emailed id=${edition.id} resendId=${res.id ?? '?'}`);
