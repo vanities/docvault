@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Money } from '../common/Money';
 import { Input } from '@/components/ui/input';
+import { requestJson } from '../../api/client';
 import {
   Select,
   SelectContent,
@@ -107,8 +108,9 @@ export function EstimatedTaxView() {
   // Load data
   useEffect(() => {
     loadedRef.current = false;
-    fetch(`/api/estimated-taxes/${storageEntity}/${selectedYear}`)
-      .then((r) => r.json())
+    requestJson<{ payments?: EstimatedTaxPayment[]; config?: EstimatedTaxConfig }>(
+      `/api/estimated-taxes/${storageEntity}/${selectedYear}`
+    )
       .then((data) => {
         setPayments(data.payments || []);
         setConfig(data.config || { annualTarget: 0 });
@@ -123,7 +125,7 @@ export function EstimatedTaxView() {
   // Save data when payments or config change
   useEffect(() => {
     if (!loadedRef.current) return;
-    fetch(`/api/estimated-taxes/${storageEntity}/${selectedYear}`, {
+    requestJson<unknown>(`/api/estimated-taxes/${storageEntity}/${selectedYear}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ payments, config }),
