@@ -27,6 +27,7 @@ import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import { API_BASE } from '../../constants';
+import { requestJson } from '../../api/client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -322,8 +323,7 @@ export function SettingsView() {
 
   const loadScheduleStatus = async () => {
     try {
-      const res = await fetch(`${API_BASE}/schedule-status`);
-      if (res.ok) setScheduleStatus(await res.json());
+      setScheduleStatus(await requestJson(`${API_BASE}/schedule-status`));
     } catch {
       /* ignore */
     }
@@ -331,17 +331,14 @@ export function SettingsView() {
 
   const loadJobs = async () => {
     try {
-      const res = await fetch(`${API_BASE}/jobs`);
-      if (res.ok) {
-        const data = (await res.json()) as {
-          builtInJobs?: BuiltInJobRecord[];
-          customJobs?: CustomJobRecord[];
-          customJobStatuses?: Record<string, TaskStatus>;
-        };
-        setBuiltInJobs(data.builtInJobs ?? []);
-        setCustomJobs(data.customJobs ?? []);
-        setCustomJobStatuses(data.customJobStatuses ?? {});
-      }
+      const data = await requestJson<{
+        builtInJobs?: BuiltInJobRecord[];
+        customJobs?: CustomJobRecord[];
+        customJobStatuses?: Record<string, TaskStatus>;
+      }>(`${API_BASE}/jobs`);
+      setBuiltInJobs(data.builtInJobs ?? []);
+      setCustomJobs(data.customJobs ?? []);
+      setCustomJobStatuses(data.customJobStatuses ?? {});
     } catch {
       /* ignore */
     }
@@ -350,11 +347,14 @@ export function SettingsView() {
   const handleRunCustomJob = async (id: string) => {
     setRunningJobIds((prev) => new Set(prev).add(id));
     try {
-      const res = await fetch(`${API_BASE}/jobs/${encodeURIComponent(id)}/run`, {
+      const data = await requestJson<{
+        ok?: boolean;
+        result?: { exitCode?: number };
+        error?: string;
+      }>(`${API_BASE}/jobs/${encodeURIComponent(id)}/run`, {
         method: 'POST',
       });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
+      if (!data.ok) {
         addToast(data.error || `Failed to run ${id}`, 'error');
         return;
       }
@@ -377,24 +377,26 @@ export function SettingsView() {
   const handleCreateCustomJob = async () => {
     setIsJobSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/jobs${editingJobId ? '?overwrite=true' : ''}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: newJobId,
-          label: newJobLabel,
-          schedule: newJobSchedule,
-          script: newJobScript,
-          ...(newJobScriptContent.trim() ? { scriptContent: newJobScriptContent } : {}),
-          enabled: newJobEnabled,
-          tags: newJobTags
-            .split(',')
-            .map((tag) => tag.trim())
-            .filter(Boolean),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
+      const data = await requestJson<{ ok?: boolean; error?: string }>(
+        `${API_BASE}/jobs${editingJobId ? '?overwrite=true' : ''}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: newJobId,
+            label: newJobLabel,
+            schedule: newJobSchedule,
+            script: newJobScript,
+            ...(newJobScriptContent.trim() ? { scriptContent: newJobScriptContent } : {}),
+            enabled: newJobEnabled,
+            tags: newJobTags
+              .split(',')
+              .map((tag) => tag.trim())
+              .filter(Boolean),
+          }),
+        }
+      );
+      if (!data.ok) {
         addToast(data.error || 'Failed to create custom job', 'error');
         return;
       }
@@ -436,20 +438,22 @@ export function SettingsView() {
   // a user switch on a seeded example without re-opening the editor.
   const handleToggleCustomJob = async (manifest: CustomJobManifest) => {
     try {
-      const res = await fetch(`${API_BASE}/jobs?overwrite=true`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: manifest.id,
-          label: manifest.label,
-          schedule: manifest.schedule,
-          script: manifest.script,
-          enabled: !manifest.enabled,
-          tags: manifest.tags,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
+      const data = await requestJson<{ ok?: boolean; error?: string }>(
+        `${API_BASE}/jobs?overwrite=true`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: manifest.id,
+            label: manifest.label,
+            schedule: manifest.schedule,
+            script: manifest.script,
+            enabled: !manifest.enabled,
+            tags: manifest.tags,
+          }),
+        }
+      );
+      if (!data.ok) {
         addToast(data.error || 'Failed to update job', 'error');
         return;
       }
@@ -479,11 +483,8 @@ export function SettingsView() {
   const loadLogs = async (date = '') => {
     try {
       const qs = date ? `date=${date}&limit=500` : 'limit=500';
-      const res = await fetch(`${API_BASE}/logs?${qs}`);
-      if (res.ok) {
-        const data = (await res.json()) as { entries: LogLine[] };
-        setLogs(data.entries);
-      }
+      const data = await requestJson<{ entries: LogLine[] }>(`${API_BASE}/logs?${qs}`);
+      setLogs(data.entries);
     } catch {
       /* ignore */
     }
@@ -491,11 +492,8 @@ export function SettingsView() {
 
   const loadLogDates = async () => {
     try {
-      const res = await fetch(`${API_BASE}/logs?dates=1`);
-      if (res.ok) {
-        const data = (await res.json()) as { dates: string[] };
-        setAvailableLogDates(data.dates);
-      }
+      const data = await requestJson<{ dates: string[] }>(`${API_BASE}/logs?dates=1`);
+      setAvailableLogDates(data.dates);
     } catch {
       /* ignore */
     }
@@ -537,8 +535,7 @@ export function SettingsView() {
 
   const loadSyncStatus = async () => {
     try {
-      const res = await fetch(`${API_BASE}/sync-status`);
-      const data: SyncStatus = await res.json();
+      const data = await requestJson<SyncStatus>(`${API_BASE}/sync-status`);
       setSyncStatus(data);
     } catch {
       setSyncStatus(null);
@@ -547,8 +544,11 @@ export function SettingsView() {
 
   const loadCacheStatus = async () => {
     try {
-      const res = await fetch(`${API_BASE}/cache-status`);
-      const data = await res.json();
+      const data = await requestJson<{
+        cryptoLastUpdated?: string;
+        brokerLastUpdated?: string;
+        bankLastUpdated?: string;
+      }>(`${API_BASE}/cache-status`);
       setCryptoLastUpdated(data.cryptoLastUpdated || null);
       setBrokerLastUpdated(data.brokerLastUpdated || null);
       setBankLastUpdated(data.bankLastUpdated || null);
@@ -559,8 +559,7 @@ export function SettingsView() {
 
   const loadSettings = async () => {
     try {
-      const response = await fetch(`${API_BASE}/settings`);
-      const data: SettingsData = await response.json();
+      const data = await requestJson<SettingsData>(`${API_BASE}/settings`);
       setHasGeoapifyKey(data.hasGeoapifyKey || false);
       setGeoapifyKeyHint(data.geoapifyKeyHint);
       setHasFredKey(data.hasFredKey || false);
@@ -576,12 +575,12 @@ export function SettingsView() {
     if (!newGeoapifyKey) return;
     setIsSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/settings`, {
+      const data = await requestJson<{ ok?: boolean }>(`${API_BASE}/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ geoapifyApiKey: newGeoapifyKey }),
       });
-      if ((await res.json()).ok) {
+      if (data.ok) {
         addToast('Geoapify key saved', 'success');
         setNewGeoapifyKey('');
         void loadSettings();
@@ -596,12 +595,12 @@ export function SettingsView() {
   const handleRemoveGeoapifyKey = async () => {
     setIsSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/settings`, {
+      const data = await requestJson<{ ok?: boolean }>(`${API_BASE}/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ geoapifyApiKey: '' }),
       });
-      if ((await res.json()).ok) {
+      if (data.ok) {
         addToast('Geoapify key removed', 'success');
         void loadSettings();
       }
@@ -616,12 +615,12 @@ export function SettingsView() {
     if (!newFredKey) return;
     setIsSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/settings`, {
+      const data = await requestJson<{ ok?: boolean }>(`${API_BASE}/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fredApiKey: newFredKey.trim() }),
       });
-      if ((await res.json()).ok) {
+      if (data.ok) {
         addToast('FRED key saved', 'success');
         setNewFredKey('');
         void loadSettings();
@@ -636,12 +635,12 @@ export function SettingsView() {
   const handleRemoveFredKey = async () => {
     setIsSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/settings`, {
+      const data = await requestJson<{ ok?: boolean }>(`${API_BASE}/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fredApiKey: '' }),
       });
-      if ((await res.json()).ok) {
+      if (data.ok) {
         addToast('FRED key removed', 'success');
         void loadSettings();
       }
@@ -656,12 +655,12 @@ export function SettingsView() {
     if (!newCongressKey) return;
     setIsSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/settings`, {
+      const data = await requestJson<{ ok?: boolean }>(`${API_BASE}/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ congressApiKey: newCongressKey.trim() }),
       });
-      if ((await res.json()).ok) {
+      if (data.ok) {
         addToast('Congress.gov key saved', 'success');
         setNewCongressKey('');
         void loadSettings();
@@ -676,12 +675,12 @@ export function SettingsView() {
   const handleRemoveCongressKey = async () => {
     setIsSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/settings`, {
+      const data = await requestJson<{ ok?: boolean }>(`${API_BASE}/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ congressApiKey: '' }),
       });
-      if ((await res.json()).ok) {
+      if (data.ok) {
         addToast('Congress.gov key removed', 'success');
         void loadSettings();
       }
@@ -697,12 +696,8 @@ export function SettingsView() {
   const handleBackfillPolitics = async () => {
     setPoliticsBackfilling(true);
     try {
-      const res = await fetch(`${API_BASE}/politics/backfill`, { method: 'POST' });
-      if (res.ok) {
-        addToast('Backfill started — the Politics view fills in over a few minutes', 'success');
-      } else {
-        addToast('Failed to start backfill', 'error');
-      }
+      await requestJson<{ ok?: boolean }>(`${API_BASE}/politics/backfill`, { method: 'POST' });
+      addToast('Backfill started — the Politics view fills in over a few minutes', 'success');
     } catch {
       addToast('Failed to start backfill', 'error');
     } finally {
@@ -715,12 +710,8 @@ export function SettingsView() {
   const handleRunBacktest = async () => {
     setBacktestRunning(true);
     try {
-      const res = await fetch(`${API_BASE}/politics/backtest/run`, { method: 'POST' });
-      if (res.ok) {
-        addToast('Backtest started — leaderboard updates when prices finish', 'success');
-      } else {
-        addToast('Failed to start backtest', 'error');
-      }
+      await requestJson<{ ok?: boolean }>(`${API_BASE}/politics/backtest/run`, { method: 'POST' });
+      addToast('Backtest started — leaderboard updates when prices finish', 'success');
     } catch {
       addToast('Failed to start backtest', 'error');
     } finally {
@@ -767,8 +758,13 @@ export function SettingsView() {
   // Crypto settings functions
   const loadCryptoSettings = async () => {
     try {
-      const res = await fetch(`${API_BASE}/crypto/settings`);
-      const data = await res.json();
+      const data = await requestJson<{
+        exchanges?: typeof cryptoExchanges;
+        wallets?: typeof cryptoWallets;
+        manualHoldings?: typeof cryptoHoldings;
+        hasEtherscanKey?: boolean;
+        etherscanKeyHint?: string;
+      }>(`${API_BASE}/crypto/settings`);
       setCryptoExchanges(data.exchanges || []);
       setCryptoWallets(data.wallets || []);
       setCryptoHoldings(data.manualHoldings || []);
@@ -779,23 +775,26 @@ export function SettingsView() {
     }
   };
 
+  const saveCryptoSettings = (payload: Record<string, unknown>) =>
+    requestJson<{ ok?: boolean }>(`${API_BASE}/crypto/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
   const handleAddExchange = async () => {
     if (!newExchangeKey || !newExchangeSecret) return;
     setIsCryptoSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/crypto/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          addExchange: {
-            id: newExchangeId,
-            apiKey: newExchangeKey,
-            apiSecret: newExchangeSecret,
-            passphrase: newExchangePassphrase || undefined,
-          },
-        }),
+      const data = await saveCryptoSettings({
+        addExchange: {
+          id: newExchangeId,
+          apiKey: newExchangeKey,
+          apiSecret: newExchangeSecret,
+          passphrase: newExchangePassphrase || undefined,
+        },
       });
-      if ((await res.json()).ok) {
+      if (data.ok) {
         addToast(`${newExchangeId} added`, 'success');
         setShowAddExchange(false);
         setNewExchangeKey('');
@@ -821,12 +820,8 @@ export function SettingsView() {
       return;
     setIsCryptoSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/crypto/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ removeExchange: exchangeId }),
-      });
-      if ((await res.json()).ok) {
+      const data = await saveCryptoSettings({ removeExchange: exchangeId });
+      if (data.ok) {
         addToast(`${exchangeId} removed`, 'success');
         void loadCryptoSettings();
       }
@@ -841,18 +836,14 @@ export function SettingsView() {
     if (!newWalletAddress) return;
     setIsCryptoSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/crypto/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          addWallet: {
-            address: newWalletAddress,
-            chain: newWalletChain,
-            label: newWalletLabel || undefined,
-          },
-        }),
+      const data = await saveCryptoSettings({
+        addWallet: {
+          address: newWalletAddress,
+          chain: newWalletChain,
+          label: newWalletLabel || undefined,
+        },
       });
-      if ((await res.json()).ok) {
+      if (data.ok) {
         addToast('Wallet added', 'success');
         setShowAddWallet(false);
         setNewWalletAddress('');
@@ -874,18 +865,14 @@ export function SettingsView() {
     }
     setIsCryptoSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/crypto/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          addManualHolding: {
-            asset: newHoldingAsset.trim().toUpperCase(),
-            amount,
-            label: newHoldingLabel.trim() || undefined,
-          },
-        }),
+      const data = await saveCryptoSettings({
+        addManualHolding: {
+          asset: newHoldingAsset.trim().toUpperCase(),
+          amount,
+          label: newHoldingLabel.trim() || undefined,
+        },
       });
-      if ((await res.json()).ok) {
+      if (data.ok) {
         addToast(`${newHoldingAsset.trim().toUpperCase()} holding added`, 'success');
         setShowAddHolding(false);
         setNewHoldingAsset('');
@@ -911,12 +898,8 @@ export function SettingsView() {
       return;
     setIsCryptoSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/crypto/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ removeManualHolding: holdingId }),
-      });
-      if ((await res.json()).ok) {
+      const data = await saveCryptoSettings({ removeManualHolding: holdingId });
+      if (data.ok) {
         addToast('Holding removed', 'success');
         void loadCryptoSettings();
       }
@@ -938,12 +921,8 @@ export function SettingsView() {
       return;
     setIsCryptoSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/crypto/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ removeWallet: walletId }),
-      });
-      if ((await res.json()).ok) {
+      const data = await saveCryptoSettings({ removeWallet: walletId });
+      if (data.ok) {
         addToast('Wallet removed', 'success');
         void loadCryptoSettings();
       }
@@ -958,12 +937,8 @@ export function SettingsView() {
     if (!newEtherscanKey) return;
     setIsCryptoSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/crypto/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ etherscanKey: newEtherscanKey }),
-      });
-      if ((await res.json()).ok) {
+      const data = await saveCryptoSettings({ etherscanKey: newEtherscanKey });
+      if (data.ok) {
         addToast('Etherscan key saved', 'success');
         setNewEtherscanKey('');
         void loadCryptoSettings();
@@ -978,12 +953,8 @@ export function SettingsView() {
   const handleRemoveEtherscanKey = async () => {
     setIsCryptoSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/crypto/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ etherscanKey: '' }),
-      });
-      if ((await res.json()).ok) {
+      const data = await saveCryptoSettings({ etherscanKey: '' });
+      if (data.ok) {
         addToast('Etherscan key removed', 'success');
         void loadCryptoSettings();
       }
@@ -996,23 +967,34 @@ export function SettingsView() {
 
   const loadSchedules = async () => {
     try {
-      const res = await fetch(`${API_BASE}/schedules`);
-      if (res.ok) {
-        const data = await res.json();
-        setSnapshotEnabled(data.snapshotEnabled);
-        setSnapshotInterval(data.snapshotIntervalMinutes);
-        setDropboxSyncEnabled(data.dropboxSyncEnabled);
-        setDropboxSyncInterval(data.dropboxSyncIntervalMinutes);
-        setQuantRefreshEnabled(data.quantRefreshEnabled ?? true);
-        setQuantRefreshInterval(data.quantRefreshIntervalMinutes ?? 1440);
-        setPoliticsRefreshEnabled(data.politicsRefreshEnabled ?? true);
-        setPoliticsRefreshInterval(data.politicsRefreshIntervalMinutes ?? 1440);
-        setDailyNewsEnabled(data.dailyNewsEnabled === true);
-        setDailyNewsHour(data.dailyNewsHour ?? 7);
-        setDailyNewsWeeklyDay(data.dailyNewsWeeklyDay ?? 0);
-        setDailyNewsTimezone(data.timezone ?? 'UTC');
-        setAutoBackupPasswordSet(data.backupPasswordSet ?? false);
-      }
+      const data = await requestJson<{
+        snapshotEnabled: boolean;
+        snapshotIntervalMinutes: number;
+        dropboxSyncEnabled: boolean;
+        dropboxSyncIntervalMinutes: number;
+        quantRefreshEnabled?: boolean;
+        quantRefreshIntervalMinutes?: number;
+        politicsRefreshEnabled?: boolean;
+        politicsRefreshIntervalMinutes?: number;
+        dailyNewsEnabled?: boolean;
+        dailyNewsHour?: number;
+        dailyNewsWeeklyDay?: number;
+        timezone?: string;
+        backupPasswordSet?: boolean;
+      }>(`${API_BASE}/schedules`);
+      setSnapshotEnabled(data.snapshotEnabled);
+      setSnapshotInterval(data.snapshotIntervalMinutes);
+      setDropboxSyncEnabled(data.dropboxSyncEnabled);
+      setDropboxSyncInterval(data.dropboxSyncIntervalMinutes);
+      setQuantRefreshEnabled(data.quantRefreshEnabled ?? true);
+      setQuantRefreshInterval(data.quantRefreshIntervalMinutes ?? 1440);
+      setPoliticsRefreshEnabled(data.politicsRefreshEnabled ?? true);
+      setPoliticsRefreshInterval(data.politicsRefreshIntervalMinutes ?? 1440);
+      setDailyNewsEnabled(data.dailyNewsEnabled === true);
+      setDailyNewsHour(data.dailyNewsHour ?? 7);
+      setDailyNewsWeeklyDay(data.dailyNewsWeeklyDay ?? 0);
+      setDailyNewsTimezone(data.timezone ?? 'UTC');
+      setAutoBackupPasswordSet(data.backupPasswordSet ?? false);
     } catch {
       // Use defaults
     }
@@ -1021,7 +1003,7 @@ export function SettingsView() {
   const handleSaveSchedules = async () => {
     setIsScheduleSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/schedules`, {
+      await requestJson<{ ok?: boolean }>(`${API_BASE}/schedules`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1039,17 +1021,13 @@ export function SettingsView() {
           ...(autoBackupPassword ? { backupPassword: autoBackupPassword } : {}),
         }),
       });
-      if (res.ok) {
-        addToast('Schedules updated', 'success');
-        setScheduleSaved(true);
-        if (autoBackupPassword) {
-          setAutoBackupPasswordSet(true);
-          setAutoBackupPassword('');
-        }
-        setTimeout(() => setScheduleSaved(false), 2000);
-      } else {
-        addToast('Failed to save schedules', 'error');
+      addToast('Schedules updated', 'success');
+      setScheduleSaved(true);
+      if (autoBackupPassword) {
+        setAutoBackupPasswordSet(true);
+        setAutoBackupPassword('');
       }
+      setTimeout(() => setScheduleSaved(false), 2000);
     } catch {
       addToast('Failed to save schedules', 'error');
     } finally {
@@ -1060,9 +1038,8 @@ export function SettingsView() {
   // SimpleFIN functions
   const loadSimplefinStatus = async () => {
     try {
-      const res = await fetch(`${API_BASE}/simplefin/status`);
-      const data = await res.json();
-      setSimplefinConfigured(data.configured);
+      const data = await requestJson<{ configured?: boolean }>(`${API_BASE}/simplefin/status`);
+      setSimplefinConfigured(data.configured === true);
     } catch {
       // Silently fail
     }
@@ -1072,12 +1049,14 @@ export function SettingsView() {
     if (!simplefinToken) return;
     setIsSimplefinSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/simplefin/setup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ setupToken: simplefinToken }),
-      });
-      const data = await res.json();
+      const data = await requestJson<{ ok?: boolean; error?: string }>(
+        `${API_BASE}/simplefin/setup`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ setupToken: simplefinToken }),
+        }
+      );
       if (data.ok) {
         addToast('SimpleFIN connected', 'success');
         setSimplefinConfigured(true);
@@ -1102,8 +1081,10 @@ export function SettingsView() {
     )
       return;
     try {
-      const res = await fetch(`${API_BASE}/simplefin`, { method: 'DELETE' });
-      if ((await res.json()).ok) {
+      const data = await requestJson<{ ok?: boolean }>(`${API_BASE}/simplefin`, {
+        method: 'DELETE',
+      });
+      if (data.ok) {
         addToast('SimpleFIN removed', 'success');
         setSimplefinConfigured(false);
       }
@@ -1115,8 +1096,7 @@ export function SettingsView() {
   // SnapTrade functions
   const loadSnapTradeStatus = async () => {
     try {
-      const res = await fetch(`${API_BASE}/snaptrade/status`);
-      if (res.ok) setSnapTradeStatus(await res.json());
+      setSnapTradeStatus(await requestJson(`${API_BASE}/snaptrade/status`));
     } catch {
       // Non-critical
     }
@@ -1126,13 +1106,11 @@ export function SettingsView() {
     if (!snapTradeClientId || !snapTradeConsumerKey) return;
     setIsSnapTradeSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/snaptrade/setup`, {
+      await requestJson<{ ok?: boolean }>(`${API_BASE}/snaptrade/setup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clientId: snapTradeClientId, consumerKey: snapTradeConsumerKey }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Setup failed');
       addToast('SnapTrade connected', 'success');
       setSnapTradeStatus({ configured: true, registered: true });
       setSnapTradeClientId('');
@@ -1154,7 +1132,7 @@ export function SettingsView() {
     )
       return;
     try {
-      await fetch(`${API_BASE}/snaptrade`, { method: 'DELETE' });
+      await requestJson<{ ok?: boolean }>(`${API_BASE}/snaptrade`, { method: 'DELETE' });
       addToast('SnapTrade disconnected', 'success');
       setSnapTradeStatus({ configured: false, registered: false });
     } catch {

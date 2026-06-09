@@ -372,21 +372,20 @@
           <li>
             <code>vp check</code>, <code>vp build</code>, and <code>git diff --check</code> passed.
             <code>vp check</code> now reports no warnings, lint errors, or type errors. Route-level
-            lazy loading reduced the main bundle to <code>369.59 kB</code>;
+            lazy loading plus API-seam cleanup reduced the main bundle to <code>368.72 kB</code>;
             <code>vp build</code> still reports the lazy <code>QuantView</code> chunk at
-            <code>1,525.73 kB</code>, which remains an optimization opportunity rather than a
+            <code>1,525.76 kB</code>, which remains an optimization opportunity rather than a
             failing build.
           </li>
         </ul>
       </div>
 
       <div class="methodology" id="implementation-status">
-        <h2>Implementation status update — 2026-06-09 P1 closure pass</h2>
+        <h2>Implementation status update — 2026-06-09 P2/P3 continuation</h2>
         <p>
           The detailed finding cards below preserve the original evidence and fix plans. This status
-          table records what the current uncommitted worktree now addresses and what remains for
-          follow-up. Statuses are based on source diffs and completed Vite+ verification, not on
-          private data fixtures.
+          table records what the current branch addresses and what remains for follow-up. Statuses
+          are based on source diffs and completed Vite+ verification, not on private data fixtures.
         </p>
         <div class="status-grid">
           <div class="status-card status-done">
@@ -531,9 +530,10 @@
             <strong
               ><span class="status-label partial">Partial</span>P2 useFileSystemServer depth</strong
             ><small
-              >The status/year/file-list reads now use the shared <code>requestJson</code> seam and
-              mount-time status probing is deduplicated; reminders and todos now use the same
-              non-2xx-failing seam. The broader domain-mapper/state-hook split remains.</small
+              >The status/year/file-list reads now use the shared <code>requestJson</code> seam,
+              mount-time status probing is deduplicated, reminders/todos and file/entity mutation
+              flows now use the same non-2xx-failing seam, and document destination routing moved
+              behind a reusable helper. The broader state-hook split remains.</small
             >
           </div>
           <div class="status-card status-partial">
@@ -556,10 +556,12 @@
             <strong><span class="status-label partial">Partial</span>P3 API errors</strong
             ><small
               >A typed <code>requestJson</code>/<code>ApiError</code> helper was added and Daily
-              News, global search, common filesystem read paths, reminders/todos, Strategy, Income,
-              Health Analysis, Estimated Tax, Solo 401(k) contributions, TN Tax assets, Predictions,
-              External Sources, Brain, Weather, Email settings, and Dropbox settings flows are
-              migrated; other mutation flows/views still need the same seam.</small
+              News, global search, common filesystem read paths, filesystem file/entity mutations,
+              reminders/todos, Strategy, Income, Health Analysis, Estimated Tax, Solo 401(k)
+              contributions, TN Tax assets, Predictions, Settings jobs/logs/schedules/status,
+              Settings crypto/broker/bank credential flows, External Sources, Brain, Weather, Email
+              settings, and Dropbox settings flows are migrated. Streaming/download/upload paths and
+              other feature views still keep explicit <code>fetch</code> handling.</small
             >
           </div>
           <div class="status-card status-done">
