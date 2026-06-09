@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { FileText, GitBranch, Loader2 } from 'lucide-react';
 import { useToast } from '../../hooks/useToast';
 import { API_BASE } from '../../constants';
+import { requestJson } from '../../api/client';
 import { SafeMarkdown } from '../common/SafeMarkdown';
 
 interface ExternalRepo {
@@ -43,8 +44,7 @@ export function ExternalSourcesView() {
   useEffect(() => {
     void (async () => {
       try {
-        const res = await fetch(`${API_BASE}/external-sources`);
-        const data: { repos?: ExternalRepo[] } = await res.json();
+        const data = await requestJson<{ repos?: ExternalRepo[] }>(`${API_BASE}/external-sources`);
         const repos = data.repos ?? [];
         setSources(repos);
         const firstSynced = repos.find((r) => r.lastSyncedAt) ?? repos[0];
@@ -68,8 +68,9 @@ export function ExternalSourcesView() {
     setContent('');
     void (async () => {
       try {
-        const res = await fetch(`${API_BASE}/external-sources/${sourceId}/files`);
-        const data: { files?: string[] } = await res.json();
+        const data = await requestJson<{ files?: string[] }>(
+          `${API_BASE}/external-sources/${sourceId}/files`
+        );
         setFiles(data.files ?? []);
       } catch {
         setFiles([]);
@@ -94,18 +95,12 @@ export function ExternalSourcesView() {
     setSelectedFile(path);
     setLoadingContent(true);
     try {
-      const res = await fetch(
+      const data = await requestJson<{ content?: string }>(
         `${API_BASE}/external-sources/${sourceId}/file?path=${encodeURIComponent(path)}`
       );
-      const data: { content?: string; error?: string } = await res.json();
-      if (data.error) {
-        addToast(data.error, 'error');
-        setContent('');
-      } else {
-        setContent(data.content ?? '');
-      }
-    } catch {
-      addToast('Failed to load file', 'error');
+      setContent(data.content ?? '');
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to load file', 'error');
       setContent('');
     } finally {
       setLoadingContent(false);
