@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Cloud, RefreshCw } from 'lucide-react';
 import { API_BASE } from '../../constants';
+import { requestJson } from '../../api/client';
 import { useToast } from '../../hooks/useToast';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -26,8 +27,7 @@ export function DropboxConnectionSection() {
 
   const fetchStatus = async () => {
     try {
-      const res = await fetch(`${API_BASE}/dropbox/status`);
-      setStatus(await res.json());
+      setStatus(await requestJson<DropboxStatus>(`${API_BASE}/dropbox/status`));
     } catch {
       setStatus(null);
     } finally {
@@ -44,20 +44,18 @@ export function DropboxConnectionSection() {
     if (!tokenInput.trim()) return;
     setSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/dropbox/authorize`, {
+      await requestJson<unknown>(`${API_BASE}/dropbox/authorize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: tokenInput.trim() }),
       });
-      if (res.ok) {
-        addToast('Dropbox token saved', 'success');
-        setTokenInput('');
-        setShowTokenForm(false);
-        setLoading(true);
-        await fetchStatus();
-      } else {
-        addToast('Failed to save token', 'error');
-      }
+      addToast('Dropbox token saved', 'success');
+      setTokenInput('');
+      setShowTokenForm(false);
+      setLoading(true);
+      await fetchStatus();
+    } catch {
+      addToast('Failed to save token', 'error');
     } finally {
       setSaving(false);
     }
@@ -66,7 +64,7 @@ export function DropboxConnectionSection() {
   const handleSyncNow = async () => {
     setSyncing(true);
     try {
-      await fetch(`${API_BASE}/dropbox/sync`, { method: 'POST' });
+      await requestJson<unknown>(`${API_BASE}/dropbox/sync`, { method: 'POST' });
       addToast('Dropbox sync started', 'success');
     } catch {
       addToast('Failed to start sync', 'error');
