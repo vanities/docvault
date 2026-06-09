@@ -13,6 +13,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useTopN } from '@/hooks/useTopN';
 import { ShowMore } from '@/components/ui/ShowMore';
+import { requestJson } from '@/api/client';
 
 // Mirrors the server's PredictionMarketsResponse (server/prediction-markets.ts),
 // plus the cache envelope fields the /api/quant/predictions route adds.
@@ -258,8 +259,9 @@ export function PredictionsView() {
     else setLoading(true);
     setError(null);
     // Cache-bust on manual refresh so we bypass the browser Cache-Control.
-    fetch(`/api/quant/predictions${bust ? `?_=${Date.now()}` : ''}`)
-      .then((res) => res.json() as Promise<PredictionMarketsResponse & { error?: string }>)
+    requestJson<PredictionMarketsResponse & { error?: string }>(
+      `/api/quant/predictions${bust ? `?_=${Date.now()}` : ''}`
+    )
       .then((d) => {
         if (cancelled) return;
         if (d.error) setError(d.error);

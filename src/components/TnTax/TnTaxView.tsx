@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Money } from '../common/Money';
 import { Input } from '@/components/ui/input';
+import { requestJson } from '../../api/client';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -303,8 +304,7 @@ export function TnTaxView() {
   useEffect(() => {
     if (selectedEntity === 'all' || selectedEntity === 'personal') return;
     assetsLoadedRef.current = false;
-    fetch(`/api/assets/${selectedEntity}`)
-      .then((r) => r.json())
+    requestJson<{ assets?: BusinessAsset[] }>(`/api/assets/${selectedEntity}`)
       .then((data) => {
         setBizAssets(data.assets || []);
         assetsLoadedRef.current = true;
@@ -317,7 +317,7 @@ export function TnTaxView() {
   // Save assets to server when they change (skip initial load)
   useEffect(() => {
     if (!assetsLoadedRef.current) return;
-    fetch(`/api/assets/${selectedEntity}`, {
+    requestJson<unknown>(`/api/assets/${selectedEntity}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ assets: bizAssets }),
