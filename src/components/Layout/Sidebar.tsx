@@ -564,33 +564,68 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
 
       {/* Navigation */}
       <div className="flex-1 overflow-y-auto px-3 pb-3">
-        {/* Tax section — hidden for docs-type entities */}
+        {/* Records: where documents live and get reviewed */}
+        <div className="mb-4">
+          <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
+            Records
+          </h3>
+          <div className="space-y-0.5">
+            {isTaxEntity && (
+              <>
+                <NavButton
+                  view="tax-year"
+                  label="Tax Year"
+                  icon={Calendar}
+                  activeColor="bg-accent-500/10"
+                  activeTextColor="text-accent-400"
+                  glow="glow-emerald"
+                  activeView={activeView}
+                  isProcessing={isProcessing}
+                  onClick={handleViewClick}
+                />
+
+                {/* Year picker — separate row */}
+                <YearPicker
+                  selectedYear={selectedYear}
+                  availableYears={availableYears}
+                  isProcessing={isProcessing}
+                  onYearChange={handleYearChange}
+                />
+
+                <NavButton
+                  view="business-docs"
+                  label="Business Docs"
+                  icon={FolderOpen}
+                  activeColor="bg-accent-500/10"
+                  activeTextColor="text-accent-400"
+                  glow="glow-emerald"
+                  activeView={activeView}
+                  isProcessing={isProcessing}
+                  onClick={handleViewClick}
+                />
+              </>
+            )}
+            <NavButton
+              view="all-files"
+              label="All Files"
+              icon={Files}
+              activeColor="bg-accent-500/10"
+              activeTextColor="text-accent-400"
+              glow="glow-emerald"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
+          </div>
+        </div>
+
+        {/* Tax & business workflows: filing, calculations, operational ledgers */}
         {isTaxEntity && (
           <div className="mb-4">
             <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
-              Tax
+              Tax & Business
             </h3>
             <div className="space-y-0.5">
-              <NavButton
-                view="tax-year"
-                label="Tax Year"
-                icon={Calendar}
-                activeColor="bg-accent-500/10"
-                activeTextColor="text-accent-400"
-                glow="glow-emerald"
-                activeView={activeView}
-                isProcessing={isProcessing}
-                onClick={handleViewClick}
-              />
-
-              {/* Year picker — separate row */}
-              <YearPicker
-                selectedYear={selectedYear}
-                availableYears={availableYears}
-                isProcessing={isProcessing}
-                onYearChange={handleYearChange}
-              />
-
               <NavButton
                 view="federal-tax"
                 label="Federal Taxes"
@@ -638,6 +673,16 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
                 />
               )}
               <NavButton
+                view="income"
+                label="Income"
+                icon={Receipt}
+                activeColor="bg-teal-500/10"
+                activeTextColor="text-teal-400"
+                activeView={activeView}
+                isProcessing={isProcessing}
+                onClick={handleViewClick}
+              />
+              <NavButton
                 view="sales"
                 label="Sales"
                 icon={DollarSign}
@@ -657,98 +702,14 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
                 isProcessing={isProcessing}
                 onClick={handleViewClick}
               />
-              <NavButton
-                view="income"
-                label="Income"
-                icon={Receipt}
-                activeColor="bg-teal-500/10"
-                activeTextColor="text-teal-400"
-                activeView={activeView}
-                isProcessing={isProcessing}
-                onClick={handleViewClick}
-              />
             </div>
           </div>
         )}
 
-        {/* Files section */}
+        {/* Wealth: balance sheet and asset/debt ledgers */}
         <div className="mb-4">
           <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
-            Files
-          </h3>
-          <div className="space-y-0.5">
-            {isTaxEntity && (
-              <NavButton
-                view="business-docs"
-                label="Business Docs"
-                icon={FolderOpen}
-                activeColor="bg-accent-500/10"
-                activeTextColor="text-accent-400"
-                glow="glow-emerald"
-                activeView={activeView}
-                isProcessing={isProcessing}
-                onClick={handleViewClick}
-              />
-            )}
-            <NavButton
-              view="all-files"
-              label="All Files"
-              icon={Files}
-              activeColor="bg-accent-500/10"
-              activeTextColor="text-accent-400"
-              glow="glow-emerald"
-              activeView={activeView}
-              isProcessing={isProcessing}
-              onClick={handleViewClick}
-            />
-            <NavButton
-              view="chat"
-              label="Chat"
-              icon={MessageCircle}
-              activeColor="bg-fuchsia-500/10"
-              activeTextColor="text-fuchsia-400"
-              activeView={activeView}
-              isProcessing={isProcessing}
-              onClick={handleViewClick}
-            />
-            {activeView === 'chat' && <ChatThreadList />}
-            <NavButton
-              view="external-sources"
-              label="Sources"
-              icon={Library}
-              activeColor="bg-sky-500/10"
-              activeTextColor="text-sky-400"
-              activeView={activeView}
-              isProcessing={isProcessing}
-              onClick={handleViewClick}
-            />
-            <NavButton
-              view="deep-research"
-              label="Deep Research"
-              icon={Telescope}
-              activeColor="bg-violet-500/10"
-              activeTextColor="text-violet-400"
-              activeView={activeView}
-              isProcessing={isProcessing}
-              onClick={handleViewClick}
-            />
-            <NavButton
-              view="daily-news"
-              label="Newsstand"
-              icon={Newspaper}
-              activeColor="bg-amber-500/10"
-              activeTextColor="text-amber-400"
-              activeView={activeView}
-              isProcessing={isProcessing}
-              onClick={handleViewClick}
-            />
-          </div>
-        </div>
-
-        {/* Finance section */}
-        <div className="mb-4">
-          <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
-            Finance
+            Wealth
           </h3>
           <div className="space-y-0.5">
             <NavButton
@@ -762,11 +723,11 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               onClick={handleViewClick}
             />
             <NavButton
-              view="crypto"
-              label="Crypto"
-              icon={Bitcoin}
-              activeColor="bg-amber-500/10"
-              activeTextColor="text-amber-500"
+              view="banks"
+              label="Banks"
+              icon={Building2}
+              activeColor="bg-blue-500/10"
+              activeTextColor="text-blue-500"
               activeView={activeView}
               isProcessing={isProcessing}
               onClick={handleViewClick}
@@ -782,11 +743,11 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               onClick={handleViewClick}
             />
             <NavButton
-              view="banks"
-              label="Banks"
-              icon={Building2}
-              activeColor="bg-blue-500/10"
-              activeTextColor="text-blue-500"
+              view="crypto"
+              label="Crypto"
+              icon={Bitcoin}
+              activeColor="bg-amber-500/10"
+              activeTextColor="text-amber-500"
               activeView={activeView}
               isProcessing={isProcessing}
               onClick={handleViewClick}
@@ -821,6 +782,15 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               isProcessing={isProcessing}
               onClick={handleViewClick}
             />
+          </div>
+        </div>
+
+        {/* Intelligence: research, feeds, models, and decision-support views */}
+        <div className="mb-4">
+          <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
+            Intelligence
+          </h3>
+          <div className="space-y-0.5">
             <NavButton
               view="quant"
               label="Quant"
@@ -861,6 +831,47 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               isProcessing={isProcessing}
               onClick={handleViewClick}
             />
+            <NavButton
+              view="daily-news"
+              label="Newsstand"
+              icon={Newspaper}
+              activeColor="bg-amber-500/10"
+              activeTextColor="text-amber-400"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
+            <NavButton
+              view="external-sources"
+              label="Sources"
+              icon={Library}
+              activeColor="bg-sky-500/10"
+              activeTextColor="text-sky-400"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
+            <NavButton
+              view="deep-research"
+              label="Deep Research"
+              icon={Telescope}
+              activeColor="bg-violet-500/10"
+              activeTextColor="text-violet-400"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
+            <NavButton
+              view="chat"
+              label="Chat"
+              icon={MessageCircle}
+              activeColor="bg-fuchsia-500/10"
+              activeTextColor="text-fuchsia-400"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
+            {activeView === 'chat' && <ChatThreadList />}
           </div>
         </div>
 
