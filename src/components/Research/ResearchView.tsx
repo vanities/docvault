@@ -5,12 +5,11 @@
 // and come back — the job keeps going server-side.
 
 import { useEffect, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { Download, Loader2, Plus, Search, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '../../hooks/useToast';
 import { API_BASE } from '../../constants';
+import { SafeMarkdown } from '../common/SafeMarkdown';
 
 interface Source {
   url: string;
@@ -282,11 +281,12 @@ export function ResearchView() {
                 </Button>
               </div>
             </div>
-            <div className="text-[14px] leading-relaxed text-surface-900">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
-                {active.report ?? ''}
-              </ReactMarkdown>
-            </div>
+            <SafeMarkdown
+              className="text-[14px] leading-relaxed text-surface-900"
+              components={MD_COMPONENTS}
+            >
+              {active.report ?? ''}
+            </SafeMarkdown>
             {active.sources && active.sources.length > 0 && (
               <div className="mt-8 pt-4 border-t border-border/40">
                 <h3 className="text-[13px] font-semibold text-surface-800 mb-2">

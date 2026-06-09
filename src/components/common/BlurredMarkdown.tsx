@@ -1,7 +1,7 @@
 import { cloneElement, isValidElement, type ReactElement, type ReactNode } from 'react';
-import Markdown, { type Components } from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { type Components } from 'react-markdown';
 import { useAppContext } from '../../contexts/AppContext';
+import { SafeMarkdown } from './SafeMarkdown';
 
 /**
  * Matches currency amounts ($45, $45.50, $45,000, $1.5M, $2K) and percentages
@@ -62,11 +62,7 @@ interface BlurredMarkdownProps {
 export function BlurredMarkdown({ children }: BlurredMarkdownProps) {
   const { blurNumbers } = useAppContext();
   if (!blurNumbers) {
-    return <Markdown remarkPlugins={[remarkGfm]}>{children}</Markdown>;
+    return <SafeMarkdown>{children}</SafeMarkdown>;
   }
-  return (
-    <Markdown remarkPlugins={[remarkGfm]} components={BLUR_COMPONENTS}>
-      {children}
-    </Markdown>
-  );
+  return <SafeMarkdown components={BLUR_COMPONENTS}>{children}</SafeMarkdown>;
 }

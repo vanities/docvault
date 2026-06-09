@@ -148,6 +148,14 @@ function commandForScript(scriptPath: string): { cmd: string; args: string[] } {
   return { cmd: 'bun', args: ['run', scriptPath] };
 }
 
+const JOB_OUTPUT_RETAIN_BYTES = Number(process.env.DOCVAULT_JOB_OUTPUT_RETAIN_BYTES) || 64 * 1024;
+
+function truncateOutput(value: string, label: 'stdout' | 'stderr'): string {
+  if (Buffer.byteLength(value, 'utf8') <= JOB_OUTPUT_RETAIN_BYTES) return value;
+  const retained = Buffer.from(value, 'utf8').subarray(0, JOB_OUTPUT_RETAIN_BYTES).toString('utf8');
+  return `${retained}\n[truncated ${label} to ${JOB_OUTPUT_RETAIN_BYTES} bytes]`;
+}
+
 function collectProcessOutput(child: ReturnType<typeof spawn>): Promise<{
   exitCode: number | null;
   stdout: string;
@@ -198,7 +206,9 @@ export async function runCustomJobNow(
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    const { exitCode, stdout, stderr } = await collectProcessOutput(child);
+    const { exitCode, stdout: rawStdout, stderr: rawStderr } = await collectProcessOutput(child);
+    const stdout = truncateOutput(rawStdout, 'stdout');
+    const stderr = truncateOutput(rawStderr, 'stderr');
     const finishedAt = new Date().toISOString();
     const durationMs = Date.now() - t0;
     const runId = `${manifest.id}-${startedAt.replace(/[:.]/g, '-')}`;

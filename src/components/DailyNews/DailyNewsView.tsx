@@ -5,8 +5,6 @@
 // live in the left rail. Mirrors the Deep Research view.
 
 import { useEffect, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import {
   CalendarDays,
   Download,
@@ -20,6 +18,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { useToast } from '../../hooks/useToast';
 import { API_BASE } from '../../constants';
+import { requestJson } from '../../api/client';
+import { SafeMarkdown } from '../common/SafeMarkdown';
 
 type EditionType = 'daily' | 'weekly';
 
@@ -161,8 +161,7 @@ export function DailyNewsView() {
 
   const loadHistory = async (): Promise<EditionSummary[]> => {
     try {
-      const res = await fetch(`${API_BASE}/daily-news`);
-      const data = await res.json();
+      const data = await requestJson<{ editions?: EditionSummary[] }>(`${API_BASE}/daily-news`);
       const eds: EditionSummary[] = data.editions ?? [];
       setHistory(eds);
       return eds;
@@ -188,11 +187,11 @@ export function DailyNewsView() {
   useEffect(() => {
     void (async () => {
       try {
-        const res = await fetch(`${API_BASE}/daily-news/themes`);
-        const data = await res.json();
+        const data = await requestJson<{ themes?: Array<{ id: string; label: string }> }>(
+          `${API_BASE}/daily-news/themes`
+        );
         const map: Record<string, string> = {};
-        for (const t of (data.themes ?? []) as Array<{ id: string; label: string }>)
-          map[t.id] = t.label;
+        for (const t of data.themes ?? []) map[t.id] = t.label;
         setThemeLabels(map);
       } catch {
         /* labels are cosmetic — ignore */
@@ -211,8 +210,7 @@ export function DailyNewsView() {
     stopPolling();
     pollRef.current = window.setInterval(async () => {
       try {
-        const res = await fetch(`${API_BASE}/daily-news/${id}`);
-        const edition: Edition = await res.json();
+        const edition = await requestJson<Edition>(`${API_BASE}/daily-news/${id}`);
         if (edition.status !== 'running') {
           stopPolling();
           void loadHistory();
@@ -510,11 +508,12 @@ export function DailyNewsView() {
                     />
                   )}
                   {active.weather && <WeatherStrip w={active.weather} />}
-                  <div className="text-[14px] leading-relaxed text-surface-900">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
-                      {active.body ?? ''}
-                    </ReactMarkdown>
-                  </div>
+                  <SafeMarkdown
+                    className="text-[14px] leading-relaxed text-surface-900"
+                    components={MD_COMPONENTS}
+                  >
+                    {active.body ?? ''}
+                  </SafeMarkdown>
                 </article>
               </div>
             )}

@@ -207,13 +207,14 @@ services:
 
 ## Environment Variables
 
-| Variable            | Required       | Description                             |
-| ------------------- | -------------- | --------------------------------------- |
-| `ANTHROPIC_API_KEY` | For AI parsing | Claude Vision API key                   |
-| `DOCVAULT_USERNAME` | No             | Login username (default: `admin`)       |
-| `DOCVAULT_PASSWORD` | Yes            | Login password                          |
-| `DOCVAULT_DATA_DIR` | No             | Data directory path (default: `./data`) |
-| `DOCVAULT_PORT`     | No             | Backend port (default: `3005`)          |
+| Variable                         | Required       | Description                                                               |
+| -------------------------------- | -------------- | ------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`              | For AI parsing | Claude Vision API key                                                     |
+| `DOCVAULT_USERNAME`              | No             | Login username (default: `admin`)                                         |
+| `DOCVAULT_PASSWORD`              | Yes            | Login password; server startup fails closed without this unless opted out |
+| `DOCVAULT_ALLOW_UNAUTHENTICATED` | No             | Explicit local/demo-only opt-out (`true`, `1`, or `yes`)                  |
+| `DOCVAULT_DATA_DIR`              | No             | Data directory path (default: `./data`)                                   |
+| `DOCVAULT_PORT`                  | No             | Backend port (default: `3005`)                                            |
 
 All integrations (SimpleFIN, SnapTrade, Etherscan, Kraken, Coinbase, Gemini, Dropbox) are configured through Settings and stored in `data/.docvault-settings.json`.
 

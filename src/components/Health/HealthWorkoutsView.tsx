@@ -105,7 +105,8 @@ export function HealthWorkoutsView() {
                 <th className="py-2 px-3">Last</th>
               </tr>
             }
-            rows={data.byType.map((t) => (
+            items={data.byType}
+            renderRow={(t) => (
               <tr
                 key={t.type}
                 className="border-b border-border/20 hover:bg-surface-100/30 transition-colors"
@@ -130,7 +131,7 @@ export function HealthWorkoutsView() {
                   {formatStart(t.lastWorkout)}
                 </td>
               </tr>
-            ))}
+            )}
           />
 
           <CollapsibleTable
@@ -146,7 +147,8 @@ export function HealthWorkoutsView() {
                 <th className="py-2 px-3 text-right">Energy</th>
               </tr>
             }
-            rows={data.recent.map((w, i) => (
+            items={data.recent}
+            renderRow={(w, i) => (
               <tr
                 key={`${w.start}-${i}`}
                 className="border-b border-border/20 hover:bg-surface-100/30 transition-colors"
@@ -170,7 +172,7 @@ export function HealthWorkoutsView() {
                   {w.energy !== null ? formatInt(w.energy) : '—'}
                 </td>
               </tr>
-            ))}
+            )}
           />
         </div>
       )}

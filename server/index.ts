@@ -85,6 +85,7 @@ import {
   getMimeType,
   scanDirectory,
   resolveUnder,
+  realpathUnder,
   ensureDir,
   jsonResponse,
   corsHeaders,
@@ -94,11 +95,13 @@ import {
   isValidSession,
   getSessionToken,
   sessionCookie,
+  sessions,
   isAuthenticated,
   snapshotFileForYear,
   loadSnapshotsForYear,
   getClaudeModel,
   getAnthropicKey,
+  assertAuthConfiguredForStartup,
 } from './data.js';
 import type {
   EntityConfig,
@@ -186,10 +189,52 @@ const logGeo = createLogger('Geo');
 // Noisy routes to skip HTTP logging (frequent health-check style polls)
 const SILENT_ROUTES = new Set(['/api/status', '/api/config']);
 
+const SMALL_REQUEST_BODY_LIMIT_BYTES = 10 * 1024 * 1024;
+const LARGE_REQUEST_BODY_LIMIT_BYTES = 512 * 1024 * 1024;
+const LARGE_BODY_ROUTE_PREFIXES = [
+  '/api/upload',
+  '/api/research/files/',
+  '/api/research/upload',
+  '/api/health/import',
+  '/api/forms',
+  '/api/transcribe',
+  '/api/dna/upload',
+  '/api/ancestry/upload',
+  '/api/nutrition',
+  '/api/gold/receipt',
+];
+
+function requestBodyLimitFor(pathname: string, method: string): number | null {
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return null;
+  if (LARGE_BODY_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    return LARGE_REQUEST_BODY_LIMIT_BYTES;
+  }
+  return SMALL_REQUEST_BODY_LIMIT_BYTES;
+}
+
+function rejectOversizedRequest(req: Request, pathname: string): Response | null {
+  const limit = requestBodyLimitFor(pathname, req.method);
+  if (!limit) return null;
+  const declaredLength = Number(req.headers.get('content-length') ?? '0');
+  if (!Number.isFinite(declaredLength) || declaredLength <= limit) return null;
+  logHttp.warn(
+    `[body-limit] rejected ${req.method} ${pathname}: declared=${declaredLength} limit=${limit}`
+  );
+  return jsonResponse({ error: 'Request body too large' }, 413);
+}
+
+function isSafeInlineFileMime(mimeType: string): boolean {
+  return mimeType === 'application/pdf' || /^image\/(png|jpe?g|gif|webp)$/i.test(mimeType);
+}
+
+function attachmentFilename(filename: string): string {
+  return path.basename(filename).replace(/["\r\n]/g, '_') || 'download';
+}
+
 // Request Handler
 // ============================================================================
 
-async function handleRequest(req: Request): Promise<Response> {
+export async function handleRequest(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const pathname = url.pathname;
 
@@ -201,6 +246,9 @@ async function handleRequest(req: Request): Promise<Response> {
   if (!SILENT_ROUTES.has(pathname)) {
     logHttp.info(`${req.method} ${pathname}`);
   }
+
+  const oversized = rejectOversizedRequest(req, pathname);
+  if (oversized) return oversized;
 
   // --- Auth: login endpoint ---
   if (pathname === '/api/login' && req.method === 'POST') {
@@ -1176,22 +1224,31 @@ async function handleRequest(req: Request): Promise<Response> {
 
     try {
       await fs.access(fullPath);
-      const stats = await fs.stat(fullPath);
+      const realPath = await realpathUnder(entityPath, fullPath);
+      if (!realPath) {
+        logHttp.warn(`[file] rejected symlink escape for entity=${entityId}`);
+        return jsonResponse({ error: 'Access denied' }, 403);
+      }
+      const stats = await fs.stat(realPath);
 
       if (stats.isDirectory()) {
         return jsonResponse({ error: 'Path is a directory' }, 400);
       }
 
-      const content = await fs.readFile(fullPath);
-      const mimeType = getMimeType(fullPath);
+      const content = await fs.readFile(realPath);
+      const detectedMimeType = getMimeType(fullPath);
+      const inline = isSafeInlineFileMime(detectedMimeType);
+      const headers: Record<string, string> = {
+        'Content-Type': inline ? detectedMimeType : 'application/octet-stream',
+        'Content-Length': String(stats.size),
+        'X-Content-Type-Options': 'nosniff',
+        ...corsHeaders(),
+      };
+      if (!inline) {
+        headers['Content-Disposition'] = `attachment; filename="${attachmentFilename(fullPath)}"`;
+      }
 
-      return new Response(content, {
-        headers: {
-          'Content-Type': mimeType,
-          'Content-Length': String(stats.size),
-          ...corsHeaders(),
-        },
-      });
+      return new Response(content, { headers });
     } catch {
       return jsonResponse({ error: 'File not found' }, 404);
     }
@@ -1470,7 +1527,8 @@ async function handleRequest(req: Request): Promise<Response> {
       return jsonResponse({ error: 'Missing from or to path' }, 400);
     }
 
-    const entityPath = await getEntityPath(entityId || 'personal');
+    const resolvedEntityId = entityId || 'personal';
+    const entityPath = await getEntityPath(resolvedEntityId);
     if (!entityPath) {
       return jsonResponse({ error: 'Entity not found' }, 404);
     }
@@ -1484,7 +1542,32 @@ async function handleRequest(req: Request): Promise<Response> {
 
     try {
       await ensureDir(path.dirname(toPath));
+      try {
+        await fs.access(toPath);
+        return jsonResponse({ error: 'Destination already exists' }, 409);
+      } catch {
+        // Destination does not exist — safe to move.
+      }
+
       await fs.rename(fromPath, toPath);
+
+      const oldKey = `${resolvedEntityId}/${from}`;
+      const newKey = `${resolvedEntityId}/${to}`;
+
+      const parsedData = await loadParsedData();
+      if (parsedData[oldKey]) {
+        parsedData[newKey] = parsedData[oldKey];
+        delete parsedData[oldKey];
+        await saveParsedData(parsedData);
+      }
+
+      const metadata = await loadMetadata();
+      if (metadata[oldKey]) {
+        metadata[newKey] = metadata[oldKey];
+        delete metadata[oldKey];
+        await saveMetadata(metadata);
+      }
+
       return jsonResponse({ ok: true });
     } catch (err) {
       return jsonResponse({ error: 'Failed to move file', details: String(err) }, 500);
@@ -1668,6 +1751,13 @@ async function handleRequest(req: Request): Promise<Response> {
 
       // Create destination directory
       await ensureDir(path.dirname(fullToPath));
+
+      try {
+        await fs.access(fullToPath);
+        return jsonResponse({ error: 'Destination already exists' }, 409);
+      } catch {
+        // Destination does not exist — safe to move.
+      }
 
       // Copy then delete (safer than rename across filesystems)
       await fs.copyFile(fullFromPath, fullToPath);
@@ -2833,54 +2923,67 @@ import { startCustomJobScheduler } from './custom-job-runner.js';
 
 const logServer = createLogger('Server');
 
-// Distinct boot marker — anchors the bootId transition in the UI log view.
-// The UI divides on bootId changes between adjacent rows, but this line
-// also gives a readable "what just happened" message for the first entry
-// after the transition.
-logServer.info(`═══ Server boot · bootId=${SERVER_BOOT_ID.slice(0, 8)} ═══`);
+if (import.meta.main) {
+  // Distinct boot marker — anchors the bootId transition in the UI log view.
+  // The UI divides on bootId changes between adjacent rows, but this line
+  // also gives a readable "what just happened" message for the first entry
+  // after the transition.
+  logServer.info(`═══ Server boot · bootId=${SERVER_BOOT_ID.slice(0, 8)} ═══`);
 
-// Fail-closed: refuse to start if the master key is missing or too weak.
-// We'd rather crash loudly at boot than silently fall back to plaintext.
-try {
-  const { assertMasterKeyConfigured } = await import('./crypto-keys.js');
-  assertMasterKeyConfigured();
-} catch (err) {
-  logServer.error(String(err instanceof Error ? err.message : err));
-  logServer.error('Refusing to start without a master key. See README for setup.');
-  process.exit(1);
-}
+  // Fail-closed: refuse to start if auth is not configured. Tests import
+  // handleRequest without entering this block, but a real server process must
+  // either have DOCVAULT_PASSWORD or an explicit local/demo opt-in.
+  try {
+    assertAuthConfiguredForStartup();
+  } catch (err) {
+    logServer.error(String(err instanceof Error ? err.message : err));
+    logServer.error('Refusing to start without authentication or explicit unauthenticated opt-in.');
+    process.exit(1);
+  }
 
-// Migrate any legacy plaintext sensitive fields to encrypted form. Idempotent.
-try {
-  await migrateSettingsEncryption();
-} catch (err) {
-  logServer.error(`Settings encryption migration failed: ${err}`);
-  process.exit(1);
-}
+  // Fail-closed: refuse to start if the master key is missing or too weak.
+  // We'd rather crash loudly at boot than silently fall back to plaintext.
+  try {
+    const { assertMasterKeyConfigured } = await import('./crypto-keys.js');
+    assertMasterKeyConfigured();
+  } catch (err) {
+    logServer.error(String(err instanceof Error ? err.message : err));
+    logServer.error('Refusing to start without a master key. See README for setup.');
+    process.exit(1);
+  }
 
-const server = Bun.serve({
-  port: PORT,
-  fetch: handleRequest,
-  idleTimeout: 120, // 2 minutes for AI parsing
-  maxRequestBodySize: 2 * 1024 * 1024 * 1024, // 2 GB — large PDFs/manuals + uploaded research video/audio
-});
+  // Migrate any legacy plaintext sensitive fields to encrypted form. Idempotent.
+  try {
+    await migrateSettingsEncryption();
+  } catch (err) {
+    logServer.error(`Settings encryption migration failed: ${err}`);
+    process.exit(1);
+  }
 
-logServer.info(`DocVault API running on http://localhost:${server.port}`);
-logServer.info(`Data directory: ${DATA_DIR}`);
-try {
-  await startCustomJobScheduler(DATA_DIR);
-} catch (err) {
-  logServer.error(
-    `Custom job scheduler startup failed: ${err instanceof Error ? err.message : err}`
-  );
-}
-try {
-  // Any research video/audio transcription left mid-flight by a restart is
-  // flipped from pending/running → error so it isn't stuck forever (retry via
-  // the Re-transcribe action; the media file is still on disk).
-  await recoverStaleTranscriptions();
-} catch (err) {
-  logServer.error(
-    `Stale transcription recovery failed: ${err instanceof Error ? err.message : err}`
-  );
+  const server = Bun.serve({
+    port: PORT,
+    fetch: handleRequest,
+    idleTimeout: 120, // 2 minutes for AI parsing
+    maxRequestBodySize: 2 * 1024 * 1024 * 1024, // 2 GB — large PDFs/manuals + uploaded research video/audio
+  });
+
+  logServer.info(`DocVault API running on http://localhost:${server.port}`);
+  logServer.info(`Data directory: ${DATA_DIR}`);
+  try {
+    await startCustomJobScheduler(DATA_DIR);
+  } catch (err) {
+    logServer.error(
+      `Custom job scheduler startup failed: ${err instanceof Error ? err.message : err}`
+    );
+  }
+  try {
+    // Any research video/audio transcription left mid-flight by a restart is
+    // flipped from pending/running → error so it isn't stuck forever (retry via
+    // the Re-transcribe action; the media file is still on disk).
+    await recoverStaleTranscriptions();
+  } catch (err) {
+    logServer.error(
+      `Stale transcription recovery failed: ${err instanceof Error ? err.message : err}`
+    );
+  }
 }

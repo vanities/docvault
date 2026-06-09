@@ -567,10 +567,9 @@ export async function handleHealthRoutes(
       );
       body = JSON.parse(fixedBody) as Partial<DeltaFile & { raw?: boolean }>;
     } catch (parseErr) {
-      const preview = rawBody ? rawBody.slice(0, 1000).replace(/\n/g, '↵') : '(empty)';
       const errMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
       log.error(
-        `Ingest JSON parse failed for ${personId}: ${errMsg} | len=${rawBody?.length ?? 0} | body: ${preview}`
+        `Ingest JSON parse failed for ${personId}: ${errMsg} | len=${rawBody?.length ?? 0}`
       );
       await appendIngestLog(personId, {
         ts,
@@ -579,9 +578,8 @@ export async function handleHealthRoutes(
         http: 400,
         bytes: rawBody?.length ?? 0,
         error: `json-parse: ${errMsg}`,
-        preview: preview.slice(0, 200),
       });
-      return jsonResponse({ ok: false, error: 'Invalid JSON body', preview }, 400);
+      return jsonResponse({ ok: false, error: 'Invalid JSON body' }, 400);
     }
 
     log.info(

@@ -361,14 +361,21 @@ export async function loadSettings(): Promise<Settings> {
     const content = await fs.readFile(SETTINGS_PATH, 'utf-8');
     const raw = JSON.parse(content) as Settings;
     return walkSensitiveFields(raw, decryptField);
-  } catch {
-    return {};
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      return {};
+    }
+    logAuth.error(`Failed to load settings: ${err instanceof Error ? err.message : String(err)}`);
+    throw err;
   }
 }
 
 export async function saveSettings(settings: Settings): Promise<void> {
   const toPersist = walkSensitiveFields(settings, encryptField);
-  await fs.writeFile(SETTINGS_PATH, JSON.stringify(toPersist, null, 2));
+  await ensureDir(path.dirname(SETTINGS_PATH));
+  const tmp = `${SETTINGS_PATH}.tmp-${process.pid}-${Date.now()}`;
+  await fs.writeFile(tmp, `${JSON.stringify(toPersist, null, 2)}\n`, { mode: 0o600 });
+  await fs.rename(tmp, SETTINGS_PATH);
 }
 
 // One-shot migration: read the settings file, re-save it. Because saveSettings
@@ -687,6 +694,10 @@ export async function scanDirectory(dirPath: string, basePath: string = ''): Pro
     for (const entry of entries) {
       // Skip hidden files
       if (entry.name.startsWith('.')) continue;
+      if (entry.isSymbolicLink()) {
+        logFiles.warn(`[scan] skipping symlink under ${basePath || '.'}: ${entry.name}`);
+        continue;
+      }
 
       const fullPath = path.join(dirPath, entry.name);
       const relativePath = basePath ? `${basePath}/${entry.name}` : entry.name;
@@ -719,6 +730,12 @@ export function resolveUnder(baseDir: string, relPath: string): string | null {
   const target = path.resolve(baseDir, relPath);
   if (target !== base && !target.startsWith(`${base}${path.sep}`)) return null;
   return target;
+}
+
+export async function realpathUnder(baseDir: string, targetPath: string): Promise<string | null> {
+  const [baseReal, targetReal] = await Promise.all([fs.realpath(baseDir), fs.realpath(targetPath)]);
+  if (targetReal !== baseReal && !targetReal.startsWith(`${baseReal}${path.sep}`)) return null;
+  return targetReal;
 }
 
 export async function ensureDir(dirPath: string): Promise<void> {
@@ -764,12 +781,24 @@ export async function getEntityPath(entityId: string): Promise<string | null> {
   // Check if path exists
   try {
     await fs.access(entityPath);
-    return entityPath;
   } catch {
     // Try to create it
     await ensureDir(entityPath);
-    return entityPath;
   }
+
+  try {
+    const contained = await realpathUnder(DATA_DIR, entityPath);
+    if (!contained) {
+      logFiles.warn(`[entity] refusing symlink escape for entity ${entityId}`);
+      return null;
+    }
+  } catch (err) {
+    logFiles.warn(
+      `[entity] failed realpath containment check for ${entityId}: ${err instanceof Error ? err.message : String(err)}`
+    );
+    return null;
+  }
+  return entityPath;
 }
 
 // ============================================================================
@@ -1567,9 +1596,48 @@ export async function saveAccountAnnotations(data: AccountAnnotationsData): Prom
 // Authentication
 // ============================================================================
 
-export const AUTH_USERNAME = process.env.DOCVAULT_USERNAME;
-export const AUTH_PASSWORD = process.env.DOCVAULT_PASSWORD;
-export const AUTH_ENABLED = !!(AUTH_USERNAME && AUTH_PASSWORD);
+export interface AuthConfig {
+  username: string;
+  password: string | undefined;
+  enabled: boolean;
+  allowUnauthenticated: boolean;
+  startupAllowed: boolean;
+  startupError: string | null;
+}
+
+function envFlagEnabled(value: string | undefined): boolean {
+  return value === '1' || value?.toLowerCase() === 'true' || value?.toLowerCase() === 'yes';
+}
+
+export function parseAuthConfig(env: NodeJS.ProcessEnv): AuthConfig {
+  const username = env.DOCVAULT_USERNAME?.trim() || 'admin';
+  const password = env.DOCVAULT_PASSWORD;
+  const enabled = !!password;
+  const allowUnauthenticated = envFlagEnabled(env.DOCVAULT_ALLOW_UNAUTHENTICATED);
+  const startupAllowed = enabled || allowUnauthenticated;
+  return {
+    username,
+    password,
+    enabled,
+    allowUnauthenticated,
+    startupAllowed,
+    startupError: startupAllowed
+      ? null
+      : 'DOCVAULT_PASSWORD is required at server startup. For local/demo-only use, set DOCVAULT_ALLOW_UNAUTHENTICATED=true explicitly.',
+  };
+}
+
+export const AUTH_CONFIG = parseAuthConfig(process.env);
+export const AUTH_USERNAME = AUTH_CONFIG.username;
+export const AUTH_PASSWORD = AUTH_CONFIG.password;
+export const AUTH_ENABLED = AUTH_CONFIG.enabled;
+export const AUTH_ALLOW_UNAUTHENTICATED = AUTH_CONFIG.allowUnauthenticated;
+
+export function assertAuthConfiguredForStartup(config: AuthConfig = AUTH_CONFIG): void {
+  if (!config.startupAllowed) {
+    throw new Error(config.startupError ?? 'Authentication is not configured');
+  }
+}
 
 // In-memory session store: token -> expiry timestamp
 export const sessions = new Map<string, number>();
@@ -1614,6 +1682,8 @@ export const PUBLIC_ROUTES = new Set(['/api/login', '/api/status']);
 
 if (AUTH_ENABLED) {
   logAuth.info(`Authentication enabled for user "${AUTH_USERNAME}"`);
+} else if (AUTH_ALLOW_UNAUTHENTICATED) {
+  logAuth.warn('Authentication disabled by explicit DOCVAULT_ALLOW_UNAUTHENTICATED opt-in');
 } else {
-  logAuth.info('Authentication disabled (DOCVAULT_USERNAME/DOCVAULT_PASSWORD not set)');
+  logAuth.warn('Authentication password missing; direct server startup will fail closed');
 }

@@ -122,6 +122,38 @@ describe('runCustomJobNow', () => {
       }
     });
   });
+
+  test('caps retained stdout and stderr in run records', async () => {
+    await withTempDataDir(async (dataDir) => {
+      await createCustomJobManifest(
+        {
+          id: 'noisy-job',
+          label: 'Noisy Job',
+          schedule: 'hourly',
+          script: 'scripts/noisy.local.sh',
+          enabled: false,
+          tags: [],
+        },
+        { dataDir }
+      );
+      const scriptPath = customJobScriptPath(dataDir, 'scripts/noisy.local.sh');
+      await mkdir(path.dirname(scriptPath), { recursive: true });
+      await writeFile(
+        scriptPath,
+        'python3 - <<\'PY\'\nimport sys\nsys.stdout.write("o" * 200000)\nsys.stderr.write("e" * 200000)\nPY\n',
+        { mode: 0o700 }
+      );
+
+      const result = await runCustomJobNow('noisy-job', { dataDir });
+      const runRecord = JSON.parse(await readFile(result.runPath, 'utf8'));
+
+      expect(result.stdout.length).toBeLessThanOrEqual(70_000);
+      expect(result.stderr.length).toBeLessThanOrEqual(70_000);
+      expect(result.stdout).toContain('[truncated');
+      expect(result.stderr).toContain('[truncated');
+      expect(runRecord.stdout).toBe(result.stdout);
+    });
+  });
 });
 
 describe('isCustomJobDue', () => {

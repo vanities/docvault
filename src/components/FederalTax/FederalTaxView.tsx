@@ -469,7 +469,7 @@ export function FederalTaxView() {
   useEffect(() => {
     loadedRef.current = false;
 
-    Promise.all([
+    void Promise.all([
       fetch(`/api/federal-tax/${selectedYear}`).then((r) => r.json()),
       fetch(`/api/federal-tax/${selectedYear - 1}`).then((r) => r.json()),
       fetch(`/api/financial-snapshot/${selectedYear}?format=json`)
@@ -489,7 +489,7 @@ export function FederalTaxView() {
       if (!loadedRef.current) return;
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = setTimeout(() => {
-        fetch(`/api/federal-tax/${selectedYear}`, {
+        void fetch(`/api/federal-tax/${selectedYear}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(newData),
@@ -1142,7 +1142,10 @@ function TaxSettingsPanel({
     if (field.type === 'yearKeyed') {
       const obj = meta[field.key] as Record<string, unknown> | undefined;
       const priorYear = String(year - 1);
-      return obj?.[priorYear] != null ? String(obj[priorYear]) : '';
+      const value = obj?.[priorYear];
+      return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+        ? String(value)
+        : '';
     }
     return meta[field.key] != null ? String(meta[field.key]) : '';
   };

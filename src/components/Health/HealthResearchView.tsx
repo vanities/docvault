@@ -901,8 +901,8 @@ function HealthResearchRow({
     entry.reportDate,
     entry.sourceUrl,
     entry.notes,
-    entry.tags?.join(',') ?? '',
-    entry.linkedPersonIds?.join(',') ?? '',
+    entry.tags,
+    entry.linkedPersonIds,
   ]);
 
   const flush = (field: keyof typeof draft) => {

@@ -1,0 +1,1420 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DocVault Security, Optimization, and Refactor Audit</title>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --panel: #111827;
+        --panel-2: #1f2937;
+        --text: #e5e7eb;
+        --muted: #9ca3af;
+        --border: #334155;
+        --p0: #ef4444;
+        --p1: #f97316;
+        --p2: #eab308;
+        --p3: #38bdf8;
+        --ok: #22c55e;
+        --code: #020617;
+        --link: #93c5fd;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font:
+          15px/1.55 ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(59, 130, 246, 0.16), transparent 28rem),
+          var(--bg);
+      }
+      a {
+        color: var(--link);
+      }
+      header {
+        padding: 48px 28px 28px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(15, 23, 42, 0.88);
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        backdrop-filter: blur(12px);
+      }
+      header h1 {
+        margin: 0 0 10px;
+        font-size: clamp(28px, 4vw, 44px);
+        letter-spacing: -0.035em;
+      }
+      header p {
+        margin: 0;
+        color: var(--muted);
+        max-width: 980px;
+      }
+      main {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 28px;
+      }
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+        gap: 14px;
+        margin: 22px 0 30px;
+      }
+      .stat {
+        background: rgba(17, 24, 39, 0.88);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 16px;
+      }
+      .stat strong {
+        display: block;
+        font-size: 28px;
+        line-height: 1;
+      }
+      .stat span {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .legend,
+      .methodology {
+        background: rgba(17, 24, 39, 0.78);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 18px;
+        margin: 18px 0;
+      }
+      .legend ul,
+      .methodology ul {
+        margin: 8px 0 0;
+        padding-left: 20px;
+      }
+      section.priority {
+        margin: 34px 0 44px;
+      }
+      section.priority > h2 {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 24px;
+        letter-spacing: -0.02em;
+        margin: 0 0 14px;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 3px 10px;
+        font-size: 12px;
+        font-weight: 800;
+        color: #020617;
+      }
+      .p0 {
+        background: var(--p0);
+      }
+      .p1 {
+        background: var(--p1);
+      }
+      .p2 {
+        background: var(--p2);
+      }
+      .p3 {
+        background: var(--p3);
+      }
+      article.finding {
+        background: linear-gradient(180deg, rgba(31, 41, 55, 0.92), rgba(17, 24, 39, 0.92));
+        border: 1px solid var(--border);
+        border-left-width: 6px;
+        border-radius: 16px;
+        padding: 20px;
+        margin: 16px 0;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+      }
+      article.finding[data-priority='P0'] {
+        border-left-color: var(--p0);
+      }
+      article.finding[data-priority='P1'] {
+        border-left-color: var(--p1);
+      }
+      article.finding[data-priority='P2'] {
+        border-left-color: var(--p2);
+      }
+      article.finding[data-priority='P3'] {
+        border-left-color: var(--p3);
+      }
+      article h3 {
+        margin: 0 0 8px;
+        font-size: 20px;
+        letter-spacing: -0.01em;
+      }
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 8px 0 14px;
+      }
+      .pill {
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 2px 9px;
+        color: var(--muted);
+        font-size: 12px;
+        background: rgba(2, 6, 23, 0.38);
+      }
+      .status-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 10px;
+        margin-top: 12px;
+      }
+      .status-card {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+        background: rgba(2, 6, 23, 0.28);
+      }
+      .status-card strong {
+        display: block;
+        margin-bottom: 4px;
+      }
+      .status-card small {
+        color: var(--muted);
+      }
+      .status-done {
+        border-color: rgba(34, 197, 94, 0.45);
+      }
+      .status-partial {
+        border-color: rgba(234, 179, 8, 0.55);
+      }
+      .status-remaining {
+        border-color: rgba(148, 163, 184, 0.45);
+      }
+      .status-label {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 2px 8px;
+        margin-right: 6px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+      }
+      .status-label.done {
+        background: rgba(34, 197, 94, 0.18);
+        color: #86efac;
+      }
+      .status-label.partial {
+        background: rgba(234, 179, 8, 0.16);
+        color: #fde68a;
+      }
+      .status-label.remaining {
+        background: rgba(148, 163, 184, 0.16);
+        color: #cbd5e1;
+      }
+      .cols {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(280px, 0.8fr);
+        gap: 18px;
+        align-items: start;
+      }
+      @media (max-width: 850px) {
+        .cols {
+          grid-template-columns: 1fr;
+        }
+        header {
+          position: static;
+        }
+      }
+      h4 {
+        margin: 18px 0 6px;
+        color: #f8fafc;
+      }
+      p {
+        margin: 8px 0;
+      }
+      ul {
+        margin-top: 6px;
+      }
+      code,
+      pre {
+        font-family:
+          ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+      }
+      code {
+        background: rgba(2, 6, 23, 0.65);
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        padding: 1px 5px;
+      }
+      pre {
+        background: var(--code);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+        overflow: auto;
+        color: #d1d5db;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      .evidence {
+        background: rgba(2, 6, 23, 0.36);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+      }
+      .fix {
+        background: rgba(34, 197, 94, 0.08);
+        border: 1px solid rgba(34, 197, 94, 0.28);
+        border-radius: 12px;
+        padding: 12px;
+      }
+      .toc {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin: 18px 0 0;
+      }
+      .toc a {
+        text-decoration: none;
+      }
+      footer {
+        color: var(--muted);
+        border-top: 1px solid var(--border);
+        padding: 22px 28px 40px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>DocVault Security, Optimization, and Refactor Audit</h1>
+      <p>
+        Original audit generated 2026-06-08 20:32:24 CDT and implementation status updated
+        2026-06-09 09:31:52 CDT from tracked source files in
+        <code>/Users/vanities/git/work/me/docvault</code>. Private <code>data/</code>, NAS content,
+        and <code>tax-plan/</code> were intentionally avoided. Findings remain sorted P0 → P3;
+        status cards show what this worktree now fixes vs. leaves for a larger pass.
+      </p>
+      <nav class="toc" aria-label="priority navigation">
+        <a class="badge p0" href="#p0">P0 · Critical</a>
+        <a class="badge p1" href="#p1">P1 · High</a>
+        <a class="badge p2" href="#p2">P2 · Medium</a>
+        <a class="badge p3" href="#p3">P3 · Low</a>
+      </nav>
+    </header>
+
+    <main>
+      <div class="summary-grid">
+        <div class="stat"><strong>24</strong><span>original findings retained</span></div>
+        <div class="stat"><strong>15</strong><span>completed in this worktree</span></div>
+        <div class="stat"><strong>9</strong><span>partially reduced / seam added</span></div>
+        <div class="stat"><strong>0</strong><span>untouched remaining findings</span></div>
+      </div>
+
+      <div class="legend">
+        <h2>Priority definitions</h2>
+        <ul>
+          <li>
+            <strong>P0:</strong> exploitable data disclosure/destructive security bug; fix
+            immediately before exposing the app beyond trusted localhost.
+          </li>
+          <li>
+            <strong>P1:</strong> high-impact security, maintainability, or correctness risk; should
+            be handled in the next hardening/refactor pass.
+          </li>
+          <li>
+            <strong>P2:</strong> meaningful reliability/performance risk or medium architectural
+            drag; schedule soon.
+          </li>
+          <li>
+            <strong>P3:</strong> cleanup, consistency, and testability improvements that reduce
+            future defects.
+          </li>
+        </ul>
+      </div>
+
+      <div class="methodology">
+        <h2>Methodology and verification</h2>
+        <ul>
+          <li>
+            Scanned 490 tracked files, including 201 <code>.ts</code> and 161
+            <code>.tsx</code> files.
+          </li>
+          <li>
+            Reviewed backend routes, file serving, generated HTML renderers, settings/auth, custom
+            jobs, and major frontend views/hooks.
+          </li>
+          <li>
+            Original audit proofs used synthetic temp data/payloads for the ZIP traversal and
+            generated-report sanitizer bypass; no private DocVault data was inspected or quoted.
+          </li>
+          <li>
+            Current worktree verification after fixes: targeted security/regression tests passed,
+            including the quant math suite and request-body-limit regression (<code>163</code> tests
+            across quant, server security, and navigation wiring in the latest focused run).
+          </li>
+          <li>
+            Hermetic full suite passed with a temporary empty data directory: <code>64</code> files,
+            <code>1137</code> tests passed, <code>2</code> skipped (<code>1139</code> total). Plain
+            <code>vp test</code> may depend on local gitignored/NAS fixture state for integration
+            tests, so the hermetic run is the source-regression signal.
+          </li>
+          <li>
+            <code>vp check</code>, <code>vp build</code>, and <code>git diff --check</code> passed.
+            <code>vp check</code> now reports no warnings, lint errors, or type errors. Route-level
+            lazy loading reduced the main bundle to <code>369.77 kB</code>;
+            <code>vp build</code> still reports the lazy <code>QuantView</code> chunk at
+            <code>1,525.73 kB</code>, which remains an optimization opportunity rather than a
+            failing build.
+          </li>
+        </ul>
+      </div>
+
+      <div class="methodology" id="implementation-status">
+        <h2>Implementation status update — 2026-06-09 09:31:52 CDT</h2>
+        <p>
+          The detailed finding cards below preserve the original evidence and fix plans. This status
+          table records what the current uncommitted worktree now addresses and what remains for
+          follow-up. Statuses are based on source diffs and completed Vite+ verification, not on
+          private data fixtures.
+        </p>
+        <div class="status-grid">
+          <div class="status-card status-done">
+            <strong><span class="status-label done">Done</span>P0 ZIP traversal / Zip Slip</strong
+            ><small
+              >Downloads now validate year selectors, resolve export paths under the entity, reject
+              unsafe ZIP entry names, and cap ZIP file/byte totals with regression coverage.</small
+            >
+          </div>
+          <div class="status-card status-done">
+            <strong><span class="status-label done">Done</span>P1 auth fails open</strong
+            ><small
+              >Direct server startup now fails closed unless <code>DOCVAULT_PASSWORD</code> is set
+              or <code>DOCVAULT_ALLOW_UNAUTHENTICATED=true</code> is explicitly provided for
+              local/demo-only use. <code>DOCVAULT_USERNAME</code> now defaults to
+              <code>admin</code> when a password is configured.</small
+            >
+          </div>
+          <div class="status-card status-done">
+            <strong
+              ><span class="status-label done">Done</span>P1 generated-report sanitizer
+              bypass</strong
+            ><small
+              >Daily/deep report sanitizers now strip SVG/math/form/foreignObject, namespaced
+              attributes, and additional active URL attributes, with synthetic XSS regression
+              tests.</small
+            >
+          </div>
+          <div class="status-card status-done">
+            <strong
+              ><span class="status-label done">Done</span>P1 active uploaded content preview</strong
+            ><small
+              >File serving now uses safe inline MIME allowlisting, attachment fallback, nosniff,
+              realpath containment, and the PDF iframe is sandboxed with no referrer.</small
+            >
+          </div>
+          <div class="status-card status-partial">
+            <strong><span class="status-label partial">Partial</span>P1 backend monolith</strong
+            ><small
+              ><code>handleRequest</code> is exported and server boot is guarded by
+              <code>import.meta.main</code>, enabling direct route tests; the larger route-module
+              split remains.</small
+            >
+          </div>
+          <div class="status-card status-partial">
+            <strong
+              ><span class="status-label partial">Partial</span>P1 quant backend
+              concentration</strong
+            ><small
+              >Cache policy and gzip/cache HTTP response handling moved into
+              <code>server/routes/quant/</code> helper modules; the compute/dispatch split is still
+              a larger follow-up.</small
+            >
+          </div>
+          <div class="status-card status-partial">
+            <strong
+              ><span class="status-label partial">Partial</span>P1 SettingsView
+              mega-component</strong
+            ><small
+              >Dropbox connection handling moved to <code>DropboxConnectionSection</code>, reducing
+              the root settings file; many settings tabs still remain in the parent view.</small
+            >
+          </div>
+          <div class="status-card status-done">
+            <strong
+              ><span class="status-label done">Done</span>P1 navigation sources of truth</strong
+            ><small
+              ><code>validViews</code> is stable and navigation wiring tests assert sidebar, union,
+              validViews, and Layout switch consistency.</small
+            >
+          </div>
+          <div class="status-card status-done">
+            <strong><span class="status-label done">Done</span>P2 symlink escape hardening</strong
+            ><small
+              >Directory scans skip symlinks, entity paths are realpath-contained under
+              <code>DATA_DIR</code>, and file reads reject symlink escapes.</small
+            >
+          </div>
+          <div class="status-card status-done">
+            <strong
+              ><span class="status-label done">Done</span>P2 move overwrite / metadata drift</strong
+            ><small
+              >Move paths now reject existing destinations and migrate parsed-data/metadata keys
+              during renames and moves.</small
+            >
+          </div>
+          <div class="status-card status-partial">
+            <strong
+              ><span class="status-label partial">Partial</span>P2 unbounded outputs and
+              ZIPs</strong
+            ><small
+              >ZIP exports and custom-job stdout/stderr are bounded, and ordinary JSON-style routes
+              reject declared bodies over <code>10 MB</code> before parsing. The global Bun request
+              body limit remains intentionally large for media/PDF workflows.</small
+            >
+          </div>
+          <div class="status-card status-done">
+            <strong
+              ><span class="status-label done">Done</span>P2 health ingest raw preview leak</strong
+            ><small
+              >Invalid JSON logs/responses no longer include raw request body previews; only
+              shape/length/error category remain.</small
+            >
+          </div>
+          <div class="status-card status-partial">
+            <strong
+              ><span class="status-label partial">Partial</span>P2 chat localStorage privacy</strong
+            ><small
+              >Chat persistence is now bounded/pruned with quota fallback and UI disclosure, but
+              transcripts are still cleartext in browser storage.</small
+            >
+          </div>
+          <div class="status-card status-done">
+            <strong><span class="status-label done">Done</span>P2 object URL cleanup</strong
+            ><small
+              >Chat composer and file uploader track/revoke blob previews on send, removal,
+              success-clear, and unmount.</small
+            >
+          </div>
+          <div class="status-card status-done">
+            <strong
+              ><span class="status-label done">Done</span>P2 collapsed health table
+              rendering</strong
+            ><small
+              ><code>CollapsibleTable</code> accepts raw items plus <code>renderRow</code> and
+              slices before row creation; major health views moved to the lazy path.</small
+            >
+          </div>
+          <div class="status-card status-done">
+            <strong
+              ><span class="status-label done">Done</span>P2 stale global search / HTTP
+              status</strong
+            ><small
+              >Global search now aborts superseded requests, ignores stale responses by sequence,
+              clears stale results on failures, and uses the typed <code>requestJson</code> seam so
+              non-2xx responses cannot be treated as successful search data.</small
+            >
+          </div>
+          <div class="status-card status-partial">
+            <strong
+              ><span class="status-label partial">Partial</span>P2 useFileSystemServer depth</strong
+            ><small
+              >The status/year/file-list reads now use the shared <code>requestJson</code> seam and
+              mount-time status probing is deduplicated. The broader domain-mapper/state-hook split
+              remains.</small
+            >
+          </div>
+          <div class="status-card status-partial">
+            <strong
+              ><span class="status-label partial">Partial</span>P2 AppContext god context</strong
+            ><small
+              >Chat persistence was extracted and year/view validation tightened; core app state is
+              still centralized in <code>AppContext</code>.</small
+            >
+          </div>
+          <div class="status-card status-done">
+            <strong><span class="status-label done">Done</span>P3 settings writes</strong
+            ><small
+              >Settings saves are now atomic temp-file-plus-rename writes with private file mode;
+              non-ENOENT load failures are logged and surfaced instead of collapsed to empty
+              settings.</small
+            >
+          </div>
+          <div class="status-card status-partial">
+            <strong><span class="status-label partial">Partial</span>P3 API errors</strong
+            ><small
+              >A typed <code>requestJson</code>/<code>ApiError</code> helper was added and Daily
+              News, global search, and common filesystem read paths are migrated; other mutation
+              flows/views still need the same seam.</small
+            >
+          </div>
+          <div class="status-card status-done">
+            <strong
+              ><span class="status-label done">Done</span>P3 markdown rendering duplication</strong
+            ><small
+              ><code>SafeMarkdown</code> now centralizes GFM rendering and safe-link handling for
+              Daily News, Deep Research, External Sources, Chat assistant text, Nutrition research,
+              and blurred-number markdown.</small
+            >
+          </div>
+          <div class="status-card status-done">
+            <strong
+              ><span class="status-label done">Done</span>P3 persisted entity/year
+              validation</strong
+            ><small
+              >Persisted year values are bounded to realistic tax/document years and invalid view
+              hashes/storage values continue to fall back safely.</small
+            >
+          </div>
+          <div class="status-card status-partial">
+            <strong><span class="status-label partial">Partial</span>P3 large route views</strong
+            ><small
+              >Top-level views now load through <code>React.lazy</code>/<code>Suspense</code>,
+              cutting the initial bundle substantially. Several individual lazy chunks, especially
+              <code>QuantView</code>, still need internal extraction.</small
+            >
+          </div>
+          <div class="status-card status-done">
+            <strong><span class="status-label done">Done</span>P3 high-risk seam tests</strong
+            ><small
+              >Regression tests now cover download traversal/ZIP limits, generated HTML
+              sanitization, settings persistence, health parse privacy, server file serving,
+              navigation wiring, and related safety seams.</small
+            >
+          </div>
+        </div>
+      </div>
+
+      <section id="p0" class="priority">
+        <h2><span class="badge p0">P0</span> Critical</h2>
+
+        <article class="finding" data-priority="P0">
+          <h3>Arbitrary file read and Zip Slip via download <code>year</code> traversal</h3>
+          <div class="meta">
+            <span class="pill">Security</span><span class="pill">Backend</span
+            ><span class="pill">File disclosure</span>
+          </div>
+          <div class="cols">
+            <div>
+              <p>
+                <strong>Impact:</strong> <code>POST /api/download/zip</code> and
+                <code>POST /api/download/cpa-package</code> join caller-controlled
+                <code>year</code> beneath the entity path without containment checks. A traversal
+                value can scan and zip files outside the entity directory. ZIP entry names can also
+                contain <code>../</code>, creating a Zip Slip hazard for recipients.
+              </p>
+              <h4>Fix</h4>
+              <div class="fix">
+                <ul>
+                  <li>
+                    Validate <code>year</code> as a known year/directory selector, preferably
+                    <code>/^(19|20)\d{2}$/</code> for tax exports.
+                  </li>
+                  <li>
+                    Use <code>resolveUnder(entityPath, year)</code> before
+                    <code>fs.access</code> and <code>scanDirectory</code>.
+                  </li>
+                  <li>
+                    When reading each scanned file, resolve it with
+                    <code>resolveUnder(entityPath, file.path)</code> and reject null.
+                  </li>
+                  <li>
+                    Normalize ZIP entry names and reject absolute paths or any <code>..</code> path
+                    segment.
+                  </li>
+                  <li>
+                    Add regression tests with synthetic data for <code>../../outside</code> and Zip
+                    Slip entry names.
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <div class="evidence">
+              <h4>Evidence</h4>
+              <p><code>server/routes/downloads.ts:53-58</code></p>
+              <pre>
+const yearPath = path.join(entityPath, year);
+await fs.access(yearPath);
+files = await scanDirectory(yearPath, year);</pre
+              >
+              <p><code>server/routes/downloads.ts:91-104</code></p>
+              <pre>
+const zipData: Record&lt;string, Uint8Array&gt; = {};
+for (const file of files) {
+  const fullPath = path.join(entityPath, file.path);
+  const content = await fs.readFile(fullPath);
+  zipData[file.path] = new Uint8Array(content);
+}
+const zipped = zipSync(zipData);</pre
+              >
+              <p><code>server/routes/downloads.ts:136-142</code></p>
+              <pre>
+const yearStr = String(year);
+const yearPath = path.join(entityPath, yearStr);
+files = await scanDirectory(yearPath, yearStr);</pre
+              >
+              <p>
+                Runtime synthetic proof returned <code>status=200</code>,
+                <code>application/zip</code>, and <code>ZIP_CONTAINS_OUTSIDE_ENTRY_NAME</code>.
+              </p>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section id="p1" class="priority">
+        <h2><span class="badge p1">P1</span> High</h2>
+
+        <article class="finding" data-priority="P1">
+          <h3>
+            Authentication fails open by default while destructive/admin APIs remain reachable
+          </h3>
+          <div class="meta">
+            <span class="pill">Security</span><span class="pill">Auth</span
+            ><span class="pill">Admin surface</span>
+          </div>
+          <div class="cols">
+            <div>
+              <p>
+                <strong>Impact:</strong> When <code>DOCVAULT_USERNAME</code> and
+                <code>DOCVAULT_PASSWORD</code> are unset, all API routes are treated as
+                authenticated. That includes file mutation, settings mutation, backup/restore,
+                external sources, and custom jobs that can write executable scripts and spawn child
+                processes with inherited environment variables.
+              </p>
+              <h4>Fix</h4>
+              <div class="fix">
+                <ul>
+                  <li>
+                    Fail closed in production/container mode. Require auth unless
+                    <code>DOCVAULT_AUTH_DISABLED=true</code> is explicitly set.
+                  </li>
+                  <li>
+                    Bind to localhost by default; require explicit opt-in for <code>0.0.0.0</code>.
+                  </li>
+                  <li>
+                    Gate jobs, settings, backup/restore, file mutation, and external-source APIs
+                    behind an admin-only check.
+                  </li>
+                  <li>
+                    Disable custom jobs by default unless an explicit
+                    <code>DOCVAULT_CUSTOM_JOBS_ENABLED=true</code> is configured.
+                  </li>
+                  <li>Have Docker entrypoint validate required auth/secret configuration.</li>
+                </ul>
+              </div>
+            </div>
+            <div class="evidence">
+              <h4>Evidence</h4>
+              <p><code>server/data.ts:1570-1608</code></p>
+              <pre>
+export const AUTH_ENABLED = !!(AUTH_USERNAME &amp;&amp; AUTH_PASSWORD);
+
+export function isAuthenticated(req: Request): boolean {
+  if (!AUTH_ENABLED) return true;
+  ...
+}</pre
+              >
+              <p><code>server/index.ts:230-235</code></p>
+              <pre>
+if (AUTH_ENABLED &amp;&amp; pathname.startsWith('/api/') &amp;&amp; !PUBLIC_ROUTES.has(pathname)) {
+  if (!isAuthenticated(req)) return jsonResponse({ error: 'Unauthorized' }, 401);
+}</pre
+              >
+              <p>
+                <code>server/routes/jobs.ts:71-77</code> and
+                <code>server/custom-job-runner.ts:188-198</code> show custom jobs accepting
+                manifests/scripts and spawning processes.
+              </p>
+            </div>
+          </div>
+        </article>
+
+        <article class="finding" data-priority="P1">
+          <h3>Generated report HTML sanitizer is bypassable with SVG namespaced links</h3>
+          <div class="meta">
+            <span class="pill">Security</span><span class="pill">XSS</span
+            ><span class="pill">Reports/email HTML</span>
+          </div>
+          <div class="cols">
+            <div>
+              <p>
+                <strong>Impact:</strong> Research/news report markdown is rendered to standalone or
+                emailed HTML. The regex sanitizer strips some dangerous tags and exact
+                <code>href</code>/<code>src</code> attributes, but misses SVG/MathML and namespaced
+                URL attributes such as <code>xlink:href</code>.
+              </p>
+              <h4>Fix</h4>
+              <div class="fix">
+                <ul>
+                  <li>
+                    Prefer a real allowlist sanitizer such as DOMPurify/sanitize-html configured for
+                    server rendering.
+                  </li>
+                  <li>
+                    If raw HTML is not needed, configure markdown rendering to disable raw HTML
+                    entirely.
+                  </li>
+                  <li>
+                    Drop <code>svg</code>, <code>math</code>, <code>foreignObject</code>, and
+                    namespaced URL attributes.
+                  </li>
+                  <li>
+                    Apply a defensive CSP/sandbox header to served generated reports where possible.
+                  </li>
+                  <li>
+                    Add regression tests for <code>xlink:href</code>, <code>formaction</code>,
+                    SVG/MathML, event handlers, and obfuscated protocols.
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <div class="evidence">
+              <h4>Evidence</h4>
+              <p>
+                <code>server/deep-research-report.ts:54-71</code> and
+                <code>server/daily-news-report.ts:104-118</code>
+              </p>
+              <pre>.replace(/\s+(href|src)\s*=\s*("[^"]*"|'[^']*'|[^\s&gt;]+)/gi, ...)</pre>
+              <p><code>server/deep-research-report.ts:126</code></p>
+              <pre>let body = stripUnsafeHtml(marked.parse(run.report ?? '') as string);</pre>
+              <p>Runtime synthetic proof:</p>
+              <pre>
+BYPASS_PRESENT
+&lt;article class="report"&gt;&lt;p&gt;&lt;svg&gt;&lt;a xlink:href="javascript:alert(1)"&gt;...&lt;/a&gt;&lt;/svg&gt;&lt;/p&gt;&lt;/article&gt;</pre
+              >
+            </div>
+          </div>
+        </article>
+
+        <article class="finding" data-priority="P1">
+          <h3>Same-origin document preview/open path can execute active uploaded content</h3>
+          <div class="meta">
+            <span class="pill">Security</span><span class="pill">Frontend + Backend</span
+            ><span class="pill">Stored active content</span>
+          </div>
+          <div class="cols">
+            <div>
+              <p>
+                <strong>Impact:</strong> The frontend opens and embeds
+                <code>/api/file/...</code> content as same-origin. The server serves extensions like
+                HTML, JS, CSS, and SVG with active MIME types and no
+                <code>Content-Disposition</code>, <code>nosniff</code>, or sandbox. A stored
+                HTML/SVG file can execute on DocVault’s origin and call same-origin APIs.
+                <code>window.open(..., '_blank')</code> also omits <code>noopener</code>.
+              </p>
+              <h4>Fix</h4>
+              <div class="fix">
+                <ul>
+                  <li>
+                    Serve vault files as attachments by default; allow inline only for a strict
+                    preview allowlist such as PDF and safe raster images.
+                  </li>
+                  <li>Add <code>X-Content-Type-Options: nosniff</code>.</li>
+                  <li>
+                    For inline preview responses, add
+                    <code>Content-Security-Policy: sandbox</code> where compatible.
+                  </li>
+                  <li>
+                    Use <code>window.open(fileUrl, '_blank', 'noopener,noreferrer')</code> and set
+                    <code>opener = null</code> defensively.
+                  </li>
+                  <li>
+                    Sandbox the PDF iframe or route previews through a dedicated safe viewer
+                    endpoint.
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <div class="evidence">
+              <h4>Evidence</h4>
+              <p><code>src/components/Documents/DocumentViewer.tsx:286-307,467-468</code></p>
+              <pre>
+const fileUrl = getFileUrl(document.entity, document.filePath ?? '');
+window.open(fileUrl, '_blank');
+...
+&lt;iframe src={fileUrl} ... /&gt;</pre
+              >
+              <p><code>server/index.ts:1188-1193</code></p>
+              <pre>
+return new Response(content, {
+  headers: {
+    'Content-Type': mimeType,
+    'Content-Length': String(stats.size),
+    ...corsHeaders(),
+  },
+});</pre
+              >
+              <p>
+                <code>server/data.ts:659-663</code> maps <code>html</code>, <code>js</code>,
+                <code>css</code>, and <code>svg</code> to active MIME types.
+              </p>
+            </div>
+          </div>
+        </article>
+
+        <article class="finding" data-priority="P1">
+          <h3><code>server/index.ts</code> remains a backend composition/root monolith</h3>
+          <div class="meta">
+            <span class="pill">Refactor</span><span class="pill">Testability</span
+            ><span class="pill">Backend architecture</span>
+          </div>
+          <p>
+            <strong>Impact:</strong> <code>server/index.ts</code> is about 2,886 LOC, contains
+            dozens of inline endpoint blocks plus manual route-module calls, and keeps auth,
+            settings, backups, integrations, file operations, parsing, search, and scheduling in one
+            request handler. Route behavior is order-dependent and hard to unit test without loading
+            the whole server.
+          </p>
+          <div class="evidence">
+            <p>
+              <strong>Evidence:</strong> main request handler starts at
+              <code>server/index.ts:192</code>; auth gate at <code>server/index.ts:205-235</code>;
+              settings/config at <code>server/index.ts:237-565</code>; backup/restore at
+              <code>server/index.ts:566-693</code>; entity/files/uploads/parsing/search/schedules
+              span <code>server/index.ts:954-2598</code>.
+            </p>
+          </div>
+          <div class="fix">
+            <p>
+              <strong>Fix:</strong> Create a small <code>server/router.ts</code> route
+              registry/composition layer. Move inline clusters into
+              <code>server/routes/auth.ts</code>, <code>settings.ts</code>, <code>backup.ts</code>,
+              <code>entities.ts</code>, <code>files.ts</code>, <code>integrations/*</code>,
+              <code>search.ts</code>, and <code>schedules.ts</code>. Keep
+              <code>server/index.ts</code> limited to middleware, route registration, static
+              serving, and <code>Bun.serve</code>.
+            </p>
+          </div>
+        </article>
+
+        <article class="finding" data-priority="P1">
+          <h3>Quant backend is the largest concentrated maintenance/performance risk</h3>
+          <div class="meta">
+            <span class="pill">Refactor</span><span class="pill">Performance</span
+            ><span class="pill">Quant</span>
+          </div>
+          <p>
+            <strong>Impact:</strong> <code>server/routes/quant.ts</code> is about 5,528 LOC and
+            mixes market-data fetching, caching, financial computations, response shaping, and route
+            dispatch. The largest function, <code>computeBtcLogRegression</code>, spans roughly
+            1,733 lines. This blocks focused tests for math/cache behavior and makes performance
+            fixes risky.
+          </p>
+          <div class="evidence">
+            <p>
+              <strong>Evidence:</strong> <code>computeBtcLogRegression</code> around
+              <code>server/routes/quant.ts:722-2454</code>;
+              <code>computeYahooDashboard</code> around
+              <code>server/routes/quant.ts:2949-3765</code>; <code>handleQuantRoutes</code> around
+              <code>server/routes/quant.ts:4490-5528</code>.
+            </p>
+          </div>
+          <div class="fix">
+            <p>
+              <strong>Fix:</strong> Split into <code>server/quant/cache.ts</code>,
+              <code>server/quant/btc/log-regression.ts</code>,
+              <code>server/quant/btc/dominance.ts</code>, <code>server/quant/macro/*</code>,
+              <code>server/quant/markets/yahoo.ts</code>, and a thin route table. Start by
+              extracting pure functions that accept price arrays and return calculation outputs.
+            </p>
+          </div>
+        </article>
+
+        <article class="finding" data-priority="P1">
+          <h3><code>SettingsView</code> is a mega-component with too many responsibilities</h3>
+          <div class="meta">
+            <span class="pill">Refactor</span><span class="pill">Frontend architecture</span
+            ><span class="pill">Settings</span>
+          </div>
+          <p>
+            <strong>Impact:</strong> <code>SettingsView.tsx</code> is about 3,921 LOC with dozens of
+            state variables and fetch calls. It owns API keys, Dropbox, crypto, entities, jobs,
+            logs, schedules, backup, integrations, and polling. Rendering or testing one setting
+            often pulls in unrelated domains.
+          </p>
+          <div class="evidence">
+            <p>
+              <strong>Evidence:</strong> main component starts at
+              <code>src/components/Settings/SettingsView.tsx:308</code>; dense state clusters at
+              <code>321-507</code>; mount effect loading many unrelated resources and polling at
+              <code>508-528</code>.
+            </p>
+          </div>
+          <div class="fix">
+            <p>
+              <strong>Fix:</strong> Continue the existing section extraction pattern. Add
+              <code>JobsSettingsSection</code>, <code>SchedulesSettingsSection</code>,
+              <code>IntegrationsSettingsSection</code>, <code>CryptoSettingsSection</code>,
+              <code>EntitySettingsSection</code>, <code>SystemLogsSection</code>,
+              <code>settingsApi.ts</code>, and <code>useSettingsResource.ts</code>. Target a shell
+              component under ~300 LOC.
+            </p>
+          </div>
+        </article>
+
+        <article class="finding" data-priority="P1">
+          <h3>Navigation has multiple sources of truth</h3>
+          <div class="meta">
+            <span class="pill">Refactor</span><span class="pill">Correctness</span
+            ><span class="pill">Navigation</span>
+          </div>
+          <p>
+            <strong>Impact:</strong> The app duplicates view literals across <code>NavView</code>,
+            <code>validViews</code>, <code>Layout</code> switch cases, sidebar buttons, and
+            health-sidebar sections. The project instructions already warn that missing any of these
+            causes navigation regressions.
+          </p>
+          <div class="evidence">
+            <p>
+              <strong>Evidence:</strong> <code>src/contexts/AppContext.tsx:105-144</code> union
+              type; <code>src/contexts/AppContext.tsx:334-377</code> valid set;
+              <code>src/components/Layout/Layout.tsx:99-178</code> switch;
+              <code>src/components/Layout/Sidebar.tsx:574-879</code> sidebar entries.
+            </p>
+          </div>
+          <div class="fix">
+            <p>
+              <strong>Fix:</strong> Create <code>src/navigation/registry.tsx</code> as the single
+              source for view id, label, icon, section, entity visibility, active colors, and
+              component. Derive <code>NavView</code>, <code>validViews</code>, layout rendering, and
+              sidebar groups from that registry.
+            </p>
+          </div>
+        </article>
+      </section>
+
+      <section id="p2" class="priority">
+        <h2><span class="badge p2">P2</span> Medium</h2>
+
+        <article class="finding" data-priority="P2">
+          <h3>Symlink escape bypasses string-only path containment</h3>
+          <div class="meta">
+            <span class="pill">Security</span><span class="pill">Filesystem</span>
+          </div>
+          <p>
+            <strong>Impact:</strong> <code>resolveUnder()</code> compares resolved strings, but file
+            operations use <code>fs.stat</code>/<code>fs.readFile</code>, which follow symlinks. A
+            symlink inside an entity can point outside <code>DATA_DIR</code>; serving, scanning,
+            parsing, and zipping can follow it. The nearby comment says “resolving symlinks” but no
+            <code>realpath()</code> is enforced.
+          </p>
+          <div class="evidence">
+            <pre>
+// server/data.ts:717-721
+export function resolveUnder(baseDir: string, relPath: string): string | null {
+  const base = path.resolve(baseDir);
+  const target = path.resolve(baseDir, relPath);
+  if (target !== base &amp;&amp; !target.startsWith(`${base}${path.sep}`)) return null;
+  return target;
+}</pre
+            >
+          </div>
+          <div class="fix">
+            <p>
+              <strong>Fix:</strong> Either reject symlinks during scans with <code>lstat()</code>,
+              or compare <code>realpath(target)</code> against <code>realpath(base)</code> before
+              following. Add tests with a temp symlink under an entity pointing outside the data
+              dir.
+            </p>
+          </div>
+        </article>
+
+        <article class="finding" data-priority="P2">
+          <h3>File move routes can overwrite destinations and leave metadata inconsistent</h3>
+          <div class="meta">
+            <span class="pill">Correctness</span><span class="pill">Filesystem</span>
+          </div>
+          <p>
+            <strong>Impact:</strong> <code>/api/move</code> uses <code>fs.rename</code> without
+            checking destination existence and does not update parsed-data/metadata keys.
+            <code>/api/move-between</code> uses <code>fs.copyFile</code> without
+            <code>COPYFILE_EXCL</code>, so it can clobber a destination.
+          </p>
+          <div class="evidence">
+            <pre>
+// server/index.ts:1485-1488
+await ensureDir(path.dirname(toPath));
+await fs.rename(fromPath, toPath);
+
+// server/index.ts:1672-1674
+await fs.copyFile(fullFromPath, fullToPath);
+await fs.unlink(fullFromPath);</pre
+            >
+          </div>
+          <div class="fix">
+            <p>
+              <strong>Fix:</strong> Reject existing destinations with 409 unless explicit overwrite
+              is supplied; use <code>fs.copyFile(src, dst, fs.constants.COPYFILE_EXCL)</code>;
+              update parsed-data/metadata keys consistently for <code>/api/move</code>.
+            </p>
+          </div>
+        </article>
+
+        <article class="finding" data-priority="P2">
+          <h3>
+            Unbounded request bodies, ZIP creation, and custom-job output can exhaust memory/disk
+          </h3>
+          <div class="meta"><span class="pill">Performance</span><span class="pill">DoS</span></div>
+          <p>
+            <strong>Impact:</strong> The Bun server allows a 2GB request body; uploads and research
+            media endpoints buffer full bodies in memory; ZIP exports read all files into memory and
+            compress synchronously; custom jobs accumulate stdout/stderr strings without visible
+            caps.
+          </p>
+          <div class="evidence">
+            <p>
+              <code>server/index.ts:2865</code> sets
+              <code>maxRequestBodySize: 2 * 1024 * 1024 * 1024</code>;
+              <code>server/index.ts:1269-1270</code> buffers uploads;
+              <code>server/routes/downloads.ts:91-104</code> builds in-memory ZIPs.
+            </p>
+          </div>
+          <div class="fix">
+            <p>
+              <strong>Fix:</strong> Add per-route size limits, stream uploads to disk with
+              byte-count enforcement, cap ZIP file count/total bytes or stream archives, cap
+              retained job stdout/stderr, and enforce job timeouts.
+            </p>
+          </div>
+        </article>
+
+        <article class="finding" data-priority="P2">
+          <h3>Health ingest parse errors log and return raw request previews</h3>
+          <div class="meta"><span class="pill">Privacy</span><span class="pill">Logging</span></div>
+          <p>
+            <strong>Impact:</strong> Malformed health-ingest requests can write the first 1,000
+            characters of a sensitive health payload to logs and return a preview to the caller.
+            That conflicts with the project’s “never log secrets or PII” rule.
+          </p>
+          <div class="evidence">
+            <p>
+              <code>server/routes/health.ts:570-584</code> builds <code>preview</code> from the raw
+              body, logs it, and returns it in the JSON error.
+            </p>
+          </div>
+          <div class="fix">
+            <p>
+              <strong>Fix:</strong> Log only route/person id, request id, body length, and
+              parse/schema error category. Never log or return raw health payload text unless a
+              local-only redacted debug mode is explicitly enabled.
+            </p>
+          </div>
+        </article>
+
+        <article class="finding" data-priority="P2">
+          <h3>Chat history and tool results persist in cleartext localStorage</h3>
+          <div class="meta">
+            <span class="pill">Privacy</span><span class="pill">Frontend storage</span>
+          </div>
+          <p>
+            <strong>Impact:</strong> Chat transcripts and tool outputs may include private
+            vault-derived content. They are stored unencrypted in <code>localStorage</code>,
+            accessible to any same-origin script and retained without an obvious retention limit.
+          </p>
+          <div class="evidence">
+            <pre>
+// src/contexts/AppContext.tsx:33-48,97-100
+export interface PersistedThread { messages: unknown[]; ... }
+const CHAT_THREADS_STORAGE_KEY = 'docvault-chat-threads-v1';
+localStorage.setItem(CHAT_THREADS_STORAGE_KEY, JSON.stringify(state));</pre
+            >
+          </div>
+          <div class="fix">
+            <p>
+              <strong>Fix:</strong> Make chat persistence opt-in, add retention/size controls,
+              surface quota failures, and consider server-side storage or encrypted IndexedDB if
+              persistence is required.
+            </p>
+          </div>
+        </article>
+
+        <article class="finding" data-priority="P2">
+          <h3>Object URL cleanup is incomplete for image/file previews</h3>
+          <div class="meta">
+            <span class="pill">Performance</span><span class="pill">Memory leak</span>
+          </div>
+          <p>
+            <strong>Impact:</strong> <code>ChatView</code> cleanup captures the initial
+            <code>attachments</code> value in an empty-dependency effect, so later preview URLs may
+            survive unmount. <code>FileUploader</code> revokes success/removal previews but lacks
+            unmount cleanup for pending/failed previews.
+          </p>
+          <div class="evidence">
+            <p>
+              <code>src/components/Chat/ChatView.tsx:363-372</code> unmount effect has
+              <code>[]</code> deps while iterating <code>attachments</code>;
+              <code>src/components/common/FileUploader.tsx:349-352,541-546</code> creates/revokes
+              previews without full unmount coverage.
+            </p>
+          </div>
+          <div class="fix">
+            <p>
+              <strong>Fix:</strong> Track active object URLs in a <code>useRef</code>, update it on
+              state changes, and revoke all current URLs on unmount. Revoke removed URLs
+              immediately.
+            </p>
+          </div>
+        </article>
+
+        <article class="finding" data-priority="P2">
+          <h3>Collapsed health tables build every row before slicing</h3>
+          <div class="meta">
+            <span class="pill">Performance</span><span class="pill">React rendering</span>
+          </div>
+          <p>
+            <strong>Impact:</strong> <code>CollapsibleTable</code> accepts already-built
+            <code>ReactNode[]</code> rows, then slices after row creation. Large Apple Health
+            imports still allocate all row nodes even when the UI shows only seven rows.
+          </p>
+          <div class="evidence">
+            <pre>
+// src/components/Health/CollapsibleTable.tsx:15-31
+rows: React.ReactNode[];
+const visibleRows = canExpand &amp;&amp; !expanded ? rows.slice(0, defaultRows) : rows;</pre
+            >
+          </div>
+          <div class="fix">
+            <p>
+              <strong>Fix:</strong> Accept <code>items</code> plus <code>renderRow</code> and slice
+              before mapping. For “show all,” consider virtualization/windowing for thousands of
+              rows.
+            </p>
+          </div>
+        </article>
+
+        <article class="finding" data-priority="P2">
+          <h3>Global search can display stale results and ignores HTTP status</h3>
+          <div class="meta">
+            <span class="pill">Correctness</span><span class="pill">Frontend async</span>
+          </div>
+          <p>
+            <strong>Impact:</strong> The debounced search has no <code>AbortController</code>,
+            request sequence guard, or <code>res.ok</code> check. A slower earlier query can
+            overwrite newer results; 401/500 responses can become empty/misleading results.
+          </p>
+          <div class="evidence">
+            <pre>
+// src/contexts/AppContext.tsx:553-558
+const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+const data = await res.json();
+setSearchResults(data.files || []);</pre
+            >
+          </div>
+          <div class="fix">
+            <p>
+              <strong>Fix:</strong> Abort previous searches, track a monotonic request id, check
+              <code>res.ok</code>, expose an error state/toast, and clear the debounce timer on
+              provider unmount.
+            </p>
+          </div>
+        </article>
+
+        <article class="finding" data-priority="P2">
+          <h3>
+            <code>useFileSystemServer</code> is both API client, domain mapper, and state hook
+          </h3>
+          <div class="meta">
+            <span class="pill">Refactor</span><span class="pill">Frontend architecture</span>
+          </div>
+          <p>
+            <strong>Impact:</strong> <code>src/hooks/useFileSystemServer.ts</code> is about 1,054
+            LOC with 30+ API methods. It mixes networking, connection status, document import/path
+            mapping, reminders, todos, metadata, downloads, and state refresh. This broad interface
+            is hard to mock and lets document path logic drift from config.
+          </p>
+          <div class="fix">
+            <p>
+              <strong>Fix:</strong> Split into <code>src/api/client.ts</code>,
+              <code>files.ts</code>, <code>entities.ts</code>, <code>reminders.ts</code>,
+              <code>todos.ts</code>, focused hooks, and a tested
+              <code>src/utils/documentPath.ts</code> for placement logic.
+            </p>
+          </div>
+        </article>
+
+        <article class="finding" data-priority="P2">
+          <h3><code>AppContext</code> is a god context</h3>
+          <div class="meta">
+            <span class="pill">Refactor</span><span class="pill">React state</span>
+          </div>
+          <p>
+            <strong>Impact:</strong> <code>AppContext.tsx</code> exposes connection, auth, entity,
+            view, health, year, documents, search, file operations, reminders, todos, metadata,
+            download/display preferences, and chat thread state. A change in one domain can
+            invalidate unrelated consumers and makes isolated tests harder.
+          </p>
+          <div class="fix">
+            <p>
+              <strong>Fix:</strong> Split into <code>NavigationProvider</code>,
+              <code>EntityProvider</code>, <code>SearchProvider</code>,
+              <code>DocumentProvider</code>, <code>ChatThreadsProvider</code>, and
+              <code>DisplayPreferencesProvider</code>. Move chat persistence/migration into pure
+              store functions.
+            </p>
+          </div>
+        </article>
+      </section>
+
+      <section id="p3" class="priority">
+        <h2><span class="badge p3">P3</span> Low / Cleanup</h2>
+
+        <article class="finding" data-priority="P3">
+          <h3>
+            Settings writes are non-atomic and parse/decrypt failures can collapse to empty settings
+          </h3>
+          <div class="meta">
+            <span class="pill">Reliability</span><span class="pill">Data store</span>
+          </div>
+          <p>
+            <strong>Impact:</strong> <code>loadSettings()</code> catches all errors and returns
+            <code>{}</code>. A corrupt JSON file, partial write, or wrong key can silently become
+            empty settings; a later save can overwrite the original settings.
+            <code>saveSettings()</code> writes directly instead of temp-file + rename.
+          </p>
+          <div class="evidence">
+            <pre>
+// server/data.ts:359-371
+try { ... return walkSensitiveFields(raw, decryptField); }
+catch { return {}; }
+...
+await fs.writeFile(SETTINGS_PATH, JSON.stringify(toPersist, null, 2));</pre
+            >
+          </div>
+          <div class="fix">
+            <p>
+              <strong>Fix:</strong> Return empty only for <code>ENOENT</code>; fail closed on
+              parse/decrypt errors; write atomically via temp file + rename; optionally keep a
+              <code>.bak</code>.
+            </p>
+          </div>
+        </article>
+
+        <article class="finding" data-priority="P3">
+          <h3>API error handling is inconsistent and several views silently ignore failures</h3>
+          <div class="meta"><span class="pill">UX</span><span class="pill">Frontend API</span></div>
+          <p>
+            <strong>Impact:</strong> Several views catch fetch failures and render empty states,
+            making auth/server/source failures look like “no data.” Examples include
+            <code>ExternalSourcesView</code>, <code>DailyNewsView</code>, and
+            <code>ResearchView</code>.
+          </p>
+          <div class="fix">
+            <p>
+              <strong>Fix:</strong> Introduce a shared typed
+              <code>requestJson&lt;T&gt;()</code> helper that checks <code>res.ok</code>, handles
+              401/403 distinctly, parses server error bodies, supports cancellation, and throws
+              user-facing errors. Add per-view error states.
+            </p>
+          </div>
+        </article>
+
+        <article class="finding" data-priority="P3">
+          <h3>Markdown rendering is duplicated across multiple frontend views</h3>
+          <div class="meta">
+            <span class="pill">Refactor</span><span class="pill">Security consistency</span>
+          </div>
+          <p>
+            <strong>Impact:</strong> <code>ChatView</code>, <code>ExternalSourcesView</code>,
+            <code>DailyNewsView</code>, and <code>ResearchView</code> define overlapping markdown
+            components/link behavior. Security, table overflow, and styling can drift.
+          </p>
+          <div class="fix">
+            <p>
+              <strong>Fix:</strong> Create a shared <code>SafeMarkdown</code> component with
+              <code>remarkGfm</code>, one audited link renderer, explicit URL protocol policy, table
+              overflow behavior, optional numeric blur, and optional wikilink handling hooks.
+            </p>
+          </div>
+        </article>
+
+        <article class="finding" data-priority="P3">
+          <h3>Persisted entity/year state is not robustly validated</h3>
+          <div class="meta">
+            <span class="pill">Correctness</span><span class="pill">State persistence</span>
+          </div>
+          <p>
+            <strong>Impact:</strong> <code>activeView</code> is validated against
+            <code>validViews</code>, but <code>selectedEntity</code> and
+            <code>selectedYear</code> are loaded directly from localStorage. Stale entity ids or
+            <code>NaN</code> years can produce bad API paths or confusing empty states.
+          </p>
+          <div class="evidence">
+            <p>
+              <code>src/contexts/AppContext.tsx:495-519</code> loads
+              <code>docvault-entity</code> and <code>docvault-year</code> without validating against
+              loaded entities or a finite/ranged year.
+            </p>
+          </div>
+          <div class="fix">
+            <p>
+              <strong>Fix:</strong> Wrap storage in a safe helper, validate entity after entities
+              load, and validate year with <code>Number.isFinite</code> and a sensible range.
+            </p>
+          </div>
+        </article>
+
+        <article class="finding" data-priority="P3">
+          <h3>Several large route views should be reduced behind hooks/reducers</h3>
+          <div class="meta">
+            <span class="pill">Refactor</span><span class="pill">Frontend maintainability</span>
+          </div>
+          <p>
+            <strong>Impact:</strong> Several route components are oversized, state-heavy, and hard
+            to test: <code>TnTaxView.tsx</code> (~1,554 LOC),
+            <code>HealthNutritionView.tsx</code> (~1,659 LOC), <code>GoldView.tsx</code> (~1,421
+            LOC), <code>FederalTaxView.tsx</code> (~1,260 LOC), <code>MileageView.tsx</code> (~1,252
+            LOC), <code>HealthResearchView.tsx</code> (~1,230 LOC), and
+            <code>ChatView.tsx</code> (~1,092 LOC).
+          </p>
+          <div class="fix">
+            <p>
+              <strong>Fix:</strong> Extract <code>useXData</code>, <code>useXMutations</code>,
+              reducers for editor/form state, pure domain helpers, and smaller presentational
+              cards/tables. Start with <code>TnTaxView</code>, <code>MileageView</code>, and
+              <code>GoldView</code>.
+            </p>
+          </div>
+        </article>
+
+        <article class="finding" data-priority="P3">
+          <h3>Tests do not cover the highest-risk seams directly</h3>
+          <div class="meta">
+            <span class="pill">Testing</span><span class="pill">Risk reduction</span>
+          </div>
+          <p>
+            <strong>Impact:</strong> The repo has strong pockets of tests, but no direct tracked
+            tests were found for some highest-risk surfaces: <code>server/index.ts</code>,
+            <code>src/hooks/useFileSystemServer.ts</code>, <code>src/contexts/AppContext.tsx</code>,
+            <code>src/components/Settings/SettingsView.tsx</code>,
+            <code>server/routes/chat.ts</code>, and
+            <code>server/routes/financial-snapshot.ts</code>.
+          </p>
+          <div class="fix">
+            <p>
+              <strong>Fix:</strong> After extracting seams, add focused tests for route registry
+              matching, document path resolution, settings resource hooks, chat thread
+              reducer/migration, JSON store defaults/migrations, generated HTML sanitization,
+              symlink containment, and ZIP traversal.
+            </p>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <footer>
+      DocVault audit artifact — no private document names, values, health data, or NAS content
+      included.
+    </footer>
+  </body>
+</html>

@@ -146,6 +146,18 @@ export function FileUploader({
   userEditedFieldsRef.current = userEditedFields;
   const fileMetadataRef = useRef(fileMetadata);
   fileMetadataRef.current = fileMetadata;
+  const pendingFilesRef = useRef(pendingFiles);
+  pendingFilesRef.current = pendingFiles;
+  const clearSuccessTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (clearSuccessTimerRef.current !== null) window.clearTimeout(clearSuccessTimerRef.current);
+      for (const pending of pendingFilesRef.current) {
+        if (pending.preview) URL.revokeObjectURL(pending.preview);
+      }
+    };
+  }, []);
 
   // Derived
   const shouldParse = parseMode === 'always' || (parseMode === 'optional' && parseEnabled);
@@ -538,7 +550,9 @@ export function FileUploader({
     onComplete?.({ succeeded, failed });
 
     // Auto-clear successful files after a short delay; keep failures visible
-    setTimeout(() => {
+    if (clearSuccessTimerRef.current !== null) window.clearTimeout(clearSuccessTimerRef.current);
+    clearSuccessTimerRef.current = window.setTimeout(() => {
+      clearSuccessTimerRef.current = null;
       setPendingFiles((prev) => {
         prev.forEach((p) => {
           if (p.preview && p.uploadStatus === 'success') URL.revokeObjectURL(p.preview);
@@ -621,7 +635,7 @@ export function FileUploader({
                 if (e.target.checked) {
                   pendingFiles.forEach(({ file }) => {
                     if (!aiParsedData.has(file.name) && !aiLoading.has(file.name)) {
-                      suggestFilename(file);
+                      void suggestFilename(file);
                     }
                   });
                 }

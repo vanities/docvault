@@ -304,7 +304,8 @@ export function DocumentViewer({
   };
 
   const handleOpenExternal = () => {
-    window.open(fileUrl, '_blank');
+    const opened = window.open(fileUrl, '_blank', 'noopener,noreferrer');
+    if (opened) opened.opener = null;
   };
 
   const handleDelete = () => {
@@ -465,7 +466,13 @@ export function DocumentViewer({
                     className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
                   />
                 ) : isPdf ? (
-                  <iframe src={fileUrl} className="w-full h-full rounded-lg bg-white" />
+                  <iframe
+                    src={fileUrl}
+                    title={`Preview of ${document.fileName}`}
+                    sandbox="allow-downloads allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin"
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full rounded-lg bg-white"
+                  />
                 ) : null}
               </div>
             ) : (

@@ -48,6 +48,27 @@ describe('deep-research-report', () => {
     expect(html).toContain('href="https://example.test/report"');
   });
 
+  test('drops svg/math islands and namespaced or form URL attributes', () => {
+    const html = renderReportHtml(
+      run({
+        report: [
+          '## Unsafe raw HTML',
+          '<svg><a xlink:href="javascript:alert(1)"><foreignObject><p>bad</p></foreignObject></a></svg>',
+          '<math><mi xlink:href="javascript:alert(2)">x</mi></math>',
+          '<form action="javascript:alert(3)"><button formaction="javascript:alert(4)">go</button></form>',
+        ].join('\n\n'),
+      })
+    ).toLowerCase();
+
+    expect(html).not.toContain('<svg');
+    expect(html).not.toContain('<math');
+    expect(html).not.toContain('foreignobject');
+    expect(html).not.toContain('xlink:href');
+    expect(html).not.toContain('formaction');
+    expect(html).not.toContain('action="javascript:');
+    expect(html).not.toContain('javascript:');
+  });
+
   test('does not create clickable javascript source links', () => {
     const html = renderReportHtml(
       run({

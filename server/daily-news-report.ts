@@ -103,11 +103,16 @@ function decodeHtmlEntities(text: string): string {
 
 function stripUnsafeHtml(html: string): string {
   return html
-    .replace(/<(script|style|iframe|object|embed|link|meta)\b[\s\S]*?<\/\1\s*>/gi, '')
-    .replace(/<(script|style|iframe|object|embed|link|meta)\b[^>]*\/?\s*>/gi, '')
-    .replace(/\s+on[a-z][\w:-]*\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/<(script|style|iframe|object|embed|link|meta|svg|math|form)\b[\s\S]*?<\/\1\s*>/gi, '')
     .replace(
-      /\s+(href|src)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi,
+      /<(script|style|iframe|object|embed|link|meta|svg|math|form|foreignObject)\b[^>]*\/?\s*>/gi,
+      ''
+    )
+    .replace(/<\/\s*(svg|math|form|foreignObject)\s*>/gi, '')
+    .replace(/\s+on[a-z][\w:-]*\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/\s+[a-z][\w-]*:[\w:-]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(
+      /\s+(href|src|action|formaction|poster|srcset)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi,
       (match, attr: string, raw: string) => {
         const value = raw.replace(/^['"]|['"]$/g, '').trim();
         const decoded = normalizedUrlForProtocolCheck(value);

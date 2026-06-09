@@ -77,7 +77,7 @@ export function HealthView() {
         setError(e instanceof Error ? e.message : String(e));
       }
     },
-    [api]
+    [api, setSelectedPersonId]
   );
 
   const handleDelete = useCallback(

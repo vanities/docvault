@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import type { TaxDocument, DocumentType, Entity, ExpenseCategory, Reminder, Todo } from '../types';
 import { isBusinessDocumentType, getBusinessSubfolder, EXPENSE_FOLDER_MAP } from '../config';
 import { API_BASE } from '../constants';
+import { requestJson } from '../api/client';
 import { mapFileToDocument } from '../utils/mapFileToDocument';
 
 // Health "person" — a labeled data bucket for Apple Health exports.
@@ -41,6 +42,10 @@ export interface FileInfo {
   tracked?: boolean;
 }
 
+interface FileListResponse {
+  files?: Array<FileInfo & { parsedData?: Record<string, unknown> }>;
+}
+
 export function useFileSystemServer() {
   const [isConnected, setIsConnected] = useState(false);
   const [dataDir, setDataDir] = useState<string>('');
@@ -65,8 +70,7 @@ export function useFileSystemServer() {
 
   const checkConnection = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/status`);
-      const data = await response.json();
+      const data = await requestJson<Record<string, unknown>>(`${API_BASE}/status`);
       applyStatus(data);
     } catch {
       setIsConnected(false);
@@ -76,17 +80,8 @@ export function useFileSystemServer() {
 
   // Check server connection on mount
   useEffect(() => {
-    void (async () => {
-      try {
-        const response = await fetch(`${API_BASE}/status`);
-        const data = await response.json();
-        applyStatus(data);
-      } catch {
-        setIsConnected(false);
-        setError('Cannot connect to server. Make sure the API server is running.');
-      }
-    })();
-  }, [applyStatus]);
+    void checkConnection();
+  }, [checkConnection]);
 
   // Get available years for an entity (or all entities combined)
   const getYearsForEntity = useCallback(
@@ -98,8 +93,7 @@ export function useFileSystemServer() {
           // Get years from all entities and combine unique values
           const allYears = new Set<number>();
           for (const e of entities) {
-            const response = await fetch(`${API_BASE}/years/${e.id}`);
-            const data = await response.json();
+            const data = await requestJson<{ years?: string[] }>(`${API_BASE}/years/${e.id}`);
             const years =
               data.years?.map((y: string) => parseInt(y.match(/\d{4}/)?.[0] || '0', 10)) || [];
             years.forEach((y: number) => allYears.add(y));
@@ -107,8 +101,7 @@ export function useFileSystemServer() {
           return Array.from(allYears).sort((a, b) => b - a);
         }
 
-        const response = await fetch(`${API_BASE}/years/${entity}`);
-        const data = await response.json();
+        const data = await requestJson<{ years?: string[] }>(`${API_BASE}/years/${entity}`);
         return data.years?.map((y: string) => parseInt(y.match(/\d{4}/)?.[0] || '0', 10)) || [];
       } catch {
         return [];
@@ -122,18 +115,16 @@ export function useFileSystemServer() {
     async (entity: Entity, taxYear: number): Promise<TaxDocument[]> => {
       try {
         // First get available years to find the right folder name
-        const yearsResponse = await fetch(`${API_BASE}/years/${entity}`);
-        const yearsData = await yearsResponse.json();
+        const yearsData = await requestJson<{ years?: string[] }>(`${API_BASE}/years/${entity}`);
 
         // Find the folder that matches this year (could be "2024" or "2024 taxes" etc)
         const yearFolder =
           yearsData.years?.find((y: string) => y.startsWith(String(taxYear))) || String(taxYear);
 
         // Use entity-based API endpoint
-        const response = await fetch(
+        const data = await requestJson<FileListResponse>(
           `${API_BASE}/files/${entity}/${encodeURIComponent(yearFolder)}`
         );
-        const data = await response.json();
 
         if (!data.files) {
           return [];
@@ -201,8 +192,9 @@ export function useFileSystemServer() {
           // Scan all entities in parallel
           const results = await Promise.all(
             entities.map(async (ent) => {
-              const response = await fetch(`${API_BASE}/business-docs/${ent.id}`);
-              const data = await response.json();
+              const data = await requestJson<FileListResponse>(
+                `${API_BASE}/business-docs/${ent.id}`
+              );
               if (!data.files) return [];
 
               return data.files
@@ -215,8 +207,7 @@ export function useFileSystemServer() {
           return results.flat();
         }
 
-        const response = await fetch(`${API_BASE}/business-docs/${entity}`);
-        const data = await response.json();
+        const data = await requestJson<FileListResponse>(`${API_BASE}/business-docs/${entity}`);
 
         if (!data.files) {
           return [];
@@ -249,8 +240,7 @@ export function useFileSystemServer() {
           // Scan all entities in parallel
           const results = await Promise.all(
             entities.map(async (ent) => {
-              const response = await fetch(`${API_BASE}/files-all/${ent.id}`);
-              const data = await response.json();
+              const data = await requestJson<FileListResponse>(`${API_BASE}/files-all/${ent.id}`);
               if (!data.files) return [];
 
               return data.files
@@ -263,8 +253,7 @@ export function useFileSystemServer() {
           return results.flat();
         }
 
-        const response = await fetch(`${API_BASE}/files-all/${entity}`);
-        const data = await response.json();
+        const data = await requestJson<FileListResponse>(`${API_BASE}/files-all/${entity}`);
 
         if (!data.files) {
           return [];

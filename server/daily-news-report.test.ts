@@ -78,6 +78,26 @@ describe('daily-news-report', () => {
     }
   });
 
+  test('drops svg/math islands and namespaced or form URL attributes in full and email renders', () => {
+    const body = [
+      '## Unsafe raw HTML',
+      '<svg><a xlink:href="javascript:alert(1)"><foreignObject><p>bad</p></foreignObject></a></svg>',
+      '<math><mi xlink:href="javascript:alert(2)">x</mi></math>',
+      '<form action="javascript:alert(3)"><button formaction="javascript:alert(4)">go</button></form>',
+    ].join('\n\n');
+
+    for (const html of [renderEditionHtml(edition(body)), renderEditionEmailHtml(edition(body))]) {
+      const lower = html.toLowerCase();
+      expect(lower).not.toContain('<svg');
+      expect(lower).not.toContain('<math');
+      expect(lower).not.toContain('foreignobject');
+      expect(lower).not.toContain('xlink:href');
+      expect(lower).not.toContain('formaction');
+      expect(lower).not.toContain('action="javascript:');
+      expect(lower).not.toContain('javascript:');
+    }
+  });
+
   test('preserves generated PNG hero data URIs and drops unsafe hero image URLs', () => {
     for (const html of [
       renderEditionHtml(edition('Body'), 'data:image/png;base64,AAAA'),

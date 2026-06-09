@@ -21,20 +21,20 @@ import type { HealthAnalysisEntry, HealthAnalysisSignals } from './types';
  */
 const SIGNAL_META: Record<string, { label: string; fmt?: (v: unknown) => string; color?: string }> =
   {
-    ldl: { label: 'LDL-C', fmt: (v) => `${v}`, color: 'text-rose-400' },
-    hdl: { label: 'HDL', fmt: (v) => `${v}`, color: 'text-emerald-400' },
-    triglycerides: { label: 'TG', fmt: (v) => `${v}`, color: 'text-amber-400' },
-    totalCholesterol: { label: 'Total chol', fmt: (v) => `${v}` },
-    apoB: { label: 'ApoB', fmt: (v) => `${v}`, color: 'text-rose-400' },
-    lpA: { label: 'Lp(a)', fmt: (v) => `${v}`, color: 'text-rose-400' },
+    ldl: { label: 'LDL-C', fmt: (v) => String(v), color: 'text-rose-400' },
+    hdl: { label: 'HDL', fmt: (v) => String(v), color: 'text-emerald-400' },
+    triglycerides: { label: 'TG', fmt: (v) => String(v), color: 'text-amber-400' },
+    totalCholesterol: { label: 'Total chol', fmt: (v) => String(v) },
+    apoB: { label: 'ApoB', fmt: (v) => String(v), color: 'text-rose-400' },
+    lpA: { label: 'Lp(a)', fmt: (v) => String(v), color: 'text-rose-400' },
     hba1c: { label: 'HbA1c', fmt: (v) => `${Number(v).toFixed(2)}%`, color: 'text-amber-400' },
-    fastingGlucose: { label: 'Glucose', fmt: (v) => `${v}` },
-    platelets: { label: 'PLT', fmt: (v) => `${v}`, color: 'text-cyan-400' },
-    restingHR: { label: 'RHR', fmt: (v) => `${v} bpm`, color: 'text-rose-400' },
-    hrv: { label: 'HRV', fmt: (v) => `${v} ms`, color: 'text-emerald-400' },
+    fastingGlucose: { label: 'Glucose', fmt: (v) => String(v) },
+    platelets: { label: 'PLT', fmt: (v) => String(v), color: 'text-cyan-400' },
+    restingHR: { label: 'RHR', fmt: (v) => `${String(v)} bpm`, color: 'text-rose-400' },
+    hrv: { label: 'HRV', fmt: (v) => `${String(v)} ms`, color: 'text-emerald-400' },
     avgSleepHours: { label: 'Sleep', fmt: (v) => `${Number(v).toFixed(1)}h` },
     avgDailySteps: { label: 'Steps', fmt: (v) => `${Number(v).toLocaleString()}` },
-    weightKg: { label: 'Weight', fmt: (v) => `${v} kg` },
+    weightKg: { label: 'Weight', fmt: (v) => `${String(v)} kg` },
   };
 
 function SignalGrid({ signals }: { signals: HealthAnalysisSignals }) {
