@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Brain, Terminal, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { API_BASE } from '../../constants';
+import { requestJson } from '../../api/client';
 import { BlurredMarkdown } from '../common/BlurredMarkdown';
 
 interface StrategySignals {
@@ -173,8 +174,7 @@ export function StrategyView() {
 
   const fetchEntries = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/strategy`);
-      const json = (await res.json()) as { entries?: StrategyEntry[] };
+      const json = await requestJson<{ entries?: StrategyEntry[] }>(`${API_BASE}/strategy`);
       setEntries(json.entries ?? []);
     } catch {
       // Silently fail — empty list
@@ -189,7 +189,7 @@ export function StrategyView() {
 
   const handleDelete = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/strategy/${id}`, { method: 'DELETE' });
+      await requestJson<unknown>(`${API_BASE}/strategy/${id}`, { method: 'DELETE' });
       setEntries((prev) => prev.filter((e) => e.id !== id));
     } catch {
       // ignore
