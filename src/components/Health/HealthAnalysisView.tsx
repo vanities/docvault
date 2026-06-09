@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Activity, ChevronDown, ChevronUp, HeartPulse, Terminal, Trash2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { API_BASE } from '../../constants';
+import { requestJson } from '../../api/client';
 import { BlurredMarkdown } from '../common/BlurredMarkdown';
 import type { HealthAnalysisEntry, HealthAnalysisSignals } from './types';
 
@@ -154,8 +155,9 @@ export function HealthAnalysisView() {
 
   const fetchEntries = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/health-analysis`);
-      const json = (await res.json()) as { entries?: HealthAnalysisEntry[] };
+      const json = await requestJson<{ entries?: HealthAnalysisEntry[] }>(
+        `${API_BASE}/health-analysis`
+      );
       setEntries(json.entries ?? []);
     } catch {
       // empty list on failure
@@ -170,7 +172,7 @@ export function HealthAnalysisView() {
 
   const handleDelete = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/health-analysis/${id}`, { method: 'DELETE' });
+      await requestJson<unknown>(`${API_BASE}/health-analysis/${id}`, { method: 'DELETE' });
       setEntries((prev) => prev.filter((e) => e.id !== id));
     } catch {
       // ignore

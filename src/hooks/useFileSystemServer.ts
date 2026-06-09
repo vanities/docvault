@@ -740,8 +740,7 @@ export function useFileSystemServer() {
   // Fetch reminders on connect
   useEffect(() => {
     if (!isConnected) return;
-    fetch(`${API_BASE}/reminders`)
-      .then((r) => r.json())
+    requestJson<{ reminders?: Reminder[] }>(`${API_BASE}/reminders`)
       .then((data) => setReminders(data.reminders || []))
       .catch(() => {});
   }, [isConnected]);
@@ -752,15 +751,18 @@ export function useFileSystemServer() {
     ): Promise<Reminder | null> => {
       if (!isConnected) return null;
       try {
-        const response = await fetch(`${API_BASE}/reminders`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(reminder),
-        });
-        const data = await response.json();
-        if (data.ok && data.reminder) {
-          setReminders((prev) => [...prev, data.reminder]);
-          return data.reminder;
+        const data = await requestJson<{ ok?: boolean; reminder?: Reminder }>(
+          `${API_BASE}/reminders`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(reminder),
+          }
+        );
+        const reminderResult = data.reminder;
+        if (data.ok && reminderResult) {
+          setReminders((prev) => [...prev, reminderResult]);
+          return reminderResult;
         }
         return null;
       } catch {
@@ -774,18 +776,22 @@ export function useFileSystemServer() {
     async (id: string, updates: Partial<Reminder>): Promise<Reminder | null> => {
       if (!isConnected) return null;
       try {
-        const response = await fetch(`${API_BASE}/reminders/${id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updates),
-        });
-        const data = await response.json();
-        if (data.ok) {
+        const data = await requestJson<{ ok?: boolean; reminder?: Reminder }>(
+          `${API_BASE}/reminders/${id}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updates),
+          }
+        );
+        const reminderResult = data.reminder;
+        if (data.ok && reminderResult) {
           // Refetch all reminders to pick up any new recurring ones
-          const refetch = await fetch(`${API_BASE}/reminders`);
-          const refetchData = await refetch.json();
+          const refetchData = await requestJson<{ reminders?: Reminder[] }>(
+            `${API_BASE}/reminders`
+          );
           setReminders(refetchData.reminders || []);
-          return data.reminder;
+          return reminderResult;
         }
         return null;
       } catch {
@@ -799,8 +805,9 @@ export function useFileSystemServer() {
     async (id: string): Promise<boolean> => {
       if (!isConnected) return false;
       try {
-        const response = await fetch(`${API_BASE}/reminders/${id}`, { method: 'DELETE' });
-        const data = await response.json();
+        const data = await requestJson<{ ok?: boolean }>(`${API_BASE}/reminders/${id}`, {
+          method: 'DELETE',
+        });
         if (data.ok) {
           setReminders((prev) => prev.filter((r) => r.id !== id));
           return true;
@@ -819,8 +826,7 @@ export function useFileSystemServer() {
   // Fetch todos on connect
   useEffect(() => {
     if (!isConnected) return;
-    fetch(`${API_BASE}/todos`)
-      .then((r) => r.json())
+    requestJson<{ todos?: Todo[] }>(`${API_BASE}/todos`)
       .then((data) => setTodos(data.todos || []))
       .catch(() => {});
   }, [isConnected]);
@@ -829,15 +835,15 @@ export function useFileSystemServer() {
     async (title: string): Promise<Todo | null> => {
       if (!isConnected) return null;
       try {
-        const response = await fetch(`${API_BASE}/todos`, {
+        const data = await requestJson<{ ok?: boolean; todo?: Todo }>(`${API_BASE}/todos`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ title }),
         });
-        const data = await response.json();
-        if (data.ok && data.todo) {
-          setTodos((prev) => [...prev, data.todo]);
-          return data.todo;
+        const todoResult = data.todo;
+        if (data.ok && todoResult) {
+          setTodos((prev) => [...prev, todoResult]);
+          return todoResult;
         }
         return null;
       } catch {
@@ -851,15 +857,15 @@ export function useFileSystemServer() {
     async (id: string, updates: Partial<Todo>): Promise<Todo | null> => {
       if (!isConnected) return null;
       try {
-        const response = await fetch(`${API_BASE}/todos/${id}`, {
+        const data = await requestJson<{ ok?: boolean; todo?: Todo }>(`${API_BASE}/todos/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updates),
         });
-        const data = await response.json();
-        if (data.ok && data.todo) {
-          setTodos((prev) => prev.map((t) => (t.id === id ? data.todo : t)));
-          return data.todo;
+        const todoResult = data.todo;
+        if (data.ok && todoResult) {
+          setTodos((prev) => prev.map((t) => (t.id === id ? todoResult : t)));
+          return todoResult;
         }
         return null;
       } catch {
@@ -873,8 +879,9 @@ export function useFileSystemServer() {
     async (id: string): Promise<boolean> => {
       if (!isConnected) return false;
       try {
-        const response = await fetch(`${API_BASE}/todos/${id}`, { method: 'DELETE' });
-        const data = await response.json();
+        const data = await requestJson<{ ok?: boolean }>(`${API_BASE}/todos/${id}`, {
+          method: 'DELETE',
+        });
         if (data.ok) {
           setTodos((prev) => prev.filter((t) => t.id !== id));
           return true;

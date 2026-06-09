@@ -530,8 +530,8 @@
               ><span class="status-label partial">Partial</span>P2 useFileSystemServer depth</strong
             ><small
               >The status/year/file-list reads now use the shared <code>requestJson</code> seam and
-              mount-time status probing is deduplicated. The broader domain-mapper/state-hook split
-              remains.</small
+              mount-time status probing is deduplicated; reminders and todos now use the same
+              non-2xx-failing seam. The broader domain-mapper/state-hook split remains.</small
             >
           </div>
           <div class="status-card status-partial">
@@ -554,8 +554,9 @@
             <strong><span class="status-label partial">Partial</span>P3 API errors</strong
             ><small
               >A typed <code>requestJson</code>/<code>ApiError</code> helper was added and Daily
-              News, global search, and common filesystem read paths are migrated; other mutation
-              flows/views still need the same seam.</small
+              News, global search, common filesystem read paths, reminders/todos, Strategy, Income,
+              and Health Analysis flows are migrated; other mutation flows/views still need the same
+              seam.</small
             >
           </div>
           <div class="status-card status-done">

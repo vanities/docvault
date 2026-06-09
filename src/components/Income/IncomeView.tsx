@@ -5,6 +5,7 @@ import { API_BASE } from '../../constants';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { requestJson } from '../../api/client';
 import { Money } from '../common/Money';
 
 interface IncomeSource {
@@ -79,8 +80,7 @@ export function IncomeView() {
 
   const fetchSources = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/income`);
-      const data = await res.json();
+      const data = await requestJson<{ sources?: IncomeSource[] }>(`${API_BASE}/income`);
       setSources(data.sources || []);
     } finally {
       setLoading(false);
@@ -105,20 +105,21 @@ export function IncomeView() {
       };
 
       if (editingId) {
-        const res = await fetch(`${API_BASE}/income/${editingId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        const data = await res.json();
+        const data = await requestJson<{ source: IncomeSource }>(
+          `${API_BASE}/income/${editingId}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          }
+        );
         setSources((prev) => prev.map((s) => (s.id === editingId ? data.source : s)));
       } else {
-        const res = await fetch(`${API_BASE}/income`, {
+        const data = await requestJson<{ source: IncomeSource }>(`${API_BASE}/income`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
-        const data = await res.json();
         setSources((prev) => [...prev, data.source]);
       }
 
@@ -149,7 +150,7 @@ export function IncomeView() {
       }))
     )
       return;
-    await fetch(`${API_BASE}/income/${id}`, { method: 'DELETE' });
+    await requestJson<unknown>(`${API_BASE}/income/${id}`, { method: 'DELETE' });
     setSources((prev) => prev.filter((s) => s.id !== id));
   };
 
