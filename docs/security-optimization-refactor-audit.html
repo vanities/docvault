@@ -316,8 +316,8 @@
     <main>
       <div class="summary-grid">
         <div class="stat"><strong>24</strong><span>original findings retained</span></div>
-        <div class="stat"><strong>15</strong><span>completed in this worktree</span></div>
-        <div class="stat"><strong>9</strong><span>partially reduced / seam added</span></div>
+        <div class="stat"><strong>18</strong><span>completed in this worktree</span></div>
+        <div class="stat"><strong>6</strong><span>partially reduced / seam added</span></div>
         <div class="stat"><strong>0</strong><span>untouched remaining findings</span></div>
       </div>
 
@@ -365,14 +365,14 @@
           </li>
           <li>
             Hermetic full suite passed with a temporary empty data directory: <code>64</code> files,
-            <code>1137</code> tests passed, <code>2</code> skipped (<code>1139</code> total). Plain
+            <code>1139</code> tests passed, <code>2</code> skipped (<code>1141</code> total). Plain
             <code>vp test</code> may depend on local gitignored/NAS fixture state for integration
             tests, so the hermetic run is the source-regression signal.
           </li>
           <li>
             <code>vp check</code>, <code>vp build</code>, and <code>git diff --check</code> passed.
             <code>vp check</code> now reports no warnings, lint errors, or type errors. Route-level
-            lazy loading reduced the main bundle to <code>369.77 kB</code>;
+            lazy loading reduced the main bundle to <code>369.59 kB</code>;
             <code>vp build</code> still reports the lazy <code>QuantView</code> chunk at
             <code>1,525.73 kB</code>, which remains an optimization opportunity rather than a
             failing build.
@@ -381,7 +381,7 @@
       </div>
 
       <div class="methodology" id="implementation-status">
-        <h2>Implementation status update — 2026-06-09 09:31:52 CDT</h2>
+        <h2>Implementation status update — 2026-06-09 P1 closure pass</h2>
         <p>
           The detailed finding cards below preserve the original evidence and fix plans. This status
           table records what the current uncommitted worktree now addresses and what remains for
@@ -423,32 +423,33 @@
               realpath containment, and the PDF iframe is sandboxed with no referrer.</small
             >
           </div>
-          <div class="status-card status-partial">
-            <strong><span class="status-label partial">Partial</span>P1 backend monolith</strong
+          <div class="status-card status-done">
+            <strong><span class="status-label done">Done</span>P1 backend monolith</strong
             ><small
-              ><code>handleRequest</code> is exported and server boot is guarded by
-              <code>import.meta.main</code>, enabling direct route tests; the larger route-module
-              split remains.</small
+              ><code>handleRequest</code> remains a thin dispatcher while backup/restore,
+              auth/config/settings, portfolio snapshot, SnapTrade, and SimpleFIN route bodies now
+              live in dedicated route modules. The root server file dropped from roughly 2,989 to
+              2,296 lines with direct route tests still supported.</small
             >
           </div>
-          <div class="status-card status-partial">
+          <div class="status-card status-done">
             <strong
-              ><span class="status-label partial">Partial</span>P1 quant backend
-              concentration</strong
+              ><span class="status-label done">Done</span>P1 quant backend concentration</strong
             ><small
-              >Cache policy and gzip/cache HTTP response handling moved into
-              <code>server/routes/quant/</code> helper modules; the compute/dispatch split is still
-              a larger follow-up.</small
+              >The quant route entrypoint is now a small compatibility barrel. Dispatch moved to
+              <code>server/routes/quant/router.ts</code>, heavy compute remains isolated in
+              <code>server/routes/quant/engine.ts</code>, and reusable indicators/cache/HTTP helpers
+              live under <code>server/routes/quant/</code>.</small
             >
           </div>
-          <div class="status-card status-partial">
+          <div class="status-card status-done">
             <strong
-              ><span class="status-label partial">Partial</span>P1 SettingsView
-              mega-component</strong
+              ><span class="status-label done">Done</span>P1 SettingsView mega-component</strong
             ><small
-              >Dropbox connection handling, the tab trigger list, and the FRED key card moved to
-              dedicated components, reducing the root settings file; many settings tabs still remain
-              in the parent view.</small
+              >Settings tabs now have additional dedicated modules for backup/restore and political
+              data controls, on top of the earlier Dropbox, tab-list, FRED key, AI labs, email,
+              weather, external sources, and brain sections. The parent view is materially smaller
+              and acts more as orchestration than a single all-tab renderer.</small
             >
           </div>
           <div class="status-card status-done">

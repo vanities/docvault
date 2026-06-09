@@ -15,11 +15,7 @@ import {
   ChevronUp,
   ChevronRight,
   ExternalLink,
-  Download,
-  Upload,
-  Shield,
   Landmark,
-  LineChart,
   Activity,
   Copy,
   Check,
@@ -41,11 +37,13 @@ import { ModelsSettingsSection } from './ModelsSettingsSection';
 import { DropboxConnectionSection } from './DropboxConnectionSection';
 import { SettingsTabsList } from './SettingsTabsList';
 import { FredApiKeySection } from './FredApiKeySection';
+import { PoliticsDataSection } from './PoliticsDataSection';
 import { AiLabsKeysSection } from './AiLabsKeysSection';
 import { EmailSettingsSection } from './EmailSettingsSection';
 import { WeatherSettingsSection } from './WeatherSettingsSection';
 import { ExternalSourcesSection } from './ExternalSourcesSection';
 import { BrainSection } from './BrainSection';
+import { BackupSection } from './BackupSection';
 import {
   AVAILABLE_ICONS,
   DEFAULT_ENTITY_ICONS,
@@ -3287,109 +3285,21 @@ export function SettingsView() {
         )}
 
         {showIn(['backup']) && (
-          <>
-            {/* Backup & Restore */}
-            <Card variant="glass" className="p-6 mb-8">
-              <h3 className="text-lg font-semibold text-surface-950 mb-2 flex items-center gap-2">
-                <Shield className="w-5 h-5" />
-                Encrypted Backup
-              </h3>
-              <p className="text-[13px] text-surface-600 mb-5">
-                AES-256 encrypted backup of all settings, API keys, cached data, and portfolio
-                snapshots.{' '}
-                {autoBackupPasswordSet ? (
-                  <span className="text-green-500">
-                    Auto-backup is enabled and syncs to Dropbox every cycle.
-                  </span>
-                ) : (
-                  <span className="text-surface-500">
-                    Set a backup password in Schedules above to auto-sync encrypted backups to
-                    Dropbox.
-                  </span>
-                )}
-              </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* Download Latest Auto-Backup */}
-                <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30 flex flex-col">
-                  <h4 className="text-[13px] font-semibold text-surface-900 mb-3 flex items-center gap-1.5">
-                    <Cloud className="w-4 h-4" />
-                    Download Latest
-                  </h4>
-                  <p className="text-[11px] text-surface-500 mb-3">
-                    Download the most recent auto-generated backup. Uses the password set in
-                    Schedules.
-                  </p>
-                  <div className="mt-auto">
-                    <Button
-                      onClick={handleDownloadLatestBackup}
-                      disabled={isDownloadingLatest}
-                      className="w-full bg-violet-500 hover:bg-violet-400"
-                    >
-                      <Download className="w-4 h-4" />
-                      {isDownloadingLatest ? 'Downloading...' : 'Download Latest'}
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Manual Backup */}
-                <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30 flex flex-col">
-                  <h4 className="text-[13px] font-semibold text-surface-900 mb-3 flex items-center gap-1.5">
-                    <Download className="w-4 h-4" />
-                    Manual Backup
-                  </h4>
-                  <div className="space-y-2 mt-auto">
-                    <Input
-                      type="password"
-                      value={backupPassword}
-                      onChange={(e) => setBackupPassword(e.target.value)}
-                      placeholder="Encryption password (min 4 chars)"
-                      className="text-[13px] rounded-lg"
-                    />
-                    <Button
-                      onClick={handleBackup}
-                      disabled={isBackingUp || backupPassword.length < 4}
-                      className="w-full bg-violet-500 hover:bg-violet-400"
-                    >
-                      <Download className="w-4 h-4" />
-                      {isBackingUp ? 'Encrypting...' : 'Create & Download'}
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Restore */}
-                <div className="p-4 bg-surface-200/20 rounded-xl border border-border/30 flex flex-col">
-                  <h4 className="text-[13px] font-semibold text-surface-900 mb-3 flex items-center gap-1.5">
-                    <Upload className="w-4 h-4" />
-                    Restore Backup
-                  </h4>
-                  <div className="space-y-2 mt-auto">
-                    <input
-                      type="file"
-                      accept=".enc"
-                      onChange={(e) => setRestoreFile(e.target.files?.[0] || null)}
-                      className="w-full text-[12px] text-surface-700 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[12px] file:font-medium file:bg-surface-200/50 file:text-surface-700 hover:file:bg-surface-300/50"
-                    />
-                    <Input
-                      type="password"
-                      value={restorePassword}
-                      onChange={(e) => setRestorePassword(e.target.value)}
-                      placeholder="Backup password"
-                      className="text-[13px] rounded-lg"
-                    />
-                    <Button
-                      onClick={handleRestore}
-                      disabled={isRestoring || !restoreFile || !restorePassword}
-                      className="w-full bg-amber-500 hover:bg-amber-400"
-                    >
-                      <Upload className="w-4 h-4" />
-                      {isRestoring ? 'Restoring...' : 'Restore from Backup'}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          </>
+          <BackupSection
+            autoBackupPasswordSet={autoBackupPasswordSet}
+            backupPassword={backupPassword}
+            restorePassword={restorePassword}
+            restoreFile={restoreFile}
+            isBackingUp={isBackingUp}
+            isDownloadingLatest={isDownloadingLatest}
+            isRestoring={isRestoring}
+            onBackupPasswordChange={setBackupPassword}
+            onRestorePasswordChange={setRestorePassword}
+            onRestoreFileChange={setRestoreFile}
+            onDownloadLatestBackup={handleDownloadLatestBackup}
+            onBackup={handleBackup}
+            onRestore={handleRestore}
+          />
         )}
 
         {showIn(['quant']) && (
@@ -3405,154 +3315,26 @@ export function SettingsView() {
         )}
 
         {showIn(['politics']) && (
-          <>
-            <Card variant="glass" className="p-6 mb-8">
-              <h3 className="text-lg font-semibold text-surface-950 mb-1 flex items-center gap-2">
-                <Landmark className="w-5 h-5 text-violet-400" />
-                Congressional &amp; Political Data
-              </h3>
-              <p className="text-[13px] text-surface-600 mb-5 leading-relaxed">
-                Powers the Politics view: congressional stock trades (House/Senate PTRs),
-                Trump&apos;s OGE filings, executive actions, recent bills, the copy-trade backtest,
-                and consensus clusters. Most sources need no key — only the Congress.gov bills feed
-                does.
-              </p>
-
-              <label className="block text-[13px] font-medium text-surface-800 mb-2">
-                Congress.gov API Key
-              </label>
-              {hasCongressKey ? (
-                <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-                  <CheckCircle className="w-4 h-4 text-emerald-400" />
-                  <span className="text-[13px] text-emerald-400 font-medium flex-1">
-                    Key set
-                    {congressKeyHint && (
-                      <span className="text-emerald-400/70 ml-2 font-mono">
-                        ****{congressKeyHint}
-                      </span>
-                    )}
-                  </span>
-                  <Button
-                    variant="ghost-danger"
-                    size="xs"
-                    onClick={handleRemoveCongressKey}
-                    disabled={isSaving}
-                  >
-                    Remove
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  <Input
-                    type="password"
-                    value={newCongressKey}
-                    onChange={(e) => setNewCongressKey(e.target.value)}
-                    placeholder="Congress.gov API key..."
-                    className="flex-1 text-[13px] font-mono"
-                  />
-                  <Button onClick={handleSaveCongressKey} disabled={isSaving || !newCongressKey}>
-                    <Save className="w-4 h-4" />
-                    Save
-                  </Button>
-                </div>
-              )}
-              <p className="text-[11px] text-surface-500 mt-3">
-                Free key at{' '}
-                <a
-                  href="https://api.congress.gov/sign-up/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-accent-400 hover:underline"
-                >
-                  api.congress.gov/sign-up
-                </a>
-                . House/Senate trades, Trump&apos;s OGE filings, and executive actions need no key.
-              </p>
-
-              <div className="mt-5 pt-4 border-t border-border/40">
-                <p className="text-[13px] font-medium text-surface-800 mb-1">Populating the feed</p>
-                <p className="text-[11px] text-surface-500 mb-3">
-                  The feed refreshes automatically on the schedule below, pulling only <em>new</em>{' '}
-                  filings (forward-only). To load the current year&apos;s full history in one pass,
-                  run a one-time <strong>backfill</strong> — it works server-side over a few minutes
-                  and the Politics view fills in as filings parse. <strong>Run backtest</strong>{' '}
-                  recomputes the copy-trade leaderboard from the disclosed trades.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Button onClick={handleBackfillPolitics} disabled={politicsBackfilling}>
-                    <RefreshCw className={`w-4 h-4 ${politicsBackfilling ? 'animate-spin' : ''}`} />
-                    {politicsBackfilling ? 'Starting…' : 'Run backfill'}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    onClick={handleRunBacktest}
-                    disabled={backtestRunning}
-                  >
-                    <LineChart className={`w-4 h-4 ${backtestRunning ? 'animate-pulse' : ''}`} />
-                    {backtestRunning ? 'Starting…' : 'Run backtest'}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="mt-5 pt-4 border-t border-border/40">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <p className="text-[13px] font-medium text-surface-900">
-                      Auto-refresh schedule
-                    </p>
-                    <p className="text-[11px] text-surface-500">
-                      How often to pull new bills, executive actions, and trades.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setPoliticsRefreshEnabled(!politicsRefreshEnabled)}
-                    className={`relative w-10 h-5 rounded-full transition-colors ${politicsRefreshEnabled ? 'bg-violet-500' : 'bg-surface-400'}`}
-                  >
-                    <span
-                      className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
-                      style={{ left: politicsRefreshEnabled ? 22 : 2 }}
-                    />
-                  </button>
-                </div>
-                {politicsRefreshEnabled && (
-                  <div className="flex items-center gap-2">
-                    <label className="text-[12px] text-surface-600">Every</label>
-                    <Select
-                      value={String(politicsRefreshInterval)}
-                      onValueChange={(val) => setPoliticsRefreshInterval(Number(val))}
-                    >
-                      <SelectTrigger className="text-[13px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="360">6 hours</SelectItem>
-                        <SelectItem value="720">12 hours</SelectItem>
-                        <SelectItem value="1440">24 hours</SelectItem>
-                        <SelectItem value="10080">7 days</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                <Button
-                  onClick={handleSaveSchedules}
-                  disabled={isScheduleSaving}
-                  className="bg-violet-500 hover:bg-violet-400 mt-3"
-                >
-                  {scheduleSaved ? (
-                    <>
-                      <CheckCircle className="w-4 h-4" />
-                      Saved
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" />
-                      {isScheduleSaving ? 'Saving...' : 'Save schedule'}
-                    </>
-                  )}
-                </Button>
-              </div>
-            </Card>
-          </>
+          <PoliticsDataSection
+            hasCongressKey={hasCongressKey}
+            congressKeyHint={congressKeyHint}
+            newCongressKey={newCongressKey}
+            isSaving={isSaving}
+            politicsBackfilling={politicsBackfilling}
+            backtestRunning={backtestRunning}
+            politicsRefreshEnabled={politicsRefreshEnabled}
+            politicsRefreshInterval={politicsRefreshInterval}
+            isScheduleSaving={isScheduleSaving}
+            scheduleSaved={scheduleSaved}
+            onNewCongressKeyChange={setNewCongressKey}
+            onSaveCongressKey={handleSaveCongressKey}
+            onRemoveCongressKey={handleRemoveCongressKey}
+            onBackfillPolitics={handleBackfillPolitics}
+            onRunBacktest={handleRunBacktest}
+            onPoliticsRefreshEnabledChange={setPoliticsRefreshEnabled}
+            onPoliticsRefreshIntervalChange={setPoliticsRefreshInterval}
+            onSaveSchedules={handleSaveSchedules}
+          />
         )}
       </Tabs>
 
