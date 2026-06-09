@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '../../hooks/useToast';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { API_BASE } from '../../constants';
+import { requestJson } from '../../api/client';
 
 interface BrainState {
   content: string;
@@ -45,8 +46,7 @@ export function BrainSection() {
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/brain`);
-      const data: BrainState = await res.json();
+      const data = await requestJson<BrainState>(`${API_BASE}/brain`);
       setContent(data.content);
       setSaved(data.content);
       setMeta(data);
@@ -67,13 +67,11 @@ export function BrainSection() {
   async function save() {
     setSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/brain`, {
+      const data = await requestJson<BrainState>(`${API_BASE}/brain`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content }),
       });
-      if (!res.ok) throw new Error('save failed');
-      const data: BrainState = await res.json();
       setContent(data.content);
       setSaved(data.content);
       setMeta(data);
@@ -97,9 +95,7 @@ export function BrainSection() {
     setContent('');
     // Persist immediately so an accidental navigate-away doesn't leave a stale brain.
     try {
-      const res = await fetch(`${API_BASE}/brain`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('clear failed');
-      const data: BrainState = await res.json();
+      const data = await requestJson<BrainState>(`${API_BASE}/brain`, { method: 'DELETE' });
       setSaved(data.content);
       setMeta(data);
       addToast('Brain cleared', 'success');

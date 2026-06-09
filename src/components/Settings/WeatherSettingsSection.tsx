@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { useToast } from '../../hooks/useToast';
 import { API_BASE } from '../../constants';
+import { requestJson } from '../../api/client';
 import { TIMEZONE_OPTIONS } from '../../utils/timezones';
 
 interface GeoResult {
@@ -16,6 +17,15 @@ interface GeoResult {
   latitude: number;
   longitude: number;
   timezone?: string;
+}
+
+interface WeatherSettingsData {
+  enabled?: boolean;
+  label?: string;
+  latitude?: number;
+  longitude?: number;
+  timezone?: string;
+  units?: 'F' | 'C';
 }
 
 export function WeatherSettingsSection() {
@@ -34,8 +44,7 @@ export function WeatherSettingsSection() {
 
   const load = async () => {
     try {
-      const res = await fetch(`${API_BASE}/settings`);
-      const d = await res.json();
+      const d = await requestJson<{ weather?: WeatherSettingsData }>(`${API_BASE}/settings`);
       const w = d.weather ?? {};
       setEnabled(w.enabled ?? false);
       setLabel(w.label ?? '');
@@ -57,8 +66,9 @@ export function WeatherSettingsSection() {
     if (!query.trim()) return;
     setSearching(true);
     try {
-      const res = await fetch(`${API_BASE}/weather/geocode?q=${encodeURIComponent(query.trim())}`);
-      const d = (await res.json()) as { results?: GeoResult[] };
+      const d = await requestJson<{ results?: GeoResult[] }>(
+        `${API_BASE}/weather/geocode?q=${encodeURIComponent(query.trim())}`
+      );
       setResults(d.results ?? []);
       if (!(d.results ?? []).length) addToast('No matches — try "City, State"', 'info');
     } catch {
@@ -82,7 +92,7 @@ export function WeatherSettingsSection() {
   const save = async () => {
     setSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/settings`, {
+      const d = await requestJson<{ ok?: boolean }>(`${API_BASE}/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -96,7 +106,7 @@ export function WeatherSettingsSection() {
           },
         }),
       });
-      if ((await res.json()).ok) {
+      if (d.ok) {
         addToast('Weather settings saved', 'success');
         await load();
       } else {
