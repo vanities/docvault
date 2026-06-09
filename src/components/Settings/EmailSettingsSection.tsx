@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { useToast } from '../../hooks/useToast';
 import { API_BASE } from '../../constants';
+import { requestJson } from '../../api/client';
 
 interface EmailData {
   fromEmail?: string;
@@ -36,8 +37,7 @@ export function EmailSettingsSection() {
 
   const load = async () => {
     try {
-      const res = await fetch(`${API_BASE}/settings`);
-      const d = await res.json();
+      const d = await requestJson<{ email?: EmailData }>(`${API_BASE}/settings`);
       const e: EmailData = d.email ?? {};
       setEnabled(e.enabled ?? false);
       setFromEmail(e.fromEmail ?? '');
@@ -61,12 +61,12 @@ export function EmailSettingsSection() {
     try {
       const email: Record<string, unknown> = { enabled, fromEmail, fromName, toEmail };
       if (apiKey.trim()) email.resendApiKey = apiKey.trim();
-      const res = await fetch(`${API_BASE}/settings`, {
+      const d = await requestJson<{ ok?: boolean }>(`${API_BASE}/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       });
-      if ((await res.json()).ok) {
+      if (d.ok) {
         addToast('Email settings saved', 'success');
         setApiKey('');
         await load();
@@ -83,8 +83,9 @@ export function EmailSettingsSection() {
   const sendTest = async () => {
     setTesting(true);
     try {
-      const res = await fetch(`${API_BASE}/email/test`, { method: 'POST' });
-      const d = await res.json();
+      const d = await requestJson<{ ok?: boolean; error?: string }>(`${API_BASE}/email/test`, {
+        method: 'POST',
+      });
       if (d.ok) addToast('Test email sent', 'success');
       else addToast(`Test failed: ${d.error ?? 'unknown error'}`, 'error');
     } catch {
