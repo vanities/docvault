@@ -10,8 +10,17 @@ import {
   type ReactNode,
 } from 'react';
 import { useFileSystemServer, type EntityConfig } from '../hooks/useFileSystemServer';
+import { requestJson } from '../api/client';
 import type { Entity, TaxDocument, DocumentType, ExpenseCategory, Reminder, Todo } from '../types';
 import { uuidV4 } from '../utils/uuid';
+import {
+  EMPTY_CHAT_STATS,
+  pruneThreadsState,
+  type PersistedThread,
+  type ThreadsState,
+} from './chatPersistence';
+
+export type { ChatStats, PersistedThread, ThreadsState } from './chatPersistence';
 
 // ---------------------------------------------------------------------------
 // Chat threads — single source of truth for the multi-thread chat UI.
@@ -22,45 +31,44 @@ import { uuidV4 } from '../utils/uuid';
 // The `messages` field is loose `unknown[]` here because Sidebar doesn't
 // need to know about ChatMessage / AssistantBlock shapes — only ChatView
 // reads/writes the conversation transcript and casts at the boundary.
+// Persistence is deliberately bounded/pruned in chatPersistence.ts so local
+// storage cannot accumulate unbounded private chat history.
 // ---------------------------------------------------------------------------
-
-export interface ChatStats {
-  inputTokens: number;
-  outputTokens: number;
-  costUsd: number;
-}
-
-export interface PersistedThread {
-  id: string; // UUID, also serves as chatId for attachment scoping
-  title: string;
-  resumeSessionId: string | null;
-  messages: unknown[];
-  stats: ChatStats;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ThreadsState {
-  threads: Record<string, PersistedThread>;
-  activeThreadId: string | null;
-}
 
 const CHAT_THREADS_STORAGE_KEY = 'docvault-chat-threads-v1';
 const LEGACY_CHAT_HISTORY_KEY = 'docvault-chat-history-v1';
 const LEGACY_CHAT_META_KEY = 'docvault-chat-meta-v1';
-const EMPTY_CHAT_STATS: ChatStats = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
+const MIN_PERSISTED_YEAR = 1900;
+const MAX_FUTURE_YEAR_OFFSET = 5;
+
+function isValidPersistedYear(year: number, currentYear: number): boolean {
+  return (
+    Number.isFinite(year) &&
+    Number.isInteger(year) &&
+    year >= MIN_PERSISTED_YEAR &&
+    year <= currentYear + MAX_FUTURE_YEAR_OFFSET
+  );
+}
+
+function sanitizePersistedYear(value: string | null, currentYear: number): number {
+  if (!value) return currentYear;
+  const parsed = Number(value);
+  return isValidPersistedYear(parsed, currentYear) ? parsed : currentYear;
+}
 
 function loadThreadsState(): ThreadsState {
   try {
     const raw = localStorage.getItem(CHAT_THREADS_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as ThreadsState;
-      if (parsed && parsed.threads && typeof parsed.threads === 'object') return parsed;
+      if (parsed && parsed.threads && typeof parsed.threads === 'object') {
+        return pruneThreadsState(parsed);
+      }
     }
   } catch {
     /* fall through to migration */
   }
-  return migrateLegacyChat();
+  return pruneThreadsState(migrateLegacyChat());
 }
 
 function migrateLegacyChat(): ThreadsState {
@@ -95,10 +103,26 @@ function migrateLegacyChat(): ThreadsState {
 }
 
 function saveThreadsState(state: ThreadsState): void {
+  const pruned = pruneThreadsState(state);
   try {
-    localStorage.setItem(CHAT_THREADS_STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(CHAT_THREADS_STORAGE_KEY, JSON.stringify(pruned));
   } catch {
-    /* quota exceeded */
+    // Quota exceeded or storage disabled. Retry with metadata-only threads so
+    // the app remains usable without persisting large/private transcripts.
+    try {
+      const metadataOnly = pruneThreadsState(
+        {
+          activeThreadId: pruned.activeThreadId,
+          threads: Object.fromEntries(
+            Object.values(pruned.threads).map((thread) => [thread.id, { ...thread, messages: [] }])
+          ),
+        },
+        { maxThreads: 5, maxMessagesPerThread: 0, maxSerializedChars: 50_000 }
+      );
+      localStorage.setItem(CHAT_THREADS_STORAGE_KEY, JSON.stringify(metadataOnly));
+    } catch {
+      /* quota exceeded or storage unavailable */
+    }
   }
 }
 
@@ -335,51 +359,55 @@ export function AppProvider({ children }: AppProviderProps) {
   // above — a missing entry here silently falls back to 'tax-year' on both
   // page load and any hashchange, which looks like "clicking the sidebar
   // button sometimes snaps back to Tax Year."
-  const validViews = new Set<string>([
-    'tax-year',
-    'business-docs',
-    'all-files',
-    'chat',
-    'external-sources',
-    'deep-research',
-    'daily-news',
-    'settings',
-    'tn-tax',
-    'crypto',
-    'brokers',
-    'banks',
-    'portfolio',
-    'sales',
-    'mileage',
-    'gold',
-    'solo-401k',
-    'estimated-tax',
-    'federal-tax',
-    'property',
-    'income',
-    'debts',
-    'quant',
-    'strategy',
-    'politics',
-    'predictions',
-    'health',
-    'health-activity',
-    'health-heart',
-    'health-sleep',
-    'health-workouts',
-    'health-body',
-    'health-records',
-    'health-dna',
-    'health-nutrition',
-    'health-sickness',
-    'health-analysis',
-    'health-research',
-  ]);
+  const validViews = useMemo(
+    () =>
+      new Set<string>([
+        'tax-year',
+        'business-docs',
+        'all-files',
+        'chat',
+        'external-sources',
+        'deep-research',
+        'daily-news',
+        'settings',
+        'tn-tax',
+        'crypto',
+        'brokers',
+        'banks',
+        'portfolio',
+        'sales',
+        'mileage',
+        'gold',
+        'solo-401k',
+        'estimated-tax',
+        'federal-tax',
+        'property',
+        'income',
+        'debts',
+        'quant',
+        'strategy',
+        'politics',
+        'predictions',
+        'health',
+        'health-activity',
+        'health-heart',
+        'health-sleep',
+        'health-workouts',
+        'health-body',
+        'health-records',
+        'health-dna',
+        'health-nutrition',
+        'health-sickness',
+        'health-analysis',
+        'health-research',
+      ]),
+    []
+  );
 
-  const viewFromHash = (): NavView | null => {
+  const viewFromHash = useCallback((): NavView | null => {
     const hash = window.location.hash.replace('#', '');
     return validViews.has(hash) ? (hash as NavView) : null;
-  };
+  }, [validViews]);
 
   // View state: hash > localStorage > default (validate stored value against known views)
   const [activeView, setActiveViewState] = useState<NavView>(() => {
@@ -406,7 +434,7 @@ export function AppProvider({ children }: AppProviderProps) {
         if (!prev.activeThreadId) return prev;
         const current = prev.threads[prev.activeThreadId];
         if (!current) return prev;
-        return {
+        return pruneThreadsState({
           ...prev,
           threads: {
             ...prev.threads,
@@ -416,7 +444,7 @@ export function AppProvider({ children }: AppProviderProps) {
               updatedAt: new Date().toISOString(),
             },
           },
-        };
+        });
       });
     },
     []
@@ -425,21 +453,23 @@ export function AppProvider({ children }: AppProviderProps) {
   const newChatThread = useCallback((): string => {
     const id = uuidV4();
     const now = new Date().toISOString();
-    setChatThreads((prev) => ({
-      activeThreadId: id,
-      threads: {
-        ...prev.threads,
-        [id]: {
-          id,
-          title: 'New chat',
-          resumeSessionId: null,
-          messages: [],
-          stats: EMPTY_CHAT_STATS,
-          createdAt: now,
-          updatedAt: now,
+    setChatThreads((prev) =>
+      pruneThreadsState({
+        activeThreadId: id,
+        threads: {
+          ...prev.threads,
+          [id]: {
+            id,
+            title: 'New chat',
+            resumeSessionId: null,
+            messages: [],
+            stats: EMPTY_CHAT_STATS,
+            createdAt: now,
+            updatedAt: now,
+          },
         },
-      },
-    }));
+      })
+    );
     return id;
   }, []);
 
@@ -457,7 +487,7 @@ export function AppProvider({ children }: AppProviderProps) {
               rest[b].updatedAt.localeCompare(rest[a].updatedAt)
             )[0] ?? null)
           : prev.activeThreadId;
-      return { threads: rest, activeThreadId: newActive };
+      return pruneThreadsState({ threads: rest, activeThreadId: newActive });
     });
   }, []);
 
@@ -482,7 +512,7 @@ export function AppProvider({ children }: AppProviderProps) {
     };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
-  }, []);
+  }, [viewFromHash]);
 
   // Listen for cross-component navigation requests
   useEffect(() => {
@@ -515,8 +545,7 @@ export function AppProvider({ children }: AppProviderProps) {
 
   // Year state with localStorage persistence
   const [selectedYear, setSelectedYearState] = useState(() => {
-    const saved = localStorage.getItem('docvault-year');
-    return saved ? parseInt(saved, 10) : currentYear;
+    return sanitizePersistedYear(localStorage.getItem('docvault-year'), currentYear);
   });
 
   // Display preferences with localStorage persistence
@@ -540,32 +569,55 @@ export function AppProvider({ children }: AppProviderProps) {
   const [isSearching, setIsSearching] = useState(false);
   const searchActive = searchQuery.length >= 2;
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const searchSequenceRef = useRef(0);
 
   const setSearchQuery = useCallback((query: string) => {
     setSearchQueryState(query);
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    searchAbortRef.current?.abort();
+    const sequence = ++searchSequenceRef.current;
 
     if (query.length < 2) {
       setSearchResults([]);
+      setIsSearching(false);
       return;
     }
 
     debounceRef.current = setTimeout(async () => {
+      const controller = new AbortController();
+      searchAbortRef.current = controller;
       setIsSearching(true);
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-        const data = await res.json();
-        setSearchResults(data.files || []);
-      } catch {
-        setSearchResults([]);
+        const data = await requestJson<{ files?: SearchResult[] }>(
+          `/api/search?q=${encodeURIComponent(query)}`,
+          { signal: controller.signal }
+        );
+        if (searchSequenceRef.current === sequence) setSearchResults(data.files ?? []);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (searchSequenceRef.current === sequence) setSearchResults([]);
+      } finally {
+        if (searchSequenceRef.current === sequence) setIsSearching(false);
+        if (searchAbortRef.current === controller) searchAbortRef.current = null;
       }
-      setIsSearching(false);
     }, 250);
   }, []);
 
   const clearSearch = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    searchAbortRef.current?.abort();
+    searchSequenceRef.current++;
     setSearchQueryState('');
     setSearchResults([]);
+    setIsSearching(false);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      searchAbortRef.current?.abort();
+    };
   }, []);
 
   // File system hook
@@ -616,11 +668,25 @@ export function AppProvider({ children }: AppProviderProps) {
     setSidebarOpen(false);
   }, []);
 
+  // Stored entity ids can go stale if an entity is removed/renamed server-side.
+  // Once the server's entity list is known, fall back to the first valid entity.
+  useEffect(() => {
+    if (entities.length === 0) return;
+    if (entities.some((entity) => entity.id === selectedEntity)) return;
+    const fallback = entities[0].id;
+    setSelectedEntityState(fallback);
+    localStorage.setItem('docvault-entity', fallback);
+  }, [entities, selectedEntity]);
+
   // Persist year selection
-  const setSelectedYear = useCallback((year: number) => {
-    setSelectedYearState(year);
-    localStorage.setItem('docvault-year', String(year));
-  }, []);
+  const setSelectedYear = useCallback(
+    (year: number) => {
+      const safeYear = isValidPersistedYear(year, currentYear) ? year : currentYear;
+      setSelectedYearState(safeYear);
+      localStorage.setItem('docvault-year', String(safeYear));
+    },
+    [currentYear]
+  );
 
   // Fetch available years when entity changes
   useEffect(() => {

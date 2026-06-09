@@ -1,16 +1,24 @@
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'fs/promises';
+import os from 'os';
+import path from 'path';
 import { expect, test, describe } from 'vite-plus/test';
 import {
   getMimeType,
+  loadSettings,
   monthsBetween,
   jsonResponse,
   corsHeaders,
   resolveUnder,
+  saveSettings,
+  scanDirectory,
   createSession,
   isValidSession,
   getSessionToken,
   sessionCookie,
   sessions,
   SESSION_COOKIE,
+  SETTINGS_PATH,
+  parseAuthConfig,
 } from './data.js';
 
 // --- getMimeType ---
@@ -89,6 +97,53 @@ describe('resolveUnder', () => {
   });
 });
 
+describe('scanDirectory symlink handling', () => {
+  test('skips symlinked files and directories instead of following them', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'docvault-scan-symlink-'));
+    const outside = await mkdtemp(path.join(os.tmpdir(), 'docvault-scan-outside-'));
+    try {
+      await mkdir(path.join(root, 'docs'), { recursive: true });
+      await writeFile(path.join(root, 'docs', 'safe.txt'), 'safe');
+      await writeFile(path.join(outside, 'secret.txt'), 'secret');
+      await symlink(path.join(outside, 'secret.txt'), path.join(root, 'docs', 'linked-secret.txt'));
+      await symlink(outside, path.join(root, 'docs', 'linked-dir'));
+
+      const files = await scanDirectory(path.join(root, 'docs'), 'docs');
+
+      expect(files.map((f) => f.path).sort()).toEqual(['docs/safe.txt']);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('settings persistence reliability', () => {
+  test('loadSettings returns empty only when the settings file is absent', async () => {
+    await rm(SETTINGS_PATH, { force: true });
+    await expect(loadSettings()).resolves.toEqual({});
+  });
+
+  test('loadSettings throws on malformed JSON instead of silently resetting settings', async () => {
+    await mkdir(path.dirname(SETTINGS_PATH), { recursive: true });
+    await writeFile(SETTINGS_PATH, '{not json');
+
+    await expect(loadSettings()).rejects.toThrow();
+  });
+
+  test('saveSettings writes through a temp file and leaves no temp artifacts', async () => {
+    await rm(SETTINGS_PATH, { force: true });
+
+    await saveSettings({ claudeModel: 'test-model' });
+
+    expect(JSON.parse(await readFile(SETTINGS_PATH, 'utf8'))).toMatchObject({
+      claudeModel: 'test-model',
+    });
+    const files = await readdir(path.dirname(SETTINGS_PATH));
+    expect(files.filter((name) => name.includes('.docvault-settings.json.tmp'))).toEqual([]);
+  });
+});
+
 // --- monthsBetween ---
 
 describe('monthsBetween', () => {
@@ -150,6 +205,36 @@ describe('corsHeaders', () => {
     expect(headers['Access-Control-Allow-Methods']).toContain('PUT');
     expect(headers['Access-Control-Allow-Methods']).toContain('DELETE');
     expect(headers['Access-Control-Allow-Headers']).toContain('Content-Type');
+  });
+});
+
+// --- Authentication config ---
+
+describe('parseAuthConfig', () => {
+  test('requires authentication at startup when no password and no explicit unauthenticated opt-in are configured', () => {
+    const cfg = parseAuthConfig({});
+
+    expect(cfg.enabled).toBe(false);
+    expect(cfg.allowUnauthenticated).toBe(false);
+    expect(cfg.startupAllowed).toBe(false);
+    expect(cfg.startupError).toContain('DOCVAULT_PASSWORD');
+  });
+
+  test('enables auth with default admin username when only DOCVAULT_PASSWORD is configured', () => {
+    const cfg = parseAuthConfig({ DOCVAULT_PASSWORD: 'dev-password' });
+
+    expect(cfg.enabled).toBe(true);
+    expect(cfg.username).toBe('admin');
+    expect(cfg.password).toBe('dev-password');
+    expect(cfg.startupAllowed).toBe(true);
+  });
+
+  test('allows unauthenticated mode only with explicit opt-in', () => {
+    const cfg = parseAuthConfig({ DOCVAULT_ALLOW_UNAUTHENTICATED: 'true' });
+
+    expect(cfg.enabled).toBe(false);
+    expect(cfg.allowUnauthenticated).toBe(true);
+    expect(cfg.startupAllowed).toBe(true);
   });
 });
 

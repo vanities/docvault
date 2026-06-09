@@ -14,6 +14,7 @@ import {
   loadContributions,
   getEntityPath,
   scanDirectory,
+  resolveUnder,
   jsonResponse,
   corsHeaders,
 } from '../data.js';
@@ -21,6 +22,54 @@ import type { EntityConfig, FileInfo, ParsedData, Contribution401k } from '../da
 import { createLogger } from '../logger.js';
 
 const log = createLogger('Downloads');
+
+const MAX_ZIP_FILES = Number(process.env.DOCVAULT_MAX_ZIP_FILES ?? 5000);
+const MAX_ZIP_UNCOMPRESSED_BYTES = Number(
+  process.env.DOCVAULT_MAX_ZIP_UNCOMPRESSED_BYTES ?? 512 * 1024 * 1024
+);
+
+function normalizeYear(value: unknown): string | null {
+  const year = String(value ?? '').trim();
+  if (!/^(19|20)\d{2}$/.test(year)) return null;
+  return year;
+}
+
+function isSafeZipEntryName(name: string): boolean {
+  if (!name || name.includes('\0') || name.includes('\\') || path.isAbsolute(name)) return false;
+  return !name.split('/').some((part) => part === '' || part === '.' || part === '..');
+}
+
+async function addFileToZip(
+  zipData: Record<string, Uint8Array>,
+  entityPath: string,
+  file: FileInfo,
+  state: { count: number; bytes: number }
+): Promise<Response | null> {
+  if (!isSafeZipEntryName(file.path)) {
+    log.warn(`[zip] rejected unsafe entry name: ${file.path}`);
+    return jsonResponse({ error: 'Unsafe zip entry name' }, 400);
+  }
+  if (state.count + 1 > MAX_ZIP_FILES) {
+    return jsonResponse({ error: 'Zip export file limit exceeded' }, 413);
+  }
+  const fullPath = resolveUnder(entityPath, file.path);
+  if (!fullPath) {
+    log.warn(`[zip] skipped path outside entity: ${file.path}`);
+    return jsonResponse({ error: 'Access denied' }, 403);
+  }
+  try {
+    const content = await fs.readFile(fullPath);
+    if (state.bytes + content.byteLength > MAX_ZIP_UNCOMPRESSED_BYTES) {
+      return jsonResponse({ error: 'Zip export size limit exceeded' }, 413);
+    }
+    zipData[file.path] = new Uint8Array(content);
+    state.count++;
+    state.bytes += content.byteLength;
+  } catch {
+    log.error(`Failed to read ${file.path}`);
+  }
+  return null;
+}
 
 export async function handleDownloadRoutes(
   req: Request,
@@ -44,17 +93,23 @@ export async function handleDownloadRoutes(
       if (!entityId || !year) {
         return jsonResponse({ error: 'Missing entity or year' }, 400);
       }
+      const yearStr = normalizeYear(year);
+      if (!yearStr) {
+        log.warn(`[zip] rejected invalid year for entity ${entityId}`);
+        return jsonResponse({ error: 'Invalid year' }, 400);
+      }
 
       const entityPath = await getEntityPath(entityId);
       if (!entityPath) {
         return jsonResponse({ error: 'Entity not found' }, 404);
       }
 
-      const yearPath = path.join(entityPath, year);
+      const yearPath = resolveUnder(entityPath, yearStr);
+      if (!yearPath) return jsonResponse({ error: 'Access denied' }, 403);
       let files: FileInfo[] = [];
       try {
         await fs.access(yearPath);
-        files = await scanDirectory(yearPath, year);
+        files = await scanDirectory(yearPath, yearStr);
       } catch {
         return jsonResponse({ error: 'Year directory not found' }, 404);
       }
@@ -90,22 +145,17 @@ export async function handleDownloadRoutes(
 
       // Read all files and build zip data
       const zipData: Record<string, Uint8Array> = {};
+      const zipState = { count: 0, bytes: 0 };
       for (const file of files) {
-        const fullPath = path.join(entityPath, file.path);
-        try {
-          const content = await fs.readFile(fullPath);
-          // Use the relative path within the year as the zip entry name
-          zipData[file.path] = new Uint8Array(content);
-        } catch {
-          log.error(`Failed to read ${file.path}`);
-        }
+        const errorResponse = await addFileToZip(zipData, entityPath, file, zipState);
+        if (errorResponse) return errorResponse;
       }
 
       const zipped = zipSync(zipData);
       const filterLabel = filter || 'all';
-      const filename = `${entityId}_${year}_${filterLabel}.zip`;
+      const filename = `${entityId}_${yearStr}_${filterLabel}.zip`;
 
-      return new Response(zipped, {
+      return new Response(Buffer.from(zipped), {
         headers: {
           'Content-Type': 'application/zip',
           'Content-Disposition': `attachment; filename="${filename}"`,
@@ -122,10 +172,15 @@ export async function handleDownloadRoutes(
   if (pathname === '/api/download/cpa-package' && req.method === 'POST') {
     try {
       const body = await req.json();
-      const { entity: entityId, year } = body as { entity: string; year: number };
+      const { entity: entityId, year } = body as { entity: string; year: unknown };
 
-      if (!entityId || !year) {
+      if (!entityId || year == null || year === '') {
         return jsonResponse({ error: 'Missing entity or year' }, 400);
+      }
+      const yearStr = normalizeYear(year);
+      if (!yearStr) {
+        log.warn(`[cpa] rejected invalid year for entity ${entityId}`);
+        return jsonResponse({ error: 'Invalid year' }, 400);
       }
 
       const entityPath = await getEntityPath(entityId);
@@ -133,8 +188,8 @@ export async function handleDownloadRoutes(
         return jsonResponse({ error: 'Entity not found' }, 404);
       }
 
-      const yearStr = String(year);
-      const yearPath = path.join(entityPath, yearStr);
+      const yearPath = resolveUnder(entityPath, yearStr);
+      if (!yearPath) return jsonResponse({ error: 'Access denied' }, 403);
       let files: FileInfo[] = [];
       try {
         await fs.access(yearPath);
@@ -447,6 +502,7 @@ export async function handleDownloadRoutes(
       // invoices, and retirement docs — not receipt screenshots.
       const zipData: Record<string, Uint8Array> = {};
       zipData['TAX_SUMMARY.txt'] = new TextEncoder().encode(manifest);
+      const zipState = { count: 1, bytes: zipData['TAX_SUMMARY.txt'].byteLength };
 
       const isReceiptFile = (filePath: string): boolean => {
         const lower = filePath.toLowerCase();
@@ -464,19 +520,14 @@ export async function handleDownloadRoutes(
 
       for (const file of files) {
         if (isReceiptFile(file.path)) continue; // Skip receipt files
-        const fullPath = path.join(entityPath, file.path);
-        try {
-          const content = await fs.readFile(fullPath);
-          zipData[file.path] = new Uint8Array(content);
-        } catch {
-          log.error(`CPA Package: failed to read ${file.path}`);
-        }
+        const errorResponse = await addFileToZip(zipData, entityPath, file, zipState);
+        if (errorResponse) return errorResponse;
       }
 
       const zipped = zipSync(zipData);
-      const filename = `${entityId}_${year}_CPA_Package.zip`;
+      const filename = `${entityId}_${yearStr}_CPA_Package.zip`;
 
-      return new Response(zipped, {
+      return new Response(Buffer.from(zipped), {
         headers: {
           'Content-Type': 'application/zip',
           'Content-Disposition': `attachment; filename="${filename}"`,

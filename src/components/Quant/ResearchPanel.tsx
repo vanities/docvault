@@ -1108,7 +1108,7 @@ function ResearchRow({
     entry.reportDate,
     entry.sourceUrl,
     entry.notes,
-    entry.tickers?.join(',') ?? '',
+    entry.tickers,
   ]);
 
   const flush = (field: keyof typeof draft) => {

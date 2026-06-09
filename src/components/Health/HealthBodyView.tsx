@@ -153,7 +153,8 @@ export function HealthBodyView() {
                       <th className="py-2 px-3">Source</th>
                     </tr>
                   }
-                  rows={reversed.map((w) => {
+                  items={reversed}
+                  renderRow={(w) => {
                     const delta = w.lb - firstLb;
                     const sourceBadge =
                       w.source === 'clinical' ? (
@@ -186,7 +187,7 @@ export function HealthBodyView() {
                         <td className="py-1.5 px-3">{sourceBadge}</td>
                       </tr>
                     );
-                  })}
+                  }}
                 />
               );
             })()}

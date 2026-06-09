@@ -49,13 +49,12 @@ import {
   X,
   Camera,
 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import type { LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
+import { SafeMarkdown } from '../common/SafeMarkdown';
 import { useHealthApi } from './useHealthApi';
 import type { NutritionDose, NutritionEntry, NutritionStatus, ParsedNutritionLabel } from './types';
 
@@ -1522,9 +1521,9 @@ function ResearchPanel({ entry }: { entry: NutritionEntry }) {
         <div className="px-4 pb-4 pt-1 border-t border-surface-200/40">
           {hasResearch ? (
             <>
-              <div className="prose prose-sm prose-surface max-w-none text-sm text-surface-800 [&_strong]:text-surface-950 [&_a]:text-accent-400 [&_ul]:my-2 [&_li]:my-0.5 [&_p]:my-2">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.research ?? ''}</ReactMarkdown>
-              </div>
+              <SafeMarkdown className="prose prose-sm prose-surface max-w-none text-sm text-surface-800 [&_strong]:text-surface-950 [&_a]:text-accent-400 [&_ul]:my-2 [&_li]:my-0.5 [&_p]:my-2">
+                {entry.research ?? ''}
+              </SafeMarkdown>
               {citations.length > 0 && (
                 <div className="mt-4 pt-3 border-t border-surface-200/40">
                   <div className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.22em] mb-2">

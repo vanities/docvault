@@ -152,7 +152,8 @@ export function HealthActivityView() {
                     <th className="py-2 px-3 text-right">Flights</th>
                   </tr>
                 }
-                rows={recentDays.map((d) => (
+                items={recentDays}
+                renderRow={(d) => (
                   <tr
                     key={d.date}
                     className="border-b border-border/20 hover:bg-surface-100/30 transition-colors"
@@ -177,7 +178,7 @@ export function HealthActivityView() {
                       {formatInt(d.flightsClimbed)}
                     </td>
                   </tr>
-                ))}
+                )}
               />
             );
           })()}

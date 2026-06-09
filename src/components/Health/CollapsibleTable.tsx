@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronUp, Table2 } from 'lucide-react';
 
-interface CollapsibleTableProps {
+interface CollapsibleTableProps<T> {
   /** Card header title (e.g. "Daily activity"). */
   title: string;
   /** Total row count — shown in the header. */
@@ -12,23 +12,35 @@ interface CollapsibleTableProps {
   defaultRows?: number;
   /** The <thead> content — a single <tr> with <th> cells. */
   head: React.ReactNode;
-  /** The <tbody> rows as an array of ReactNode (each a <tr>). */
-  rows: React.ReactNode[];
+  /** Back-compat path: already-rendered <tr> rows. */
+  rows?: React.ReactNode[];
+  /** Preferred path for large tables: raw items are sliced before row rendering. */
+  items?: readonly T[];
+  /** Renders one item into a table row. Required when `items` is used. */
+  renderRow?: (item: T, index: number) => React.ReactNode;
   /** Optional extra className on the outer container. */
   className?: string;
 }
 
-export function CollapsibleTable({
+export function CollapsibleTable<T = unknown>({
   title,
   totalRows,
   defaultRows = 7,
   head,
-  rows,
   className = '',
-}: CollapsibleTableProps) {
+  ...rowSource
+}: CollapsibleTableProps<T>) {
   const [expanded, setExpanded] = useState(false);
   const canExpand = totalRows > defaultRows;
-  const visibleRows = canExpand && !expanded ? rows.slice(0, defaultRows) : rows;
+
+  const visibleRows = (() => {
+    const { items, renderRow, rows = [] } = rowSource;
+    if (items && renderRow) {
+      const visibleItems = canExpand && !expanded ? items.slice(0, defaultRows) : items;
+      return visibleItems.map(renderRow);
+    }
+    return canExpand && !expanded ? rows.slice(0, defaultRows) : rows;
+  })();
 
   return (
     <div

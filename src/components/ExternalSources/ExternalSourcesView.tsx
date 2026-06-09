@@ -3,11 +3,10 @@
 // [[wikilinks]] turned into in-app cross-links between files in the same source.
 
 import { useEffect, useMemo, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { FileText, GitBranch, Loader2 } from 'lucide-react';
 import { useToast } from '../../hooks/useToast';
 import { API_BASE } from '../../constants';
+import { SafeMarkdown } from '../common/SafeMarkdown';
 
 interface ExternalRepo {
   id: string;
@@ -205,8 +204,8 @@ export function ExternalSourcesView() {
         ) : (
           <article className="max-w-3xl mx-auto px-4 md:px-8 py-6 text-[14px] leading-relaxed text-surface-900">
             <div className="text-[11px] font-mono text-surface-500 mb-4">{selectedFile}</div>
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
+            <SafeMarkdown
+              allowedProtocols={['wiki:']}
               components={{
                 h1: (props) => <h1 className="text-2xl font-bold mt-6 mb-3" {...props} />,
                 h2: (props) => <h2 className="text-xl font-semibold mt-5 mb-2" {...props} />,
@@ -276,7 +275,7 @@ export function ExternalSourcesView() {
               }}
             >
               {rendered}
-            </ReactMarkdown>
+            </SafeMarkdown>
           </article>
         )}
       </main>

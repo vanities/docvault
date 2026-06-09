@@ -149,7 +149,8 @@ export function HealthHeartView() {
                       <th className="py-2 px-3 text-right">HRV</th>
                     </tr>
                   }
-                  rows={recentDays.map((d) => (
+                  items={recentDays}
+                  renderRow={(d) => (
                     <tr
                       key={d.date}
                       className="border-b border-border/20 hover:bg-surface-100/30 transition-colors"
@@ -171,7 +172,7 @@ export function HealthHeartView() {
                         {d.hrv !== null ? d.hrv.toFixed(1) : '—'}
                       </td>
                     </tr>
-                  ))}
+                  )}
                 />
               );
             })()}

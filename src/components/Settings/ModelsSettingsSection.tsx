@@ -6,7 +6,7 @@
 // Credentials (keys, tokens, Codex sign-in) live in the AI Credentials card.
 // Model lists load live from each provider's /v1/models (GET /api/models).
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Bot, Cpu, Newspaper, RefreshCw, Save, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -78,7 +78,7 @@ export function ModelsSettingsSection() {
   });
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/settings`);
       const d: SettingsData = await res.json();
@@ -105,41 +105,44 @@ export function ModelsSettingsSection() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchModels = async (refresh = false) => {
-    if (refresh) setRefreshing(true);
-    try {
-      const results = await Promise.all(
-        PROVIDERS.map((p) =>
-          fetch(`${API_BASE}/models?provider=${p}${refresh ? '&refresh=1' : ''}`)
-            .then((r) => r.json())
-            .then((d) => ({
-              p,
-              models: (d.models as string[]) ?? [],
-              source: (d.source as string) ?? 'error',
-            }))
-            .catch(() => ({ p, models: [] as string[], source: 'error' }))
-        )
-      );
-      const byProvider: Record<Provider, string[]> = { anthropic: [], openai: [] };
-      for (const { p, models } of results) {
-        byProvider[p] = models;
-      }
-      setModelsByProvider(byProvider);
-      if (refresh) {
-        const live = results.filter((r) => r.source === 'live').length;
-        addToast(
-          live
-            ? `Refreshed model lists (${live}/2 live)`
-            : 'Refreshed (using cached/fallback lists)',
-          live ? 'success' : 'info'
+  const fetchModels = useCallback(
+    async (refresh = false) => {
+      if (refresh) setRefreshing(true);
+      try {
+        const results = await Promise.all(
+          PROVIDERS.map((p) =>
+            fetch(`${API_BASE}/models?provider=${p}${refresh ? '&refresh=1' : ''}`)
+              .then((r) => r.json())
+              .then((d) => ({
+                p,
+                models: (d.models as string[]) ?? [],
+                source: (d.source as string) ?? 'error',
+              }))
+              .catch(() => ({ p, models: [] as string[], source: 'error' }))
+          )
         );
+        const byProvider: Record<Provider, string[]> = { anthropic: [], openai: [] };
+        for (const { p, models } of results) {
+          byProvider[p] = models;
+        }
+        setModelsByProvider(byProvider);
+        if (refresh) {
+          const live = results.filter((r) => r.source === 'live').length;
+          addToast(
+            live
+              ? `Refreshed model lists (${live}/2 live)`
+              : 'Refreshed (using cached/fallback lists)',
+            live ? 'success' : 'info'
+          );
+        }
+      } finally {
+        if (refresh) setRefreshing(false);
       }
-    } finally {
-      if (refresh) setRefreshing(false);
-    }
-  };
+    },
+    [addToast]
+  );
 
   useEffect(() => {
     void load();
@@ -154,7 +157,7 @@ export function ModelsSettingsSection() {
     };
     window.addEventListener('docvault:models-refresh', onRefresh);
     return () => window.removeEventListener('docvault:models-refresh', onRefresh);
-  }, []);
+  }, [fetchModels, load]);
 
   const save = async () => {
     setSaving(true);

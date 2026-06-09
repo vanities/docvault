@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { Server, AlertCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -6,46 +6,111 @@ import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { useAppContext } from '../../contexts/AppContext';
-import { TaxYearView } from '../TaxYear/TaxYearView';
-import { BusinessDocsView } from '../BusinessDocs/BusinessDocsView';
-import { AllFilesView } from '../AllFiles/AllFilesView';
-import { ChatView } from '../Chat/ChatView';
-import { SettingsView } from '../Settings/SettingsView';
-import { ExternalSourcesView } from '../ExternalSources/ExternalSourcesView';
-import { ResearchView } from '../Research/ResearchView';
-import { DailyNewsView } from '../DailyNews/DailyNewsView';
-import { TnTaxView } from '../TnTax/TnTaxView';
-import { CryptoView } from '../Crypto/CryptoView';
-import { BrokersView } from '../Brokers/BrokersView';
-import { BanksView } from '../Banks/BanksView';
-import { PortfolioView } from '../Portfolio/PortfolioView';
-import { SalesView } from '../Sales/SalesView';
-import { MileageView } from '../Mileage/MileageView';
-import { GoldView } from '../Gold/GoldView';
-import { PropertyView } from '../Property/PropertyView';
-import { IncomeView } from '../Income/IncomeView';
-import { DebtsView } from '../Debts/DebtsView';
-import { Solo401kView } from '../Solo401k/Solo401kView';
-import { EstimatedTaxView } from '../EstimatedTax/EstimatedTaxView';
-import { FederalTaxView } from '../FederalTax/FederalTaxView';
-import { QuantView } from '../Quant/QuantView';
-import { StrategyView } from '../Strategy/StrategyView';
-import { PoliticsView } from '../Politics/PoliticsView';
-import { PredictionsView } from '../Predictions/PredictionsView';
-import { HealthView } from '../Health/HealthView';
-import { HealthActivityView } from '../Health/HealthActivityView';
-import { HealthDNAView } from '../Health/HealthDNAView';
-import { HealthHeartView } from '../Health/HealthHeartView';
-import { HealthSleepView } from '../Health/HealthSleepView';
-import { HealthWorkoutsView } from '../Health/HealthWorkoutsView';
-import { HealthBodyView } from '../Health/HealthBodyView';
-import { HealthRecordsView } from '../Health/HealthRecordsView';
-import { HealthNutritionView } from '../Health/HealthNutritionView';
-import { HealthSicknessView } from '../Health/HealthSicknessView';
-import { HealthAnalysisView } from '../Health/HealthAnalysisView';
-import { HealthResearchView } from '../Health/HealthResearchView';
 import { AddEntityModal } from '../Settings/AddEntityModal';
-import { SearchResultsView } from '../Search/SearchResultsView';
+
+const TaxYearView = lazy(() =>
+  import('../TaxYear/TaxYearView').then((m) => ({ default: m.TaxYearView }))
+);
+const BusinessDocsView = lazy(() =>
+  import('../BusinessDocs/BusinessDocsView').then((m) => ({ default: m.BusinessDocsView }))
+);
+const AllFilesView = lazy(() =>
+  import('../AllFiles/AllFilesView').then((m) => ({ default: m.AllFilesView }))
+);
+const ChatView = lazy(() => import('../Chat/ChatView').then((m) => ({ default: m.ChatView })));
+const SettingsView = lazy(() =>
+  import('../Settings/SettingsView').then((m) => ({ default: m.SettingsView }))
+);
+const ExternalSourcesView = lazy(() =>
+  import('../ExternalSources/ExternalSourcesView').then((m) => ({ default: m.ExternalSourcesView }))
+);
+const ResearchView = lazy(() =>
+  import('../Research/ResearchView').then((m) => ({ default: m.ResearchView }))
+);
+const DailyNewsView = lazy(() =>
+  import('../DailyNews/DailyNewsView').then((m) => ({ default: m.DailyNewsView }))
+);
+const TnTaxView = lazy(() => import('../TnTax/TnTaxView').then((m) => ({ default: m.TnTaxView })));
+const CryptoView = lazy(() =>
+  import('../Crypto/CryptoView').then((m) => ({ default: m.CryptoView }))
+);
+const BrokersView = lazy(() =>
+  import('../Brokers/BrokersView').then((m) => ({ default: m.BrokersView }))
+);
+const BanksView = lazy(() => import('../Banks/BanksView').then((m) => ({ default: m.BanksView })));
+const PortfolioView = lazy(() =>
+  import('../Portfolio/PortfolioView').then((m) => ({ default: m.PortfolioView }))
+);
+const SalesView = lazy(() => import('../Sales/SalesView').then((m) => ({ default: m.SalesView })));
+const MileageView = lazy(() =>
+  import('../Mileage/MileageView').then((m) => ({ default: m.MileageView }))
+);
+const GoldView = lazy(() => import('../Gold/GoldView').then((m) => ({ default: m.GoldView })));
+const PropertyView = lazy(() =>
+  import('../Property/PropertyView').then((m) => ({ default: m.PropertyView }))
+);
+const IncomeView = lazy(() =>
+  import('../Income/IncomeView').then((m) => ({ default: m.IncomeView }))
+);
+const DebtsView = lazy(() => import('../Debts/DebtsView').then((m) => ({ default: m.DebtsView })));
+const Solo401kView = lazy(() =>
+  import('../Solo401k/Solo401kView').then((m) => ({ default: m.Solo401kView }))
+);
+const EstimatedTaxView = lazy(() =>
+  import('../EstimatedTax/EstimatedTaxView').then((m) => ({ default: m.EstimatedTaxView }))
+);
+const FederalTaxView = lazy(() =>
+  import('../FederalTax/FederalTaxView').then((m) => ({ default: m.FederalTaxView }))
+);
+const QuantView = lazy(() => import('../Quant/QuantView').then((m) => ({ default: m.QuantView })));
+const StrategyView = lazy(() =>
+  import('../Strategy/StrategyView').then((m) => ({ default: m.StrategyView }))
+);
+const PoliticsView = lazy(() =>
+  import('../Politics/PoliticsView').then((m) => ({ default: m.PoliticsView }))
+);
+const PredictionsView = lazy(() =>
+  import('../Predictions/PredictionsView').then((m) => ({ default: m.PredictionsView }))
+);
+const HealthView = lazy(() =>
+  import('../Health/HealthView').then((m) => ({ default: m.HealthView }))
+);
+const HealthActivityView = lazy(() =>
+  import('../Health/HealthActivityView').then((m) => ({ default: m.HealthActivityView }))
+);
+const HealthDNAView = lazy(() =>
+  import('../Health/HealthDNAView').then((m) => ({ default: m.HealthDNAView }))
+);
+const HealthHeartView = lazy(() =>
+  import('../Health/HealthHeartView').then((m) => ({ default: m.HealthHeartView }))
+);
+const HealthSleepView = lazy(() =>
+  import('../Health/HealthSleepView').then((m) => ({ default: m.HealthSleepView }))
+);
+const HealthWorkoutsView = lazy(() =>
+  import('../Health/HealthWorkoutsView').then((m) => ({ default: m.HealthWorkoutsView }))
+);
+const HealthBodyView = lazy(() =>
+  import('../Health/HealthBodyView').then((m) => ({ default: m.HealthBodyView }))
+);
+const HealthRecordsView = lazy(() =>
+  import('../Health/HealthRecordsView').then((m) => ({ default: m.HealthRecordsView }))
+);
+const HealthNutritionView = lazy(() =>
+  import('../Health/HealthNutritionView').then((m) => ({ default: m.HealthNutritionView }))
+);
+const HealthSicknessView = lazy(() =>
+  import('../Health/HealthSicknessView').then((m) => ({ default: m.HealthSicknessView }))
+);
+const HealthAnalysisView = lazy(() =>
+  import('../Health/HealthAnalysisView').then((m) => ({ default: m.HealthAnalysisView }))
+);
+const HealthResearchView = lazy(() =>
+  import('../Health/HealthResearchView').then((m) => ({ default: m.HealthResearchView }))
+);
+const SearchResultsView = lazy(() =>
+  import('../Search/SearchResultsView').then((m) => ({ default: m.SearchResultsView }))
+);
 
 export function Layout() {
   const {
@@ -203,7 +268,9 @@ export function Layout() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header />
         <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden pb-[env(safe-area-inset-bottom)]">
-          {renderContent()}
+          <Suspense fallback={<div className="p-6 text-sm text-surface-600">Loading view…</div>}>
+            {renderContent()}
+          </Suspense>
         </main>
       </div>
 

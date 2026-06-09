@@ -8,7 +8,7 @@
 // turns are sent back as conversation history — this keeps the request
 // payload small and avoids the model re-explaining tool plumbing.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Mic,
   MicOff,
@@ -26,14 +26,13 @@ import {
   Plus,
   Square,
 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { Button } from '@/components/ui/button';
 import { useAppContext, type ChatStats, type PersistedThread } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import { useVoiceRecorder } from '../../hooks/useVoiceRecorder';
 import { API_BASE } from '../../constants';
 import { uuidV4 } from '../../utils/uuid';
+import { SafeMarkdown } from '../common/SafeMarkdown';
 
 interface AssistantTextBlock {
   type: 'text';
@@ -236,13 +235,7 @@ function AssistantBubble({ message }: { message: AssistantMessage }) {
               key={i}
               className="px-4 py-2.5 rounded-2xl rounded-bl-md bg-surface-100/80 border border-border/50 text-[14px] leading-relaxed"
             >
-              <ReactMarkdown
-                // Enable GitHub-flavored markdown — tables, strikethrough, task
-                // lists, autolinks. Every LLM emits GFM by default, so without
-                // this plugin assistant tables fall through as plain pipe-and-
-                // dash text. Same pattern as HealthNutritionView and
-                // BlurredMarkdown.
-                remarkPlugins={[remarkGfm]}
+              <SafeMarkdown
                 components={{
                   table: (props) => (
                     <table className="my-2 text-[13px] border-collapse w-full" {...props} />
@@ -286,7 +279,7 @@ function AssistantBubble({ message }: { message: AssistantMessage }) {
                 }}
               >
                 {block.text}
-              </ReactMarkdown>
+              </SafeMarkdown>
             </div>
           ) : (
             <ToolCallCard key={i} block={block} />
@@ -355,20 +348,24 @@ function Composer({
   const recorder = useVoiceRecorder();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const previewUrlsRef = useRef(new Set<string>());
+
+  const revokePreviewUrl = useCallback((url: string | undefined) => {
+    if (!url) return;
+    URL.revokeObjectURL(url);
+    previewUrlsRef.current.delete(url);
+  }, []);
 
   // Revoke any blob: URLs we created when this Composer unmounts so the
-  // browser can free the underlying File objects. Without this, navigating
-  // away mid-compose leaks the bytes until the GC catches the unreferenced
-  // ObjectURL — usually fine but explicit is safer with large images.
+  // browser can free the underlying File objects. A ref avoids the stale
+  // closure bug where an empty-deps cleanup only saw the initial attachment
+  // array and missed previews added later.
   useEffect(() => {
+    const urls = previewUrlsRef.current;
     return () => {
-      for (const a of attachments) {
-        if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
-      }
+      for (const url of urls) URL.revokeObjectURL(url);
+      urls.clear();
     };
-    // Intentionally only run on unmount (`attachments` would re-trigger and
-    // double-revoke). Captured `attachments` is the latest closure value.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Probe /api/transcribe once on mount to learn whether voice input is
@@ -407,9 +404,7 @@ function Composer({
     // blob: URLs here since the parent doesn't render those (it'll fetch
     // server-stored copies later if it needs to display them again).
     onSend(trimmed, attachments);
-    for (const a of attachments) {
-      if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
-    }
+    for (const a of attachments) revokePreviewUrl(a.previewUrl);
     setText('');
     setAttachments([]);
   };
@@ -440,6 +435,7 @@ function Composer({
       try {
         const dataUrl = await readFileAsDataUrl(file);
         const previewUrl = isImage ? URL.createObjectURL(file) : undefined;
+        if (previewUrl) previewUrlsRef.current.add(previewUrl);
         const attachment: ComposerAttachment = {
           localId: uuidV4(),
           type: isImage ? 'image' : 'document',
@@ -460,7 +456,7 @@ function Composer({
   const handleRemoveAttachment = (localId: string) => {
     setAttachments((prev) => {
       const removed = prev.find((a) => a.localId === localId);
-      if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
+      if (removed?.previewUrl) revokePreviewUrl(removed.previewUrl);
       return prev.filter((a) => a.localId !== localId);
     });
   };
@@ -705,9 +701,13 @@ function EmptyState({
         <MessageCircle className="w-7 h-7 text-fuchsia-400" />
       </div>
       <h2 className="text-[18px] font-semibold text-surface-950 mb-1">DocVault Chat</h2>
-      <p className="text-[14px] text-surface-700 max-w-md mb-6 leading-relaxed">
+      <p className="text-[14px] text-surface-700 max-w-md mb-3 leading-relaxed">
         Ask questions about your tax documents, search vendors, or set reminders. Use the microphone
         for voice input — works great on phones.
+      </p>
+      <p className="text-[11px] text-surface-500 max-w-md mb-6 leading-relaxed">
+        Chat history is stored only in this browser and is automatically pruned to recent threads
+        and messages to limit local retention.
       </p>
       {!configured && (
         <Button variant="outline" size="sm" onClick={onOpenSettings}>
@@ -752,7 +752,10 @@ export function ChatView() {
 
   // Cast the loosely-typed messages array (context stores `unknown[]` since
   // Sidebar doesn't need to know our discriminated-union shape).
-  const messages = (activeThread?.messages ?? []) as ChatMessage[];
+  const messages = useMemo(
+    () => (activeThread?.messages ?? []) as ChatMessage[],
+    [activeThread?.messages]
+  );
   const stats = activeThread?.stats ?? { inputTokens: 0, outputTokens: 0, costUsd: 0 };
   const resumeSessionId = activeThread?.resumeSessionId ?? null;
 

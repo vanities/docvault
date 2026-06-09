@@ -149,7 +149,8 @@ export function HealthSleepView() {
                       <th className="py-2 px-3 text-right">Resp</th>
                     </tr>
                   }
-                  rows={recentNights.map((d) => (
+                  items={recentNights}
+                  renderRow={(d) => (
                     <tr
                       key={d.date}
                       className="border-b border-border/20 hover:bg-surface-100/30 transition-colors"
@@ -174,7 +175,7 @@ export function HealthSleepView() {
                         {d.respiratoryRate !== null ? d.respiratoryRate.toFixed(1) : '—'}
                       </td>
                     </tr>
-                  ))}
+                  )}
                 />
               );
             })()}

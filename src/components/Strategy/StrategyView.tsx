@@ -56,7 +56,7 @@ const SIGNAL_META: Record<string, { label: string; fmt?: (v: unknown) => string;
       color: 'text-orange-400',
     },
     tenYearReal: { label: '10Y Real', fmt: (v) => `${Number(v).toFixed(2)}%` },
-    tenYearRealPct: { label: '10Y Pct', fmt: (v) => `${v}th` },
+    tenYearRealPct: { label: '10Y Pct', fmt: (v) => `${String(v)}th` },
     nfci: { label: 'NFCI', fmt: (v) => Number(v).toFixed(2) },
     fedRate: { label: 'Fed Rate' },
     fedStance: { label: 'Fed Stance' },
