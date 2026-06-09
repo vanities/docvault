@@ -221,6 +221,25 @@ interface ClinicalLabs {
   }>;
 }
 
+export function selectDailyNewsStepCount(
+  dailyAct: SnapMetrics['activity']['daily'] | undefined,
+  opts: { useAverage: boolean; editionDate?: string }
+): number | undefined {
+  const lastAct = last(dailyAct);
+  if (opts.useAverage) return lastAct?.steps7dAvg ?? avgLastN(dailyAct, (d) => d.steps);
+
+  // Steps accumulate across the day, so the latest day is only partial at a
+  // morning edition (e.g. a few hundred steps by 9am). Use the last COMPLETE
+  // day — the most recent before the edition's date in the configured tz —
+  // for the daily step count.
+  const cutoff =
+    opts.editionDate && /^\d{4}-\d{2}-\d{2}$/.test(opts.editionDate) ? opts.editionDate : undefined;
+  const lastCompleteAct = cutoff
+    ? (last((dailyAct ?? []).filter((d) => d.date != null && d.date < cutoff)) ?? lastAct)
+    : lastAct;
+  return lastCompleteAct?.steps ?? undefined;
+}
+
 // Markets shows the CURRENT market state (signals, watchlist) plus the net-worth
 // change over the edition's window (weekly = the week, daily = since the last
 // edition) — so it needs editionType + sinceISO for that delta.
@@ -562,7 +581,8 @@ async function gatherHealth(
   includeBodies: boolean,
   includeState: boolean,
   editionType: EditionType,
-  warn?: WarningSink
+  warn?: WarningSink,
+  editionDate?: string
 ): Promise<string[]> {
   const items: string[] = [];
 
@@ -586,9 +606,9 @@ async function gatherHealth(
         // daily → the latest single day. A stale snapshot keeps single-day
         // values but is labelled "as of <date>" rather than averaged.
         const useAvg = editionType === 'weekly' && !stale;
-        const steps = useAvg
-          ? (lastAct?.steps7dAvg ?? avgLastN(dailyAct, (d) => d.steps))
-          : lastAct?.steps;
+        // Daily editions use the last complete day for step count; overnight
+        // metrics (sleep/RHR/HRV) stay latest.
+        const steps = selectDailyNewsStepCount(dailyAct, { useAverage: useAvg, editionDate });
         const rhr = useAvg
           ? avgLastN(snap.heart?.daily, (d) => d.restingHR)
           : last(snap.heart?.daily)?.restingHR;
@@ -850,7 +870,11 @@ async function gatherWeather(warn?: WarningSink): Promise<WeatherForecast | null
 }
 
 /** Gather the full digest across all desks, windowed by `sinceISO`. */
-export async function gatherDigest(editionType: EditionType, sinceISO: string): Promise<Digest> {
+export async function gatherDigest(
+  editionType: EditionType,
+  sinceISO: string,
+  editionDate?: string
+): Promise<Digest> {
   const since = new Date(sinceISO).getTime();
   // Date-only values (YYYY-MM-DD) are treated as end-of-day so a same-day item
   // counts. Soft-returns false for unparseable/missing dates.
@@ -882,7 +906,7 @@ export async function gatherDigest(editionType: EditionType, sinceISO: string): 
     gatherMarkets(editionType, sinceISO, warn),
     gatherPolitics(afterSince, warn),
     gatherFinance(afterSince, includeBodies, includeState, warn),
-    gatherHealth(afterSince, includeBodies, includeState, editionType, warn),
+    gatherHealth(afterSince, includeBodies, includeState, editionType, warn, editionDate),
     gatherDocs(afterSince, editionType, since, warn),
     gatherResearchDeep(afterSince, warn),
     gatherWeather(warn),
@@ -991,7 +1015,7 @@ export async function generateEdition(
   editionDate: string,
   sinceISO: string
 ): Promise<GenerateResult> {
-  const digest = await gatherDigest(editionType, sinceISO);
+  const digest = await gatherDigest(editionType, sinceISO, editionDate);
   return synthesizeEdition(editionType, editionDate, sinceISO, digest);
 }
 

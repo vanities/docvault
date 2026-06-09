@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vite-plus/test';
-import { buildResearchDigestItems } from './daily-news.js';
+import { buildResearchDigestItems, selectDailyNewsStepCount } from './daily-news.js';
 
 function afterSince(d?: string | null): boolean {
   if (!d) return false;
@@ -9,6 +9,32 @@ function afterSince(d?: string | null): boolean {
 }
 
 describe('daily-news digest helpers', () => {
+  test('daily health steps use the last complete day before the edition date', () => {
+    const steps = selectDailyNewsStepCount(
+      [
+        { date: '2026-06-07', steps: 8200 },
+        { date: '2026-06-08', steps: 10500 },
+        { date: '2026-06-09', steps: 450 },
+      ],
+      { useAverage: false, editionDate: '2026-06-09' }
+    );
+
+    expect(steps).toBe(10500);
+  });
+
+  test('weekly health steps keep using the 7-day average path', () => {
+    const steps = selectDailyNewsStepCount(
+      [
+        { date: '2026-06-07', steps: 8200 },
+        { date: '2026-06-08', steps: 10500 },
+        { date: '2026-06-09', steps: 450, steps7dAvg: 9300 },
+      ],
+      { useAverage: true, editionDate: '2026-06-09' }
+    );
+
+    expect(steps).toBe(9300);
+  });
+
   test('includes every in-window research entry instead of dropping after a fixed cap', () => {
     const entries = Array.from({ length: 25 }, (_, i) => ({
       id: `entry-${i + 1}`,

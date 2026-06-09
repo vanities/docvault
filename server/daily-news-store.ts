@@ -241,7 +241,7 @@ export async function startThemeSamples(
   void (async () => {
     let digest: Digest;
     try {
-      digest = await gatherDigest(editionType, sinceISO);
+      digest = await gatherDigest(editionType, sinceISO, editionDate);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       log.error(`[samples] shared digest failed, erroring all: ${message}`);
