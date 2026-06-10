@@ -197,7 +197,13 @@ interface SnapMetrics {
     daily?: Array<{ date?: string; steps?: number | null; steps7dAvg?: number | null }>;
   };
   heart?: { daily?: Array<{ restingHR?: number | null; hrv?: number | null }> };
-  sleep?: { daily?: Array<{ asleepMinutes?: number | null }> };
+  sleep?: {
+    daily?: Array<{
+      asleepMinutes?: number | null;
+      deepMinutes?: number | null;
+      remMinutes?: number | null;
+    }>;
+  };
   body?: { headline?: { currentLb?: number | null } };
   workouts?: {
     headline?: {
@@ -206,6 +212,12 @@ interface SnapMetrics {
       currentStreakDays?: number;
       favoriteType?: string | null;
     };
+    recent?: Array<{
+      type?: string;
+      start?: string;
+      durationMinutes?: number;
+      avgHR?: number | null;
+    }>;
   };
 }
 interface ClinicalLabs {
@@ -282,13 +294,20 @@ async function gatherMarkets(
     // Prediction markets (Kalshi/Polymarket) — live cache, not daily-archived.
     const preds = q.predictions?.data;
     if (preds) {
-      const top = [...(preds.finance ?? []), ...(preds.politics ?? [])]
+      const all = [...(preds.finance ?? []), ...(preds.politics ?? [])]
         .filter((m) => typeof m.probability === 'number')
-        .sort((a, b) => (b.volumeUsd ?? 0) - (a.volumeUsd ?? 0))
-        .slice(0, 6);
-      for (const m of top) {
+        .sort((a, b) => (b.volumeUsd ?? 0) - (a.volumeUsd ?? 0));
+      // One market per watchlist topic, highest-volume first. Raw volume
+      // ranking surfaces six election markets and nothing else — elections
+      // dwarf every other market's volume on both providers.
+      const byTopic = new Map<string, (typeof all)[number]>();
+      for (const m of all) {
+        const key = m.topic || m.question;
+        if (!byTopic.has(key)) byTopic.set(key, m);
+      }
+      for (const m of [...byTopic.values()].slice(0, 6)) {
         items.push(
-          `Prediction (${m.source}): "${m.question}" — ${Math.round(m.probability)}% yes.`
+          `Prediction (${m.source}, ${m.topic}): "${m.question}" — ${Math.round(m.probability)}% yes.`
         );
       }
     }
@@ -471,7 +490,11 @@ async function gatherFinance(
       );
     }
   } catch (err) {
-    emitDigestWarning(warn, 'finance/broker-activity', err);
+    // The activities cache only exists once a broker integration has synced
+    // activity history — absence is a normal state, not a digest warning.
+    if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+      emitDigestWarning(warn, 'finance/broker-activity', err);
+    }
   }
 
   // Crypto holdings snapshot (balances — no in-process tx history; the Markets
@@ -615,24 +638,56 @@ async function gatherHealth(
         const hrv = useAvg
           ? avgLastN(snap.heart?.daily, (d) => d.hrv)
           : last(snap.heart?.daily)?.hrv;
+        const lastSleep = last(snap.sleep?.daily);
         const sleepMin = useAvg
           ? avgLastN(snap.sleep?.daily, (d) => d.asleepMinutes)
-          : last(snap.sleep?.daily)?.asleepMinutes;
+          : lastSleep?.asleepMinutes;
         const lb = snap.body?.headline?.currentLb;
         if (typeof steps === 'number')
           bits.push(`${Math.round(steps).toLocaleString()} steps${useAvg ? '/day' : ''}`);
         if (typeof rhr === 'number') bits.push(`resting HR ${Math.round(rhr)}`);
         if (typeof hrv === 'number') bits.push(`HRV ${Math.round(hrv)}`);
-        if (typeof sleepMin === 'number')
-          bits.push(`${(sleepMin / 60).toFixed(1)}h sleep${useAvg ? '/night' : ''}`);
+        if (typeof sleepMin === 'number') {
+          let sleepBit = `${(sleepMin / 60).toFixed(1)}h sleep${useAvg ? '/night' : ''}`;
+          // Daily editions report last night concretely, stages included.
+          if (!useAvg) {
+            const stages = [
+              typeof lastSleep?.deepMinutes === 'number'
+                ? `${(lastSleep.deepMinutes / 60).toFixed(1)}h deep`
+                : null,
+              typeof lastSleep?.remMinutes === 'number'
+                ? `${(lastSleep.remMinutes / 60).toFixed(1)}h REM`
+                : null,
+            ].filter(Boolean);
+            if (stages.length) sleepBit += ` (${stages.join(', ')})`;
+          }
+          bits.push(sleepBit);
+        }
         if (typeof lb === 'number') bits.push(`${Math.round(lb)} lb`);
-        const w = snap.workouts?.headline;
-        if (w && typeof w.thisWeekCount === 'number' && w.thisWeekCount > 0) {
-          bits.push(
-            `${w.thisWeekCount} workout${w.thisWeekCount === 1 ? '' : 's'} this week` +
-              `${typeof w.thisWeekMinutes === 'number' ? ` (${Math.round(w.thisWeekMinutes)} min)` : ''}` +
-              `${w.favoriteType ? `, mostly ${w.favoriteType}` : ''}`
-          );
+        if (editionType === 'weekly') {
+          const w = snap.workouts?.headline;
+          if (w && typeof w.thisWeekCount === 'number' && w.thisWeekCount > 0) {
+            bits.push(
+              `${w.thisWeekCount} workout${w.thisWeekCount === 1 ? '' : 's'} this week` +
+                `${typeof w.thisWeekMinutes === 'number' ? ` (${Math.round(w.thisWeekMinutes)} min)` : ''}` +
+                `${w.favoriteType ? `, mostly ${w.favoriteType}` : ''}`
+            );
+          }
+        } else {
+          // Daily editions list the actual sessions captured this period —
+          // "what you did yesterday", not week-to-date aggregates.
+          const sessions = (snap.workouts?.recent ?? [])
+            .filter((s) => s.start && afterSince(s.start))
+            .slice(0, 4)
+            .map((s) => {
+              const mins =
+                typeof s.durationMinutes === 'number'
+                  ? ` ${Math.round(s.durationMinutes)} min`
+                  : '';
+              const hr = typeof s.avgHR === 'number' ? ` (avg HR ${Math.round(s.avgHR)})` : '';
+              return `${s.type ?? 'Workout'}${mins}${hr}`;
+            });
+          if (sessions.length) bits.push(`workouts logged: ${sessions.join(', ')}`);
         }
         if (bits.length) {
           const tag =
