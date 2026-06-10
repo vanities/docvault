@@ -46,7 +46,6 @@ import {
   toClaudeAgentEffort,
   toOpenAIEffort,
   type ModelRef,
-  type ModelEffort,
 } from './data.js';
 import { fetchWeekForecast, forecastToLines, type WeatherForecast } from './weather.js';
 import { listResearchEntries, type ResearchEntry } from './routes/research.js';
@@ -1132,9 +1131,9 @@ export async function synthesizeEdition(
   if (mode !== 'agent') {
     ({ body, usage } = await runDailyNewsApi(system, prompt, model));
   } else if (agentBackend === 'codex') {
-    ({ body, usage } = await runDailyNewsCodexAgent(system, prompt, model.effort));
+    ({ body, usage } = await runDailyNewsCodexAgent(system, prompt, model));
   } else {
-    ({ body, usage } = await runDailyNewsClaudeAgent(system, prompt, model.effort));
+    ({ body, usage } = await runDailyNewsClaudeAgent(system, prompt, model));
   }
 
   log.info(
@@ -1211,11 +1210,14 @@ async function runDailyNewsApi(
 async function runDailyNewsClaudeAgent(
   system: string,
   prompt: string,
-  effortPick?: ModelEffort
+  ref?: ModelRef
 ): Promise<{ body: string; usage: { inputTokens: number; outputTokens: number } }> {
   const oauthToken = await getAnthropicAuthToken();
   const apiKey = await getAnthropicKey();
-  const effort = toClaudeAgentEffort(effortPick);
+  // The scope's configured model applies when it's an Anthropic pick; a stale
+  // OpenAI ref (left over from API mode) falls back to the default.
+  const model = ref?.provider === 'anthropic' && ref.model ? ref.model : DEFAULT_MODEL;
+  const effort = toClaudeAgentEffort(ref?.effort);
   const startedAt = Date.now();
   const env: Record<string, string | undefined> = {
     ...process.env,
@@ -1229,7 +1231,7 @@ async function runDailyNewsClaudeAgent(
   for await (const message of query({
     prompt,
     options: {
-      model: DEFAULT_MODEL,
+      model,
       ...(effort ? { effort } : {}),
       systemPrompt: { type: 'preset', preset: 'claude_code', append: system },
       // Synthesis only — the digest is the corpus, so no tools.
@@ -1260,7 +1262,7 @@ async function runDailyNewsClaudeAgent(
 
   const usage = { inputTokens, outputTokens };
   void logAiCall({
-    model: `agent:${DEFAULT_MODEL}`,
+    model: `agent:${model}`,
     purpose: 'daily-news',
     latencyMs: Date.now() - startedAt,
     usage,
@@ -1306,10 +1308,13 @@ function readCodexUsage(p: Record<string, unknown>): { input: number; output: nu
 async function runDailyNewsCodexAgent(
   system: string,
   prompt: string,
-  effortPick?: ModelEffort
+  ref?: ModelRef
 ): Promise<{ body: string; usage: { inputTokens: number; outputTokens: number } }> {
-  const { codexHome, binaryPath, model } = await getCodexChatConfig();
-  const effort = toOpenAIEffort(effortPick);
+  const { codexHome, binaryPath, model: chatCodexModel } = await getCodexChatConfig();
+  // The scope's configured model applies when it's an OpenAI pick; otherwise
+  // fall back to the chat's codex model, then codex's account default.
+  const model = ref?.provider === 'openai' && ref.model ? ref.model : chatCodexModel;
+  const effort = toOpenAIEffort(ref?.effort);
   const startedAt = Date.now();
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'docvault-dailynews-'));
 
