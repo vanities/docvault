@@ -36,7 +36,7 @@ import {
   weeklyEditionExistsForWeek,
   type EditionType,
 } from './daily-news-store.js';
-import { dailyNewsPlan } from './daily-news-schedule.js';
+import { dailyNewsPlan, msUntilNextLocalHour } from './daily-news-schedule.js';
 import { getConfiguredTimezone, zonedYMD } from './tz.js';
 import { createLogger } from './logger.js';
 
@@ -56,15 +56,13 @@ export const DEFAULT_SNAPSHOT_INTERVAL = 1440; // 24 hours in minutes
 export const DEFAULT_DROPBOX_SYNC_INTERVAL = 15; // 15 minutes
 export const DEFAULT_QUANT_REFRESH_INTERVAL = 1440; // 24 hours in minutes
 export const DEFAULT_POLITICS_REFRESH_INTERVAL = 1440; // 24 hours in minutes
-// Daily News ticks frequently but publishes at most once/day (past the target
-// hour) — this interval is the polling cadence, not the publish cadence.
-export const DEFAULT_DAILY_NEWS_TICK_INTERVAL = 60; // 1 hour in minutes
-
 let snapshotTimer: ReturnType<typeof setInterval> | null = null;
 let dropboxSyncTimer: ReturnType<typeof setInterval> | null = null;
 let quantRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let politicsRefreshTimer: ReturnType<typeof setInterval> | null = null;
-let dailyNewsTimer: ReturnType<typeof setInterval> | null = null;
+// Daily News fires at the configured local hour via a self-rescheduling
+// timeout (not an interval) so the send minute doesn't drift with deploys.
+let dailyNewsTimer: ReturnType<typeof setTimeout> | null = null;
 
 // ============================================================================
 // Schedule status tracking — persists last-ran timestamps per task to
@@ -508,7 +506,7 @@ export function startScheduler(schedules: Settings['schedules'] = {}): void {
   if (dropboxSyncTimer) clearInterval(dropboxSyncTimer);
   if (quantRefreshTimer) clearInterval(quantRefreshTimer);
   if (politicsRefreshTimer) clearInterval(politicsRefreshTimer);
-  if (dailyNewsTimer) clearInterval(dailyNewsTimer);
+  if (dailyNewsTimer) clearTimeout(dailyNewsTimer);
   snapshotTimer = null;
   dropboxSyncTimer = null;
   quantRefreshTimer = null;
@@ -556,15 +554,27 @@ export function startScheduler(schedules: Settings['schedules'] = {}): void {
     logScheduler.info('Politics refresh: disabled');
   }
 
-  // Daily News is OPT-IN (default off). Ticks hourly; the tick itself decides
-  // whether an edition is actually due (past the hour, none yet today).
+  // Daily News is OPT-IN (default off). Fires AT the configured local hour
+  // (self-rescheduling timeout, recomputed from Intl each time so deploys
+  // don't drift the send minute and DST self-corrects), plus an immediate
+  // catch-up tick — both safe because the store dedups once per local day.
   if (schedules?.dailyNewsEnabled === true) {
-    dailyNewsTimer = setInterval(runDailyNewsTick, DEFAULT_DAILY_NEWS_TICK_INTERVAL * 60 * 1000);
-    void loadSettings().then((s) =>
-      logScheduler.info(
-        `Daily News: checking hourly (publishes ~${String(schedules.dailyNewsHour ?? 7).padStart(2, '0')}:00 ${getConfiguredTimezone(s)}, weekly day ${schedules.dailyNewsWeeklyDay ?? 0})`
-      )
-    );
+    const hour = schedules.dailyNewsHour ?? 7;
+    const armNextDailyNews = (): void => {
+      void loadSettings().then((s) => {
+        const tz = getConfiguredTimezone(s);
+        const delayMs = msUntilNextLocalHour(new Date(), hour, tz);
+        dailyNewsTimer = setTimeout(() => {
+          void runDailyNewsTick().finally(armNextDailyNews);
+        }, delayMs);
+        logScheduler.info(
+          `Daily News: next check in ${Math.round(delayMs / 60000)}m ` +
+            `(publishes ${String(hour).padStart(2, '0')}:00 ${tz}, weekly day ${schedules.dailyNewsWeeklyDay ?? 0})`
+        );
+      });
+    };
+    // Catch-up: a restart after the publish hour still gets today's edition.
+    void runDailyNewsTick().finally(armNextDailyNews);
   } else {
     logScheduler.info('Daily News: disabled');
   }
