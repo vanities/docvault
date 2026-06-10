@@ -53,7 +53,6 @@ import {
   saveHealthStore,
   storeKey,
   requirePerson,
-  type HealthStore,
   type IllnessNote,
 } from '../health-store.js';
 import {
@@ -70,7 +69,6 @@ import {
   workoutDedupeKey,
   type DeltaFile,
   type DeltaMetric,
-  type PersonSnapshots,
   type HealthSegment,
 } from '../parsers/apple-health-snapshots.js';
 import {
@@ -81,14 +79,9 @@ import {
   type ClinicalSummary,
 } from '../parsers/apple-health-clinical.js';
 // Lazy import — bplist-creator may not be in the Docker image
-let buildHealthShortcut: typeof import('./shortcut-generator.js').buildHealthShortcut | null = null;
-import('./shortcut-generator.js')
-  .then((m) => {
-    buildHealthShortcut = m.buildHealthShortcut;
-  })
-  .catch(() => {
-    /* shortcut generation unavailable in this environment */
-  });
+import('./shortcut-generator.js').catch(() => {
+  /* shortcut generation unavailable in this environment */
+});
 import { createLogger, SERVER_BOOT_ID } from '../logger.js';
 
 const log = createLogger('Health');
@@ -476,10 +469,9 @@ export async function handleHealthRoutes(
   if (shortcutFileMatch && req.method === 'GET') {
     const personId = shortcutFileMatch[1];
     await requirePerson(personId);
-    const token = await getOrCreateHealthIngestToken();
-    const host = req.headers.get('host') ?? 'docvault.local';
-    const proto = req.headers.get('x-forwarded-proto') ?? 'http';
-    const ingestUrl = `${proto}://${host}/api/health/${personId}/ingest`;
+    // Ensure an ingest token exists for the user to paste into the imported
+    // shortcut (side effect: creates + persists the token on first call).
+    await getOrCreateHealthIngestToken();
 
     try {
       // Serve the pre-built signed .shortcut file. Users edit the URL +
@@ -553,7 +545,12 @@ export async function handleHealthRoutes(
       return jsonResponse({ ok: false, error: 'Person not found' }, 404);
     }
 
-    let body: Partial<DeltaFile & { raw?: boolean }>;
+    // raw:true shortcut payloads send metrics as newline-separated value
+    // strings; pre-aggregated curl payloads send DeltaMetric objects.
+    type IngestBody = Partial<
+      Omit<DeltaFile, 'metrics'> & { raw?: boolean; metrics: Record<string, DeltaMetric | string> }
+    >;
+    let body: IngestBody;
     let rawBody: string | undefined;
     try {
       rawBody = await req.text();
@@ -565,7 +562,7 @@ export async function handleHealthRoutes(
         /"([^"]*?)"/g,
         (_match, content: string) => `"${content.replace(/\n/g, '\\n')}"`
       );
-      body = JSON.parse(fixedBody) as Partial<DeltaFile & { raw?: boolean }>;
+      body = JSON.parse(fixedBody) as IngestBody;
     } catch (parseErr) {
       const errMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
       log.error(

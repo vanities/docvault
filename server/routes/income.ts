@@ -2,6 +2,7 @@
 
 import { loadIncomeData, saveIncomeData, jsonResponse } from '../data.js';
 import type { IncomeSource } from '../data.js';
+import { readJsonBody } from '../http.js';
 
 export async function handleIncomeRoutes(
   req: Request,
@@ -16,7 +17,7 @@ export async function handleIncomeRoutes(
 
   // POST /api/income - Create a new income source
   if (pathname === '/api/income' && req.method === 'POST') {
-    const body = await req.json();
+    const body = await readJsonBody<Partial<IncomeSource>>(req);
     const { name, amount, frequency, taxable, entity, notes } = body;
 
     if (!name || amount == null || !frequency) {
@@ -52,7 +53,7 @@ export async function handleIncomeRoutes(
   const updateMatch = pathname.match(/^\/api\/income\/([^/]+)$/);
   if (updateMatch && req.method === 'PUT') {
     const id = updateMatch[1];
-    const body = await req.json();
+    const body = await readJsonBody<Partial<IncomeSource>>(req);
     const data = await loadIncomeData();
     const idx = data.sources.findIndex((s) => s.id === id);
     if (idx === -1) return jsonResponse({ error: 'Income source not found' }, 404);

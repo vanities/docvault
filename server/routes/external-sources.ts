@@ -12,6 +12,7 @@
 
 import { loadSettings, saveSettings, jsonResponse } from '../data.js';
 import type { ExternalRepo, ExternalSourcesConfig } from '../data.js';
+import { readJsonBody } from '../http.js';
 import {
   listSourceFiles,
   normalizeRepoUrl,
@@ -56,7 +57,9 @@ export async function handleExternalSourcesRoutes(
 
   // POST /api/external-sources — add a source
   if (pathname === '/api/external-sources' && req.method === 'POST') {
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonBody<{ url?: string; name?: string; branch?: string }>(req).catch(
+      (): { url?: string; name?: string; branch?: string } => ({})
+    );
     if (!body.url || typeof body.url !== 'string') {
       return jsonResponse({ error: 'url is required' }, 400);
     }
@@ -88,7 +91,7 @@ export async function handleExternalSourcesRoutes(
 
   // PUT /api/external-sources/token — set or clear the GitHub token
   if (pathname === '/api/external-sources/token' && req.method === 'PUT') {
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonBody<{ token?: string }>(req).catch((): { token?: string } => ({}));
     const token = typeof body.token === 'string' ? body.token.trim() : '';
     const settings = await loadSettings();
     const cfg = settings.externalSources ?? emptyConfig();

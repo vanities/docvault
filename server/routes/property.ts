@@ -1,13 +1,13 @@
 // Property route handlers.
 // Extracted from server/index.ts.
 
-import { promises as fs } from 'fs';
-import path from 'path';
 import { loadPropertyData, savePropertyData, jsonResponse } from '../data.js';
+import type { PropertyEntry } from '../data.js';
+import { readJsonBody } from '../http.js';
 
 export async function handlePropertyRoutes(
   req: Request,
-  url: URL,
+  _url: URL,
   pathname: string
 ): Promise<Response | null> {
   // ========================================================================
@@ -22,7 +22,7 @@ export async function handlePropertyRoutes(
 
   // POST /api/property - Create a new property entry
   if (pathname === '/api/property' && req.method === 'POST') {
-    const body = await req.json();
+    const body = await readJsonBody<Partial<PropertyEntry>>(req);
     const {
       name,
       type,
@@ -82,7 +82,7 @@ export async function handlePropertyRoutes(
   const propertyUpdateMatch = pathname.match(/^\/api\/property\/([^/]+)$/);
   if (propertyUpdateMatch && req.method === 'PUT') {
     const entryId = propertyUpdateMatch[1];
-    const body = await req.json();
+    const body = await readJsonBody<Partial<PropertyEntry>>(req);
     const data = await loadPropertyData();
     const idx = data.entries.findIndex((e) => e.id === entryId);
     if (idx === -1) return jsonResponse({ error: 'Property not found' }, 404);

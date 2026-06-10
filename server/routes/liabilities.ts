@@ -4,6 +4,7 @@
 
 import { loadLiabilities, saveLiabilities, jsonResponse } from '../data.js';
 import type { LiabilityEntry, LiabilityType } from '../data.js';
+import { readJsonBody } from '../http.js';
 
 const VALID_TYPES: LiabilityType[] = [
   'equipment-loan',
@@ -26,7 +27,7 @@ export async function handleLiabilityRoutes(
   }
 
   if (pathname === '/api/liabilities' && req.method === 'POST') {
-    const body = await req.json();
+    const body = await readJsonBody<Partial<LiabilityEntry>>(req);
     const {
       name,
       lender,
@@ -81,7 +82,7 @@ export async function handleLiabilityRoutes(
   const updateMatch = pathname.match(/^\/api\/liabilities\/([^/]+)$/);
   if (updateMatch && req.method === 'PUT') {
     const id = updateMatch[1];
-    const body = await req.json();
+    const body = await readJsonBody<Partial<LiabilityEntry>>(req);
     const data = await loadLiabilities();
     const idx = data.entries.findIndex((e) => e.id === id);
     if (idx === -1) return jsonResponse({ error: 'Liability not found' }, 404);

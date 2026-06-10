@@ -5,14 +5,13 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import YahooFinance from 'yahoo-finance2';
-import { DATA_DIR, jsonResponse, loadSettings, QUANT_SNAPSHOTS_FILE } from '../../data.js';
+import { DATA_DIR, loadSettings, QUANT_SNAPSHOTS_FILE } from '../../data.js';
 import { createLogger } from '../../logger.js';
 import {
   fetchPredictionMarkets,
   type PredictionMarketsResponse,
 } from '../../prediction-markets.js';
-import { CACHE, TTL } from './cache-policy.js';
-import { cachedJsonResponse } from './http.js';
+import { TTL } from './cache-policy.js';
 import {
   detectCrossovers,
   ema,

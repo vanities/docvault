@@ -128,7 +128,7 @@ const ANCESTRY_TOOL = {
     },
     required: ['source', 'subjectName', 'regions', 'journeys'],
   },
-} as const;
+};
 
 const SYSTEM_PROMPT = `You are extracting structured data from a consumer DNA ethnicity/ancestry report.
 

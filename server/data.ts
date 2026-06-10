@@ -1384,7 +1384,11 @@ export async function fetchMetalSpotPrices(): Promise<Record<string, number>> {
     const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
     if (!res.ok) throw new Error(`Yahoo Finance returned ${res.status}`);
 
-    const data = await res.json();
+    const data = (await res.json()) as {
+      spark?: {
+        result?: { symbol: string; response?: { meta?: { regularMarketPrice?: number } }[] }[];
+      };
+    } & Record<string, { close?: number[] } | undefined>;
     const prices: Record<string, number> = {};
 
     for (const [metal, ticker] of Object.entries(METAL_FUTURES)) {

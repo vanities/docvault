@@ -1,8 +1,6 @@
 // Misc route handlers (reminders, todos, assets, contributions, geocode, dropbox, search, schedules).
 // Extracted from server/index.ts.
 
-import { promises as fs } from 'fs';
-import path from 'path';
 import {
   loadReminders,
   saveReminders,
@@ -16,15 +14,18 @@ import {
   saveFederalTax,
   loadTodos,
   saveTodos,
-  loadSettings,
-  saveSettings,
   jsonResponse,
-  corsHeaders,
-  DATA_DIR,
-  CRYPTO_CACHE_FILE,
-  BROKER_CACHE_FILE,
-  SIMPLEFIN_CACHE_FILE,
 } from '../data.js';
+import type {
+  BusinessAsset,
+  Contribution401k,
+  EstimatedTaxConfig,
+  EstimatedTaxPayment,
+  FederalTaxFiled,
+  Reminder,
+  Todo,
+} from '../data.js';
+import { readJsonBody } from '../http.js';
 
 export async function handleMiscRoutes(
   req: Request,
@@ -43,8 +44,8 @@ export async function handleMiscRoutes(
 
   // POST /api/reminders - Create a reminder
   if (pathname === '/api/reminders' && req.method === 'POST') {
-    const body = await req.json();
-    const { entityId, title, dueDate, recurrence, notes } = body;
+    const { entityId, title, dueDate, recurrence, notes } =
+      await readJsonBody<Partial<Reminder>>(req);
 
     if (!entityId || !title || !dueDate) {
       return jsonResponse({ error: 'Missing entityId, title, or dueDate' }, 400);
@@ -74,7 +75,7 @@ export async function handleMiscRoutes(
   const reminderUpdateMatch = pathname.match(/^\/api\/reminders\/([^/]+)$/);
   if (reminderUpdateMatch && req.method === 'PUT') {
     const reminderId = reminderUpdateMatch[1];
-    const body = await req.json();
+    const body = await readJsonBody<Partial<Reminder>>(req);
 
     const reminders = await loadReminders();
     const idx = reminders.findIndex((r) => r.id === reminderId);
@@ -158,8 +159,7 @@ export async function handleMiscRoutes(
   const assetsPutMatch = pathname.match(/^\/api\/assets\/([^/]+)$/);
   if (assetsPutMatch && req.method === 'PUT') {
     const entity = assetsPutMatch[1];
-    const body = await req.json();
-    const { assets } = body;
+    const { assets } = await readJsonBody<{ assets?: BusinessAsset[] }>(req);
     if (!Array.isArray(assets)) {
       return jsonResponse({ error: 'assets must be an array' }, 400);
     }
@@ -220,8 +220,7 @@ export async function handleMiscRoutes(
       return jsonResponse({ ok: true, readOnly: true });
     }
     const key = `${entity}/${contribPutMatch[2]}`;
-    const body = await req.json();
-    const { contributions } = body;
+    const { contributions } = await readJsonBody<{ contributions?: Contribution401k[] }>(req);
     if (!Array.isArray(contributions)) {
       return jsonResponse({ error: 'contributions must be an array' }, 400);
     }
@@ -248,8 +247,10 @@ export async function handleMiscRoutes(
   const estTaxPutMatch = pathname.match(/^\/api\/estimated-taxes\/([^/]+)\/(\d{4})$/);
   if (estTaxPutMatch && req.method === 'PUT') {
     const key = `${estTaxPutMatch[1]}/${estTaxPutMatch[2]}`;
-    const body = await req.json();
-    const { payments, config } = body;
+    const { payments, config } = await readJsonBody<{
+      payments?: EstimatedTaxPayment[];
+      config?: EstimatedTaxConfig;
+    }>(req);
     if (!Array.isArray(payments)) {
       return jsonResponse({ error: 'payments must be an array' }, 400);
     }
@@ -282,7 +283,7 @@ export async function handleMiscRoutes(
   const fedTaxPutMatch = pathname.match(/^\/api\/federal-tax\/(\d{4})$/);
   if (fedTaxPutMatch && req.method === 'PUT') {
     const year = fedTaxPutMatch[1];
-    const body = await req.json();
+    const body = await readJsonBody<FederalTaxFiled>(req);
     const allData = await loadFederalTax();
     allData[year] = body;
     await saveFederalTax(allData);
@@ -301,8 +302,7 @@ export async function handleMiscRoutes(
 
   // POST /api/todos - Create a todo
   if (pathname === '/api/todos' && req.method === 'POST') {
-    const body = await req.json();
-    const { title } = body;
+    const { title } = await readJsonBody<Partial<Todo>>(req);
 
     if (!title) {
       return jsonResponse({ error: 'Missing title' }, 400);
@@ -328,7 +328,7 @@ export async function handleMiscRoutes(
   const todoUpdateMatch = pathname.match(/^\/api\/todos\/([^/]+)$/);
   if (todoUpdateMatch && req.method === 'PUT') {
     const todoId = todoUpdateMatch[1];
-    const body = await req.json();
+    const body = await readJsonBody<Partial<Todo>>(req);
 
     const todos = await loadTodos();
     const idx = todos.findIndex((t) => t.id === todoId);

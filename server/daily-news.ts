@@ -222,7 +222,7 @@ interface ClinicalLabs {
 }
 
 export function selectDailyNewsStepCount(
-  dailyAct: SnapMetrics['activity']['daily'] | undefined,
+  dailyAct: NonNullable<SnapMetrics['activity']>['daily'] | undefined,
   opts: { useAverage: boolean; editionDate?: string }
 ): number | undefined {
   const lastAct = last(dailyAct);

@@ -9,7 +9,6 @@ import {
   BROKER_CACHE_FILE,
   SIMPLEFIN_CACHE_FILE,
   loadConfig,
-  loadSettings,
   loadParsedData,
   loadMetadata,
   loadSalesData,
@@ -18,7 +17,6 @@ import {
   loadPropertyData,
   loadContributions,
   loadReminders,
-  loadSnapshots,
   loadSnapshotsForYear,
   loadAssets,
   loadIncomeData,
@@ -28,19 +26,9 @@ import {
   getEntityPath,
   scanDirectory,
   jsonResponse,
-  monthsBetween,
 } from '../data.js';
-import type {
-  EntityConfig,
-  Config,
-  FileInfo,
-  ParsedData,
-  PortfolioSnapshot,
-  Contribution401k,
-  IncomeSource,
-  LiabilityEntry,
-  AccountAnnotation,
-} from '../data.js';
+import type { EntityConfig, FileInfo, Contribution401k, AccountAnnotation } from '../data.js';
+import type { IncomeItem } from '../analytics/index.js';
 
 // Account categorization — uses explicit annotation.type first, falls back to
 // name heuristics. Critical for downstream consumers (LLM strategy skill) that
@@ -239,9 +227,7 @@ export async function handleFinancialSnapshotRoutes(
         ReturnType<typeof getBankDepositSummary>['monthly']
       > = {};
       const bankDepositSummaries: Record<string, ReturnType<typeof getBankDepositSummary>> = {};
-      const taxEntitiesForStatements = config.entities.filter(
-        (e) => (e as Record<string, unknown>).type === 'tax'
-      );
+      const taxEntitiesForStatements = config.entities.filter((e) => e.type === 'tax');
       for (const entity of taxEntitiesForStatements) {
         const entityPath = await getEntityPath(entity.id);
         if (!entityPath) continue;
@@ -267,9 +253,7 @@ export async function handleFinancialSnapshotRoutes(
 
       // Build tax entity summaries using centralized analytics module
       const { getIncomeSummary, getExpenseSummary } = await import('../analytics/index.js');
-      const taxEntities = config.entities.filter(
-        (e) => (e as Record<string, unknown>).type === 'tax'
-      );
+      const taxEntities = config.entities.filter((e) => e.type === 'tax');
 
       const entitySummaries: Record<
         string,
@@ -278,7 +262,7 @@ export async function handleFinancialSnapshotRoutes(
           income: {
             source: string;
             amount: number;
-            type: string;
+            type: IncomeItem['type'];
             details?: Record<string, unknown>;
           }[];
           expenses: {
@@ -1253,7 +1237,7 @@ export async function handleFinancialSnapshotRoutes(
 
         // Entity overview
         lines.push('## Entities');
-        for (const [id, data] of Object.entries(entitySummaries)) {
+        for (const [, data] of Object.entries(entitySummaries)) {
           const meta = data.entity.metadata || {};
           const ein = meta.ein ? ` (EIN: ${meta.ein})` : '';
           lines.push(
@@ -1264,7 +1248,7 @@ export async function handleFinancialSnapshotRoutes(
         lines.push('');
 
         // Income & Expenses per entity
-        for (const [id, data] of Object.entries(entitySummaries)) {
+        for (const [, data] of Object.entries(entitySummaries)) {
           if (data.income.length > 0) {
             lines.push(`## ${data.entity.name} — Income`);
             lines.push('| Source | Type | Amount |');

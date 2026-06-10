@@ -8,11 +8,10 @@ import {
   saveGoldData,
   fetchMetalSpotPrices,
   jsonResponse,
-  ensureDir,
-  corsHeaders,
   GOLD_RECEIPTS_DIR,
-  DATA_DIR,
 } from '../data.js';
+import type { GoldEntry } from '../data.js';
+import { readJsonBody } from '../http.js';
 import { parseGoldReceiptFromBuffer } from '../parsers/gold-receipt.js';
 import { createLogger } from '../logger.js';
 
@@ -41,7 +40,7 @@ export async function handleGoldRoutes(
 
   // POST /api/gold - Create a new gold entry
   if (pathname === '/api/gold' && req.method === 'POST') {
-    const body = await req.json();
+    const body = await readJsonBody<Partial<GoldEntry>>(req);
     const {
       metal,
       productId,
@@ -97,7 +96,7 @@ export async function handleGoldRoutes(
   const goldUpdateMatch = pathname.match(/^\/api\/gold\/([^/]+)$/);
   if (goldUpdateMatch && req.method === 'PUT') {
     const entryId = goldUpdateMatch[1];
-    const body = await req.json();
+    const body = await readJsonBody<Partial<GoldEntry>>(req);
     const data = await loadGoldData();
     const idx = data.entries.findIndex((e) => e.id === entryId);
     if (idx === -1) return jsonResponse({ error: 'Entry not found' }, 404);

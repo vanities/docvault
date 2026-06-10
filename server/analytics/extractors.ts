@@ -228,7 +228,7 @@ export function extractCapitalGains(parsed: ParsedData, filename: string): Capit
 
 // --- Expense Extractor ---
 
-export function extractExpense(parsed: ParsedData, filename: string): ExpenseItem | null {
+export function extractExpense(parsed: ParsedData, _filename: string): ExpenseItem | null {
   const docType = (parsed._documentType || parsed.documentType) as string;
 
   // Invoices are INCOME documents (money owed to the business), not expenses

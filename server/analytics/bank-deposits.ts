@@ -8,11 +8,7 @@ import type {
   ParsedData,
   DocumentMetadata,
 } from './types.js';
-import {
-  extractDepositTotal,
-  extractDepositTransactions,
-  isOwnerContribution,
-} from './extractors.js';
+import { extractDepositTotal, extractDepositTransactions } from './extractors.js';
 
 export interface BankDepositSummaryResult {
   totalDeposits: number;

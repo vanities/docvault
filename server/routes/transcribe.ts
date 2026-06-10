@@ -63,7 +63,7 @@ export async function handleTranscribeRoutes(
 
   let inboundForm: FormData;
   try {
-    inboundForm = await req.formData();
+    inboundForm = (await req.formData()) as FormData;
   } catch {
     return jsonResponse({ error: 'Expected multipart/form-data' }, 400);
   }

@@ -5,6 +5,7 @@ import { createLogger } from './logger.js';
 import { parseWithAI } from './parsers/ai.js';
 import { withAILimit } from './aiLimiter.js';
 import { geocodePlace } from './weather.js';
+import { readJsonBody } from './http.js';
 
 // Shared data layer — all types, constants, loaders, and utilities
 import {
@@ -13,29 +14,13 @@ import {
   SYNC_SCRIPT_PATH,
   SYNC_SCRIPT_DATA_PATH,
   PORT,
-  DEFAULT_MODEL,
-  PARSED_DATA_FILE,
-  REMINDERS_FILE,
-  METADATA_FILE,
-  ASSETS_FILE,
-  CONTRIBUTIONS_FILE,
-  TODOS_FILE,
-  SALES_FILE,
-  MILEAGE_FILE,
-  GOLD_FILE,
-  PROPERTY_FILE,
   CRYPTO_CACHE_FILE,
   BROKER_CACHE_FILE,
   SIMPLEFIN_CACHE_FILE,
-  GOLD_RECEIPTS_DIR,
   AUTH_ENABLED,
-  AUTH_USERNAME,
-  AUTH_PASSWORD,
-  PUBLIC_ROUTES,
   loadConfig,
   saveConfig,
   loadSettings,
-  getCodexAuthStatus,
   saveSettings,
   migrateSettingsEncryption,
   loadParsedData,
@@ -43,25 +28,8 @@ import {
   setParsedDataForFile,
   loadMetadata,
   saveMetadata,
-  loadReminders,
-  saveReminders,
-  loadAssets,
-  saveAssets,
-  loadContributions,
-  saveContributions,
-  loadTodos,
-  saveTodos,
   loadSalesData,
-  saveSalesData,
   loadMileageData,
-  saveMileageData,
-  loadGoldData,
-  saveGoldData,
-  loadPropertyData,
-  savePropertyData,
-  loadSnapshots,
-  saveSnapshot,
-  fetchMetalSpotPrices,
   getMimeType,
   scanDirectory,
   resolveUnder,
@@ -70,49 +38,12 @@ import {
   jsonResponse,
   corsHeaders,
   getEntityPath,
-  monthsBetween,
-  createSession,
-  isValidSession,
-  getSessionToken,
-  sessionCookie,
-  sessions,
   isAuthenticated,
-  snapshotFileForYear,
-  loadSnapshotsForYear,
   getClaudeModel,
   getAnthropicKey,
   assertAuthConfiguredForStartup,
 } from './data.js';
-import type {
-  EntityConfig,
-  Config,
-  Settings,
-  FileInfo,
-  ParsedData,
-  DocMetadata,
-  Reminder,
-  AssetsData,
-  ContributionsData,
-  Contribution401k,
-  Todo,
-  SalesData,
-  SaleProduct,
-  Sale,
-  MileageData,
-  Vehicle,
-  MileageEntry,
-  SavedAddress,
-  GoldData,
-  GoldEntry,
-  PropertyData,
-  PropertyEntry,
-  PropertyAddress,
-  PropertyMortgage,
-  PortfolioSnapshot,
-  BusinessAsset,
-  CryptoExchangeConfig,
-  CryptoWalletConfig,
-} from './data.js';
+import type { EntityConfig, FileInfo, ParsedData } from './data.js';
 
 // Re-export for parsers/base.ts which imports from ./index.js
 export { getClaudeModel, getAnthropicKey } from './data.js';
@@ -172,8 +103,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Module-level loggers
 const logHttp = createLogger('HTTP');
 const logClaude = createLogger('Claude');
-const logSnaptrade = createLogger('SnapTrade');
-const logSimplefin = createLogger('SimpleFIN');
 const logGeo = createLogger('Geo');
 
 // Noisy routes to skip HTTP logging (frequent health-check style polls)
@@ -314,7 +243,7 @@ export async function handleRequest(req: Request): Promise<Response> {
 
   // POST /api/entities - Add new entity
   if (pathname === '/api/entities' && req.method === 'POST') {
-    const body = await req.json();
+    const body = await readJsonBody<{ id?: string; name?: string; color?: string }>(req);
     const { id, name, color } = body;
 
     if (!id || !name) {
@@ -352,7 +281,13 @@ export async function handleRequest(req: Request): Promise<Response> {
   const entityUpdateMatch = pathname.match(/^\/api\/entities\/([^/]+)$/);
   if (entityUpdateMatch && req.method === 'PUT') {
     const entityId = entityUpdateMatch[1];
-    const body = await req.json();
+    const body = await readJsonBody<{
+      name?: string;
+      color?: string;
+      icon?: string;
+      description?: string;
+      metadata?: Record<string, string | string[] | null>;
+    }>(req);
     const { name, color, icon, description } = body;
 
     const config = await loadConfig();
@@ -365,7 +300,7 @@ export async function handleRequest(req: Request): Promise<Response> {
     // Update fields if provided
     if (name) config.entities[entityIndex].name = name;
     if (color) config.entities[entityIndex].color = color;
-    if (icon !== undefined) (config.entities[entityIndex] as Record<string, unknown>).icon = icon;
+    if (icon !== undefined) config.entities[entityIndex].icon = icon;
     if (description !== undefined) config.entities[entityIndex].description = description;
     if (body.metadata !== undefined) {
       // Merge metadata (shallow merge — allows setting individual keys, null deletes)
@@ -375,7 +310,8 @@ export async function handleRequest(req: Request): Promise<Response> {
       for (const [key, value] of Object.entries(merged)) {
         if (value === null) delete merged[key];
       }
-      config.entities[entityIndex].metadata = merged;
+      // Safe: the loop above stripped every null value
+      config.entities[entityIndex].metadata = merged as Record<string, string | string[]>;
     }
 
     await saveConfig(config);
@@ -641,7 +577,7 @@ export async function handleRequest(req: Request): Promise<Response> {
 
   // POST /api/mkdir
   if (pathname === '/api/mkdir' && req.method === 'POST') {
-    const body = await req.json();
+    const body = await readJsonBody<{ entity?: string; path?: string }>(req);
     const { entity: entityId, path: dirPath } = body;
 
     if (!dirPath) {
@@ -696,10 +632,12 @@ export async function handleRequest(req: Request): Promise<Response> {
       logClaude.info(`Using Claude Vision AI for ${filename}`);
       const aiData = await parseWithAI(fullPath, filename);
       if (aiData) {
+        // ParsedData's index signature is narrower than real parser output
+        // (optional fields, nested values) — cast preserves stored shape.
         parsedData = {
           ...parsedData,
           ...aiData,
-        };
+        } as ParsedData;
       }
 
       // Save parsed data
@@ -789,10 +727,11 @@ export async function handleRequest(req: Request): Promise<Response> {
               logClaude.info(`[Parse All] Using Claude Vision AI for ${file.name}`);
               const aiData = await parseWithAI(fullPath, file.name);
               if (aiData) {
+                // Same index-signature mismatch as the single-file parse path.
                 parsedData = {
                   ...parsedData,
                   ...aiData,
-                };
+                } as ParsedData;
                 await setParsedDataForFile(`${entityId}/${file.path}`, parsedData);
                 parsed++;
               } else {
@@ -827,7 +766,7 @@ export async function handleRequest(req: Request): Promise<Response> {
 
   // POST /api/move
   if (pathname === '/api/move' && req.method === 'POST') {
-    const body = await req.json();
+    const body = await readJsonBody<{ entity?: string; from?: string; to?: string }>(req);
     const { entity: entityId, from, to } = body;
 
     if (!from || !to) {
@@ -883,7 +822,9 @@ export async function handleRequest(req: Request): Promise<Response> {
 
   // POST /api/rename - Rename a file in place (same directory, new name)
   if (pathname === '/api/rename' && req.method === 'POST') {
-    const body = await req.json();
+    const body = await readJsonBody<{ entity?: string; filePath?: string; newFilename?: string }>(
+      req
+    );
     const { entity: entityId, filePath, newFilename } = body;
 
     if (!filePath || !newFilename) {
@@ -1027,7 +968,12 @@ export async function handleRequest(req: Request): Promise<Response> {
 
   // POST /api/move-between - Move file between different entities
   if (pathname === '/api/move-between' && req.method === 'POST') {
-    const body = await req.json();
+    const body = await readJsonBody<{
+      fromEntity?: string;
+      fromPath?: string;
+      toEntity?: string;
+      toPath?: string;
+    }>(req);
     const { fromEntity, fromPath: from, toEntity, toPath: to } = body;
 
     if (!fromEntity || !from || !toEntity || !to) {
@@ -1096,7 +1042,13 @@ export async function handleRequest(req: Request): Promise<Response> {
 
   // PUT /api/metadata - Update document metadata (tags, notes, tracked)
   if (pathname === '/api/metadata' && req.method === 'PUT') {
-    const body = await req.json();
+    const body = await readJsonBody<{
+      entity?: string;
+      filePath?: string;
+      tags?: string[];
+      notes?: string;
+      tracked?: boolean;
+    }>(req);
     const { entity, filePath: fp, tags, notes, tracked } = body;
 
     if (!entity || !fp) {
@@ -1133,9 +1085,7 @@ export async function handleRequest(req: Request): Promise<Response> {
       const config = await loadConfig();
       const parsedDataMap = await loadParsedData();
       const metadataMap = await loadMetadata();
-      const taxEntities = config.entities.filter(
-        (e) => (e as Record<string, unknown>).type === 'tax'
-      );
+      const taxEntities = config.entities.filter((e) => e.type === 'tax');
 
       // Use centralized analytics module
       const { getIncomeSummary, getExpenseSummary } = await import('./analytics/index.js');
@@ -1238,7 +1188,7 @@ export async function handleRequest(req: Request): Promise<Response> {
       // Support "all" entity by iterating all tax entities
       const entities =
         entityId === 'all'
-          ? config.entities.filter((e) => (e as Record<string, unknown>).type === 'tax')
+          ? config.entities.filter((e) => e.type === 'tax')
           : config.entities.filter((e) => e.id === entityId);
 
       if (entities.length === 0) {
@@ -1605,7 +1555,7 @@ export async function handleRequest(req: Request): Promise<Response> {
     try {
       const apiUrl = `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(text)}&format=json&apiKey=${encodeURIComponent(settings.geoapifyApiKey)}`;
       const res = await fetch(apiUrl);
-      const data = await res.json();
+      const data = (await res.json()) as Record<string, unknown>;
       return jsonResponse(data);
     } catch (err) {
       logGeo.error(`Autocomplete error: ${err}`);
@@ -1714,7 +1664,7 @@ export async function handleRequest(req: Request): Promise<Response> {
 
   // POST /api/dropbox/authorize - Save rclone token from `rclone authorize "dropbox"` output
   if (pathname === '/api/dropbox/authorize' && req.method === 'POST') {
-    const body = await req.json();
+    const body = await readJsonBody<{ token?: string }>(req);
     const { token } = body;
     if (!token) {
       return jsonResponse({ error: 'Missing token' }, 400);
@@ -1929,7 +1879,21 @@ export async function handleRequest(req: Request): Promise<Response> {
   // PUT /api/schedules - Update schedule config and restart timers
   if (pathname === '/api/schedules' && req.method === 'PUT') {
     try {
-      const body = await req.json();
+      const body = await readJsonBody<{
+        snapshotEnabled?: boolean;
+        snapshotIntervalMinutes?: number;
+        dropboxSyncEnabled?: boolean;
+        dropboxSyncIntervalMinutes?: number;
+        quantRefreshEnabled?: boolean;
+        quantRefreshIntervalMinutes?: number;
+        politicsRefreshEnabled?: boolean;
+        politicsRefreshIntervalMinutes?: number;
+        dailyNewsEnabled?: boolean;
+        dailyNewsHour?: number;
+        dailyNewsWeeklyDay?: number;
+        timezone?: string;
+        backupPassword?: string;
+      }>(req);
       const settings = await loadSettings();
       settings.schedules = {
         snapshotEnabled: body.snapshotEnabled ?? true,
@@ -1971,7 +1935,11 @@ export async function handleRequest(req: Request): Promise<Response> {
   // POST /api/save-parsed - Save parsed data for a file
   if (pathname === '/api/save-parsed' && req.method === 'POST') {
     try {
-      const body = await req.json();
+      const body = await readJsonBody<{
+        entity?: string;
+        filePath?: string;
+        parsedData?: ParsedData;
+      }>(req);
       const { entity: entityId, filePath, parsedData: parsedDataObj } = body;
 
       if (!entityId || !filePath || !parsedDataObj) {
@@ -2212,7 +2180,6 @@ Return: { "naming": {...}, "parsedData": {...} }`,
 // Scheduler (extracted to scheduler.ts)
 import {
   startScheduler,
-  takePortfolioSnapshot,
   runDropboxSync,
   loadScheduleStatus,
   DEFAULT_SNAPSHOT_INTERVAL,

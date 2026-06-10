@@ -122,7 +122,7 @@ export async function fetchBalances(config: SimplefinConfig): Promise<SimplefinA
     throw new Error(`SimpleFIN error (${res.status}): ${body || res.statusText}`);
   }
 
-  const data: SimplefinResponse = await res.json();
+  const data = (await res.json()) as SimplefinResponse;
 
   if (data.errors?.length) {
     log.warn('Warnings:', JSON.stringify(data.errors));

@@ -140,7 +140,7 @@ export async function routeParse(
       _parsedWith: parser.type,
       _parserVersion: parser.version,
       _detectedType: detectedType,
-    } as ParsedTaxDocument;
+    } as unknown as ParsedTaxDocument;
   }
 
   // Generic parser result — pass through with metadata
@@ -149,7 +149,7 @@ export async function routeParse(
     _parsedWith: 'generic',
     _parserVersion: genericParser.version,
     _detectedType: detectedType,
-  } as ParsedTaxDocument;
+  } as unknown as ParsedTaxDocument;
 }
 
 // Initialize: register all parsers.

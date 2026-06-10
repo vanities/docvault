@@ -21,10 +21,13 @@ import {
   saveSnapshot,
   monthsBetween,
 } from './data.js';
-import type { Settings, PortfolioSnapshot } from './data.js';
+import type { Settings } from './data.js';
 import { fetchAllBalances } from './crypto.js';
-import { buildPortfolio, fetchAllSnapTradeHoldings } from './brokers.js';
-import { fetchBalances as fetchSimplefinBalances } from './simplefin.js';
+import { buildPortfolio, fetchAllSnapTradeHoldings, type BrokerAccount } from './brokers.js';
+import {
+  fetchBalances as fetchSimplefinBalances,
+  type SimplefinBalanceCache,
+} from './simplefin.js';
 import { refreshAllQuantData } from './routes/quant.js';
 import { refreshPolitics } from './politics/refresh.js';
 import {

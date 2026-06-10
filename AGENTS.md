@@ -127,6 +127,8 @@ bun run dev        # Frontend only
 
 **Do NOT start the dev server** — the user manages it manually.
 
+**Validating changes:** use `bun run check` (typecheck via `tsc -b` + server boot-smoke + lint + format) — it is what CI runs. `vp check` does NOT typecheck `server/` (only formats/lints it), so a green `vp check` is not sufficient for backend work. New routes should parse request bodies through `readJsonBody<T>` from `server/http.ts` rather than bare `req.json()`.
+
 **NAS data:** Always SSH to NAS (`ssh nas`) and read from `/mnt/user/appdata/docvault/data/` for real data. Local `data/` symlinks may be stale.
 
 **CRITICAL — NAS file edits:** When modifying JSON files on the NAS, **NEVER pipe output back to the same file being read** (e.g., `cat file | jq ... | cat > file` — this truncates the file to 0 bytes before reading finishes). Always:

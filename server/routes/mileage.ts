@@ -1,13 +1,13 @@
 // Mileage route handlers.
 // Extracted from server/index.ts.
 
-import { promises as fs } from 'fs';
-import path from 'path';
-import { loadMileageData, saveMileageData, loadSettings, jsonResponse } from '../data.js';
+import { loadMileageData, saveMileageData, jsonResponse } from '../data.js';
+import type { MileageEntry, SavedAddress, Vehicle } from '../data.js';
+import { readJsonBody } from '../http.js';
 
 export async function handleMileageRoutes(
   req: Request,
-  url: URL,
+  _url: URL,
   pathname: string
 ): Promise<Response | null> {
   // ========================================================================
@@ -22,7 +22,7 @@ export async function handleMileageRoutes(
 
   // POST /api/mileage - Create a new mileage entry
   if (pathname === '/api/mileage' && req.method === 'POST') {
-    const body = await req.json();
+    const body = await readJsonBody<Partial<MileageEntry>>(req);
     const {
       date,
       vehicleId,
@@ -78,7 +78,16 @@ export async function handleMileageRoutes(
   const mileageUpdateMatch = pathname.match(/^\/api\/mileage\/([^/]+)$/);
   if (mileageUpdateMatch && req.method === 'PUT') {
     const entryId = mileageUpdateMatch[1];
-    const body = await req.json();
+    const body = await readJsonBody<{
+      date?: string;
+      vehicleId?: string;
+      odometerStart?: number | '';
+      odometerEnd?: number | '';
+      tripMiles?: number | '';
+      gallons?: number | '';
+      totalCost?: number | '';
+      purpose?: string;
+    }>(req);
     const data = await loadMileageData();
     const entry = data.entries.find((e: MileageEntry) => e.id === entryId);
     if (!entry) {
@@ -121,7 +130,7 @@ export async function handleMileageRoutes(
 
   // POST /api/mileage/vehicles - Add a new vehicle
   if (pathname === '/api/mileage/vehicles' && req.method === 'POST') {
-    const body = await req.json();
+    const body = await readJsonBody<Partial<Vehicle>>(req);
     const { name, year, make, model } = body;
 
     if (!name) {
@@ -146,7 +155,12 @@ export async function handleMileageRoutes(
   const vehicleUpdateMatch = pathname.match(/^\/api\/mileage\/vehicles\/([^/]+)$/);
   if (vehicleUpdateMatch && req.method === 'PUT') {
     const vehicleId = vehicleUpdateMatch[1];
-    const body = await req.json();
+    const body = await readJsonBody<{
+      name?: string;
+      year?: number | '';
+      make?: string;
+      model?: string;
+    }>(req);
     const data = await loadMileageData();
     const vehicle = data.vehicles.find((v: Vehicle) => v.id === vehicleId);
     if (!vehicle) {
@@ -176,7 +190,7 @@ export async function handleMileageRoutes(
 
   // PUT /api/mileage/settings - Update IRS rate
   if (pathname === '/api/mileage/settings' && req.method === 'PUT') {
-    const body = await req.json();
+    const body = await readJsonBody<{ irsRate?: number | string }>(req);
     const data = await loadMileageData();
     if (body.irsRate !== undefined) {
       data.irsRate = Number(body.irsRate);
@@ -187,7 +201,7 @@ export async function handleMileageRoutes(
 
   // POST /api/mileage/addresses - Add a saved address
   if (pathname === '/api/mileage/addresses' && req.method === 'POST') {
-    const body = await req.json();
+    const body = await readJsonBody<Partial<SavedAddress>>(req);
     const { label, formatted, lat, lon } = body;
     if (!label || !formatted || lat == null || lon == null) {
       return jsonResponse({ error: 'Missing label, formatted, lat, or lon' }, 400);
@@ -210,7 +224,7 @@ export async function handleMileageRoutes(
   const addrUpdateMatch = pathname.match(/^\/api\/mileage\/addresses\/([^/]+)$/);
   if (addrUpdateMatch && req.method === 'PUT') {
     const addrId = addrUpdateMatch[1];
-    const body = await req.json();
+    const body = await readJsonBody<Partial<SavedAddress>>(req);
     const data = await loadMileageData();
     if (!data.savedAddresses) data.savedAddresses = [];
     const addr = data.savedAddresses.find((a) => a.id === addrId);

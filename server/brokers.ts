@@ -172,7 +172,8 @@ export async function getSnapTradeConnectUrl(config: SnapTradeConfig): Promise<s
     userSecret: config.userSecret,
   });
 
-  return response.data.redirectURI || '';
+  // SnapTrade SDK's declared response type is narrower than the runtime payload.
+  return (response.data as { redirectURI?: string }).redirectURI || '';
 }
 
 // Fetch all connected accounts from SnapTrade
@@ -521,7 +522,11 @@ export async function fetchStockPrices(tickers: string[]): Promise<Record<string
 
     if (!res.ok) return await fetchPricesIndividually(upperTickers);
 
-    const data = await res.json();
+    const data = (await res.json()) as {
+      spark?: {
+        result?: { symbol: string; response?: { meta?: { regularMarketPrice?: number } }[] }[];
+      };
+    } & Record<string, { close?: number[] } | undefined>;
     const prices: Record<string, number> = { ...stockPriceCache };
 
     for (const ticker of upperTickers) {
@@ -554,7 +559,11 @@ async function fetchPricesIndividually(tickers: string[]): Promise<Record<string
       const url = `https://query1.finance.yahoo.com/v8/finance/spark?symbols=${ticker}&range=1d&interval=1d`;
       const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
       if (res.ok) {
-        const data = await res.json();
+        const data = (await res.json()) as {
+          spark?: {
+            result?: { response?: { meta?: { regularMarketPrice?: number } }[] }[];
+          };
+        } & Record<string, { close?: number[] } | undefined>;
         // New flat format: data[TICKER].close[last]
         const flat = data[ticker];
         if (flat?.close?.length) {

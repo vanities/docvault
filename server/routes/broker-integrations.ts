@@ -7,6 +7,7 @@ import {
   registerSnapTradeUser,
 } from '../brokers.js';
 import { claimSetupToken, fetchBalances as fetchSimplefinBalances } from '../simplefin.js';
+import { readJsonBody } from '../http.js';
 import { createLogger } from '../logger.js';
 import {
   SIMPLEFIN_CACHE_FILE,
@@ -74,7 +75,7 @@ export async function handleBrokerIntegrationRoutes(
 
   // POST /api/snaptrade/setup — save SnapTrade credentials and register user
   if (pathname === '/api/snaptrade/setup' && req.method === 'POST') {
-    const body = await req.json();
+    const body = await readJsonBody<{ clientId?: string; consumerKey?: string }>(req);
     const { clientId, consumerKey } = body;
     if (!clientId || !consumerKey) {
       return jsonResponse({ error: 'Missing clientId or consumerKey' }, 400);
@@ -169,7 +170,7 @@ export async function handleBrokerIntegrationRoutes(
 
   // POST /api/simplefin/setup — claim a setup token and save access URL
   if (pathname === '/api/simplefin/setup' && req.method === 'POST') {
-    const body = await req.json();
+    const body = await readJsonBody<{ setupToken?: string }>(req);
     const { setupToken } = body;
     if (!setupToken) {
       return jsonResponse({ error: 'Missing setupToken' }, 400);
