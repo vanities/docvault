@@ -26,6 +26,31 @@ export function localYMD(d: Date): string {
   ).padStart(2, '0')}`;
 }
 
+/**
+ * Milliseconds from `now` until the next local occurrence of `hour:00` in
+ * `timezone`. Exactly on the hour counts as "passed" (returns a full day) —
+ * the scheduler fires an immediate catch-up tick at boot, and the store's
+ * once-per-day dedup makes both paths safe. DST is absorbed because the
+ * scheduler recomputes from Intl after every firing rather than adding 24h.
+ */
+export function msUntilNextLocalHour(now: Date, hour: number, timezone: string): number {
+  const target = clampInt(hour, 0, 23);
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(now).map((p) => [p.type, p.value]));
+  // ICU can render midnight as "24" with hour12:false — normalize.
+  const nowSec =
+    (Number(parts.hour) % 24) * 3600 + Number(parts.minute) * 60 + Number(parts.second);
+  let deltaSec = target * 3600 - nowSec;
+  if (deltaSec <= 0) deltaSec += 24 * 3600;
+  return deltaSec * 1000;
+}
+
 export interface DailyNewsPlan {
   /** Local YYYY-MM-DD this edition is for (the per-day dedup key). */
   today: string;

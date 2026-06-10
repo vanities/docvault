@@ -39,6 +39,7 @@ import {
   loadPropertyData,
   DATA_DIR,
   BROKER_ACTIVITIES_FILE,
+  BROKER_CACHE_FILE,
   CRYPTO_CACHE_FILE,
   DEFAULT_MODEL,
   type ModelRef,
@@ -156,6 +157,15 @@ type AfterSince = (d?: string | null) => boolean;
 /** Last element of an array (or undefined) — avoids relying on Array.prototype.at. */
 function last<T>(a: readonly T[] | undefined): T | undefined {
   return a && a.length ? a[a.length - 1] : undefined;
+}
+
+async function fileExists(p: string): Promise<boolean> {
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Mean of the last `n` numeric values pulled from a daily series (skips
@@ -463,21 +473,30 @@ async function gatherFinance(
 
   // Broker activity — recent trades/dividends (read the activities cache directly).
   try {
-    const raw = await fs.readFile(BROKER_ACTIVITIES_FILE, 'utf-8');
-    const cache = JSON.parse(raw) as {
-      accounts?: Record<
-        string,
-        {
-          activities?: Array<{
-            type?: string;
-            tradeDate?: string;
-            ticker?: string | null;
-            description?: string;
-            amount?: number;
-          }>;
-        }
-      >;
-    };
+    let raw: string | null = null;
+    try {
+      raw = await fs.readFile(BROKER_ACTIVITIES_FILE, 'utf-8');
+    } catch (err) {
+      // The activities cache only exists once a broker integration has synced
+      // activity history — treat absence like an empty feed below.
+      if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') throw err;
+    }
+    const cache = raw
+      ? (JSON.parse(raw) as {
+          accounts?: Record<
+            string,
+            {
+              activities?: Array<{
+                type?: string;
+                tradeDate?: string;
+                ticker?: string | null;
+                description?: string;
+                amount?: number;
+              }>;
+            }
+          >;
+        })
+      : {};
     const acts = Object.values(cache.accounts ?? {})
       .flatMap((a) => a.activities ?? [])
       .filter((a) => afterSince(a.tradeDate))
@@ -489,12 +508,13 @@ async function gatherFinance(
         `Broker ${a.type ?? 'activity'}: ${sym}${amt} (${(a.tradeDate ?? '').slice(0, 10)}).`
       );
     }
-  } catch (err) {
-    // The activities cache only exists once a broker integration has synced
-    // activity history — absence is a normal state, not a digest warning.
-    if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
-      emitDigestWarning(warn, 'finance/broker-activity', err);
+    // An explicit quiet-period line beats silence — but only when broker
+    // accounts are actually connected (the cache file the Brokers view keeps).
+    if (acts.length === 0 && (await fileExists(BROKER_CACHE_FILE))) {
+      items.push('No brokerage account trades or transfers this period.');
     }
+  } catch (err) {
+    emitDigestWarning(warn, 'finance/broker-activity', err);
   }
 
   // Crypto holdings snapshot (balances — no in-process tx history; the Markets
