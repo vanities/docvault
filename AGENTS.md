@@ -97,11 +97,11 @@ Do not commit any of the following into the public repo, regardless of whether i
 **Where this data may legitimately live:**
 
 - `data/` directory — gitignored (`data/`, `data-backup`)
-- Test files (`**/*.test.ts`, `**/*.test.tsx`, `**/*.spec.*`) — gitignored with exception for `server/routes/quant.test.ts` (pure math, no personal data)
+- Test files (`**/*.test.ts`, `**/*.test.tsx`, `**/*.spec.*`) — gitignored **by default**, with explicit per-file `!` exceptions in `.gitignore` for tests proven to contain only synthetic/generic data (~30 such tests are tracked and run in CI). Personal-data integration tests (e.g. `server/analytics/pipeline.integration.test.ts`) stay ignored and run only locally against synced NAS data
 - `tax-plan/`, `scripts/`, `server/parsers/fixtures/` — gitignored
 - `.docvault-*.json` files — gitignored as part of `data/`
 
-**When writing code or tests that need realistic fixtures:** fabricate obviously-fake data (`Acme Bank`, `$1,234.56`, `John Doe`). If you must use real data to verify, put it in a gitignored test file (`*.test.ts`) — the `.gitignore` already handles the whole pattern.
+**When writing code or tests that need realistic fixtures:** fabricate obviously-fake data (`Acme Bank`, `$1,234.56`, `John Doe`). A new test with only fabricated data should be tracked: add a `!path/to/file.test.ts` exception in `.gitignore` with a one-line justification comment (see the existing exception block there for the pattern). If a test must use real data to verify, leave it gitignored — the default `**/*.test.ts` ignore already handles it.
 
 **Before every commit, run `git status` and `git diff --cached`** and visually scan for any of the categories above. If in doubt, move the content to a gitignored location.
 
@@ -129,7 +129,7 @@ bun run dev        # Frontend only
 
 **Validating changes:** use `bun run check` (typecheck via `tsc -b` + server boot-smoke + lint + format) — it is what CI runs. `vp check` does NOT typecheck `server/` (only formats/lints it), so a green `vp check` is not sufficient for backend work. New routes should parse request bodies through `readJsonBody<T>` from `server/http.ts` rather than bare `req.json()`.
 
-**NAS data:** Always SSH to NAS (`ssh nas`) and read from `/mnt/user/appdata/docvault/data/` for real data. Local `data/` symlinks may be stale.
+**NAS data:** Always SSH to NAS (`ssh nas`) and read from `/mnt/user/appdata/docvault/data/` for real data. Local `data/` is a script-synced copy — refresh with `./scripts/sync-nas-data.sh` (add `--full` for all documents; required for the gitignored integration tests). Entity dirs must be real directories, not symlinks — the server's symlink-escape hardening refuses symlinked entity paths.
 
 **CRITICAL — NAS file edits:** When modifying JSON files on the NAS, **NEVER pipe output back to the same file being read** (e.g., `cat file | jq ... | cat > file` — this truncates the file to 0 bytes before reading finishes). Always:
 
@@ -149,10 +149,10 @@ ssh nas 'node -e "const fs=require(\"fs\"); const d=JSON.parse(fs.readFileSync(\
 **Sidebar navigation:** When adding a new view to the sidebar (`Sidebar.tsx` → `NavButton`), you MUST also:
 
 1. Add the view name to the `NavView` union type in `src/contexts/AppContext.tsx`
-2. Add the view name to the `validViews` Set in `src/contexts/AppContext.tsx` (around line 221)
+2. Add the view name to the `validViews` Set in `src/contexts/AppContext.tsx`
 3. Add the `case 'your-view':` to the view switch in `src/components/Layout/Layout.tsx`
 
-Missing any of these causes the sidebar click to reload the page instead of navigating.
+Missing any of these causes the sidebar click to silently render the wrong view. This contract is enforced by `src/contexts/navigation-wiring.test.ts` (runs in CI) — if it fails, it names the missing entry.
 
 **Package installs:** This project uses both pnpm and bun. After adding a dependency with `pnpm add <pkg>`, always run `bun install` to sync `bun.lock`, then commit both `package.json` and `bun.lock`. The Docker build uses `bun install --frozen-lockfile` so an out-of-sync `bun.lock` breaks CI. `pnpm-lock.yaml` is gitignored.
 
@@ -175,7 +175,9 @@ Entity types: `tax` (year-based views with income/expenses) or `docs` (flat file
 
 | File                               | Role                                       |
 | ---------------------------------- | ------------------------------------------ |
-| `server/index.ts`                  | All backend logic                          |
+| `server/index.ts`                  | HTTP entry: routing core + scheduler boot  |
+| `server/routes/*.ts`               | Route modules (one per domain)             |
+| `server/data.ts`                   | Shared data layer: types, loaders, config  |
 | `src/contexts/AppContext.tsx`      | Central state (entity, view, year, docs)   |
 | `src/hooks/useFileSystemServer.ts` | Frontend API client                        |
 | `src/config.ts`                    | Document types, expense categories         |
