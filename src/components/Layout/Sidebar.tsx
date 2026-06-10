@@ -29,6 +29,7 @@ import {
   Library,
   Newspaper,
   Telescope,
+  Cpu,
   X,
 } from 'lucide-react';
 import { useAppContext, type NavView, type PersistedThread } from '../../contexts/AppContext';
@@ -827,6 +828,16 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               icon={TrendingUp}
               activeColor="bg-teal-500/10"
               activeTextColor="text-teal-400"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
+            <NavButton
+              view="tech"
+              label="Tech"
+              icon={Cpu}
+              activeColor="bg-indigo-500/10"
+              activeTextColor="text-indigo-400"
               activeView={activeView}
               isProcessing={isProcessing}
               onClick={handleViewClick}

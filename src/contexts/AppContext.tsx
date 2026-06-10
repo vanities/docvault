@@ -161,6 +161,7 @@ export type NavView =
   | 'strategy'
   | 'politics'
   | 'predictions'
+  | 'tech'
   | 'health'
   | 'health-activity'
   | 'health-heart'
@@ -395,6 +396,7 @@ export function AppProvider({ children }: AppProviderProps) {
         'strategy',
         'politics',
         'predictions',
+        'tech',
         'health',
         'health-activity',
         'health-heart',
