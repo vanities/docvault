@@ -1,7 +1,21 @@
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
-import { expect, test, describe } from 'vite-plus/test';
+import { expect, test, describe, vi } from 'vite-plus/test';
+
+// Vi.hoisted fires before the import graph resolves — points SETTINGS_PATH
+// (and everything else derived from DATA_DIR) at a tmpdir. Without it the
+// settings-persistence tests unlink and rewrite the real local settings file.
+vi.hoisted(() => {
+  const p = require('path') as typeof import('path');
+  const o = require('os') as typeof import('os');
+  const f = require('fs') as typeof import('fs');
+  const dir = p.join(o.tmpdir(), `docvault-data-test-${Date.now()}`);
+  f.mkdirSync(dir, { recursive: true });
+  process.env.DOCVAULT_DATA_DIR = dir;
+  return dir;
+});
+
 import {
   getMimeType,
   loadSettings,

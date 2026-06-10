@@ -145,6 +145,12 @@ export default defineConfig({
     sortPackageJson: false,
     ignorePatterns: ['dist', 'node_modules', 'bun.lockb', 'demo-data'],
   },
+  test: {
+    // Only first-party trees. data/ holds NAS-synced runtime state (codex
+    // plugin caches, custom-job scripts) that ships its own test files —
+    // those must never run as part of the app suite.
+    include: ['src/**/*.test.{ts,tsx}', 'server/**/*.test.ts'],
+  },
   resolve: {
     alias: {
       '@': `${import.meta.dirname}/src`,
