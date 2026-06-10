@@ -66,9 +66,9 @@ export function SettingsTabsList() {
       <TabsList
         ref={scrollerRef}
         className={cn(
-          'mb-0 scroll-smooth pr-16 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+          'mb-0 scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
           canScrollLeft && 'pl-14',
-          canScrollRight && 'shadow-[inset_-26px_0_28px_-28px_rgba(103,232,249,0.55)]'
+          canScrollRight && 'pr-14'
         )}
         aria-label="Settings sections. Scroll horizontally for more sections."
       >
@@ -153,11 +153,10 @@ export function SettingsTabsList() {
         <button
           type="button"
           onClick={() => scrollTabs('right')}
-          className="absolute right-1 top-1/2 z-10 inline-flex h-8 items-center gap-1 rounded-lg border border-cyan-400/30 bg-cyan-400/15 px-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-200 shadow-lg shadow-cyan-950/20 backdrop-blur hover:border-cyan-300/50 hover:bg-cyan-400/20 hover:text-cyan-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
-          aria-label="More settings tabs to the right"
+          className="absolute right-1 top-1/2 z-10 inline-flex h-8 w-10 -translate-y-1/2 items-center justify-center rounded-lg border border-surface-200 bg-surface-50/95 text-surface-700 shadow-lg shadow-surface-950/10 backdrop-blur hover:text-surface-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label="Scroll settings tabs right"
         >
-          More
-          <ChevronRight className="h-4 w-4 animate-pulse" />
+          <ChevronRight className="h-4 w-4" />
         </button>
       )}
     </div>
