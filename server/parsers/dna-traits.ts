@@ -1809,7 +1809,7 @@ export const POLYGENIC_SCORES: PolygenicScore[] = [
       { rsid: 'rs1805008', riskAllele: 'T', weight: 2 }, // R160W — strong
       { rsid: 'rs1805009', riskAllele: 'A', weight: 2 }, // D294H — strong
     ],
-    interpret: (score, max, found) => {
+    interpret: (score, _max, found) => {
       if (found < 2) return 'Insufficient MC1R data';
       if (score >= 4) return 'Very likely RED or AUBURN hair (two strong MC1R variants)';
       if (score >= 2)
@@ -1844,7 +1844,7 @@ export const POLYGENIC_SCORES: PolygenicScore[] = [
       { rsid: 'rs6025', riskAllele: 'T', weight: 4 }, // Factor V Leiden
       { rsid: 'rs1799963', riskAllele: 'A', weight: 3 }, // Prothrombin
     ],
-    interpret: (score, max, found) => {
+    interpret: (score, _max, found) => {
       if (found < 2) return 'Incomplete data — need both Factor V and Prothrombin';
       if (score >= 7)
         return 'MULTIPLE clotting risk factors — STRONGLY recommend discussing with hematologist, especially before surgery, long flights, or hormonal medications.';
@@ -1860,7 +1860,7 @@ export const POLYGENIC_SCORES: PolygenicScore[] = [
       { rsid: 'rs762551', riskAllele: 'C', weight: 2 }, // CYP1A2 slow metabolizer
       { rsid: 'rs5751876', riskAllele: 'T', weight: 2 }, // ADORA2A anxiety
     ],
-    interpret: (score, max, found) => {
+    interpret: (score, _max, found) => {
       if (found < 2) return 'Need both CYP1A2 and ADORA2A for full picture';
       if (score >= 6)
         return "CAFFEINE SENSITIVE: slow metabolism + anxiety-prone. You're the person who can't drink coffee after noon and gets jittery from a latte.";
@@ -1896,7 +1896,7 @@ export const POLYGENIC_SCORES: PolygenicScore[] = [
       { rsid: 'rs1061170', riskAllele: 'C', weight: 3 }, // CFH
       { rsid: 'rs10490924', riskAllele: 'T', weight: 3 }, // ARMS2
     ],
-    interpret: (score, max, found) => {
+    interpret: (score, _max, found) => {
       if (found < 2) return 'Need both CFH and ARMS2 for combined risk';
       if (score >= 8)
         return 'HIGH combined AMD risk. Both major pathways affected. Lutein/zeaxanthin supplements, omega-3, UV protection, and not smoking are your best defenses. Start eye exams with retinal imaging.';
@@ -1912,7 +1912,7 @@ export const POLYGENIC_SCORES: PolygenicScore[] = [
       { rsid: 'rs2282679', riskAllele: 'G', weight: 2 }, // GC binding protein
       { rsid: 'rs12785878', riskAllele: 'G', weight: 2 }, // DHCR7 synthesis
     ],
-    interpret: (score, max, found) => {
+    interpret: (score, _max, found) => {
       if (found < 2) return 'Need both SNPs for combined assessment';
       if (score >= 6)
         return 'BOTH synthesis and transport compromised. You likely need vitamin D supplementation year-round, even with sun exposure. Get 25(OH)D levels tested.';

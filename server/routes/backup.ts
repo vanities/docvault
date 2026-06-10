@@ -4,6 +4,7 @@ import { createDecipheriv, scryptSync } from 'crypto';
 import { unzipSync } from 'fflate';
 import { CONFIG_PATH, DATA_DIR, SETTINGS_PATH, jsonResponse } from '../data.js';
 import { createBackupBundle } from '../backup.js';
+import { readJsonBody } from '../http.js';
 
 export async function handleBackupRoutes(req: Request, pathname: string): Promise<Response | null> {
   // GET /api/backup/latest — download the latest auto-generated encrypted backup
@@ -37,7 +38,7 @@ export async function handleBackupRoutes(req: Request, pathname: string): Promis
   // and the scheduler's auto-backup task go through that module.
   if (pathname === '/api/backup' && req.method === 'POST') {
     try {
-      const { password } = await req.json();
+      const { password } = await readJsonBody<{ password?: string }>(req);
       if (!password || typeof password !== 'string' || password.length < 4) {
         return jsonResponse({ error: 'Password must be at least 4 characters' }, 400);
       }

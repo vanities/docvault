@@ -2,35 +2,23 @@
 // Extracted from server/index.ts.
 
 import { promises as fs } from 'fs';
-import path from 'path';
 import {
   loadSettings,
   saveSettings,
   jsonResponse,
   BROKER_CACHE_FILE,
   BROKER_ACTIVITIES_FILE,
-  SIMPLEFIN_CACHE_FILE,
-  DATA_DIR,
 } from '../data.js';
 import {
   buildPortfolio,
-  registerSnapTradeUser,
-  getSnapTradeConnectUrl,
-  fetchAllSnapTradeHoldings,
-  deleteSnapTradeUser,
-  initSnapTrade,
   extractSnapTradeError,
   syncAllSnapTradeActivities,
   type BrokerAccount,
+  type BrokerHolding,
   type SnapTradeConfig,
   type ActivitiesCache,
 } from '../brokers.js';
-import {
-  claimSetupToken,
-  fetchBalances as fetchSimplefinBalances,
-  type SimplefinConfig,
-  type SimplefinBalanceCache,
-} from '../simplefin.js';
+import { readJsonBody } from '../http.js';
 
 export async function handleBrokersRoutes(
   req: Request,
@@ -45,7 +33,12 @@ export async function handleBrokersRoutes(
 
   // POST /api/brokers/accounts — add a new broker account
   if (pathname === '/api/brokers/accounts' && req.method === 'POST') {
-    const body = await req.json();
+    const body = await readJsonBody<{
+      broker?: BrokerAccount['broker'];
+      name?: string;
+      url?: string;
+      overrideValue?: number;
+    }>(req);
     const { broker, name, url, overrideValue } = body;
     if (!broker || !name) {
       return jsonResponse({ error: 'Missing broker or name' }, 400);
@@ -69,7 +62,12 @@ export async function handleBrokersRoutes(
   // PUT /api/brokers/accounts/:id — update account (name, holdings)
   if (pathname.startsWith('/api/brokers/accounts/') && req.method === 'PUT') {
     const accountId = decodeURIComponent(pathname.split('/api/brokers/accounts/')[1]);
-    const body = await req.json();
+    const body = await readJsonBody<{
+      name?: string;
+      url?: string;
+      holdings?: BrokerHolding[];
+      overrideValue?: number | null;
+    }>(req);
     const settings = await loadSettings();
     if (!settings.brokers) return jsonResponse({ error: 'No accounts' }, 404);
     const account = settings.brokers.accounts.find((a) => a.id === accountId);

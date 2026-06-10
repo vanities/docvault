@@ -8,6 +8,7 @@
 
 import { jsonResponse } from '../data.js';
 import { readBrain, writeBrain, appendBrainEntry } from '../brain.js';
+import { readJsonBody } from '../http.js';
 
 export async function handleBrainRoutes(
   req: Request,
@@ -21,7 +22,9 @@ export async function handleBrainRoutes(
       return jsonResponse(await readBrain());
     }
     if (req.method === 'PUT') {
-      const body = await req.json().catch(() => ({}));
+      const body = await readJsonBody<{ content?: string }>(req).catch(
+        (): { content?: string } => ({})
+      );
       if (typeof body.content !== 'string') {
         return jsonResponse({ error: 'content (string) is required' }, 400);
       }
@@ -33,7 +36,9 @@ export async function handleBrainRoutes(
   }
 
   if (pathname === '/api/brain/append' && req.method === 'POST') {
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonBody<{ text?: string; tag?: string }>(req).catch(
+      (): { text?: string; tag?: string } => ({})
+    );
     const text = typeof body.text === 'string' ? body.text : '';
     if (!text.trim()) {
       return jsonResponse({ error: 'text (non-empty string) is required' }, 400);

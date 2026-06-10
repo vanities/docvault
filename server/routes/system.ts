@@ -16,6 +16,7 @@ import {
   sessionCookie,
   sessions,
 } from '../data.js';
+import { readJsonBody } from '../http.js';
 import { isValidTimeZone } from '../tz.js';
 
 export async function handleAuthRoutes(req: Request, pathname: string): Promise<Response | null> {
@@ -24,8 +25,9 @@ export async function handleAuthRoutes(req: Request, pathname: string): Promise<
     if (!AUTH_ENABLED) {
       return jsonResponse({ ok: true, message: 'Auth not enabled' });
     }
-    const body = await req.json();
-    const { username, password } = body;
+    const { username, password } = await readJsonBody<{ username?: string; password?: string }>(
+      req
+    );
     if (username === AUTH_USERNAME && password === AUTH_PASSWORD) {
       const token = createSession();
       const res = jsonResponse({ ok: true });
@@ -147,7 +149,29 @@ export async function handleSettingsRoutes(
 
   // POST /api/settings
   if (pathname === '/api/settings' && req.method === 'POST') {
-    const body = await req.json();
+    const body = await readJsonBody<{
+      clearAnthropicKey?: boolean;
+      anthropicKey?: string;
+      claudeModel?: string;
+      geoapifyApiKey?: string;
+      fredApiKey?: string;
+      congressApiKey?: string;
+      clearAnthropicAuthToken?: boolean;
+      anthropicAuthToken?: string;
+      transcribeUrl?: string;
+      transcribeModel?: string;
+      clearTranscribeApiKey?: boolean;
+      transcribeApiKey?: string;
+      clearOpenaiApiKey?: boolean;
+      openaiApiKey?: string;
+      openaiBaseUrl?: string;
+      modelRouting?: { parsing?: { provider?: unknown; model?: unknown } | null };
+      chat?: unknown;
+      deepResearch?: unknown;
+      dailyNews?: unknown;
+      email?: unknown;
+      weather?: unknown;
+    }>(req);
     const settings = await loadSettings();
 
     if (body.clearAnthropicKey) {

@@ -45,8 +45,15 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { randomUUID } from 'crypto';
 import { createRequire } from 'module';
-import { createSdkMcpServer, query, tool, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import {
+  createSdkMcpServer,
+  query,
+  tool,
+  type SDKMessage,
+  type SDKUserMessage,
+} from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
+import { readJsonBody } from '../http.js';
 import {
   DATA_DIR,
   jsonResponse,
@@ -520,7 +527,7 @@ async function invokeRoute(
     init.headers = { 'Content-Type': 'application/json' };
     init.body = JSON.stringify(body);
   }
-  const req = new Request(url, init);
+  const req = new Request(url.toString(), init);
   const resp = await handler(req, url, url.pathname);
   if (!resp) {
     return { status: 500, data: { error: `No handler matched ${method} ${routePath}` } };
@@ -1550,11 +1557,7 @@ async function buildUserMessageContent(
   text: string,
   chatId: string | undefined,
   attachments: IncomingAttachment[]
-): Promise<
-  | string
-  | AsyncIterable<{ type: 'user'; message: { role: 'user'; content: unknown } }>
-  | { error: string }
-> {
+): Promise<string | AsyncIterable<SDKUserMessage> | { error: string }> {
   if (attachments.length === 0 || !chatId) return text;
 
   const blocks: Array<Record<string, unknown>> = [];
@@ -1567,10 +1570,12 @@ async function buildUserMessageContent(
   if (blocks.length === 0) return text;
 
   return (async function* () {
+    // The SDK's declared SDKUserMessage requires parent_tool_use_id, but the
+    // runtime accepts messages without it — cast rather than alter the payload.
     yield {
       type: 'user' as const,
       message: { role: 'user' as const, content: blocks },
-    };
+    } as unknown as SDKUserMessage;
   })();
 }
 
@@ -1594,7 +1599,7 @@ export async function handleChatRoutes(
     attachments?: IncomingAttachment[];
   };
   try {
-    body = await req.json();
+    body = await readJsonBody<typeof body>(req);
   } catch {
     return jsonResponse({ error: 'Invalid JSON body' }, 400);
   }

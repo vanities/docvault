@@ -19,13 +19,7 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import {
-  DATA_DIR,
-  loadReminders,
-  jsonResponse,
-  type HealthPerson,
-  type Reminder,
-} from '../data.js';
+import { DATA_DIR, loadReminders, jsonResponse, type Reminder } from '../data.js';
 import {
   loadHealthStore,
   type NutritionEntry,
@@ -33,7 +27,6 @@ import {
   type SicknessLog,
   type IllnessNote,
 } from '../health-store.js';
-import type { AppleHealthSummary } from '../parsers/apple-health.js';
 import {
   SNAPSHOT_SCHEMA_VERSION,
   type PersonSnapshots,
@@ -61,17 +54,16 @@ function isHealthReminder(r: Reminder): boolean {
   return HEALTH_KEYWORD_RE.test(r.title) || (r.notes ? HEALTH_KEYWORD_RE.test(r.notes) : false);
 }
 
-/** Pick the most recent "<personId>/<filename>" key from a store record. */
-function latestKeyFor(
-  personId: string,
-  record: Record<string, { generatedAt?: string }>
-): string | null {
+/** Pick the most recent "<personId>/<filename>" key from a store record.
+ *  Values without a `generatedAt` (e.g. AppleHealthSummary) fall back to
+ *  key-descending order. */
+function latestKeyFor(personId: string, record: Record<string, object>): string | null {
   const prefix = `${personId}/`;
   const keys = Object.keys(record).filter((k) => k.startsWith(prefix));
   if (keys.length === 0) return null;
   keys.sort((a, b) => {
-    const ga = record[a]?.generatedAt ?? '';
-    const gb = record[b]?.generatedAt ?? '';
+    const ga = (record[a] as { generatedAt?: string } | undefined)?.generatedAt ?? '';
+    const gb = (record[b] as { generatedAt?: string } | undefined)?.generatedAt ?? '';
     if (ga !== gb) return gb.localeCompare(ga);
     return b.localeCompare(a);
   });

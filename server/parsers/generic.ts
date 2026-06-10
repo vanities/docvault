@@ -3,7 +3,7 @@
 // This file preserves the exact behavior of the original parseWithAI() function.
 
 import type { ParsedTaxDocument } from './pdf.js';
-import type { DocumentParser, ValidationResult } from './base.js';
+import type { DocumentParser } from './base.js';
 import {
   readFileAsBase64,
   buildFileContent,

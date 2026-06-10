@@ -10,6 +10,7 @@
 //        → the filled PDF (application/pdf, attachment)
 
 import { loadConfig, jsonResponse } from '../data.js';
+import { readJsonBody } from '../http.js';
 import { decodeForm, suggestFormValues } from '../pdf-form-decode.js';
 import { fillFormFields, hasFormFields, type FillValue } from '../pdf-forms.js';
 import { createLogger } from '../logger.js';
@@ -82,7 +83,9 @@ export async function handleFormsRoutes(
 
   // POST /api/forms/fill  { pdfBase64, values, flatten? }
   if (pathname === '/api/forms/fill' && req.method === 'POST') {
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonBody<{ pdfBase64?: string; values?: unknown; flatten?: boolean }>(
+      req
+    ).catch((): { pdfBase64?: string; values?: unknown; flatten?: boolean } => ({}));
     if (!body.pdfBase64 || typeof body.pdfBase64 !== 'string') {
       return jsonResponse({ error: 'pdfBase64 is required' }, 400);
     }

@@ -5,20 +5,15 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { zipSync } from 'fflate';
 import {
-  DATA_DIR,
-  loadConfig,
   loadParsedData,
   loadMetadata,
-  loadSalesData,
-  loadMileageData,
-  loadContributions,
   getEntityPath,
   scanDirectory,
   resolveUnder,
   jsonResponse,
   corsHeaders,
 } from '../data.js';
-import type { EntityConfig, FileInfo, ParsedData, Contribution401k } from '../data.js';
+import type { FileInfo } from '../data.js';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('Downloads');
@@ -73,7 +68,7 @@ async function addFileToZip(
 
 export async function handleDownloadRoutes(
   req: Request,
-  url: URL,
+  _url: URL,
   pathname: string
 ): Promise<Response | null> {
   // POST /api/download/zip - Download filtered files as a zip archive

@@ -10,10 +10,11 @@
     "build": "tsc -b && vp build",
     "lint": "vp lint .",
     "lint:fix": "vp lint . --fix",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -b",
     "format": "vp fmt .",
     "format:check": "vp fmt --check .",
-    "check": "bun run typecheck && bun run lint && bun run format:check",
+    "smoke:server": "bun build server/index.ts --target bun --outfile node_modules/.tmp/server-smoke.js",
+    "check": "bun run typecheck && bun run smoke:server && bun run lint && bun run format:check",
     "test": "vp test",
     "preview": "vp preview",
     "prepare": "vp config"
@@ -49,6 +50,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.2",
+    "@types/bun": "^1.3.14",
     "@types/node": "^24.12.0",
     "@types/plist": "^3.0.5",
     "@types/react": "^19.2.14",

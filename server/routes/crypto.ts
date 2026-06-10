@@ -4,7 +4,9 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { loadSettings, saveSettings, jsonResponse, CRYPTO_CACHE_FILE, DATA_DIR } from '../data.js';
+import type { CryptoExchangeConfig, CryptoWalletConfig } from '../data.js';
 import { fetchAllBalances, fetchSourceBalance, fetchCryptoGains } from '../crypto.js';
+import { readJsonBody } from '../http.js';
 
 export async function handleCryptoRoutes(
   req: Request,
@@ -37,7 +39,28 @@ export async function handleCryptoRoutes(
 
   // POST /api/crypto/settings — save exchange keys and wallet addresses
   if (pathname === '/api/crypto/settings' && req.method === 'POST') {
-    const body = await req.json();
+    const body = await readJsonBody<{
+      addExchange?: {
+        id?: CryptoExchangeConfig['id'];
+        apiKey?: string;
+        apiSecret?: string;
+        passphrase?: string;
+      };
+      removeExchange?: string;
+      toggleExchange?: string;
+      addWallet?: { address?: string; chain?: CryptoWalletConfig['chain']; label?: string };
+      removeWallet?: string;
+      addManualHolding?: { asset?: string; amount?: number; label?: string; note?: string };
+      updateManualHolding?: {
+        id?: string;
+        asset?: string;
+        amount?: number;
+        label?: string;
+        note?: string;
+      };
+      removeManualHolding?: string;
+      etherscanKey?: string;
+    }>(req);
     const settings = await loadSettings();
 
     if (!settings.crypto) {
@@ -266,7 +289,7 @@ export async function handleCryptoRoutes(
       return jsonResponse({ error: 'No exchanges configured' }, 400);
     }
 
-    const cached = searchParams.get('cached');
+    const cached = url.searchParams.get('cached');
     const GAINS_CACHE_FILE = path.join(DATA_DIR, '.docvault-crypto-gains.json');
 
     // Return cached if available and requested
@@ -280,7 +303,7 @@ export async function handleCryptoRoutes(
     }
 
     // Stream progress or compute directly
-    const stream = searchParams.get('stream') === '1';
+    const stream = url.searchParams.get('stream') === '1';
     if (stream) {
       return new Response(
         new ReadableStream({

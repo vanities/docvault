@@ -1,13 +1,13 @@
 // Sales route handlers.
 // Extracted from server/index.ts.
 
-import { promises as fs } from 'fs';
-import path from 'path';
 import { loadSalesData, saveSalesData, jsonResponse } from '../data.js';
+import type { Sale, SaleProduct } from '../data.js';
+import { readJsonBody } from '../http.js';
 
 export async function handleSalesRoutes(
   req: Request,
-  url: URL,
+  _url: URL,
   pathname: string
 ): Promise<Response | null> {
   // ========================================================================
@@ -22,7 +22,7 @@ export async function handleSalesRoutes(
 
   // POST /api/sales - Create a new sale
   if (pathname === '/api/sales' && req.method === 'POST') {
-    const body = await req.json();
+    const body = await readJsonBody<Partial<Sale>>(req);
     const { person, productId, quantity, date, entity } = body;
 
     if (!person || !productId) {
@@ -56,7 +56,7 @@ export async function handleSalesRoutes(
   const saleUpdateMatch = pathname.match(/^\/api\/sales\/([^/]+)$/);
   if (saleUpdateMatch && req.method === 'PUT') {
     const saleId = saleUpdateMatch[1];
-    const body = await req.json();
+    const body = await readJsonBody<Partial<Sale>>(req);
     const data = await loadSalesData();
     const sale = data.sales.find((s: Sale) => s.id === saleId);
     if (!sale) {
@@ -95,7 +95,7 @@ export async function handleSalesRoutes(
 
   // POST /api/sales/products - Add a new product
   if (pathname === '/api/sales/products' && req.method === 'POST') {
-    const body = await req.json();
+    const body = await readJsonBody<Partial<SaleProduct>>(req);
     const { name, price } = body;
 
     if (!name || price === undefined) {
@@ -118,7 +118,7 @@ export async function handleSalesRoutes(
   const productUpdateMatch = pathname.match(/^\/api\/sales\/products\/([^/]+)$/);
   if (productUpdateMatch && req.method === 'PUT') {
     const productId = productUpdateMatch[1];
-    const body = await req.json();
+    const body = await readJsonBody<Partial<SaleProduct>>(req);
     const data = await loadSalesData();
     const product = data.products.find((p: SaleProduct) => p.id === productId);
     if (!product) {

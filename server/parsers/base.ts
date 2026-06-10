@@ -5,7 +5,6 @@ import { promises as fs } from 'fs';
 import Anthropic from '@anthropic-ai/sdk';
 import sharp from 'sharp';
 import type { ParsedTaxDocument } from './pdf.js';
-import type { ParserMetadata } from './schemas/index.js';
 import { getAnthropicKey, getAnthropicAuthToken, getParsingModel } from '../data.js';
 import { openaiComplete } from '../llm/openai.js';
 import { withAILimit } from '../aiLimiter.js';

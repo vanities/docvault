@@ -8,6 +8,7 @@ import {
   jsonResponse,
 } from '../data.js';
 import type { AccountAnnotation } from '../data.js';
+import { readJsonBody } from '../http.js';
 
 export async function handleAccountAnnotationRoutes(
   req: Request,
@@ -49,7 +50,7 @@ export async function handleAccountAnnotationRoutes(
   const updateMatch = pathname.match(/^\/api\/account-annotations\/([^/]+)$/);
   if (updateMatch && req.method === 'PUT') {
     const accountId = decodeURIComponent(updateMatch[1]);
-    const body: AccountAnnotation = await req.json();
+    const body = await readJsonBody<AccountAnnotation>(req);
 
     const annotations = await loadAccountAnnotations();
     annotations[accountId] = {

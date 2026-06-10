@@ -6,6 +6,7 @@
 //   DELETE /api/deep-research/:id     → remove a run
 
 import { jsonResponse } from '../data.js';
+import { readJsonBody } from '../http.js';
 import { startResearchRun, getRun, listRuns, deleteRun } from '../deep-research-store.js';
 import { renderReportHtml } from '../deep-research-report.js';
 
@@ -18,7 +19,9 @@ export async function handleDeepResearchRoutes(
 
   // POST /api/deep-research/run — start a run, return its id immediately
   if (pathname === '/api/deep-research/run' && req.method === 'POST') {
-    const body = await req.json().catch(() => ({}));
+    const body = await readJsonBody<{ question?: unknown; maxSearches?: unknown }>(req).catch(
+      (): { question?: unknown; maxSearches?: unknown } => ({})
+    );
     const question = typeof body.question === 'string' ? body.question.trim() : '';
     if (!question) return jsonResponse({ error: 'question is required' }, 400);
     const requested = typeof body.maxSearches === 'number' ? body.maxSearches : 18;

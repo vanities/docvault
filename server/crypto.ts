@@ -203,7 +203,7 @@ export async function fetchPrices(assets: string[]): Promise<Record<string, numb
       return priceCache;
     }
 
-    const data = await res.json();
+    const data = (await res.json()) as Record<string, { usd?: number } | undefined>;
 
     // Build reverse map: UPPERCASE symbol -> price
     // Then also map original-case symbols so lookups work either way
@@ -449,7 +449,7 @@ async function fetchGeminiBalances(config: ExchangeConfig): Promise<Balance[]> {
     throw new Error(`Gemini API error ${res.status}: ${text}`);
   }
 
-  const data = await res.json();
+  const data = (await res.json()) as { amount?: string; currency?: string }[];
   const balances: Balance[] = [];
 
   for (const entry of data) {
@@ -597,8 +597,8 @@ async function krakenPrivatePost(
     const text = await res.text();
     throw new Error(`Kraken API error ${res.status}: ${text}`);
   }
-  const data = await res.json();
-  if (data.error?.length > 0) {
+  const data = (await res.json()) as { error?: string[]; result?: unknown };
+  if (data.error && data.error.length > 0) {
     throw new Error(`Kraken: ${data.error.join(', ')}`);
   }
   return data.result;
@@ -695,7 +695,9 @@ async function fetchBtcBalance(address: string): Promise<Balance[]> {
     throw new Error(`Blockstream API error ${res.status}`);
   }
 
-  const data = await res.json();
+  const data = (await res.json()) as {
+    chain_stats?: { funded_txo_sum?: number; spent_txo_sum?: number };
+  };
   // Balance in satoshis: funded - spent
   const funded = data.chain_stats?.funded_txo_sum || 0;
   const spent = data.chain_stats?.spent_txo_sum || 0;
@@ -1037,7 +1039,17 @@ async function fetchCoinbaseTrades(config: ExchangeConfig): Promise<CryptoTrade[
     });
 
     if (!res.ok) break;
-    const data = await res.json();
+    const data = (await res.json()) as {
+      fills?: {
+        product_id?: string;
+        price?: string;
+        size?: string;
+        commission?: string;
+        side?: string;
+        trade_time?: string;
+      }[];
+      cursor?: string;
+    };
 
     for (const fill of data.fills || []) {
       const productId = fill.product_id || ''; // e.g. "BTC-USD"
@@ -1130,7 +1142,14 @@ async function fetchGeminiTrades(config: ExchangeConfig): Promise<CryptoTrade[]>
         logGeminiTrades.warn(`${symbol}: HTTP ${res.status}`);
         continue;
       }
-      const data = await res.json();
+      const data = (await res.json()) as {
+        price?: string;
+        amount?: string;
+        fee_amount?: string;
+        type?: string;
+        timestampms?: number;
+        timestamp: number;
+      }[];
 
       // Extract base asset from symbol (e.g. "btcusd" -> "BTC")
       const base = symbol.replace(/usd$/, '').toUpperCase();
@@ -1192,8 +1211,11 @@ async function fetchKrakenTrades(config: ExchangeConfig): Promise<CryptoTrade[]>
     });
 
     if (!res.ok) break;
-    const data = await res.json();
-    if (data.error?.length > 0) break;
+    const data = (await res.json()) as {
+      error?: string[];
+      result?: { trades?: Record<string, unknown> };
+    };
+    if (data.error && data.error.length > 0) break;
 
     const tradeEntries = Object.values(data.result?.trades || {}) as any[];
     if (tradeEntries.length === 0) break;

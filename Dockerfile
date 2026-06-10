@@ -17,7 +17,7 @@ COPY --from=deps /app/node_modules ./node_modules
 RUN bun install --frozen-lockfile --ignore-scripts
 
 # Copy source and build frontend
-COPY tsconfig.json tsconfig.app.json tsconfig.node.json ./
+COPY tsconfig.json tsconfig.app.json tsconfig.node.json tsconfig.server.json ./
 COPY vite.config.ts ./
 COPY index.html ./
 COPY public/ ./public/

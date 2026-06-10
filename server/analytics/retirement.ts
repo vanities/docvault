@@ -1,6 +1,6 @@
 // Retirement contribution aggregation.
 
-import type { RetirementItem, ParsedData, DocumentMetadata } from './types.js';
+import type { ParsedData, DocumentMetadata } from './types.js';
 import type { FileInfo } from './income.js';
 import { extractRetirement } from './extractors.js';
 
