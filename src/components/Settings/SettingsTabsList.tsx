@@ -106,7 +106,7 @@ export function SettingsTabsList() {
         </TabsTrigger>
         <TabsTrigger value="brain">
           <Brain className="w-3.5 h-3.5" />
-          Brain
+          Brain &amp; Skills
         </TabsTrigger>
         <TabsTrigger value="status">
           <Activity className="w-3.5 h-3.5" />

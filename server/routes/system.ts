@@ -15,9 +15,28 @@ import {
   saveSettings,
   sessionCookie,
   sessions,
+  type ModelEffort,
 } from '../data.js';
 import { readJsonBody } from '../http.js';
 import { isValidTimeZone } from '../tz.js';
+
+const EFFORT_LEVELS = new Set(['minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
+
+function effortOf(v: unknown): ModelEffort | undefined {
+  return typeof v === 'string' && EFFORT_LEVELS.has(v) ? (v as ModelEffort) : undefined;
+}
+
+/** Validate a posted {provider, model, effort?} ref; null = invalid/absent. */
+function modelRefOf(
+  ref: unknown
+): { provider: 'anthropic' | 'openai'; model: string; effort?: ModelEffort } | null {
+  if (!ref || typeof ref !== 'object') return null;
+  const r = ref as { provider?: unknown; model?: unknown; effort?: unknown };
+  if (r.provider !== 'anthropic' && r.provider !== 'openai') return null;
+  if (typeof r.model !== 'string' || !r.model.trim()) return null;
+  const effort = effortOf(r.effort);
+  return { provider: r.provider, model: r.model.trim(), ...(effort ? { effort } : {}) };
+}
 
 export async function handleAuthRoutes(req: Request, pathname: string): Promise<Response | null> {
   // --- Auth: login endpoint ---
@@ -261,25 +280,23 @@ export async function handleSettingsRoutes(
       settings.modelRouting = settings.modelRouting ?? {};
       for (const scope of ['parsing'] as const) {
         const ref = body.modelRouting[scope];
+        const parsed = modelRefOf(ref);
         if (ref === null) {
           delete settings.modelRouting[scope];
-        } else if (
-          ref &&
-          (ref.provider === 'anthropic' || ref.provider === 'openai') &&
-          typeof ref.model === 'string' &&
-          ref.model.trim()
-        ) {
-          settings.modelRouting[scope] = { provider: ref.provider, model: ref.model.trim() };
+        } else if (parsed) {
+          settings.modelRouting[scope] = parsed;
         }
       }
     }
 
-    // Chat agent backend (claude | codex) + codex model/home/binary.
+    // Chat agent backend (claude | codex) + per-backend effort + codex model/home/binary.
     if (body.chat && typeof body.chat === 'object') {
       settings.chat = settings.chat ?? {};
       const c = body.chat as {
         backend?: unknown;
+        claudeEffort?: unknown;
         codexModel?: unknown;
+        codexEffort?: unknown;
         codexHome?: unknown;
         codexBinary?: unknown;
       };
@@ -287,6 +304,15 @@ export async function handleSettingsRoutes(
       for (const k of ['codexModel', 'codexHome', 'codexBinary'] as const) {
         const v = c[k];
         if (typeof v === 'string') settings.chat[k] = v.trim() || undefined;
+      }
+      // '' clears the effort back to the provider default; invalid values are ignored.
+      for (const k of ['claudeEffort', 'codexEffort'] as const) {
+        const v = c[k];
+        if (v === '') delete settings.chat[k];
+        else {
+          const e = effortOf(v);
+          if (e) settings.chat[k] = e;
+        }
       }
     }
 
@@ -297,16 +323,11 @@ export async function handleSettingsRoutes(
       if (dr.mode === 'agent' || dr.mode === 'api') settings.deepResearch.mode = dr.mode;
       if (dr.agentBackend === 'claude' || dr.agentBackend === 'codex')
         settings.deepResearch.agentBackend = dr.agentBackend;
-      const ref = dr.model as { provider?: unknown; model?: unknown } | null | undefined;
-      if (ref === null) {
+      const parsed = modelRefOf(dr.model);
+      if (dr.model === null) {
         delete settings.deepResearch.model;
-      } else if (
-        ref &&
-        (ref.provider === 'anthropic' || ref.provider === 'openai') &&
-        typeof ref.model === 'string' &&
-        ref.model.trim()
-      ) {
-        settings.deepResearch.model = { provider: ref.provider, model: ref.model.trim() };
+      } else if (parsed) {
+        settings.deepResearch.model = parsed;
       }
     }
 
@@ -325,16 +346,11 @@ export async function handleSettingsRoutes(
       if (dn.mode === 'agent' || dn.mode === 'api') settings.dailyNews.mode = dn.mode;
       if (dn.agentBackend === 'claude' || dn.agentBackend === 'codex')
         settings.dailyNews.agentBackend = dn.agentBackend;
-      const ref = dn.model as { provider?: unknown; model?: unknown } | null | undefined;
-      if (ref === null) {
+      const parsed = modelRefOf(dn.model);
+      if (dn.model === null) {
         delete settings.dailyNews.model;
-      } else if (
-        ref &&
-        (ref.provider === 'anthropic' || ref.provider === 'openai') &&
-        typeof ref.model === 'string' &&
-        ref.model.trim()
-      ) {
-        settings.dailyNews.model = { provider: ref.provider, model: ref.model.trim() };
+      } else if (parsed) {
+        settings.dailyNews.model = parsed;
       }
       if (typeof dn.title === 'string') {
         const t = dn.title.trim();

@@ -56,6 +56,8 @@ scripts/*
 **/*.spec.tsx
 # Exception: Politics dashboard tests use synthetic congressional payloads, no personal data
 !src/components/Politics/politicsData.test.ts
+# Exception: skill-trigger tests are pure string logic with fabricated skill names, no personal data
+!src/utils/skillTrigger.test.ts
 # Exception: quant math tests are pure computation, no personal data
 !server/routes/quant.test.ts
 # Exception: crypto-keys tests are pure crypto primitives, no personal data
@@ -80,6 +82,8 @@ scripts/*
 !server/prediction-markets.test.ts
 # Exception: chat-threads store tests use fabricated thread fixtures in a tmpdir, no personal data
 !server/chat-threads-store.test.ts
+# Exception: skills store tests use fabricated SKILL.md fixtures in a tmpdir, no personal data
+!server/skills.test.ts
 # Exception: index security tests use synthetic entity fixtures in a tmpdir, no personal data
 !server/index.security.test.ts
 # Exception: health ingest security tests use synthetic person fixtures in a tmpdir, no personal data

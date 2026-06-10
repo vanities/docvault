@@ -67,6 +67,9 @@ import {
   scanDirectory,
   getEntityPath,
   getClaudeModel,
+  getClaudeChatEffort,
+  toClaudeAgentEffort,
+  toOpenAIEffort,
   getChatBackend,
   getCodexChatConfig,
   getAnthropicKey,
@@ -79,6 +82,7 @@ import {
   type ParsedData,
 } from '../data.js';
 import { runCodexChat } from '../llm/codex-chat.js';
+import { ensureSkillsPluginDir, buildSkillsPromptBlock } from '../skills.js';
 import { loadHealthStore } from '../health-store.js';
 import { searchMarkdown, readSourceFile, listSourceFiles } from '../external-sources.js';
 import { readBrain, readBrainContent, appendBrainEntry } from '../brain.js';
@@ -197,7 +201,12 @@ const TOOL_NAMES = [
 // lets the chat research products/brands/citations while reasoning about the
 // user's existing data — necessary for the "recommend a creatine brand" use
 // case the chat is designed for.
-const ALLOWED_BUILTIN_TOOLS = ['WebSearch'] as const;
+// Skill is allow-listed too: it lets the model invoke user-authored skills
+// from DATA_DIR/skills (mirrored into a local plugin per turn). Our
+// canUseTool callback denies anything outside ALLOWED_TOOLS, so the Skill
+// tool must be listed here even though the SDK's `skills` option normally
+// self-enables it.
+const ALLOWED_BUILTIN_TOOLS = ['WebSearch', 'Skill'] as const;
 const ALLOWED_TOOLS: string[] = [
   ...TOOL_NAMES.map((n) => `mcp__${MCP_SERVER_NAME}__${n}`),
   ...ALLOWED_BUILTIN_TOOLS,
@@ -1688,13 +1697,21 @@ export async function handleChatRoutes(
   }
 
   const model = await getClaudeModel();
+  const effort = toClaudeAgentEffort(await getClaudeChatEffort());
+  // User-authored skills (DATA_DIR/skills) ride along as a local plugin —
+  // null when none exist, in which case the plugins/skills options are
+  // omitted entirely and chat behaves exactly as before.
+  const skillsPlugin = await ensureSkillsPluginDir();
   const config = await loadConfig();
   const ctx: ToolContext = { config };
   // When resuming, the SDK already has the full conversation in its session
   // JSONL — no need to fold prior turns into the system prompt. For brand-new
   // sessions, history is empty anyway (this is the first turn), so dropping
   // the fold is a no-op there too.
-  const systemPrompt = buildSystemPrompt(body.entity, await readBrainContent());
+  const skillsNote = skillsPlugin
+    ? `\n\nInstalled skills: ${skillsPlugin.skillNames.map((n) => `$${n}`).join(', ')}. A $name token in a user message refers to that skill — invoke the matching Skill tool when one is mentioned or clearly relevant.`
+    : '';
+  const systemPrompt = buildSystemPrompt(body.entity, await readBrainContent()) + skillsNote;
   const mcpServer = buildDocVaultMcpServer(ctx);
 
   // If attachments came in this turn, we switch from the simple
@@ -1760,6 +1777,16 @@ export async function handleChatRoutes(
             // behavior from the preset.
             systemPrompt: { type: 'preset', preset: 'claude_code', append: systemPrompt },
             ...(resumeSessionId ? { resume: resumeSessionId } : {}),
+            // Reasoning effort from Settings → Models (unset = model default).
+            ...(effort ? { effort } : {}),
+            // Skills load through the plugin mechanism; `skills: 'all'`
+            // enables every skill the plugin ships (named docvault:<name>).
+            ...(skillsPlugin
+              ? {
+                  plugins: [{ type: 'local' as const, path: skillsPlugin.path }],
+                  skills: 'all' as const,
+                }
+              : {}),
             // Disable every built-in Claude Code tool — the chat must NOT
             // be able to Bash/Read/Edit files on the NAS. Only DocVault's
             // MCP tools below should be reachable.
@@ -1896,7 +1923,12 @@ function streamCodexChat(opts: {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const systemPrompt = buildSystemPrompt(opts.entity, await readBrainContent());
+      // Codex has no Skill tool — skills ride in via the system prompt: the
+      // catalog is always listed, and a $mention inlines that skill's full
+      // instructions for this turn (see buildSkillsPromptBlock).
+      const systemPrompt =
+        buildSystemPrompt(opts.entity, await readBrainContent()) +
+        (await buildSkillsPromptBlock(opts.userText));
       const send = (event: object) => {
         try {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
@@ -1909,6 +1941,7 @@ function streamCodexChat(opts: {
         await runCodexChat({
           userText: opts.userText,
           model: cfg.model,
+          effort: toOpenAIEffort(cfg.effort),
           systemPrompt,
           codexHome: cfg.codexHome,
           binaryPath: cfg.binaryPath,

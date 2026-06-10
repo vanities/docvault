@@ -56,6 +56,8 @@ export interface CodexChatOptions {
   userText: string;
   /** Codex model slug; omit to let codex pick its account/plan default. */
   model?: string;
+  /** Reasoning effort for this turn; omit for the account/plan default. */
+  effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
   /** DocVault domain instructions, passed as codex developerInstructions. */
   systemPrompt: string;
   /** CODEX_HOME — dir with auth.json (from `codex login`). Default: codex's own. */
@@ -126,7 +128,7 @@ export async function runCodexChat(opts: CodexChatOptions): Promise<void> {
       { type: 'text', text: opts.userText },
       ...(opts.images ?? []).map((img) => ({ type: 'image' as const, url: img.url })),
     ];
-    await client.startTurn({ threadId, input });
+    await client.startTurn({ threadId, input, ...(opts.effort ? { effort: opts.effort } : {}) });
     // Streaming + completion arrive via notifications; finish() resolves this.
     await donePromise;
   } catch (err) {

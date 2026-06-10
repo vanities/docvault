@@ -18,6 +18,7 @@ import {
   MessageCircle,
   ChevronDown,
   ChevronRight,
+  GraduationCap,
   Settings as SettingsIcon,
   Paperclip,
   X,
@@ -32,7 +33,20 @@ import { useToast } from '../../hooks/useToast';
 import { useVoiceRecorder } from '../../hooks/useVoiceRecorder';
 import { API_BASE } from '../../constants';
 import { uuidV4 } from '../../utils/uuid';
+import {
+  detectSkillTrigger,
+  filterSkills,
+  insertSkillMention,
+  splitSkillTokens,
+  type SkillTrigger,
+} from '../../utils/skillTrigger';
 import { SafeMarkdown } from '../common/SafeMarkdown';
+
+/** Installed chat skill (from GET /api/skills) — drives $mention suggestions. */
+interface ChatSkill {
+  name: string;
+  description: string;
+}
 
 interface AssistantTextBlock {
   type: 'text';
@@ -215,11 +229,29 @@ function ToolCallCard({ block }: { block: AssistantToolCallBlock }) {
 // Message bubbles
 // ---------------------------------------------------------------------------
 
-function UserBubble({ content }: { content: string }) {
+function UserBubble({ content, skillNames }: { content: string; skillNames: string[] }) {
+  // $skill-name mentions render as chips (only for installed skills — `$400`
+  // and unknown tokens stay plain text). Mirrors t3code's SkillInlineText.
+  const segments = splitSkillTokens(content, skillNames);
   return (
     <div className="flex justify-end">
       <div className="max-w-[85%] md:max-w-[75%] px-4 py-2.5 rounded-2xl rounded-br-md bg-accent-500/15 text-surface-950 border border-accent-500/20">
-        <div className="whitespace-pre-wrap text-[14px] leading-relaxed">{content}</div>
+        <div className="whitespace-pre-wrap text-[14px] leading-relaxed">
+          {segments.map((seg, i) =>
+            seg.type === 'text' ? (
+              <span key={i}>{seg.text}</span>
+            ) : (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1 align-middle rounded-md border border-fuchsia-500/25 bg-fuchsia-500/10 px-1.5 py-px text-[12px] font-medium text-fuchsia-600 dark:text-fuchsia-300"
+                title={`Skill: ${seg.name}`}
+              >
+                <GraduationCap className="w-3 h-3" />
+                {seg.name}
+              </span>
+            )
+          )}
+        </div>
       </div>
     </div>
   );
@@ -333,10 +365,12 @@ function Composer({
   onSend,
   onStop,
   pending,
+  skills,
 }: {
   onSend: (text: string, attachments: ComposerAttachment[]) => void;
   onStop: () => void;
   pending: boolean;
+  skills: ChatSkill[];
 }) {
   const { addToast } = useToast();
   const { setActiveView } = useAppContext();
@@ -349,6 +383,44 @@ function Composer({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const previewUrlsRef = useRef(new Set<string>());
+
+  // $skill mention menu — live while the caret sits in a `$...` token.
+  const [skillMention, setSkillMention] = useState<SkillTrigger | null>(null);
+  const [skillIndex, setSkillIndex] = useState(0);
+  const skillMatches = useMemo(
+    () => (skillMention ? filterSkills(skills, skillMention.query).slice(0, 8) : []),
+    [skillMention, skills]
+  );
+  // Keep the highlighted row in range as the match list narrows.
+  useEffect(() => {
+    setSkillIndex((i) => Math.min(i, Math.max(0, skillMatches.length - 1)));
+  }, [skillMatches.length]);
+
+  const updateSkillMention = useCallback(
+    (value: string, cursor: number) => {
+      setSkillMention(skills.length > 0 ? detectSkillTrigger(value, cursor) : null);
+    },
+    [skills.length]
+  );
+
+  const applySkillMention = useCallback(
+    (name: string) => {
+      if (!skillMention) return;
+      const { text: nextText, cursor } = insertSkillMention(text, skillMention, name);
+      setText(nextText);
+      setSkillMention(null);
+      setSkillIndex(0);
+      // Restore focus + caret after React applies the new value.
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (el) {
+          el.focus();
+          el.setSelectionRange(cursor, cursor);
+        }
+      });
+    },
+    [skillMention, text]
+  );
 
   const revokePreviewUrl = useCallback((url: string | undefined) => {
     if (!url) return;
@@ -407,6 +479,7 @@ function Composer({
     for (const a of attachments) revokePreviewUrl(a.previewUrl);
     setText('');
     setAttachments([]);
+    setSkillMention(null);
   };
 
   const handleAttachClick = () => {
@@ -514,7 +587,44 @@ function Composer({
 
   return (
     <div className="border-t border-border bg-surface-50/95 backdrop-blur supports-[backdrop-filter]:bg-surface-50/80 pb-[env(safe-area-inset-bottom)]">
-      <div className="px-3 pt-2 pb-3 max-w-3xl mx-auto">
+      <div className="relative px-3 pt-2 pb-3 max-w-3xl mx-auto">
+        {skillMention && skillMatches.length > 0 && (
+          <div className="absolute bottom-full left-3 right-3 mb-1 z-20 rounded-xl border border-border/60 bg-surface-0 shadow-lg overflow-hidden">
+            <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-surface-500">
+              Skills
+            </p>
+            <ul className="max-h-56 overflow-y-auto pb-1">
+              {skillMatches.map((skill, i) => (
+                <li key={skill.name}>
+                  <button
+                    type="button"
+                    // mousedown (not click) so the textarea never loses focus.
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      applySkillMention(skill.name);
+                    }}
+                    onMouseEnter={() => setSkillIndex(i)}
+                    className={`w-full text-left px-3 py-1.5 flex items-start gap-2 ${
+                      i === skillIndex ? 'bg-fuchsia-500/10' : ''
+                    }`}
+                  >
+                    <GraduationCap className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-fuchsia-500/80" />
+                    <span className="min-w-0">
+                      <span className="block text-[13px] font-mono font-medium text-surface-900">
+                        ${skill.name}
+                      </span>
+                      {skill.description && (
+                        <span className="block text-[11px] text-surface-600 truncate">
+                          {skill.description}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {isRecording && (
           <div className="mb-2 flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-danger-500/10 border border-danger-500/20">
             <div className="flex items-center gap-2 text-[13px] text-danger-400">
@@ -585,8 +695,39 @@ function Composer({
           <textarea
             ref={textareaRef}
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              updateSkillMention(e.target.value, e.target.selectionStart ?? e.target.value.length);
+            }}
+            onSelect={(e) => {
+              // Caret moves (click, arrows) open/close the $skill menu too.
+              const el = e.currentTarget;
+              updateSkillMention(el.value, el.selectionStart ?? el.value.length);
+            }}
             onKeyDown={(e) => {
+              // The $skill menu captures navigation keys while open.
+              if (skillMention && skillMatches.length > 0) {
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setSkillIndex((i) => (i + 1) % skillMatches.length);
+                  return;
+                }
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setSkillIndex((i) => (i - 1 + skillMatches.length) % skillMatches.length);
+                  return;
+                }
+                if (e.key === 'Enter' || e.key === 'Tab') {
+                  e.preventDefault();
+                  applySkillMention(skillMatches[skillIndex].name);
+                  return;
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setSkillMention(null);
+                  return;
+                }
+              }
               if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
                 // Send on Enter on desktop only — mobile keyboards put a
                 // newline by default and "send" via the visible button.
@@ -736,6 +877,25 @@ export function ChatView() {
   const { addToast } = useToast();
   const [pending, setPending] = useState(false);
   const [credentialsOk, setCredentialsOk] = useState<boolean | null>(null);
+  // Installed skills — composer $mention suggestions + chip rendering in
+  // sent messages. An empty list disables both (no fetch error surfaced;
+  // skills are optional).
+  const [skills, setSkills] = useState<ChatSkill[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/skills`)
+      .then((r) => r.json())
+      .then((d: { skills?: ChatSkill[] }) => {
+        if (!cancelled) setSkills(d.skills ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setSkills([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const skillNames = useMemo(() => skills.map((s) => s.name), [skills]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // AbortController for the in-flight chat fetch. Stop button calls
   // .abort() which closes the SSE connection — backend detects via
@@ -1061,7 +1221,7 @@ export function ChatView() {
           ) : (
             messages.map((m) =>
               m.role === 'user' ? (
-                <UserBubble key={m.id} content={m.content} />
+                <UserBubble key={m.id} content={m.content} skillNames={skillNames} />
               ) : (
                 <AssistantBubble key={m.id} message={m} />
               )
@@ -1078,7 +1238,7 @@ export function ChatView() {
         </div>
       </div>
 
-      <Composer onSend={handleSend} onStop={handleStop} pending={pending} />
+      <Composer onSend={handleSend} onStop={handleStop} pending={pending} skills={skills} />
       {(stats.inputTokens > 0 || stats.outputTokens > 0) && (
         <div className="px-3 pb-1 pt-0.5 text-center text-[10px] text-surface-500 font-mono tracking-tight">
           {formatTokens(stats.inputTokens)} in · {formatTokens(stats.outputTokens)} out
