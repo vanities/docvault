@@ -52,7 +52,9 @@ export async function handleMileageRoutes(
       odometerStart !== undefined &&
       odometerEnd !== undefined
     ) {
-      computedTripMiles = odometerEnd - odometerStart;
+      // Explicit coercion — every other numeric field goes through Number()
+      // below; relying on JS `-` coercion here invited string-arithmetic bugs.
+      computedTripMiles = Number(odometerEnd) - Number(odometerStart);
     }
 
     const entry: MileageEntry = {
