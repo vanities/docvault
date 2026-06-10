@@ -27,6 +27,30 @@ import type {
 } from '../data.js';
 import { readJsonBody } from '../http.js';
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+// Shape-validate a federal tax filing before persisting it wholesale —
+// this route stores the body as-is, so reject anything that isn't the
+// structure FederalTaxView sends (emptyFiled() always includes every field).
+function isValidFederalTaxFiled(value: unknown): value is FederalTaxFiled {
+  if (!isPlainObject(value)) return false;
+  if (typeof value.filed !== 'boolean') return false;
+  if (value.filedDate !== undefined && typeof value.filedDate !== 'string') return false;
+  if (typeof value.agi !== 'number' || typeof value.taxableIncome !== 'number') return false;
+  const sections = [
+    'income',
+    'adjustments',
+    'deductions',
+    'tax',
+    'credits',
+    'payments',
+    'balance',
+  ] as const;
+  return sections.every((key) => isPlainObject(value[key]));
+}
+
 export async function handleMiscRoutes(
   req: Request,
   url: URL,
@@ -283,7 +307,10 @@ export async function handleMiscRoutes(
   const fedTaxPutMatch = pathname.match(/^\/api\/federal-tax\/(\d{4})$/);
   if (fedTaxPutMatch && req.method === 'PUT') {
     const year = fedTaxPutMatch[1];
-    const body = await readJsonBody<FederalTaxFiled>(req);
+    const body = await readJsonBody<unknown>(req);
+    if (!isValidFederalTaxFiled(body)) {
+      return jsonResponse({ error: 'Invalid federal tax filing shape' }, 400);
+    }
     const allData = await loadFederalTax();
     allData[year] = body;
     await saveFederalTax(allData);

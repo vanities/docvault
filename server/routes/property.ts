@@ -92,7 +92,13 @@ export async function handlePropertyRoutes(
       body.currentValueDate = new Date().toISOString().split('T')[0];
     }
 
-    data.entries[idx] = { ...data.entries[idx], ...body, id: entryId };
+    // Pin server-managed fields — clients must not overwrite them
+    data.entries[idx] = {
+      ...data.entries[idx],
+      ...body,
+      id: entryId,
+      createdAt: data.entries[idx].createdAt,
+    };
     await savePropertyData(data);
     return jsonResponse({ ok: true, entry: data.entries[idx] });
   }

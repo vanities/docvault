@@ -58,7 +58,13 @@ export async function handleIncomeRoutes(
     const idx = data.sources.findIndex((s) => s.id === id);
     if (idx === -1) return jsonResponse({ error: 'Income source not found' }, 404);
 
-    data.sources[idx] = { ...data.sources[idx], ...body, id };
+    // Pin server-managed fields — clients must not overwrite them
+    data.sources[idx] = {
+      ...data.sources[idx],
+      ...body,
+      id,
+      createdAt: data.sources[idx].createdAt,
+    };
     await saveIncomeData(data);
     return jsonResponse({ ok: true, source: data.sources[idx] });
   }
