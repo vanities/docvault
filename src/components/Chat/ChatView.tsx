@@ -831,9 +831,11 @@ function Composer({
 
 function EmptyState({
   configured,
+  hasSkills,
   onOpenSettings,
 }: {
   configured: boolean;
+  hasSkills: boolean;
   onOpenSettings: () => void;
 }) {
   return (
@@ -861,6 +863,12 @@ function EmptyState({
           <li>· "What did I make from W-2s in 2024?"</li>
           <li>· "Find every receipt from Home Depot"</li>
           <li>· "Remind me to file Q1 estimated taxes April 15"</li>
+          {hasSkills && (
+            <li>
+              · Type <code className="px-1 rounded bg-surface-200 text-fuchsia-600">$</code> to use
+              a skill
+            </li>
+          )}
         </ul>
       )}
     </div>
@@ -1216,6 +1224,7 @@ export function ChatView() {
           {messages.length === 0 ? (
             <EmptyState
               configured={credentialsOk !== false}
+              hasSkills={skills.length > 0}
               onOpenSettings={() => setActiveView('settings')}
             />
           ) : (
