@@ -94,7 +94,13 @@ export async function handleLiabilityRoutes(
       );
     }
 
-    data.entries[idx] = { ...data.entries[idx], ...body, id };
+    // Pin server-managed fields — clients must not overwrite them
+    data.entries[idx] = {
+      ...data.entries[idx],
+      ...body,
+      id,
+      createdAt: data.entries[idx].createdAt,
+    };
     await saveLiabilities(data);
     return jsonResponse({ ok: true, entry: data.entries[idx] });
   }
