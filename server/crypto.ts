@@ -1159,8 +1159,14 @@ async function fetchGeminiTrades(config: ExchangeConfig): Promise<CryptoTrade[]>
         const amount = parseFloat(trade.amount || '0');
         const fee = parseFloat(trade.fee_amount || '0');
         const side = trade.type === 'Buy' ? 'buy' : 'sell';
+        // A trade with neither timestamp field would make Date(NaN).toISOString()
+        // throw and the per-symbol catch would drop the WHOLE symbol's history —
+        // skip just the malformed trade instead.
+        const tsMs =
+          trade.timestampms ??
+          (typeof trade.timestamp === 'number' ? trade.timestamp * 1000 : null);
 
-        if (amount > 0 && price > 0) {
+        if (amount > 0 && price > 0 && tsMs !== null) {
           trades.push({
             asset: base,
             side,
@@ -1168,7 +1174,7 @@ async function fetchGeminiTrades(config: ExchangeConfig): Promise<CryptoTrade[]>
             priceUsd: price,
             totalCost: price * amount + (side === 'buy' ? fee : -fee),
             fee,
-            timestamp: new Date(trade.timestampms || trade.timestamp * 1000).toISOString(),
+            timestamp: new Date(tsMs).toISOString(),
             source: 'gemini',
           });
         }
