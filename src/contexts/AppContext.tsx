@@ -31,8 +31,10 @@ export type { ChatStats, PersistedThread, ThreadsState } from './chatPersistence
 // The `messages` field is loose `unknown[]` here because Sidebar doesn't
 // need to know about ChatMessage / AssistantBlock shapes — only ChatView
 // reads/writes the conversation transcript and casts at the boundary.
-// Persistence is deliberately bounded/pruned in chatPersistence.ts so local
-// storage cannot accumulate unbounded private chat history.
+// Persistence lives server-side in DATA_DIR (.docvault-chat-threads.json,
+// via /api/chat/threads) and is deliberately bounded/pruned in
+// chatPersistence.ts so private chat history cannot grow unbounded.
+// localStorage remains only as a migration source + offline fallback.
 // ---------------------------------------------------------------------------
 
 const CHAT_THREADS_STORAGE_KEY = 'docvault-chat-threads-v1';
@@ -56,7 +58,10 @@ function sanitizePersistedYear(value: string | null, currentYear: number): numbe
   return isValidPersistedYear(parsed, currentYear) ? parsed : currentYear;
 }
 
-function loadThreadsState(): ThreadsState {
+// Browser-side history reader. Since chat history moved server-side
+// (/api/chat/threads), this is only a migration source for pre-server
+// localStorage history and an offline fallback when the server is down.
+function loadLocalThreadsState(): ThreadsState {
   try {
     const raw = localStorage.getItem(CHAT_THREADS_STORAGE_KEY);
     if (raw) {
@@ -102,7 +107,9 @@ function migrateLegacyChat(): ThreadsState {
   }
 }
 
-function saveThreadsState(state: ThreadsState): void {
+// Emergency persistence when the server PUT fails — keeps history across a
+// reload even while the backend is unreachable.
+function saveThreadsToLocalFallback(state: ThreadsState): void {
   const pruned = pruneThreadsState(state);
   try {
     localStorage.setItem(CHAT_THREADS_STORAGE_KEY, JSON.stringify(pruned));
@@ -423,10 +430,84 @@ export function AppProvider({ children }: AppProviderProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Chat threads — see header docblock at top of file for the design.
-  const [chatThreads, setChatThreads] = useState<ThreadsState>(() => loadThreadsState());
+  // History persists server-side (DATA_DIR/.docvault-chat-threads.json via
+  // /api/chat/threads); localStorage is only a one-time migration source and
+  // an emergency fallback while the server is unreachable.
+  const [chatThreads, setChatThreads] = useState<ThreadsState>(() => ({
+    threads: {},
+    activeThreadId: null,
+  }));
+  const chatHydratedRef = useRef(false);
+  const chatThreadsRef = useRef(chatThreads);
+
+  // Hydrate once on boot: server state wins; merge in anything the user
+  // created before hydration finished; migrate pre-server localStorage
+  // history when the server has none yet.
   useEffect(() => {
-    saveThreadsState(chatThreads);
+    let cancelled = false;
+    void (async () => {
+      let server: ThreadsState | null = null;
+      try {
+        server = await requestJson<ThreadsState>('/api/chat/threads');
+      } catch {
+        // Server unreachable — fall back to whatever this browser has.
+      }
+      if (cancelled) return;
+      const local = loadLocalThreadsState();
+      const base = server && Object.keys(server.threads).length > 0 ? server : local;
+      setChatThreads((prev) => ({
+        threads: { ...base.threads, ...prev.threads },
+        activeThreadId: prev.activeThreadId ?? base.activeThreadId,
+      }));
+      chatHydratedRef.current = true;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Debounced server persistence; on success the browser copy is redundant
+  // and gets dropped, on failure it becomes the fallback.
+  useEffect(() => {
+    chatThreadsRef.current = chatThreads;
+    if (!chatHydratedRef.current) return;
+    const timer = window.setTimeout(() => {
+      const pruned = pruneThreadsState(chatThreadsRef.current);
+      requestJson<{ ok: boolean }>('/api/chat/threads', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pruned),
+      })
+        .then(() => {
+          try {
+            localStorage.removeItem(CHAT_THREADS_STORAGE_KEY);
+          } catch {
+            /* storage unavailable */
+          }
+        })
+        .catch(() => saveThreadsToLocalFallback(pruned));
+    }, 1500);
+    return () => window.clearTimeout(timer);
   }, [chatThreads]);
+
+  // Flush pending history before the tab goes away (debounce may not fire).
+  useEffect(() => {
+    const flush = () => {
+      if (!chatHydratedRef.current) return;
+      try {
+        void fetch('/api/chat/threads', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(pruneThreadsState(chatThreadsRef.current)),
+          keepalive: true,
+        });
+      } catch {
+        /* page is going away — best effort */
+      }
+    };
+    window.addEventListener('pagehide', flush);
+    return () => window.removeEventListener('pagehide', flush);
+  }, []);
 
   const updateActiveChatThread = useCallback(
     (updater: (t: PersistedThread) => Partial<PersistedThread>) => {

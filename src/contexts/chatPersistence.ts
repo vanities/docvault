@@ -22,11 +22,11 @@ export interface ThreadsState {
 export const EMPTY_CHAT_STATS: ChatStats = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
 
 export const CHAT_PERSISTENCE_LIMITS = {
-  /** Keep the most recently updated threads; older local-only transcripts are dropped. */
+  /** Keep the most recently updated threads; older transcripts are dropped. */
   maxThreads: 20,
   /** Keep only the most recent messages in each persisted thread. */
   maxMessagesPerThread: 80,
-  /** Guard localStorage quota and reduce sensitive-at-rest chat retention. */
+  /** Bound the persisted blob (server file, or localStorage fallback) and reduce sensitive-at-rest retention. */
   maxSerializedChars: 900_000,
 } as const;
 

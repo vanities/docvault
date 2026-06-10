@@ -89,6 +89,7 @@ import { handleHealthSnapshotRoutes } from './health-snapshot.js';
 import { handleResearchRoutes, type ResearchEntry } from './research.js';
 import { handleFinancialSnapshotRoutes } from './financial-snapshot.js';
 import { listRuns, getRun } from '../deep-research-store.js';
+import { loadChatThreads, saveChatThreads, isChatThreadsState } from '../chat-threads-store.js';
 import { logAiCall } from '../ai/usage-log.js';
 import { createLogger } from '../logger.js';
 
@@ -1588,6 +1589,23 @@ export async function handleChatRoutes(
   _url: URL,
   pathname: string
 ): Promise<Response | null> {
+  // Thread history persistence — the client hydrates on boot and PUTs the
+  // whole pruned ThreadsState blob (see src/contexts/chatPersistence.ts).
+  if (pathname === '/api/chat/threads') {
+    if (req.method === 'GET') {
+      return jsonResponse(await loadChatThreads());
+    }
+    if (req.method === 'PUT') {
+      const body = await readJsonBody<unknown>(req);
+      if (!isChatThreadsState(body)) {
+        return jsonResponse({ error: 'Invalid chat threads state shape' }, 400);
+      }
+      await saveChatThreads(body);
+      return jsonResponse({ ok: true });
+    }
+    return jsonResponse({ error: 'Method not allowed' }, 405);
+  }
+
   if (pathname !== '/api/chat') return null;
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405);
 
