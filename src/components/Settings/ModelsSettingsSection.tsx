@@ -353,7 +353,19 @@ export function ModelsSettingsSection() {
               <label className="block text-[11px] text-surface-500">Agent (subscription)</label>
               <select
                 value={drAgentBackend}
-                onChange={(e) => setDrAgentBackend(e.target.value as 'claude' | 'codex')}
+                onChange={(e) => {
+                  const backend = e.target.value as 'claude' | 'codex';
+                  setDrAgentBackend(backend);
+                  // Keep the scope's ModelRef coherent with the backend's provider.
+                  const provider: Provider = backend === 'codex' ? 'openai' : 'anthropic';
+                  if (drModel.provider !== provider) {
+                    setDrModel({
+                      provider,
+                      model: DEFAULTS[provider],
+                      ...(drModel.effort ? { effort: drModel.effort } : {}),
+                    });
+                  }
+                }}
                 className={selectClass}
               >
                 <option value="claude">Claude — Claude Code + WebSearch (Claude sub)</option>
@@ -364,19 +376,12 @@ export function ModelsSettingsSection() {
                   ? 'Runs codex with web search on your OpenAI/ChatGPT subscription — an agentic loop, no API billing. Sign in via AI Credentials.'
                   : 'Runs Claude Code with WebSearch on your Claude subscription — an agentic loop (search → read → iterate), no API billing. Uses the OAuth token from AI Credentials.'}
               </p>
-              <div className="sm:w-40">
-                <EffortSelect
-                  provider={drAgentBackend === 'codex' ? 'openai' : 'anthropic'}
-                  value={drModel.effort ?? ''}
-                  onChange={(effort) =>
-                    setDrModel(
-                      effort
-                        ? { ...drModel, effort }
-                        : { provider: drModel.provider, model: drModel.model }
-                    )
-                  }
-                />
-              </div>
+              <AgentModelRow
+                backend={drAgentBackend}
+                value={drModel}
+                onChange={setDrModel}
+                models={modelsByProvider}
+              />
             </div>
           )}
         </div>
@@ -414,7 +419,19 @@ export function ModelsSettingsSection() {
               <label className="block text-[11px] text-surface-500">Agent (subscription)</label>
               <select
                 value={dnAgentBackend}
-                onChange={(e) => setDnAgentBackend(e.target.value as 'claude' | 'codex')}
+                onChange={(e) => {
+                  const backend = e.target.value as 'claude' | 'codex';
+                  setDnAgentBackend(backend);
+                  // Keep the scope's ModelRef coherent with the backend's provider.
+                  const provider: Provider = backend === 'codex' ? 'openai' : 'anthropic';
+                  if (dnModel.provider !== provider) {
+                    setDnModel({
+                      provider,
+                      model: DEFAULTS[provider],
+                      ...(dnModel.effort ? { effort: dnModel.effort } : {}),
+                    });
+                  }
+                }}
                 className={selectClass}
               >
                 <option value="claude">Claude — Claude Code (Claude sub)</option>
@@ -424,19 +441,12 @@ export function ModelsSettingsSection() {
                 Runs on your subscription (no API billing). API mode is recommended for the
                 unattended morning run — a stored API key doesn't expire like an OAuth session.
               </p>
-              <div className="sm:w-40">
-                <EffortSelect
-                  provider={dnAgentBackend === 'codex' ? 'openai' : 'anthropic'}
-                  value={dnModel.effort ?? ''}
-                  onChange={(effort) =>
-                    setDnModel(
-                      effort
-                        ? { ...dnModel, effort }
-                        : { provider: dnModel.provider, model: dnModel.model }
-                    )
-                  }
-                />
-              </div>
+              <AgentModelRow
+                backend={dnAgentBackend}
+                value={dnModel}
+                onChange={setDnModel}
+                models={modelsByProvider}
+              />
             </div>
           )}
           <div className="mt-3">
@@ -548,6 +558,51 @@ function EffortSelect({
           </option>
         ))}
       </select>
+    </div>
+  );
+}
+
+/**
+ * Model + effort row for the agent (subscription) engines. The provider is
+ * implied by the chosen backend (claude → Anthropic, codex → OpenAI); every
+ * change rewrites the scope's ModelRef so it stays coherent with the backend.
+ */
+function AgentModelRow({
+  backend,
+  value,
+  onChange,
+  models,
+}: {
+  backend: 'claude' | 'codex';
+  value: ModelRef;
+  onChange: (v: ModelRef) => void;
+  models: Record<Provider, string[]>;
+}) {
+  const provider: Provider = backend === 'codex' ? 'openai' : 'anthropic';
+  const model = value.provider === provider ? value.model : DEFAULTS[provider];
+  return (
+    <div className="flex flex-col sm:flex-row gap-2">
+      <div className="flex-1">
+        <label className="block text-[11px] text-surface-500 mb-1">
+          {backend === 'codex' ? 'Codex model' : 'Claude model'}
+        </label>
+        <ModelSelect
+          value={model}
+          onChange={(m) =>
+            onChange({ provider, model: m, ...(value.effort ? { effort: value.effort } : {}) })
+          }
+          models={models[provider]}
+        />
+      </div>
+      <div className="sm:w-40">
+        <EffortSelect
+          provider={provider}
+          value={value.effort ?? ''}
+          onChange={(effort) =>
+            onChange(effort ? { provider, model, effort } : { provider, model })
+          }
+        />
+      </div>
     </div>
   );
 }

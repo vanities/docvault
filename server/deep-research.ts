@@ -159,7 +159,11 @@ async function runDeepResearchApi(
 async function runDeepResearchClaudeAgent(question: string): Promise<ResearchResult> {
   const oauthToken = await getAnthropicAuthToken();
   const apiKey = await getAnthropicKey();
-  const effort = toClaudeAgentEffort((await getDeepResearchConfig()).model.effort);
+  const ref = (await getDeepResearchConfig()).model;
+  // The scope's configured model applies when it's an Anthropic pick; a stale
+  // OpenAI ref (left over from API mode) falls back to the default.
+  const model = ref.provider === 'anthropic' && ref.model ? ref.model : DEFAULT_MODEL;
+  const effort = toClaudeAgentEffort(ref.effort);
   const startedAt = Date.now();
   const env: Record<string, string | undefined> = {
     ...process.env,
@@ -177,7 +181,7 @@ async function runDeepResearchClaudeAgent(question: string): Promise<ResearchRes
   for await (const message of query({
     prompt: question,
     options: {
-      model: DEFAULT_MODEL,
+      model,
       ...(effort ? { effort } : {}),
       systemPrompt: { type: 'preset', preset: 'claude_code', append: RESEARCH_SYSTEM },
       // The whole point: let the agent search, read pages, and search again.
@@ -212,7 +216,7 @@ async function runDeepResearchClaudeAgent(question: string): Promise<ResearchRes
 
   const usage = { inputTokens, outputTokens };
   void logAiCall({
-    model: `agent:${DEFAULT_MODEL}`,
+    model: `agent:${model}`,
     purpose: 'deep-research',
     latencyMs: Date.now() - startedAt,
     usage,
@@ -229,8 +233,12 @@ async function runDeepResearchClaudeAgent(question: string): Promise<ResearchRes
 
 /** Codex agent engine — codex app-server + web_search on the OpenAI subscription. */
 async function runDeepResearchCodexAgent(question: string): Promise<ResearchResult> {
-  const { codexHome, binaryPath, model } = await getCodexChatConfig();
-  const effort = toOpenAIEffort((await getDeepResearchConfig()).model.effort);
+  const { codexHome, binaryPath, model: chatCodexModel } = await getCodexChatConfig();
+  const ref = (await getDeepResearchConfig()).model;
+  // The scope's configured model applies when it's an OpenAI pick; otherwise
+  // fall back to the chat's codex model, then codex's account default.
+  const model = ref.provider === 'openai' && ref.model ? ref.model : chatCodexModel;
+  const effort = toOpenAIEffort(ref.effort);
   const startedAt = Date.now();
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'docvault-research-'));
 
