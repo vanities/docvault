@@ -15,14 +15,21 @@ import { useToast } from '../../hooks/useToast';
 import { API_BASE } from '../../constants';
 
 type Provider = 'anthropic' | 'openai';
+type ModelEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 interface ModelRef {
   provider: Provider;
   model: string;
+  effort?: ModelEffort;
 }
 interface SettingsData {
   claudeModel?: string;
   modelRouting?: { parsing?: ModelRef };
-  chat?: { backend?: 'claude' | 'codex'; codexModel?: string };
+  chat?: {
+    backend?: 'claude' | 'codex';
+    claudeEffort?: ModelEffort;
+    codexModel?: string;
+    codexEffort?: ModelEffort;
+  };
   deepResearch?: { mode?: 'agent' | 'api'; agentBackend?: 'claude' | 'codex'; model?: ModelRef };
   dailyNews?: {
     mode?: 'agent' | 'api';
@@ -37,6 +44,12 @@ interface SettingsData {
 
 const DEFAULTS: Record<Provider, string> = { anthropic: 'claude-sonnet-4-6', openai: 'gpt-4o' };
 const PROVIDERS: Provider[] = ['anthropic', 'openai'];
+// Reasoning-effort levels each provider accepts; the server clamps the rest
+// per call surface (e.g. the direct Anthropic API has no 'xhigh').
+const EFFORTS: Record<Provider, ModelEffort[]> = {
+  anthropic: ['low', 'medium', 'high', 'xhigh', 'max'],
+  openai: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+};
 const CUSTOM = '__custom__';
 const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-4-6';
 const selectClass =
@@ -53,7 +66,9 @@ export function ModelsSettingsSection() {
     model: DEFAULTS.anthropic,
   });
   const [chatBackend, setChatBackend] = useState<'claude' | 'codex'>('claude');
+  const [claudeEffort, setClaudeEffort] = useState<ModelEffort | ''>('');
   const [codexModel, setCodexModel] = useState('');
+  const [codexEffort, setCodexEffort] = useState<ModelEffort | ''>('');
   const [drMode, setDrMode] = useState<'agent' | 'api'>('api');
   const [drAgentBackend, setDrAgentBackend] = useState<'claude' | 'codex'>('claude');
   const [drModel, setDrModel] = useState<ModelRef>({
@@ -89,7 +104,9 @@ export function ModelsSettingsSection() {
       setClaudeModel(d.claudeModel || DEFAULT_CLAUDE_MODEL);
       setParsing(d.modelRouting?.parsing ?? anthropicFallback);
       setChatBackend(d.chat?.backend === 'codex' ? 'codex' : 'claude');
+      setClaudeEffort(d.chat?.claudeEffort ?? '');
       setCodexModel(d.chat?.codexModel ?? '');
+      setCodexEffort(d.chat?.codexEffort ?? '');
       setDrMode(d.deepResearch?.mode === 'agent' ? 'agent' : 'api');
       setDrAgentBackend(d.deepResearch?.agentBackend === 'codex' ? 'codex' : 'claude');
       setDrModel(d.deepResearch?.model ?? anthropicFallback);
@@ -168,7 +185,12 @@ export function ModelsSettingsSection() {
         body: JSON.stringify({
           claudeModel: claudeModel.trim() || DEFAULT_CLAUDE_MODEL,
           modelRouting: { parsing },
-          chat: { backend: chatBackend, codexModel: codexModel.trim() },
+          chat: {
+            backend: chatBackend,
+            claudeEffort,
+            codexModel: codexModel.trim(),
+            codexEffort,
+          },
           deepResearch: { mode: drMode, agentBackend: drAgentBackend, model: drModel },
           dailyNews: {
             mode: dnMode,
@@ -251,13 +273,22 @@ export function ModelsSettingsSection() {
             <option value="codex">Codex (OpenAI subscription — native tools)</option>
           </select>
           {chatBackend === 'claude' ? (
-            <div className="mt-2">
-              <label className="block text-[11px] text-surface-500 mb-1">Claude model</label>
-              <ModelSelect
-                value={claudeModel}
-                onChange={setClaudeModel}
-                models={modelsByProvider.anthropic}
-              />
+            <div className="mt-2 flex flex-col sm:flex-row gap-2">
+              <div className="flex-1">
+                <label className="block text-[11px] text-surface-500 mb-1">Claude model</label>
+                <ModelSelect
+                  value={claudeModel}
+                  onChange={setClaudeModel}
+                  models={modelsByProvider.anthropic}
+                />
+              </div>
+              <div className="sm:w-40">
+                <EffortSelect
+                  provider="anthropic"
+                  value={claudeEffort}
+                  onChange={setClaudeEffort}
+                />
+              </div>
             </div>
           ) : (
             <div className="mt-2 space-y-2">
@@ -266,14 +297,23 @@ export function ModelsSettingsSection() {
                 via the <span className="font-medium">Sign in to Codex</span> button in AI
                 Credentials.
               </p>
-              <label className="block text-[11px] text-surface-500">Codex model (optional)</label>
-              <Input
-                type="text"
-                value={codexModel}
-                onChange={(e) => setCodexModel(e.target.value)}
-                placeholder="leave blank for codex's account default"
-                className="text-[13px] font-mono"
-              />
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex-1">
+                  <label className="block text-[11px] text-surface-500 mb-1">
+                    Codex model (optional)
+                  </label>
+                  <Input
+                    type="text"
+                    value={codexModel}
+                    onChange={(e) => setCodexModel(e.target.value)}
+                    placeholder="leave blank for codex's account default"
+                    className="text-[13px] font-mono"
+                  />
+                </div>
+                <div className="sm:w-40">
+                  <EffortSelect provider="openai" value={codexEffort} onChange={setCodexEffort} />
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -324,6 +364,19 @@ export function ModelsSettingsSection() {
                   ? 'Runs codex with web search on your OpenAI/ChatGPT subscription — an agentic loop, no API billing. Sign in via AI Credentials.'
                   : 'Runs Claude Code with WebSearch on your Claude subscription — an agentic loop (search → read → iterate), no API billing. Uses the OAuth token from AI Credentials.'}
               </p>
+              <div className="sm:w-40">
+                <EffortSelect
+                  provider={drAgentBackend === 'codex' ? 'openai' : 'anthropic'}
+                  value={drModel.effort ?? ''}
+                  onChange={(effort) =>
+                    setDrModel(
+                      effort
+                        ? { ...drModel, effort }
+                        : { provider: drModel.provider, model: drModel.model }
+                    )
+                  }
+                />
+              </div>
             </div>
           )}
         </div>
@@ -371,6 +424,19 @@ export function ModelsSettingsSection() {
                 Runs on your subscription (no API billing). API mode is recommended for the
                 unattended morning run — a stored API key doesn't expire like an OAuth session.
               </p>
+              <div className="sm:w-40">
+                <EffortSelect
+                  provider={dnAgentBackend === 'codex' ? 'openai' : 'anthropic'}
+                  value={dnModel.effort ?? ''}
+                  onChange={(effort) =>
+                    setDnModel(
+                      effort
+                        ? { ...dnModel, effort }
+                        : { provider: dnModel.provider, model: dnModel.model }
+                    )
+                  }
+                />
+              </div>
             </div>
           )}
           <div className="mt-3">
@@ -448,6 +514,41 @@ export function ModelsSettingsSection() {
         </Button>
       </div>
     </Card>
+  );
+}
+
+/**
+ * Reasoning-effort dropdown. '' = the provider's default (the param is simply
+ * not sent). Lists only the levels the given provider understands.
+ */
+function EffortSelect({
+  provider,
+  value,
+  onChange,
+  label = 'Effort',
+}: {
+  provider: Provider;
+  value: ModelEffort | '';
+  onChange: (v: ModelEffort | '') => void;
+  label?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-[11px] text-surface-500 mb-1">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as ModelEffort | '')}
+        className={selectClass}
+        title="How much reasoning/thinking the model applies — higher is smarter but slower and costlier"
+      >
+        <option value="">Default</option>
+        {EFFORTS[provider].map((e) => (
+          <option key={e} value={e}>
+            {e}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 
@@ -567,6 +668,17 @@ function ScopeRow({
             className="text-[13px] font-mono mt-1.5"
           />
         )}
+      </div>
+      <div className="sm:w-36">
+        <EffortSelect
+          provider={value.provider}
+          value={value.effort ?? ''}
+          onChange={(effort) =>
+            onChange(
+              effort ? { ...value, effort } : { provider: value.provider, model: value.model }
+            )
+          }
+        />
       </div>
     </div>
   );

@@ -13,7 +13,7 @@
 import OpenAI from 'openai';
 import type Anthropic from '@anthropic-ai/sdk';
 import type { CallClaudeOptions } from '../parsers/base.js';
-import { getOpenAIConfig } from '../data.js';
+import { getOpenAIConfig, toOpenAIEffort } from '../data.js';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('OpenAIAdapter');
@@ -89,6 +89,7 @@ export async function openaiComplete(
   model: string
 ): Promise<Anthropic.Messages.Message> {
   const openai = await getOpenAIClient();
+  const effort = toOpenAIEffort(opts.effort);
   const response = await openai.chat.completions.create({
     model,
     max_tokens: opts.maxTokens,
@@ -98,6 +99,8 @@ export async function openaiComplete(
     ],
     ...(opts.tools ? { tools: toTools(opts.tools) } : {}),
     ...(opts.toolChoice ? { tool_choice: toToolChoice(opts.toolChoice) } : {}),
+    // Only sent when configured — non-reasoning models reject the param.
+    ...(effort ? { reasoning_effort: effort } : {}),
   });
 
   const choice = response.choices[0];

@@ -5,7 +5,13 @@ import { promises as fs } from 'fs';
 import Anthropic from '@anthropic-ai/sdk';
 import sharp from 'sharp';
 import type { ParsedTaxDocument } from './pdf.js';
-import { getAnthropicKey, getAnthropicAuthToken, getParsingModel } from '../data.js';
+import {
+  getAnthropicKey,
+  getAnthropicAuthToken,
+  getParsingModel,
+  toAnthropicApiEffort,
+  type ModelEffort,
+} from '../data.js';
 import { openaiComplete } from '../llm/openai.js';
 import { withAILimit } from '../aiLimiter.js';
 import { logAiCall } from '../ai/usage-log.js';
@@ -252,6 +258,11 @@ export interface CallClaudeOptions {
    * be attributed (e.g. "parse-w2", "detect-type"). Defaults to "unknown".
    */
   purpose?: string;
+  /**
+   * Reasoning effort for this call. Unset falls back to the parsing scope's
+   * configured effort (Settings → Models), then the provider default.
+   */
+  effort?: ModelEffort;
 }
 
 // Pull usage fields off the SDK response, handling both the old bundled
@@ -280,7 +291,8 @@ function extractUsageTokens(response: Anthropic.Messages.Message): UsageTokens {
 export async function callClaude(opts: CallClaudeOptions): Promise<Anthropic.Messages.Message> {
   // The parsing scope resolves to Anthropic by default; users can route it to
   // OpenAI (or a local OpenAI-compatible model) in Settings → Models → Parsing.
-  const { provider, model } = await getParsingModel();
+  const { provider, model, effort: scopeEffort } = await getParsingModel();
+  if (opts.effort === undefined && scopeEffort) opts = { ...opts, effort: scopeEffort };
   const purpose = opts.purpose ?? 'unknown';
   const startedAt = Date.now();
   const logModel = `${provider}:${model}`;
@@ -321,6 +333,7 @@ async function anthropicMessagesCreate(
   opts: CallClaudeOptions
 ): Promise<Anthropic.Messages.Message> {
   const anthropic = await getClient();
+  const effort = toAnthropicApiEffort(opts.effort);
   return anthropic.messages.create({
     model,
     max_tokens: opts.maxTokens,
@@ -328,6 +341,7 @@ async function anthropicMessagesCreate(
     messages: [{ role: 'user', content: opts.userContent }],
     ...(opts.tools ? { tools: opts.tools } : {}),
     ...(opts.toolChoice ? { tool_choice: opts.toolChoice } : {}),
+    ...(effort ? { output_config: { effort } } : {}),
   });
 }
 

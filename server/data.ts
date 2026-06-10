@@ -137,9 +137,46 @@ export const DEFAULT_OPENAI_MODEL = 'gpt-4o';
 /** Direct-API model providers (parsing, forms, deep research). Chat is agent-based. */
 export type ModelProvider = 'anthropic' | 'openai';
 
+/**
+ * Reasoning/thinking effort, one union across providers. Anthropic accepts
+ * low→max ('xhigh' on the agent surface; the direct API tops out differently
+ * per SDK), OpenAI/Codex accept minimal→xhigh — the per-surface clamps below
+ * map whatever the user picked onto what each call site actually supports.
+ * Unset = the provider's default.
+ */
+export type ModelEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+/** Anthropic direct API (messages.create output_config.effort): low|medium|high|max. */
+export function toAnthropicApiEffort(
+  e: ModelEffort | undefined
+): 'low' | 'medium' | 'high' | 'max' | undefined {
+  if (!e) return undefined;
+  if (e === 'minimal') return 'low';
+  if (e === 'xhigh') return 'high';
+  return e;
+}
+
+/** Claude Agent SDK (chat + agent engines): low|medium|high|xhigh|max. */
+export function toClaudeAgentEffort(
+  e: ModelEffort | undefined
+): 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined {
+  if (!e) return undefined;
+  return e === 'minimal' ? 'low' : e;
+}
+
+/** OpenAI reasoning_effort / Codex turn effort: minimal|low|medium|high|xhigh. */
+export function toOpenAIEffort(
+  e: ModelEffort | undefined
+): 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | undefined {
+  if (!e) return undefined;
+  return e === 'max' ? 'xhigh' : e;
+}
+
 export interface ModelRef {
   provider: ModelProvider;
   model: string;
+  /** Optional reasoning effort for this scope; unset = provider default. */
+  effort?: ModelEffort;
 }
 
 export interface Settings {
@@ -248,8 +285,12 @@ export interface Settings {
    */
   chat?: {
     backend?: 'claude' | 'codex';
+    /** Reasoning effort for the Claude chat backend; unset = model default. */
+    claudeEffort?: ModelEffort;
     /** Codex model, e.g. 'gpt-5.5'. */
     codexModel?: string;
+    /** Reasoning effort for the Codex chat backend; unset = plan default. */
+    codexEffort?: ModelEffort;
     /** CODEX_HOME on the host — dir holding auth.json from `codex login`. */
     codexHome?: string;
     /** Codex binary path; default 'codex' (resolved on PATH). */
@@ -426,8 +467,20 @@ export async function getClaudeModel(): Promise<string> {
 
 /** Resolve a direct-API {provider, model}; unset falls back to Anthropic + DEFAULT_MODEL. */
 function resolveModel(ref: ModelRef | undefined): ModelRef {
-  if (ref?.provider && ref.model) return { provider: ref.provider, model: ref.model };
+  if (ref?.provider && ref.model) {
+    return {
+      provider: ref.provider,
+      model: ref.model,
+      ...(ref.effort ? { effort: ref.effort } : {}),
+    };
+  }
   return { provider: 'anthropic', model: DEFAULT_MODEL };
+}
+
+/** Reasoning effort for the Claude chat backend (Settings → Models). */
+export async function getClaudeChatEffort(): Promise<ModelEffort | undefined> {
+  const settings = await loadSettings();
+  return settings.chat?.claudeEffort;
 }
 
 /** Provider + model for the parsing scope (all parsers + form decode/autofill). */
@@ -544,12 +597,14 @@ export async function getChatBackend(): Promise<ChatBackend> {
  */
 export async function getCodexChatConfig(): Promise<{
   model?: string;
+  effort?: ModelEffort;
   codexHome?: string;
   binaryPath?: string;
 }> {
   const settings = await loadSettings();
   return {
     model: settings.chat?.codexModel || undefined,
+    effort: settings.chat?.codexEffort,
     codexHome: settings.chat?.codexHome || process.env.CODEX_HOME || undefined,
     binaryPath: settings.chat?.codexBinary || process.env.CODEX_BINARY || undefined,
   };

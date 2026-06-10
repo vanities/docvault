@@ -82,6 +82,7 @@ import { handleChatRoutes } from './routes/chat.js';
 import { handleTranscribeRoutes } from './routes/transcribe.js';
 import { handleExternalSourcesRoutes } from './routes/external-sources.js';
 import { handleBrainRoutes } from './routes/brain.js';
+import { handleSkillsRoutes } from './routes/skills.js';
 import { handleFormsRoutes } from './routes/forms.js';
 import { handleDeepResearchRoutes } from './routes/deep-research.js';
 import { handleDailyNewsRoutes } from './routes/daily-news.js';
@@ -1496,6 +1497,10 @@ export async function handleRequest(req: Request): Promise<Response> {
   // Brain — the user-owned markdown long-term memory the chat always sees.
   const brainResponse = await handleBrainRoutes(req, url, pathname);
   if (brainResponse) return brainResponse;
+
+  // Skills — user-authored SKILL.md packs the Claude chat backend can invoke.
+  const skillsResponse = await handleSkillsRoutes(req, url, pathname);
+  if (skillsResponse) return skillsResponse;
 
   const formsResponse = await handleFormsRoutes(req, url, pathname);
   if (formsResponse) return formsResponse;

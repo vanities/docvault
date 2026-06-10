@@ -20,6 +20,9 @@ import {
   getCodexChatConfig,
   getAnthropicAuthToken,
   getAnthropicKey,
+  toAnthropicApiEffort,
+  toClaudeAgentEffort,
+  toOpenAIEffort,
   DEFAULT_MODEL,
 } from './data.js';
 import { logAiCall } from './ai/usage-log.js';
@@ -98,12 +101,14 @@ async function runDeepResearchApi(
 
   log.info(`Deep research (api) started (maxSearches=${maxUses}): "${question.slice(0, 80)}"`);
 
+  const effort = toAnthropicApiEffort(ref.effort);
   const response = await client.messages.create({
     model,
     max_tokens: 8192,
     system: RESEARCH_SYSTEM,
     messages: [{ role: 'user', content: question }],
     tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: maxUses }],
+    ...(effort ? { output_config: { effort } } : {}),
   });
 
   let report = '';
@@ -154,6 +159,7 @@ async function runDeepResearchApi(
 async function runDeepResearchClaudeAgent(question: string): Promise<ResearchResult> {
   const oauthToken = await getAnthropicAuthToken();
   const apiKey = await getAnthropicKey();
+  const effort = toClaudeAgentEffort((await getDeepResearchConfig()).model.effort);
   const startedAt = Date.now();
   const env: Record<string, string | undefined> = {
     ...process.env,
@@ -172,6 +178,7 @@ async function runDeepResearchClaudeAgent(question: string): Promise<ResearchRes
     prompt: question,
     options: {
       model: DEFAULT_MODEL,
+      ...(effort ? { effort } : {}),
       systemPrompt: { type: 'preset', preset: 'claude_code', append: RESEARCH_SYSTEM },
       // The whole point: let the agent search, read pages, and search again.
       allowedTools: ['WebSearch', 'WebFetch'],
@@ -223,6 +230,7 @@ async function runDeepResearchClaudeAgent(question: string): Promise<ResearchRes
 /** Codex agent engine — codex app-server + web_search on the OpenAI subscription. */
 async function runDeepResearchCodexAgent(question: string): Promise<ResearchResult> {
   const { codexHome, binaryPath, model } = await getCodexChatConfig();
+  const effort = toOpenAIEffort((await getDeepResearchConfig()).model.effort);
   const startedAt = Date.now();
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'docvault-research-'));
 
@@ -275,7 +283,11 @@ async function runDeepResearchCodexAgent(question: string): Promise<ResearchResu
       sandbox: 'read-only',
       developerInstructions: RESEARCH_SYSTEM,
     });
-    await client.startTurn({ threadId, input: [{ type: 'text', text: question }] });
+    await client.startTurn({
+      threadId,
+      input: [{ type: 'text', text: question }],
+      ...(effort ? { effort } : {}),
+    });
     await donePromise;
   } finally {
     client.kill();

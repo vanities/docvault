@@ -42,7 +42,11 @@ import {
   BROKER_CACHE_FILE,
   CRYPTO_CACHE_FILE,
   DEFAULT_MODEL,
+  toAnthropicApiEffort,
+  toClaudeAgentEffort,
+  toOpenAIEffort,
   type ModelRef,
+  type ModelEffort,
 } from './data.js';
 import { fetchWeekForecast, forecastToLines, type WeatherForecast } from './weather.js';
 import { listResearchEntries, type ResearchEntry } from './routes/research.js';
@@ -1128,9 +1132,9 @@ export async function synthesizeEdition(
   if (mode !== 'agent') {
     ({ body, usage } = await runDailyNewsApi(system, prompt, model));
   } else if (agentBackend === 'codex') {
-    ({ body, usage } = await runDailyNewsCodexAgent(system, prompt));
+    ({ body, usage } = await runDailyNewsCodexAgent(system, prompt, model.effort));
   } else {
-    ({ body, usage } = await runDailyNewsClaudeAgent(system, prompt));
+    ({ body, usage } = await runDailyNewsClaudeAgent(system, prompt, model.effort));
   }
 
   log.info(
@@ -1172,16 +1176,19 @@ async function runDailyNewsApi(
         userContent: [{ type: 'text', text: prompt }],
         maxTokens: MAX_OUTPUT_TOKENS,
         purpose: 'daily-news',
+        ...(ref.effort ? { effort: ref.effort } : {}),
       },
       ref.model
     );
   } else {
     const client = await getClient();
+    const effort = toAnthropicApiEffort(ref.effort);
     response = await client.messages.create({
       model: ref.model,
       max_tokens: MAX_OUTPUT_TOKENS,
       system,
       messages: [{ role: 'user', content: prompt }],
+      ...(effort ? { output_config: { effort } } : {}),
     });
   }
   const usage = {
@@ -1203,10 +1210,12 @@ async function runDailyNewsApi(
 /** Claude agent engine — Claude Code on the subscription, NO web tools. */
 async function runDailyNewsClaudeAgent(
   system: string,
-  prompt: string
+  prompt: string,
+  effortPick?: ModelEffort
 ): Promise<{ body: string; usage: { inputTokens: number; outputTokens: number } }> {
   const oauthToken = await getAnthropicAuthToken();
   const apiKey = await getAnthropicKey();
+  const effort = toClaudeAgentEffort(effortPick);
   const startedAt = Date.now();
   const env: Record<string, string | undefined> = {
     ...process.env,
@@ -1221,6 +1230,7 @@ async function runDailyNewsClaudeAgent(
     prompt,
     options: {
       model: DEFAULT_MODEL,
+      ...(effort ? { effort } : {}),
       systemPrompt: { type: 'preset', preset: 'claude_code', append: system },
       // Synthesis only — the digest is the corpus, so no tools.
       allowedTools: [],
@@ -1295,9 +1305,11 @@ function readCodexUsage(p: Record<string, unknown>): { input: number; output: nu
 /** Codex agent engine — codex app-server on the OpenAI subscription, NO web_search. */
 async function runDailyNewsCodexAgent(
   system: string,
-  prompt: string
+  prompt: string,
+  effortPick?: ModelEffort
 ): Promise<{ body: string; usage: { inputTokens: number; outputTokens: number } }> {
   const { codexHome, binaryPath, model } = await getCodexChatConfig();
+  const effort = toOpenAIEffort(effortPick);
   const startedAt = Date.now();
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'docvault-dailynews-'));
 
@@ -1380,7 +1392,11 @@ async function runDailyNewsCodexAgent(
       sandbox: 'read-only',
       developerInstructions: system,
     });
-    await client.startTurn({ threadId, input: [{ type: 'text', text: prompt }] });
+    await client.startTurn({
+      threadId,
+      input: [{ type: 'text', text: prompt }],
+      ...(effort ? { effort } : {}),
+    });
     await donePromise;
   } finally {
     client.kill();

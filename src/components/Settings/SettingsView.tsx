@@ -44,6 +44,7 @@ import { EmailSettingsSection } from './EmailSettingsSection';
 import { WeatherSettingsSection } from './WeatherSettingsSection';
 import { ExternalSourcesSection } from './ExternalSourcesSection';
 import { BrainSection } from './BrainSection';
+import { SkillsSection } from './SkillsSection';
 import { BackupSection } from './BackupSection';
 import {
   AVAILABLE_ICONS,
@@ -1390,6 +1391,8 @@ export function SettingsView() {
         {showIn(['sources']) && <ExternalSourcesSection />}
 
         {showIn(['brain']) && <BrainSection />}
+
+        {showIn(['brain']) && <SkillsSection />}
 
         {showIn(['all']) && (
           <>
