@@ -23,7 +23,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useTopN } from '@/hooks/useTopN';
 import { ShowMore } from '@/components/ui/ShowMore';
 
-type ResearchPanelDomain = 'finance' | 'politics';
+type ResearchPanelDomain = 'finance' | 'politics' | 'tech';
 
 interface ResearchEntry {
   id: string;
