@@ -101,6 +101,8 @@ scripts/*
 !server/daily-news-schedule.test.ts
 !server/daily-news-report.test.ts
 !server/daily-news.test.ts
+# Exception: research-domain wiring test parses repo source files only, no personal data
+!server/research-domain-wiring.test.ts
 
 # Internal design docs
 docs/PRD-shadcn-migration.md

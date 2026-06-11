@@ -90,7 +90,12 @@ import { getCachedPredictions, handleQuantRoutes } from './quant.js';
 import { handleNutritionRoutes } from './nutrition.js';
 import { handleSicknessRoutes } from './sickness.js';
 import { handleHealthSnapshotRoutes } from './health-snapshot.js';
-import { handleResearchRoutes, type ResearchEntry } from './research.js';
+import {
+  handleResearchRoutes,
+  RESEARCH_DOMAINS,
+  type ResearchDomain,
+  type ResearchEntry,
+} from './research.js';
 import { handleFinancialSnapshotRoutes } from './financial-snapshot.js';
 import { listRuns, getRun } from '../deep-research-store.js';
 import { loadChatThreads, saveChatThreads, isChatThreadsState } from '../chat-threads-store.js';
@@ -820,7 +825,7 @@ function researchSnippet(text: string, q: string): string {
 }
 
 async function toolListResearch(input: {
-  domain?: 'finance' | 'health' | 'politics';
+  domain?: ResearchDomain;
   limit?: number;
 }): Promise<unknown> {
   const qs = input.domain ? `?domain=${input.domain}` : '';
@@ -838,7 +843,7 @@ async function toolListResearch(input: {
 
 async function toolSearchResearch(input: {
   query: string;
-  domain?: 'finance' | 'health' | 'politics';
+  domain?: ResearchDomain;
   limit?: number;
 }): Promise<unknown> {
   const q = input.query.trim().toLowerCase();
@@ -1153,10 +1158,10 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
       ),
       tool(
         'list_research',
-        'List the user\'s filed Research entries — PDFs, pasted articles/transcripts, and YouTube videos they\'ve saved (including auto-filed feeds like ZeroHedge). Each row shows title, source, date, domain (finance/health/politics), any tickers, and whether claim "intelligence" has been extracted. Optionally filter by domain. Use this to see what research exists before reading or searching it.',
+        `List the user's filed Research entries — PDFs, pasted articles/transcripts, and YouTube videos they've saved (including auto-filed feeds like ZeroHedge and local news). Each row shows title, source, date, domain (${RESEARCH_DOMAINS.join('/')}), any tickers, and whether claim "intelligence" has been extracted. Optionally filter by domain. Use this to see what research exists before reading or searching it.`,
         {
           domain: z
-            .enum(['finance', 'health', 'politics'])
+            .enum(RESEARCH_DOMAINS)
             .optional()
             .describe('Restrict to one Research tab. Omit for all.'),
           limit: z.number().optional().describe('Max entries (default 30, max 100). Newest first.'),
@@ -1169,7 +1174,7 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
         {
           query: z.string().describe('Substring to find; minimum 2 chars.'),
           domain: z
-            .enum(['finance', 'health', 'politics'])
+            .enum(RESEARCH_DOMAINS)
             .optional()
             .describe('Restrict to one Research tab. Omit for all.'),
           limit: z.number().optional().describe('Max hits (default 20, max 50).'),
