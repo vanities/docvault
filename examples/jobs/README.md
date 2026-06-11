@@ -11,13 +11,15 @@ delete is not resurrected.
 Settings → **Jobs** → under "Custom local jobs" find the job → **Enable** (or edit it and flip
 the toggle). It then runs in-container on the same scheduler as the built-in jobs.
 
-| Job                            | Schedule | What it does                                                                                                                                        |
-| ------------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `benjamin-cowen-reports-daily` | daily    | Scrapes new PDF reports from benjamincowen.com → Finance research                                                                                   |
-| `benjamin-cowen-youtube-daily` | daily    | Ingests new Benjamin Cowen YouTube videos (captions) → Finance research                                                                             |
-| `george-gammon-youtube-daily`  | daily    | Ingests new George Gammon YouTube videos → Finance research                                                                                         |
-| `lyn-alden-newsletter-daily`   | daily    | Scrapes Lyn Alden's free monthly newsletter archive → Finance research (forward-only; back-catalogue backfill opt-in via `DOCVAULT_JOB_BACKFILL=1`) |
-| `zerohedge-research`           | every 6h | Files matching ZeroHedge RSS articles → Finance / Politics / Health (headline watchlist, auto-routed by URL section)                                |
+| Job                            | Schedule | What it does                                                                                                                                          |
+| ------------------------------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `benjamin-cowen-reports-daily` | daily    | Scrapes new PDF reports from benjamincowen.com → Finance research                                                                                     |
+| `benjamin-cowen-youtube-daily` | daily    | Ingests new Benjamin Cowen YouTube videos (captions) → Finance research                                                                               |
+| `george-gammon-youtube-daily`  | daily    | Ingests new George Gammon YouTube videos → Finance research                                                                                           |
+| `local-news`                   | every 6h | Polls your configured city/county/regional RSS feeds → Local research (ships unconfigured — fill in `FEEDS` + `LOCAL_TERMS` at the top of the script) |
+| `lyn-alden-newsletter-daily`   | daily    | Scrapes Lyn Alden's free monthly newsletter archive → Finance research (forward-only; back-catalogue backfill opt-in via `DOCVAULT_JOB_BACKFILL=1`)   |
+| `theo-youtube-daily`           | daily    | Ingests new Theo (t3.gg) YouTube uploads/streams → Tech research                                                                                      |
+| `zerohedge-research`           | every 6h | Files matching ZeroHedge RSS articles → Finance / Politics / Health (headline watchlist, auto-routed by URL section)                                  |
 
 ## Make your own
 

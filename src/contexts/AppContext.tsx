@@ -162,6 +162,7 @@ export type NavView =
   | 'politics'
   | 'predictions'
   | 'tech'
+  | 'local-news'
   | 'health'
   | 'health-activity'
   | 'health-heart'
@@ -397,6 +398,7 @@ export function AppProvider({ children }: AppProviderProps) {
         'politics',
         'predictions',
         'tech',
+        'local-news',
         'health',
         'health-activity',
         'health-heart',

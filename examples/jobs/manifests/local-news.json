@@ -1,0 +1,9 @@
+{
+  "id": "local-news",
+  "label": "Local news RSS to Research (local)",
+  "kind": "local-script",
+  "schedule": "every 6h",
+  "script": "scripts/local-news.local.js",
+  "enabled": false,
+  "tags": ["research", "rss", "local", "news"]
+}
