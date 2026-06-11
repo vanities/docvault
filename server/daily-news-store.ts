@@ -50,6 +50,8 @@ export interface Edition {
     sources: string[];
     sinceISO: string;
     itemCount: number;
+    /** Exact ledger of ingested items — the "Sources pulled" appendix. */
+    pulled?: Array<{ source: string; title: string }>;
     sourceWarnings?: Array<{ source: string; message: string }>;
   };
   usage?: { inputTokens: number; outputTokens: number };

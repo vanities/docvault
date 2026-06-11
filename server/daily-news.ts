@@ -101,6 +101,14 @@ export interface DigestSourceWarning {
   message: string;
 }
 
+/** One ingested item (research filing, upload, deep-research run) — the
+ *  debugging ledger of exactly what fed this edition. */
+export interface PulledItem {
+  /** Origin tag, e.g. 'research/finance', 'upload', 'deep-research'. */
+  source: string;
+  title: string;
+}
+
 export interface Digest {
   editionType: EditionType;
   sinceISO: string;
@@ -108,6 +116,8 @@ export interface Digest {
   itemCount: number;
   /** Desk names that contributed at least one item. */
   sources: string[];
+  /** Every item ingested in-window — rendered as a "Sources pulled" appendix. */
+  pulled: PulledItem[];
   /** Ingestion/cache failures that were skipped while composing this edition. */
   sourceWarnings: DigestSourceWarning[];
   /** Week-ahead forecast for the rendered weather box (Open-Meteo); optional. */
@@ -124,6 +134,7 @@ export interface GenerateResult {
     sources: string[];
     sinceISO: string;
     itemCount: number;
+    pulled?: PulledItem[];
     sourceWarnings?: DigestSourceWarning[];
   };
   /** Forecast carried through so the renderer can draw the weather box. */
@@ -811,21 +822,34 @@ async function gatherDocs(
   editionType: EditionType,
   sinceMs: number,
   warn?: WarningSink
-): Promise<string[]> {
+): Promise<{ items: string[]; pulled: PulledItem[] }> {
   const items: string[] = [];
+  // Structured twin of the prose items — the exact ledger of what was
+  // ingested, surfaced verbatim in the edition's "Sources pulled" appendix.
+  const pulled: PulledItem[] = [];
 
   // New research filed (any domain) — with a one-line intelligence snippet.
+  // In-window when it was PULLED in-window OR published in-window: a scraper
+  // backfilling slightly older pieces (e.g. a channel's last week of videos)
+  // still counts as news to the vault the morning after the pull.
   try {
     const entries = await listResearchEntries();
-    const recent = entries.filter((e) =>
-      afterSince(e.reportDate ? `${e.reportDate}T12:00:00` : e.uploadedAt)
+    const recent = entries.filter(
+      (e) =>
+        afterSince(e.uploadedAt) ||
+        afterSince(e.reportDate ? `${e.reportDate}T12:00:00` : undefined)
     );
     for (const e of recent) {
       const snippet = e.intelligence?.summary?.[0]?.text;
+      const title = e.title ?? e.filename ?? 'untitled';
       items.push(
-        `Filed (${e.domain}): ${e.title ?? e.filename ?? 'untitled'}` +
+        `Filed (${e.domain}): ${title}` +
           `${e.publisher ? ` — ${e.publisher}` : ''}${snippet ? ` — ${snippet}` : ''}.`
       );
+      pulled.push({
+        source: `research/${e.domain}`,
+        title: `${title}${e.publisher ? ` — ${e.publisher}` : ''}`,
+      });
     }
   } catch (err) {
     emitDigestWarning(warn, 'docs/research', err);
@@ -838,7 +862,10 @@ async function gatherDocs(
     for (const entity of config.entities) {
       const files = await scanDirectory(path.join(DATA_DIR, entity.path));
       for (const f of files) {
-        if (f.lastModified >= sinceMs) fileLines.push(`${entity.name}/${f.name}`);
+        if (f.lastModified >= sinceMs) {
+          fileLines.push(`${entity.name}/${f.name}`);
+          pulled.push({ source: 'upload', title: `${entity.name}/${f.name}` });
+        }
       }
     }
     if (fileLines.length) {
@@ -854,7 +881,10 @@ async function gatherDocs(
     const done = runs.filter(
       (r) => r.status === 'done' && afterSince(r.completedAt ?? r.createdAt)
     );
-    for (const r of done) items.push(`Deep Research completed: ${r.question}.`);
+    for (const r of done) {
+      items.push(`Deep Research completed: ${r.question}.`);
+      pulled.push({ source: 'deep-research', title: r.question });
+    }
   } catch (err) {
     emitDigestWarning(warn, 'docs/deep-research', err);
   }
@@ -886,7 +916,7 @@ async function gatherDocs(
     emitDigestWarning(warn, 'docs/reminders', err);
   }
 
-  return items;
+  return { items, pulled };
 }
 
 // The FULL text of research filed in-window, grouped by publisher (ZeroHedge,
@@ -900,7 +930,11 @@ export function buildResearchDigestItems(
   opts: { maxChars?: number } = {}
 ): string[] {
   const eligible = entries
-    .filter((e) => afterSince(e.reportDate ? `${e.reportDate}T12:00:00` : e.uploadedAt))
+    .filter(
+      (e) =>
+        afterSince(e.uploadedAt) ||
+        afterSince(e.reportDate ? `${e.reportDate}T12:00:00` : undefined)
+    )
     .filter((e) => (e.text ?? '').trim().length > 0);
   if (!eligible.length) return [];
 
@@ -980,15 +1014,18 @@ export async function gatherDigest(
   };
   const t0 = Date.now();
 
-  const [markets, politics, finance, health, docs, researchDeep, weather] = await Promise.all([
-    gatherMarkets(editionType, sinceISO, warn),
-    gatherPolitics(afterSince, warn),
-    gatherFinance(afterSince, includeBodies, includeState, warn),
-    gatherHealth(afterSince, includeBodies, includeState, editionType, warn, editionDate),
-    gatherDocs(afterSince, editionType, since, warn),
-    gatherResearchDeep(afterSince, warn),
-    gatherWeather(warn),
-  ]);
+  const [markets, politics, finance, health, docsResult, researchDeep, weather] = await Promise.all(
+    [
+      gatherMarkets(editionType, sinceISO, warn),
+      gatherPolitics(afterSince, warn),
+      gatherFinance(afterSince, includeBodies, includeState, warn),
+      gatherHealth(afterSince, includeBodies, includeState, editionType, warn, editionDate),
+      gatherDocs(afterSince, editionType, since, warn),
+      gatherResearchDeep(afterSince, warn),
+      gatherWeather(warn),
+    ]
+  );
+  const docs = docsResult.items;
 
   const desks: Array<[string, string[]]> = [
     ['Markets & Macro', markets],
@@ -1017,6 +1054,7 @@ export async function gatherDigest(
     sections,
     itemCount,
     sources,
+    pulled: docsResult.pulled,
     sourceWarnings,
     weather: weather ?? undefined,
   };
@@ -1149,6 +1187,7 @@ export async function synthesizeEdition(
       sources: digest.sources,
       sinceISO,
       itemCount: digest.itemCount,
+      ...(digest.pulled.length ? { pulled: digest.pulled } : {}),
       sourceWarnings: digest.sourceWarnings,
     },
     weather: digest.weather,
