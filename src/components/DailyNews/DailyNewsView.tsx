@@ -184,6 +184,22 @@ export function DailyNewsView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Player default speed from Settings → Models → Newsstand → Narration.
+  const [narrationSpeed, setNarrationSpeed] = useState(1);
+  useEffect(() => {
+    void (async () => {
+      try {
+        const d = await requestJson<{ dailyNews?: { narration?: { defaultSpeed?: number } } }>(
+          `${API_BASE}/settings`
+        );
+        const s = d.dailyNews?.narration?.defaultSpeed;
+        if (typeof s === 'number' && s > 0) setNarrationSpeed(s);
+      } catch {
+        /* default 1× */
+      }
+    })();
+  }, []);
+
   // Theme id → label, to name an edition's house style in the rail + header.
   useEffect(() => {
     void (async () => {
@@ -508,13 +524,17 @@ export function DailyNewsView() {
                       className="w-full max-h-72 object-cover rounded-lg mb-4"
                     />
                   )}
-                  {/* Narrated edition — native controls include playback speed. */}
+                  {/* Narrated edition — native controls include playback speed;
+                      the settings default is applied once metadata loads. */}
                   {active.audioPath && (
                     <audio
                       controls
                       preload="metadata"
                       src={`${API_BASE}/daily-news/${active.id}/audio`}
                       className="w-full mb-4"
+                      onLoadedMetadata={(e) => {
+                        e.currentTarget.playbackRate = narrationSpeed;
+                      }}
                     />
                   )}
                   {active.weather && <WeatherStrip w={active.weather} />}

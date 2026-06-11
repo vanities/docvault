@@ -333,6 +333,12 @@ export interface Settings {
     headlineImage?: boolean;
     /** OpenAI image model id (from /v1/models); defaults to gpt-image-1. */
     imageModel?: string;
+    /**
+     * Edition narration: which person's cloned voice reads the paper
+     * (clips live in Health → person → Voice), and the default playback
+     * speed for the in-app player / emailed audio. personId unset = off.
+     */
+    narration?: { personId?: string; defaultSpeed?: number };
   };
   /**
    * Outbound email via Resend — delivers the Daily News edition + test pings.
