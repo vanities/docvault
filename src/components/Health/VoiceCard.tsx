@@ -34,6 +34,25 @@ const MAX_RECORDING_MS = 90_000;
 const DEFAULT_EXAGGERATION = 0.5;
 const DEFAULT_CFG_WEIGHT = 0.5;
 
+// Read-aloud scripts, ~25 s each at a conversational pace. The clone inherits
+// the reference's delivery, so these are written to pull a natural host read:
+// varied intonation, a question, some numbers, no tongue-twisters.
+const SAMPLE_SCRIPTS = [
+  'Good morning, and welcome to the daily edition. Markets are moving, the coffee is ' +
+    'strong, and there is plenty to get through today. Before the headlines, one quick ' +
+    'note: reading the news out loud is the easy part — the hard part is stopping. ' +
+    'Here is what changed overnight, what to watch this afternoon, and why any of it matters.',
+  'Here is something I learned the hard way: backups only matter on the day you need ' +
+    'them. Fourteen years of records, one quiet Tuesday afternoon, and a hard drive that ' +
+    'would not spin up. Since then I keep everything in three places, label it twice, ' +
+    'and sleep much better. Some lessons you only need to learn once.',
+  'Quick question before we start: what does your voice sound like to everyone else? ' +
+    'Probably not what you expect. Speak the way you would across a kitchen table — ' +
+    'steady, warm, with a little energy. Throw in some numbers for good measure: ' +
+    'nineteen, forty-two, three hundred and seven. If that felt natural, it is exactly ' +
+    'the take you want.',
+];
+
 function fmtSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -65,6 +84,8 @@ export function VoiceCard({ personId, personName }: VoiceCardProps) {
   const [testMs, setTestMs] = useState<number | null>(null);
   const [exaggeration, setExaggeration] = useState(DEFAULT_EXAGGERATION);
   const [cfgWeight, setCfgWeight] = useState(DEFAULT_CFG_WEIGHT);
+  // null = script panel hidden; otherwise the index of the visible script.
+  const [scriptIndex, setScriptIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const autoStopFiredRef = useRef(false);
 
@@ -264,6 +285,44 @@ export function VoiceCard({ personId, personName }: VoiceCardProps) {
             <Loader2 className="h-4 w-4 animate-spin" />
             {busy}
           </span>
+        )}
+      </div>
+
+      {/* Read-aloud scripts — stays visible while recording, like a teleprompter. */}
+      <div className="mb-4">
+        {scriptIndex === null ? (
+          <button
+            type="button"
+            className="text-xs text-accent-400 hover:underline"
+            onClick={() => setScriptIndex(0)}
+          >
+            Not sure what to say? Show a script to read
+          </button>
+        ) : (
+          <div className="rounded-xl bg-surface-100 p-3">
+            <p className="mb-1 text-xs text-surface-600">
+              Read this aloud — about 25 seconds, like you&apos;re talking across the table:
+            </p>
+            <p className="text-sm leading-relaxed text-surface-900">
+              {SAMPLE_SCRIPTS[scriptIndex]}
+            </p>
+            <div className="mt-2 flex gap-4">
+              <button
+                type="button"
+                className="text-xs text-accent-400 hover:underline"
+                onClick={() => setScriptIndex((scriptIndex + 1) % SAMPLE_SCRIPTS.length)}
+              >
+                Try another
+              </button>
+              <button
+                type="button"
+                className="text-xs text-surface-500 hover:underline"
+                onClick={() => setScriptIndex(null)}
+              >
+                Hide
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
