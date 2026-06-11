@@ -39,8 +39,12 @@ interface SettingsData {
     theme?: string;
     headlineImage?: boolean;
     imageModel?: string;
+    narration?: { personId?: string; defaultSpeed?: number };
   };
 }
+
+/** Player-default speeds offered for narrated editions. */
+const NARRATION_SPEEDS = [1, 1.25, 1.5, 1.75, 2, 2.5, 3];
 
 const DEFAULTS: Record<Provider, string> = { anthropic: 'claude-sonnet-4-6', openai: 'gpt-4o' };
 const PROVIDERS: Provider[] = ['anthropic', 'openai'];
@@ -85,6 +89,9 @@ export function ModelsSettingsSection() {
   const [dnTheme, setDnTheme] = useState('brew');
   const [dnHeadlineImage, setDnHeadlineImage] = useState(false);
   const [dnImageModel, setDnImageModel] = useState('gpt-image-2');
+  const [dnNarrator, setDnNarrator] = useState(''); // personId; '' = narration off
+  const [dnSpeed, setDnSpeed] = useState(1);
+  const [people, setPeople] = useState<Array<{ id: string; name: string }>>([]);
   const [themes, setThemes] = useState<Array<{ id: string; label: string }>>([]);
 
   const [modelsByProvider, setModelsByProvider] = useState<Record<Provider, string[]>>({
@@ -117,6 +124,8 @@ export function ModelsSettingsSection() {
       setDnTheme(d.dailyNews?.theme ?? 'brew');
       setDnHeadlineImage(d.dailyNews?.headlineImage ?? false);
       setDnImageModel(d.dailyNews?.imageModel ?? 'gpt-image-2');
+      setDnNarrator(d.dailyNews?.narration?.personId ?? '');
+      setDnSpeed(d.dailyNews?.narration?.defaultSpeed ?? 1);
     } catch {
       /* ignore */
     } finally {
@@ -168,6 +177,11 @@ export function ModelsSettingsSection() {
       .then((r) => r.json())
       .then((d) => setThemes(d.cycle ? [d.cycle, ...(d.themes ?? [])] : (d.themes ?? [])))
       .catch(() => setThemes([]));
+    // People for the narrator dropdown (cloned voices live per person).
+    void fetch(`${API_BASE}/health/people`)
+      .then((r) => r.json())
+      .then((d) => setPeople((d.people as Array<{ id: string; name: string }>) ?? []))
+      .catch(() => setPeople([]));
     const onRefresh = () => {
       void load();
       void fetchModels(true);
@@ -200,6 +214,7 @@ export function ModelsSettingsSection() {
             theme: dnTheme,
             headlineImage: dnHeadlineImage,
             imageModel: dnImageModel,
+            narration: { personId: dnNarrator, defaultSpeed: dnSpeed },
           },
         }),
       });
@@ -350,38 +365,47 @@ export function ModelsSettingsSection() {
             </div>
           ) : (
             <div className="mt-2 space-y-2">
-              <label className="block text-[11px] text-surface-500">Agent (subscription)</label>
-              <select
-                value={drAgentBackend}
-                onChange={(e) => {
-                  const backend = e.target.value as 'claude' | 'codex';
-                  setDrAgentBackend(backend);
-                  // Keep the scope's ModelRef coherent with the backend's provider.
-                  const provider: Provider = backend === 'codex' ? 'openai' : 'anthropic';
-                  if (drModel.provider !== provider) {
-                    setDrModel({
-                      provider,
-                      model: DEFAULTS[provider],
-                      ...(drModel.effort ? { effort: drModel.effort } : {}),
-                    });
-                  }
-                }}
-                className={selectClass}
-              >
-                <option value="claude">Claude — Claude Code + WebSearch (Claude sub)</option>
-                <option value="codex">Codex — app-server + web_search (OpenAI sub)</option>
-              </select>
+              {/* One row: backend | model | effort — same shape as the API-mode row. */}
+              <div className="flex flex-col sm:flex-row sm:items-end gap-2">
+                <div className="min-w-0 flex-1">
+                  <label className="block text-[11px] text-surface-500 mb-1">
+                    Agent (subscription)
+                  </label>
+                  <select
+                    value={drAgentBackend}
+                    onChange={(e) => {
+                      const backend = e.target.value as 'claude' | 'codex';
+                      setDrAgentBackend(backend);
+                      // Keep the scope's ModelRef coherent with the backend's provider.
+                      const provider: Provider = backend === 'codex' ? 'openai' : 'anthropic';
+                      if (drModel.provider !== provider) {
+                        setDrModel({
+                          provider,
+                          model: DEFAULTS[provider],
+                          ...(drModel.effort ? { effort: drModel.effort } : {}),
+                        });
+                      }
+                    }}
+                    className={selectClass}
+                  >
+                    <option value="claude">Claude — Claude Code + WebSearch (Claude sub)</option>
+                    <option value="codex">Codex — app-server + web_search (OpenAI sub)</option>
+                  </select>
+                </div>
+                <div className="min-w-0 flex-[2]">
+                  <AgentModelRow
+                    backend={drAgentBackend}
+                    value={drModel}
+                    onChange={setDrModel}
+                    models={modelsByProvider}
+                  />
+                </div>
+              </div>
               <p className="text-[11px] text-surface-600 leading-relaxed">
                 {drAgentBackend === 'codex'
                   ? 'Runs codex with web search on your OpenAI/ChatGPT subscription — an agentic loop, no API billing. Sign in via AI Credentials.'
                   : 'Runs Claude Code with WebSearch on your Claude subscription — an agentic loop (search → read → iterate), no API billing. Uses the OAuth token from AI Credentials.'}
               </p>
-              <AgentModelRow
-                backend={drAgentBackend}
-                value={drModel}
-                onChange={setDrModel}
-                models={modelsByProvider}
-              />
             </div>
           )}
         </div>
@@ -416,37 +440,46 @@ export function ModelsSettingsSection() {
             </div>
           ) : (
             <div className="mt-2 space-y-2">
-              <label className="block text-[11px] text-surface-500">Agent (subscription)</label>
-              <select
-                value={dnAgentBackend}
-                onChange={(e) => {
-                  const backend = e.target.value as 'claude' | 'codex';
-                  setDnAgentBackend(backend);
-                  // Keep the scope's ModelRef coherent with the backend's provider.
-                  const provider: Provider = backend === 'codex' ? 'openai' : 'anthropic';
-                  if (dnModel.provider !== provider) {
-                    setDnModel({
-                      provider,
-                      model: DEFAULTS[provider],
-                      ...(dnModel.effort ? { effort: dnModel.effort } : {}),
-                    });
-                  }
-                }}
-                className={selectClass}
-              >
-                <option value="claude">Claude — Claude Code (Claude sub)</option>
-                <option value="codex">Codex — app-server (OpenAI sub)</option>
-              </select>
+              {/* One row: backend | model | effort — same shape as the API-mode row. */}
+              <div className="flex flex-col sm:flex-row sm:items-end gap-2">
+                <div className="min-w-0 flex-1">
+                  <label className="block text-[11px] text-surface-500 mb-1">
+                    Agent (subscription)
+                  </label>
+                  <select
+                    value={dnAgentBackend}
+                    onChange={(e) => {
+                      const backend = e.target.value as 'claude' | 'codex';
+                      setDnAgentBackend(backend);
+                      // Keep the scope's ModelRef coherent with the backend's provider.
+                      const provider: Provider = backend === 'codex' ? 'openai' : 'anthropic';
+                      if (dnModel.provider !== provider) {
+                        setDnModel({
+                          provider,
+                          model: DEFAULTS[provider],
+                          ...(dnModel.effort ? { effort: dnModel.effort } : {}),
+                        });
+                      }
+                    }}
+                    className={selectClass}
+                  >
+                    <option value="claude">Claude — Claude Code (Claude sub)</option>
+                    <option value="codex">Codex — app-server (OpenAI sub)</option>
+                  </select>
+                </div>
+                <div className="min-w-0 flex-[2]">
+                  <AgentModelRow
+                    backend={dnAgentBackend}
+                    value={dnModel}
+                    onChange={setDnModel}
+                    models={modelsByProvider}
+                  />
+                </div>
+              </div>
               <p className="text-[11px] text-surface-600 leading-relaxed">
                 Runs on your subscription (no API billing). API mode is recommended for the
                 unattended morning run — a stored API key doesn't expire like an OAuth session.
               </p>
-              <AgentModelRow
-                backend={dnAgentBackend}
-                value={dnModel}
-                onChange={setDnModel}
-                models={modelsByProvider}
-              />
             </div>
           )}
           <div className="mt-3">
@@ -479,6 +512,44 @@ export function ModelsSettingsSection() {
               className="text-[13px]"
             />
           </div>
+          {/* Narration — who reads the paper, and the player's default speed. */}
+          <div className="mt-3 flex flex-col sm:flex-row sm:items-end gap-2">
+            <div className="min-w-0 flex-1">
+              <label className="block text-[11px] text-surface-500 mb-1">
+                Narrator (cloned voice)
+              </label>
+              <select
+                value={dnNarrator}
+                onChange={(e) => setDnNarrator(e.target.value)}
+                className={selectClass}
+              >
+                <option value="">Off — no narration</option>
+                {people.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="sm:w-36">
+              <label className="block text-[11px] text-surface-500 mb-1">Default speed</label>
+              <select
+                value={String(dnSpeed)}
+                onChange={(e) => setDnSpeed(Number(e.target.value))}
+                className={selectClass}
+              >
+                {NARRATION_SPEEDS.map((s) => (
+                  <option key={s} value={s}>
+                    {s}×
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <p className="text-[11px] text-surface-500 mt-1">
+            Narrated editions play at this speed by default. The narrator&apos;s voice comes from
+            their reference clips (Health → person → Voice).
+          </p>
           <div className="mt-3 flex items-center justify-between gap-3">
             <div>
               <label className="block text-[12px] font-medium text-surface-800">

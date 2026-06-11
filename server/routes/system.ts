@@ -370,6 +370,7 @@ export async function handleSettingsRoutes(
         theme?: unknown;
         headlineImage?: unknown;
         imageModel?: unknown;
+        narration?: unknown;
       };
       if (dn.mode === 'agent' || dn.mode === 'api') settings.dailyNews.mode = dn.mode;
       if (dn.agentBackend === 'claude' || dn.agentBackend === 'codex')
@@ -397,6 +398,20 @@ export async function handleSettingsRoutes(
         const m = dn.imageModel.trim();
         if (m) settings.dailyNews.imageModel = m;
         else delete settings.dailyNews.imageModel;
+      }
+      if (dn.narration && typeof dn.narration === 'object') {
+        const n = dn.narration as { personId?: unknown; defaultSpeed?: unknown };
+        const cur = settings.dailyNews.narration ?? {};
+        if (typeof n.personId === 'string') {
+          const p = n.personId.trim();
+          if (p) cur.personId = p;
+          else delete cur.personId;
+        }
+        if (typeof n.defaultSpeed === 'number' && Number.isFinite(n.defaultSpeed)) {
+          cur.defaultSpeed = Math.min(3, Math.max(0.5, n.defaultSpeed));
+        }
+        if (Object.keys(cur).length) settings.dailyNews.narration = cur;
+        else delete settings.dailyNews.narration;
       }
     }
 
