@@ -17,6 +17,7 @@
 // and returns the audio for in-browser playback.
 
 import { promises as fs } from 'fs';
+import os from 'os';
 import path from 'path';
 import { jsonResponse, ensureDir, DATA_DIR, getTtsConfig } from '../data.js';
 import { requirePerson } from '../health-store.js';
@@ -59,6 +60,68 @@ export function clampKnob(v: unknown, min: number, max: number): number | undefi
 const DEFAULT_TEST_TEXT =
   'Good morning. This is your DocVault daily edition, read in a cloned voice. ' +
   'If this sounds like you, the narrator is ready.';
+
+/** Formats browsers record that TTS voice libraries refuse (chatterbox
+ *  accepts .flac/.mp3/.ogg/.m4a/.wav only) — converted to WAV at upload,
+ *  and defensively at push time for clips stored before this existed. */
+const CONVERT_TO_WAV_EXTS = new Set(['.webm', '.mp4']);
+
+/** Plenty for a ≤90 s clip; only catches a wedged ffmpeg. */
+const FFMPEG_TIMEOUT_MS = 60_000;
+
+export function needsWavConversion(filename: string): boolean {
+  return CONVERT_TO_WAV_EXTS.has(path.extname(filename).toLowerCase());
+}
+
+/** Transcode a clip to 24 kHz mono 16-bit WAV via ffmpeg (bundled in the
+ *  Docker image; same Bun.spawn pattern as media-transcribe). Throws with a
+ *  user-facing message on failure. */
+async function convertToWavBytes(input: Uint8Array, ext: string): Promise<Uint8Array> {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dv-voice-'));
+  const t0 = performance.now();
+  try {
+    const inPath = path.join(tempDir, `in${ext}`);
+    const outPath = path.join(tempDir, 'out.wav');
+    await fs.writeFile(inPath, input);
+    const proc = Bun.spawn({
+      cmd: [
+        'ffmpeg',
+        '-y',
+        '-i',
+        inPath,
+        '-ac',
+        '1',
+        '-ar',
+        '24000',
+        '-sample_fmt',
+        's16',
+        outPath,
+      ],
+      stdout: 'ignore',
+      stderr: 'pipe',
+    });
+    const watchdog = setTimeout(() => proc.kill(), FFMPEG_TIMEOUT_MS);
+    const code = await proc.exited;
+    clearTimeout(watchdog);
+    if (code !== 0) {
+      const stderr = await new Response(proc.stderr).text();
+      log.error(`[convert] ffmpeg exit=${code}: ${stderr.slice(-300)}`);
+      throw new Error('Could not convert recording to WAV (ffmpeg failed)');
+    }
+    const out = new Uint8Array(await fs.readFile(outPath));
+    log.info(
+      `[convert] ${ext} ${input.byteLength}B → wav ${out.byteLength}B in ${(performance.now() - t0).toFixed(0)}ms`
+    );
+    return out;
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('Could not convert')) throw err;
+    const msg = err instanceof Error ? err.message : String(err);
+    log.error(`[convert] failed: ${msg}`);
+    throw new Error('Could not convert recording to WAV — is ffmpeg installed on the server?');
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+}
 
 export interface VoiceClipInfo {
   filename: string;
@@ -183,11 +246,23 @@ export async function handleVoiceRoutes(
         413
       );
     }
+    // Normalize webm/mp4 to WAV on the way in so every stored clip is
+    // directly pushable to the TTS voice library.
+    let storedBytes: Uint8Array = raw;
+    let storedName = filename;
+    if (needsWavConversion(filename)) {
+      try {
+        storedBytes = await convertToWavBytes(raw, path.extname(filename).toLowerCase());
+        storedName = filename.slice(0, -path.extname(filename).length) + '.wav';
+      } catch (err) {
+        return jsonResponse({ error: err instanceof Error ? err.message : String(err) }, 400);
+      }
+    }
     await ensureDir(voiceDir(personId));
-    const finalName = await availableName(personId, filename);
+    const finalName = await availableName(personId, storedName);
     const abs = clipPath(personId, finalName);
     if (!abs) return jsonResponse({ error: 'Invalid clip path' }, 400);
-    await fs.writeFile(abs, raw);
+    await fs.writeFile(abs, storedBytes);
     const stat = await fs.stat(abs);
     log.info(`[upload] ${personId}/${finalName} bytes=${raw.byteLength}`);
     return jsonResponse({
@@ -273,8 +348,15 @@ export async function handleVoiceRoutes(
     try {
       const refAbs = clipPath(personId, reference.filename);
       if (!refAbs) return jsonResponse({ error: 'Invalid clip path' }, 400);
-      const refBytes = new Uint8Array(await fs.readFile(refAbs));
-      await pushVoice(voiceName, refBytes, reference.filename);
+      let refBytes: Uint8Array = new Uint8Array(await fs.readFile(refAbs));
+      let refName = reference.filename;
+      // Legacy clips stored before upload-time normalization (e.g. .webm
+      // recordings) get converted on the fly so they stay usable.
+      if (needsWavConversion(refName)) {
+        refBytes = await convertToWavBytes(refBytes, path.extname(refName).toLowerCase());
+        refName = refName.slice(0, -path.extname(refName).length) + '.wav';
+      }
+      await pushVoice(voiceName, refBytes, refName);
       const result = await synthesizeSpeech(text, voiceName, { exaggeration, cfgWeight });
       log.info(
         `[test] done person=${personId} in ${(performance.now() - t0).toFixed(0)}ms (synthesis ${result.ms.toFixed(0)}ms)`
