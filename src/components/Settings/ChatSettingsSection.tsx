@@ -29,6 +29,34 @@ interface ChatSettingsData {
   ttsApiKeyHint?: string;
 }
 
+// The 22 languages Chatterbox Multilingual supports, mirrored from the TTS
+// server's GET /languages. Hardcoded so the dropdown renders before any
+// server is configured.
+const TTS_LANGUAGES: Array<[code: string, name: string]> = [
+  ['ar', 'Arabic'],
+  ['da', 'Danish'],
+  ['de', 'German'],
+  ['el', 'Greek'],
+  ['en', 'English'],
+  ['es', 'Spanish'],
+  ['fi', 'Finnish'],
+  ['fr', 'French'],
+  ['he', 'Hebrew'],
+  ['hi', 'Hindi'],
+  ['it', 'Italian'],
+  ['ja', 'Japanese'],
+  ['ko', 'Korean'],
+  ['ms', 'Malay'],
+  ['nl', 'Dutch'],
+  ['no', 'Norwegian'],
+  ['pl', 'Polish'],
+  ['pt', 'Portuguese'],
+  ['ru', 'Russian'],
+  ['sv', 'Swedish'],
+  ['sw', 'Swahili'],
+  ['tr', 'Turkish'],
+];
+
 // Setup help for users on HTTP origins. Browsers refuse to expose mic
 // access (navigator.mediaDevices.getUserMedia) outside secure contexts —
 // DocVault on Unraid LAN is HTTP, so we surface the three fixes inline.
@@ -570,16 +598,19 @@ export function ChatSettingsSection() {
           <label className="block text-[13px] font-medium text-surface-800 mb-2 mt-4">
             Voice language
           </label>
-          <Input
-            type="text"
-            value={ttsLanguage}
+          <select
+            value={ttsLanguage || 'en'}
             onChange={(e) => setTtsLanguage(e.target.value)}
-            placeholder="en"
-            className="text-[13px] font-mono max-w-[120px]"
-          />
+            className="text-[13px] bg-surface-100/60 border border-border/40 rounded-lg px-2 py-1.5"
+          >
+            {TTS_LANGUAGES.map(([code, name]) => (
+              <option key={code} value={code}>
+                {name} ({code})
+              </option>
+            ))}
+          </select>
           <p className="text-[11px] text-surface-600 mt-1">
-            ISO code attached to cloned voices (chatterbox supports 22 languages). Blank ={' '}
-            <code className="font-mono">en</code>.
+            Attached to cloned voices — the 22 languages Chatterbox Multilingual supports.
           </p>
 
           <Button onClick={handleSaveTts} size="sm" disabled={savingTts} className="mt-3">
