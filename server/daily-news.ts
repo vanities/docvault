@@ -951,14 +951,30 @@ export function buildResearchDigestItems(
   });
 }
 
-async function gatherResearchDeep(afterSince: AfterSince, warn?: WarningSink): Promise<string[]> {
+async function gatherResearchDeep(
+  afterSince: AfterSince,
+  warn?: WarningSink
+): Promise<{ research: string[]; local: string[] }> {
   try {
-    const items = buildResearchDigestItems(await listResearchEntries(), afterSince);
-    log.info(`[digest] research-deep: ${items.length} full-text entries`);
-    return items;
+    const entries = await listResearchEntries();
+    // Local news gets its own desk in the edition — a newspaper has a local
+    // section, and city announcements shouldn't be buried among macro research.
+    const research = buildResearchDigestItems(
+      entries.filter((e) => e.domain !== 'local'),
+      afterSince
+    );
+    const local = buildResearchDigestItems(
+      entries.filter((e) => e.domain === 'local'),
+      afterSince,
+      { maxChars: 25_000 }
+    );
+    log.info(
+      `[digest] research-deep: ${research.length} full-text entries, local: ${local.length}`
+    );
+    return { research, local };
   } catch (err) {
     emitDigestWarning(warn, 'research/full-text', err);
-    return [];
+    return { research: [], local: [] };
   }
 }
 
@@ -1030,9 +1046,10 @@ export async function gatherDigest(
   const desks: Array<[string, string[]]> = [
     ['Markets & Macro', markets],
     ['Politics', politics],
+    ['Local News', researchDeep.local],
     ['Personal Finance & Business', finance],
     ['Health', health],
-    ['Research & Analysis', researchDeep],
+    ['Research & Analysis', researchDeep.research],
     ['Documents & Deadlines', docs],
   ];
   const sections = desks
@@ -1043,8 +1060,9 @@ export async function gatherDigest(
 
   log.info(
     `[digest] type=${editionType} since=${sinceISO} ` +
-      `markets=${markets.length} politics=${politics.length} finance=${finance.length} ` +
-      `health=${health.length} research=${researchDeep.length} docs=${docs.length} ` +
+      `markets=${markets.length} politics=${politics.length} local=${researchDeep.local.length} ` +
+      `finance=${finance.length} health=${health.length} research=${researchDeep.research.length} ` +
+      `docs=${docs.length} ` +
       `weather=${weather ? `${weather.days.length}d` : 'off'} ` +
       `(sections=${sections.length} items=${itemCount}) in ${Date.now() - t0}ms`
   );
@@ -1073,7 +1091,7 @@ function buildSystem(
   const parts = [
     `You are the editor-in-chief of "${title}", a personal daily newspaper for a single reader (the owner of this data).`,
     "You are given a structured digest of everything that changed across the owner's data since the last edition, organized by desk.",
-    'Write a cohesive newspaper edition in clean markdown. Open with a one-paragraph front-page lede summarizing the single most important development. Then write one `##` section per desk, in the order given, in tight journalistic prose (not bullet dumps) — lead with what changed and why it matters, cite the specific numbers, dates, and names from the digest. Cover EVERY desk that has material (the digest is comprehensive — markets, politics, personal finance, health, research, documents); omit only a desk with genuinely no items.',
+    'Write a cohesive newspaper edition in clean markdown. Open with a one-paragraph front-page lede summarizing the single most important development. Then write one `##` section per desk, in the order given, in tight journalistic prose (not bullet dumps) — lead with what changed and why it matters, cite the specific numbers, dates, and names from the digest. Cover EVERY desk that has material (the digest is comprehensive — markets, politics, local news, personal finance, health, research, documents); omit only a desk with genuinely no items. In the Local News section, report like a hometown paper: lead with what affects the reader directly (rates, closures, construction, schools), keep names and dates concrete.',
     'When the "Research & Analysis" desk is present it carries the FULL text of newly-filed research (ZeroHedge, Lyn Alden, George Gammon, political transcripts, etc.) — actually read it and synthesize the key arguments, attributing analysts by name, rather than merely noting that a piece was filed.',
     "In the Health section, be a supportive coach as well as a reporter: when someone's numbers are good (steps, workouts, resting heart rate, weight trend), say so plainly — one warm, specific affirmation per person is welcome. When sleep falls short (under ~7 hours total, or under ~1 hour of deep sleep), call it out directly with a gentle, actionable nudge (e.g. an earlier wind-down tonight) rather than burying it in neutral prose. Encouraging and concrete, never clinical or scolding.",
     editionType === 'weekly'
