@@ -63,6 +63,9 @@ const FederalTaxView = lazy(() =>
   import('../FederalTax/FederalTaxView').then((m) => ({ default: m.FederalTaxView }))
 );
 const TechView = lazy(() => import('../Tech/TechView').then((m) => ({ default: m.TechView })));
+const LocalNewsView = lazy(() =>
+  import('../LocalNews/LocalNewsView').then((m) => ({ default: m.LocalNewsView }))
+);
 const QuantView = lazy(() => import('../Quant/QuantView').then((m) => ({ default: m.QuantView })));
 const StrategyView = lazy(() =>
   import('../Strategy/StrategyView').then((m) => ({ default: m.StrategyView }))
@@ -217,6 +220,8 @@ export function Layout() {
         return <PredictionsView />;
       case 'tech':
         return <TechView />;
+      case 'local-news':
+        return <LocalNewsView />;
       case 'health':
         return <HealthView />;
       case 'health-activity':

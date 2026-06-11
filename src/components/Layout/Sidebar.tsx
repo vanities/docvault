@@ -843,6 +843,16 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               onClick={handleViewClick}
             />
             <NavButton
+              view="local-news"
+              label="Local"
+              icon={MapPin}
+              activeColor="bg-rose-500/10"
+              activeTextColor="text-rose-400"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
+            <NavButton
               view="daily-news"
               label="Newsstand"
               icon={Newspaper}

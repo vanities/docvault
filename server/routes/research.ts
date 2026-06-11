@@ -56,7 +56,7 @@ const RESEARCH_DATA_DIR = path.join(DATA_DIR, 'research');
 // Types
 // ---------------------------------------------------------------------------
 
-export type ResearchDomain = 'finance' | 'health' | 'politics' | 'tech';
+export type ResearchDomain = 'finance' | 'health' | 'politics' | 'tech' | 'local';
 
 /**
  * Stored media types. PDF and plain text are the original ingest paths; the
@@ -201,7 +201,11 @@ export async function listResearchEntries(domain?: ResearchDomain): Promise<Rese
  *  "finance" — keeps the legacy Quant ingest path working when callers don't
  *  send a domain at all. */
 export function parseDomain(raw: unknown): ResearchDomain {
-  return raw === 'health' || raw === 'politics' || raw === 'finance' || raw === 'tech'
+  return raw === 'health' ||
+    raw === 'politics' ||
+    raw === 'finance' ||
+    raw === 'tech' ||
+    raw === 'local'
     ? raw
     : 'finance';
 }
