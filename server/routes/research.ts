@@ -56,7 +56,8 @@ const RESEARCH_DATA_DIR = path.join(DATA_DIR, 'research');
 // Types
 // ---------------------------------------------------------------------------
 
-export type ResearchDomain = 'finance' | 'health' | 'politics' | 'tech' | 'local';
+export const RESEARCH_DOMAINS = ['finance', 'health', 'politics', 'tech', 'local'] as const;
+export type ResearchDomain = (typeof RESEARCH_DOMAINS)[number];
 
 /**
  * Stored media types. PDF and plain text are the original ingest paths; the
@@ -197,17 +198,15 @@ export async function listResearchEntries(domain?: ResearchDomain): Promise<Rese
   return entries;
 }
 
+export function isResearchDomain(raw: unknown): raw is ResearchDomain {
+  return typeof raw === 'string' && (RESEARCH_DOMAINS as readonly string[]).includes(raw);
+}
+
 /** Parse the `domain` value supplied by a client. Unknown values fall back to
  *  "finance" — keeps the legacy Quant ingest path working when callers don't
  *  send a domain at all. */
 export function parseDomain(raw: unknown): ResearchDomain {
-  return raw === 'health' ||
-    raw === 'politics' ||
-    raw === 'finance' ||
-    raw === 'tech' ||
-    raw === 'local'
-    ? raw
-    : 'finance';
+  return isResearchDomain(raw) ? raw : 'finance';
 }
 
 /** Coerce a client-supplied list of person IDs into a clean string[].
@@ -788,16 +787,12 @@ export async function handleResearchRoutes(
   }
 
   // GET /api/research?domain=health — list newest first (by reportDate if
-  // set, else upload time). When `domain` is unset, returns everything for
-  // back-compat with the original Quant-only endpoint; callers that want a
-  // single tab's entries should always pass ?domain=finance, ?domain=health,
-  // or ?domain=politics.
+  // set, else upload time). When `domain` is unset (or unknown), returns
+  // everything for back-compat with the original Quant-only endpoint; callers
+  // that want a single tab's entries should always pass a known ?domain=.
   if (sub === '' && req.method === 'GET') {
     const domainParam = url.searchParams.get('domain');
-    const domain =
-      domainParam === 'finance' || domainParam === 'health' || domainParam === 'politics'
-        ? domainParam
-        : undefined;
+    const domain = isResearchDomain(domainParam) ? domainParam : undefined;
     return jsonResponse({ entries: await listResearchEntries(domain) });
   }
 
