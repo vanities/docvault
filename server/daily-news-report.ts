@@ -341,23 +341,41 @@ function renderWeatherEmail(w: Edition['weather'], s: ReturnType<typeof themeSty
 
 function renderSourceNotes(edition: Edition): string {
   const warnings = edition.digestMeta?.sourceWarnings ?? [];
-  if (!warnings.length) return '';
-  const items = warnings
-    .map((w) => `<li><strong>${escapeHtml(w.source)}</strong>: ${escapeHtml(w.message)}</li>`)
-    .join('');
-  return `<aside class="source-notes"><h2>Source notes</h2><p>Some sources could not be read while this edition was composed:</p><ul>${items}</ul></aside>`;
+  const pulled = edition.digestMeta?.pulled ?? [];
+  if (!warnings.length && !pulled.length) return '';
+  const warningBlock = warnings.length
+    ? `<p>Some sources could not be read while this edition was composed:</p><ul>${warnings
+        .map((w) => `<li><strong>${escapeHtml(w.source)}</strong>: ${escapeHtml(w.message)}</li>`)
+        .join('')}</ul>`
+    : '';
+  const pulledBlock = pulled.length
+    ? `<p>Sources pulled into this edition (${pulled.length}):</p><ul>${pulled
+        .map((p) => `<li><strong>${escapeHtml(p.source)}</strong> — ${escapeHtml(p.title)}</li>`)
+        .join('')}</ul>`
+    : '';
+  return `<aside class="source-notes"><h2>Source notes</h2>${warningBlock}${pulledBlock}</aside>`;
 }
 
 function renderSourceNotesEmail(edition: Edition, s: ReturnType<typeof themeStyle>): string {
   const warnings = edition.digestMeta?.sourceWarnings ?? [];
-  if (!warnings.length) return '';
-  const items = warnings
-    .map((w) => `<li><strong>${escapeHtml(w.source)}</strong>: ${escapeHtml(w.message)}</li>`)
-    .join('');
+  const pulled = edition.digestMeta?.pulled ?? [];
+  if (!warnings.length && !pulled.length) return '';
+  const warningBlock = warnings.length
+    ? `<p style="margin:0 0 8px;">Some sources could not be read while this edition was composed:</p><ul style="margin:.2em 0 10px;padding-left:1.2em;">${warnings
+        .map((w) => `<li><strong>${escapeHtml(w.source)}</strong>: ${escapeHtml(w.message)}</li>`)
+        .join('')}</ul>`
+    : '';
+  const pulledBlock = pulled.length
+    ? `<p style="margin:0 0 8px;">Sources pulled into this edition (${pulled.length}):</p><ul style="margin:.2em 0 0;padding-left:1.2em;">${pulled
+        .map((p) => `<li><strong>${escapeHtml(p.source)}</strong> — ${escapeHtml(p.title)}</li>`)
+        .join('')}</ul>`
+    : '';
   return (
     `<div style="margin-top:24px;border-top:1px solid ${s.rule};padding-top:14px;color:${s.muted};font:13px/1.5 system-ui,sans-serif;">` +
     `<div style="font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;">Source notes</div>` +
-    `<p style="margin:0 0 8px;">Some sources could not be read while this edition was composed:</p><ul style="margin:.2em 0 0;padding-left:1.2em;">${items}</ul></div>`
+    warningBlock +
+    pulledBlock +
+    `</div>`
   );
 }
 
