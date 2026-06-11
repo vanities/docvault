@@ -34,7 +34,7 @@ vi.mock('../logger.js', () => ({
 
 // Imports must follow the DATA_DIR + vi.mock setup.
 // eslint-disable-next-line import/first
-import { clampKnob, handleVoiceRoutes, sanitizeClipFilename } from './voice.js';
+import { clampKnob, handleVoiceRoutes, needsWavConversion, sanitizeClipFilename } from './voice.js';
 
 const HEALTH_STORE_PATH = path.join(tmpDataDir, '.docvault-health.json');
 const PERSON_ID = 'person-test01';
@@ -179,6 +179,34 @@ describe('sanitizeClipFilename', () => {
     expect(sanitizeClipFilename('noext')).toBeNull();
     expect(sanitizeClipFilename(null)).toBeNull();
     expect(sanitizeClipFilename('weird$chars!.mp3')).toBe('weird_chars_.mp3');
+  });
+});
+
+describe('wav conversion', () => {
+  test('needsWavConversion flags formats the TTS voice library refuses', () => {
+    expect(needsWavConversion('take.webm')).toBe(true);
+    expect(needsWavConversion('take.MP4')).toBe(true);
+    expect(needsWavConversion('take.wav')).toBe(false);
+    expect(needsWavConversion('take.m4a')).toBe(false);
+    expect(needsWavConversion('take.mp3')).toBe(false);
+    expect(needsWavConversion('take.ogg')).toBe(false);
+  });
+
+  test('a failed conversion is a clean 400, not a crash', async () => {
+    // Under vitest (Node) the Bun.spawn ffmpeg path is unavailable, which
+    // doubles as the ffmpeg-missing case: the upload must fail with a
+    // user-facing error and store nothing.
+    const res = await dispatch(
+      'POST',
+      `/api/health/${PERSON_ID}/voice/clips?filename=take.webm`,
+      FAKE_AUDIO
+    );
+    expect(res?.status).toBe(400);
+    const body = (await res!.json()) as { error: string };
+    expect(body.error).toContain('Could not convert');
+
+    const list = await dispatch('GET', `/api/health/${PERSON_ID}/voice`);
+    expect(((await list!.json()) as { clips: unknown[] }).clips).toEqual([]);
   });
 });
 
