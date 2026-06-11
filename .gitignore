@@ -60,6 +60,8 @@ scripts/*
 !src/utils/skillTrigger.test.ts
 # Exception: quant math tests are pure computation, no personal data
 !server/routes/quant.test.ts
+# Exception: voice route tests use a tmpdir + fabricated audio bytes, no personal data
+!server/routes/voice.test.ts
 # Exception: crypto-keys tests are pure crypto primitives, no personal data
 !server/crypto-keys.test.ts
 # Exception: backup tests use synthetic tmpdir fixtures, no personal data

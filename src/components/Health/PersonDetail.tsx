@@ -43,6 +43,7 @@ import { useHealthApi } from './useHealthApi';
 import type { AppleHealthSummary, ClinicalSummary, ExportInfo, PersonSnapshots } from './types';
 import { DailySummaryTable } from './DailySummaryTable';
 import { WorkoutSyncCard } from './WorkoutSyncCard';
+import { VoiceCard } from './VoiceCard';
 import { HealthChart } from './HealthChart';
 import { ChartCard } from './ChartCard';
 import { ScoreGauge } from './ScoreGauge';
@@ -354,6 +355,10 @@ export function PersonDetail({ person }: PersonDetailProps) {
       )}
 
       {hasParsedExport && <WorkoutSyncCard personId={person.id} personName={person.name} />}
+
+      {/* Voice profile — reference clips for TTS cloning. Not gated on health
+          exports; a person can have a voice before any Apple Health data. */}
+      <VoiceCard personId={person.id} personName={person.name} />
 
       {/* Health at a Glance — charts + scores from snapshot */}
       {snapshot && (

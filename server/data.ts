@@ -203,6 +203,19 @@ export interface Settings {
    * endpoint. Encrypted at rest. For Parakeet, matches `PARAKEET_API_KEY`.
    */
   transcribeApiKey?: string;
+  /**
+   * HTTP endpoint for an OpenAI-compatible /audio/speech text-to-speech
+   * service — e.g. chatterbox-tts-api on a LAN GPU box. Used for voice-clone
+   * test playback and Daily News narration.
+   */
+  ttsUrl?: string;
+  /** Optional bearer token for the TTS service. Encrypted at rest. */
+  ttsApiKey?: string;
+  /**
+   * Language code attached to cloned voices in the TTS server's library
+   * (e.g. "en", "fr", "es"). Default "en".
+   */
+  ttsLanguage?: string;
   crypto?: {
     exchanges: CryptoExchangeConfig[];
     wallets: CryptoWalletConfig[];
@@ -675,6 +688,23 @@ export async function getTranscribeConfig(): Promise<TranscribeConfig> {
     url: settings.transcribeUrl || process.env.DOCVAULT_TRANSCRIBE_URL,
     model: settings.transcribeModel || process.env.DOCVAULT_TRANSCRIBE_MODEL,
     apiKey: settings.transcribeApiKey || process.env.DOCVAULT_TRANSCRIBE_API_KEY,
+  };
+}
+
+/**
+ * Get text-to-speech service config. Falls back to env vars
+ * (DOCVAULT_TTS_URL, DOCVAULT_TTS_API_KEY) if not in settings.
+ */
+export async function getTtsConfig(): Promise<{
+  url?: string;
+  apiKey?: string;
+  language: string;
+}> {
+  const settings = await loadSettings();
+  return {
+    url: settings.ttsUrl || process.env.DOCVAULT_TTS_URL,
+    apiKey: settings.ttsApiKey || process.env.DOCVAULT_TTS_API_KEY,
+    language: settings.ttsLanguage?.trim() || process.env.DOCVAULT_TTS_LANGUAGE || 'en',
   };
 }
 
