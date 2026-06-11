@@ -65,6 +65,7 @@ interface Edition extends EditionSummary {
   };
   usage?: { inputTokens: number; outputTokens: number };
   imagePath?: string;
+  audioPath?: string;
   weather?: WeatherForecast;
 }
 
@@ -505,6 +506,15 @@ export function DailyNewsView() {
                       src={`${API_BASE}/daily-news/${active.id}/image.png`}
                       alt=""
                       className="w-full max-h-72 object-cover rounded-lg mb-4"
+                    />
+                  )}
+                  {/* Narrated edition — native controls include playback speed. */}
+                  {active.audioPath && (
+                    <audio
+                      controls
+                      preload="metadata"
+                      src={`${API_BASE}/daily-news/${active.id}/audio`}
+                      className="w-full mb-4"
                     />
                   )}
                   {active.weather && <WeatherStrip w={active.weather} />}

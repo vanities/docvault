@@ -57,6 +57,9 @@ export interface Edition {
   usage?: { inputTokens: number; outputTokens: number };
   /** Saved headline-image filename (set when headline images are enabled). */
   imagePath?: string;
+  /** Saved narration-audio filename under DATA_DIR/daily-news-audio/ (set
+   *  when the edition has been narrated by a cloned voice). */
+  audioPath?: string;
   error?: string;
   createdAt: string;
   completedAt?: string;
