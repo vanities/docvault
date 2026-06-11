@@ -9,7 +9,8 @@
 //   DELETE /api/daily-news/:id                 → remove an edition
 //   POST   /api/email/test                     → send a test email (verify Resend)
 
-import { jsonResponse, loadSettings } from '../data.js';
+import path from 'path';
+import { jsonResponse, loadSettings, DATA_DIR } from '../data.js';
 import { getConfiguredTimezone, zonedYMD } from '../tz.js';
 import {
   startEdition,
@@ -103,6 +104,25 @@ export async function handleDailyNewsRoutes(
     if (!bytes) return jsonResponse({ error: 'no image' }, 404);
     return new Response(new Uint8Array(bytes), {
       headers: { 'Content-Type': 'image/png', 'Cache-Control': 'private, max-age=86400' },
+    });
+  }
+
+  // GET /api/daily-news/:id/audio — the narrated edition (if any). Handed to
+  // Response as a BunFile so Bun.serve honours Range requests (206 +
+  // Content-Range) — required for <audio> seeking.
+  const audioMatch = pathname.match(/^\/api\/daily-news\/([^/]+)\/audio$/);
+  if (audioMatch && req.method === 'GET') {
+    const edition = await getEdition(decodeURIComponent(audioMatch[1]));
+    if (!edition?.audioPath) return jsonResponse({ error: 'no narration for this edition' }, 404);
+    const abs = path.join(DATA_DIR, 'daily-news-audio', path.basename(edition.audioPath));
+    const file = Bun.file(abs);
+    if (!(await file.exists())) return jsonResponse({ error: 'audio file missing on disk' }, 410);
+    return new Response(file, {
+      headers: {
+        'Content-Type': abs.toLowerCase().endsWith('.wav') ? 'audio/wav' : 'audio/mpeg',
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'private, max-age=86400',
+      },
     });
   }
 
