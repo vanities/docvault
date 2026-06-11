@@ -71,6 +71,7 @@ import { handleDNARoutes } from './routes/dna.js';
 import { handleAncestryRoutes } from './routes/ancestry.js';
 import { handleNutritionRoutes } from './routes/nutrition.js';
 import { handleSicknessRoutes } from './routes/sickness.js';
+import { handleVoiceRoutes } from './routes/voice.js';
 import { handleHealthAnalysisRoutes } from './routes/health-analysis.js';
 import { handleStrategyRoutes } from './routes/strategy.js';
 import { handleResearchRoutes, recoverStaleTranscriptions } from './routes/research.js';
@@ -1465,6 +1466,12 @@ export async function handleRequest(req: Request): Promise<Response> {
   // dispatches here.
   const sicknessResponse = await handleSicknessRoutes(req, url, pathname);
   if (sicknessResponse) return sicknessResponse;
+
+  // Voice routes — per-person TTS reference clips + clone test playback.
+  // Registered before handleHealthRoutes so `/api/health/:personId/voice/*`
+  // dispatches here.
+  const voiceResponse = await handleVoiceRoutes(req, url, pathname);
+  if (voiceResponse) return voiceResponse;
 
   // health routes (Apple Health exports, people, parsed summaries)
   const healthResponse = await handleHealthRoutes(req, url, pathname);

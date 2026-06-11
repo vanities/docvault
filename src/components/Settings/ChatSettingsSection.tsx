@@ -23,6 +23,10 @@ interface ChatSettingsData {
   transcribeModel?: string;
   hasTranscribeApiKey?: boolean;
   transcribeApiKeyHint?: string;
+  ttsUrl?: string;
+  ttsLanguage?: string;
+  hasTtsApiKey?: boolean;
+  ttsApiKeyHint?: string;
 }
 
 // Setup help for users on HTTP origins. Browsers refuse to expose mic
@@ -30,7 +34,7 @@ interface ChatSettingsData {
 // DocVault on Unraid LAN is HTTP, so we surface the three fixes inline.
 // The card hides itself entirely when window.isSecureContext is true so
 // it doesn't pollute the settings UI for users who already moved off HTTP.
-function SecureContextHelp() {
+export function SecureContextHelp() {
   const isInsecure = typeof window !== 'undefined' && !window.isSecureContext;
   const [openSection, setOpenSection] = useState<'tailscale' | 'firefox' | 'chrome' | null>(
     'tailscale'
@@ -211,6 +215,15 @@ export function ChatSettingsSection() {
   const [showTranscribeApiKey, setShowTranscribeApiKey] = useState(false);
   const [savingTranscribeApiKey, setSavingTranscribeApiKey] = useState(false);
 
+  const [ttsUrl, setTtsUrl] = useState('');
+  const [ttsLanguage, setTtsLanguage] = useState('');
+  const [savingTts, setSavingTts] = useState(false);
+  const [hasTtsApiKey, setHasTtsApiKey] = useState(false);
+  const [ttsApiKeyHint, setTtsApiKeyHint] = useState<string | undefined>();
+  const [ttsApiKeyInput, setTtsApiKeyInput] = useState('');
+  const [showTtsApiKey, setShowTtsApiKey] = useState(false);
+  const [savingTtsApiKey, setSavingTtsApiKey] = useState(false);
+
   const loadData = async () => {
     try {
       const res = await fetch(`${API_BASE}/settings`);
@@ -219,6 +232,10 @@ export function ChatSettingsSection() {
       setTranscribeModel(data.transcribeModel ?? '');
       setHasTranscribeApiKey(!!data.hasTranscribeApiKey);
       setTranscribeApiKeyHint(data.transcribeApiKeyHint);
+      setTtsUrl(data.ttsUrl ?? '');
+      setTtsLanguage(data.ttsLanguage ?? '');
+      setHasTtsApiKey(!!data.hasTtsApiKey);
+      setTtsApiKeyHint(data.ttsApiKeyHint);
     } catch {
       /* ignore */
     } finally {
@@ -290,6 +307,66 @@ export function ChatSettingsSection() {
       addToast('Failed to save', 'error');
     } finally {
       setSavingTranscribe(false);
+    }
+  };
+
+  const handleSaveTts = async () => {
+    setSavingTts(true);
+    try {
+      const res = await fetch(`${API_BASE}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ttsUrl: ttsUrl.trim(), ttsLanguage: ttsLanguage.trim() }),
+      });
+      if ((await res.json()).ok) {
+        addToast('Text-to-speech settings saved', 'success');
+      } else {
+        addToast('Failed to save', 'error');
+      }
+    } catch {
+      addToast('Failed to save', 'error');
+    } finally {
+      setSavingTts(false);
+    }
+  };
+
+  const handleSaveTtsApiKey = async () => {
+    if (!ttsApiKeyInput.trim()) return;
+    setSavingTtsApiKey(true);
+    try {
+      const res = await fetch(`${API_BASE}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ttsApiKey: ttsApiKeyInput.trim() }),
+      });
+      if ((await res.json()).ok) {
+        addToast('Text-to-speech API key saved', 'success');
+        setTtsApiKeyInput('');
+        await loadData();
+      } else {
+        addToast('Failed to save key', 'error');
+      }
+    } catch {
+      addToast('Failed to save key', 'error');
+    } finally {
+      setSavingTtsApiKey(false);
+    }
+  };
+
+  const handleClearTtsApiKey = async () => {
+    setSavingTtsApiKey(true);
+    try {
+      const res = await fetch(`${API_BASE}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clearTtsApiKey: true }),
+      });
+      if ((await res.json()).ok) {
+        addToast('Text-to-speech API key removed', 'success');
+        await loadData();
+      }
+    } finally {
+      setSavingTtsApiKey(false);
     }
   };
 
@@ -446,6 +523,126 @@ export function ChatSettingsSection() {
                   >
                     <Save className="w-4 h-4" />
                     {savingTranscribeApiKey ? 'Saving…' : 'Save'}
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Text-to-speech service — voice cloning + narration */}
+        <div>
+          <label className="block text-[13px] font-medium text-surface-800 mb-2">
+            Text-to-speech service URL
+          </label>
+          <Input
+            type="text"
+            value={ttsUrl}
+            onChange={(e) => setTtsUrl(e.target.value)}
+            placeholder="http://gpu-box.local:4123"
+            className="text-[13px] font-mono"
+          />
+          <p className="text-[11px] text-surface-600 mt-1">
+            Any OpenAI-compatible <code className="font-mono">/audio/speech</code> server works.
+            Suggested:
+            <a
+              href="https://github.com/travisvn/chatterbox-tts-api"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent-400 hover:underline ml-1"
+            >
+              chatterbox-tts-api
+            </a>{' '}
+            (zero-shot voice cloning, Docker, GPU) or
+            <a
+              href="https://github.com/Blaizzy/mlx-audio"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent-400 hover:underline ml-1"
+            >
+              mlx-audio
+            </a>{' '}
+            (Apple Silicon). Powers per-person voice profiles (Health → person → Voice) and
+            newsstand narration. Just the host root is fine —{' '}
+            <code className="font-mono">/v1/audio/speech</code> is appended automatically.
+          </p>
+
+          <label className="block text-[13px] font-medium text-surface-800 mb-2 mt-4">
+            Voice language
+          </label>
+          <Input
+            type="text"
+            value={ttsLanguage}
+            onChange={(e) => setTtsLanguage(e.target.value)}
+            placeholder="en"
+            className="text-[13px] font-mono max-w-[120px]"
+          />
+          <p className="text-[11px] text-surface-600 mt-1">
+            ISO code attached to cloned voices (chatterbox supports 22 languages). Blank ={' '}
+            <code className="font-mono">en</code>.
+          </p>
+
+          <Button onClick={handleSaveTts} size="sm" disabled={savingTts} className="mt-3">
+            <Save className="w-4 h-4" />
+            {savingTts ? 'Saving…' : 'Save'}
+          </Button>
+
+          {/* Optional API key — for TTS services behind bearer auth. */}
+          <div className="mt-5">
+            <label className="flex items-center gap-2 text-[13px] font-medium text-surface-800 mb-2">
+              <Key className="w-4 h-4" />
+              API Key
+              <span className="font-normal text-surface-500">(optional)</span>
+            </label>
+
+            {hasTtsApiKey ? (
+              <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                <CheckCircle className="w-5 h-5 text-emerald-400" />
+                <div className="flex-1">
+                  <span className="text-[13px] text-emerald-400 font-medium">API key set</span>
+                  {ttsApiKeyHint && (
+                    <span className="text-[13px] text-emerald-400/70 ml-2 font-mono">
+                      --------{ttsApiKeyHint}
+                    </span>
+                  )}
+                </div>
+                <Button
+                  variant="ghost-danger"
+                  size="xs"
+                  onClick={handleClearTtsApiKey}
+                  disabled={savingTtsApiKey}
+                >
+                  Remove
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="relative">
+                  <Input
+                    type={showTtsApiKey ? 'text' : 'password'}
+                    value={ttsApiKeyInput}
+                    onChange={(e) => setTtsApiKeyInput(e.target.value)}
+                    placeholder="Bearer token sent as Authorization header"
+                    className="pr-10 text-[13px] font-mono"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => setShowTtsApiKey(!showTtsApiKey)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2"
+                  >
+                    {showTtsApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </Button>
+                </div>
+                <p className="text-[11px] text-surface-600">
+                  Leave blank for unauthenticated services on a trusted LAN. When set, sent as{' '}
+                  <code className="font-mono">Authorization: Bearer …</code> on every request.
+                </p>
+                {ttsApiKeyInput && (
+                  <Button onClick={handleSaveTtsApiKey} size="sm" disabled={savingTtsApiKey}>
+                    <Save className="w-4 h-4" />
+                    {savingTtsApiKey ? 'Saving…' : 'Save'}
                   </Button>
                 )}
               </div>

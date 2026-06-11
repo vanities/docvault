@@ -136,6 +136,10 @@ export async function handleSettingsRoutes(
       transcribeApiKeyHint: settings.transcribeApiKey
         ? settings.transcribeApiKey.slice(-4)
         : undefined,
+      ttsUrl: settings.ttsUrl ?? '',
+      ttsLanguage: settings.ttsLanguage ?? '',
+      hasTtsApiKey: !!settings.ttsApiKey,
+      ttsApiKeyHint: settings.ttsApiKey ? settings.ttsApiKey.slice(-4) : undefined,
       // Direct-API model providers + per-scope routing (parsing, research)
       hasOpenaiKey: !!(settings.openai?.apiKey || process.env.OPENAI_API_KEY),
       openaiKeyHint: settings.openai?.apiKey
@@ -181,6 +185,10 @@ export async function handleSettingsRoutes(
       transcribeModel?: string;
       clearTranscribeApiKey?: boolean;
       transcribeApiKey?: string;
+      ttsUrl?: string;
+      ttsLanguage?: string;
+      clearTtsApiKey?: boolean;
+      ttsApiKey?: string;
       clearOpenaiApiKey?: boolean;
       openaiApiKey?: string;
       openaiBaseUrl?: string;
@@ -259,6 +267,26 @@ export async function handleSettingsRoutes(
       const v = String(body.transcribeApiKey).trim();
       if (v) settings.transcribeApiKey = v;
       else delete settings.transcribeApiKey;
+    }
+
+    if (body.ttsUrl !== undefined) {
+      const v = String(body.ttsUrl).trim();
+      if (v) settings.ttsUrl = v;
+      else delete settings.ttsUrl;
+    }
+
+    if (body.ttsLanguage !== undefined) {
+      const v = String(body.ttsLanguage).trim().toLowerCase();
+      if (v) settings.ttsLanguage = v;
+      else delete settings.ttsLanguage;
+    }
+
+    if (body.clearTtsApiKey) {
+      delete settings.ttsApiKey;
+    } else if (body.ttsApiKey !== undefined) {
+      const v = String(body.ttsApiKey).trim();
+      if (v) settings.ttsApiKey = v;
+      else delete settings.ttsApiKey;
     }
 
     // --- Model providers + routing ---
