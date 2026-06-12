@@ -1,0 +1,9 @@
+{
+  "id": "huberman-lab-youtube-daily",
+  "label": "Huberman Lab YouTube daily metadata pull",
+  "kind": "local-script",
+  "schedule": "daily",
+  "script": "scripts/huberman-lab-youtube.local.sh",
+  "enabled": false,
+  "tags": ["research", "youtube", "huberman", "health"]
+}
