@@ -51,6 +51,7 @@ import { fetchWeekForecast, forecastToLines, type WeatherForecast } from './weat
 import { listResearchEntries, type ResearchEntry } from './routes/research.js';
 import { getLatestStrategy } from './routes/strategy.js';
 import { getLatestHealthAnalysis } from './routes/health-analysis.js';
+import { handleHealthRoutes } from './routes/health.js';
 import { loadHealthStore } from './health-store.js';
 import { listRuns } from './deep-research-store.js';
 import { loadQuantCache } from './routes/quant.js';
@@ -633,6 +634,29 @@ async function gatherFinance(
   return items;
 }
 
+/**
+ * Read a person's snapshot through the snapshot route's auto-heal path, which
+ * recomputes when the deltas dir is newer than the cached snapshot. Reading
+ * `store.snapshots` raw misses anything synced since the last recompute — the
+ * 2026-06-12 edition omitted a person whose overnight backfill landed 45 min
+ * before generation because of exactly that. Falls back to undefined (caller
+ * keeps the raw-store read) on any failure.
+ */
+async function freshPersonSnapshot(personId: string): Promise<SnapMetrics | undefined> {
+  try {
+    const url = new URL(`http://internal/api/health/${encodeURIComponent(personId)}/snapshot/all`);
+    const res = await handleHealthRoutes(new Request(url.toString()), url, url.pathname);
+    if (!res || res.status !== 200) return undefined;
+    const body = (await res.json()) as { data?: unknown };
+    return (body.data ?? undefined) as SnapMetrics | undefined;
+  } catch (err) {
+    log.warn(
+      `[health] fresh snapshot read failed for ${personId}: ${err instanceof Error ? err.message : String(err)}`
+    );
+    return undefined;
+  }
+}
+
 async function gatherHealth(
   afterSince: AfterSince,
   includeBodies: boolean,
@@ -650,7 +674,9 @@ async function gatherHealth(
     for (const person of people) {
       const parts: string[] = [];
 
-      const snap = latestByPerson(store.snapshots, person.id) as unknown as SnapMetrics | undefined;
+      const snap =
+        (await freshPersonSnapshot(person.id)) ??
+        (latestByPerson(store.snapshots, person.id) as unknown as SnapMetrics | undefined);
       if (snap) {
         const bits: string[] = [];
         const dailyAct = snap.activity?.daily;
