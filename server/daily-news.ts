@@ -108,6 +108,41 @@ export interface PulledItem {
   /** Origin tag, e.g. 'research/finance', 'upload', 'deep-research'. */
   source: string;
   title: string;
+  /** Original article/video URL when the item carries one — linkified in the
+   *  "Sources pulled" appendix (web + email). */
+  url?: string;
+}
+
+/** A digest source tag ([S1], [S2], …) → its original URL. The model cites
+ *  with the short tag; the server joins the URL afterwards. */
+export interface SourceCitation {
+  ref: string;
+  url: string;
+}
+
+/**
+ * Replace model-emitted citations with inline markdown links. The model only
+ * ever types short tags — `[key phrase][S12]` or a bare `[S12]` — so URLs
+ * can't be mistyped or hallucinated; unknown tags are stripped. Inline links
+ * (not reference-style) are written into the stored body so every renderer
+ * (SafeMarkdown in-app, marked for HTML/email) handles them identically.
+ */
+export function applySourceCitations(body: string, citations: SourceCitation[]): string {
+  if (!citations.length) {
+    // Still strip stray tags so a model mistake never reaches readers.
+    return body.replace(/\s?\[S\d+\]/g, '');
+  }
+  const byRef = new Map(citations.map((c) => [c.ref, c.url]));
+  let out = body.replace(/\[([^\]\n]+)\]\[(S\d+)\]/g, (_m, text: string, ref: string) => {
+    const url = byRef.get(ref);
+    return url ? `[${text}](${url})` : text;
+  });
+  // Bare tags ("…shorts have tripled [S12].") become unobtrusive numbered links.
+  out = out.replace(/\s?\[(S\d+)\]/g, (_m, ref: string) => {
+    const url = byRef.get(ref);
+    return url ? ` [[${ref.slice(1)}]](${url})` : '';
+  });
+  return out;
 }
 
 export interface Digest {
@@ -119,6 +154,8 @@ export interface Digest {
   sources: string[];
   /** Every item ingested in-window — rendered as a "Sources pulled" appendix. */
   pulled: PulledItem[];
+  /** [S#] → URL map for the research items tagged in this digest. */
+  citations?: SourceCitation[];
   /** Ingestion/cache failures that were skipped while composing this edition. */
   sourceWarnings: DigestSourceWarning[];
   /** Week-ahead forecast for the rendered weather box (Open-Meteo); optional. */
@@ -875,6 +912,7 @@ async function gatherDocs(
       pulled.push({
         source: `research/${e.domain}`,
         title: `${title}${e.publisher ? ` — ${e.publisher}` : ''}`,
+        ...(e.sourceUrl?.trim() ? { url: e.sourceUrl.trim() } : {}),
       });
     }
   } catch (err) {
@@ -953,7 +991,7 @@ async function gatherDocs(
 export function buildResearchDigestItems(
   entries: ResearchEntry[],
   afterSince: AfterSince,
-  opts: { maxChars?: number } = {}
+  opts: { maxChars?: number; cite?: (e: ResearchEntry) => string } = {}
 ): string[] {
   const eligible = entries
     .filter(
@@ -973,34 +1011,47 @@ export function buildResearchDigestItems(
     const clipped = clean.length > charsPerEntry;
     const body = clean.slice(0, charsPerEntry);
     const suffix = clipped ? ' … [excerpt truncated; source text remains in Research]' : '';
-    return `### ${e.title ?? 'Untitled'} — ${who} (${e.domain}, ${when})\n${body}${suffix}`;
+    const tag = opts.cite?.(e) ?? '';
+    return `### ${e.title ?? 'Untitled'} — ${who} (${e.domain}, ${when})${tag}\n${body}${suffix}`;
   });
 }
 
 async function gatherResearchDeep(
   afterSince: AfterSince,
   warn?: WarningSink
-): Promise<{ research: string[]; local: string[] }> {
+): Promise<{ research: string[]; local: string[]; citations: SourceCitation[] }> {
   try {
     const entries = await listResearchEntries();
+    // Number every sourced entry across both desks ([S1], [S2], …) — the
+    // model cites stories with these tags and the server links them after.
+    const citations: SourceCitation[] = [];
+    const cite = (e: ResearchEntry): string => {
+      const url = e.sourceUrl?.trim();
+      if (!url || !/^https?:\/\//i.test(url)) return '';
+      const ref = `S${citations.length + 1}`;
+      citations.push({ ref, url });
+      return ` [${ref}]`;
+    };
     // Local news gets its own desk in the edition — a newspaper has a local
     // section, and city announcements shouldn't be buried among macro research.
     const research = buildResearchDigestItems(
       entries.filter((e) => e.domain !== 'local'),
-      afterSince
+      afterSince,
+      { cite }
     );
     const local = buildResearchDigestItems(
       entries.filter((e) => e.domain === 'local'),
       afterSince,
-      { maxChars: 25_000 }
+      { maxChars: 25_000, cite }
     );
     log.info(
-      `[digest] research-deep: ${research.length} full-text entries, local: ${local.length}`
+      `[digest] research-deep: ${research.length} full-text entries, local: ${local.length}, ` +
+        `${citations.length} linkable sources`
     );
-    return { research, local };
+    return { research, local, citations };
   } catch (err) {
     emitDigestWarning(warn, 'research/full-text', err);
-    return { research: [], local: [] };
+    return { research: [], local: [], citations: [] };
   }
 }
 
@@ -1099,6 +1150,7 @@ export async function gatherDigest(
     itemCount,
     sources,
     pulled: docsResult.pulled,
+    citations: researchDeep.citations,
     sourceWarnings,
     weather: weather ?? undefined,
   };
@@ -1117,7 +1169,7 @@ function buildSystem(
   const parts = [
     `You are the editor-in-chief of "${title}", a personal daily newspaper for a single reader (the owner of this data).`,
     "You are given a structured digest of everything that changed across the owner's data since the last edition, organized by desk.",
-    'Write a cohesive newspaper edition in clean markdown. Open with a one-paragraph front-page lede summarizing the single most important development. Then write one `##` section per desk, in the order given, in tight journalistic prose (not bullet dumps) — lead with what changed and why it matters, cite the specific numbers, dates, and names from the digest. Cover EVERY desk that has material (the digest is comprehensive — markets, politics, local news, personal finance, health, research, documents); omit only a desk with genuinely no items. In the Local News section, report like a hometown paper: lead with what affects the reader directly (rates, closures, construction, schools), keep names and dates concrete.',
+    'Write a cohesive newspaper edition in clean markdown. Open with a one-paragraph front-page lede summarizing the single most important development. Then write one `##` section per desk, in the order given, in tight journalistic prose (not bullet dumps) — lead with what changed and why it matters, cite the specific numbers, dates, and names from the digest. Digest items may carry a source tag like [S12] in their heading; when a story draws on a tagged item, hyperlink its most load-bearing phrase reference-style — [the phrase][S12] — using only tags that appear in the digest. Never write raw URLs or invent tags; at most one link per story. Cover EVERY desk that has material (the digest is comprehensive — markets, politics, local news, personal finance, health, research, documents); omit only a desk with genuinely no items. In the Local News section, report like a hometown paper: lead with what affects the reader directly (rates, closures, construction, schools), keep names and dates concrete.',
     'When the "Research & Analysis" desk is present it carries the FULL text of newly-filed research (ZeroHedge, Lyn Alden, George Gammon, political transcripts, etc.) — actually read it and synthesize the key arguments, attributing analysts by name, rather than merely noting that a piece was filed.',
     "In the Health section, be a supportive coach as well as a reporter: when someone's numbers are good (steps, workouts, resting heart rate, weight trend), say so plainly — one warm, specific affirmation per person is welcome. When sleep falls short (under ~7 hours total, or under ~1 hour of deep sleep), call it out directly with a gentle, actionable nudge (e.g. an earlier wind-down tonight) rather than burying it in neutral prose. Encouraging and concrete, never clinical or scolding.",
     editionType === 'weekly'
@@ -1224,7 +1276,7 @@ export async function synthesizeEdition(
   );
   return {
     title,
-    body: body.trim(),
+    body: applySourceCitations(body.trim(), digest.citations ?? []),
     theme,
     usage,
     digestMeta: {

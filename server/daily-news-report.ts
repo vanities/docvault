@@ -350,7 +350,12 @@ function renderSourceNotes(edition: Edition): string {
     : '';
   const pulledBlock = pulled.length
     ? `<p>Sources pulled into this edition (${pulled.length}):</p><ul>${pulled
-        .map((p) => `<li><strong>${escapeHtml(p.source)}</strong> — ${escapeHtml(p.title)}</li>`)
+        .map((p) => {
+          const title = p.url
+            ? `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(p.title)}</a>`
+            : escapeHtml(p.title);
+          return `<li><strong>${escapeHtml(p.source)}</strong> — ${title}</li>`;
+        })
         .join('')}</ul>`
     : '';
   return `<aside class="source-notes"><h2>Source notes</h2>${warningBlock}${pulledBlock}</aside>`;
@@ -367,7 +372,12 @@ function renderSourceNotesEmail(edition: Edition, s: ReturnType<typeof themeStyl
     : '';
   const pulledBlock = pulled.length
     ? `<p style="margin:0 0 8px;">Sources pulled into this edition (${pulled.length}):</p><ul style="margin:.2em 0 0;padding-left:1.2em;">${pulled
-        .map((p) => `<li><strong>${escapeHtml(p.source)}</strong> — ${escapeHtml(p.title)}</li>`)
+        .map((p) => {
+          const title = p.url
+            ? `<a href="${escapeHtml(p.url)}" style="color:inherit;" target="_blank" rel="noopener noreferrer">${escapeHtml(p.title)}</a>`
+            : escapeHtml(p.title);
+          return `<li><strong>${escapeHtml(p.source)}</strong> — ${title}</li>`;
+        })
         .join('')}</ul>`
     : '';
   return (
