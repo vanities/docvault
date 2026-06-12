@@ -400,7 +400,12 @@ export async function handleSettingsRoutes(
         else delete settings.dailyNews.imageModel;
       }
       if (dn.narration && typeof dn.narration === 'object') {
-        const n = dn.narration as { personId?: unknown; defaultSpeed?: unknown };
+        const n = dn.narration as {
+          personId?: unknown;
+          defaultSpeed?: unknown;
+          exaggeration?: unknown;
+          cfgWeight?: unknown;
+        };
         const cur = settings.dailyNews.narration ?? {};
         if (typeof n.personId === 'string') {
           const p = n.personId.trim();
@@ -409,6 +414,16 @@ export async function handleSettingsRoutes(
         }
         if (typeof n.defaultSpeed === 'number' && Number.isFinite(n.defaultSpeed)) {
           cur.defaultSpeed = Math.min(3, Math.max(0.5, n.defaultSpeed));
+        }
+        if (typeof n.exaggeration === 'number' && Number.isFinite(n.exaggeration)) {
+          cur.exaggeration = Math.min(2, Math.max(0.25, n.exaggeration));
+        } else if (n.exaggeration === null) {
+          delete cur.exaggeration;
+        }
+        if (typeof n.cfgWeight === 'number' && Number.isFinite(n.cfgWeight)) {
+          cur.cfgWeight = Math.min(1, Math.max(0, n.cfgWeight));
+        } else if (n.cfgWeight === null) {
+          delete cur.cfgWeight;
         }
         if (Object.keys(cur).length) settings.dailyNews.narration = cur;
         else delete settings.dailyNews.narration;

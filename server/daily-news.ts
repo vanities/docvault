@@ -24,6 +24,7 @@ import {
   getDailyNewsTitle,
   getEmailConfig,
   getWeatherConfig,
+  loadSettings,
   getCodexChatConfig,
   getAnthropicAuthToken,
   getAnthropicKey,
@@ -51,6 +52,7 @@ import { fetchWeekForecast, forecastToLines, type WeatherForecast } from './weat
 import { listResearchEntries, type ResearchEntry } from './routes/research.js';
 import { getLatestStrategy } from './routes/strategy.js';
 import { getLatestHealthAnalysis } from './routes/health-analysis.js';
+import { renderNarrationAtSpeed } from './daily-news-narration.js';
 import { handleHealthRoutes } from './routes/health.js';
 import { loadHealthStore } from './health-store.js';
 import { listRuns } from './deep-research-store.js';
@@ -1578,6 +1580,10 @@ async function runDailyNewsCodexAgent(
  * intent, so the manual route forces past it; the send still needs a configured
  * Resend key + recipient (sendEmail enforces that and returns a clear error).
  */
+/** Resend's total-message cap is 40 MB; HTML + hero take a few. A 10-minute
+ *  narration at 64 kbps baked at 1.5–2× is 2–4 MB, far under this guard. */
+const MAX_EMAIL_AUDIO_BYTES = 18 * 1024 * 1024;
+
 export async function notifyEditionReady(
   edition: Edition,
   opts: { force?: boolean } = {}
@@ -1626,6 +1632,32 @@ export async function notifyEditionReady(
     content: Buffer.from(renderEditionHtml(edition, attachmentHeroSrc), 'utf-8').toString('base64'),
     contentType: 'text/html',
   });
+
+  // Attach the narration baked at the default playback speed — mail clients
+  // have no rate control, so the emailed file IS the speed. Never blocks the
+  // email: any failure just ships the edition without audio.
+  if (edition.audioPath) {
+    try {
+      const settings = await loadSettings();
+      const speed = settings.dailyNews?.narration?.defaultSpeed ?? 1;
+      const audio = await renderNarrationAtSpeed(edition.audioPath, speed);
+      if (audio && audio.byteLength <= MAX_EMAIL_AUDIO_BYTES) {
+        attachments.push({
+          filename: `${editionFilename(edition)}-narration${speed !== 1 ? `-${speed}x` : ''}.mp3`,
+          content: Buffer.from(audio).toString('base64'),
+          contentType: 'audio/mpeg',
+        });
+        log.info(`[notify] narration attached (${audio.byteLength} bytes @${speed}x)`);
+      } else if (audio) {
+        log.warn(`[notify] narration too large to attach (${audio.byteLength} bytes)`);
+      }
+    } catch (err) {
+      log.warn(
+        `[notify] narration attach failed: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
   const res = await sendEmail({
     subject,
     html: renderEditionEmailHtml(edition, emailHeroSrc),

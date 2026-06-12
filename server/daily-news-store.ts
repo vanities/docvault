@@ -22,6 +22,7 @@ import {
   type Digest,
 } from './daily-news.js';
 import { generateHeadlineImage } from './daily-news-image.js';
+import { narrateEdition } from './daily-news-narration.js';
 import { listThemes } from './daily-news-themes.js';
 import type { WeatherForecast } from './weather.js';
 
@@ -184,6 +185,13 @@ export async function startEdition(
         themeId: result.theme,
       }).catch(() => null);
       if (imagePath) await patchEdition(id, { imagePath });
+      // Narrate (best-effort) before notifying, so the email carries the
+      // audio. A narration failure must never mark a done edition as error.
+      try {
+        await narrateEditionById(id);
+      } catch (err) {
+        log.warn(`[narrate] id=${id} ${err instanceof Error ? err.message : String(err)}`);
+      }
       if (notify) {
         const edition = await getEdition(id);
         if (edition) await notifyEditionReady(edition);
@@ -300,6 +308,19 @@ export async function startThemeSamples(
   })();
 
   return { ids: entries.map((e) => e.id) };
+}
+
+/**
+ * Narrate a finished edition in the configured voice and patch `audioPath`.
+ * Best-effort: returns the new audio filename or null. Used by the
+ * generation done-handler and the manual POST /api/daily-news/:id/narrate.
+ */
+export async function narrateEditionById(id: string): Promise<string | null> {
+  const edition = await getEdition(id);
+  if (!edition || edition.status !== 'done') return null;
+  const audioPath = await narrateEdition(edition);
+  if (audioPath) await patchEdition(id, { audioPath });
+  return audioPath;
 }
 
 export async function getEdition(id: string): Promise<Edition | null> {
