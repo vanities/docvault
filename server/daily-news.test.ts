@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'vite-plus/test';
-import { buildResearchDigestItems, selectDailyNewsStepCount } from './daily-news.js';
+import {
+  applySourceCitations,
+  buildResearchDigestItems,
+  selectDailyNewsStepCount,
+} from './daily-news.js';
 
 function afterSince(d?: string | null): boolean {
   if (!d) return false;
@@ -92,5 +96,40 @@ describe('daily-news digest helpers', () => {
     expect(items.join('\n')).toContain('New report 2');
     expect(items.join('\n')).not.toContain('Old report');
     expect(items.join('\n')).not.toContain('Blank report');
+  });
+});
+
+describe('applySourceCitations', () => {
+  const CITES = [
+    { ref: 'S1', url: 'https://example.com/oil-shorts' },
+    { ref: 'S2', url: 'https://example.com/el-nino' },
+  ];
+
+  test('tagged phrases become inline markdown links', () => {
+    const body = 'Paper bets the crisis ends: [Brent shorts have tripled][S1] since March.';
+    expect(applySourceCitations(body, CITES)).toBe(
+      'Paper bets the crisis ends: [Brent shorts have tripled](https://example.com/oil-shorts) since March.'
+    );
+  });
+
+  test('bare tags become unobtrusive numbered links', () => {
+    const body = 'El Nino was declared, the first in three years [S2].';
+    expect(applySourceCitations(body, CITES)).toBe(
+      'El Nino was declared, the first in three years [[2]](https://example.com/el-nino).'
+    );
+  });
+
+  test('unknown tags are stripped, not leaked to readers', () => {
+    const body = 'A claim [with text][S9] and a bare mistake [S7].';
+    expect(applySourceCitations(body, CITES)).toBe('A claim with text and a bare mistake.');
+  });
+
+  test('no citations strips any stray tags entirely', () => {
+    expect(applySourceCitations('Clean prose [S3] here.', [])).toBe('Clean prose here.');
+  });
+
+  test('regular markdown links pass through untouched', () => {
+    const body = 'See [the appendix](https://example.com/notes) below.';
+    expect(applySourceCitations(body, CITES)).toBe(body);
   });
 });

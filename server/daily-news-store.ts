@@ -51,7 +51,7 @@ export interface Edition {
     sinceISO: string;
     itemCount: number;
     /** Exact ledger of ingested items — the "Sources pulled" appendix. */
-    pulled?: Array<{ source: string; title: string }>;
+    pulled?: Array<{ source: string; title: string; url?: string }>;
     sourceWarnings?: Array<{ source: string; message: string }>;
   };
   usage?: { inputTokens: number; outputTokens: number };
