@@ -61,6 +61,7 @@ interface Edition extends EditionSummary {
     sources: string[];
     sinceISO: string;
     itemCount: number;
+    pulled?: Array<{ source: string; title: string; url?: string }>;
     sourceWarnings?: SourceWarning[];
   };
   usage?: { inputTokens: number; outputTokens: number };
@@ -544,6 +545,42 @@ export function DailyNewsView() {
                   >
                     {active.body ?? ''}
                   </SafeMarkdown>
+                  {/* Source notes — same ledger the newspaper HTML + email render. */}
+                  {(active.digestMeta?.pulled?.length ?? 0) > 0 && (
+                    <details className="mt-6 border-t border-border/40 pt-4">
+                      <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wider text-surface-500 hover:text-surface-700">
+                        Sources pulled into this edition ({active.digestMeta?.pulled?.length})
+                      </summary>
+                      {(active.digestMeta?.sourceWarnings?.length ?? 0) > 0 && (
+                        <p className="mt-3 text-[12px] text-amber-500/90">
+                          Some sources could not be read while this edition was composed:{' '}
+                          {active.digestMeta?.sourceWarnings
+                            ?.map((w) => `${w.source} (${w.message})`)
+                            .join('; ')}
+                        </p>
+                      )}
+                      <ul className="mt-3 space-y-1.5 text-[13px] text-surface-700">
+                        {active.digestMeta?.pulled?.map((p, i) => (
+                          <li key={`${p.source}-${i}`} className="leading-snug">
+                            <span className="text-surface-500">{p.source}</span>
+                            {' — '}
+                            {p.url ? (
+                              <a
+                                href={p.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-accent-400 hover:underline"
+                              >
+                                {p.title}
+                              </a>
+                            ) : (
+                              p.title
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
                 </article>
               </div>
             )}
