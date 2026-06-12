@@ -18,6 +18,7 @@ import {
   getEdition,
   listEditions,
   deleteEdition,
+  narrateEditionById,
   type EditionType,
 } from '../daily-news-store.js';
 import { notifyEditionReady } from '../daily-news.js';
@@ -105,6 +106,21 @@ export async function handleDailyNewsRoutes(
     return new Response(new Uint8Array(bytes), {
       headers: { 'Content-Type': 'image/png', 'Cache-Control': 'private, max-age=86400' },
     });
+  }
+
+  // POST /api/daily-news/:id/narrate — (re)narrate an edition in the
+  // configured narrator's cloned voice. Runs in the background (a 10-minute
+  // edition takes a few minutes on the GPU); poll the edition until
+  // `audioPath` appears/changes.
+  const narrateMatch = pathname.match(/^\/api\/daily-news\/([^/]+)\/narrate$/);
+  if (narrateMatch && req.method === 'POST') {
+    const id = decodeURIComponent(narrateMatch[1]);
+    const edition = await getEdition(id);
+    if (!edition || edition.status !== 'done') {
+      return jsonResponse({ error: 'no completed edition' }, 404);
+    }
+    void narrateEditionById(id);
+    return jsonResponse({ started: true });
   }
 
   // GET /api/daily-news/:id/audio — the narrated edition (if any). Handed to

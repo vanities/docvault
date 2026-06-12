@@ -199,6 +199,28 @@ async function availableName(personId: string, filename: string): Promise<string
   }
 }
 
+/**
+ * Load a person's current cloning reference — the newest clip, converted to a
+ * format the TTS voice library accepts. Shared by the voice test route and
+ * the newsstand narration pipeline. Null when the person has no clips.
+ */
+export async function loadVoiceReference(
+  personId: string
+): Promise<{ bytes: Uint8Array; filename: string; voiceName: string } | null> {
+  const clips = await listClips(personId);
+  if (clips.length === 0) return null;
+  const newest = clips[0];
+  const abs = clipPath(personId, newest.filename);
+  if (!abs) return null;
+  let bytes: Uint8Array = new Uint8Array(await fs.readFile(abs));
+  let filename = newest.filename;
+  if (needsWavConversion(filename)) {
+    bytes = await convertToWavBytes(bytes, path.extname(filename).toLowerCase());
+    filename = filename.slice(0, -path.extname(filename).length) + '.wav';
+  }
+  return { bytes, filename, voiceName: voiceNameFor(personId) };
+}
+
 export async function handleVoiceRoutes(
   req: Request,
   url: URL,

@@ -337,8 +337,15 @@ export interface Settings {
      * Edition narration: which person's cloned voice reads the paper
      * (clips live in Health → person → Voice), and the default playback
      * speed for the in-app player / emailed audio. personId unset = off.
+     * exaggeration (0.25–2) and cfgWeight (0–1) tune the clone's delivery;
+     * unset = the TTS server's own defaults.
      */
-    narration?: { personId?: string; defaultSpeed?: number };
+    narration?: {
+      personId?: string;
+      defaultSpeed?: number;
+      exaggeration?: number;
+      cfgWeight?: number;
+    };
   };
   /**
    * Outbound email via Resend — delivers the Daily News edition + test pings.

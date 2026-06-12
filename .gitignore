@@ -103,6 +103,8 @@ scripts/*
 !server/daily-news-schedule.test.ts
 !server/daily-news-report.test.ts
 !server/daily-news.test.ts
+# Exception: narration script tests are pure text transforms over fabricated editions, no personal data
+!server/daily-news-narration.test.ts
 # Exception: research-domain wiring test parses repo source files only, no personal data
 !server/research-domain-wiring.test.ts
 
