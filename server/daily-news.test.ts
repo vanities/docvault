@@ -112,10 +112,12 @@ describe('applySourceCitations', () => {
     );
   });
 
-  test('bare tags become unobtrusive numbered links', () => {
-    const body = 'El Nino was declared, the first in three years [S2].';
+  test('bare tags become numbered links, renumbered in reading order', () => {
+    const body = 'El Nino was declared [S2]. Shorts tripled [S1]. El Nino again [S2].';
     expect(applySourceCitations(body, CITES)).toBe(
-      'El Nino was declared, the first in three years [[2]](https://example.com/el-nino).'
+      'El Nino was declared [[1]](https://example.com/el-nino). ' +
+        'Shorts tripled [[2]](https://example.com/oil-shorts). ' +
+        'El Nino again [[1]](https://example.com/el-nino).'
     );
   });
 
