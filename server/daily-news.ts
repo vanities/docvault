@@ -139,10 +139,15 @@ export function applySourceCitations(body: string, citations: SourceCitation[]):
     const url = byRef.get(ref);
     return url ? `[${text}](${url})` : text;
   });
-  // Bare tags ("…shorts have tripled [S12].") become unobtrusive numbered links.
+  // Bare tags ("…shorts have tripled [S12].") become unobtrusive numbered
+  // links — renumbered 1..N in reading order, since the internal S-numbers
+  // follow digest order and would look arbitrary on the page.
+  const displayN = new Map<string, number>();
   out = out.replace(/\s?\[(S\d+)\]/g, (_m, ref: string) => {
     const url = byRef.get(ref);
-    return url ? ` [[${ref.slice(1)}]](${url})` : '';
+    if (!url) return '';
+    const n = displayN.get(ref) ?? displayN.set(ref, displayN.size + 1).get(ref)!;
+    return ` [[${n}]](${url})`;
   });
   return out;
 }
