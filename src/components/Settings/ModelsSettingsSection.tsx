@@ -25,6 +25,8 @@ interface SettingsData {
   claudeModel?: string;
   modelRouting?: { parsing?: ModelRef };
   chat?: {
+    mode?: 'agent' | 'api';
+    apiModel?: ModelRef;
     backend?: 'claude' | 'codex';
     claudeEffort?: ModelEffort;
     codexModel?: string;
@@ -69,6 +71,11 @@ export function ModelsSettingsSection() {
     provider: 'anthropic',
     model: DEFAULTS.anthropic,
   });
+  const [chatMode, setChatMode] = useState<'agent' | 'api'>('agent');
+  const [chatApiModel, setChatApiModel] = useState<ModelRef>({
+    provider: 'anthropic',
+    model: DEFAULTS.anthropic,
+  });
   const [chatBackend, setChatBackend] = useState<'claude' | 'codex'>('claude');
   const [claudeEffort, setClaudeEffort] = useState<ModelEffort | ''>('');
   const [codexModel, setCodexModel] = useState('');
@@ -110,6 +117,8 @@ export function ModelsSettingsSection() {
       };
       setClaudeModel(d.claudeModel || DEFAULT_CLAUDE_MODEL);
       setParsing(d.modelRouting?.parsing ?? anthropicFallback);
+      setChatMode(d.chat?.mode === 'api' ? 'api' : 'agent');
+      setChatApiModel(d.chat?.apiModel ?? anthropicFallback);
       setChatBackend(d.chat?.backend === 'codex' ? 'codex' : 'claude');
       setClaudeEffort(d.chat?.claudeEffort ?? '');
       setCodexModel(d.chat?.codexModel ?? '');
@@ -200,6 +209,8 @@ export function ModelsSettingsSection() {
           claudeModel: claudeModel.trim() || DEFAULT_CLAUDE_MODEL,
           modelRouting: { parsing },
           chat: {
+            mode: chatMode,
+            apiModel: chatApiModel,
             backend: chatBackend,
             claudeEffort,
             codexModel: codexModel.trim(),
@@ -272,63 +283,111 @@ export function ModelsSettingsSection() {
           models={modelsByProvider}
         />
 
-        {/* Chat backend + its model */}
+        {/* Chat — Agent (subscription) vs API, mirroring Deep Research / Newsstand */}
         <div className="pt-3 border-t border-border/30">
           <label className="flex items-center gap-2 text-[13px] font-medium text-surface-800 mb-1">
             <Bot className="w-4 h-4" />
-            Chat backend
-            <span className="font-normal text-surface-500">(which agent powers Chat)</span>
+            Chat
+            <span className="font-normal text-surface-500">(how Chat runs)</span>
           </label>
           <select
-            value={chatBackend}
-            onChange={(e) => setChatBackend(e.target.value as 'claude' | 'codex')}
+            value={chatMode}
+            onChange={(e) => setChatMode(e.target.value as 'agent' | 'api')}
             className={selectClass}
           >
-            <option value="claude">Claude (Claude Code — curated tools)</option>
-            <option value="codex">Codex (OpenAI subscription — native tools)</option>
+            <option value="agent">
+              Agent — Claude Code / Codex on your subscription (no API billing)
+            </option>
+            <option value="api">
+              API — direct Anthropic call (provider + model, bills credits)
+            </option>
           </select>
-          {chatBackend === 'claude' ? (
-            <div className="mt-2 flex flex-col sm:flex-row gap-2">
-              <div className="flex-1">
-                <label className="block text-[11px] text-surface-500 mb-1">Claude model</label>
-                <ModelSelect
-                  value={claudeModel}
-                  onChange={setClaudeModel}
-                  models={modelsByProvider.anthropic}
-                />
+
+          {chatMode === 'agent' ? (
+            <div className="mt-2 space-y-2">
+              {/* backend | model | effort — one row, same shape as ScopeRow */}
+              <div className="flex flex-col sm:flex-row sm:items-end gap-2">
+                <div className="min-w-0 flex-1">
+                  <label className="block text-[11px] text-surface-500 mb-1">
+                    Agent (subscription)
+                  </label>
+                  <select
+                    value={chatBackend}
+                    onChange={(e) => setChatBackend(e.target.value as 'claude' | 'codex')}
+                    className={selectClass}
+                  >
+                    <option value="claude">Claude — Claude Code (Claude sub)</option>
+                    <option value="codex">Codex — app-server (OpenAI sub)</option>
+                  </select>
+                </div>
+                {chatBackend === 'claude' ? (
+                  <>
+                    <div className="min-w-0 flex-1">
+                      <label className="block text-[11px] text-surface-500 mb-1">
+                        Claude model
+                      </label>
+                      <ModelSelect
+                        value={claudeModel}
+                        onChange={setClaudeModel}
+                        models={modelsByProvider.anthropic}
+                      />
+                    </div>
+                    <div className="sm:w-40">
+                      <EffortSelect
+                        provider="anthropic"
+                        value={claudeEffort}
+                        onChange={setClaudeEffort}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="min-w-0 flex-1">
+                      <label className="block text-[11px] text-surface-500 mb-1">
+                        Codex model (optional)
+                      </label>
+                      <Input
+                        type="text"
+                        value={codexModel}
+                        onChange={(e) => setCodexModel(e.target.value)}
+                        placeholder="blank = codex default"
+                        className="text-[13px] font-mono"
+                      />
+                    </div>
+                    <div className="sm:w-40">
+                      <EffortSelect
+                        provider="openai"
+                        value={codexEffort}
+                        onChange={setCodexEffort}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
-              <div className="sm:w-40">
-                <EffortSelect
-                  provider="anthropic"
-                  value={claudeEffort}
-                  onChange={setClaudeEffort}
-                />
-              </div>
+              <p className="text-[11px] text-surface-600 leading-relaxed">
+                {chatBackend === 'codex'
+                  ? 'Runs codex on your ChatGPT subscription with native tools — no API billing. Sign in via AI Credentials.'
+                  : 'Runs Claude Code on your Claude subscription with DocVault tools — no API billing. Uses the OAuth token from AI Credentials.'}
+              </p>
             </div>
           ) : (
-            <div className="mt-2 space-y-2">
-              <p className="text-[11px] text-surface-600 leading-relaxed">
-                Codex runs server-side on your ChatGPT subscription with native file tools. Sign in
-                via the <span className="font-medium">Sign in to Codex</span> button in AI
-                Credentials.
+            <div className="mt-2">
+              <ScopeRow
+                label="Chat model"
+                value={chatApiModel}
+                onChange={setChatApiModel}
+                models={modelsByProvider}
+              />
+              {chatApiModel.provider === 'openai' && (
+                <p className="text-[11px] text-amber-500/90 mt-1">
+                  API-mode chat runs on Anthropic for now — an OpenAI pick falls back to a Claude
+                  model. For OpenAI, use the Codex agent above.
+                </p>
+              )}
+              <p className="text-[11px] text-surface-600 leading-relaxed mt-1">
+                Direct Anthropic Messages API call — same DocVault tools, but BILLS API credits (not
+                your subscription).
               </p>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <div className="flex-1">
-                  <label className="block text-[11px] text-surface-500 mb-1">
-                    Codex model (optional)
-                  </label>
-                  <Input
-                    type="text"
-                    value={codexModel}
-                    onChange={(e) => setCodexModel(e.target.value)}
-                    placeholder="leave blank for codex's account default"
-                    className="text-[13px] font-mono"
-                  />
-                </div>
-                <div className="sm:w-40">
-                  <EffortSelect provider="openai" value={codexEffort} onChange={setCodexEffort} />
-                </div>
-              </div>
             </div>
           )}
         </div>

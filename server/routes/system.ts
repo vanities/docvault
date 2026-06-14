@@ -321,6 +321,8 @@ export async function handleSettingsRoutes(
     if (body.chat && typeof body.chat === 'object') {
       settings.chat = settings.chat ?? {};
       const c = body.chat as {
+        mode?: unknown;
+        apiModel?: unknown;
         backend?: unknown;
         claudeEffort?: unknown;
         codexModel?: unknown;
@@ -328,6 +330,13 @@ export async function handleSettingsRoutes(
         codexHome?: unknown;
         codexBinary?: unknown;
       };
+      if (c.mode === 'agent' || c.mode === 'api') settings.chat.mode = c.mode;
+      if (c.apiModel === null) {
+        delete settings.chat.apiModel;
+      } else {
+        const parsedChatApi = modelRefOf(c.apiModel);
+        if (parsedChatApi) settings.chat.apiModel = parsedChatApi;
+      }
       if (c.backend === 'claude' || c.backend === 'codex') settings.chat.backend = c.backend;
       for (const k of ['codexModel', 'codexHome', 'codexBinary'] as const) {
         const v = c[k];

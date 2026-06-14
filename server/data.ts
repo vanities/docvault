@@ -297,6 +297,11 @@ export interface Settings {
    * of the data dir (no MCP — matches t3code). See server/llm/codex-chat.ts.
    */
   chat?: {
+    /** 'agent' (Claude Code / Codex on your subscription, no API billing) or
+     *  'api' (direct Anthropic Messages API call — bills credits). Default 'agent'. */
+    mode?: 'agent' | 'api';
+    /** Model for API mode (Anthropic only for now; an OpenAI pick falls back). */
+    apiModel?: ModelRef;
     backend?: 'claude' | 'codex';
     /** Reasoning effort for the Claude chat backend; unset = model default. */
     claudeEffort?: ModelEffort;
@@ -489,6 +494,23 @@ export async function migrateSettingsEncryption(): Promise<{
 export async function getClaudeModel(): Promise<string> {
   const settings = await loadSettings();
   return settings.claudeModel || DEFAULT_MODEL;
+}
+
+/** Chat execution mode: 'agent' (Claude Code / Codex on the subscription) or
+ *  'api' (direct Anthropic Messages API — bills credits). Default 'agent'. */
+export async function getChatMode(): Promise<'agent' | 'api'> {
+  const settings = await loadSettings();
+  return settings.chat?.mode === 'api' ? 'api' : 'agent';
+}
+
+/** API-mode chat model. Anthropic-only for now (the chat path is Claude); an
+ *  OpenAI ref falls back to the standard Claude chat model. */
+export async function getChatApiModel(): Promise<string> {
+  const settings = await loadSettings();
+  const ref = settings.chat?.apiModel;
+  return ref?.provider === 'anthropic' && ref.model
+    ? ref.model
+    : settings.claudeModel || DEFAULT_MODEL;
 }
 
 /** Resolve a direct-API {provider, model}; unset falls back to Anthropic + DEFAULT_MODEL. */
