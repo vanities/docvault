@@ -749,12 +749,18 @@ export interface FedPolicyData {
   effectiveRate: { t: number; rate: number }[];
   targetUpper: { t: number; rate: number }[];
   targetLower: { t: number; rate: number }[];
+  /** SOFR (secured overnight repo rate) history; may be empty if unavailable. */
+  sofr?: { t: number; rate: number }[];
   rateChanges: FedRateChange[];
   latest: {
     date: string;
     effectiveRate: number;
     targetUpper: number;
     targetLower: number;
+    /** Latest SOFR, null when FRED has no recent print. */
+    sofr?: number | null;
+    /** SOFR − effective fed funds in bps — funding-stress gauge. */
+    sofrSpreadBps?: number | null;
     stance: 'cutting' | 'hiking' | 'hold';
     daysSinceLastChange: number;
   };
