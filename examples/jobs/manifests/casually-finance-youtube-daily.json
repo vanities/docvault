@@ -1,0 +1,9 @@
+{
+  "id": "casually-finance-youtube-daily",
+  "label": "Casually Finance YouTube daily metadata pull",
+  "kind": "local-script",
+  "schedule": "daily",
+  "script": "scripts/casually-finance-youtube.local.sh",
+  "enabled": false,
+  "tags": ["research", "youtube", "casually-finance", "finance"]
+}
