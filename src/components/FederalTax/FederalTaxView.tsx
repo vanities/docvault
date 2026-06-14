@@ -440,7 +440,7 @@ const STANDALONE_LINES: LineItem[] = [
 // ---------------------------------------------------------------------------
 
 export function FederalTaxView() {
-  const { selectedYear, setSelectedYear, availableYears, entities } = useAppContext();
+  const { selectedYear, setSelectedYear, availableYears, entities, blurNumbers } = useAppContext();
 
   const [data, setData] = useState<FederalTaxFiled>(emptyFiled());
   const [priorData, setPriorData] = useState<FederalTaxFiled | null>(null);
@@ -552,15 +552,18 @@ export function FederalTaxView() {
     if (computedVal === 0 && filedVal === 0) return null;
     if (computedVal === 0)
       return { color: 'bg-surface-500', tooltip: 'No computed data from parsed docs' };
+    // Tooltips are plain strings (hover text), so the CSS-based <Money> blur
+    // can't reach them — substitute a mask directly when the privacy toggle is on.
+    const fmt = (n: number) => (blurNumbers ? '$•••' : formatCurrency(n));
     if (Math.abs(filedVal - computedVal) <= 2) {
       return {
         color: 'bg-emerald-400',
-        tooltip: `Matches parsed docs: ${formatCurrency(computedVal)}`,
+        tooltip: `Matches parsed docs: ${fmt(computedVal)}`,
       };
     }
     return {
       color: 'bg-amber-400',
-      tooltip: `Filed: ${formatCurrency(filedVal)} | Computed: ${formatCurrency(computedVal)} | Delta: ${formatCurrency(filedVal - computedVal)}`,
+      tooltip: `Filed: ${fmt(filedVal)} | Computed: ${fmt(computedVal)} | Delta: ${fmt(filedVal - computedVal)}`,
     };
   };
 
