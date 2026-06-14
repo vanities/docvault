@@ -180,6 +180,9 @@ export interface GenerateResult {
   /** Theme id used — passed to the store so it can render a matching hero image. */
   theme: string;
   usage: { inputTokens: number; outputTokens: number };
+  /** Which model wrote this edition and whether it ran on a subscription or
+   *  billed API credits — surfaced in the Reader so the user can see it. */
+  generatedBy?: { model: string; billing: 'subscription' | 'api'; backend: string };
   digestMeta: {
     sources: string[];
     sinceISO: string;
@@ -1533,6 +1536,13 @@ export async function synthesizeEdition(
     ({ body, usage } = await runDailyNewsClaudeAgent(system, prompt, model));
   }
 
+  // Billing path for the badge: agent mode runs on a subscription (Codex =
+  // ChatGPT; Claude = the OAuth token when present), API mode bills credits.
+  const billing: 'subscription' | 'api' =
+    mode === 'agent' && (agentBackend === 'codex' || !!(await getAnthropicAuthToken()))
+      ? 'subscription'
+      : 'api';
+
   log.info(
     `[generate] done type=${editionType} theme=${theme} bodyChars=${body.length} in ${Date.now() - startedAt}ms`
   );
@@ -1541,6 +1551,7 @@ export async function synthesizeEdition(
     body: applySourceCitations(body.trim(), digest.citations ?? []),
     theme,
     usage,
+    generatedBy: { model: model.model, billing, backend },
     digestMeta: {
       sources: digest.sources,
       sinceISO,

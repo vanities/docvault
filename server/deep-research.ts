@@ -41,6 +41,9 @@ export interface ResearchResult {
   sources: ResearchSource[];
   searchCount: number;
   usage: { inputTokens: number; outputTokens: number };
+  /** Which model produced the report + whether it ran on a subscription or
+   *  billed API credits — shown in the Deep Research view. */
+  generatedBy?: { model: string; billing: 'subscription' | 'api'; backend: string };
 }
 
 const RESEARCH_SYSTEM = [
@@ -152,7 +155,14 @@ async function runDeepResearchApi(
   log.info(
     `Deep research (api) done: ${searchCount} searches, ${sources.length} sources, ${report.length} chars`
   );
-  return { question, report: report.trim(), sources, searchCount, usage };
+  return {
+    question,
+    report: report.trim(),
+    sources,
+    searchCount,
+    usage,
+    generatedBy: { model, billing: 'api', backend: 'api' },
+  };
 }
 
 /** Claude agent engine — Claude Code + WebSearch, an agentic loop on the Claude sub. */
@@ -237,7 +247,18 @@ async function runDeepResearchClaudeAgent(question: string): Promise<ResearchRes
   log.info(
     `Deep research (claude agent) done: ${searchCount} searches, ${sources.length} sources, ${report.length} chars`
   );
-  return { question, report: report.trim(), sources, searchCount, usage };
+  return {
+    question,
+    report: report.trim(),
+    sources,
+    searchCount,
+    usage,
+    generatedBy: {
+      model,
+      billing: oauthToken ? 'subscription' : 'api',
+      backend: 'agent/claude',
+    },
+  };
 }
 
 /** Codex agent engine — codex app-server + web_search on the OpenAI subscription. */
@@ -334,5 +355,12 @@ async function runDeepResearchCodexAgent(question: string): Promise<ResearchResu
   log.info(
     `Deep research (codex agent) done: ${searchCount} searches, ${sources.length} sources, ${report.length} chars`
   );
-  return { question, report: report.trim(), sources, searchCount, usage };
+  return {
+    question,
+    report: report.trim(),
+    sources,
+    searchCount,
+    usage,
+    generatedBy: { model: model ?? 'codex', billing: 'subscription', backend: 'agent/codex' },
+  };
 }

@@ -27,6 +27,7 @@ export interface ResearchRun {
   sources?: ResearchSource[];
   searchCount?: number;
   usage?: { inputTokens: number; outputTokens: number };
+  generatedBy?: { model: string; billing: 'subscription' | 'api'; backend: string };
   error?: string;
   createdAt: string;
   completedAt?: string;
@@ -94,6 +95,7 @@ export async function startResearchRun(
         sources: result.sources,
         searchCount: result.searchCount,
         usage: result.usage,
+        generatedBy: result.generatedBy,
         completedAt: new Date().toISOString(),
       })
     )
