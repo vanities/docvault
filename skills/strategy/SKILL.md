@@ -198,22 +198,101 @@ for all allocation decisions.
 
 ## Step 4: Apply Cowen's Risk-Weighted DCA Framework
 
-### Crypto allocation (BTC risk metric drives sizing)
+### Crypto allocation — Cowen's Dynamic DCA (BTC risk metric drives sizing)
 
-| BTC Risk  | Action                                      | DCA Multiplier |
-| --------- | ------------------------------------------- | -------------- |
-| ≤ 0.15    | Deep value — maximum accumulation           | 3× base        |
-| 0.15–0.30 | Accumulation zone                           | 2× base        |
-| 0.30–0.50 | Below fair value — normal DCA               | 1× base        |
-| 0.50–0.70 | Above fair — reduce DCA                     | 0.5× base      |
-| 0.70–0.85 | Overheated — stop buying, consider trimming | 0× (hold)      |
-| > 0.85    | Euphoria — scale out 10-20% per band        | Sell 10-20%    |
+Source: Benjamin Cowen, _"Bitcoin Dynamic DCA: How I Navigate Crypto"_
+(<https://www.youtube.com/watch?v=hx_neha7BVQ>). The model has three moving
+parts: a **per-cycle accumulation cap**, an **escalating buy ladder** below it,
+and a **scale-out ladder** at the top. "There is a difference between being right
+and making money" — the goal is disciplined deployment, not timing the exact bottom.
+
+**1. Pick the per-cycle accumulation cap.** You only buy when risk is _at or
+below_ the cap; above it you do nothing. Cowen ratchets the cap DOWN each cycle
+as he gets more risk-averse:
+
+| Cycle             | Cap (buy ≤ this risk) |
+| ----------------- | --------------------- |
+| 2 cycles ago      | 0.5                   |
+| last cycle        | 0.4                   |
+| this cycle (2026) | 0.3                   |
+
+A more aggressive investor can hold the cap at 0.4 or 0.5 — the mechanics are
+identical, only the cap moves. Set the user's cap explicitly before sizing.
+
+**2. Escalating buy ladder.** Within the buy zone the monthly tranche steps up
+by 1× base for every 0.1 risk band BELOW the cap (the cap band itself = 1× base).
+Lower/rarer bands get weighted more heavily because BTC almost never visits them.
+Worked example at **cap = 0.3** with a $100 base:
+
+| Risk band | Action (cap = 0.3)  | Multiplier rule | % of BTC's life here   |
+| --------- | ------------------- | --------------- | ---------------------- |
+| 0.3–0.4   | nothing (above cap) | 0× (hold)       | most time of any band  |
+| 0.2–0.3   | buy $100            | 1× (cap band)   | 14.73%                 |
+| 0.1–0.2   | buy $200            | 2×              | 12.5%                  |
+| 0.0–0.1   | buy $300            | 3×              | 2.34% (~135 days ever) |
+
+At a 0.4 cap the ladder shifts up one band (0.3–0.4 = 1× … 0–0.1 = 4×); at a 0.5
+cap, 0–0.1 = 5×. "Base" is whatever monthly dollar amount the user would normally
+DCA. Because buying is gated to ≤cap, a dynamic DCA with base $100 deploys the
+**same total dollars** as an always-on equal-weight DCA at ~$30/wk — but with a
+far lower average cost basis (Cowen's sim: same $18.3k in since 2014 → $2.1M
+dynamic vs $0.7M equal-weight).
+
+**3. Do-nothing zone.** Between the cap and ~0.6 risk: no action — don't buy,
+don't sell. (His earlier mistake was selling at 0.5 then re-buying days later
+when it dipped back; widening the dead zone stops the churn. "I'm not a day
+trader nickel-and-diming Bitcoin.")
+
+**4. Scale-out ladder.** Above ~0.6 risk, DCA OUT. The original fractions-of-position
+ladder (sell in 15ths of total BTC):
+
+| Risk band | Sell         |
+| --------- | ------------ |
+| 0.5–0.6   | 1/15         |
+| 0.6–0.7   | 2/15         |
+| 0.7–0.8   | 3/15         |
+| 0.8–0.9   | 4/15         |
+| 0.9–1.0   | 5/15 (= 1/3) |
+
+Current revision: do nothing until ~0.6, then scale out slowly above it. Last
+cycle topped on **apathy** near 0.6 and never reached 0.9 euphoria (same as 2019),
+so a "only sell at 0.9" rule would have left the gains unsold. Don't assume every
+rally is euphoric.
+
+**Why the steep low-band weighting works (rarity stats).** BTC spends the vast
+majority of its history in 0.3–0.4. It has spent only **14.73%** of all days in
+0.2–0.3, **12.5%** in 0.1–0.2, and just **2.34% (~135 days total)** below 0.1.
+Low-risk windows "come and go and people don't buy them" — front-loading capital
+into those rare bands is the entire edge.
+
+**Timing overlays:**
+
+- **Best DCA day = Monday.** Historically BTC (and the S&P 500) is least extended
+  above its 7-day SMA early in the week. Prefer Sunday-night / Monday-morning buys
+  over mid-week.
+- **Time-based capitulation.** Don't fire the heavy lower-band tranches too early
+  in a midterm / pre-halving year. Cowen skipped the February sub-0.3 dip and
+  waits for the June low / second half of the midterm year (supply-in-profit-and-loss
+  crossing below realized price flags a bottom within ~1–4 months). Exception: if
+  risk nukes to ~0.1, deploy immediately regardless of the calendar.
+- **Cash discipline is the prerequisite.** Dynamic DCA only works if you DIDN'T
+  top-blast the highs at the end of the post-halving year — you need a cash
+  position built up to deploy into the midterm-year lows.
+
+**Which risk metric DocVault returns.** `/api/quant/btc/log-regression` gives a
+_price-based_ risk (0–1) — the original metric in the video. Cowen also runs a
+_summary risk_ (price + on-chain + social); last cycle the social leg stayed
+elevated (FTX attention) and kept summary risk from bottoming as deeply as
+price/on-chain alone. When price risk reads low, sanity-check an on-chain signal
+(MVRV, etc.) before treating it as a true bottom.
 
 ### Cowen's "Rules Beat Predictions" principle:
 
-"Decide your actions at each risk band BEFORE emotions kick in." The user
-should have pre-set rules: "at risk 0.3, I put $X/month into BTC. At risk
-0.7, I stop. At risk 0.85, I sell 10%."
+"Decide your actions at each risk band BEFORE emotions kick in." Pre-set the
+whole ladder so deployment is mechanical, not emotional: "I buy below my cap —
+$X at the cap band, $2X one band lower, $3X below that. I do nothing from the cap
+up to ~0.6. I scale out above ~0.6." Then execute it no matter what the market is
+doing or what the crowd is saying.
 
 ### Hash Ribbons as a timing overlay:
 

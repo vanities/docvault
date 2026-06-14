@@ -1921,6 +1921,16 @@ export async function handleChatRoutes(
         }
       }, 15000);
 
+      // Tell the client which model + billing path this turn uses, so the chat
+      // window can show it (e.g. "opus-4-8 · Subscription") instead of leaving
+      // the user guessing whether they're spending credits.
+      send({
+        type: 'meta',
+        model,
+        billing: usingSub ? 'subscription' : 'api',
+        backend: 'claude',
+      });
+
       // Track the session_id once we see it on the first SDK message so we
       // can echo it back to the client. The SDK stamps every message with
       // this value, but we only need to send it once per turn.
@@ -2123,6 +2133,14 @@ function streamCodexChat(opts: {
       }, 15000);
       try {
         const cfg = await getCodexChatConfig();
+        // Surface model + billing to the chat window. Codex always runs on the
+        // ChatGPT subscription (CODEX_HOME auth), never an API key.
+        send({
+          type: 'meta',
+          model: cfg.model ?? 'codex',
+          billing: 'subscription',
+          backend: 'codex',
+        });
         await runCodexChat({
           userText: opts.userText,
           model: cfg.model,
