@@ -56,6 +56,9 @@ export interface Edition {
     sourceWarnings?: Array<{ source: string; message: string }>;
   };
   usage?: { inputTokens: number; outputTokens: number };
+  /** Which model wrote this edition + whether it ran on a subscription or
+   *  billed API credits — shown in the Reader. */
+  generatedBy?: { model: string; billing: 'subscription' | 'api'; backend: string };
   /** Saved headline-image filename (set when headline images are enabled). */
   imagePath?: string;
   /** Saved narration-audio filename under DATA_DIR/daily-news-audio/ (set
@@ -172,6 +175,7 @@ export async function startEdition(
         weather: result.weather,
         digestMeta: result.digestMeta,
         usage: result.usage,
+        generatedBy: result.generatedBy,
         completedAt: new Date().toISOString(),
       });
       log.info(

@@ -29,6 +29,7 @@ interface RunSummary {
 interface Run extends RunSummary {
   report?: string;
   sources?: Source[];
+  generatedBy?: { model: string; billing: 'subscription' | 'api'; backend: string };
 }
 
 const THOROUGH_SEARCHES = 18;
@@ -267,6 +268,26 @@ export function ResearchView() {
                 {active.usage
                   ? ` · ${Math.round((active.usage.inputTokens + active.usage.outputTokens) / 1000)}k tokens`
                   : ''}
+                {active.generatedBy ? (
+                  <>
+                    {' · '}
+                    {active.generatedBy.model}{' '}
+                    <span
+                      className={
+                        active.generatedBy.billing === 'subscription'
+                          ? 'text-emerald-500'
+                          : 'text-amber-500'
+                      }
+                      title={
+                        active.generatedBy.billing === 'subscription'
+                          ? 'Ran on a subscription — no API credits billed'
+                          : 'Ran on the API — billed credits'
+                      }
+                    >
+                      ({active.generatedBy.billing === 'subscription' ? 'sub' : 'API'})
+                    </span>
+                  </>
+                ) : null}
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
                 <Button variant="ghost" size="xs" onClick={() => downloadReport(active.id)}>

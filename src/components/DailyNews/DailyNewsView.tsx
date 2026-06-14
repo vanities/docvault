@@ -65,6 +65,7 @@ interface Edition extends EditionSummary {
     sourceWarnings?: SourceWarning[];
   };
   usage?: { inputTokens: number; outputTokens: number };
+  generatedBy?: { model: string; billing: 'subscription' | 'api'; backend: string };
   imagePath?: string;
   audioPath?: string;
   weather?: WeatherForecast;
@@ -440,6 +441,26 @@ export function DailyNewsView() {
                 {active.usage && active.usage.inputTokens + active.usage.outputTokens > 0
                   ? ` · ${active.usage.inputTokens.toLocaleString()} in / ${active.usage.outputTokens.toLocaleString()} out`
                   : ''}
+                {active.generatedBy ? (
+                  <>
+                    {' · '}
+                    {active.generatedBy.model}{' '}
+                    <span
+                      className={
+                        active.generatedBy.billing === 'subscription'
+                          ? 'text-emerald-500'
+                          : 'text-amber-500'
+                      }
+                      title={
+                        active.generatedBy.billing === 'subscription'
+                          ? 'Written on a subscription — no API credits billed'
+                          : 'Written on the API — billed credits'
+                      }
+                    >
+                      ({active.generatedBy.billing === 'subscription' ? 'sub' : 'API'})
+                    </span>
+                  </>
+                ) : null}
               </div>
               <div className="flex items-center flex-wrap gap-1 flex-shrink-0">
                 <Button
