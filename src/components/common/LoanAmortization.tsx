@@ -202,10 +202,10 @@ export function LoanAmortization({
       <div className="flex items-start gap-2 p-3 rounded-xl border border-rose-500/30 bg-rose-500/10 text-[12px] text-rose-300">
         <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
         <div>
-          The {formatUsdFull(monthlyPayment)}/mo payment doesn&apos;t cover the first month&apos;s
-          interest of <Money>{formatUsdFull(base.firstMonthInterest)}</Money>, so the balance would
-          grow rather than shrink. A payment above the interest charge is required to pay this loan
-          down.
+          The <Money>{formatUsdFull(monthlyPayment)}</Money>/mo payment doesn&apos;t cover the first
+          month&apos;s interest of <Money>{formatUsdFull(base.firstMonthInterest)}</Money>, so the
+          balance would grow rather than shrink. A payment above the interest charge is required to
+          pay this loan down.
         </div>
       </div>
     );
