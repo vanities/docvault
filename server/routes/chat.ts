@@ -97,6 +97,8 @@ import {
   type ResearchEntry,
 } from './research.js';
 import { handleFinancialSnapshotRoutes } from './financial-snapshot.js';
+import { handleDailyNewsRoutes } from './daily-news.js';
+import { handlePoliticsRoutes } from './politics.js';
 import { listRuns, getRun } from '../deep-research-store.js';
 import { loadChatThreads, saveChatThreads, isChatThreadsState } from '../chat-threads-store.js';
 import { logAiCall } from '../ai/usage-log.js';
@@ -192,6 +194,8 @@ const TOOL_NAMES = [
   'read_deep_research',
   'get_financial_snapshot',
   'get_quant_signals',
+  'get_daily_news',
+  'get_congress_trades',
   'read_brain',
   // --- Writes (require user confirmation per system prompt) ---
   'remember',
@@ -785,6 +789,102 @@ async function toolGetPredictionMarkets(input: {
   }
 }
 
+// -- Daily News (synthesized newspaper editions) ----------------------------
+// Reuses the same /api/daily-news handler the Newsstand UI calls. No id → list
+// recent editions; with an id → return that edition's full synthesized body.
+async function toolGetDailyNews(input: { id?: string; limit?: number }): Promise<unknown> {
+  try {
+    if (input.id) {
+      const { data } = await invokeRoute(
+        handleDailyNewsRoutes,
+        'GET',
+        `/api/daily-news/${encodeURIComponent(input.id)}`
+      );
+      const ed = data as {
+        id?: string;
+        editionType?: string;
+        editionDate?: string;
+        title?: string;
+        body?: string;
+      } | null;
+      if (!ed || !ed.id) {
+        return { error: `No edition "${input.id}". Call get_daily_news with no id to list them.` };
+      }
+      const body = ed.body ?? '';
+      const MAX = 24000;
+      return {
+        id: ed.id,
+        type: ed.editionType,
+        date: ed.editionDate,
+        title: ed.title,
+        body: body.length > MAX ? `${body.slice(0, MAX)}\n…[truncated]` : body,
+      };
+    }
+    const { data } = await invokeRoute(handleDailyNewsRoutes, 'GET', '/api/daily-news');
+    const list = ((data as { editions?: unknown[] })?.editions ?? []) as Array<
+      Record<string, unknown>
+    >;
+    const limit = Math.max(1, Math.min(input.limit ?? 10, 30));
+    const editions = list.slice(0, limit).map((e) => ({
+      id: e.id,
+      type: e.editionType,
+      date: e.editionDate,
+      title: e.title,
+      status: e.status,
+    }));
+    return {
+      count: editions.length,
+      editions,
+      hint: 'Call again with an id to read that edition’s full synthesized body.',
+    };
+  } catch (err) {
+    return { error: (err as Error).message };
+  }
+}
+
+// -- Congressional trades (politician stock/option disclosures) --------------
+// Reuses /api/politics/trades. Public STOCK Act disclosures — distinct from the
+// user's own holdings. Optional filters mirror the Politics → Trades view.
+async function toolGetCongressTrades(input: {
+  politician?: string;
+  ticker?: string;
+  chamber?: string;
+  category?: string;
+  limit?: number;
+}): Promise<unknown> {
+  try {
+    const qs = new URLSearchParams();
+    if (input.politician) qs.set('politician', input.politician);
+    if (input.ticker) qs.set('ticker', input.ticker);
+    if (input.chamber) qs.set('chamber', input.chamber);
+    if (input.category) qs.set('category', input.category);
+    const q = qs.toString();
+    const { data } = await invokeRoute(
+      handlePoliticsRoutes,
+      'GET',
+      `/api/politics/trades${q ? `?${q}` : ''}`
+    );
+    const trades = (
+      ((data as { trades?: unknown[] })?.trades ?? []) as Array<Record<string, unknown>>
+    ).slice(0, Math.max(1, Math.min(input.limit ?? 40, 200)));
+    return {
+      count: trades.length,
+      trades: trades.map((t) => ({
+        politician: t.politicianName,
+        chamber: t.chamber,
+        party: t.party,
+        category: t.category,
+        ticker: t.ticker ?? t.assetName,
+        amount: t.amount,
+        tradeDate: t.tradeDate,
+        filingDate: t.filingDate,
+      })),
+    };
+  } catch (err) {
+    return { error: (err as Error).message };
+  }
+}
+
 // -- Research library (filed PDFs, pasted articles, YouTube transcripts) -----
 // These reuse the same /api/research handler the UI calls, so the chat sees
 // exactly what the Research tab shows. Entries carry extracted text plus
@@ -1225,6 +1325,33 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
         async (args) => jsonResult(await toolGetQuantSignals(args))
       ),
       tool(
+        'get_daily_news',
+        "The user's synthesized newspaper editions (the Newsstand) — each weaves together that day's/week's markets, politics, local news, personal finance, tax/retirement, health, and filed research into one narrative, ending with an Action Items section. Call with no id to list recent editions; call with an id to read that edition's full body. Use it for 'what's the latest', a macro overview, or to ground a strategy in the already-synthesized picture. READ-ONLY.",
+        {
+          id: z
+            .string()
+            .optional()
+            .describe('Edition id (from a no-id call) to read its full body. Omit to list recent.'),
+          limit: z
+            .number()
+            .optional()
+            .describe('Max editions to list (default 10, max 30). Newest first.'),
+        },
+        async (args) => jsonResult(await toolGetDailyNews(args))
+      ),
+      tool(
+        'get_congress_trades',
+        'Recent congressional stock/option trades (public STOCK Act disclosures) — politician, chamber, party, buy/sell, ticker, dollar range, and trade/filing dates. These are PUBLIC disclosures by members of Congress, NOT the user\'s own holdings. Use it for "what are politicians buying", insider/consensus signals, or to factor disclosed trades into market analysis. Optional filters mirror the Politics → Trades view. READ-ONLY.',
+        {
+          politician: z.string().optional().describe('Filter by politician name substring.'),
+          ticker: z.string().optional().describe('Filter by ticker, e.g. "NVDA".'),
+          chamber: z.string().optional().describe('"house" or "senate".'),
+          category: z.string().optional().describe('Trade category, e.g. "buy" or "sell".'),
+          limit: z.number().optional().describe('Max trades (default 40, max 200). Newest first.'),
+        },
+        async (args) => jsonResult(await toolGetCongressTrades(args))
+      ),
+      tool(
         'set_metadata',
         'Set tags or a notes string on a file. Pass null to clear. Tags are merged with any existing tags. Use sparingly — confirm with the user before tagging if the request was ambiguous.',
         {
@@ -1475,6 +1602,8 @@ function buildSystemPrompt(activeEntity: string | undefined, brainContent = ''):
     'Deep Research runs are async, cited web-research reports the user commissioned: list_deep_research to find them, read_deep_research to read a completed report. When a question matches an existing report, ground your answer in it and pass through its citations.',
     "get_financial_snapshot is the user's FULL money picture for a year (net worth, crypto, brokerage, real estate, liabilities, retirement, bank). Use it for balance-sheet / net-worth / holdings questions — get_tax_summary only covers income and expenses by category, so reach for the snapshot when the question is about wealth or balances rather than taxable income.",
     'get_quant_signals returns the consolidated daily market/macro snapshot (BTC risk & drawdown, Fear & Greed, dominance, yield-curve regime, business-cycle/recession signals, inflation). Use it for "what do the signals say" / overall market-condition questions; use get_prediction_markets for odds on a specific named event.',
+    'get_daily_news lists/returns the synthesized Newsstand editions (markets+politics+finance+tax+health+research woven into one narrative with Action Items). No id lists recent editions; an id returns that edition\'s full body. Use it for "what\'s the latest" or to ground analysis in the already-synthesized macro picture.',
+    'get_congress_trades returns recent congressional stock/option disclosures (politician, chamber, party, buy/sell, ticker, $ range, dates) — PUBLIC STOCK Act filings, NOT the user\'s holdings. Use it for "what are politicians buying" or insider/consensus signals; optional politician/ticker/chamber/category filters.',
     'The user may have configured External Sources — cloned git repos of their own markdown (for example a personal knowledge or creative vault). For questions about their notes, projects, writing, or anything outside the tax, financial, and health data: call list_external_sources, then either search_external_sources (substring over BOTH file paths and content) or list_external_source_files (browse the tree or a folder when you have no obvious search term), then read_external_file for the full text. These are READ-ONLY and free to chain. Cite the source name and file path when you quote them.',
     'Use the provided tools to answer factually. Never invent file names, vendors, amounts, dates, lab values, supplement brands, or citations. If a file has not been parsed yet or a supplement is not in the regimen, say so — do not guess.',
     'Be concise. Use markdown tables for structured data. When citing a specific document, include its path so the user can find it.',

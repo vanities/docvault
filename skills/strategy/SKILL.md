@@ -106,6 +106,36 @@ Key endpoints (run each via `curl -fsS "${NAS_URL}/api/quant/..."`):
 | `/api/quant/running-roi`                | BTC + SPX rolling hold-period returns                     |
 | `/api/quant/predictions`                | Kalshi + Polymarket odds (finance + politics, per event)  |
 
+### 1c. The narrative & the crowd (qualitative — don't skip)
+
+The snapshot is the money and the quant signals are the data; this is what the
+analysts and insiders are actually saying RIGHT NOW. Pull it so the regime call
+in Step 2 is informed, not generic.
+
+```bash
+# Recent filed FINANCE analysis — YouTube transcripts (Casual Finance, Benjamin
+# Cowen, George Gammon, Lyn Alden) + ZeroHedge/articles. List, then read the
+# most relevant by id.
+curl -fsS "${NAS_URL}/api/research?domain=finance"          # newest entries (id, title, publisher, date)
+curl -fsS "${NAS_URL}/api/research/<id>"                     # full transcript/article text for the 2-4 most relevant
+
+# The synthesized macro picture the Newsstand already produced (+ its Action Items)
+curl -fsS "${NAS_URL}/api/daily-news"                        # list editions
+curl -fsS "${NAS_URL}/api/daily-news/<id>"                   # full edition body
+
+# Consensus / insider signal — public congressional disclosures (NOT the user's holdings)
+curl -fsS "${NAS_URL}/api/politics/trades?limit=60"          # recent trades
+curl -fsS "${NAS_URL}/api/politics/top-spenders"             # who is deploying the most
+curl -fsS "${NAS_URL}/api/politics/clusters"                 # tickers/sectors with consensus buying
+
+# Any completed cited web-research reports
+curl -fsS "${NAS_URL}/api/deep-research"                     # list; then /api/deep-research/<id>
+```
+
+Read the 2–4 most relevant research entries IN FULL and attribute views by name.
+In Step 2, cross-check this narrative against the quant signals — when the
+analysts and the data disagree, say so and explain which you weight more.
+
 ## Step 2: Classify the business cycle phase
 
 Using the signals, determine where we are. This is THE critical input
