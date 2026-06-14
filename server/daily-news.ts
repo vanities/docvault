@@ -38,6 +38,11 @@ import {
   loadLiabilities,
   loadGoldData,
   loadPropertyData,
+  loadIncomeData,
+  loadEstimatedTaxes,
+  loadContributions,
+  loadAssets,
+  loadFederalTax,
   DATA_DIR,
   BROKER_ACTIVITIES_FILE,
   BROKER_CACHE_FILE,
@@ -384,10 +389,35 @@ async function gatherMarkets(
     emitDigestWarning(warn, 'markets/quant', err);
   }
 
+  // Precious-metals spot — the owner holds physical gold/silver, so give metals
+  // a market signal of their own (symmetric with the crypto signals above)
+  // rather than letting them surface only as a balance-sheet holdings count.
+  const METALS_SYMBOLS = ['GLD', 'SLV'] as const;
+  const metalsLabel: Record<string, string> = { GLD: 'Gold (GLD)', SLV: 'Silver (SLV)' };
+  try {
+    const { quotes } = await fetchTickerPrices([...METALS_SYMBOLS]);
+    const spot = quotes
+      .filter((q) => q && q.price != null)
+      .map(
+        (q) =>
+          `${metalsLabel[q.symbol] ?? q.symbol} ` +
+          `$${q.price!.toLocaleString(undefined, { maximumFractionDigits: 2 })}` +
+          (q.oneYearChangePct != null
+            ? ` (${q.oneYearChangePct >= 0 ? '+' : ''}${q.oneYearChangePct.toFixed(0)}% 1y)`
+            : '')
+      );
+    if (spot.length) items.push(`Precious metals spot: ${spot.join(', ')}.`);
+  } catch (err) {
+    emitDigestWarning(warn, 'markets/metals', err);
+  }
+
   // Watchlist — symbols tagged on finance research entries (cache-first quotes).
+  // Metals proxies are excluded here; they get their own signal line above.
   try {
     const finance = await listResearchEntries('finance');
-    const symbols = [...new Set(finance.flatMap((e) => e.tickers ?? []))].slice(0, 10);
+    const symbols = [...new Set(finance.flatMap((e) => e.tickers ?? []))]
+      .filter((s) => !METALS_SYMBOLS.includes(s as (typeof METALS_SYMBOLS)[number]))
+      .slice(0, 10);
     if (symbols.length) {
       const { quotes } = await fetchTickerPrices(symbols);
       const movers = quotes
@@ -436,6 +466,39 @@ async function gatherMarkets(
           `($${Math.round(base.totalValue).toLocaleString()} on ${base.date} → ` +
           `$${Math.round(cur.totalValue).toLocaleString()} on ${cur.date}).`
       );
+      // Per-sleeve moves so Markets & Macro covers EVERY asset class the owner
+      // holds — crypto, equities, precious metals, real estate — not just the
+      // loudest one. Without these deltas the desk only had crypto signals to
+      // chew on, so editions read crypto-only even when metals/property moved.
+      // Every sleeve that composes totalValue (scheduler.ts: crypto + brokerage
+      // + bank + gold + property). Keep this list complete so "by asset class"
+      // actually reconciles to the net-worth move above — a missing sleeve would
+      // make the parts silently fail to sum to the whole.
+      const sleeves: Array<[string, number | undefined, number | undefined]> = [
+        ['crypto', base.cryptoValue, cur.cryptoValue],
+        ['brokerage', base.brokerValue, cur.brokerValue],
+        ['cash', base.bankValue, cur.bankValue],
+        ['precious metals', base.goldValue, cur.goldValue],
+        ['real estate equity', base.propertyValue, cur.propertyValue],
+      ];
+      const moves = sleeves
+        .filter(([, b, c]) => typeof b === 'number' && b > 0 && typeof c === 'number')
+        .map(([name, b, c]) => {
+          const d = (c as number) - (b as number);
+          const p = (d / (b as number)) * 100;
+          const move = Math.abs(p) < 0.5 ? 'flat' : `${p >= 0 ? '+' : ''}${p.toFixed(1)}%`;
+          return (
+            `${name} ${move} ` +
+            `($${Math.round(b as number).toLocaleString()} → $${Math.round(c as number).toLocaleString()})`
+          );
+        });
+      if (moves.length) {
+        const lead =
+          editionType === 'weekly'
+            ? 'By asset class this week'
+            : 'By asset class since the last edition';
+        items.push(`${lead}: ${moves.join('; ')}.`);
+      }
     }
   } catch (err) {
     emitDigestWarning(warn, 'markets/snapshots', err);
@@ -480,13 +543,50 @@ async function gatherPolitics(afterSince: AfterSince, warn?: WarningSink): Promi
   return items;
 }
 
+/** Estimated-tax and contribution stores are keyed by `entity/year`
+ *  (e.g. "personal/2026", "am2-llc/2025"); some legacy data may use a bare year.
+ *  Collect every bucket for the target year so totals span all entities — this
+ *  mirrors how the financial-snapshot route aggregates (it sums every bucket
+ *  whose key ends with the year), so news figures reconcile with the app. */
+function bucketsForYear<T>(data: Record<string, T>, year: number): T[] {
+  const y = String(year);
+  return Object.entries(data)
+    .filter(([k]) => k === y || k.endsWith(`/${y}`))
+    .map(([, v]) => v);
+}
+
+/** Next IRS quarterly estimated-tax due date on/after `now`, as YYYY-MM-DD.
+ *  Standard calendar-year deadlines: Apr 15, Jun 15, Sep 15, and Jan 15 of the
+ *  following year. Returns null once the final installment for the year passes. */
+function nextEstimatedTaxDue(taxYear: number, now: Date = new Date()): string | null {
+  const deadlines = [
+    `${taxYear}-04-15`,
+    `${taxYear}-06-15`,
+    `${taxYear}-09-15`,
+    `${taxYear + 1}-01-15`,
+  ];
+  const t = now.getTime();
+  for (const d of deadlines) {
+    if (new Date(`${d}T23:59:59`).getTime() >= t) return d;
+  }
+  return null;
+}
+
 async function gatherFinance(
   afterSince: AfterSince,
   includeBodies: boolean,
   includeState: boolean,
-  warn?: WarningSink
+  warn?: WarningSink,
+  editionDate?: string
 ): Promise<string[]> {
   const items: string[] = [];
+  // Tax year for income/estimated-tax/contribution/return lookups — the
+  // edition's own year, falling back to the current calendar year.
+  const taxYear = (() => {
+    const ymd = (editionDate ?? '').slice(0, 10);
+    const d = new Date(`${ymd || new Date().toISOString().slice(0, 10)}T12:00:00`);
+    return Number.isNaN(d.getTime()) ? new Date().getFullYear() : d.getFullYear();
+  })();
 
   try {
     const sales = await loadSalesData();
@@ -600,6 +700,63 @@ async function gatherFinance(
     emitDigestWarning(warn, 'finance/crypto', err);
   }
 
+  // Tax, income, retirement & other assets — the household money picture beyond
+  // markets. These run for BOTH editions but report only what CHANGED in-window
+  // (a new income source, an estimated-tax payment made, a 401k contribution, a
+  // freshly filed return); the weekly adds the standing totals under state below.
+  try {
+    const { sources } = await loadIncomeData();
+    for (const s of sources.filter((s) => afterSince(s.createdAt))) {
+      items.push(
+        `New income source: ${s.name} $${Math.round(s.amount).toLocaleString()}/${s.frequency}` +
+          `${s.taxable ? '' : ' (tax-free)'}.`
+      );
+    }
+  } catch (err) {
+    emitDigestWarning(warn, 'finance/income', err);
+  }
+
+  try {
+    const est = await loadEstimatedTaxes();
+    const payments = bucketsForYear(est, taxYear).flatMap((b) => b.payments ?? []);
+    for (const p of payments.filter((p) => afterSince(p.date))) {
+      items.push(
+        `Estimated tax payment: Q${p.quarter} ${taxYear} — ` +
+          `$${Math.round(p.amount).toLocaleString()} paid ${p.date}.`
+      );
+    }
+  } catch (err) {
+    emitDigestWarning(warn, 'finance/estimated-taxes', err);
+  }
+
+  try {
+    const contrib = await loadContributions();
+    const entries = bucketsForYear(contrib, taxYear).flat();
+    for (const c of entries.filter((c) => afterSince(c.date))) {
+      items.push(
+        `Retirement contribution: $${Math.round(c.amount).toLocaleString()} (${c.type}) on ${c.date}.`
+      );
+    }
+  } catch (err) {
+    emitDigestWarning(warn, 'finance/contributions', err);
+  }
+
+  try {
+    const federal = await loadFederalTax();
+    for (const [year, ret] of Object.entries(federal)) {
+      if (ret.filed && ret.filedDate && afterSince(ret.filedDate)) {
+        const bal = ret.balance.totalOwed;
+        items.push(
+          `Filed ${year} federal return: AGI $${Math.round(ret.agi).toLocaleString()}, ` +
+            `total tax $${Math.round(ret.tax.totalTax).toLocaleString()}, ` +
+            `${bal >= 0 ? 'owed' : 'refund'} $${Math.round(Math.abs(bal)).toLocaleString()}.`
+        );
+      }
+    }
+  } catch (err) {
+    emitDigestWarning(warn, 'finance/federal-tax', err);
+  }
+
   // Balance sheet — the current "state of things"; WEEKLY only (the
   // over-the-week review, not "stuff fetched today"). Assets from the latest
   // portfolio snapshot (already tracks crypto/broker/bank/gold/property), debts
@@ -672,6 +829,101 @@ async function gatherFinance(
       }
     } catch (err) {
       emitDigestWarning(warn, 'finance/gold', err);
+    }
+
+    // Income — annualized total across all configured sources (state).
+    try {
+      const { sources } = await loadIncomeData();
+      if (sources.length) {
+        const mult: Record<string, number> = {
+          weekly: 52,
+          biweekly: 26,
+          monthly: 12,
+          quarterly: 4,
+          annually: 1,
+        };
+        const total = sources.reduce((sum, s) => sum + s.amount * (mult[s.frequency] ?? 1), 0);
+        items.push(
+          `Income sources (${sources.length}): ~$${Math.round(total).toLocaleString()}/yr.`
+        );
+      }
+    } catch (err) {
+      emitDigestWarning(warn, 'finance/income-state', err);
+    }
+
+    // Estimated taxes — paid-to-date vs. annual target + next quarterly due date,
+    // summed across every entity bucket for the year.
+    try {
+      const buckets = bucketsForYear(await loadEstimatedTaxes(), taxYear);
+      if (buckets.length) {
+        const paid = buckets.flatMap((b) => b.payments ?? []).reduce((s, p) => s + p.amount, 0);
+        const target = buckets.reduce((s, b) => s + (b.config?.annualTarget ?? 0), 0);
+        const due = nextEstimatedTaxDue(taxYear);
+        items.push(
+          `Estimated taxes ${taxYear}: $${Math.round(paid).toLocaleString()} paid` +
+            (target > 0
+              ? ` of $${Math.round(target).toLocaleString()} target (${Math.round((paid / target) * 100)}%)`
+              : '') +
+            (due ? `; next installment due ${due}` : '') +
+            '.'
+        );
+      }
+    } catch (err) {
+      emitDigestWarning(warn, 'finance/estimated-taxes-state', err);
+    }
+
+    // Retirement contributions — year-to-date by type, across all entity buckets.
+    try {
+      const entries = bucketsForYear(await loadContributions(), taxYear).flat();
+      if (entries.length) {
+        const ee = entries.filter((c) => c.type === 'employee').reduce((s, c) => s + c.amount, 0);
+        const er = entries.filter((c) => c.type === 'employer').reduce((s, c) => s + c.amount, 0);
+        items.push(
+          `Retirement contributions ${taxYear}: $${Math.round(ee + er).toLocaleString()} ` +
+            `(employee $${Math.round(ee).toLocaleString()}, employer $${Math.round(er).toLocaleString()}).`
+        );
+      }
+    } catch (err) {
+      emitDigestWarning(warn, 'finance/contributions-state', err);
+    }
+
+    // Other tracked assets (vehicles, equipment) — these are NOT part of the
+    // net-worth snapshot, so the weekly's "state of things" would otherwise omit
+    // them entirely.
+    try {
+      const assets = Object.values(await loadAssets()).flat();
+      if (assets.length) {
+        const total = assets.reduce((s, a) => s + (a.value ?? 0), 0);
+        const top = assets
+          .slice()
+          .sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
+          .slice(0, 5)
+          .map((a) => `${a.name} $${Math.round(a.value ?? 0).toLocaleString()}`);
+        items.push(
+          `Other assets (${assets.length}, $${Math.round(total).toLocaleString()}): ${top.join(', ')}.`
+        );
+      }
+    } catch (err) {
+      emitDigestWarning(warn, 'finance/assets', err);
+    }
+
+    // Most recent filed federal return — the standing tax picture.
+    try {
+      const federal = await loadFederalTax();
+      const year = Object.keys(federal)
+        .filter((y) => federal[y].filed)
+        .sort()
+        .reverse()[0];
+      const ret = year ? federal[year] : undefined;
+      if (ret && year) {
+        items.push(
+          `Most recent filed return (${year}): AGI $${Math.round(ret.agi).toLocaleString()}, ` +
+            `taxable income $${Math.round(ret.taxableIncome).toLocaleString()}, ` +
+            `total tax $${Math.round(ret.tax.totalTax).toLocaleString()}.`
+        );
+      }
+    } catch (err) {
+      emitDigestWarning(warn, 'finance/federal-tax-state', err);
     }
   }
 
@@ -1118,7 +1370,7 @@ export async function gatherDigest(
     [
       gatherMarkets(editionType, sinceISO, warn),
       gatherPolitics(afterSince, warn),
-      gatherFinance(afterSince, includeBodies, includeState, warn),
+      gatherFinance(afterSince, includeBodies, includeState, warn, editionDate),
       gatherHealth(afterSince, includeBodies, includeState, editionType, warn, editionDate),
       gatherDocs(afterSince, editionType, since, warn),
       gatherResearchDeep(afterSince, warn),
@@ -1177,6 +1429,8 @@ function buildSystem(
     `You are the editor-in-chief of "${title}", a personal daily newspaper for a single reader (the owner of this data).`,
     "You are given a structured digest of everything that changed across the owner's data since the last edition, organized by desk.",
     'Write a cohesive newspaper edition in clean markdown. Open with a one-paragraph front-page lede summarizing the single most important development. Then write one `##` section per desk, in the order given, in tight journalistic prose (not bullet dumps) — lead with what changed and why it matters, cite the specific numbers, dates, and names from the digest. Digest items may carry a source tag like [S12] in their heading; when a story draws on a tagged item, hyperlink its most load-bearing phrase reference-style — [the phrase][S12] — using only tags that appear in the digest. Never write raw URLs or invent tags; at most one link per story. Cover EVERY desk that has material (the digest is comprehensive — markets, politics, local news, personal finance, health, research, documents); omit only a desk with genuinely no items. In the Local News section, report like a hometown paper: lead with what affects the reader directly (rates, closures, construction, schools), keep names and dates concrete.',
+    'In the "Personal Finance & Business" section, treat tax and retirement items as the financially actionable content they are: when an estimated-tax installment due date, safe-harbor progress, retirement-contribution progress, a filed return, or a new income source/asset appears in the digest, report it concretely with the numbers and dates — an upcoming estimated-tax deadline in particular is worth a clear heads-up.',
+    'In the "Markets & Macro" section, give proportional coverage to EVERY asset class the owner actually holds — crypto, equities, precious metals, and real estate — using the per-asset-class moves and metals/equity signals in the digest. Crypto is often the most volatile sleeve, but do not let it crowd out the others: when metals or real-estate equity moved (or held flat while crypto fell), say so explicitly, since that is the diversification story. Lead the section with whatever moved most, not crypto by default.',
     'When the "Research & Analysis" desk is present it carries the FULL text of newly-filed research (ZeroHedge, Lyn Alden, George Gammon, political transcripts, etc.) — actually read it and synthesize the key arguments, attributing analysts by name, rather than merely noting that a piece was filed.',
     "In the Health section, be a supportive coach as well as a reporter: when someone's numbers are good (steps, workouts, resting heart rate, weight trend), say so plainly — one warm, specific affirmation per person is welcome. When sleep falls short (under ~7 hours total, or under ~1 hour of deep sleep), call it out directly with a gentle, actionable nudge (e.g. an earlier wind-down tonight) rather than burying it in neutral prose. Encouraging and concrete, never clinical or scolding.",
     editionType === 'weekly'
