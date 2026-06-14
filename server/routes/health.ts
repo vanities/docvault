@@ -135,6 +135,15 @@ function getPersonDeltasDir(personId: string): string {
   return path.join(HEALTH_DATA_DIR, personId, 'deltas');
 }
 
+/** Collision-proof temp path for atomic (write-tmp → rename) saves. A
+ *  timestamp alone collides when two concurrent writes for the same target
+ *  land in the same millisecond: both build the SAME tmp path, one renames it
+ *  into place, and the other's rename ENOENTs (the shared tmp is already gone).
+ *  The random suffix gives every in-flight write its own tmp file. */
+function atomicTmpPath(target: string): string {
+  return `${target}.tmp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function getPersonIngestLog(personId: string): string {
   return path.join(HEALTH_DATA_DIR, personId, 'ingest.log');
 }
@@ -188,7 +197,7 @@ async function appendIngestLog(personId: string, entry: IngestLogEntry): Promise
 
     kept.push(JSON.stringify(entry));
 
-    const tmp = `${filePath}.tmp-${Date.now()}`;
+    const tmp = atomicTmpPath(filePath);
     await fs.writeFile(tmp, kept.join('\n') + '\n');
     await fs.rename(tmp, filePath);
   } catch (err) {
@@ -702,7 +711,7 @@ export async function handleHealthRoutes(
       const dir = getPersonDeltasDir(personId);
       await ensureDir(dir);
       const targetPath = path.join(dir, `${date}.json`);
-      const tmp = `${targetPath}.tmp-${Date.now()}`;
+      const tmp = atomicTmpPath(targetPath);
       await fs.writeFile(tmp, JSON.stringify(normalized, null, 2));
       await fs.rename(tmp, targetPath);
 
@@ -848,7 +857,7 @@ export async function handleHealthRoutes(
           added++;
         }
         delta.workouts = merged.sort((a, b) => a.start.localeCompare(b.start));
-        const tmp = `${targetPath}.tmp-${Date.now()}`;
+        const tmp = atomicTmpPath(targetPath);
         await fs.writeFile(tmp, JSON.stringify(delta, null, 2));
         await fs.rename(tmp, targetPath);
       }
@@ -1013,7 +1022,7 @@ export async function handleHealthRoutes(
           }
           delta.workouts = merged.sort((a, b) => a.start.localeCompare(b.start));
         }
-        const tmp = `${targetPath}.tmp-${Date.now()}`;
+        const tmp = atomicTmpPath(targetPath);
         await fs.writeFile(tmp, JSON.stringify(delta, null, 2));
         await fs.rename(tmp, targetPath);
       }
@@ -1121,7 +1130,7 @@ export async function handleHealthRoutes(
         // re-posting the same record overwrites it (dedupe).
         const safe = `${type}-${id}`.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 200);
         const targetPath = path.join(dir, `${safe}.json`);
-        const tmp = `${targetPath}.tmp-${Date.now()}-${written}`;
+        const tmp = atomicTmpPath(targetPath);
         await fs.writeFile(tmp, JSON.stringify(r, null, 2));
         await fs.rename(tmp, targetPath);
         written++;
