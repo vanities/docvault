@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { Upload, X, Wand2, Sparkles, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import type { Entity, DocumentType, TaxDocument, ExpenseCategory } from '../../types';
 import { DOCUMENT_TYPES, EXPENSE_CATEGORIES } from '../../config';
+import { Money } from './Money';
 import {
   generateStandardFilename,
   getExtension,
@@ -960,11 +961,13 @@ export function FileUploader({
                                       <div className="flex items-center gap-2 flex-wrap">
                                         {amount != null && (
                                           <span className="font-semibold text-emerald-400">
-                                            $
-                                            {amount.toLocaleString('en-US', {
-                                              minimumFractionDigits: 2,
-                                              maximumFractionDigits: 2,
-                                            })}
+                                            <Money>
+                                              $
+                                              {amount.toLocaleString('en-US', {
+                                                minimumFractionDigits: 2,
+                                                maximumFractionDigits: 2,
+                                              })}
+                                            </Money>
                                           </span>
                                         )}
                                         {vendor && (
@@ -981,7 +984,7 @@ export function FileUploader({
                                               {item.price != null && (
                                                 <span className="text-surface-700">
                                                   {' '}
-                                                  ${item.price.toFixed(2)}
+                                                  <Money>${item.price.toFixed(2)}</Money>
                                                 </span>
                                               )}
                                             </span>

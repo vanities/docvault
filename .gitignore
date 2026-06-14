@@ -107,6 +107,8 @@ scripts/*
 !server/daily-news-narration.test.ts
 # Exception: research-domain wiring test parses repo source files only, no personal data
 !server/research-domain-wiring.test.ts
+# Exception: blur-coverage test scans component source for unblurred money renders, no personal data
+!src/components/blur-coverage.test.ts
 
 # Internal design docs
 docs/PRD-shadcn-migration.md
