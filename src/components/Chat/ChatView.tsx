@@ -911,6 +911,15 @@ export function ChatView() {
   // Claude Code subprocess so we stop spending tokens.
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Model + billing path for the latest turn (from the server's `meta` event),
+  // shown in the footer so the user always sees which model ran and whether it
+  // spent their subscription or API credits. Ephemeral — per session.
+  const [chatMeta, setChatMeta] = useState<{
+    model: string;
+    billing: 'subscription' | 'api';
+    backend?: string;
+  } | null>(null);
+
   // The active thread is the single source of truth for messages, stats,
   // and resumeSessionId. Sidebar's ThreadList drives switching/deleting via
   // the same context actions.
@@ -1089,6 +1098,9 @@ export function ChatView() {
               cost?: number;
               error?: string;
               payload?: unknown;
+              model?: string;
+              billing?: 'subscription' | 'api';
+              backend?: string;
             };
             try {
               event = JSON.parse(dataPayload);
@@ -1128,6 +1140,13 @@ export function ChatView() {
                     : b
                 ),
               }));
+            } else if (event.type === 'meta' && typeof event.model === 'string') {
+              // Model + billing path for this turn — shown in the footer.
+              setChatMeta({
+                model: event.model,
+                billing: event.billing === 'api' ? 'api' : 'subscription',
+                backend: event.backend,
+              });
             } else if (event.type === 'session' && typeof event.sessionId === 'string') {
               // Persist the SDK-assigned session ID so the next turn can
               // pass it as resume:. This is what gives us multi-turn
@@ -1248,10 +1267,32 @@ export function ChatView() {
       </div>
 
       <Composer onSend={handleSend} onStop={handleStop} pending={pending} skills={skills} />
-      {(stats.inputTokens > 0 || stats.outputTokens > 0) && (
+      {(chatMeta || stats.inputTokens > 0 || stats.outputTokens > 0) && (
         <div className="px-3 pb-1 pt-0.5 text-center text-[10px] text-surface-500 font-mono tracking-tight">
-          {formatTokens(stats.inputTokens)} in · {formatTokens(stats.outputTokens)} out
-          {stats.costUsd > 0 && ` · $${stats.costUsd.toFixed(4)}`}
+          {chatMeta && (
+            <>
+              {chatMeta.model} ·{' '}
+              <span
+                className={
+                  chatMeta.billing === 'subscription' ? 'text-emerald-500' : 'text-amber-500'
+                }
+                title={
+                  chatMeta.billing === 'subscription'
+                    ? 'Running on your subscription — no API credits billed'
+                    : 'Running on the API key — billing credits'
+                }
+              >
+                {chatMeta.billing === 'subscription' ? 'Subscription' : 'API credits'}
+              </span>
+              {(stats.inputTokens > 0 || stats.outputTokens > 0) && ' · '}
+            </>
+          )}
+          {(stats.inputTokens > 0 || stats.outputTokens > 0) && (
+            <>
+              {formatTokens(stats.inputTokens)} in · {formatTokens(stats.outputTokens)} out
+              {stats.costUsd > 0 && ` · $${stats.costUsd.toFixed(4)}`}
+            </>
+          )}
         </div>
       )}
     </div>
