@@ -4,6 +4,7 @@ import {
   formatEditionDate,
   renderEditionEmailHtml,
   renderEditionHtml,
+  weekdayQuip,
 } from './daily-news-report.js';
 import type { Edition } from './daily-news-store.js';
 
@@ -23,6 +24,25 @@ describe('daily-news-report', () => {
   test('formats edition dates as newspaper datelines', () => {
     expect(formatEditionDate('2026-06-05')).toBe('Friday, June 5, 2026');
     expect(formatEditionDate('not-a-date')).toBe('not-a-date');
+  });
+
+  test('produces a deterministic day-of-week kicker, empty on a bad date', () => {
+    // 2026-06-05 is a Friday (day-of-month 5 → index 5 % 3 = 2).
+    expect(weekdayQuip('2026-06-05')).toBe('Friday Finish-Line');
+    // 2026-06-10 is a Wednesday → Hump Day row, index 10 % 3 = 1.
+    expect(weekdayQuip('2026-06-10')).toBe('Halfway There');
+    // Stable across calls for the same date.
+    expect(weekdayQuip('2026-06-05')).toBe(weekdayQuip('2026-06-05'));
+    expect(weekdayQuip('not-a-date')).toBe('');
+  });
+
+  test('renders the weekday kicker in both full and email mastheads', () => {
+    const full = renderEditionHtml(edition('## Markets\n\nBody'));
+    const email = renderEditionEmailHtml(edition('## Markets\n\nBody'));
+    // 2026-06-05 → "Friday Finish-Line".
+    expect(full).toContain('class="kicker"');
+    expect(full).toContain('Friday Finish-Line');
+    expect(email).toContain('Friday Finish-Line');
   });
 
   test('renders table of contents headings and escapes edition chrome', () => {

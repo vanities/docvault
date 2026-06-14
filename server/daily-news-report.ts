@@ -65,6 +65,25 @@ export function formatEditionDate(editionDate: string): string {
   });
 }
 
+/** A playful day-of-week kicker for the masthead — "Hump Day", "Friyay", etc.
+ *  Deterministic per date (rotates across weeks via day-of-month) so the same
+ *  edition always renders the same quip; empty string on a bad date. */
+export function weekdayQuip(editionDate: string): string {
+  const d = new Date(`${editionDate}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return '';
+  const quips: string[][] = [
+    ['Sunday Funday', 'Slow-Roll Sunday', 'Day of Rest'], // Sun
+    ['Monday Grind', 'Fresh-Start Monday', 'Here We Go Again'], // Mon
+    ['Taco Tuesday', 'Two-Cup Tuesday', 'Tackle-It Tuesday'], // Tue
+    ['Hump Day', 'Halfway There', 'Over the Hump'], // Wed
+    ['Thirsty Thursday', 'Almost-Friday', 'Throwback Thursday'], // Thu
+    ['Friyay!', 'Finally Friday', 'Friday Finish-Line'], // Fri
+    ['Saturday Slow-Roll', 'Weekend Mode', 'Chore-Day Saturday'], // Sat
+  ];
+  const row = quips[d.getDay()] ?? [];
+  return row.length ? (row[d.getDate() % row.length] ?? '') : '';
+}
+
 /** Slugified download filename (no extension), e.g. "the-docvault-dispatch-2026-06-05". */
 export function editionFilename(edition: Edition): string {
   return slug(`${edition.title ?? 'daily-news'}-${edition.editionDate}`);
@@ -153,6 +172,10 @@ interface ThemeStyle {
   masthead: string;
   /** `font` shorthand for the body. */
   body: string;
+  /** `font` shorthand for the playful day-of-week kicker — matches the theme's
+   *  own typography (serif papers get a serif kicker, the tabloid gets a loud
+   *  condensed one) so the personality line never looks bolted-on. */
+  kicker: string;
 }
 
 const THEME_STYLES: Record<string, ThemeStyle> = {
@@ -166,6 +189,7 @@ const THEME_STYLES: Record<string, ThemeStyle> = {
     card: '#fffdf8',
     masthead: "800 clamp(34px,6vw,58px)/1.05 Georgia,'Times New Roman',serif",
     body: "18px/1.6 Georgia,'Times New Roman',serif",
+    kicker: "italic 700 13px/1 Georgia,'Times New Roman',serif",
   },
   // The Economist: crisp white, signature red accent, serif.
   economist: {
@@ -177,6 +201,7 @@ const THEME_STYLES: Record<string, ThemeStyle> = {
     card: '#f6f6f6',
     masthead: "800 clamp(34px,6vw,56px)/1.05 Georgia,'Times New Roman',serif",
     body: "17px/1.65 Georgia,'Times New Roman',serif",
+    kicker: "italic 700 13px/1 Georgia,'Times New Roman',serif",
   },
   // Morning Brew: bright, friendly, modern sans.
   brew: {
@@ -188,6 +213,7 @@ const THEME_STYLES: Record<string, ThemeStyle> = {
     card: '#fff8de',
     masthead: "800 clamp(32px,6vw,54px)/1.05 system-ui,'Segoe UI',Helvetica,sans-serif",
     body: "17px/1.65 system-ui,'Segoe UI',Helvetica,sans-serif",
+    kicker: "italic 700 13px/1 system-ui,'Segoe UI',Helvetica,sans-serif",
   },
   // Equity research desk: cool, professional, tight sans.
   analyst: {
@@ -199,6 +225,7 @@ const THEME_STYLES: Record<string, ThemeStyle> = {
     card: '#ffffff',
     masthead: "800 clamp(30px,5.5vw,50px)/1.05 system-ui,'Segoe UI',Helvetica,sans-serif",
     body: "16px/1.6 system-ui,'Segoe UI',Helvetica,sans-serif",
+    kicker: "italic 600 13px/1 system-ui,'Segoe UI',Helvetica,sans-serif",
   },
   // Tabloid: punchy, high-contrast, heavy condensed masthead.
   tabloid: {
@@ -211,6 +238,7 @@ const THEME_STYLES: Record<string, ThemeStyle> = {
     masthead:
       "900 clamp(40px,8vw,74px)/.92 Impact,Haettenschweiler,'Arial Narrow',system-ui,sans-serif",
     body: "17px/1.55 system-ui,'Segoe UI',Helvetica,sans-serif",
+    kicker: "italic 900 15px/1 'Arial Narrow',Impact,Haettenschweiler,system-ui,sans-serif",
   },
   // Noir: moody dark monochrome with a dim gold accent.
   noir: {
@@ -222,6 +250,7 @@ const THEME_STYLES: Record<string, ThemeStyle> = {
     card: '#1c1b21',
     masthead: "800 clamp(34px,6vw,56px)/1.05 'Iowan Old Style',Georgia,serif",
     body: "18px/1.65 'Iowan Old Style',Georgia,'Times New Roman',serif",
+    kicker: "italic 700 13px/1 'Iowan Old Style',Georgia,serif",
   },
   // Victorian gazette: ornate parchment, period serif.
   victorian: {
@@ -233,6 +262,7 @@ const THEME_STYLES: Record<string, ThemeStyle> = {
     card: '#faf3dd',
     masthead: "800 clamp(34px,6vw,58px)/1.05 'Palatino Linotype',Palatino,Georgia,serif",
     body: "18px/1.7 'Palatino Linotype',Palatino,Georgia,serif",
+    kicker: "italic 700 13px/1 'Palatino Linotype',Palatino,Georgia,serif",
   },
 };
 
@@ -254,6 +284,7 @@ body { margin:0; background:var(--bg); color:var(--fg); font:${s.body}; }
   font:600 12px/1 system-ui,sans-serif; letter-spacing:.14em; text-transform:uppercase; color:var(--muted);
   border-bottom:1px solid var(--rule); padding:10px 0; margin-bottom:8px; }
 .badge { color:var(--accent); }
+.kicker { font:${s.kicker}; letter-spacing:.02em; text-transform:none; color:var(--accent); }
 .index { background:var(--card); border:1px solid var(--rule); border-radius:6px; padding:12px 18px; margin:18px 0 4px;
   font:13px/1.5 system-ui,sans-serif; }
 .index .label { font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-right:8px; }
@@ -410,9 +441,11 @@ export function renderEditionHtml(edition: Edition, heroSrc?: string): string {
 <div class="paper">
   ${hero}
   <header class="masthead"><h1>${escapeHtml(edition.title ?? 'Daily News')}</h1></header>
-  <div class="dateline"><span>${escapeHtml(formatEditionDate(edition.editionDate))}</span><span class="badge">${editionBadge(
-    edition
-  )}</span></div>
+  <div class="dateline"><span>${escapeHtml(formatEditionDate(edition.editionDate))}</span>${
+    weekdayQuip(edition.editionDate)
+      ? `<span class="kicker">${escapeHtml(weekdayQuip(edition.editionDate))}</span>`
+      : ''
+  }<span class="badge">${editionBadge(edition)}</span></div>
   ${weatherHtml}
   ${indexHtml}
   <article class="edition">${body}</article>
@@ -442,7 +475,11 @@ export function renderEditionEmailHtml(edition: Edition, heroSrc?: string): stri
   )}</h1>
   <div style="font:600 12px/1 system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:${s.muted};text-align:center;margin:0 0 18px;">${escapeHtml(
     formatEditionDate(edition.editionDate)
-  )} · ${editionBadge(edition)}</div>
+  )}${
+    weekdayQuip(edition.editionDate)
+      ? ` · <span style="font:${s.kicker};text-transform:none;color:${s.accent};">${escapeHtml(weekdayQuip(edition.editionDate))}</span>`
+      : ''
+  } · ${editionBadge(edition)}</div>
   ${renderWeatherEmail(edition.weather, s)}
   <div style="font-size:16px;line-height:1.6;">${body}</div>
   ${sourceNotes}
