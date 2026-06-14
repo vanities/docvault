@@ -88,6 +88,9 @@ export async function openaiComplete(
   opts: CallClaudeOptions,
   model: string
 ): Promise<Anthropic.Messages.Message> {
+  // openaiComplete always authenticates with OPENAI_API_KEY — there is no
+  // subscription path here (that's Codex). Always billed; log every call.
+  log.info(`[ai-billing] openai-complete → OPENAI API KEY (billed credits) · model=${model}`);
   const openai = await getOpenAIClient();
   const effort = toOpenAIEffort(opts.effort);
   const response = await openai.chat.completions.create({
