@@ -67,6 +67,8 @@ import {
   scanDirectory,
   getEntityPath,
   getClaudeModel,
+  getChatMode,
+  getChatApiModel,
   getClaudeChatEffort,
   toClaudeAgentEffort,
   toOpenAIEffort,
@@ -1807,10 +1809,15 @@ export async function handleChatRoutes(
     );
   }
 
+  // Chat mode: 'agent' (Claude Code / Codex on the subscription) or 'api'
+  // (direct Anthropic Messages API via Claude Code with the API key — bills
+  // credits). Codex is a subscription agent, so it only applies in agent mode.
+  const chatMode = await getChatMode();
+
   // Codex backend — diverges entirely from the Claude path here. Codex brings
   // its own auth (codex login) and native tools, so we skip the Anthropic
   // credential / in-process-MCP setup below and stream from codex instead.
-  if ((await getChatBackend()) === 'codex') {
+  if (chatMode === 'agent' && (await getChatBackend()) === 'codex') {
     return streamCodexChat({
       userText: last.content,
       entity: body.entity,
@@ -1836,7 +1843,7 @@ export async function handleChatRoutes(
     );
   }
 
-  const model = await getClaudeModel();
+  const model = chatMode === 'api' ? await getChatApiModel() : await getClaudeModel();
   const effort = toClaudeAgentEffort(await getClaudeChatEffort());
   // User-authored skills (DATA_DIR/skills) ride along as a local plugin —
   // null when none exist, in which case the plugins/skills options are
@@ -1868,22 +1875,24 @@ export async function handleChatRoutes(
   }
   const userMessageContent = userMessageResult;
 
-  // Auth precedence: prefer the Claude.ai SUBSCRIPTION (OAuth token) when it's
-  // configured. Claude Code bills API credits whenever ANTHROPIC_API_KEY is
-  // present in the env — even alongside an OAuth token — so to actually use the
-  // subscription we must DELETE the API key (it may also be inherited from
-  // process.env, not just added here). Fall back to the API key only when no
-  // OAuth token exists.
+  // Credential selection follows the chat MODE. Claude Code bills API credits
+  // whenever ANTHROPIC_API_KEY is in the env (even alongside an OAuth token), so
+  // whichever credential we DON'T want must be deleted — it can also be
+  // inherited from process.env, not just added here.
+  //   • agent mode → prefer the SUBSCRIPTION (OAuth token); API key is fallback.
+  //   • api mode   → force the API KEY (billed); OAuth token is fallback.
   const subprocessEnv: Record<string, string | undefined> = { ...process.env };
-  if (oauthToken) {
+  const preferApi = chatMode === 'api';
+  const usingSub = preferApi ? !apiKey && !!oauthToken : !!oauthToken;
+  if (usingSub) {
     subprocessEnv.CLAUDE_CODE_OAUTH_TOKEN = oauthToken;
     delete subprocessEnv.ANTHROPIC_API_KEY;
-  } else if (apiKey) {
+  } else {
     subprocessEnv.ANTHROPIC_API_KEY = apiKey;
     delete subprocessEnv.CLAUDE_CODE_OAUTH_TOKEN;
   }
   log.info(
-    `[ai-billing] chat → Claude ${oauthToken ? 'SUBSCRIPTION (Claude.ai OAuth token)' : 'API KEY (billed credits)'} · model=${model}`
+    `[ai-billing] chat (${chatMode}) → Claude ${usingSub ? 'SUBSCRIPTION (Claude.ai OAuth token)' : 'API KEY (billed credits)'} · model=${model}`
   );
 
   const startedAt = Date.now();
