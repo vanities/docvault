@@ -362,10 +362,12 @@ export function IncomeView() {
                       </p>
                       <div className="flex flex-wrap items-center gap-2 text-[11px] text-surface-500">
                         <span>
-                          {formatUsd(source.amount)}/{source.frequency}
+                          <Money>{formatUsd(source.amount)}</Money>/{source.frequency}
                         </span>
                         {source.frequency !== 'monthly' && (
-                          <span className="text-surface-400">({formatUsd(monthly)}/mo)</span>
+                          <span className="text-surface-400">
+                            (<Money>{formatUsd(monthly)}</Money>/mo)
+                          </span>
                         )}
                         <span
                           className={`px-1.5 py-0.5 rounded-md text-[10px] font-medium ${source.taxable ? 'bg-amber-500/10 text-amber-600' : 'bg-emerald-500/10 text-emerald-600'}`}

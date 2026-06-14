@@ -375,7 +375,7 @@ function AccountRows({
                       )}
                       {hasAnnotation && ann.monthlyPayment && (
                         <span className="text-[10px] text-surface-400">
-                          {formatUsd(ann.monthlyPayment)}/mo
+                          <Money>{formatUsd(ann.monthlyPayment)}</Money>/mo
                         </span>
                       )}
                     </div>

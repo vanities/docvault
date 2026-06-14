@@ -279,7 +279,9 @@ export function EstimatedTaxView() {
                     <span
                       className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[status]}`}
                     >
-                      {label}
+                      {/* The 'partial' label embeds a dollar amount ("$X remaining"),
+                          so blur it under the privacy toggle; other labels are not money. */}
+                      {status === 'partial' ? <Money>{label}</Money> : label}
                     </span>
                   </div>
                   <span className="text-[13px] font-mono font-bold text-surface-900">

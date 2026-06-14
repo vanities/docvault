@@ -19,6 +19,7 @@ import type { TaxDocument, Entity, ExpenseCategory, DocumentType } from '../../t
 import { DOCUMENT_TYPES, EXPENSE_CATEGORIES, getDocumentTypeColor } from '../../config';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import { useToast } from '../../hooks/useToast';
+import { Money } from '../common/Money';
 import { useAppContext } from '../../contexts/AppContext';
 import { generateStandardFilename, getExtension } from '../../utils/filenaming';
 import { API_BASE } from '../../constants';
@@ -560,6 +561,10 @@ export function DocumentViewer({
 
                       // Format the value
                       let displayValue: string;
+                      // Track money fields so the rendered value can be blurred
+                      // under the global privacy toggle (parsed tax-doc amounts
+                      // are personal financial data).
+                      let valueIsMoney = false;
                       if (value === null || value === undefined || value === '') {
                         return null; // Skip empty values
                       } else if (typeof value === 'number') {
@@ -604,6 +609,7 @@ export function DocumentViewer({
                             'price',
                           ];
                           const isMoney = moneyFields.some((f) => key.toLowerCase().includes(f));
+                          valueIsMoney = isMoney;
 
                           displayValue = isMoney
                             ? `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -627,7 +633,9 @@ export function DocumentViewer({
                       return (
                         <div key={key}>
                           <dt className="text-surface-600 capitalize text-[11px]">{label}</dt>
-                          <dd className="text-surface-950 font-medium">{displayValue}</dd>
+                          <dd className="text-surface-950 font-medium">
+                            {valueIsMoney ? <Money>{displayValue}</Money> : displayValue}
+                          </dd>
                         </div>
                       );
                     })}
