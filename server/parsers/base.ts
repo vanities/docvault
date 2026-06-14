@@ -332,6 +332,10 @@ async function anthropicMessagesCreate(
   model: string,
   opts: CallClaudeOptions
 ): Promise<Anthropic.Messages.Message> {
+  // Document parsing uses the RAW Anthropic Messages API (ANTHROPIC_API_KEY) —
+  // the Claude.ai subscription cannot be used for raw API calls, so this path
+  // ALWAYS bills credits. Logged every call so it's not mistaken for sub usage.
+  log.info(`[ai-billing] parse → Claude RAW API KEY (billed credits, sub N/A) · model=${model}`);
   const anthropic = await getClient();
   const effort = toAnthropicApiEffort(opts.effort);
   return anthropic.messages.create({

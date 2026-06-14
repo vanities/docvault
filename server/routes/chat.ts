@@ -1868,11 +1868,23 @@ export async function handleChatRoutes(
   }
   const userMessageContent = userMessageResult;
 
-  const subprocessEnv: Record<string, string | undefined> = {
-    ...process.env,
-    ...(oauthToken ? { CLAUDE_CODE_OAUTH_TOKEN: oauthToken } : {}),
-    ...(apiKey ? { ANTHROPIC_API_KEY: apiKey } : {}),
-  };
+  // Auth precedence: prefer the Claude.ai SUBSCRIPTION (OAuth token) when it's
+  // configured. Claude Code bills API credits whenever ANTHROPIC_API_KEY is
+  // present in the env — even alongside an OAuth token — so to actually use the
+  // subscription we must DELETE the API key (it may also be inherited from
+  // process.env, not just added here). Fall back to the API key only when no
+  // OAuth token exists.
+  const subprocessEnv: Record<string, string | undefined> = { ...process.env };
+  if (oauthToken) {
+    subprocessEnv.CLAUDE_CODE_OAUTH_TOKEN = oauthToken;
+    delete subprocessEnv.ANTHROPIC_API_KEY;
+  } else if (apiKey) {
+    subprocessEnv.ANTHROPIC_API_KEY = apiKey;
+    delete subprocessEnv.CLAUDE_CODE_OAUTH_TOKEN;
+  }
+  log.info(
+    `[ai-billing] chat → Claude ${oauthToken ? 'SUBSCRIPTION (Claude.ai OAuth token)' : 'API KEY (billed credits)'} · model=${model}`
+  );
 
   const startedAt = Date.now();
   const encoder = new TextEncoder();

@@ -1617,11 +1617,20 @@ async function runDailyNewsClaudeAgent(
   const model = ref?.provider === 'anthropic' && ref.model ? ref.model : DEFAULT_MODEL;
   const effort = toClaudeAgentEffort(ref?.effort);
   const startedAt = Date.now();
-  const env: Record<string, string | undefined> = {
-    ...process.env,
-    ...(oauthToken ? { CLAUDE_CODE_OAUTH_TOKEN: oauthToken } : {}),
-    ...(apiKey ? { ANTHROPIC_API_KEY: apiKey } : {}),
-  };
+  // Prefer the Claude.ai SUBSCRIPTION (OAuth token) over API credits: Claude
+  // Code bills the API whenever ANTHROPIC_API_KEY is in the env, so it must be
+  // removed (it can also be inherited from process.env) when a token exists.
+  const env: Record<string, string | undefined> = { ...process.env };
+  if (oauthToken) {
+    env.CLAUDE_CODE_OAUTH_TOKEN = oauthToken;
+    delete env.ANTHROPIC_API_KEY;
+  } else if (apiKey) {
+    env.ANTHROPIC_API_KEY = apiKey;
+    delete env.CLAUDE_CODE_OAUTH_TOKEN;
+  }
+  log.info(
+    `[ai-billing] daily-news → Claude ${oauthToken ? 'SUBSCRIPTION (Claude.ai OAuth token)' : 'API KEY (billed credits)'} · model=${model}`
+  );
 
   let body = '';
   let inputTokens = 0;

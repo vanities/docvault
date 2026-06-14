@@ -76,6 +76,12 @@ export interface CodexChatOptions {
 /** Run one chat turn through codex, streaming events via `opts.send`. */
 export async function runCodexChat(opts: CodexChatOptions): Promise<void> {
   const { send } = opts;
+  // Codex authenticates via CODEX_HOME/auth.json (from `codex login`) — i.e. the
+  // ChatGPT SUBSCRIPTION, never an OpenAI API key. Log it every run so billing
+  // path is auditable alongside the Claude [ai-billing] lines.
+  log.info(
+    `[ai-billing] codex-chat → ChatGPT SUBSCRIPTION (CODEX_HOME auth.json) · model=${opts.model ?? 'default'}`
+  );
   const cwd = await buildDataView();
 
   let done = false;
