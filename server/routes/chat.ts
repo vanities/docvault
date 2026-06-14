@@ -1887,6 +1887,19 @@ export async function handleChatRoutes(
         }
       };
 
+      // Heartbeat — a long agentic turn can sit silent for many seconds while
+      // the model thinks between tool calls. With no bytes on the wire, an idle
+      // proxy/NAT (notably over a VPN tunnel) drops the SSE connection and the
+      // client surfaces a stream read error mid-run. A periodic SSE comment
+      // (no `data:` line, so clients ignore it) keeps the connection warm.
+      const heartbeat = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(': hb\n\n'));
+        } catch {
+          /* stream already closed */
+        }
+      }, 15000);
+
       // Track the session_id once we see it on the first SDK message so we
       // can echo it back to the client. The SDK stamps every message with
       // this value, but we only need to send it once per turn.
@@ -2027,6 +2040,7 @@ export async function handleChatRoutes(
           error: msg,
         });
       } finally {
+        clearInterval(heartbeat);
         req.signal.removeEventListener('abort', onAbort);
         try {
           controller.close();
@@ -2076,6 +2090,16 @@ function streamCodexChat(opts: {
           /* stream already closed */
         }
       };
+      // Heartbeat — keep the SSE connection warm through silent gaps so an idle
+      // proxy/NAT (e.g. over a VPN tunnel) doesn't drop a long run. See the
+      // Claude path above for the rationale.
+      const heartbeat = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(': hb\n\n'));
+        } catch {
+          /* stream already closed */
+        }
+      }, 15000);
       try {
         const cfg = await getCodexChatConfig();
         await runCodexChat({
@@ -2095,6 +2119,7 @@ function streamCodexChat(opts: {
       } catch (err) {
         send({ type: 'error', message: err instanceof Error ? err.message : 'codex chat failed' });
       } finally {
+        clearInterval(heartbeat);
         try {
           controller.close();
         } catch {
