@@ -3642,6 +3642,10 @@ export interface FedPolicyResponse {
   targetUpper: { t: number; rate: number }[];
   /** Target range lower bound (2008+) */
   targetLower: { t: number; rate: number }[];
+  /** Secured Overnight Financing Rate (SOFR) — the Treasury-repo overnight
+   *  rate. Sits a few bps from effective fed funds normally; spikes reveal
+   *  repo/funding-market stress. FRED series SOFR (history starts 2018-04). */
+  sofr: { t: number; rate: number }[];
   /** Detected rate change events from the target range */
   rateChanges: FedRateChange[];
   latest: {
@@ -3649,6 +3653,12 @@ export interface FedPolicyResponse {
     effectiveRate: number;
     targetUpper: number;
     targetLower: number;
+    /** Latest SOFR (secured overnight rate); null if FRED has no recent print. */
+    sofr: number | null;
+    /** SOFR − effective fed funds, in basis points — a funding-stress gauge.
+     *  Normally single-digit bps; large positive spikes (quarter-end, repo
+     *  squeezes) signal plumbing stress. Null when SOFR is unavailable. */
+    sofrSpreadBps: number | null;
     /** Classification: 'cutting' if recent trend is cuts, 'hiking' if hikes, 'hold' if flat */
     stance: 'cutting' | 'hiking' | 'hold';
     /** Days since last rate change */
@@ -3659,10 +3669,13 @@ export interface FedPolicyResponse {
 }
 
 export async function computeFedPolicy(apiKey: string): Promise<FedPolicyResponse> {
-  const [dff, upper, lower] = await Promise.all([
+  const [dff, upper, lower, sofr] = await Promise.all([
     fetchFredSeries('DFF', apiKey, '2008-01-01'),
     fetchFredSeries('DFEDTARU', apiKey, '2008-01-01'),
     fetchFredSeries('DFEDTARL', apiKey, '2008-01-01'),
+    // SOFR only exists from 2018-04; tolerate absence (older key/outage) so the
+    // rest of the Fed-policy view still renders.
+    fetchFredSeries('SOFR', apiKey, '2018-04-01').catch(() => []),
   ]);
 
   if (upper.length < 10) {
@@ -3701,16 +3714,32 @@ export async function computeFedPolicy(apiKey: string): Promise<FedPolicyRespons
   const lastLowerObs = lower[lower.length - 1];
   const lastDff = dff[dff.length - 1];
 
+  // SOFR + funding-stress spread (SOFR − effective fed funds). Compute the
+  // spread on SOFR's own latest date (look DFF up by date) so we compare
+  // same-day prints rather than whatever each series last reported.
+  const lastSofr = sofr.length ? sofr[sofr.length - 1] : null;
+  const dffByDate = new Map(dff.map((o) => [o.date, o.value]));
+  const sofrSpreadBps =
+    lastSofr != null
+      ? Math.round(
+          (lastSofr.value - (dffByDate.get(lastSofr.date) ?? lastDff?.value ?? lastSofr.value)) *
+            100
+        )
+      : null;
+
   return {
     effectiveRate: dff.map((o) => ({ t: o.t, rate: o.value })),
     targetUpper: upper.map((o) => ({ t: o.t, rate: o.value })),
     targetLower: lower.map((o) => ({ t: o.t, rate: o.value })),
+    sofr: sofr.map((o) => ({ t: o.t, rate: o.value })),
     rateChanges,
     latest: {
       date: lastUpperObs.date,
       effectiveRate: lastDff?.value ?? 0,
       targetUpper: lastUpperObs.value,
       targetLower: lastLowerObs.value,
+      sofr: lastSofr?.value ?? null,
+      sofrSpreadBps,
       stance,
       daysSinceLastChange,
     },

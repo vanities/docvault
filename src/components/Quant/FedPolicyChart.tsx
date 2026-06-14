@@ -52,6 +52,9 @@ export function FedPolicyChart() {
     const lower = data.targetLower
       .filter((_, i) => i % step === 0)
       .map((p) => [p.t, Number(p.rate.toFixed(2))]);
+    const sofr = (data.sofr ?? [])
+      .filter((_, i) => i % step === 0)
+      .map((p) => [p.t, Number(p.rate.toFixed(2))]);
 
     return {
       backgroundColor: 'transparent',
@@ -64,7 +67,7 @@ export function FedPolicyChart() {
         valueFormatter: (v: number) => `${v.toFixed(2)}%`,
       },
       legend: {
-        data: ['Effective Rate', 'Target Upper', 'Target Lower'],
+        data: ['Effective Rate', 'SOFR', 'Target Upper', 'Target Lower'],
         textStyle: { color: '#94a3b8', fontSize: 11 },
         top: 8,
       },
@@ -110,6 +113,14 @@ export function FedPolicyChart() {
           itemStyle: { color: '#06b6d4' },
           symbol: 'none',
         },
+        {
+          name: 'SOFR',
+          type: 'line',
+          data: sofr,
+          lineStyle: { color: '#f59e0b', width: 1.5 },
+          itemStyle: { color: '#f59e0b' },
+          symbol: 'none',
+        },
       ],
     };
   }, [data]);
@@ -123,8 +134,10 @@ export function FedPolicyChart() {
         </h3>
         <p className="text-[13px] text-surface-800 mt-1 leading-relaxed">
           Effective federal funds rate plotted against the FOMC target range (upper/lower bounds,
-          2008+). Every rate change event is detected by walking the target history — hikes and cuts
-          with their basis-point deltas. The current{' '}
+          2008+), with <span className="text-amber-400 font-semibold">SOFR</span> (secured overnight
+          repo rate) overlaid — its spread to fed funds is a funding-stress gauge that spikes when
+          repo markets seize. Every rate change event is detected by walking the target history —
+          hikes and cuts with their basis-point deltas. The current{' '}
           <span className="text-cyan-400 font-semibold">stance</span> is classified from the last 5
           rate changes.
         </p>
@@ -173,6 +186,23 @@ export function FedPolicyChart() {
               </div>
               <div className="text-[10px] text-surface-700 mt-0.5">Market actual</div>
             </div>
+            {data.latest.sofr != null && (
+              <div className="p-3 rounded-xl border border-amber-500/40 bg-amber-500/5">
+                <div className="text-[10px] text-amber-500 uppercase tracking-wider font-medium">
+                  SOFR
+                </div>
+                <div className="text-[16px] font-bold text-amber-400 mt-0.5">
+                  {data.latest.sofr.toFixed(2)}%
+                </div>
+                <div className="text-[10px] text-surface-700 mt-0.5">
+                  {data.latest.sofrSpreadBps != null
+                    ? `${data.latest.sofrSpreadBps >= 0 ? '+' : ''}${data.latest.sofrSpreadBps}bps vs fed funds${
+                        Math.abs(data.latest.sofrSpreadBps) >= 10 ? ' — funding stress' : ''
+                      }`
+                    : 'secured overnight'}
+                </div>
+              </div>
+            )}
             <div className={`p-3 rounded-xl border ${meta.border} ${meta.bg}`}>
               <div className={`text-[10px] uppercase tracking-wider font-medium ${meta.color}`}>
                 Current Stance
