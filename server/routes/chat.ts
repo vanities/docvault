@@ -948,6 +948,13 @@ async function toolSearchResearch(input: {
 }): Promise<unknown> {
   const q = input.query.trim().toLowerCase();
   if (q.length < 2) return { error: 'query must be at least 2 characters' };
+  // Tokenize: a multi-word query is matched as AND-of-terms, each found anywhere
+  // in metadata OR content — NOT as one contiguous substring. Matching the whole
+  // phrase literally meant "gold silver metals" found nothing even though every
+  // term appears (just not adjacent). A quoted query keeps phrase semantics.
+  const phrase = /^".+"$/.test(input.query.trim());
+  const terms = phrase ? [q.slice(1, -1)] : q.split(/\s+/).filter((t) => t.length >= 2);
+  if (!terms.length) return { error: 'query must contain a term of at least 2 characters' };
   const { status, data } = await invokeRoute(handleResearchRoutes, 'GET', '/api/research');
   if (status !== 200) return { error: data, status };
   let entries = (data as { entries?: ResearchEntry[] }).entries ?? [];
@@ -968,26 +975,25 @@ async function toolSearchResearch(input: {
       .filter((v): v is string => typeof v === 'string')
       .join('\n')
       .toLowerCase();
-    let matchedIn: 'metadata' | 'content' | null = null;
-    let snippet: string | null = null;
-    if (meta.includes(q)) {
-      matchedIn = 'metadata';
-    } else if (typeof e.text === 'string' && e.text.toLowerCase().includes(q)) {
-      matchedIn = 'content';
-      snippet = researchSnippet(e.text, q);
-    }
-    if (matchedIn) {
-      hits.push({
-        id: e.id,
-        domain: e.domain,
-        title: e.title ?? e.filename ?? null,
-        sourceUrl: e.sourceUrl ?? null,
-        reportDate: e.reportDate ?? null,
-        tickers: e.tickers ?? [],
-        matchedIn,
-        snippet,
-      });
-    }
+    const text = typeof e.text === 'string' ? e.text : '';
+    const textLower = text.toLowerCase();
+    // AND semantics: every term must appear somewhere (metadata or content).
+    if (!terms.every((t) => meta.includes(t) || textLower.includes(t))) continue;
+    // Anchor the snippet on a term that's actually in the body; if all matched
+    // terms live only in metadata, label it a metadata hit.
+    const contentTerm = terms.find((t) => textLower.includes(t));
+    const matchedIn: 'metadata' | 'content' = contentTerm ? 'content' : 'metadata';
+    const snippet = contentTerm ? researchSnippet(text, contentTerm) : null;
+    hits.push({
+      id: e.id,
+      domain: e.domain,
+      title: e.title ?? e.filename ?? null,
+      sourceUrl: e.sourceUrl ?? null,
+      reportDate: e.reportDate ?? null,
+      tickers: e.tickers ?? [],
+      matchedIn,
+      snippet,
+    });
   }
   return { query: input.query, totalHits: hits.length, hits };
 }
