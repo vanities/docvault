@@ -1742,6 +1742,41 @@ export async function handleChatRoutes(
 ): Promise<Response | null> {
   // Thread history persistence — the client hydrates on boot and PUTs the
   // whole pruned ThreadsState blob (see src/contexts/chatPersistence.ts).
+  // Resolved chat config for the header badge — which model runs, on a
+  // subscription or API credits, and at what effort — BEFORE any turn, so the
+  // user sees it on a fresh chat. Single source of truth (same getters the
+  // streaming handler uses).
+  if (pathname === '/api/chat/config' && req.method === 'GET') {
+    const mode = await getChatMode();
+    const backend = await getChatBackend();
+    if (mode === 'agent' && backend === 'codex') {
+      const cfg = await getCodexChatConfig();
+      return jsonResponse({
+        mode,
+        backend,
+        model: cfg.model ?? 'codex',
+        billing: 'subscription',
+        effort: cfg.effort ?? 'default',
+      });
+    }
+    if (mode === 'api') {
+      return jsonResponse({
+        mode,
+        backend: 'claude',
+        model: await getChatApiModel(),
+        billing: 'api',
+        effort: (await getClaudeChatEffort()) ?? 'default',
+      });
+    }
+    return jsonResponse({
+      mode,
+      backend: 'claude',
+      model: await getClaudeModel(),
+      billing: (await getAnthropicAuthToken()) ? 'subscription' : 'api',
+      effort: (await getClaudeChatEffort()) ?? 'default',
+    });
+  }
+
   if (pathname === '/api/chat/threads') {
     if (req.method === 'GET') {
       return jsonResponse(await loadChatThreads());

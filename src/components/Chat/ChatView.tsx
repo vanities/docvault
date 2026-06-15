@@ -920,6 +920,16 @@ export function ChatView() {
     backend?: string;
   } | null>(null);
 
+  // Resolved-from-settings chat config (model · sub/API · effort), shown in the
+  // header so it's visible before any turn. Distinct from chatMeta, which is the
+  // actual last-turn result.
+  const [chatConfig, setChatConfig] = useState<{
+    model: string;
+    billing: 'subscription' | 'api';
+    effort: string;
+    backend?: string;
+  } | null>(null);
+
   // The active thread is the single source of truth for messages, stats,
   // and resumeSessionId. Sidebar's ThreadList drives switching/deleting via
   // the same context actions.
@@ -994,6 +1004,33 @@ export function ChatView() {
       .catch(() => setCredentialsOk(null));
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  // Resolved chat config (model · sub/API · effort) for the header badge, so
+  // it's visible on a fresh chat before any turn. Re-fetched when the tab/window
+  // regains focus so a Settings change reflects without a reload.
+  useEffect(() => {
+    let cancelled = false;
+    const loadCfg = () =>
+      fetch(`${API_BASE}/chat/config`)
+        .then((r) => r.json())
+        .then((d: { model?: string; billing?: string; effort?: string; backend?: string }) => {
+          if (!cancelled && d?.model) {
+            setChatConfig({
+              model: d.model,
+              billing: d.billing === 'api' ? 'api' : 'subscription',
+              effort: d.effort ?? 'default',
+              backend: d.backend,
+            });
+          }
+        })
+        .catch(() => {});
+    void loadCfg();
+    window.addEventListener('focus', loadCfg);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', loadCfg);
     };
   }, []);
 
@@ -1230,6 +1267,32 @@ export function ChatView() {
           </span>
           {selectedEntity !== 'all' && (
             <span className="text-[11px] text-surface-600 flex-shrink-0">· {selectedEntity}</span>
+          )}
+          {chatConfig && (
+            <span
+              className="hidden sm:inline-flex items-center gap-1 text-[11px] text-surface-500 flex-shrink-0 font-mono"
+              title={`Chat runs on ${
+                chatConfig.billing === 'subscription'
+                  ? 'your subscription (no API billing)'
+                  : 'the API key (bills credits)'
+              }${chatConfig.backend === 'codex' ? ' via Codex' : ''}${
+                chatConfig.effort && chatConfig.effort !== 'default'
+                  ? `, ${chatConfig.effort} effort`
+                  : ''
+              }. Change it in Settings → Models & Chat.`}
+            >
+              · {chatConfig.model} ·{' '}
+              <span
+                className={
+                  chatConfig.billing === 'subscription' ? 'text-emerald-500' : 'text-amber-500'
+                }
+              >
+                {chatConfig.billing === 'subscription' ? 'Sub' : 'API'}
+              </span>
+              {chatConfig.effort && chatConfig.effort !== 'default'
+                ? ` · ${chatConfig.effort}`
+                : ''}
+            </span>
           )}
         </div>
         <Button variant="ghost" size="xs" onClick={() => newChatThread()}>
