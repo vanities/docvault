@@ -116,8 +116,9 @@ in Step 2 is informed, not generic.
 # Recent filed FINANCE analysis — YouTube transcripts (Casual Finance, Benjamin
 # Cowen, George Gammon, Lyn Alden) + ZeroHedge/articles. List, then read the
 # most relevant by id.
-curl -fsS "${NAS_URL}/api/research?domain=finance"          # newest entries (id, title, publisher, date)
-curl -fsS "${NAS_URL}/api/research/<id>"                     # full transcript/article text for the 2-4 most relevant
+curl -fsS "${NAS_URL}/api/research?domain=finance"          # newest finance entries (id, title, publisher, date)
+curl -fsS "${NAS_URL}/api/research?domain=politics"         # geopolitical/policy catalysts (war, oil, tariffs, sanctions, EOs) — these DRIVE the macro chain; don't skip them
+curl -fsS "${NAS_URL}/api/research/<id>"                     # full transcript/article text for the 2-4 most relevant (finance OR politics)
 
 # The synthesized macro picture the Newsstand already produced (+ its Action Items)
 curl -fsS "${NAS_URL}/api/daily-news"                        # list editions
