@@ -327,9 +327,12 @@ user can verify the numbers before you build the allocation.
    the highest-conviction play — sectors rotating INTO leadership. Example:
    "20% XLE, 15% XLI, 15% XLB, 10% XLU, 15% GLD, 5% SLV, 10% TLT, 10% cash"
 
-3. **Crypto DCA** — Dollar amount per month based on the risk metric band.
-   Scale using Cowen's framework. Be specific: "$500/mo at risk 0.35,
-   $1,000/mo if hash ribbons fire recovery, $1,500/mo if risk drops <0.15."
+3. **Crypto DCA** — Dollar amount per month set by the Dynamic DCA ladder in
+   Step 4. First state the user's per-cycle cap, then size each band off the
+   base. Be specific and cap-relative: "Cap = 0.3 this cycle, base $500 → buy
+   $500/mo in 0.2–0.3, $1,000/mo in 0.1–0.2, $1,500/mo below 0.1; nothing above
+   0.3. If hash ribbons fire recovery, bump the base for ~3 months." Above ~0.6
+   risk, switch from buying to the scale-out ladder.
 
 4. **Physical metals** — Keep stacking or pause? Check gold-to-silver ratio
    (gold spot / silver spot). Above 80 = silver undervalued (buy silver).
