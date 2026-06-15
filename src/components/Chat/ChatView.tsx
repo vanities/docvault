@@ -109,7 +109,7 @@ const ASSISTANT_ERROR_COPY: Record<string, string> = {
     'Your Claude.ai account is not allowed by the organization. Switch to API key auth in Settings.',
   billing_error: 'Anthropic billing error — check your account at console.anthropic.com.',
   rate_limit:
-    'Hit your Claude.ai subscription rate limit. Wait a few minutes, or switch to API key in Settings to keep going.',
+    'Hit your Claude.ai SUBSCRIPTION usage limit (not API credits — the sub has a rolling cap). It resets after the window; wait a bit, or switch Chat to API mode in Settings → Models & Chat to keep going (that bills credits).',
   invalid_request: 'Anthropic rejected the request as invalid.',
   server_error: 'Anthropic server error. Try again in a moment.',
   max_output_tokens: 'Response was cut off — hit max tokens. Ask a follow-up to continue.',
@@ -1209,10 +1209,12 @@ export function ChatView() {
                 error: copyForAssistantError(event.error),
               }));
             } else if (event.type === 'rate_limit') {
-              // SDK rate_limit_event — emit as a warning toast so the
-              // user sees a heads-up before they hit the hard cap.
+              // SDK rate_limit_event — you're nearing your Claude.ai
+              // SUBSCRIPTION usage cap (NOT API credits). Make that explicit so
+              // the warning isn't mistaken for credit billing, and don't push
+              // the API key (which would actually bill credits).
               addToast(
-                'Approaching Claude.ai rate limit — consider switching to API key in Settings.',
+                'Nearing your Claude.ai subscription usage limit (not API credits) — it resets on a rolling window. Heavy use today; it will free up shortly.',
                 'info'
               );
             } else if (event.type === 'error') {
