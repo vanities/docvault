@@ -1209,14 +1209,22 @@ export function ChatView() {
                 error: copyForAssistantError(event.error),
               }));
             } else if (event.type === 'rate_limit') {
-              // SDK rate_limit_event — you're nearing your Claude.ai
-              // SUBSCRIPTION usage cap (NOT API credits). Make that explicit so
-              // the warning isn't mistaken for credit billing, and don't push
-              // the API key (which would actually bill credits).
-              addToast(
-                'Nearing your Claude.ai subscription usage limit (not API credits) — it resets on a rolling window. Heavy use today; it will free up shortly.',
-                'info'
-              );
+              // The SDK emits rate_limit_event on EVERY turn just to report the
+              // current window status — status:"allowed" is routine and means
+              // the request went through fine. Only warn when ACTUALLY
+              // constrained (anything other than "allowed", e.g. rejected/
+              // queued); toasting on "allowed" spammed the user every heavy turn.
+              const info = (
+                event.payload as
+                  | { rate_limit_info?: { status?: string; rateLimitType?: string } }
+                  | undefined
+              )?.rate_limit_info;
+              if (info?.status && info.status !== 'allowed') {
+                addToast(
+                  `Claude.ai subscription ${info.rateLimitType ?? ''} limit reached (not API credits) — it resets on a rolling window. Pause a moment and retry; nothing is being billed.`,
+                  'info'
+                );
+              }
             } else if (event.type === 'error') {
               updateAssistant((m) => ({
                 ...m,
