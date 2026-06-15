@@ -1,0 +1,9 @@
+{
+  "id": "gamers-nexus-youtube-daily",
+  "label": "Gamers Nexus YouTube daily metadata pull",
+  "kind": "local-script",
+  "schedule": "daily",
+  "script": "scripts/gamers-nexus-youtube.local.sh",
+  "enabled": false,
+  "tags": ["research", "youtube", "gamers-nexus", "tech", "hardware"]
+}
