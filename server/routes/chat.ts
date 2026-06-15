@@ -2220,6 +2220,10 @@ function translateAndSend(message: SDKMessage, send: (event: object) => void): v
   // Claude.ai subscription's quota window changes. Forward to the client
   // so the UI can warn the user before they hit a hard 429 mid-turn.
   if (message.type === 'rate_limit_event') {
+    // Log the full event so we can see WHICH limit fired (session vs weekly vs
+    // short burst) and its reset — the UI toast alone hid that. Subscription
+    // quota metadata only, no user content.
+    log.warn(`[ai-billing] rate_limit_event (sub quota): ${JSON.stringify(message).slice(0, 500)}`);
     send({ type: 'rate_limit', payload: message });
     return;
   }
@@ -2245,6 +2249,7 @@ function translateAndSend(message: SDKMessage, send: (event: object) => void): v
     // instead of a generic "Stream error". The full union is in the SDK
     // types as SDKAssistantMessageError.
     if (message.error) {
+      log.warn(`[ai-billing] assistant_error: ${message.error}`);
       send({ type: 'assistant_error', error: message.error });
     }
     for (const block of message.message.content) {
