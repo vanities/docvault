@@ -149,6 +149,25 @@ function parseBase64DataUrl(dataUrl: string): { mimeType: string; base64: string
   return { mimeType, base64 };
 }
 
+// Inverse of extensionFor — serve stored attachments with the right header.
+function contentTypeForExt(ext: string): string | null {
+  switch (ext.toLowerCase()) {
+    case '.png':
+      return 'image/png';
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg';
+    case '.gif':
+      return 'image/gif';
+    case '.webp':
+      return 'image/webp';
+    case '.pdf':
+      return 'application/pdf';
+    default:
+      return null;
+  }
+}
+
 function extensionFor(mimeType: string): string {
   switch (mimeType) {
     case 'image/png':
@@ -1657,10 +1676,20 @@ function attachmentDirFor(chatId: string): string {
 // the whole turn (keeps the model from being asked about an attachment we
 // silently dropped). Mirrors t3code's normalizer flow:
 //   parseBase64DataUrl → size/mime check → createAttachmentId → writeFile.
+// A lightweight, persistable reference to a stored attachment — enough for the
+// client to render a thumbnail in the transcript via GET /api/chat/attachments.
+// The heavy base64 stays out of the thread JSON; the bytes live on disk.
+interface AttachmentRef {
+  id: string;
+  name: string;
+  mimeType: string;
+  fileName: string; // `<id><ext>` — the on-disk basename under the chat dir
+}
+
 async function persistAttachment(
   chatId: string,
   attachment: IncomingAttachment
-): Promise<{ block: Record<string, unknown> } | { error: string }> {
+): Promise<{ block: Record<string, unknown>; ref: AttachmentRef } | { error: string }> {
   if (typeof attachment.dataUrl !== 'string' || attachment.dataUrl.length === 0) {
     return { error: `Attachment "${attachment.name}" missing dataUrl` };
   }
@@ -1692,42 +1721,46 @@ async function persistAttachment(
     .toLowerCase();
   const id = `${chatSegment}-${randomUUID()}`;
   const ext = extensionFor(mimeType);
+  const fileName = `${id}${ext}`;
   await ensureDir(attachmentDirFor(chatId));
-  const target = path.join(attachmentDirFor(chatId), `${id}${ext}`);
+  const target = path.join(attachmentDirFor(chatId), fileName);
   await fs.writeFile(target, bytes);
 
   const block: Record<string, unknown> = isImage
     ? { type: 'image', source: { type: 'base64', media_type: mimeType, data: parsed.base64 } }
     : { type: 'document', source: { type: 'base64', media_type: mimeType, data: parsed.base64 } };
-  return { block };
+  return { block, ref: { id, name: attachment.name, mimeType, fileName } };
 }
 
 // Build the SDK prompt input. With no attachments, the SDK accepts a plain
-// string. With attachments, switch to the AsyncIterable<SDKUserMessage>
-// form so the user message can carry rich content blocks.
+// string. With attachments, switch to the AsyncIterable<SDKUserMessage> form so
+// the user message can carry rich content blocks. Also returns the persisted
+// attachment refs so the route can echo them to the client for the transcript.
 async function buildUserMessageContent(
   text: string,
   chatId: string | undefined,
   attachments: IncomingAttachment[]
-): Promise<string | AsyncIterable<SDKUserMessage> | { error: string }> {
-  if (attachments.length === 0 || !chatId) return text;
+): Promise<
+  { content: string | AsyncIterable<SDKUserMessage>; refs: AttachmentRef[] } | { error: string }
+> {
+  if (attachments.length === 0 || !chatId) return { content: text, refs: [] };
 
   const blocks: Array<Record<string, unknown>> = [];
+  const refs: AttachmentRef[] = [];
   if (text.length > 0) blocks.push({ type: 'text', text });
   for (const attachment of attachments) {
     const result = await persistAttachment(chatId, attachment);
     if ('error' in result) return { error: result.error };
     blocks.push(result.block);
+    refs.push(result.ref);
   }
-  if (blocks.length === 0) return text;
+  if (blocks.length === 0) return { content: text, refs: [] };
 
-  return (async function* () {
+  const content = (async function* () {
     // Yield the COMPLETE SDKUserMessage shape — including session_id and
-    // parent_tool_use_id. t3code (the reference this flow was ported from) always
-    // sends these for the iterable form, and omitting them is what broke image
-    // turns: the iterable path is used ONLY when an attachment is present (text
-    // turns send a plain string prompt), so a malformed message here surfaced as
-    // an Anthropic 400 "Could not process image" that never hit text-only chats.
+    // parent_tool_use_id — matching t3code, the reference this flow was ported
+    // from. (Earlier these were omitted via a cast; harmless, but the complete
+    // shape is the documented form.)
     yield {
       type: 'user' as const,
       session_id: '',
@@ -1735,6 +1768,7 @@ async function buildUserMessageContent(
       message: { role: 'user' as const, content: blocks },
     } as unknown as SDKUserMessage;
   })();
+  return { content, refs };
 }
 
 // ---------------------------------------------------------------------------
@@ -1746,6 +1780,30 @@ export async function handleChatRoutes(
   _url: URL,
   pathname: string
 ): Promise<Response | null> {
+  // GET /api/chat/attachments/:chatId/:fileName — serve a stored attachment so
+  // the client can render the user's image inline in the transcript. The bytes
+  // live on disk (persistAttachment); the thread JSON only holds a ref. Guarded
+  // against path traversal: chatId must be a UUID and fileName a safe basename
+  // of a known type, so the join can't escape the chat's attachment dir.
+  const attMatch = pathname.match(/^\/api\/chat\/attachments\/([^/]+)\/([^/]+)$/);
+  if (attMatch && req.method === 'GET') {
+    const chatId = decodeURIComponent(attMatch[1]);
+    const fileName = decodeURIComponent(attMatch[2]);
+    const contentType = contentTypeForExt(path.extname(fileName));
+    if (!isUuid(chatId) || !/^[a-z0-9-]+\.[a-z0-9]+$/i.test(fileName) || !contentType) {
+      return jsonResponse({ error: 'not found' }, 404);
+    }
+    const filePath = path.join(attachmentDirFor(chatId), fileName);
+    const file = Bun.file(filePath);
+    if (!(await file.exists())) return jsonResponse({ error: 'not found' }, 404);
+    return new Response(file, {
+      headers: {
+        'Content-Type': contentType,
+        'Cache-Control': 'private, max-age=31536000, immutable',
+      },
+    });
+  }
+
   // Thread history persistence — the client hydrates on boot and PUTs the
   // whole pruned ThreadsState blob (see src/contexts/chatPersistence.ts).
   // Resolved chat config for the header badge — which model runs, on a
@@ -1907,14 +1965,11 @@ export async function handleChatRoutes(
   // carry image / document blocks. persistAttachment writes each upload
   // to disk under <chatId>/ and returns the matching content block.
   const userMessageResult = await buildUserMessageContent(last.content, chatId, attachments);
-  if (
-    typeof userMessageResult === 'object' &&
-    userMessageResult !== null &&
-    'error' in userMessageResult
-  ) {
+  if ('error' in userMessageResult) {
     return jsonResponse({ error: userMessageResult.error }, 400);
   }
-  const userMessageContent = userMessageResult;
+  const userMessageContent = userMessageResult.content;
+  const attachmentRefs = userMessageResult.refs;
 
   // Credential selection follows the chat MODE. Claude Code bills API credits
   // whenever ANTHROPIC_API_KEY is in the env (even alongside an OAuth token), so
@@ -1971,6 +2026,14 @@ export async function handleChatRoutes(
         billing: usingSub ? 'subscription' : 'api',
         backend: 'claude',
       });
+
+      // Echo the persisted attachment refs so the client can render the user's
+      // images inline in the transcript (the bytes live on disk; the client
+      // fetches them via GET /api/chat/attachments/:chatId/:fileName). Without
+      // this the sent image vanishes from the UI even though the model saw it.
+      if (attachmentRefs.length > 0 && chatId) {
+        send({ type: 'attachments', chatId, items: attachmentRefs });
+      }
 
       // Track the session_id once we see it on the first SDK message so we
       // can echo it back to the client. The SDK stamps every message with

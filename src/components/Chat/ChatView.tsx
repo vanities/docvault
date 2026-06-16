@@ -67,10 +67,22 @@ interface AssistantToolCallBlock {
 
 type AssistantBlock = AssistantTextBlock | AssistantToolCallBlock;
 
+// A server-backed reference to an attachment the user sent. The bytes live on
+// disk under the chat dir; we render via GET /api/chat/attachments/:chatId/:file
+// and persist only this lightweight ref in the thread (no base64 bloat).
+interface MessageAttachment {
+  chatId: string;
+  id: string;
+  fileName: string;
+  name: string;
+  mimeType: string;
+}
+
 interface UserMessage {
   id: string;
   role: 'user';
   content: string;
+  attachments?: MessageAttachment[];
 }
 
 interface AssistantMessage {
@@ -229,29 +241,76 @@ function ToolCallCard({ block }: { block: AssistantToolCallBlock }) {
 // Message bubbles
 // ---------------------------------------------------------------------------
 
-function UserBubble({ content, skillNames }: { content: string; skillNames: string[] }) {
+function UserBubble({
+  content,
+  skillNames,
+  attachments,
+}: {
+  content: string;
+  skillNames: string[];
+  attachments?: MessageAttachment[];
+}) {
   // $skill-name mentions render as chips (only for installed skills — `$400`
   // and unknown tokens stay plain text). Mirrors t3code's SkillInlineText.
   const segments = splitSkillTokens(content, skillNames);
+  const imageAtts = (attachments ?? []).filter((a) => a.mimeType.startsWith('image/'));
+  const docAtts = (attachments ?? []).filter((a) => !a.mimeType.startsWith('image/'));
   return (
     <div className="flex justify-end">
       <div className="max-w-[85%] md:max-w-[75%] px-4 py-2.5 rounded-2xl rounded-br-md bg-accent-500/15 text-surface-950 border border-accent-500/20">
-        <div className="whitespace-pre-wrap text-[14px] leading-relaxed">
-          {segments.map((seg, i) =>
-            seg.type === 'text' ? (
-              <span key={i}>{seg.text}</span>
-            ) : (
-              <span
-                key={i}
-                className="inline-flex items-center gap-1 align-middle rounded-md border border-fuchsia-500/25 bg-fuchsia-500/10 px-1.5 py-px text-[12px] font-medium text-fuchsia-600 dark:text-fuchsia-300"
-                title={`Skill: ${seg.name}`}
+        {imageAtts.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {imageAtts.map((a) => (
+              <a
+                key={a.id}
+                href={`${API_BASE}/chat/attachments/${a.chatId}/${a.fileName}`}
+                target="_blank"
+                rel="noopener noreferrer"
               >
-                <GraduationCap className="w-3 h-3" />
-                {seg.name}
-              </span>
-            )
-          )}
-        </div>
+                <img
+                  src={`${API_BASE}/chat/attachments/${a.chatId}/${a.fileName}`}
+                  alt={a.name}
+                  className="max-h-48 rounded-lg border border-accent-500/20 object-contain"
+                />
+              </a>
+            ))}
+          </div>
+        )}
+        {docAtts.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {docAtts.map((a) => (
+              <a
+                key={a.id}
+                href={`${API_BASE}/chat/attachments/${a.chatId}/${a.fileName}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-md border border-accent-500/20 bg-surface-0/40 px-2 py-1 text-[12px] text-surface-800"
+                title={a.name}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span className="max-w-[180px] truncate">{a.name}</span>
+              </a>
+            ))}
+          </div>
+        )}
+        {content.trim().length > 0 && (
+          <div className="whitespace-pre-wrap text-[14px] leading-relaxed">
+            {segments.map((seg, i) =>
+              seg.type === 'text' ? (
+                <span key={i}>{seg.text}</span>
+              ) : (
+                <span
+                  key={i}
+                  className="inline-flex items-center gap-1 align-middle rounded-md border border-fuchsia-500/25 bg-fuchsia-500/10 px-1.5 py-px text-[12px] font-medium text-fuchsia-600 dark:text-fuchsia-300"
+                  title={`Skill: ${seg.name}`}
+                >
+                  <GraduationCap className="w-3 h-3" />
+                  {seg.name}
+                </span>
+              )
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1079,6 +1138,15 @@ export function ChatView() {
         );
       };
 
+      // Attach server-persisted attachment refs to THIS user message so its
+      // images render in the transcript (the server echoes them right after
+      // the turn starts, via the `attachments` SSE event).
+      const updateUserMsg = (updater: (msg: UserMessage) => UserMessage): void => {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === userMsg.id ? updater(m as UserMessage) : m))
+        );
+      };
+
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
 
@@ -1158,6 +1226,7 @@ export function ChatView() {
               model?: string;
               billing?: 'subscription' | 'api';
               backend?: string;
+              items?: Array<{ id: string; name: string; mimeType: string; fileName: string }>;
             };
             try {
               event = JSON.parse(dataPayload);
@@ -1196,6 +1265,14 @@ export function ChatView() {
                     ? { ...b, result: event.result, ok: !event.isError }
                     : b
                 ),
+              }));
+            } else if (event.type === 'attachments' && Array.isArray(event.items)) {
+              // Server persisted the uploaded files and echoed their refs —
+              // attach them to the user message so its images render inline.
+              const items = event.items;
+              updateUserMsg((m) => ({
+                ...m,
+                attachments: items.map((it) => ({ chatId: cid, ...it })),
               }));
             } else if (event.type === 'meta' && typeof event.model === 'string') {
               // Model + billing path for this turn — shown in the footer.
@@ -1342,7 +1419,12 @@ export function ChatView() {
           ) : (
             messages.map((m) =>
               m.role === 'user' ? (
-                <UserBubble key={m.id} content={m.content} skillNames={skillNames} />
+                <UserBubble
+                  key={m.id}
+                  content={m.content}
+                  skillNames={skillNames}
+                  attachments={m.attachments}
+                />
               ) : (
                 <AssistantBubble key={m.id} message={m} />
               )
