@@ -1722,10 +1722,16 @@ async function buildUserMessageContent(
   if (blocks.length === 0) return text;
 
   return (async function* () {
-    // The SDK's declared SDKUserMessage requires parent_tool_use_id, but the
-    // runtime accepts messages without it — cast rather than alter the payload.
+    // Yield the COMPLETE SDKUserMessage shape — including session_id and
+    // parent_tool_use_id. t3code (the reference this flow was ported from) always
+    // sends these for the iterable form, and omitting them is what broke image
+    // turns: the iterable path is used ONLY when an attachment is present (text
+    // turns send a plain string prompt), so a malformed message here surfaced as
+    // an Anthropic 400 "Could not process image" that never hit text-only chats.
     yield {
       type: 'user' as const,
+      session_id: '',
+      parent_tool_use_id: null,
       message: { role: 'user' as const, content: blocks },
     } as unknown as SDKUserMessage;
   })();
