@@ -13,7 +13,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { DATA_DIR } from './data.js';
 import { createLogger } from './logger.js';
-import { runDeepResearch, type ResearchSource } from './deep-research.js';
+import { runDeepResearch, type ResearchSource, type ResearchAttachment } from './deep-research.js';
 
 const log = createLogger('DeepResearchStore');
 const STORE_PATH = path.join(DATA_DIR, '.docvault-deep-research.json');
@@ -23,6 +23,9 @@ export interface ResearchRun {
   question: string;
   status: 'running' | 'done' | 'error';
   maxSearches: number;
+  /** Images the user attached to the question (data: URLs). Persisted so a run
+   *  re-read after a restart still knows it was an image-grounded query. */
+  attachments?: ResearchAttachment[];
   report?: string;
   sources?: ResearchSource[];
   searchCount?: number;
@@ -73,6 +76,7 @@ async function patchRun(id: string, patch: Partial<ResearchRun>): Promise<void> 
 export async function startResearchRun(
   question: string,
   maxSearches: number,
+  attachments: ResearchAttachment[] = [],
   runner: Runner = runDeepResearch
 ): Promise<string> {
   const id = crypto.randomUUID();
@@ -82,12 +86,13 @@ export async function startResearchRun(
     question,
     status: 'running',
     maxSearches,
+    ...(attachments.length > 0 ? { attachments } : {}),
     createdAt: new Date().toISOString(),
   };
   await saveRuns(runs);
 
   // Background — the caller does not await this; the client polls getRun(id).
-  void runner(question, { maxSearches })
+  void runner(question, { maxSearches, attachments })
     .then((result) =>
       patchRun(id, {
         status: 'done',

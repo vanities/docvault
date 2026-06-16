@@ -5,11 +5,36 @@
 // and come back — the job keeps going server-side.
 
 import { useEffect, useRef, useState } from 'react';
-import { Download, Loader2, Plus, Search, Trash2 } from 'lucide-react';
+import { Download, Loader2, Paperclip, Plus, Search, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '../../hooks/useToast';
 import { API_BASE } from '../../constants';
+import { uuidV4 } from '../../utils/uuid';
 import { SafeMarkdown } from '../common/SafeMarkdown';
+
+const RESEARCH_IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+interface ImageAttachment {
+  localId: string;
+  mimeType: string;
+  name: string;
+  dataUrl: string;
+  previewUrl: string;
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === 'string') resolve(result);
+      else reject(new Error('Unexpected FileReader result'));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('FileReader failed'));
+    reader.readAsDataURL(file);
+  });
+}
 
 interface Source {
   url: string;
@@ -62,11 +87,92 @@ const MD_COMPONENTS = {
 export function ResearchView() {
   const { addToast } = useToast();
   const [question, setQuestion] = useState('');
+  const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
   const [history, setHistory] = useState<RunSummary[]>([]);
   const [active, setActive] = useState<Run | null>(null);
   const [starting, setStarting] = useState(false);
   const pollRef = useRef<number | null>(null);
   const viewingRef = useRef<string | null>(null); // which run the user is looking at
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const previewUrlsRef = useRef(new Set<string>());
+
+  // Validate + base64-encode pasted/picked images into attachments. Mirrors the
+  // chat composer: image-only, ≤10MB, with a blob: preview URL.
+  const processFiles = async (files: File[]) => {
+    for (const file of files) {
+      if (!RESEARCH_IMAGE_MIMES.has(file.type)) {
+        addToast(`Unsupported file type: ${file.type || file.name}`, 'error');
+        continue;
+      }
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        addToast(`"${file.name}" exceeds 10MB`, 'error');
+        continue;
+      }
+      try {
+        const dataUrl = await readFileAsDataUrl(file);
+        const previewUrl = URL.createObjectURL(file);
+        previewUrlsRef.current.add(previewUrl);
+        setAttachments((prev) => [
+          ...prev,
+          {
+            localId: uuidV4(),
+            mimeType: file.type,
+            name: file.name || 'image',
+            dataUrl,
+            previewUrl,
+          },
+        ]);
+      } catch {
+        addToast(`Failed to read ${file.name}`, 'error');
+      }
+    }
+  };
+
+  // Browser `paste` event, NOT navigator.clipboard — the latter is blocked on
+  // the NAS's HTTP origin, but paste fires from a user gesture and works fine.
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const images = Array.from(e.clipboardData.files).filter((f) =>
+      RESEARCH_IMAGE_MIMES.has(f.type)
+    );
+    if (images.length === 0) return; // let text paste through
+    e.preventDefault();
+    void processFiles(images);
+  };
+
+  const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    void processFiles(files);
+  };
+
+  const revokePreview = (url: string) => {
+    URL.revokeObjectURL(url);
+    previewUrlsRef.current.delete(url);
+  };
+
+  const removeAttachment = (localId: string) => {
+    setAttachments((prev) => {
+      const removed = prev.find((a) => a.localId === localId);
+      if (removed) revokePreview(removed.previewUrl);
+      return prev.filter((a) => a.localId !== localId);
+    });
+  };
+
+  const clearAttachments = () => {
+    setAttachments((prev) => {
+      for (const a of prev) revokePreview(a.previewUrl);
+      return [];
+    });
+  };
+
+  // Revoke any outstanding blob: URLs when the view unmounts.
+  useEffect(() => {
+    const urls = previewUrlsRef.current;
+    return () => {
+      for (const url of urls) URL.revokeObjectURL(url);
+      urls.clear();
+    };
+  }, []);
 
   const loadHistory = async () => {
     try {
@@ -124,25 +230,31 @@ export function ResearchView() {
 
   const start = async () => {
     const q = question.trim();
-    if (!q || starting) return;
+    // A question OR an image is enough — an image-only run asks "what is this?".
+    if ((!q && attachments.length === 0) || starting) return;
     setStarting(true);
     try {
       const res = await fetch(`${API_BASE}/deep-research/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q, maxSearches: THOROUGH_SEARCHES }),
+        body: JSON.stringify({
+          question: q,
+          maxSearches: THOROUGH_SEARCHES,
+          attachments: attachments.map((a) => ({ mimeType: a.mimeType, dataUrl: a.dataUrl })),
+        }),
       });
       const data = await res.json();
       if (!data.id) throw new Error('no id');
       viewingRef.current = data.id;
       setActive({
         id: data.id,
-        question: q,
+        question: q || `Image query (${attachments.length})`,
         status: 'running',
         sourceCount: 0,
         createdAt: new Date().toISOString(),
       });
       setQuestion('');
+      clearAttachments();
       void loadHistory();
       poll(data.id);
     } catch {
@@ -177,6 +289,7 @@ export function ResearchView() {
     setActive(null);
     viewingRef.current = null;
     setQuestion('');
+    clearAttachments();
   };
 
   return (
@@ -233,14 +346,59 @@ export function ResearchView() {
             <textarea
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
+              onPaste={handlePaste}
               rows={3}
-              placeholder="e.g. What are the pros and cons of a Roth conversion in a low-income year?"
-              className="w-full text-[14px] bg-surface-100/60 border border-border/40 rounded-xl px-3 py-2 mb-3 resize-none"
+              placeholder="e.g. What are the pros and cons of a Roth conversion in a low-income year? (paste an image to research it)"
+              className="w-full text-[14px] bg-surface-100/60 border border-border/40 rounded-xl px-3 py-2 mb-2 resize-none"
             />
-            <Button onClick={start} disabled={!question.trim() || starting}>
-              <Search className="w-4 h-4" />
-              {starting ? 'Starting…' : 'Research'}
-            </Button>
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {attachments.map((a) => (
+                  <div key={a.localId} className="relative group">
+                    <img
+                      src={a.previewUrl}
+                      alt={a.name}
+                      className="w-16 h-16 object-cover rounded-lg border border-border/40"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(a.localId)}
+                      aria-label={`Remove ${a.name}`}
+                      className="absolute -top-1.5 -right-1.5 bg-surface-900 text-surface-0 rounded-full p-0.5 shadow-sm opacity-80 hover:opacity-100"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/png,image/jpeg,image/gif,image/webp"
+              onChange={handleFilesSelected}
+              className="hidden"
+            />
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={start}
+                disabled={(!question.trim() && attachments.length === 0) || starting}
+              >
+                <Search className="w-4 h-4" />
+                {starting ? 'Starting…' : 'Research'}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => fileInputRef.current?.click()}
+                aria-label="Attach image"
+                title="Attach an image (or paste one into the box)"
+              >
+                <Paperclip className="w-4 h-4" />
+              </Button>
+            </div>
             <p className="text-[11px] text-surface-500 mt-2">
               Thorough run · live web search · roughly $0.30–1.00 per question
             </p>
