@@ -297,6 +297,20 @@ interface SnapMetrics {
     }>;
   };
 }
+/**
+ * Pull the metrics object out of a `GET /api/health/:id/snapshot/all` response
+ * body. That endpoint nests the snapshot under `snapshot`; the single-segment
+ * endpoint (`/snapshot/activity` etc.) uses `data`. `freshPersonSnapshot` once
+ * read `data` against the `all` shape, so it returned undefined every call —
+ * the auto-heal recompute never reached the digest and a person whose overnight
+ * sync hadn't been folded into the raw store yet was silently dropped from the
+ * edition. Reading the correct key here is the contract that test locks.
+ */
+export function snapshotFromAllResponseBody(body: unknown): SnapMetrics | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const snap = (body as { snapshot?: unknown }).snapshot;
+  return (snap ?? undefined) as SnapMetrics | undefined;
+}
 interface ClinicalLabs {
   labsByTest?: Array<{
     latest?: {
@@ -946,8 +960,7 @@ async function freshPersonSnapshot(personId: string): Promise<SnapMetrics | unde
     const url = new URL(`http://internal/api/health/${encodeURIComponent(personId)}/snapshot/all`);
     const res = await handleHealthRoutes(new Request(url.toString()), url, url.pathname);
     if (!res || res.status !== 200) return undefined;
-    const body = (await res.json()) as { data?: unknown };
-    return (body.data ?? undefined) as SnapMetrics | undefined;
+    return snapshotFromAllResponseBody(await res.json());
   } catch (err) {
     log.warn(
       `[health] fresh snapshot read failed for ${personId}: ${err instanceof Error ? err.message : String(err)}`

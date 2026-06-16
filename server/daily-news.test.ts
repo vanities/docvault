@@ -3,6 +3,7 @@ import {
   applySourceCitations,
   buildResearchDigestItems,
   selectDailyNewsStepCount,
+  snapshotFromAllResponseBody,
 } from './daily-news.js';
 
 function afterSince(d?: string | null): boolean {
@@ -96,6 +97,34 @@ describe('daily-news digest helpers', () => {
     expect(items.join('\n')).toContain('New report 2');
     expect(items.join('\n')).not.toContain('Old report');
     expect(items.join('\n')).not.toContain('Blank report');
+  });
+});
+
+describe('snapshotFromAllResponseBody', () => {
+  // Regression: freshPersonSnapshot reads the `/snapshot/all` body, which nests
+  // metrics under `snapshot`. It previously read `data` (the single-segment
+  // key), so it returned undefined every call — the auto-heal recompute never
+  // reached the digest and a freshly-synced person (whose raw-store snapshot
+  // wasn't recomputed yet) was silently dropped from the edition.
+  const snap = {
+    activity: { daily: [{ date: '2026-06-15', steps: 7659 }] },
+    sleep: { daily: [{ asleepMinutes: 350, deepMinutes: 41 }] },
+  };
+
+  test('reads the `snapshot` key from the all-endpoint shape', () => {
+    const body = { snapshot: snap, illnessNotes: {}, stale: false, currentParserVersion: 7 };
+    expect(snapshotFromAllResponseBody(body)).toBe(snap);
+  });
+
+  test('a single-segment `data` body yields undefined (the original bug)', () => {
+    expect(snapshotFromAllResponseBody({ data: snap })).toBeUndefined();
+  });
+
+  test('missing, empty, or null-snapshot bodies yield undefined', () => {
+    expect(snapshotFromAllResponseBody(undefined)).toBeUndefined();
+    expect(snapshotFromAllResponseBody(null)).toBeUndefined();
+    expect(snapshotFromAllResponseBody({})).toBeUndefined();
+    expect(snapshotFromAllResponseBody({ snapshot: null })).toBeUndefined();
   });
 });
 
