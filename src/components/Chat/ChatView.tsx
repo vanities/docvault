@@ -486,11 +486,10 @@ function Composer({
     fileInputRef.current?.click();
   };
 
-  const handleFilesSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []);
-    // Reset the input value immediately so picking the same file twice in a
-    // row still fires onChange.
-    event.target.value = '';
+  // Validate + base64-encode a batch of files into attachments. Shared by the
+  // file picker (handleFilesSelected) and clipboard paste (handlePaste) so both
+  // enforce the same mime/size rules and preview handling.
+  const processFiles = async (files: File[]) => {
     if (files.length === 0) return;
     setProcessingFiles(true);
     for (const file of files) {
@@ -524,6 +523,26 @@ function Composer({
       }
     }
     setProcessingFiles(false);
+  };
+
+  const handleFilesSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    // Reset the input value immediately so picking the same file twice in a
+    // row still fires onChange.
+    event.target.value = '';
+    await processFiles(files);
+  };
+
+  // Paste a screenshot/image straight into the composer. Note: this uses the
+  // browser's `paste` event (clipboardData.files), NOT navigator.clipboard —
+  // the latter is blocked on the NAS's HTTP (non-secure) origin, but the paste
+  // event fires from a real user gesture and works fine over plain HTTP.
+  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(event.clipboardData.files);
+    const images = files.filter((f) => SUPPORTED_IMAGE_MIMES.has(f.type));
+    if (images.length === 0) return; // let normal text paste through untouched
+    event.preventDefault();
+    void processFiles(images);
   };
 
   const handleRemoveAttachment = (localId: string) => {
@@ -704,6 +723,7 @@ function Composer({
               const el = e.currentTarget;
               updateSkillMention(el.value, el.selectionStart ?? el.value.length);
             }}
+            onPaste={handlePaste}
             onKeyDown={(e) => {
               // The $skill menu captures navigation keys while open.
               if (skillMention && skillMatches.length > 0) {

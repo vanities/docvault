@@ -35,6 +35,45 @@ export interface ResearchSource {
   title?: string;
 }
 
+/** An image the user attached to the question (pasted or picked). Carried as a
+ *  data: URL so it survives JSON persistence in the run store. */
+export interface ResearchAttachment {
+  mimeType: string;
+  /** `data:image/png;base64,...` */
+  dataUrl: string;
+}
+
+const RESEARCH_IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+
+type AnthropicImageBlock = {
+  type: 'image';
+  source: {
+    type: 'base64';
+    media_type: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+    data: string;
+  };
+};
+
+/** Turn data-URL attachments into Anthropic image content blocks, dropping any
+ *  with an unsupported mime or malformed payload. */
+function toImageBlocks(attachments: ResearchAttachment[] = []): AnthropicImageBlock[] {
+  const blocks: AnthropicImageBlock[] = [];
+  for (const att of attachments) {
+    if (!RESEARCH_IMAGE_MIMES.has(att.mimeType)) continue;
+    const m = att.dataUrl.match(/^data:([^;]+);base64,(.+)$/s);
+    if (!m) continue;
+    blocks.push({
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: att.mimeType as AnthropicImageBlock['source']['media_type'],
+        data: m[2],
+      },
+    });
+  }
+  return blocks;
+}
+
 export interface ResearchResult {
   question: string;
   report: string;
@@ -80,8 +119,16 @@ const CLAUDE_BINARY_PATH: string | undefined = (() => {
 /** Entry point — dispatches to the configured engine. */
 export async function runDeepResearch(
   question: string,
-  opts: { maxSearches?: number } = {}
+  opts: { maxSearches?: number; attachments?: ResearchAttachment[] } = {}
 ): Promise<ResearchResult> {
+  const images = toImageBlocks(opts.attachments);
+  // Vision + web_search only compose reliably on the API engine today (the
+  // Claude/Codex agent loops take a plain-text prompt), so any run carrying
+  // images routes to the API engine regardless of the configured mode.
+  if (images.length > 0) {
+    log.info(`Deep research: ${images.length} image(s) attached → forcing API engine`);
+    return runDeepResearchApi(question, opts);
+  }
   const { mode, agentBackend } = await getDeepResearchConfig();
   if (mode !== 'agent') return runDeepResearchApi(question, opts);
   return agentBackend === 'codex'
@@ -92,7 +139,7 @@ export async function runDeepResearch(
 /** API engine — a single agentic messages.create with native web_search. */
 async function runDeepResearchApi(
   question: string,
-  opts: { maxSearches?: number }
+  opts: { maxSearches?: number; attachments?: ResearchAttachment[] }
 ): Promise<ResearchResult> {
   const client = await getClient();
   const { model: ref } = await getDeepResearchConfig();
@@ -102,14 +149,22 @@ async function runDeepResearchApi(
   const maxUses = opts.maxSearches ?? DEFAULT_MAX_SEARCHES;
   const startedAt = Date.now();
 
-  log.info(`Deep research (api) started (maxSearches=${maxUses}): "${question.slice(0, 80)}"`);
+  // Images (if any) lead the user turn, followed by the question text — Claude
+  // reads the image, then grounds its searches on what it sees.
+  const images = toImageBlocks(opts.attachments);
+  const content =
+    images.length > 0 ? [...images, { type: 'text' as const, text: question }] : question;
+
+  log.info(
+    `Deep research (api) started (maxSearches=${maxUses}, images=${images.length}): "${question.slice(0, 80)}"`
+  );
 
   const effort = toAnthropicApiEffort(ref.effort);
   const response = await client.messages.create({
     model,
     max_tokens: 8192,
     system: RESEARCH_SYSTEM,
-    messages: [{ role: 'user', content: question }],
+    messages: [{ role: 'user', content }],
     tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: maxUses }],
     ...(effort ? { output_config: { effort } } : {}),
   });
