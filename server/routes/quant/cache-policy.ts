@@ -32,6 +32,7 @@ export const TTL = {
   globalMarkets: DAY_MS, // yahoo international indices
   kronos: 60 * 60 * 1000, // shiyu-coder Kronos demo refreshes hourly
   predictions: 30 * 60 * 1000, // Kalshi + Polymarket odds — 30 min cache
+  macroCalendar: DAY_MS, // latest FOMC/CPI/NFP prints move monthly at most
 };
 
 export const CACHE = {
@@ -94,6 +95,8 @@ export const CACHE = {
   kronos: { maxAge: 30 * 60, swr: 6 * 3600 },
   // Prediction markets — 15m browser cache + 30m SWR (server TTL is 30m).
   predictions: { maxAge: 900, swr: 1800 },
+  // Macro calendar — latest realized prints, monthly cadence. 2h + 24h SWR.
+  macroCalendar: { maxAge: 2 * 3600, swr: 24 * 3600 },
   // Snapshots grow one row per day; short cache so new snapshots appear fast.
   snapshots: { maxAge: 300, swr: 3600 },
 };
