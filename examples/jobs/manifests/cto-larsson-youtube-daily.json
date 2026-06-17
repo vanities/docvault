@@ -1,0 +1,9 @@
+{
+  "id": "cto-larsson-youtube-daily",
+  "label": "CTO LARSSON YouTube daily metadata pull",
+  "kind": "local-script",
+  "schedule": "daily",
+  "script": "scripts/cto-larsson-youtube.local.sh",
+  "enabled": false,
+  "tags": ["research", "youtube", "cto-larsson", "finance", "crypto"]
+}
