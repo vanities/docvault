@@ -3791,11 +3791,27 @@ export function buildMacroCalendar(
 ): MacroCalendarResponse {
   let fomc: MacroCalendarResult | null = null;
   if (fed?.latest) {
-    const { targetLower, targetUpper, stance, date } = fed.latest;
+    const { targetLower, targetUpper, daysSinceLastChange, date } = fed.latest;
+    const lastChange = fed.rateChanges[fed.rateChanges.length - 1];
+    // Note reflects *recency*, not the trailing-trend `stance`: the stance
+    // classifier looks at the last 5 rate-change events regardless of age, so
+    // it can read "cutting" months after the Fed actually stopped moving.
+    // Next to a countdown that's misleading, so show how long the range has
+    // held (or the size of the move if they just changed it).
+    let note: string;
+    if (daysSinceLastChange <= 1 && lastChange) {
+      note = `${lastChange.type} ${Math.abs(lastChange.changeBps)}bps`;
+    } else {
+      const ago =
+        daysSinceLastChange >= 60
+          ? `${Math.round(daysSinceLastChange / 30)}mo`
+          : `${daysSinceLastChange}d`;
+      note = `unch ${ago}`;
+    }
     fomc = {
       display: `${targetLower.toFixed(2)}–${targetUpper.toFixed(2)}%`,
       asOf: date,
-      note: stance,
+      note,
     };
   }
 
