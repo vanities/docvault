@@ -21,6 +21,7 @@ import {
   computeInflationDashboard,
   computeJobsDashboard,
   computeKronos,
+  computeMacroCalendar,
   computeMacroDashboard,
   computeMidtermDrawdowns,
   computePresidentialCycle,
@@ -173,6 +174,44 @@ export async function handleQuantRoutes(
         );
       }
       return jsonResponse({ error: `Business cycle fetch failed: ${msg}` }, 502);
+    }
+  }
+
+  // GET /api/quant/macro/calendar — latest realized FOMC/CPI/NFP prints to
+  // pair with the "Upcoming" event countdowns.
+  if (pathname === '/api/quant/macro/calendar' && req.method === 'GET') {
+    const cache = await loadCache();
+    if (isFresh(cache.macroCalendar, TTL.macroCalendar)) {
+      return cachedJsonResponse(
+        req,
+        { ...cache.macroCalendar!.data, cached: true },
+        CACHE.macroCalendar
+      );
+    }
+    try {
+      const settings = await loadSettings();
+      const fredKey = settings.fredApiKey;
+      if (!fredKey) {
+        return jsonResponse(
+          { error: 'FRED API key not configured. Add one in Settings → Quant.' },
+          400
+        );
+      }
+      const data = await computeMacroCalendar(fredKey);
+      cache.macroCalendar = { fetchedAt: Date.now(), data };
+      await saveCache(cache);
+      return cachedJsonResponse(req, { ...data, cached: false }, CACHE.macroCalendar);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logQuant.warn('macro calendar failed:', msg);
+      if (cache.macroCalendar) {
+        return cachedJsonResponse(
+          req,
+          { ...cache.macroCalendar.data, cached: true, stale: true, fetchError: msg },
+          CACHE.macroCalendar
+        );
+      }
+      return jsonResponse({ error: `Macro calendar fetch failed: ${msg}` }, 502);
     }
   }
 

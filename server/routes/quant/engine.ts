@@ -73,6 +73,7 @@ export type QuantCache = {
   globalMarkets?: CacheEntry<MacroDashboardResponse>;
   kronos?: CacheEntry<KronosForecastResponse>;
   predictions?: CacheEntry<PredictionMarketsResponse>;
+  macroCalendar?: CacheEntry<MacroCalendarResponse>;
 };
 
 export async function loadCache(): Promise<QuantCache> {
@@ -3749,6 +3750,108 @@ export async function computeFedPolicy(apiKey: string): Promise<FedPolicyRespons
     },
     source: 'fred',
   };
+}
+
+// ---------------------------------------------------------------------------
+// Macro calendar — the *latest realized result* for each recurring event the
+// Quant "Upcoming" banner counts down to. The banner already knows the
+// schedule (FOMC dates, first-Friday NFP, 2nd-Tuesday CPI); this pairs each
+// event type with what most recently came out of it, sourced from the same
+// FRED dashboards. We surface the prior print, not a forecast — FRED only has
+// realized values, never consensus.
+// ---------------------------------------------------------------------------
+
+export interface MacroCalendarResult {
+  /** Pre-formatted figure for display, e.g. "4.25–4.50%", "+2.7% y/y", "+139k" */
+  display: string;
+  /** ISO date (YYYY-MM-DD) the figure is as-of */
+  asOf: string;
+  /** Optional secondary tag, e.g. the Fed stance "hold" / "cutting" */
+  note?: string;
+}
+
+export interface MacroCalendarResponse {
+  /** Latest FOMC target range + stance */
+  fomc: MacroCalendarResult | null;
+  /** Latest headline CPI year-over-year */
+  cpi: MacroCalendarResult | null;
+  /** Latest month-over-month change in nonfarm payrolls */
+  nfp: MacroCalendarResult | null;
+  fetchedAt: number;
+  source: 'fred';
+}
+
+/** Distill the latest realized result for each event type from already-fetched
+ *  FRED dashboard responses. Pure (no I/O) so it's trivially testable. Any
+ *  missing input simply yields a null result for that event. */
+export function buildMacroCalendar(
+  fed: FedPolicyResponse | null,
+  inflation: MacroDashboardResponse | null,
+  jobs: MacroDashboardResponse | null
+): MacroCalendarResponse {
+  let fomc: MacroCalendarResult | null = null;
+  if (fed?.latest) {
+    const { targetLower, targetUpper, stance, date } = fed.latest;
+    fomc = {
+      display: `${targetLower.toFixed(2)}–${targetUpper.toFixed(2)}%`,
+      asOf: date,
+      note: stance,
+    };
+  }
+
+  let cpi: MacroCalendarResult | null = null;
+  const cpiSeries = inflation?.series.find((s) => s.id === 'CPIAUCSL');
+  if (cpiSeries?.latest && cpiSeries.yoyChange != null) {
+    const yoy = cpiSeries.yoyChange;
+    cpi = {
+      display: `${yoy >= 0 ? '+' : ''}${yoy.toFixed(1)}% y/y`,
+      asOf: cpiSeries.latest.date,
+    };
+  }
+
+  let nfp: MacroCalendarResult | null = null;
+  const payems = jobs?.series.find((s) => s.id === 'PAYEMS');
+  // PAYEMS is a monthly level in thousands of persons; the figure markets
+  // react to is the month-over-month change. Derive it from the last two
+  // retained points (PAYEMS is well under the downsample cap, so consecutive).
+  if (payems?.latest && payems.points.length >= 2) {
+    const prev = payems.points[payems.points.length - 2].value;
+    const last = payems.points[payems.points.length - 1].value;
+    const mom = Math.round(last - prev);
+    nfp = {
+      display: `${mom >= 0 ? '+' : ''}${mom}k`,
+      asOf: payems.latest.date,
+    };
+  }
+
+  return { fomc, cpi, nfp, fetchedAt: Date.now(), source: 'fred' };
+}
+
+/** Fetch the three FRED dashboards behind the recurring macro events and
+ *  distill each to its latest print. Each sub-fetch is tolerated independently
+ *  so one FRED hiccup doesn't blank the whole banner. */
+export async function computeMacroCalendar(apiKey: string): Promise<MacroCalendarResponse> {
+  const t0 = Date.now();
+  logQuant.info('[macro-calendar] computing fresh');
+  const [fed, inflation, jobs] = await Promise.all([
+    computeFedPolicy(apiKey).catch((e) => {
+      logQuant.warn(`[macro-calendar] fed-policy failed: ${e instanceof Error ? e.message : e}`);
+      return null;
+    }),
+    computeInflationDashboard(apiKey).catch((e) => {
+      logQuant.warn(`[macro-calendar] inflation failed: ${e instanceof Error ? e.message : e}`);
+      return null;
+    }),
+    computeJobsDashboard(apiKey).catch((e) => {
+      logQuant.warn(`[macro-calendar] jobs failed: ${e instanceof Error ? e.message : e}`);
+      return null;
+    }),
+  ]);
+  const result = buildMacroCalendar(fed, inflation, jobs);
+  logQuant.info(
+    `[macro-calendar] done fomc=${!!result.fomc} cpi=${!!result.cpi} nfp=${!!result.nfp} in ${Date.now() - t0}ms`
+  );
+  return result;
 }
 
 // ---------------------------------------------------------------------------

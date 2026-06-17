@@ -474,6 +474,28 @@ export function useJobsDashboard() {
   return useQuantFetch<MacroDashboardData>(`${API_BASE}/quant/macro/jobs?_=${bump}`);
 }
 
+export interface MacroCalendarResult {
+  display: string;
+  asOf: string;
+  note?: string;
+}
+
+export interface MacroCalendarData {
+  fomc: MacroCalendarResult | null;
+  cpi: MacroCalendarResult | null;
+  nfp: MacroCalendarResult | null;
+  fetchedAt: number;
+  source: 'fred';
+  cached?: boolean;
+  stale?: boolean;
+  fetchError?: string;
+}
+
+export function useMacroCalendar() {
+  const bump = useQuantRefreshBump();
+  return useQuantFetch<MacroCalendarData>(`${API_BASE}/quant/macro/calendar?_=${bump}`);
+}
+
 export function useBusinessCycle() {
   const bump = useQuantRefreshBump();
   return useQuantFetch<MacroDashboardData>(`${API_BASE}/quant/macro/business-cycle?_=${bump}`);

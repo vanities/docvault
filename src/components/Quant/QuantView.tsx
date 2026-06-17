@@ -48,7 +48,7 @@ import { GdpGrowthChart } from './GdpGrowthChart';
 import { CommoditiesChart } from './CommoditiesChart';
 import { VixTermStructureChart } from './VixTermStructureChart';
 import { GlobalMarketsChart } from './GlobalMarketsChart';
-import { useQuantRefresh } from './useQuantData';
+import { useQuantRefresh, useMacroCalendar, type MacroCalendarResult } from './useQuantData';
 import { ResearchPanel } from './ResearchPanel';
 import { TickersPanel } from './TickersPanel';
 
@@ -255,6 +255,16 @@ const EVENT_STYLE: Record<string, { color: string; label: string }> = {
 };
 
 function UpcomingEventsBanner() {
+  const { data: calendar } = useMacroCalendar();
+
+  // Map each event type to its latest realized print. Only the three
+  // FRED-backed events (FOMC/CPI/NFP) have a result; gdp/pce don't.
+  const resultByType: Partial<Record<MacroEvent['type'], MacroCalendarResult | null>> = {
+    fomc: calendar?.fomc,
+    cpi: calendar?.cpi,
+    nfp: calendar?.nfp,
+  };
+
   const upcoming = useMemo(() => {
     const now = new Date();
     const todayStr = now.toISOString().slice(0, 10);
@@ -282,6 +292,7 @@ function UpcomingEventsBanner() {
       {upcoming.map((e, i) => {
         const style = EVENT_STYLE[e.type] ?? { color: 'text-surface-800', label: '?' };
         const isImminent = e.daysAway <= 3;
+        const result = resultByType[e.type];
         return (
           <a
             key={`${e.date}-${i}`}
@@ -299,6 +310,15 @@ function UpcomingEventsBanner() {
             >
               {e.daysAway === 0 ? 'TODAY' : e.daysAway === 1 ? 'tmw' : `${e.daysAway}d`}
             </span>
+            {result && (
+              <span
+                className="text-[10px] font-mono text-surface-700/80 border-l border-border/40 pl-1.5"
+                title={`Last print, as of ${result.asOf}`}
+              >
+                {result.display}
+                {result.note ? ` · ${result.note}` : ''}
+              </span>
+            )}
           </a>
         );
       })}
