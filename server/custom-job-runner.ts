@@ -59,6 +59,13 @@ export type CustomJobStatus = {
   lastDurationMs: number | null;
   running: boolean;
   lastRunPath: string | null;
+  /**
+   * Tail of stdout from the last *successful* run — the job's own summary of
+   * what it fetched (e.g. "items=19 matched=19 posted=5 ..."). Preserved across
+   * later failures (a failed run shows lastError instead), so this always
+   * reflects the most recent good fetch. null until a job first succeeds.
+   */
+  lastSummary: string | null;
 };
 
 export type CustomJobStatusMap = Record<string, CustomJobStatus>;
@@ -84,7 +91,25 @@ function emptyStatus(): CustomJobStatus {
     lastDurationMs: null,
     running: false,
     lastRunPath: null,
+    lastSummary: null,
   };
+}
+
+const SUMMARY_MAX_CHARS = 240;
+
+/**
+ * Reduce a run's stdout to a one-line summary for the Jobs UI: the last
+ * non-empty line (every bundled job ends with a rollup like
+ * "[job ...] items=N posted=M ..."), trimmed to a card-friendly length.
+ */
+function summarizeStdout(stdout: string): string | null {
+  const lines = stdout
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return null;
+  const last = lines[lines.length - 1];
+  return last.length > SUMMARY_MAX_CHARS ? `${last.slice(0, SUMMARY_MAX_CHARS - 1)}…` : last;
 }
 
 function customJobStatusPath(dataDir: string): string {
@@ -240,6 +265,9 @@ export async function runCustomJobNow(
       lastDurationMs: durationMs,
       running: false,
       lastRunPath: runPath,
+      // Only refresh the summary on success, so a later failure leaves the last
+      // good fetch's summary intact (the UI surfaces lastError in that case).
+      ...(exitCode === 0 ? { lastSummary: summarizeStdout(stdout) } : {}),
     });
     if (exitCode !== 0) logJobs.warn(`Custom job ${id} exited ${exitCode}`);
     return result;
