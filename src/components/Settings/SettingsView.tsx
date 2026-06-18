@@ -241,6 +241,7 @@ export function SettingsView() {
     lastDurationMs: number | null;
     running: boolean;
     lastRunPath?: string | null;
+    lastSummary?: string | null;
   }
   const [scheduleStatus, setScheduleStatus] = useState<Record<string, TaskStatus>>({});
 
@@ -2007,6 +2008,11 @@ export function SettingsView() {
                         {hasError && (
                           <p className="text-[11px] text-red-400 mt-1 break-words">
                             Error: {status.lastError}
+                          </p>
+                        )}
+                        {!hasError && status?.lastSummary && (
+                          <p className="text-[11px] text-emerald-300/80 mt-1 break-words font-mono">
+                            {status.lastSummary}
                           </p>
                         )}
                         {job.manifest.tags.length > 0 && (

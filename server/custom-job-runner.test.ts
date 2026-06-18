@@ -42,6 +42,8 @@ describe('runCustomJobNow', () => {
         lastError: null,
         running: false,
       });
+      // Last successful run's stdout tail is captured for the Jobs UI.
+      expect(status['smoke-job'].lastSummary).toBe('hello from custom job');
       expect(status['smoke-job'].lastRunPath).toBeTruthy();
       const runRecord = JSON.parse(await readFile(status['smoke-job'].lastRunPath!, 'utf8'));
       expect(runRecord.stdout).toContain('hello from custom job');
@@ -169,6 +171,7 @@ describe('isCustomJobDue', () => {
     lastDurationMs: null,
     running: false,
     lastRunPath: null,
+    lastSummary: null,
     ...over,
   });
 
