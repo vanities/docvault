@@ -50,7 +50,9 @@ const FIRST_RUN_LIMIT = 5;
 
 const API_BASE = process.env.DOCVAULT_API ?? 'http://localhost:3005';
 const STATE_DIR =
-  process.env.TORRENTFREAK_STATE_DIR ?? process.env.DOCVAULT_DATA_DIR ?? '/mnt/user/appdata/docvault';
+  process.env.TORRENTFREAK_STATE_DIR ??
+  process.env.DOCVAULT_DATA_DIR ??
+  '/mnt/user/appdata/docvault';
 const SEEN_FILE = `${STATE_DIR}/.docvault-torrentfreak-seen.json`;
 const SEEN_MAX = 800;
 const FETCH_TIMEOUT_MS = 20_000;
