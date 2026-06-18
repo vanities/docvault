@@ -1,0 +1,9 @@
+{
+  "id": "torrentfreak-research",
+  "label": "TorrentFreak RSS to Research (tech)",
+  "kind": "local-script",
+  "schedule": "every 6h",
+  "script": "scripts/torrentfreak-research.local.js",
+  "enabled": false,
+  "tags": ["research", "rss", "torrentfreak", "tech", "piracy", "copyright"]
+}
