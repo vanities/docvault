@@ -68,6 +68,8 @@ scripts/*
 !server/backup.test.ts
 # Exception: dna-traits tests use synthetic SNP fixtures, no personal genomic data
 !server/parsers/dna-traits.test.ts
+# Exception: gold-receipt tests mock the Claude call + use fabricated line-items, no personal data
+!server/parsers/gold-receipt.test.ts
 # Exception: apple-health clinical parser tests use fabricated FHIR fixtures, no personal data
 !server/parsers/apple-health-clinical.test.ts
 # Exception: kraken reconcile tests are pure merge logic with fabricated figures, no personal data

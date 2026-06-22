@@ -153,12 +153,23 @@ export async function parseGoldReceiptFromBuffer(
   buffer: ArrayBuffer,
   filename: string
 ): Promise<ParsedGoldReceiptSchema | null> {
-  // Write to a temp file so we can use the standard parser
+  // Write to a temp file so we can reuse the standard file-path parser.
   const { writeFileSync, unlinkSync } = await import('fs');
-  const tmpPath = `/tmp/gold-receipt-${Date.now()}-${filename}`;
+  // Build the temp path from a UUID + sanitized extension only — never the
+  // raw (untrusted) filename, which could carry path separators and land the
+  // file in a nonexistent directory (another source of spurious ENOENT).
+  const ext =
+    (filename.split('.').pop() || 'bin').replace(/[^a-z0-9]/gi, '').toLowerCase() || 'bin';
+  const tmpPath = `/tmp/gold-receipt-${crypto.randomUUID()}.${ext}`;
+  log.debug(`Buffering ${filename} (${buffer.byteLength} bytes) → ${tmpPath}`);
   try {
     writeFileSync(tmpPath, Buffer.from(buffer));
-    return goldReceiptParser.parse(tmpPath, filename);
+    // MUST await before the `finally` runs. parse() reads tmpPath lazily, so
+    // returning the un-awaited promise let unlinkSync win the race and delete
+    // the temp file before the read — surfacing as ENOENT and the misleading
+    // "No gold purchases found in this receipt." message. Awaiting keeps the
+    // file alive until parse() has read it.
+    return await goldReceiptParser.parse(tmpPath, filename);
   } finally {
     try {
       unlinkSync(tmpPath);
