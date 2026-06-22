@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Money } from '../common/Money';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const API = '/api/gold';
 
@@ -260,7 +261,6 @@ export function GoldView() {
   const [scanProgress, setScanProgress] = useState<{ current: number; total: number } | null>(null);
   const scanInputRef = useRef<HTMLInputElement>(null);
   const [uploadingReceiptId, setUploadingReceiptId] = useState<string | null>(null);
-  const formRef = useRef<HTMLFormElement>(null);
 
   const selectedProduct = GOLD_PRODUCTS.find((p) => p.id === productId) || GOLD_PRODUCTS[0];
 
@@ -336,9 +336,7 @@ export function GoldView() {
     setQuantity(entry.quantity);
     setNotes(entry.notes || '');
     setEditingId(entry.id);
-    setShowForm(true);
-    // Scroll to form after React renders it
-    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+    setShowForm(true); // opens the modal — centered, no scrolling needed
   };
 
   const handleScanReceipts = async (files: File[]) => {
@@ -347,7 +345,8 @@ export function GoldView() {
     if (files.length > 1) setScanProgress({ current: 0, total: files.length });
 
     let totalCreated = 0;
-    let totalFailed = 0;
+    let totalEmpty = 0; // parsed OK, but no metal line-items on the receipt
+    let totalUnreadable = 0; // couldn't read/parse the file at all
 
     for (let fi = 0; fi < files.length; fi++) {
       const file = files[fi];
@@ -361,13 +360,13 @@ export function GoldView() {
           body: fileBuffer,
         });
         if (!res.ok) {
-          totalFailed++;
+          totalUnreadable++;
           continue;
         }
         const result = await res.json();
         const items = result.items || [];
         if (items.length === 0) {
-          totalFailed++;
+          totalEmpty++;
           continue;
         }
 
@@ -417,14 +416,22 @@ export function GoldView() {
           }
         }
       } catch {
-        totalFailed++;
+        totalUnreadable++;
       }
     }
 
     setScanProgress(null);
     if (totalCreated > 0) {
+      const failed = totalEmpty + totalUnreadable;
       setScanError(
-        `Added ${totalCreated} ${totalCreated === 1 ? 'entry' : 'entries'} from ${files.length} ${files.length === 1 ? 'receipt' : 'receipts'}.${totalFailed > 0 ? ` ${totalFailed} receipt(s) failed.` : ''}`
+        `Added ${totalCreated} ${totalCreated === 1 ? 'entry' : 'entries'} from ${files.length} ${files.length === 1 ? 'receipt' : 'receipts'}.${failed > 0 ? ` ${failed} receipt(s) couldn't be read.` : ''}`
+      );
+    } else if (totalUnreadable > 0 && totalEmpty === 0) {
+      // Genuine read/parse failure — don't mislabel it as "no purchases found".
+      setScanError(
+        files.length === 1
+          ? "Couldn't read this receipt. Try a clearer, well-lit photo or upload the PDF."
+          : `Couldn't read ${totalUnreadable} of ${files.length} receipts. Try clearer photos or the original PDFs.`
       );
     } else {
       setScanError(
@@ -650,7 +657,7 @@ export function GoldView() {
             size="sm"
             onClick={() => {
               resetForm();
-              setShowForm(!showForm);
+              setShowForm(true);
             }}
             className="bg-yellow-600 hover:bg-yellow-500"
           >
@@ -789,229 +796,242 @@ export function GoldView() {
         </Card>
       )}
 
-      {/* Add Entry Form */}
-      {showForm && (
-        <form ref={formRef} onSubmit={handleSubmit} className="glass-card rounded-xl p-5 space-y-4">
-          <h3 className="text-sm font-semibold text-surface-950">
-            {editingId ? 'Edit Entry' : 'Add New Entry'}
-          </h3>
+      {/* Add Entry Form — modal so it's reachable without scrolling past the
+          charts on mobile (the whole reason this used to be painful). */}
+      <Dialog
+        open={showForm}
+        onOpenChange={(open) => {
+          setShowForm(open);
+          if (!open) resetForm();
+        }}
+      >
+        <DialogContent
+          aria-describedby={undefined}
+          className="sm:max-w-2xl max-h-[90vh] overflow-y-auto"
+        >
+          <DialogHeader>
+            <DialogTitle>{editingId ? 'Edit Entry' : 'Add New Entry'}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Product Dropdown */}
+              <div>
+                <label className="block text-xs font-medium text-surface-600 mb-1">Product</label>
+                <Select value={productId} onValueChange={handleProductChange}>
+                  <SelectTrigger className="w-full text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectLabel>Gold Coins</SelectLabel>
+                      {GOLD_PRODUCTS.filter(
+                        (p) => p.metal === 'gold' && p.id !== 'gold-bar' && p.id !== 'custom'
+                      ).map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Gold Bars</SelectLabel>
+                      {GOLD_PRODUCTS.filter((p) => p.id === 'gold-bar').map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Silver</SelectLabel>
+                      {GOLD_PRODUCTS.filter((p) => p.metal === 'silver').map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Platinum</SelectLabel>
+                      {GOLD_PRODUCTS.filter((p) => p.metal === 'platinum').map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Other</SelectLabel>
+                      <SelectItem value="custom">Custom / Other</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Product Dropdown */}
-            <div>
-              <label className="block text-xs font-medium text-surface-600 mb-1">Product</label>
-              <Select value={productId} onValueChange={handleProductChange}>
-                <SelectTrigger className="w-full text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectLabel>Gold Coins</SelectLabel>
-                    {GOLD_PRODUCTS.filter(
-                      (p) => p.metal === 'gold' && p.id !== 'gold-bar' && p.id !== 'custom'
-                    ).map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                  <SelectGroup>
-                    <SelectLabel>Gold Bars</SelectLabel>
-                    {GOLD_PRODUCTS.filter((p) => p.id === 'gold-bar').map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                  <SelectGroup>
-                    <SelectLabel>Silver</SelectLabel>
-                    {GOLD_PRODUCTS.filter((p) => p.metal === 'silver').map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                  <SelectGroup>
-                    <SelectLabel>Platinum</SelectLabel>
-                    {GOLD_PRODUCTS.filter((p) => p.metal === 'platinum').map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                  <SelectGroup>
-                    <SelectLabel>Other</SelectLabel>
-                    <SelectItem value="custom">Custom / Other</SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
+              {/* Custom description (only if custom) */}
+              {productId === 'custom' && (
+                <div>
+                  <label className="block text-xs font-medium text-surface-600 mb-1">
+                    Description
+                  </label>
+                  <Input
+                    type="text"
+                    value={customDescription}
+                    onChange={(e) => setCustomDescription(e.target.value)}
+                    placeholder="e.g., 1 oz Generic Gold Round"
+                    className="h-9 rounded-lg text-sm"
+                  />
+                </div>
+              )}
 
-            {/* Custom description (only if custom) */}
-            {productId === 'custom' && (
+              {/* Size Dropdown */}
+              <div>
+                <label className="block text-xs font-medium text-surface-600 mb-1">Size</label>
+                <Select value={size} onValueChange={(val) => setSize(val as CoinSize)}>
+                  <SelectTrigger className="w-full text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {selectedProduct.availableSizes.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {SIZE_LABELS[s]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Coin Year */}
               <div>
                 <label className="block text-xs font-medium text-surface-600 mb-1">
-                  Description
+                  Coin Year <span className="text-surface-500">(optional)</span>
                 </label>
                 <Input
-                  type="text"
-                  value={customDescription}
-                  onChange={(e) => setCustomDescription(e.target.value)}
-                  placeholder="e.g., 1 oz Generic Gold Round"
+                  type="number"
+                  value={coinYear}
+                  onChange={(e) => setCoinYear(e.target.value)}
+                  placeholder={`${new Date().getFullYear()}`}
+                  min={1800}
+                  max={new Date().getFullYear() + 1}
                   className="h-9 rounded-lg text-sm"
                 />
               </div>
-            )}
 
-            {/* Size Dropdown */}
-            <div>
-              <label className="block text-xs font-medium text-surface-600 mb-1">Size</label>
-              <Select value={size} onValueChange={(val) => setSize(val as CoinSize)}>
-                <SelectTrigger className="w-full text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {selectedProduct.availableSizes.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {SIZE_LABELS[s]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Coin Year */}
-            <div>
-              <label className="block text-xs font-medium text-surface-600 mb-1">
-                Coin Year <span className="text-surface-500">(optional)</span>
-              </label>
-              <Input
-                type="number"
-                value={coinYear}
-                onChange={(e) => setCoinYear(e.target.value)}
-                placeholder={`${new Date().getFullYear()}`}
-                min={1800}
-                max={new Date().getFullYear() + 1}
-                className="h-9 rounded-lg text-sm"
-              />
-            </div>
-
-            {/* Quantity */}
-            <div>
-              <label className="block text-xs font-medium text-surface-600 mb-1">Quantity</label>
-              <Input
-                type="number"
-                value={quantity}
-                onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
-                min={1}
-                className="h-9 rounded-lg text-sm"
-              />
-            </div>
-
-            {/* Purchase Price (per piece) */}
-            <div>
-              <label className="block text-xs font-medium text-surface-600 mb-1">
-                Price Paid (per piece)
-              </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-500 z-10">
-                  $
-                </span>
+              {/* Quantity */}
+              <div>
+                <label className="block text-xs font-medium text-surface-600 mb-1">Quantity</label>
                 <Input
                   type="number"
-                  value={purchasePrice}
-                  onChange={(e) => setPurchasePrice(e.target.value)}
-                  placeholder="0.00"
-                  step="0.01"
-                  min="0"
-                  required
-                  className="pl-7 h-9 rounded-lg text-sm"
+                  value={quantity}
+                  onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
+                  min={1}
+                  className="h-9 rounded-lg text-sm"
                 />
+              </div>
+
+              {/* Purchase Price (per piece) */}
+              <div>
+                <label className="block text-xs font-medium text-surface-600 mb-1">
+                  Price Paid (per piece)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-500 z-10">
+                    $
+                  </span>
+                  <Input
+                    type="number"
+                    value={purchasePrice}
+                    onChange={(e) => setPurchasePrice(e.target.value)}
+                    placeholder="0.00"
+                    step="0.01"
+                    min="0"
+                    required
+                    className="pl-7 h-9 rounded-lg text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Purchase Date */}
+              <div>
+                <label className="block text-xs font-medium text-surface-600 mb-1">
+                  Date Bought
+                </label>
+                <Input
+                  type="date"
+                  value={purchaseDate}
+                  onChange={(e) => setPurchaseDate(e.target.value)}
+                  required
+                  className="h-9 rounded-lg text-sm"
+                />
+              </div>
+
+              {/* Dealer */}
+              <div>
+                <label className="block text-xs font-medium text-surface-600 mb-1">
+                  Dealer <span className="text-surface-500">(optional)</span>
+                </label>
+                <Input
+                  type="text"
+                  value={dealer}
+                  onChange={(e) => setDealer(e.target.value)}
+                  list="dealer-suggestions"
+                  placeholder="e.g., APMEX"
+                  className="h-9 rounded-lg text-sm"
+                />
+                <datalist id="dealer-suggestions">
+                  {KNOWN_DEALERS.map((d) => (
+                    <option key={d} value={d} />
+                  ))}
+                </datalist>
               </div>
             </div>
 
-            {/* Purchase Date */}
-            <div>
-              <label className="block text-xs font-medium text-surface-600 mb-1">Date Bought</label>
-              <Input
-                type="date"
-                value={purchaseDate}
-                onChange={(e) => setPurchaseDate(e.target.value)}
-                required
-                className="h-9 rounded-lg text-sm"
-              />
-            </div>
-
-            {/* Dealer */}
+            {/* Notes */}
             <div>
               <label className="block text-xs font-medium text-surface-600 mb-1">
-                Dealer <span className="text-surface-500">(optional)</span>
+                Notes <span className="text-surface-500">(optional)</span>
               </label>
               <Input
                 type="text"
-                value={dealer}
-                onChange={(e) => setDealer(e.target.value)}
-                list="dealer-suggestions"
-                placeholder="e.g., APMEX"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Serial number, condition, etc."
                 className="h-9 rounded-lg text-sm"
               />
-              <datalist id="dealer-suggestions">
-                {KNOWN_DEALERS.map((d) => (
-                  <option key={d} value={d} />
-                ))}
-              </datalist>
             </div>
-          </div>
 
-          {/* Notes */}
-          <div>
-            <label className="block text-xs font-medium text-surface-600 mb-1">
-              Notes <span className="text-surface-500">(optional)</span>
-            </label>
-            <Input
-              type="text"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Serial number, condition, etc."
-              className="h-9 rounded-lg text-sm"
-            />
-          </div>
+            {/* Purity info */}
+            <p className="text-xs text-surface-500">
+              Purity: {(selectedProduct.purity * 100).toFixed(2)}% · Size: {SIZE_LABELS[size]} pure{' '}
+              {selectedProduct.metal}
+              {quantity > 1 && (
+                <>
+                  {' '}
+                  · Total: <Money>{formatUsd(Number(purchasePrice || 0) * quantity)}</Money>
+                </>
+              )}
+            </p>
 
-          {/* Purity info */}
-          <p className="text-xs text-surface-500">
-            Purity: {(selectedProduct.purity * 100).toFixed(2)}% · Size: {SIZE_LABELS[size]} pure{' '}
-            {selectedProduct.metal}
-            {quantity > 1 && (
-              <>
-                {' '}
-                · Total: <Money>{formatUsd(Number(purchasePrice || 0) * quantity)}</Money>
-              </>
-            )}
-          </p>
-
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setShowForm(false);
-                resetForm();
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              size="sm"
-              disabled={submitting || !purchasePrice}
-              className="bg-yellow-600 hover:bg-yellow-500"
-            >
-              {submitting ? 'Saving...' : editingId ? 'Update Entry' : 'Add Entry'}
-            </Button>
-          </div>
-        </form>
-      )}
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowForm(false);
+                  resetForm();
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={submitting || !purchasePrice}
+                className="bg-yellow-600 hover:bg-yellow-500"
+              >
+                {submitting ? 'Saving...' : editingId ? 'Update Entry' : 'Add Entry'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Entries List */}
       {data.entries.length === 0 ? (
