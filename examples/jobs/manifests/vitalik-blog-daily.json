@@ -1,0 +1,9 @@
+{
+  "id": "vitalik-blog-daily",
+  "label": "Vitalik Buterin blog to Research (tech)",
+  "kind": "local-script",
+  "schedule": "daily",
+  "script": "scripts/vitalik-blog.local.js",
+  "enabled": false,
+  "tags": ["research", "scrape", "vitalik", "ethereum", "cryptography", "tech"]
+}
