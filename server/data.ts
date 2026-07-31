@@ -988,9 +988,14 @@ export async function saveMetadata(data: Record<string, DocMetadata>): Promise<v
 }
 
 // ============================================================================
-// Reminders Storage
+// Reminders (legacy shape)
 // ============================================================================
 
+// Reminders now live as calendar events in `.docvault-calendar.json`
+// (server/calendar-store.ts, which one-time-migrates REMINDERS_FILE above).
+// This row shape survives as the compatibility projection produced by
+// loadLegacyShapedReminders() for consumers that still speak it (snapshots,
+// the /api/reminders shim, Daily News).
 export interface Reminder {
   id: string;
   entityId: string;
@@ -1001,19 +1006,6 @@ export interface Reminder {
   notes?: string;
   createdAt: string;
   updatedAt: string;
-}
-
-export async function loadReminders(): Promise<Reminder[]> {
-  try {
-    const content = await fs.readFile(REMINDERS_FILE, 'utf-8');
-    return JSON.parse(content);
-  } catch {
-    return [];
-  }
-}
-
-export async function saveReminders(reminders: Reminder[]): Promise<void> {
-  await fs.writeFile(REMINDERS_FILE, JSON.stringify(reminders, null, 2));
 }
 
 // ============================================================================

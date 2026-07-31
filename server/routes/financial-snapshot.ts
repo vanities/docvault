@@ -16,7 +16,6 @@ import {
   loadGoldData,
   loadPropertyData,
   loadContributions,
-  loadReminders,
   loadSnapshotsForYear,
   loadAssets,
   loadIncomeData,
@@ -28,6 +27,7 @@ import {
   jsonResponse,
 } from '../data.js';
 import type { EntityConfig, FileInfo, Contribution401k, AccountAnnotation } from '../data.js';
+import { loadLegacyShapedReminders } from '../calendar-store.js';
 import type { IncomeItem } from '../analytics/index.js';
 
 // Account categorization — uses explicit annotation.type first, falls back to
@@ -114,7 +114,9 @@ export async function handleFinancialSnapshotRoutes(
         loadContributions(),
         loadGoldData(),
         loadPropertyData(),
-        loadReminders(),
+        // Reminders live in the calendar store now; project the tax year plus
+        // the following filing season in the legacy row shape.
+        loadLegacyShapedReminders({ start: `${year}-01-01`, end: `${parseInt(year) + 1}-04-30` }),
         loadSnapshotsForYear(parseInt(year)),
         loadIncomeData(),
         loadLiabilities(),

@@ -11,8 +11,23 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import { DATA_DIR, REMINDERS_FILE, type Reminder } from './data.js';
+import { DATA_DIR, REMINDERS_FILE, loadSettings, type Reminder, type Settings } from './data.js';
+import { addInterval, projectOccurrences } from './calendar-recurrence.js';
 import { createLogger } from './logger.js';
+import { getConfiguredTimezone, zonedYMD } from './tz.js';
+
+/** Today's date in the configured timezone. loadSettings can throw (e.g. no
+ * master key in a test env) — the calendar must keep working on the container
+ * timezone fallback rather than propagate a 500. */
+export async function calendarToday(): Promise<string> {
+  let settings: Settings | undefined;
+  try {
+    settings = await loadSettings();
+  } catch {
+    settings = undefined;
+  }
+  return zonedYMD(new Date(), getConfiguredTimezone(settings));
+}
 
 const log = createLogger('Calendar');
 
@@ -119,6 +134,60 @@ export async function saveCalendarStore(store: CalendarStore): Promise<void> {
   await fs.writeFile(tmpPath, JSON.stringify(store, null, 2));
   await fs.rename(tmpPath, CALENDAR_PATH);
   log.debug(`[save] events=${store.events.length} in ${(performance.now() - t0).toFixed(1)}ms`);
+}
+
+// ============================================================================
+// Legacy-shape compatibility projection
+// ============================================================================
+
+/**
+ * Project calendar occurrences into the legacy `Reminder` row shape. Kept so
+ * consumers of the old reminders store (financial/health snapshots, the
+ * /api/reminders shim, Daily News) see an unchanged output shape while the
+ * data lives in the calendar. Row id is composite `${eventId}:${occurrence
+ * date}` — event ids are UUIDs, so the first ':' splits it unambiguously.
+ * Only tasks map (birthdays/events have no legacy equivalent).
+ */
+export async function loadLegacyShapedReminders(window?: {
+  start: string;
+  end: string;
+}): Promise<Reminder[]> {
+  const today = await calendarToday();
+  const w = window ?? {
+    start: addInterval(today, -1, 'year'),
+    end: addInterval(today, 1, 'year'),
+  };
+  const store = await loadCalendarStore();
+  const byId = new Map(store.events.map((e) => [e.id, e] as const));
+  return projectOccurrences(store.events, w, today)
+    .filter((o) => o.completable)
+    .map((o) => {
+      const event = byId.get(o.eventId)!;
+      return {
+        id: `${o.eventId}:${o.date}`,
+        entityId: o.entityId ?? '',
+        title: o.title,
+        dueDate: o.date,
+        recurrence: toLegacyRecurrence(event.recurrence),
+        status: o.completed ? (o.skipped ? 'dismissed' : 'completed') : 'pending',
+        ...(o.notes ? { notes: o.notes } : {}),
+        createdAt: event.createdAt,
+        updatedAt: event.updatedAt,
+      };
+    });
+}
+
+/** Back-map a calendar recurrence onto the legacy 3-value enum; cadences the
+ * old system couldn't express (e.g. every 6 months) become null. */
+export function toLegacyRecurrence(
+  recurrence: CalendarRecurrence | null | undefined
+): 'yearly' | 'monthly' | 'quarterly' | null {
+  if (!recurrence) return null;
+  const { interval, unit } = recurrence;
+  if (interval === 1 && unit === 'year') return 'yearly';
+  if (interval === 3 && unit === 'month') return 'quarterly';
+  if (interval === 1 && unit === 'month') return 'monthly';
+  return null;
 }
 
 // ============================================================================

@@ -19,7 +19,8 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import { DATA_DIR, loadReminders, jsonResponse, type Reminder } from '../data.js';
+import { DATA_DIR, jsonResponse, type Reminder } from '../data.js';
+import { loadLegacyShapedReminders } from '../calendar-store.js';
 import {
   loadHealthStore,
   type NutritionEntry,
@@ -366,7 +367,10 @@ export async function handleHealthSnapshotRoutes(
   const includeResearch = url.searchParams.get('includeResearch') === 'true';
 
   try {
-    const [store, allReminders] = await Promise.all([loadHealthStore(), loadReminders()]);
+    const [store, allReminders] = await Promise.all([
+      loadHealthStore(),
+      loadLegacyShapedReminders(),
+    ]);
     const healthReminders = allReminders.filter(isHealthReminder);
 
     let people = store.people;

@@ -2,8 +2,6 @@
 // Extracted from server/index.ts.
 
 import {
-  loadReminders,
-  saveReminders,
   loadAssets,
   saveAssets,
   loadContributions,
@@ -26,6 +24,13 @@ import type {
   Todo,
 } from '../data.js';
 import { readJsonBody } from '../http.js';
+import {
+  loadCalendarStore,
+  saveCalendarStore,
+  loadLegacyShapedReminders,
+  type CalendarEvent,
+  type CalendarRecurrence,
+} from '../calendar-store.js';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -56,28 +61,56 @@ export async function handleMiscRoutes(
   url: URL,
   pathname: string
 ): Promise<Response | null> {
-  // GET /api/reminders - Get all reminders (optionally filter by entity)
+  // --------------------------------------------------------------------------
+  // TEMPORARY legacy /api/reminders shim, backed by the calendar store.
+  // Reminders now live as calendar events (server/calendar-store.ts); these
+  // routes keep the old row shape alive until the frontend cuts over to
+  // /api/calendar/* directly, at which point this whole block is deleted.
+  // Row ids are composite `${eventId}:${occurrenceDate}` (event ids are
+  // UUIDs, so the first ':' splits unambiguously).
+  // --------------------------------------------------------------------------
+
+  // GET /api/reminders - occurrences projected into the legacy row shape
   if (pathname === '/api/reminders' && req.method === 'GET') {
     const entityFilter = url.searchParams.get('entity');
-    let reminders = await loadReminders();
+    let reminders = await loadLegacyShapedReminders();
     if (entityFilter) {
       reminders = reminders.filter((r) => r.entityId === entityFilter);
     }
     return jsonResponse({ reminders });
   }
 
-  // POST /api/reminders - Create a reminder
+  // POST /api/reminders - create a calendar task from the legacy body shape
   if (pathname === '/api/reminders' && req.method === 'POST') {
     const { entityId, title, dueDate, recurrence, notes } =
       await readJsonBody<Partial<Reminder>>(req);
-
     if (!entityId || !title || !dueDate) {
       return jsonResponse({ error: 'Missing entityId, title, or dueDate' }, 400);
     }
-
+    const legacyRecurrence: Record<string, CalendarRecurrence> = {
+      yearly: { interval: 1, unit: 'year', anchor: 'fixed' },
+      quarterly: { interval: 3, unit: 'month', anchor: 'fixed' },
+      monthly: { interval: 1, unit: 'month', anchor: 'fixed' },
+    };
     const now = new Date().toISOString();
-    const reminder: Reminder = {
+    const event: CalendarEvent = {
       id: crypto.randomUUID(),
+      kind: 'task',
+      title,
+      date: dueDate,
+      recurrence: recurrence ? legacyRecurrence[recurrence] : null,
+      entityId,
+      ...(notes ? { notes } : {}),
+      status: 'active',
+      completions: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    const store = await loadCalendarStore();
+    store.events.push(event);
+    await saveCalendarStore(store);
+    const reminder: Reminder = {
+      id: `${event.id}:${event.date}`,
       entityId,
       title,
       dueDate,
@@ -87,83 +120,69 @@ export async function handleMiscRoutes(
       createdAt: now,
       updatedAt: now,
     };
-
-    const reminders = await loadReminders();
-    reminders.push(reminder);
-    await saveReminders(reminders);
-
     return jsonResponse({ ok: true, reminder });
   }
 
-  // PUT /api/reminders/:id - Update a reminder
+  // PUT /api/reminders/:id - complete/dismiss an occurrence or edit its event
   const reminderUpdateMatch = pathname.match(/^\/api\/reminders\/([^/]+)$/);
   if (reminderUpdateMatch && req.method === 'PUT') {
-    const reminderId = reminderUpdateMatch[1];
+    const compositeId = decodeURIComponent(reminderUpdateMatch[1]);
+    const sep = compositeId.indexOf(':');
+    const eventId = sep === -1 ? compositeId : compositeId.slice(0, sep);
+    const occurrenceDate = sep === -1 ? null : compositeId.slice(sep + 1);
     const body = await readJsonBody<Partial<Reminder>>(req);
 
-    const reminders = await loadReminders();
-    const idx = reminders.findIndex((r) => r.id === reminderId);
-    if (idx === -1) {
-      return jsonResponse({ error: 'Reminder not found' }, 404);
-    }
+    const store = await loadCalendarStore();
+    const event = store.events.find((e) => e.id === eventId);
+    if (!event) return jsonResponse({ error: 'Reminder not found' }, 404);
 
-    const { title, dueDate, recurrence, status, notes } = body;
-    if (title !== undefined) reminders[idx].title = title;
-    if (dueDate !== undefined) reminders[idx].dueDate = dueDate;
-    if (recurrence !== undefined) reminders[idx].recurrence = recurrence;
-    if (status !== undefined) reminders[idx].status = status;
-    if (notes !== undefined) reminders[idx].notes = notes;
-    reminders[idx].updatedAt = new Date().toISOString();
-
-    // If completing a recurring reminder, create the next one
-    if (status === 'completed' && reminders[idx].recurrence) {
-      const current = new Date(reminders[idx].dueDate);
-      let nextDate: Date;
-      switch (reminders[idx].recurrence) {
-        case 'yearly':
-          nextDate = new Date(current);
-          nextDate.setFullYear(nextDate.getFullYear() + 1);
-          break;
-        case 'quarterly':
-          nextDate = new Date(current);
-          nextDate.setMonth(nextDate.getMonth() + 3);
-          break;
-        case 'monthly':
-          nextDate = new Date(current);
-          nextDate.setMonth(nextDate.getMonth() + 1);
-          break;
-        default:
-          nextDate = current;
-      }
-
+    const { title, dueDate, status, notes } = body;
+    if (title !== undefined) event.title = title;
+    if (dueDate !== undefined) event.date = dueDate;
+    if (notes !== undefined) event.notes = notes || undefined;
+    if (
+      (status === 'completed' || status === 'dismissed') &&
+      occurrenceDate &&
+      !event.completions.some((c) => c.occurrenceDate === occurrenceDate)
+    ) {
       const now = new Date().toISOString();
-      reminders.push({
-        id: crypto.randomUUID(),
-        entityId: reminders[idx].entityId,
-        title: reminders[idx].title,
-        dueDate: nextDate.toISOString().split('T')[0],
-        recurrence: reminders[idx].recurrence,
-        status: 'pending',
-        notes: reminders[idx].notes,
-        createdAt: now,
-        updatedAt: now,
+      event.completions.push({
+        occurrenceDate,
+        completedOn: now.slice(0, 10),
+        completedAt: now,
+        ...(status === 'dismissed' ? { skipped: true } : {}),
       });
     }
+    event.updatedAt = new Date().toISOString();
+    await saveCalendarStore(store);
 
-    await saveReminders(reminders);
-    return jsonResponse({ ok: true, reminder: reminders[idx] });
+    const reminder: Reminder = {
+      id: compositeId,
+      entityId: event.entityId ?? '',
+      title: event.title,
+      dueDate: occurrenceDate ?? event.date,
+      recurrence: null,
+      status: status ?? 'pending',
+      notes: event.notes,
+      createdAt: event.createdAt,
+      updatedAt: event.updatedAt,
+    };
+    return jsonResponse({ ok: true, reminder });
   }
 
-  // DELETE /api/reminders/:id
+  // DELETE /api/reminders/:id - delete the underlying calendar event
   const reminderDeleteMatch = pathname.match(/^\/api\/reminders\/([^/]+)$/);
   if (reminderDeleteMatch && req.method === 'DELETE') {
-    const reminderId = reminderDeleteMatch[1];
-    const reminders = await loadReminders();
-    const filtered = reminders.filter((r) => r.id !== reminderId);
-    if (filtered.length === reminders.length) {
+    const compositeId = decodeURIComponent(reminderDeleteMatch[1]);
+    const sep = compositeId.indexOf(':');
+    const eventId = sep === -1 ? compositeId : compositeId.slice(0, sep);
+    const store = await loadCalendarStore();
+    const before = store.events.length;
+    store.events = store.events.filter((e) => e.id !== eventId);
+    if (store.events.length === before) {
       return jsonResponse({ error: 'Reminder not found' }, 404);
     }
-    await saveReminders(filtered);
+    await saveCalendarStore(store);
     return jsonResponse({ ok: true });
   }
 
