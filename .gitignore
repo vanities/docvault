@@ -115,6 +115,8 @@ scripts/*
 !server/calendar-recurrence.test.ts
 # Exception: calendar store tests use fabricated reminder/event fixtures in a tmpdir, no personal data
 !server/calendar-store.test.ts
+# Exception: calendar route tests use fabricated event fixtures in a tmpdir, no personal data
+!server/routes/calendar.test.ts
 
 # Internal design docs
 docs/PRD-shadcn-migration.md
