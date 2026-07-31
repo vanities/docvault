@@ -18,6 +18,9 @@ const AllFilesView = lazy(() =>
   import('../AllFiles/AllFilesView').then((m) => ({ default: m.AllFilesView }))
 );
 const ChatView = lazy(() => import('../Chat/ChatView').then((m) => ({ default: m.ChatView })));
+const CalendarView = lazy(() =>
+  import('../Calendar/CalendarView').then((m) => ({ default: m.CalendarView }))
+);
 const SettingsView = lazy(() =>
   import('../Settings/SettingsView').then((m) => ({ default: m.SettingsView }))
 );
@@ -222,6 +225,8 @@ export function Layout() {
         return <TechView />;
       case 'local-news':
         return <LocalNewsView />;
+      case 'calendar':
+        return <CalendarView />;
       case 'health':
         return <HealthView />;
       case 'health-activity':
