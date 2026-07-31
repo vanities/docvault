@@ -117,9 +117,46 @@ export function agendaBuckets(occurrences: Occurrence[], today: string): AgendaB
   return buckets;
 }
 
-function daysUntilBound(today: string, days: number): string {
-  const d = parseISODate(today);
+/** ISO date `days` after `iso` (negative allowed). */
+export function addDays(iso: string, days: number): string {
+  const d = parseISODate(iso);
   return toISODate(new Date(d.getFullYear(), d.getMonth(), d.getDate() + days));
+}
+
+function daysUntilBound(today: string, days: number): string {
+  return addDays(today, days);
+}
+
+export interface MonthGroup {
+  key: string; // YYYY-MM
+  label: string; // "September" / "January 2027" when the year differs from today's
+  items: Occurrence[];
+}
+
+/** Pending occurrences strictly after `afterISO`, grouped by calendar month in
+ * chronological order — the agenda's "coming months" outlook. */
+export function comingMonthGroups(
+  occurrences: Occurrence[],
+  afterISO: string,
+  today: string
+): MonthGroup[] {
+  const groups = new Map<string, MonthGroup>();
+  const todayYear = today.slice(0, 4);
+  for (const occ of occurrences) {
+    if (occ.completed || occ.date <= afterISO) continue;
+    const key = occ.date.slice(0, 7);
+    let group = groups.get(key);
+    if (!group) {
+      const label = parseISODate(`${key}-01`).toLocaleDateString('en-US', {
+        month: 'long',
+        ...(key.slice(0, 4) !== todayYear ? { year: 'numeric' } : {}),
+      });
+      group = { key, label, items: [] };
+      groups.set(key, group);
+    }
+    group.items.push(occ);
+  }
+  return [...groups.values()].sort((a, b) => (a.key < b.key ? -1 : 1));
 }
 
 /** Human-friendly relative label: "today", "tomorrow", "in 5 days", "3 days

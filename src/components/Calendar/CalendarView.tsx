@@ -27,7 +27,9 @@ import { useCalendarApi, useOccurrences } from './useCalendarApi';
 import type { CalendarEventInput, Occurrence } from './types';
 
 const AGENDA_PAST_DAYS = 60;
-const AGENDA_FUTURE_DAYS = 60;
+// Forward horizon feeds both the near-term buckets and the month-grouped
+// "Coming Months" outlook in the rail.
+const AGENDA_FUTURE_DAYS = 180;
 
 function shiftDays(iso: string, days: number): string {
   const d = parseISODate(iso);
