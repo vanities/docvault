@@ -157,7 +157,10 @@ Heavily inspired by [t3.chat](https://t3.chat) — a multi-thread Claude chat th
 ### Other
 
 - Mileage log with address autocomplete.
-- Filing deadline reminders with recurring support.
+- Calendar: birthdays ("turns N"), one-offs, and recurring tasks with fixed or
+  after-completion scheduling — month grid, agenda, chat tools, and a "Week
+  Ahead" box in the Daily News edition. Absorbs the old deadline reminders
+  (existing data migrates automatically).
 - Username/password auth with session cookies.
 - Docker-ready: single container, auto-published to GHCR (amd64 + arm64).
 
@@ -228,7 +231,7 @@ Everything lives in `DOCVAULT_DATA_DIR` as `.docvault-*.json` — mount one volu
 | `.docvault-settings.json`              | API keys and integration config   |
 | `.docvault-parsed.json`                | Cached AI parse results           |
 | `.docvault-metadata.json`              | Document tags and notes           |
-| `.docvault-reminders.json`             | Filing deadline reminders         |
+| `.docvault-calendar.json`              | Calendar events and completions   |
 | `.docvault-portfolio-snapshots-*.json` | Yearly portfolio snapshot history |
 | `.docvault-broker-cache.json`          | Cached brokerage aggregation      |
 | `.docvault-crypto-cache.json`          | Cached crypto balances            |

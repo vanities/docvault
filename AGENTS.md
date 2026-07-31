@@ -160,14 +160,14 @@ Missing any of these causes the sidebar click to silently render the wrong view.
 
 All state lives in `DATA_DIR` (default `./data`, `/data` in Docker) as `.docvault-*.json` files:
 
-| File                         | Purpose                                     |
-| ---------------------------- | ------------------------------------------- |
-| `.docvault-config.json`      | Entity definitions (names, types, metadata) |
-| `.docvault-settings.json`    | API keys, exchange secrets, sync config     |
-| `.docvault-parsed.json`      | Cached AI parse results                     |
-| `.docvault-reminders.json`   | Deadline reminders                          |
-| `.docvault-metadata.json`    | Document tags/notes                         |
-| `.docvault-sync-status.json` | Dropbox sync status (written by NAS cron)   |
+| File                         | Purpose                                      |
+| ---------------------------- | -------------------------------------------- |
+| `.docvault-config.json`      | Entity definitions (names, types, metadata)  |
+| `.docvault-settings.json`    | API keys, exchange secrets, sync config      |
+| `.docvault-parsed.json`      | Cached AI parse results                      |
+| `.docvault-calendar.json`    | Calendar events (birthdays, recurring tasks) |
+| `.docvault-metadata.json`    | Document tags/notes                          |
+| `.docvault-sync-status.json` | Dropbox sync status (written by NAS cron)    |
 
 Entity types: `tax` (year-based views with income/expenses) or `docs` (flat file listing).
 
