@@ -113,6 +113,8 @@ scripts/*
 !src/components/blur-coverage.test.ts
 # Exception: calendar recurrence tests are pure date math with fabricated event fixtures, no personal data
 !server/calendar-recurrence.test.ts
+# Exception: calendar store tests use fabricated reminder/event fixtures in a tmpdir, no personal data
+!server/calendar-store.test.ts
 
 # Internal design docs
 docs/PRD-shadcn-migration.md
