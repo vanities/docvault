@@ -62,8 +62,6 @@ import {
   loadParsedData,
   loadMetadata,
   saveMetadata,
-  loadReminders,
-  saveReminders,
   scanDirectory,
   getEntityPath,
   getClaudeModel,
@@ -79,7 +77,6 @@ import {
   ensureDir,
   type EntityConfig,
   type FileInfo,
-  type Reminder,
   type DocMetadata,
   type ParsedData,
 } from '../data.js';
@@ -99,6 +96,7 @@ import {
   type ResearchEntry,
 } from './research.js';
 import { handleFinancialSnapshotRoutes } from './financial-snapshot.js';
+import { handleCalendarRoutes } from './calendar.js';
 import { handleDailyNewsRoutes } from './daily-news.js';
 import { handlePoliticsRoutes } from './politics.js';
 import { listRuns, getRun } from '../deep-research-store.js';
@@ -218,10 +216,15 @@ const TOOL_NAMES = [
   'get_daily_news',
   'get_congress_trades',
   'read_brain',
+  'get_calendar',
+  'list_calendar_events',
   // --- Writes (require user confirmation per system prompt) ---
   'remember',
   'set_metadata',
-  'add_reminder',
+  'add_calendar_event',
+  'update_calendar_event',
+  'delete_calendar_event',
+  'complete_calendar_occurrence',
   'create_supplement',
   'update_supplement',
   'delete_supplement',
@@ -513,34 +516,109 @@ async function toolSetMetadata(
   return { ok: true, key, metadata: metadataMap[key] };
 }
 
-async function toolAddReminder(
-  input: {
-    entity: string;
-    title: string;
-    dueDate: string;
-    recurrence?: 'yearly' | 'monthly' | 'quarterly' | null;
-    notes?: string | null;
-  },
-  ctx: ToolContext
+// ---------------------------------------------------------------------------
+// Calendar tools — the global calendar (birthdays, recurring tasks, one-off
+// events). All calls go through the calendar route handlers in-process so
+// chat shares the exact validation the UI hits.
+// ---------------------------------------------------------------------------
+
+interface CalendarEventInput {
+  kind?: 'birthday' | 'task' | 'event';
+  title?: string;
+  date?: string;
+  recurrence?: {
+    interval: number;
+    unit: 'day' | 'week' | 'month' | 'year';
+    anchor: 'fixed' | 'afterCompletion';
+  } | null;
+  birthYear?: number | null;
+  entity?: string | null;
+  notes?: string | null;
+  status?: 'active' | 'archived';
+}
+
+function calendarEventBody(input: CalendarEventInput): Record<string, unknown> {
+  const { entity, ...rest } = input;
+  return { ...rest, ...(entity !== undefined ? { entityId: entity } : {}) };
+}
+
+async function toolGetCalendar(input: {
+  start?: string | null;
+  end?: string | null;
+  entity?: string | null;
+  includeCompleted?: boolean | null;
+}): Promise<unknown> {
+  const params = new URLSearchParams();
+  if (input.start) params.set('start', input.start);
+  if (input.end) params.set('end', input.end);
+  if (input.entity) params.set('entity', input.entity);
+  if (input.includeCompleted === false) params.set('includeCompleted', 'false');
+  const qs = params.toString();
+  const { status, data } = await invokeRoute(
+    handleCalendarRoutes,
+    'GET',
+    `/api/calendar/occurrences${qs ? `?${qs}` : ''}`
+  );
+  return status === 200 ? data : { error: data, status };
+}
+
+async function toolListCalendarEvents(input: { entity?: string | null }): Promise<unknown> {
+  const qs = input.entity ? `?entity=${encodeURIComponent(input.entity)}` : '';
+  const { status, data } = await invokeRoute(
+    handleCalendarRoutes,
+    'GET',
+    `/api/calendar/events${qs}`
+  );
+  return status === 200 ? data : { error: data, status };
+}
+
+async function toolAddCalendarEvent(input: CalendarEventInput): Promise<unknown> {
+  const { status, data } = await invokeRoute(
+    handleCalendarRoutes,
+    'POST',
+    '/api/calendar/events',
+    calendarEventBody(input)
+  );
+  return status === 200 ? data : { error: data, status };
+}
+
+async function toolUpdateCalendarEvent(
+  input: CalendarEventInput & { id: string }
 ): Promise<unknown> {
-  const knownEntity = ctx.config.entities.find((e) => e.id === input.entity);
-  if (!knownEntity) return { error: `Unknown entity "${input.entity}".` };
-  const reminders = await loadReminders();
-  const now = new Date().toISOString();
-  const reminder: Reminder = {
-    id: crypto.randomUUID(),
-    entityId: input.entity,
-    title: input.title,
-    dueDate: input.dueDate,
-    recurrence: input.recurrence ?? null,
-    status: 'pending',
-    notes: input.notes ?? undefined,
-    createdAt: now,
-    updatedAt: now,
-  };
-  reminders.push(reminder);
-  await saveReminders(reminders);
-  return { ok: true, reminder };
+  const { id, ...rest } = input;
+  const { status, data } = await invokeRoute(
+    handleCalendarRoutes,
+    'PUT',
+    `/api/calendar/events/${encodeURIComponent(id)}`,
+    calendarEventBody(rest)
+  );
+  return status === 200 ? data : { error: data, status };
+}
+
+async function toolDeleteCalendarEvent(input: { id: string }): Promise<unknown> {
+  const { status, data } = await invokeRoute(
+    handleCalendarRoutes,
+    'DELETE',
+    `/api/calendar/events/${encodeURIComponent(input.id)}`
+  );
+  return status === 200 ? data : { error: data, status };
+}
+
+async function toolCompleteCalendarOccurrence(input: {
+  id: string;
+  occurrenceDate: string;
+  completedOn?: string | null;
+  skipped?: boolean | null;
+  notes?: string | null;
+}): Promise<unknown> {
+  const { id, ...body } = input;
+  const { status, data } = await invokeRoute(
+    handleCalendarRoutes,
+    'POST',
+    `/api/calendar/events/${encodeURIComponent(id)}/complete`,
+    body
+  );
+  return status === 200 ? data : { error: data, status };
 }
 
 // ---------------------------------------------------------------------------
@@ -1392,17 +1470,98 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
         },
         async (args) => jsonResult(await toolSetMetadata(args, ctx))
       ),
+      // -- Calendar: reads --------------------------------------------------
       tool(
-        'add_reminder',
-        'Create a reminder/deadline tied to an entity. Use for tax filing deadlines, follow-ups, etc.',
+        'get_calendar',
+        'Projected calendar occurrences (birthdays with "turns N" ages, recurring task due dates with overdue flags, one-off events) over a date window. Defaults to today through +60 days; overdue pending tasks surface even when their due date is past. Use for "what\'s coming up", "what\'s overdue", "when is X due".',
         {
-          entity: z.string().describe('Entity id.'),
-          title: z.string(),
-          dueDate: z.string().describe('YYYY-MM-DD'),
-          recurrence: z.enum(['yearly', 'monthly', 'quarterly']).nullable().optional(),
-          notes: z.string().nullable().optional(),
+          start: z.string().optional().describe('YYYY-MM-DD (default today).'),
+          end: z.string().optional().describe('YYYY-MM-DD (default today + 60 days).'),
+          entity: z.string().optional().describe('Filter to events tagged with this entity id.'),
+          includeCompleted: z
+            .boolean()
+            .optional()
+            .describe('false hides already-completed occurrences.'),
         },
-        async (args) => jsonResult(await toolAddReminder(args, ctx))
+        async (args) => jsonResult(await toolGetCalendar(args))
+      ),
+      tool(
+        'list_calendar_events',
+        'Raw calendar event definitions: recurrence config (interval/unit and fixed vs after-completion anchoring), completion history, archive status. Use to inspect or find an event before updating/completing it; use get_calendar for dated upcoming occurrences.',
+        {
+          entity: z.string().optional().describe('Filter to events tagged with this entity id.'),
+        },
+        async (args) => jsonResult(await toolListCalendarEvents(args))
+      ),
+      // -- Calendar: writes -------------------------------------------------
+      tool(
+        'add_calendar_event',
+        "Create a calendar event. kind 'birthday' = yearly, optional birthYear for ages; 'task' = completable, optionally recurring (anchor 'fixed' keeps the schedule, 'afterCompletion' counts the next due date from when the user actually completes it — right for maintenance chores); 'event' = non-completable date. WRITE TOOL — confirm before invoking.",
+        {
+          kind: z.enum(['birthday', 'task', 'event']),
+          title: z.string(),
+          date: z
+            .string()
+            .describe('YYYY-MM-DD anchor: the birth date for birthdays, first due date for tasks.'),
+          recurrence: z
+            .object({
+              interval: z.number().int().min(1),
+              unit: z.enum(['day', 'week', 'month', 'year']),
+              anchor: z.enum(['fixed', 'afterCompletion']),
+            })
+            .nullable()
+            .optional()
+            .describe('Omit/null for one-offs. Birthdays must omit (implicitly yearly).'),
+          birthYear: z.number().int().optional().describe('Birthdays only — enables "turns N".'),
+          entity: z.string().optional().describe('Optional entity id tag.'),
+          notes: z.string().optional(),
+        },
+        async (args) => jsonResult(await toolAddCalendarEvent(args))
+      ),
+      tool(
+        'update_calendar_event',
+        "Update a calendar event's title, date, recurrence, birthYear, entity tag, notes, or status (archive with status 'archived'; kind is immutable). WRITE TOOL — confirm before invoking.",
+        {
+          id: z.string().describe('Event id from list_calendar_events/get_calendar.'),
+          title: z.string().optional(),
+          date: z.string().optional().describe('YYYY-MM-DD'),
+          recurrence: z
+            .object({
+              interval: z.number().int().min(1),
+              unit: z.enum(['day', 'week', 'month', 'year']),
+              anchor: z.enum(['fixed', 'afterCompletion']),
+            })
+            .nullable()
+            .optional(),
+          birthYear: z.number().int().nullable().optional(),
+          entity: z.string().nullable().optional(),
+          notes: z.string().nullable().optional(),
+          status: z.enum(['active', 'archived']).optional(),
+        },
+        async (args) => jsonResult(await toolUpdateCalendarEvent(args))
+      ),
+      tool(
+        'delete_calendar_event',
+        "Permanently delete a calendar event and its completion history. Prefer update_calendar_event with status 'archived' to keep history. WRITE TOOL — confirm before invoking.",
+        {
+          id: z.string(),
+        },
+        async (args) => jsonResult(await toolDeleteCalendarEvent(args))
+      ),
+      tool(
+        'complete_calendar_occurrence',
+        'Mark one occurrence of a task complete (or skipped). For after-completion recurrence the response includes the next projected due date, which counts from completedOn. WRITE TOOL — confirm before invoking.',
+        {
+          id: z.string().describe('Event id.'),
+          occurrenceDate: z.string().describe('YYYY-MM-DD of the occurrence being resolved.'),
+          completedOn: z
+            .string()
+            .optional()
+            .describe('YYYY-MM-DD the work actually happened (default today).'),
+          skipped: z.boolean().optional().describe('true = resolved without doing it.'),
+          notes: z.string().optional(),
+        },
+        async (args) => jsonResult(await toolCompleteCalendarOccurrence(args))
       ),
       // -- Health: reads ----------------------------------------------------
       tool(
@@ -1632,11 +1791,12 @@ function buildSystemPrompt(activeEntity: string | undefined, brainContent = ''):
     'get_daily_news lists/returns the synthesized Newsstand editions (markets+politics+finance+tax+health+research woven into one narrative with Action Items). No id lists recent editions; an id returns that edition\'s full body. Use it for "what\'s the latest" or to ground analysis in the already-synthesized macro picture.',
     'get_congress_trades returns recent congressional stock/option disclosures (politician, chamber, party, buy/sell, ticker, $ range, dates) — PUBLIC STOCK Act filings, NOT the user\'s holdings. Use it for "what are politicians buying" or insider/consensus signals; optional politician/ticker/chamber/category filters.',
     'The user may have configured External Sources — cloned git repos of their own markdown (for example a personal knowledge or creative vault). For questions about their notes, projects, writing, or anything outside the tax, financial, and health data: call list_external_sources, then either search_external_sources (substring over BOTH file paths and content) or list_external_source_files (browse the tree or a folder when you have no obvious search term), then read_external_file for the full text. These are READ-ONLY and free to chain. Cite the source name and file path when you quote them.',
+    "The user keeps a global calendar of birthdays, recurring tasks (maintenance chores, deadlines), and one-off events, optionally tagged by entity. get_calendar returns dated occurrences (birthday ages, overdue flags); list_calendar_events returns the underlying definitions. Tasks recur either on a fixed schedule or 'after completion' — the next due date counts from when the user actually did it. Use these for any \"when is / what's due / what's coming up\" question instead of guessing dates.",
     'Use the provided tools to answer factually. Never invent file names, vendors, amounts, dates, lab values, supplement brands, or citations. If a file has not been parsed yet or a supplement is not in the regimen, say so — do not guess.',
     'Be concise. Use markdown tables for structured data. When citing a specific document, include its path so the user can find it.',
     [
       "WRITE TOOLS — these make persistent changes to the user's data:",
-      '  remember, set_metadata, add_reminder, create_supplement, update_supplement, delete_supplement, log_sickness',
+      '  remember, set_metadata, add_calendar_event, update_calendar_event, delete_calendar_event, complete_calendar_occurrence, create_supplement, update_supplement, delete_supplement, log_sickness',
       'ALWAYS state what you are about to write (which entry, which fields, what values) and wait for explicit user confirmation BEFORE invoking any of them. Read tools can be chained freely without asking.',
       "remember saves ONE durable note to the user's Brain (long-term memory, shown above). Use it sparingly — only for stable preferences, decisions, or context worth recalling in every future chat, never for one-off task details or anything the app already stores. Show the exact text and confirm before saving.",
       'delete_supplement is destructive — prefer update_supplement with status:"past" if the user might want the history back.',

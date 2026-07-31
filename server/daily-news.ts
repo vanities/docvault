@@ -29,7 +29,6 @@ import {
   getAnthropicAuthToken,
   getAnthropicKey,
   loadSnapshots,
-  loadReminders,
   loadSalesData,
   loadMileageData,
   loadTodos,
@@ -53,6 +52,7 @@ import {
   toOpenAIEffort,
   type ModelRef,
 } from './data.js';
+import { loadLegacyShapedReminders } from './calendar-store.js';
 import { fetchWeekForecast, forecastToLines, type WeatherForecast } from './weather.js';
 import { listResearchEntries, type ResearchEntry } from './routes/research.js';
 import { getLatestStrategy } from './routes/strategy.js';
@@ -1237,9 +1237,9 @@ async function gatherDocs(
     emitDigestWarning(warn, 'docs/todos', err);
   }
 
-  // Upcoming reminders / deadlines.
+  // Upcoming reminders / deadlines (projected from the calendar store).
   try {
-    const reminders = await loadReminders();
+    const reminders = await loadLegacyShapedReminders();
     const horizonDays = editionType === 'weekly' ? 30 : 7;
     const now = Date.now();
     const cutoff = now + horizonDays * 24 * 60 * 60 * 1000;

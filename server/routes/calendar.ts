@@ -16,11 +16,11 @@
 // Chat tools call these same handlers in-process via invokeRoute, so all
 // validation lives here and nowhere else.
 
-import { jsonResponse, loadSettings } from '../data.js';
+import { jsonResponse } from '../data.js';
 import { readJsonBody } from '../http.js';
 import { createLogger } from '../logger.js';
-import { getConfiguredTimezone, zonedYMD } from '../tz.js';
 import {
+  calendarToday,
   loadCalendarStore,
   saveCalendarStore,
   type CalendarEvent,
@@ -38,11 +38,6 @@ const DEFAULT_WINDOW_DAYS = 60;
 
 const KINDS: CalendarEventKind[] = ['birthday', 'task', 'event'];
 const UNITS = ['day', 'week', 'month', 'year'];
-
-async function todayYMD(): Promise<string> {
-  const settings = await loadSettings();
-  return zonedYMD(new Date(), getConfiguredTimezone(settings));
-}
 
 function daysBetween(start: string, end: string): number {
   const [sy, sm, sd] = start.split('-').map(Number);
@@ -150,7 +145,7 @@ export async function handleCalendarRoutes(
 
   // GET /api/calendar/occurrences
   if (pathname === '/api/calendar/occurrences' && req.method === 'GET') {
-    const today = await todayYMD();
+    const today = await calendarToday();
     const start = url.searchParams.get('start') ?? today;
     const end = url.searchParams.get('end') ?? addInterval(today, DEFAULT_WINDOW_DAYS, 'day');
     if (!isYMD(start) || !isYMD(end)) {
@@ -257,7 +252,7 @@ export async function handleCalendarRoutes(
       skipped?: boolean;
       notes?: string;
     }>(req);
-    const today = await todayYMD();
+    const today = await calendarToday();
     const { occurrenceDate } = body;
     if (!occurrenceDate || !isYMD(occurrenceDate)) {
       return jsonResponse({ error: 'occurrenceDate must be a valid YYYY-MM-DD' }, 400);
