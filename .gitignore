@@ -111,6 +111,8 @@ scripts/*
 !server/research-domain-wiring.test.ts
 # Exception: blur-coverage test scans component source for unblurred money renders, no personal data
 !src/components/blur-coverage.test.ts
+# Exception: calendar recurrence tests are pure date math with fabricated event fixtures, no personal data
+!server/calendar-recurrence.test.ts
 
 # Internal design docs
 docs/PRD-shadcn-migration.md
