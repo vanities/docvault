@@ -19,6 +19,7 @@ import {
   synthesizeEdition,
   notifyEditionReady,
   type GenerateResult,
+  type WeekAheadCalendar,
   type Digest,
 } from './daily-news.js';
 import { generateHeadlineImage } from './daily-news-image.js';
@@ -45,6 +46,8 @@ export interface Edition {
   sample?: boolean;
   /** Week-ahead weather forecast for the rendered box (Open-Meteo); optional. */
   weather?: WeatherForecast;
+  /** Calendar week-ahead for the rendered box (exact dates); optional. */
+  weekAhead?: WeekAheadCalendar;
   /** Synthesized newspaper markdown. */
   body?: string;
   digestMeta?: {
@@ -173,6 +176,7 @@ export async function startEdition(
         body: result.body,
         theme: result.theme,
         weather: result.weather,
+        weekAhead: result.weekAhead,
         digestMeta: result.digestMeta,
         usage: result.usage,
         generatedBy: result.generatedBy,
@@ -283,6 +287,7 @@ export async function startThemeSamples(
           body: result.body,
           theme: result.theme,
           weather: result.weather,
+          weekAhead: result.weekAhead,
           digestMeta: result.digestMeta,
           usage: result.usage,
           completedAt: new Date().toISOString(),

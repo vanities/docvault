@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'vite-plus/test';
 import {
   applySourceCitations,
+  buildCalendarDigest,
   buildResearchDigestItems,
   selectDailyNewsStepCount,
   snapshotFromAllResponseBody,
 } from './daily-news.js';
+import type { Occurrence } from './calendar-recurrence.js';
 
 function afterSince(d?: string | null): boolean {
   if (!d) return false;
@@ -162,5 +164,93 @@ describe('applySourceCitations', () => {
   test('regular markdown links pass through untouched', () => {
     const body = 'See [the appendix](https://example.com/notes) below.';
     expect(applySourceCitations(body, CITES)).toBe(body);
+  });
+});
+
+describe('buildCalendarDigest', () => {
+  const TODAY = '2026-07-31';
+  function occ(overrides: Partial<Occurrence>): Occurrence {
+    return {
+      eventId: 'evt-1',
+      kind: 'task',
+      title: 'Replace air filter',
+      date: '2026-08-03',
+      completable: true,
+      completed: false,
+      overdue: false,
+      recurrenceLabel: 'every 3 months',
+      ...overrides,
+    };
+  }
+
+  test('formats due/birthday/event lines with recurrence and overdue detail', () => {
+    const { items } = buildCalendarDigest(
+      [
+        occ({}),
+        occ({ title: 'Late chore', date: '2026-07-27', overdue: true }),
+        occ({
+          kind: 'birthday',
+          title: 'Alex',
+          date: '2026-08-02',
+          age: 34,
+          completable: false,
+          recurrenceLabel: 'yearly',
+        }),
+        occ({
+          kind: 'event',
+          title: 'Farm open house',
+          date: '2026-08-22',
+          completable: false,
+          recurrenceLabel: 'one-off',
+        }),
+      ],
+      TODAY
+    );
+    expect(items).toEqual([
+      'Due 2026-08-03: Replace air filter (every 3 months).',
+      'Due 2026-07-27: Late chore (every 3 months; overdue 4 days).',
+      'Birthday 2026-08-02: Alex turns 34.',
+      'Event 2026-08-22: Farm open house.',
+    ]);
+  });
+
+  test('weekAhead box covers 7 days plus overdue, drops completed, caps at 20', () => {
+    const many = Array.from({ length: 30 }, (_, i) =>
+      occ({ eventId: `evt-${i}`, title: `Chore ${i}`, date: '2026-08-01' })
+    );
+    const { weekAhead } = buildCalendarDigest(
+      [
+        occ({ title: 'Done already', completed: true }),
+        occ({ title: 'Overdue task', date: '2026-07-20', overdue: true }),
+        occ({ title: 'Beyond the week', date: '2026-08-20' }),
+        ...many,
+      ],
+      TODAY
+    );
+    expect(weekAhead.start).toBe(TODAY);
+    expect(weekAhead.end).toBe('2026-08-07');
+    expect(weekAhead.items.length).toBe(20);
+    expect(weekAhead.items.some((i) => i.title === 'Done already')).toBe(false);
+    expect(weekAhead.items.some((i) => i.title === 'Beyond the week')).toBe(false);
+    expect(weekAhead.items.find((i) => i.title === 'Overdue task')?.overdue).toBe(true);
+  });
+
+  test('birthday rows carry age for the rendered box', () => {
+    const { weekAhead } = buildCalendarDigest(
+      [
+        occ({
+          kind: 'birthday',
+          title: 'Sam',
+          date: '2026-08-01',
+          age: 12,
+          completable: false,
+          recurrenceLabel: 'yearly',
+        }),
+      ],
+      TODAY
+    );
+    expect(weekAhead.items).toEqual([
+      { date: '2026-08-01', title: 'Sam', kind: 'birthday', age: 12 },
+    ]);
   });
 });

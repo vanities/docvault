@@ -52,7 +52,8 @@ import {
   toOpenAIEffort,
   type ModelRef,
 } from './data.js';
-import { loadLegacyShapedReminders } from './calendar-store.js';
+import { calendarToday, loadCalendarStore, type CalendarEventKind } from './calendar-store.js';
+import { addInterval, projectOccurrences, type Occurrence } from './calendar-recurrence.js';
 import { fetchWeekForecast, forecastToLines, type WeatherForecast } from './weather.js';
 import { listResearchEntries, type ResearchEntry } from './routes/research.js';
 import { getLatestStrategy } from './routes/strategy.js';
@@ -172,6 +173,23 @@ export interface Digest {
   sourceWarnings: DigestSourceWarning[];
   /** Week-ahead forecast for the rendered weather box (Open-Meteo); optional. */
   weather?: WeatherForecast;
+  /** Calendar week-ahead for the rendered box (exact dates, never through the LLM). */
+  weekAhead?: WeekAheadCalendar;
+}
+
+/** One row of the rendered "Week Ahead" calendar box. */
+export interface WeekAheadItem {
+  date: string; // YYYY-MM-DD
+  title: string;
+  kind: CalendarEventKind;
+  overdue?: boolean;
+  age?: number; // birthdays: "turns N"
+}
+
+export interface WeekAheadCalendar {
+  start: string;
+  end: string;
+  items: WeekAheadItem[];
 }
 
 export interface GenerateResult {
@@ -192,6 +210,8 @@ export interface GenerateResult {
   };
   /** Forecast carried through so the renderer can draw the weather box. */
   weather?: WeatherForecast;
+  /** Calendar week-ahead carried through so the renderer can draw its box. */
+  weekAhead?: WeekAheadCalendar;
 }
 
 // Claude Code binary resolution for the agent engine (mirrors deep-research.ts).
@@ -1157,7 +1177,6 @@ async function gatherHealth(
 
 async function gatherDocs(
   afterSince: AfterSince,
-  editionType: EditionType,
   sinceMs: number,
   warn?: WarningSink
 ): Promise<{ items: string[]; pulled: PulledItem[] }> {
@@ -1237,23 +1256,7 @@ async function gatherDocs(
     emitDigestWarning(warn, 'docs/todos', err);
   }
 
-  // Upcoming reminders / deadlines (projected from the calendar store).
-  try {
-    const reminders = await loadLegacyShapedReminders();
-    const horizonDays = editionType === 'weekly' ? 30 : 7;
-    const now = Date.now();
-    const cutoff = now + horizonDays * 24 * 60 * 60 * 1000;
-    const due = reminders
-      .filter((r) => r.status === 'pending')
-      .filter((r) => {
-        const t = new Date(`${r.dueDate}T12:00:00`).getTime();
-        return Number.isFinite(t) && t >= now - 24 * 60 * 60 * 1000 && t <= cutoff;
-      })
-      .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-    for (const r of due) items.push(`Due ${r.dueDate}: ${r.title}.`);
-  } catch (err) {
-    emitDigestWarning(warn, 'docs/reminders', err);
-  }
+  // Upcoming deadlines moved to the dedicated Calendar desk (gatherCalendar).
 
   return { items, pulled };
 }
@@ -1333,6 +1336,72 @@ async function gatherResearchDeep(
 /** Week-ahead forecast for the configured location (Open-Meteo); null when
  *  weather is disabled/unconfigured or the fetch fails. Not windowed by sinceISO
  *  — it's a forward forecast, the same in daily and weekly editions. */
+/** Format pending calendar occurrences into digest lines + the rendered
+ *  "Week Ahead" box data. Pure — testable without the store. Desk lines use
+ *  whatever horizon the occurrences were projected over; the box always
+ *  covers today..+7d plus anything overdue, capped at 20 rows. */
+export function buildCalendarDigest(
+  occurrences: Occurrence[],
+  today: string
+): { items: string[]; weekAhead: WeekAheadCalendar } {
+  const overdueDays = (date: string): number => {
+    const [y1, m1, d1] = date.split('-').map(Number);
+    const [y2, m2, d2] = today.split('-').map(Number);
+    return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86_400_000);
+  };
+  const pending = occurrences.filter((o) => !o.completed);
+  const items = pending.map((o) => {
+    if (o.kind === 'birthday') {
+      return `Birthday ${o.date}: ${o.title}${o.age !== undefined ? ` turns ${o.age}` : ''}.`;
+    }
+    if (o.completable) {
+      const extras: string[] = [];
+      if (o.recurrenceLabel !== 'one-off') extras.push(o.recurrenceLabel);
+      if (o.overdue) extras.push(`overdue ${overdueDays(o.date)} days`);
+      return `Due ${o.date}: ${o.title}${extras.length ? ` (${extras.join('; ')})` : ''}.`;
+    }
+    return `Event ${o.date}: ${o.title}.`;
+  });
+  const weekEnd = addInterval(today, 7, 'day');
+  const weekAhead: WeekAheadCalendar = {
+    start: today,
+    end: weekEnd,
+    items: pending
+      .filter((o) => o.date <= weekEnd || o.overdue)
+      .slice(0, 20)
+      .map((o) => ({
+        date: o.date,
+        title: o.title,
+        kind: o.kind,
+        ...(o.overdue ? { overdue: true } : {}),
+        ...(o.age !== undefined ? { age: o.age } : {}),
+      })),
+  };
+  return { items, weekAhead };
+}
+
+/** The Calendar desk: pending occurrences over the edition horizon (7d daily,
+ *  30d weekly) plus overdue tasks, and the exact-date Week Ahead box. */
+async function gatherCalendar(
+  editionType: EditionType,
+  warn?: WarningSink
+): Promise<{ items: string[]; weekAhead: WeekAheadCalendar | null }> {
+  try {
+    const horizonDays = editionType === 'weekly' ? 30 : 7;
+    const today = await calendarToday();
+    const store = await loadCalendarStore();
+    const occurrences = projectOccurrences(
+      store.events,
+      { start: today, end: addInterval(today, horizonDays, 'day') },
+      today
+    );
+    return buildCalendarDigest(occurrences, today);
+  } catch (err) {
+    emitDigestWarning(warn, 'calendar', err);
+    return { items: [], weekAhead: null };
+  }
+}
+
 async function gatherWeather(warn?: WarningSink): Promise<WeatherForecast | null> {
   try {
     const cfg = await getWeatherConfig();
@@ -1382,17 +1451,17 @@ export async function gatherDigest(
   };
   const t0 = Date.now();
 
-  const [markets, politics, finance, health, docsResult, researchDeep, weather] = await Promise.all(
-    [
+  const [markets, politics, finance, health, docsResult, researchDeep, calendar, weather] =
+    await Promise.all([
       gatherMarkets(editionType, sinceISO, warn),
       gatherPolitics(afterSince, warn),
       gatherFinance(afterSince, includeBodies, includeState, warn, editionDate),
       gatherHealth(afterSince, includeBodies, includeState, editionType, warn, editionDate),
-      gatherDocs(afterSince, editionType, since, warn),
+      gatherDocs(afterSince, since, warn),
       gatherResearchDeep(afterSince, warn),
+      gatherCalendar(editionType, warn),
       gatherWeather(warn),
-    ]
-  );
+    ]);
   const docs = docsResult.items;
 
   const desks: Array<[string, string[]]> = [
@@ -1402,6 +1471,7 @@ export async function gatherDigest(
     ['Personal Finance & Business', finance],
     ['Health', health],
     ['Research & Analysis', researchDeep.research],
+    ['Calendar', calendar.items],
     ['Documents & Deadlines', docs],
   ];
   const sections = desks
@@ -1414,7 +1484,7 @@ export async function gatherDigest(
     `[digest] type=${editionType} since=${sinceISO} ` +
       `markets=${markets.length} politics=${politics.length} local=${researchDeep.local.length} ` +
       `finance=${finance.length} health=${health.length} research=${researchDeep.research.length} ` +
-      `docs=${docs.length} ` +
+      `docs=${docs.length} calendar=${calendar.items.length} ` +
       `weather=${weather ? `${weather.days.length}d` : 'off'} ` +
       `(sections=${sections.length} items=${itemCount}) in ${Date.now() - t0}ms`
   );
@@ -1428,6 +1498,7 @@ export async function gatherDigest(
     citations: researchDeep.citations,
     sourceWarnings,
     weather: weather ?? undefined,
+    weekAhead: calendar.weekAhead ?? undefined,
   };
 }
 
@@ -1448,12 +1519,13 @@ function buildSystem(
     'In the "Personal Finance & Business" section, treat tax and retirement items as the financially actionable content they are: when an estimated-tax installment due date, safe-harbor progress, retirement-contribution progress, a filed return, or a new income source/asset appears in the digest, report it concretely with the numbers and dates — an upcoming estimated-tax deadline in particular is worth a clear heads-up.',
     'In the "Markets & Macro" section, give proportional coverage to EVERY asset class the owner actually holds — crypto, equities, precious metals, and real estate — using the per-asset-class moves and metals/equity signals in the digest. Crypto is often the most volatile sleeve, but do not let it crowd out the others: when metals or real-estate equity moved (or held flat while crypto fell), say so explicitly, since that is the diversification story. Lead the section with whatever moved most, not crypto by default.',
     'Immediately before the "## Action Items" list, include a "## Forecast & Opportunities" section — the edition\'s one FORWARD-looking desk. Synthesize across ALL desks (markets, politics, tech, health, local, research, finance) the most important things LIKELY to happen in the next day-to-week and what the owner could do about them. For EACH opportunity give, in tight prose: (1) the forward call and rough timeframe — what is likely, and by when; (2) a concrete option the owner could take; (3) sizing proportional to the owner\'s actual situation (a starter position, a dollar amount, or "watch only"); (4) the bull case AND the key risk / bear case in the same breath; (5) a confidence read — low, medium, or high. Prefer a few high-quality calls over a long list. This is the one place you may reason FORWARD beyond the literal digest, but every forecast must be built on a fact, date, signal, holding, or prediction-market probability that appears in the digest — never invent an event, price, or number. When an opportunity could be expressed through a risky instrument (e.g. far-out-of-the-money or short-dated options), name the risk plainly and prefer the lower-risk expression (shares, a longer horizon, or a smaller size) — surface the option, do not cheerlead it. If nothing forward-looking is well-supported, write one honest line saying so rather than padding. Frame everything as reasoned possibilities from the owner\'s own data and the odds, never as guaranteed advice.',
-    'END the edition with a "## Action Items" section: a short, prioritized list of the SPECIFIC financial moves the data suggests the owner consider right now — and for EACH one, state the WHY in the same sentence, citing the concrete data point that motivates it. Draw across ALL desks, e.g.: an estimated-tax installment due within the window (pay $X by DATE — safe-harbor shortfall is $Y); idle cash to deploy or a deductible-contribution headroom; an allocation that has drifted (one sleeve now N% of net worth) worth trimming/rebalancing; a high-rate debt to prioritize vs. a 0% one to leave; a funding-stress or yield-curve signal that argues for caution or duration; a deadline/renewal from reminders. Rank by urgency and dollar impact. Ground every item in a number or date that appears in the digest — if the data does not support a concrete action, write a brief honest "No pressing money moves" line rather than inventing one. Frame as reasoned considerations from the owner\'s own data, never as guaranteed advice.',
+    'END the edition with a "## Action Items" section: a short, prioritized list of the SPECIFIC financial moves the data suggests the owner consider right now — and for EACH one, state the WHY in the same sentence, citing the concrete data point that motivates it. Draw across ALL desks, e.g.: an estimated-tax installment due within the window (pay $X by DATE — safe-harbor shortfall is $Y); idle cash to deploy or a deductible-contribution headroom; an allocation that has drifted (one sleeve now N% of net worth) worth trimming/rebalancing; a high-rate debt to prioritize vs. a 0% one to leave; a funding-stress or yield-curve signal that argues for caution or duration; a due or overdue calendar task or deadline. Rank by urgency and dollar impact. Ground every item in a number or date that appears in the digest — if the data does not support a concrete action, write a brief honest "No pressing money moves" line rather than inventing one. Frame as reasoned considerations from the owner\'s own data, never as guaranteed advice.',
     'When the "Research & Analysis" desk is present it carries the FULL text of newly-filed research (ZeroHedge, Lyn Alden, George Gammon, political transcripts, etc.) — actually read it and synthesize the key arguments, attributing analysts by name, rather than merely noting that a piece was filed.',
     "In the Health section, give EVERY person who appears in the digest their OWN paragraph — never blend two people into one paragraph. Start each person's paragraph with their name in bold (e.g. `**<name>** — ...`) and separate paragraphs with a blank line, so each reads as a distinct mini-report citing that person's actual numbers. Do NOT let one person's story (e.g. an active illness) crowd the others out of the section; a sick household member leads the section but still gets only their own paragraph, not the whole desk. Be a supportive coach as well as a reporter: when someone's numbers are good (steps, workouts, resting heart rate, weight trend), say so plainly — one warm, specific affirmation per person is welcome. When sleep falls short (under ~7 hours total, or under ~1 hour of deep sleep), call it out directly with a gentle, actionable nudge (e.g. an earlier wind-down tonight) rather than burying it in neutral prose. Encouraging and concrete, never clinical or scolding.",
     editionType === 'weekly'
       ? 'This is the WEEKLY DEEP-DIVE, covering the whole week: be substantial and thorough. Draw connections across desks, surface the week\'s through-lines, weave in the "state of things" the digest provides (balance sheet, holdings, health baselines), then a "## The Week in Review" synthesis, then the "## Forecast & Opportunities" section (described below) as the week-ahead outlook, and finally close with the "## Action Items" list (described below) as the very last section. Let the length match the depth of the material — a rich week warrants a long edition.'
       : "This is the DAILY edition, covering only what arrived since the last edition — the day's developments. Be substantive about that day: read and synthesize the full research filed today and report the concrete new items with their numbers and names. Keep the scope to the day — do not recap the whole week or restate standing balances (the weekly deep-dive does the week-in-review).",
+    'When the "Calendar" desk is present it carries the household\'s upcoming birthdays, recurring tasks, and deadlines with exact dates. Do NOT write a standalone schedule section (a "Week Ahead" box is rendered separately with the exact dates) — instead fold due/overdue tasks into Action Items, and give any birthday in the window a brief warm mention in the lede or a relevant desk, using only the ages ("turns N") given in the digest.',
     'Use ONLY facts present in the digest — do not invent data, prices, or events, and do not speculate beyond what is given (the "## Forecast & Opportunities" section is the sole exception, and even there you may reason forward only from facts, signals, dates, and odds that appear in the digest). If the digest is sparse, write a short edition; never pad.',
     'Output clean markdown only — no preamble like "Here is the edition".',
     'Do NOT write your own masthead, publication name, dateline, or "Edition" header — the page already renders the title and date. Start directly with the front-page lede.',
@@ -1491,6 +1563,14 @@ function renderDigestPrompt(digest: Digest, title: string, dateLabel: string): s
         `one brief line of the lede if it's relevant):`
     );
     for (const line of forecastToLines(digest.weather)) lines.push(`- ${line}`);
+    lines.push('');
+  }
+  if (digest.weekAhead && digest.weekAhead.items.length > 0) {
+    lines.push(
+      'Calendar note — a "Week Ahead" box with these exact dates is rendered separately, ' +
+        'so do NOT write a dedicated calendar/schedule section; fold due dates into Action ' +
+        'Items and mention birthdays warmly where relevant.'
+    );
     lines.push('');
   }
   return lines.join('\n');
@@ -1574,6 +1654,7 @@ export async function synthesizeEdition(
       sourceWarnings: digest.sourceWarnings,
     },
     weather: digest.weather,
+    weekAhead: digest.weekAhead,
   };
 }
 
