@@ -81,7 +81,7 @@ const STATUS_COLORS = {
 };
 
 export function EstimatedTaxView() {
-  const { selectedYear, reminders, updateReminder } = useAppContext();
+  const { selectedYear } = useAppContext();
   const { addToast } = useToast();
 
   const [payments, setPayments] = useState<EstimatedTaxPayment[]>([]);
@@ -165,20 +165,34 @@ export function EstimatedTaxView() {
     setTargetInput(String(val));
     setConfig((prev) => ({ ...prev, annualTarget: val }));
 
-    // Sync reminder notes for estimated tax reminders (always personal)
+    // Sync notes on estimated-tax calendar events (always personal).
+    // Reminders live in the calendar store now, so update the events directly.
     if (val > 0) {
       const quarterly = val / 4;
       const newNotes = `${formatCurrency(quarterly)} due · 110% safe harbor (personal/${selectedYear})`;
-      reminders
-        .filter(
-          (r) =>
-            r.entityId === 'personal' &&
-            r.title.includes('Estimated Tax Payment') &&
-            r.notes?.includes(`(personal/${selectedYear})`)
-        )
-        .forEach((r) => {
-          void updateReminder(r.id, { notes: newNotes });
-        });
+      void (async () => {
+        try {
+          const res = await fetch('/api/calendar/events');
+          const data = (await res.json()) as {
+            events?: { id: string; entityId?: string; title: string; notes?: string }[];
+          };
+          const targets = (data.events ?? []).filter(
+            (e) =>
+              e.entityId === 'personal' &&
+              e.title.includes('Estimated Tax Payment') &&
+              e.notes?.includes(`(personal/${selectedYear})`)
+          );
+          for (const e of targets) {
+            await fetch(`/api/calendar/events/${encodeURIComponent(e.id)}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ notes: newNotes }),
+            });
+          }
+        } catch {
+          // Best-effort sync — the target amount itself already saved.
+        }
+      })();
     }
   }
 

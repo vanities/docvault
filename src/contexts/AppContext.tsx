@@ -11,7 +11,7 @@ import {
 } from 'react';
 import { useFileSystemServer, type EntityConfig } from '../hooks/useFileSystemServer';
 import { requestJson } from '../api/client';
-import type { Entity, TaxDocument, DocumentType, ExpenseCategory, Reminder, Todo } from '../types';
+import type { Entity, TaxDocument, DocumentType, ExpenseCategory, Todo } from '../types';
 import { uuidV4 } from '../utils/uuid';
 import {
   EMPTY_CHAT_STATS,
@@ -298,13 +298,7 @@ interface AppContextValue {
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
 
-  // Reminders
-  reminders: Reminder[];
-  addReminder: (
-    reminder: Omit<Reminder, 'id' | 'createdAt' | 'updatedAt' | 'status'>
-  ) => Promise<Reminder | null>;
-  updateReminder: (id: string, updates: Partial<Reminder>) => Promise<Reminder | null>;
-  deleteReminder: (id: string) => Promise<boolean>;
+  // Reminders live in the calendar store now — see Calendar/useCalendarApi.
 
   // Todos
   todos: Todo[];
@@ -732,10 +726,6 @@ export function AppProvider({ children }: AppProviderProps) {
     moveFile,
     relocateFile,
     renameFile,
-    reminders,
-    addReminder,
-    updateReminder,
-    deleteReminder,
     todos,
     addTodo,
     updateTodo,
@@ -877,12 +867,6 @@ export function AppProvider({ children }: AppProviderProps) {
     // Mobile sidebar
     sidebarOpen,
     setSidebarOpen,
-
-    // Reminders
-    reminders,
-    addReminder,
-    updateReminder,
-    deleteReminder,
 
     // Todos
     todos,

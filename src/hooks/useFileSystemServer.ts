@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { TaxDocument, DocumentType, Entity, ExpenseCategory, Reminder, Todo } from '../types';
+import type { TaxDocument, DocumentType, Entity, ExpenseCategory, Todo } from '../types';
 import { API_BASE } from '../constants';
 import { requestJson } from '../api/client';
 import { mapFileToDocument } from '../utils/mapFileToDocument';
@@ -648,91 +648,8 @@ export function useFileSystemServer() {
     [isConnected]
   );
 
-  // Reminder operations
-  const [reminders, setReminders] = useState<Reminder[]>([]);
-
-  // Fetch reminders on connect
-  useEffect(() => {
-    if (!isConnected) return;
-    requestJson<{ reminders?: Reminder[] }>(`${API_BASE}/reminders`)
-      .then((data) => setReminders(data.reminders || []))
-      .catch(() => {});
-  }, [isConnected]);
-
-  const addReminder = useCallback(
-    async (
-      reminder: Omit<Reminder, 'id' | 'createdAt' | 'updatedAt' | 'status'>
-    ): Promise<Reminder | null> => {
-      if (!isConnected) return null;
-      try {
-        const data = await requestJson<{ ok?: boolean; reminder?: Reminder }>(
-          `${API_BASE}/reminders`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(reminder),
-          }
-        );
-        const reminderResult = data.reminder;
-        if (data.ok && reminderResult) {
-          setReminders((prev) => [...prev, reminderResult]);
-          return reminderResult;
-        }
-        return null;
-      } catch {
-        return null;
-      }
-    },
-    [isConnected]
-  );
-
-  const updateReminder = useCallback(
-    async (id: string, updates: Partial<Reminder>): Promise<Reminder | null> => {
-      if (!isConnected) return null;
-      try {
-        const data = await requestJson<{ ok?: boolean; reminder?: Reminder }>(
-          `${API_BASE}/reminders/${id}`,
-          {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(updates),
-          }
-        );
-        const reminderResult = data.reminder;
-        if (data.ok && reminderResult) {
-          // Refetch all reminders to pick up any new recurring ones
-          const refetchData = await requestJson<{ reminders?: Reminder[] }>(
-            `${API_BASE}/reminders`
-          );
-          setReminders(refetchData.reminders || []);
-          return reminderResult;
-        }
-        return null;
-      } catch {
-        return null;
-      }
-    },
-    [isConnected]
-  );
-
-  const deleteReminder = useCallback(
-    async (id: string): Promise<boolean> => {
-      if (!isConnected) return false;
-      try {
-        const data = await requestJson<{ ok?: boolean }>(`${API_BASE}/reminders/${id}`, {
-          method: 'DELETE',
-        });
-        if (data.ok) {
-          setReminders((prev) => prev.filter((r) => r.id !== id));
-          return true;
-        }
-        return false;
-      } catch {
-        return false;
-      }
-    },
-    [isConnected]
-  );
+  // Reminders moved to the calendar store — components consume
+  // src/components/Calendar/useCalendarApi directly (see ReminderBanner).
 
   // Todo operations
   const [todos, setTodos] = useState<Todo[]>([]);
@@ -934,7 +851,6 @@ export function useFileSystemServer() {
     entities,
     authRequired,
     authenticated,
-    reminders,
     checkConnection,
     getYearsForEntity,
     scanTaxYear,
@@ -952,9 +868,6 @@ export function useFileSystemServer() {
     moveFile,
     relocateFile,
     renameFile,
-    addReminder,
-    updateReminder,
-    deleteReminder,
     todos,
     addTodo,
     updateTodo,

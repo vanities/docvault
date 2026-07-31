@@ -1,7 +1,13 @@
+// Upcoming-deadlines banner shown in TaxYearView and BusinessDocsView.
+// Reads projected calendar occurrences (the reminders system now lives in
+// the calendar store) filtered to the selected entity and the next 60 days,
+// plus anything overdue. Complete = calendar completion; Dismiss = a
+// completion with skipped:true (recurrence still advances). The inline add
+// form creates a calendar task tagged with the selected entity.
+
 import { useState } from 'react';
 import { Bell, Check, X, Plus, CalendarClock, Repeat } from 'lucide-react';
 import { useAppContext } from '../../contexts/AppContext';
-import type { Reminder } from '../../types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -11,18 +17,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-
-function daysUntil(dateStr: string): number {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const due = new Date(dateStr + 'T00:00:00');
-  return Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-}
+import { daysUntil, parseISODate, todayISO, toISODate } from '../Calendar/calendarMath';
+import { useCalendarApi, useOccurrences } from '../Calendar/useCalendarApi';
+import type { CalendarRecurrence, Occurrence } from '../Calendar/types';
 
 function formatDueDate(dateStr: string): string {
   const days = daysUntil(dateStr);
-  const date = new Date(dateStr + 'T00:00:00');
-  const formatted = date.toLocaleDateString('en-US', {
+  const formatted = parseISODate(dateStr).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -35,17 +36,7 @@ function formatDueDate(dateStr: string): string {
   return formatted;
 }
 
-function urgencyColor(
-  dateStr: string,
-  status: string
-): { bg: string; text: string; border: string; dot: string } {
-  if (status === 'completed')
-    return {
-      bg: 'bg-emerald-500/8',
-      text: 'text-emerald-400',
-      border: 'border-emerald-500/20',
-      dot: 'bg-emerald-400',
-    };
+function urgencyColor(dateStr: string): { bg: string; text: string; border: string; dot: string } {
   const days = daysUntil(dateStr);
   if (days < 0)
     return {
@@ -76,31 +67,77 @@ function urgencyColor(
   };
 }
 
+const LEGACY_RECURRENCE: Record<string, CalendarRecurrence> = {
+  monthly: { interval: 1, unit: 'month', anchor: 'fixed' },
+  quarterly: { interval: 3, unit: 'month', anchor: 'fixed' },
+  yearly: { interval: 1, unit: 'year', anchor: 'fixed' },
+};
+
+/** Auto-record an estimated tax payment when completing an estimated-tax
+ * occurrence: derive quarter + tax year from the due date and append a
+ * quarterly payment to /api/estimated-taxes/personal/:year. */
+async function recordEstimatedTaxPayment(occ: Occurrence): Promise<void> {
+  try {
+    const dueDate = parseISODate(occ.date);
+    const month = dueDate.getMonth() + 1; // 1-indexed
+    let quarter: 1 | 2 | 3 | 4;
+    let taxYear: number;
+    if (month === 1) {
+      // Jan 15 = Q4 of prior year
+      quarter = 4;
+      taxYear = dueDate.getFullYear() - 1;
+    } else if (month <= 4) {
+      quarter = 1;
+      taxYear = dueDate.getFullYear();
+    } else if (month <= 6) {
+      quarter = 2;
+      taxYear = dueDate.getFullYear();
+    } else {
+      quarter = 3;
+      taxYear = dueDate.getFullYear();
+    }
+
+    const res = await fetch(`/api/estimated-taxes/personal/${taxYear}`);
+    const data = await res.json();
+    const payments = data.payments || [];
+    const config = data.config || { annualTarget: 0 };
+
+    if (config.annualTarget > 0) {
+      payments.push({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        date: todayISO(),
+        quarter,
+        amount: config.annualTarget / 4,
+      });
+      await fetch(`/api/estimated-taxes/personal/${taxYear}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payments, config }),
+      });
+    }
+  } catch {
+    // Silently fail — the occurrence is already completed
+  }
+}
+
 function ReminderRow({
-  reminder,
+  occ,
   entityName,
   onComplete,
   onDismiss,
 }: {
-  reminder: Reminder;
+  occ: Occurrence;
   entityName: string;
   onComplete: () => Promise<void>;
   onDismiss: () => Promise<void>;
 }) {
   const [isBusy, setIsBusy] = useState(false);
-  const colors = urgencyColor(reminder.dueDate, reminder.status);
+  const colors = urgencyColor(occ.date);
 
-  const handleComplete = async () => {
+  const run = async (fn: () => Promise<void>) => {
     if (isBusy) return;
     setIsBusy(true);
-    await onComplete();
-    setIsBusy(false);
-  };
-
-  const handleDismiss = async () => {
-    if (isBusy) return;
-    setIsBusy(true);
-    await onDismiss();
+    await fn();
     setIsBusy(false);
   };
 
@@ -111,11 +148,9 @@ function ReminderRow({
       <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${colors.dot}`} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 sm:gap-2">
-          <span className={`text-[13px] font-medium truncate ${colors.text}`}>
-            {reminder.title}
-          </span>
-          {reminder.recurrence && (
-            <span title={`Repeats ${reminder.recurrence}`}>
+          <span className={`text-[13px] font-medium truncate ${colors.text}`}>{occ.title}</span>
+          {occ.recurrenceLabel !== 'one-off' && (
+            <span title={`Repeats ${occ.recurrenceLabel}`}>
               <Repeat className="w-3 h-3 text-surface-600 flex-shrink-0" />
             </span>
           )}
@@ -124,13 +159,13 @@ function ReminderRow({
           <span className="text-[11px] text-surface-600">{entityName}</span>
           <span className="text-[11px] text-surface-500">·</span>
           <span className={`text-[11px] whitespace-nowrap ${colors.text}`}>
-            {formatDueDate(reminder.dueDate)}
+            {formatDueDate(occ.date)}
           </span>
-          {reminder.notes && (
+          {occ.notes && (
             <>
               <span className="text-[11px] text-surface-500 hidden sm:inline">·</span>
               <span className="text-[11px] text-surface-600 truncate max-w-[200px] sm:max-w-none">
-                {reminder.notes}
+                {occ.notes}
               </span>
             </>
           )}
@@ -140,7 +175,7 @@ function ReminderRow({
         <Button
           variant="ghost"
           size="icon-xs"
-          onClick={handleComplete}
+          onClick={() => void run(onComplete)}
           disabled={isBusy}
           className="hover:bg-emerald-500/15 text-surface-600 hover:text-emerald-400"
           title="Mark complete"
@@ -150,7 +185,7 @@ function ReminderRow({
         <Button
           variant="ghost"
           size="icon-xs"
-          onClick={handleDismiss}
+          onClick={() => void run(onDismiss)}
           disabled={isBusy}
           className="hover:bg-red-500/10 text-surface-600 hover:text-red-400"
           title="Dismiss"
@@ -162,97 +197,76 @@ function ReminderRow({
   );
 }
 
+function bannerWindow(): { start: string; end: string } {
+  const now = new Date();
+  return {
+    start: toISODate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 60)),
+    end: toISODate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 60)),
+  };
+}
+
 export function ReminderBanner() {
-  const { reminders, entities, selectedEntity, updateReminder, addReminder } = useAppContext();
+  const { entities, selectedEntity } = useAppContext();
+  const [{ start, end }] = useState(bannerWindow);
+  const { occurrences, refetch } = useOccurrences(start, end);
+  const api = useCalendarApi();
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDate, setNewDate] = useState('');
   const [newRecurrence, setNewRecurrence] = useState<string>('');
   const [newNotes, setNewNotes] = useState('');
 
-  // Filter to active reminders: pending, matching entity, and due within 60 days (or overdue)
-  const activeReminders = reminders
-    .filter((r) => r.status === 'pending')
-    .filter((r) => selectedEntity === 'all' || r.entityId === selectedEntity)
-    .filter((r) => daysUntil(r.dueDate) <= 60)
-    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  // Pending task occurrences, matching entity, due within 60 days or overdue.
+  const activeOccurrences = occurrences
+    .filter((o) => o.completable && !o.completed)
+    .filter((o) => selectedEntity === 'all' || o.entityId === selectedEntity)
+    .filter((o) => daysUntil(o.date) <= 60)
+    .sort((a, b) => a.date.localeCompare(b.date));
 
-  const handleComplete = async (id: string) => {
-    const reminder = reminders.find((r) => r.id === id);
-    await updateReminder(id, { status: 'completed' });
-
-    // Auto-record estimated tax payment when completing an estimated tax reminder
-    if (reminder?.title.includes('Estimated Tax Payment')) {
-      try {
-        // Determine the tax year & quarter from the reminder's due date
-        const dueDate = new Date(reminder.dueDate + 'T00:00:00');
-        const month = dueDate.getMonth() + 1; // 1-indexed
-        let quarter: 1 | 2 | 3 | 4;
-        let taxYear: number;
-        if (month === 1) {
-          // Jan 15 = Q4 of prior year
-          quarter = 4;
-          taxYear = dueDate.getFullYear() - 1;
-        } else if (month <= 4) {
-          quarter = 1;
-          taxYear = dueDate.getFullYear();
-        } else if (month <= 6) {
-          quarter = 2;
-          taxYear = dueDate.getFullYear();
-        } else {
-          quarter = 3;
-          taxYear = dueDate.getFullYear();
-        }
-
-        // Fetch current estimated tax data for personal entity
-        const res = await fetch(`/api/estimated-taxes/personal/${taxYear}`);
-        const data = await res.json();
-        const payments = data.payments || [];
-        const config = data.config || { annualTarget: 0 };
-
-        if (config.annualTarget > 0) {
-          const quarterlyAmount = config.annualTarget / 4;
-          const today = new Date().toISOString().split('T')[0];
-          payments.push({
-            id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-            date: today,
-            quarter,
-            amount: quarterlyAmount,
-          });
-
-          await fetch(`/api/estimated-taxes/personal/${taxYear}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ payments, config }),
-          });
-        }
-      } catch {
-        // Silently fail — the reminder is already completed
+  const handleComplete = async (occ: Occurrence) => {
+    try {
+      await api.completeOccurrence(occ.eventId, occ.date);
+      if (occ.title.includes('Estimated Tax Payment')) {
+        await recordEstimatedTaxPayment(occ);
       }
+    } catch {
+      // Refetch below re-syncs the banner either way.
     }
+    await refetch();
   };
 
-  const handleDismiss = async (id: string) => {
-    await updateReminder(id, { status: 'dismissed' });
+  const handleDismiss = async (occ: Occurrence) => {
+    try {
+      await api.completeOccurrence(occ.eventId, occ.date, { skipped: true });
+    } catch {
+      // Refetch below re-syncs the banner either way.
+    }
+    await refetch();
   };
 
   const handleAdd = async () => {
     if (!newTitle || !newDate || selectedEntity === 'all') return;
-    await addReminder({
-      entityId: selectedEntity,
-      title: newTitle,
-      dueDate: newDate,
-      recurrence: (newRecurrence as Reminder['recurrence']) || null,
-      notes: newNotes || undefined,
-    });
+    try {
+      await api.createEvent({
+        kind: 'task',
+        title: newTitle,
+        date: newDate,
+        recurrence: newRecurrence ? LEGACY_RECURRENCE[newRecurrence] : null,
+        entityId: selectedEntity,
+        notes: newNotes || null,
+      });
+    } catch {
+      return; // keep the form open so the input isn't lost
+    }
     setNewTitle('');
     setNewDate('');
     setNewRecurrence('');
     setNewNotes('');
     setShowAddForm(false);
+    await refetch();
   };
 
-  if (activeReminders.length === 0 && !showAddForm) {
+  if (activeOccurrences.length === 0 && !showAddForm) {
     // Show a subtle add button
     if (selectedEntity !== 'all') {
       return (
@@ -267,7 +281,8 @@ export function ReminderBanner() {
     return null;
   }
 
-  const getEntityName = (entityId: string) => {
+  const getEntityName = (entityId: string | undefined) => {
+    if (!entityId) return 'Global';
     return entities.find((e) => e.id === entityId)?.name || entityId;
   };
 
@@ -279,9 +294,9 @@ export function ReminderBanner() {
           <h3 className="text-[12px] font-semibold text-surface-600 uppercase tracking-wider">
             Upcoming Deadlines
           </h3>
-          {activeReminders.length > 0 && (
+          {activeOccurrences.length > 0 && (
             <span className="text-[11px] bg-accent-500/15 text-accent-400 px-1.5 py-0.5 rounded-full font-medium">
-              {activeReminders.length}
+              {activeOccurrences.length}
             </span>
           )}
         </div>
@@ -294,13 +309,13 @@ export function ReminderBanner() {
       </div>
 
       <div className="space-y-1.5">
-        {activeReminders.map((r) => (
+        {activeOccurrences.map((occ) => (
           <ReminderRow
-            key={r.id}
-            reminder={r}
-            entityName={getEntityName(r.entityId)}
-            onComplete={() => handleComplete(r.id)}
-            onDismiss={() => handleDismiss(r.id)}
+            key={`${occ.eventId}:${occ.date}`}
+            occ={occ}
+            entityName={getEntityName(occ.entityId)}
+            onComplete={() => handleComplete(occ)}
+            onDismiss={() => handleDismiss(occ)}
           />
         ))}
       </div>
@@ -348,7 +363,7 @@ export function ReminderBanner() {
             <Button variant="ghost" size="xs" onClick={() => setShowAddForm(false)}>
               Cancel
             </Button>
-            <Button size="xs" onClick={handleAdd} disabled={!newTitle || !newDate}>
+            <Button size="xs" onClick={() => void handleAdd()} disabled={!newTitle || !newDate}>
               Add Reminder
             </Button>
           </div>
