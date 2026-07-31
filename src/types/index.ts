@@ -314,18 +314,7 @@ export interface BankDepositSummary {
   byAccount: { institution: string; accountType: string; total: number }[];
 }
 
-// Reminders
-export interface Reminder {
-  id: string;
-  entityId: Entity;
-  title: string;
-  dueDate: string; // YYYY-MM-DD
-  recurrence?: 'yearly' | 'monthly' | 'quarterly' | null;
-  status: 'pending' | 'completed' | 'dismissed';
-  notes?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+// Reminders became calendar events — see src/components/Calendar/types.ts.
 
 // Todos
 export interface Todo {
