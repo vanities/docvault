@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Plus,
   Calendar,
+  CalendarDays,
   FolderOpen,
   Settings,
   Files,
@@ -502,7 +503,8 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
       activeView === 'sales' ||
       activeView === 'mileage' ||
       activeView === 'income' ||
-      activeView === 'chat'
+      activeView === 'chat' ||
+      activeView === 'calendar' // global view — never bounce off it on entity switch
     ) {
       onClose?.();
       return;
@@ -893,6 +895,25 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               onClick={handleViewClick}
             />
             {activeView === 'chat' && <ChatThreadList />}
+          </div>
+        </div>
+
+        {/* Planning — always visible, independent of selected entity */}
+        <div className="mb-4">
+          <h3 className="text-[10px] font-semibold text-surface-600 uppercase tracking-[0.15em] mb-2 px-2">
+            Planning
+          </h3>
+          <div className="space-y-0.5">
+            <NavButton
+              view="calendar"
+              label="Calendar"
+              icon={CalendarDays}
+              activeColor="bg-orange-500/10"
+              activeTextColor="text-orange-400"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
           </div>
         </div>
 
