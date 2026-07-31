@@ -1,17 +1,24 @@
 // Upcoming agenda — the right rail on desktop, stacked under the grid on
 // mobile. A selected day pins its full occurrence list at the top (that's
 // where "+N more" and mobile day-taps land); below it, pending occurrences
-// bucket into Overdue / Today / This Week / Later over a 60-day horizon.
+// bucket into Overdue / Today / This Week, then a month-grouped "Coming
+// Months" outlook covers the rest of the ~6-month fetched horizon.
 
 import { X } from 'lucide-react';
-import { agendaBuckets, parseISODate, relativeLabel } from './calendarMath';
+import {
+  addDays,
+  agendaBuckets,
+  comingMonthGroups,
+  parseISODate,
+  relativeLabel,
+} from './calendarMath';
 import { EventChip } from './EventChip';
 import { occurrenceLabel, occurrenceStyle } from './occurrenceStyle';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import type { Occurrence } from './types';
 
 interface AgendaRailProps {
-  occurrences: Occurrence[]; // agenda horizon slice (today-60d .. today+60d)
+  occurrences: Occurrence[]; // agenda horizon slice (today-60d .. today+180d)
   selectedDate: string | null;
   selectedDayOccurrences: Occurrence[];
   today: string;
@@ -22,13 +29,12 @@ interface AgendaRailProps {
   onAddOnDay: (date: string) => void;
 }
 
-const BUCKET_META: { key: 'overdue' | 'today' | 'week' | 'later'; label: string; tone: string }[] =
-  [
-    { key: 'overdue', label: 'Overdue', tone: 'text-red-400' },
-    { key: 'today', label: 'Today', tone: 'text-accent-400' },
-    { key: 'week', label: 'This Week', tone: 'text-amber-400' },
-    { key: 'later', label: 'Later', tone: 'text-surface-700' },
-  ];
+// Near-term buckets; everything past "This Week" renders as month groups.
+const BUCKET_META: { key: 'overdue' | 'today' | 'week'; label: string; tone: string }[] = [
+  { key: 'overdue', label: 'Overdue', tone: 'text-red-400' },
+  { key: 'today', label: 'Today', tone: 'text-accent-400' },
+  { key: 'week', label: 'This Week', tone: 'text-amber-400' },
+];
 
 export function AgendaRail({
   occurrences,
@@ -43,6 +49,8 @@ export function AgendaRail({
 }: AgendaRailProps) {
   const buckets = agendaBuckets(occurrences, today);
   const total = buckets.overdue.length + buckets.today.length + buckets.week.length;
+  // Beyond this week: month-grouped outlook over the fetched horizon.
+  const monthGroups = comingMonthGroups(occurrences, addDays(today, 7), today);
 
   return (
     <div className="space-y-4">
@@ -120,12 +128,39 @@ export function AgendaRail({
             </div>
           );
         })}
-        {total === 0 && buckets.later.length === 0 && (
+        {total === 0 && monthGroups.length === 0 && (
           <p className="text-[12px] text-surface-600">
             Nothing upcoming. Add birthdays and recurring tasks with “New event”.
           </p>
         )}
       </section>
+
+      {monthGroups.length > 0 && (
+        <section className="rounded-xl border border-border bg-surface-100/20 p-3">
+          <h3 className="text-[11px] uppercase tracking-wider text-surface-600 mb-2">
+            Coming Months
+          </h3>
+          {monthGroups.map((group) => (
+            <div key={group.key} className="mb-3 last:mb-0">
+              <div className="text-[10px] uppercase tracking-wider mb-1 text-surface-700">
+                {group.label}
+              </div>
+              <ul className="space-y-1">
+                {group.items.map((occ) => (
+                  <AgendaRow
+                    key={`${occ.eventId}:${occ.date}`}
+                    occ={occ}
+                    today={today}
+                    entities={entities}
+                    onToggleComplete={onToggleComplete}
+                    onOpen={onOpenOccurrence}
+                  />
+                ))}
+              </ul>
+            </div>
+          ))}
+        </section>
+      )}
     </div>
   );
 }

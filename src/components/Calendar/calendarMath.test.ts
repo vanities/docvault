@@ -4,6 +4,7 @@
 import { describe, expect, test } from 'vite-plus/test';
 import {
   addMonths,
+  comingMonthGroups,
   agendaBuckets,
   daysUntil,
   groupOccurrencesByDate,
@@ -144,5 +145,36 @@ describe('groupOccurrencesByDate / agendaBuckets', () => {
     );
     expect(buckets.week).toHaveLength(1);
     expect(buckets.later.map((o) => o.title)).toEqual(['Just past']);
+  });
+});
+
+describe('comingMonthGroups', () => {
+  const TODAY = '2026-07-31';
+  const AFTER = '2026-08-07'; // end of "This Week"
+
+  test('groups pending occurrences after the boundary by month, in order', () => {
+    const groups = comingMonthGroups(
+      [
+        occ({ title: 'This week — excluded', date: '2026-08-05' }),
+        occ({ title: 'Boundary day — excluded', date: '2026-08-07' }),
+        occ({ title: 'Mid August', date: '2026-08-15' }),
+        occ({ title: 'Late August', date: '2026-08-24' }),
+        occ({ title: 'Done — excluded', date: '2026-09-10', completed: true }),
+        occ({ title: 'September thing', date: '2026-09-15' }),
+        occ({ title: 'Next year', date: '2027-01-01' }),
+      ],
+      AFTER,
+      TODAY
+    );
+    expect(groups.map((g) => [g.key, g.label, g.items.length])).toEqual([
+      ['2026-08', 'August', 2],
+      ['2026-09', 'September', 1],
+      ['2027-01', 'January 2027', 1], // year shown when it differs from today's
+    ]);
+    expect(groups[0].items.map((o) => o.title)).toEqual(['Mid August', 'Late August']);
+  });
+
+  test('empty when nothing lies beyond the boundary', () => {
+    expect(comingMonthGroups([occ({ date: '2026-08-01' })], AFTER, TODAY)).toEqual([]);
   });
 });
