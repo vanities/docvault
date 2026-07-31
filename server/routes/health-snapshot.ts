@@ -15,7 +15,7 @@
 // Sources consolidated:
 //   - .docvault-health.json           — people + summaries + snapshots + clinical + illness notes
 //   - data/health/<personId>/dna/*    — encrypted DNA (decrypted on demand)
-//   - .docvault-reminders.json        — filtered to health-related entries by keyword
+//   - .docvault-calendar.json         — task occurrences filtered to health-related entries by keyword
 
 import { promises as fs } from 'fs';
 import path from 'path';
