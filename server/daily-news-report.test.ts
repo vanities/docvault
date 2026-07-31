@@ -182,3 +182,33 @@ describe('daily-news-report', () => {
     });
   });
 });
+
+describe('week-ahead calendar box', () => {
+  const weekAhead = {
+    start: '2026-07-31',
+    end: '2026-08-07',
+    items: [
+      { date: '2026-08-02', title: 'Alex <b>', kind: 'birthday' as const, age: 34 },
+      { date: '2026-07-27', title: 'Late chore', kind: 'task' as const, overdue: true },
+      { date: '2026-08-05', title: 'Farm open house', kind: 'event' as const },
+    ],
+  };
+
+  test('renders exact dates, birthday ages, and overdue flags in both variants', () => {
+    const withCal = { ...edition('Body'), weekAhead };
+    for (const html of [renderEditionHtml(withCal), renderEditionEmailHtml(withCal)]) {
+      expect(html).toContain('Week Ahead');
+      expect(html).toContain('🎂 Alex &lt;b&gt; turns 34'); // escaped + age
+      expect(html).toContain('Late chore');
+      expect(html.toLowerCase()).toContain('overdue');
+      expect(html).toContain('Farm open house');
+    }
+  });
+
+  test('omitted entirely when the edition has no calendar data', () => {
+    expect(renderEditionHtml(edition('Body'))).not.toContain('Week Ahead');
+    expect(renderEditionEmailHtml(edition('Body'))).not.toContain('Week Ahead');
+    const empty = { ...edition('Body'), weekAhead: { ...weekAhead, items: [] } };
+    expect(renderEditionHtml(empty)).not.toContain('Week Ahead');
+  });
+});

@@ -318,6 +318,14 @@ footer { margin-top:40px; border-top:1px solid var(--rule); padding-top:16px; co
 .wx-day .t { color:var(--fg); white-space:nowrap; }
 .wx-day .t .lo { color:var(--muted); }
 .wx-day .p { color:var(--accent); font-size:10px; }
+.calbox { margin:10px 0 2px; padding:8px 0 10px; border-bottom:1px solid var(--rule); }
+.calbox .cal-label { font:700 11px/1 system-ui,sans-serif; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--muted); display:block; margin-bottom:6px; }
+.cal-row { display:flex; align-items:baseline; gap:8px; font:13px/1.7 system-ui,sans-serif; }
+.cal-row .cd { font-weight:700; color:var(--muted); text-transform:uppercase; font-size:10px;
+  letter-spacing:.04em; flex:0 0 64px; white-space:nowrap; }
+.cal-row .ct { color:var(--fg); }
+.cal-row .ov { color:var(--accent); font-weight:700; font-size:10px; text-transform:uppercase; letter-spacing:.06em; }
 @media (max-width:640px) { .edition { columns:1; } }
 @media print { .edition { columns:2; } }
 `.trim();
@@ -367,6 +375,61 @@ function renderWeatherEmail(w: Edition['weather'], s: ReturnType<typeof themeSty
     `<tr><td style="font:700 11px/1 system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:${s.muted};padding:8px 6px;white-space:nowrap;vertical-align:middle;">${escapeHtml(
       w.label
     )} · °${w.units}</td>${cells}</tr></table>`
+  );
+}
+
+function weekAheadRowParts(item: NonNullable<Edition['weekAhead']>['items'][number]): {
+  day: string;
+  title: string;
+} {
+  const day = new Date(`${item.date}T12:00:00`).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'numeric',
+    day: 'numeric',
+  });
+  let title = item.title;
+  if (item.kind === 'birthday') {
+    title = `🎂 ${title}${item.age !== undefined ? ` turns ${item.age}` : ''}`;
+  }
+  return { day, title };
+}
+
+/** The "Week Ahead" calendar corner — exact server-computed dates (birthdays,
+ *  due tasks, events), rendered directly so the LLM never touches them.
+ *  Empty string when the edition carries no calendar data. */
+function renderWeekAheadBox(w: Edition['weekAhead']): string {
+  if (!w || !w.items.length) return '';
+  const rows = w.items
+    .map((item) => {
+      const { day, title } = weekAheadRowParts(item);
+      const overdue = item.overdue ? `<span class="ov">overdue</span>` : '';
+      return `<div class="cal-row"><span class="cd">${escapeHtml(day)}</span><span class="ct">${escapeHtml(title)}</span>${overdue}</div>`;
+    })
+    .join('');
+  return `<div class="calbox"><span class="cal-label">Week Ahead</span>${rows}</div>`;
+}
+
+/** Email-safe Week Ahead — a <table> with fully inline styles (email clients
+ *  strip <style> blocks + classes, mirroring renderWeatherEmail). */
+function renderWeekAheadEmail(w: Edition['weekAhead'], s: ReturnType<typeof themeStyle>): string {
+  if (!w || !w.items.length) return '';
+  const rows = w.items
+    .map((item) => {
+      const { day, title } = weekAheadRowParts(item);
+      const overdue = item.overdue
+        ? ` <span style="color:${s.accent};font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.06em;">overdue</span>`
+        : '';
+      return (
+        `<tr><td style="font:700 10px/1.9 system-ui,sans-serif;color:${s.muted};text-transform:uppercase;letter-spacing:.04em;padding:1px 10px 1px 0;white-space:nowrap;vertical-align:baseline;">${escapeHtml(day)}</td>` +
+        `<td style="font:13px/1.6 system-ui,sans-serif;color:${s.fg};padding:1px 0;">${escapeHtml(title)}${overdue}</td></tr>`
+      );
+    })
+    .join('');
+  return (
+    `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 18px;border-collapse:collapse;border-bottom:1px solid ${s.rule};padding-bottom:6px;">` +
+    `<tr><td colspan="2" style="font:700 11px/1 system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:${s.muted};padding:4px 0 6px;">Week Ahead</td></tr>` +
+    rows +
+    `</table>`
   );
 }
 
@@ -447,6 +510,7 @@ export function renderEditionHtml(edition: Edition, heroSrc?: string): string {
       : ''
   }<span class="badge">${editionBadge(edition)}</span></div>
   ${weatherHtml}
+  ${renderWeekAheadBox(edition.weekAhead)}
   ${indexHtml}
   <article class="edition">${body}</article>
   ${sourceNotes}
@@ -481,6 +545,7 @@ export function renderEditionEmailHtml(edition: Edition, heroSrc?: string): stri
       : ''
   } · ${editionBadge(edition)}</div>
   ${renderWeatherEmail(edition.weather, s)}
+  ${renderWeekAheadEmail(edition.weekAhead, s)}
   <div style="font-size:16px;line-height:1.6;">${body}</div>
   ${sourceNotes}
   <p style="margin-top:28px;padding-top:16px;border-top:1px solid ${s.rule};color:${s.muted};font:13px/1.6 system-ui,sans-serif;">
