@@ -132,6 +132,29 @@ export async function downloadPdf(path: string, body?: unknown): Promise<void> {
 // Formatters + date helpers
 // ---------------------------------------------------------------------------
 
+// Validated dark-mode categorical slots (dataviz reference palette, fixed
+// order — the ordering is the CVD-safety mechanism, don't shuffle). Assigned
+// to clients by stable store order; color follows the client everywhere.
+export const CLIENT_PALETTE = [
+  '#3987e5', // blue
+  '#d95926', // orange
+  '#199e70', // aqua
+  '#c98500', // yellow
+  '#d55181', // magenta
+  '#008300', // green
+  '#9085e9', // violet
+  '#e66767', // red
+];
+
+export const CHART_ACCENT = CLIENT_PALETTE[0];
+export const CHART_CONTEXT_GRAY = '#5b6070'; // de-emphasis series
+
+export function compactUsd(value: number): string {
+  if (Math.abs(value) >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(value) >= 1_000) return `$${(value / 1_000).toFixed(0)}K`;
+  return `$${Math.round(value)}`;
+}
+
 export function formatUsd(value: number): string {
   return value.toLocaleString('en-US', {
     style: 'currency',
