@@ -228,6 +228,8 @@ export async function handleTimesheetRoutes(
       name?: string;
       currency?: string;
       color?: string;
+      minimumInvoice?: number | null;
+      defaultTemplateId?: string;
       archived?: boolean;
     }>(req);
     const store = await loadTimesheetStore();
@@ -240,6 +242,22 @@ export async function handleTimesheetRoutes(
       if (!parsed.ok) return jsonResponse({ error: 'Invalid color (want #rrggbb)' }, 400);
       if (parsed.color) client.color = parsed.color;
       else delete client.color;
+    }
+    if (body.minimumInvoice !== undefined) {
+      const min = Number(body.minimumInvoice);
+      if (body.minimumInvoice === null || Number.isNaN(min) || min <= 0) {
+        delete client.minimumInvoice;
+      } else {
+        client.minimumInvoice = min;
+      }
+    }
+    if (body.defaultTemplateId !== undefined) {
+      if (!body.defaultTemplateId) delete client.defaultTemplateId;
+      else if (store.templates.some((t) => t.id === body.defaultTemplateId)) {
+        client.defaultTemplateId = body.defaultTemplateId;
+      } else {
+        return jsonResponse({ error: 'Template not found' }, 404);
+      }
     }
     if (body.archived !== undefined) client.archived = body.archived;
     await saveTimesheetStore(store);
@@ -428,9 +446,13 @@ function assembleInvoice(
 ): { invoice: Invoice; entries: TimesheetEntry[]; template?: InvoiceTemplate } | { error: string } {
   const client = store.clients.find((c) => c.id === body.clientId);
   if (!client) return { error: 'Client not found' };
-  const template = body.templateId
-    ? store.templates.find((t) => t.id === body.templateId)
-    : store.templates.find((t) => !t.archived);
+  // Template resolution: explicit pick → client default → first active.
+  const template =
+    (body.templateId ? store.templates.find((t) => t.id === body.templateId) : undefined) ??
+    (client.defaultTemplateId
+      ? store.templates.find((t) => t.id === client.defaultTemplateId)
+      : undefined) ??
+    store.templates.find((t) => !t.archived);
   const projectById = new Map(store.projects.map((p) => [p.id, p] as const));
 
   const wanted = body.entryIds ? new Set(body.entryIds) : null;
@@ -456,7 +478,30 @@ function assembleInvoice(
   const issueDate = new Date().toISOString().slice(0, 10);
   const vat = template?.vat ?? 0;
   const totalMinutes = entries.reduce((s, e) => s + e.durationMinutes, 0);
-  const subtotal = round2(entries.reduce((s, e) => s + e.amount, 0));
+  let subtotal = round2(entries.reduce((s, e) => s + e.amount, 0));
+
+  // Retainer floor: top up to the client's minimum with a labeled adjustment
+  // line so the entry detail stays visible and the math stays explicit.
+  const lines = entries.map((e) => ({
+    date: e.date,
+    description: e.description,
+    projectName: projectById.get(e.projectId)?.name ?? e.projectId,
+    minutes: e.durationMinutes,
+    hourlyRate: e.hourlyRate,
+    amount: e.amount,
+  }));
+  if (client.minimumInvoice && subtotal < client.minimumInvoice) {
+    lines.push({
+      date: issueDate,
+      description: 'Monthly minimum adjustment',
+      projectName: '',
+      minutes: 0,
+      hourlyRate: 0,
+      amount: round2(client.minimumInvoice - subtotal),
+    });
+    subtotal = round2(client.minimumInvoice);
+  }
+
   const tax = round2(subtotal * (vat / 100));
   const invoice: Invoice = {
     id: crypto.randomUUID(),
@@ -474,14 +519,7 @@ function assembleInvoice(
     total: round2(subtotal + tax),
     templateId: template?.id,
     ...(body.comment?.trim() ? { comment: body.comment.trim() } : {}),
-    lines: entries.map((e) => ({
-      date: e.date,
-      description: e.description,
-      projectName: projectById.get(e.projectId)?.name ?? e.projectId,
-      minutes: e.durationMinutes,
-      hourlyRate: e.hourlyRate,
-      amount: e.amount,
-    })),
+    lines,
     entryIds: entries.map((e) => e.id),
     projectIds: [...new Set(entries.map((e) => e.projectId))],
     createdAt: new Date().toISOString(),
@@ -616,6 +654,10 @@ function templateFromBody(
     paymentDetails: strLines(body.paymentDetails, existing?.paymentDetails ?? []),
     dueDays: body.dueDays !== undefined ? Number(body.dueDays) : (existing?.dueDays ?? 14),
     vat: body.vat !== undefined ? Number(body.vat) : (existing?.vat ?? 0),
+    descriptionStyle:
+      body.descriptionStyle === 'truncate' || body.descriptionStyle === 'wrap'
+        ? body.descriptionStyle
+        : (existing?.descriptionStyle ?? 'wrap'),
     archived: body.archived ?? existing?.archived ?? false,
   };
 }

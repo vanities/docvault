@@ -120,10 +120,22 @@ function ColorField({
 // Tab
 // ---------------------------------------------------------------------------
 
-type ClientForm = { name: string; currency: string; color: string };
+type ClientForm = {
+  name: string;
+  currency: string;
+  color: string;
+  minimumInvoice: string; // '' = none
+  defaultTemplateId: string; // '' = first active template
+};
 type ProjectForm = { name: string; clientId: string; hourlyRate: string; color: string };
 
-const EMPTY_CLIENT: ClientForm = { name: '', currency: 'USD', color: '' };
+const EMPTY_CLIENT: ClientForm = {
+  name: '',
+  currency: 'USD',
+  color: '',
+  minimumInvoice: '',
+  defaultTemplateId: '',
+};
 const EMPTY_PROJECT: ProjectForm = { name: '', clientId: '', hourlyRate: '', color: '' };
 
 export function CustomersTab({
@@ -190,7 +202,13 @@ export function CustomersTab({
   const openClientModal = (client?: TimesheetClient) => {
     setError('');
     if (client) {
-      setClientForm({ name: client.name, currency: client.currency, color: client.color ?? '' });
+      setClientForm({
+        name: client.name,
+        currency: client.currency,
+        color: client.color ?? '',
+        minimumInvoice: client.minimumInvoice ? String(client.minimumInvoice) : '',
+        defaultTemplateId: client.defaultTemplateId ?? '',
+      });
       setClientModal(client.id);
     } else {
       setClientForm(EMPTY_CLIENT);
@@ -221,6 +239,8 @@ export function CustomersTab({
       name: clientForm.name.trim(),
       currency: clientForm.currency.trim().toUpperCase() || 'USD',
       color: clientForm.color,
+      minimumInvoice: clientForm.minimumInvoice === '' ? null : Number(clientForm.minimumInvoice),
+      defaultTemplateId: clientForm.defaultTemplateId,
     };
     const ok = await call(async () => {
       if (clientModal === 'new') {
@@ -228,8 +248,8 @@ export function CustomersTab({
           name: body.name,
           currency: body.currency,
         });
-        // color rides a follow-up PUT: creation route stays minimal
-        if (body.color) await tsJson(`/clients/${created.client.id}`, 'PUT', { color: body.color });
+        // detail fields ride a follow-up PUT: the creation route stays minimal
+        await tsJson(`/clients/${created.client.id}`, 'PUT', body);
       } else {
         await tsJson(`/clients/${clientModal}`, 'PUT', body);
       }
@@ -485,6 +505,42 @@ export function CustomersTab({
                   placeholder="USD"
                   className="h-9 rounded-lg text-sm"
                 />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[12px] text-surface-600 block mb-1">
+                  Invoice minimum ($)
+                </label>
+                <Input
+                  type="number"
+                  value={clientForm.minimumInvoice}
+                  onChange={(e) => setClientForm({ ...clientForm, minimumInvoice: e.target.value })}
+                  placeholder="none"
+                  className="h-9 rounded-lg text-sm"
+                />
+                <p className="text-[11px] text-surface-500 mt-1">
+                  Invoices under this get a labeled top-up line.
+                </p>
+              </div>
+              <div>
+                <label className="text-[12px] text-surface-600 block mb-1">Default template</label>
+                <select
+                  value={clientForm.defaultTemplateId}
+                  onChange={(e) =>
+                    setClientForm({ ...clientForm, defaultTemplateId: e.target.value })
+                  }
+                  className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+                >
+                  <option value="">First active</option>
+                  {store.templates
+                    .filter((t) => !t.archived)
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                </select>
               </div>
             </div>
             <ColorField

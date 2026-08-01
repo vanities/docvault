@@ -43,6 +43,7 @@ const EMPTY_FORM = {
   paymentDetails: '',
   dueDays: '14',
   vat: '0',
+  descriptionStyle: 'wrap',
 };
 
 type FormState = typeof EMPTY_FORM;
@@ -58,6 +59,7 @@ function toForm(t: InvoiceTemplate): FormState {
     paymentDetails: t.paymentDetails.join('\n'),
     dueDays: String(t.dueDays),
     vat: String(t.vat),
+    descriptionStyle: t.descriptionStyle ?? 'wrap',
   };
 }
 
@@ -77,6 +79,7 @@ function toBody(f: FormState) {
     paymentDetails: lines(f.paymentDetails),
     dueDays: Number(f.dueDays) || 14,
     vat: Number(f.vat) || 0,
+    descriptionStyle: f.descriptionStyle === 'truncate' ? 'truncate' : 'wrap',
   };
 }
 
@@ -209,6 +212,17 @@ export function TemplatesTab({
             {area('contact', 'Contact (one line each)', 'Name\nemail@example.com')}
             {field('paymentTerms', 'Payment terms', { placeholder: 'e.g. Net 14' })}
             {area('paymentDetails', 'Payment details (one line each)', 'Bank routing / account')}
+            <div>
+              <label className="text-[12px] text-surface-600 block mb-1">Long descriptions</label>
+              <select
+                value={form.descriptionStyle}
+                onChange={(e) => setForm({ ...form, descriptionStyle: e.target.value })}
+                className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+              >
+                <option value="wrap">Wrap onto extra lines</option>
+                <option value="truncate">Truncate with …</option>
+              </select>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setEditingId(null)}>

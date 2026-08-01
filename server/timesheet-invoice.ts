@@ -55,6 +55,30 @@ function fit(text: string, font: PDFFont, size: number, maxWidth: number): strin
   return `${t}…`;
 }
 
+/** Word-wrap `text` into lines that fit `maxWidth`; hard-splits words that
+ * are longer than a full line (URLs and the like). */
+function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+  const lines: string[] = [];
+  let cur = '';
+  for (const word of text.split(' ')) {
+    const trial = cur ? `${cur} ${word}` : word;
+    if (font.widthOfTextAtSize(trial, size) <= maxWidth) {
+      cur = trial;
+      continue;
+    }
+    if (cur) lines.push(cur);
+    cur = word;
+    while (font.widthOfTextAtSize(cur, size) > maxWidth && cur.length > 1) {
+      let i = cur.length - 1;
+      while (i > 1 && font.widthOfTextAtSize(cur.slice(0, i), size) > maxWidth) i--;
+      lines.push(cur.slice(0, i));
+      cur = cur.slice(i);
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines.length > 0 ? lines : [''];
+}
+
 export async function buildInvoicePdf(
   invoice: Invoice,
   template?: InvoiceTemplate
@@ -140,31 +164,32 @@ export async function buildInvoicePdf(
   y -= 28;
 
   // ----- Row-work table: one row per time entry -----
+  const descWidth = COLS.hours - COLS.description - 10;
+  const truncate = template?.descriptionStyle === 'truncate';
   if (invoice.lines.length > 0) {
     y = tableHeader(page, y);
     for (const line of invoice.lines) {
-      if (y < MARGIN + 80) {
+      const isAdjustment = line.minutes === 0 && line.hourlyRate === 0;
+      const desc = sanitize(line.description) || sanitize(line.projectName);
+      const full = isAdjustment ? desc : `${desc}  ·  ${sanitize(line.projectName)}`;
+      const descLines = truncate
+        ? [fit(full, font, 8.5, descWidth)]
+        : wrap(full, font, 8.5, descWidth);
+      const rowHeight = 14 + (descLines.length - 1) * 11;
+      if (y - rowHeight < MARGIN + 66) {
         page = doc.addPage([PAGE_W, PAGE_H]);
         y = tableHeader(page, PAGE_H - MARGIN);
       }
-      const desc = sanitize(line.description) || sanitize(line.projectName);
       text(page, line.date, COLS.date, y, { size: 8.5, color: MUTED });
-      text(
-        page,
-        fit(
-          `${desc}  ·  ${sanitize(line.projectName)}`,
-          font,
-          8.5,
-          COLS.hours - COLS.description - 10
-        ),
-        COLS.description,
-        y,
-        { size: 8.5 }
-      );
-      text(page, fmtHours(line.minutes), 0, y, { size: 8.5, rightAt: COLS.hours + 40 });
-      text(page, fmtMoney(line.hourlyRate), 0, y, { size: 8.5, rightAt: COLS.rate + 40 });
+      descLines.forEach((dl, i) => {
+        text(page, dl, COLS.description, y - i * 11, { size: 8.5 });
+      });
+      if (!isAdjustment) {
+        text(page, fmtHours(line.minutes), 0, y, { size: 8.5, rightAt: COLS.hours + 40 });
+        text(page, fmtMoney(line.hourlyRate), 0, y, { size: 8.5, rightAt: COLS.rate + 40 });
+      }
       text(page, fmtMoney(line.amount), 0, y, { size: 8.5, rightAt: PAGE_W - MARGIN });
-      y -= 14;
+      y -= rowHeight;
     }
   } else {
     // Imported record (Kimai kept no line data): honest single summary row.
