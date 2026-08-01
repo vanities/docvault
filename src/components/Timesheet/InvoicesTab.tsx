@@ -594,6 +594,15 @@ export function InvoicesTab({
                       <Button
                         variant="ghost"
                         size="icon-xs"
+                        title="Preview"
+                        aria-label={`Preview ${inv.number}`}
+                        onClick={() => openPreview(inv)}
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
                         title="Download PDF"
                         aria-label={`Download ${inv.number} PDF`}
                         onClick={() => void downloadPdf(`/invoices/${inv.id}/pdf`)}
