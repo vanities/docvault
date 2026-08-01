@@ -362,7 +362,7 @@ export function TimesheetTab({
                 ))}
               </select>
             </div>
-            <div>
+            <div className="col-span-2 sm:col-span-1">
               <label className="text-[12px] text-surface-600 block mb-1">Date</label>
               <Input
                 type="date"
@@ -371,8 +371,8 @@ export function TimesheetTab({
                 className="h-9 rounded-lg text-sm"
               />
             </div>
-            <div className="flex gap-2">
-              <div className="flex-1">
+            <div className="col-span-2 sm:col-span-1 flex gap-2">
+              <div className="flex-1 min-w-0">
                 <label className="text-[12px] text-surface-600 block mb-1">Start</label>
                 <Input
                   type="time"
@@ -382,7 +382,7 @@ export function TimesheetTab({
                   className="h-9 rounded-lg text-sm"
                 />
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <label className="text-[12px] text-surface-600 block mb-1">End</label>
                 <Input
                   type="time"
@@ -472,7 +472,7 @@ export function TimesheetTab({
         <table className="w-full text-[13px]">
           <thead>
             <tr className="text-left text-[11px] uppercase tracking-wider text-surface-500 border-b border-border">
-              <th className="px-4 py-2.5 font-semibold">
+              <th className="px-3 sm:px-4 py-2.5 font-semibold">
                 <SortHeader label="Date" k="date" />
               </th>
               <th className="px-2 py-2.5 font-semibold hidden md:table-cell">Time</th>
@@ -504,8 +504,10 @@ export function TimesheetTab({
                 const client = project ? clientById.get(project.clientId) : undefined;
                 return (
                   <tr key={e.id} className="group hover:bg-surface-100/50">
-                    <td className="px-4 py-2 text-surface-700 tabular-nums whitespace-nowrap">
-                      {e.date}
+                    <td className="px-3 sm:px-4 py-2 text-surface-700 tabular-nums whitespace-nowrap">
+                      {/* full date from sm up; MM-DD on phones to keep Amount on-screen */}
+                      <span className="hidden sm:inline">{e.date}</span>
+                      <span className="sm:hidden">{e.date.slice(5)}</span>
                     </td>
                     <td className="px-2 py-2 text-surface-500 tabular-nums text-[12px] whitespace-nowrap hidden md:table-cell">
                       {e.start}–{e.end}
@@ -513,7 +515,7 @@ export function TimesheetTab({
                     <td className="px-2 py-2 text-surface-600 text-[12px] whitespace-nowrap hidden sm:table-cell">
                       {client?.name} / {project?.name}
                     </td>
-                    <td className="px-2 py-2 text-surface-900 max-w-[16rem] sm:max-w-[26rem]">
+                    <td className="px-2 py-2 text-surface-900 max-w-[10.5rem] sm:max-w-[26rem]">
                       <span className="line-clamp-2">
                         {e.description || <i className="text-surface-500">no description</i>}
                       </span>
