@@ -50,7 +50,62 @@ export interface TimesheetEntry {
   billable: boolean;
   invoiced: boolean;
   invoicedAt?: string; // ISO timestamp of the mark-invoiced action
+  invoiceId?: string; // set when the entry was billed through a stored invoice
   kimaiId?: number; // provenance for rows migrated from Kimai
+}
+
+/** Reusable invoice layout config — the sender identity and terms that would
+ * otherwise be retyped per invoice (mirrors Kimai's invoice templates). All
+ * content is data (lives in the store, gitignored) — nothing personal is
+ * baked into code. */
+export interface InvoiceTemplate {
+  id: string;
+  name: string;
+  title: string; // heading, e.g. "Invoice"
+  company: string;
+  address: string[]; // sender address lines
+  contact: string[]; // name / email lines
+  paymentTerms: string;
+  paymentDetails: string[]; // bank details lines, rendered in the footer
+  dueDays: number;
+  vat: number; // percent; 0 = no tax line
+  archived: boolean;
+}
+
+export type InvoiceStatus = 'new' | 'paid' | 'canceled';
+
+/** A line frozen onto an invoice at creation time. Invoices snapshot their
+ * lines so later edits/deletes of entries can never rewrite billing history. */
+export interface InvoiceLine {
+  date: string;
+  description: string;
+  projectName: string;
+  minutes: number;
+  hourlyRate: number;
+  amount: number;
+}
+
+export interface Invoice {
+  id: string;
+  number: string; // e.g. "2026/027" — continues the Kimai sequence
+  clientId: string;
+  clientName: string; // snapshot, so client renames don't rewrite history
+  issueDate: string; // YYYY-MM-DD
+  dueDate: string; // YYYY-MM-DD
+  status: InvoiceStatus;
+  currency: string;
+  totalMinutes: number;
+  subtotal: number;
+  vat: number; // percent applied
+  tax: number; // computed tax amount
+  total: number;
+  templateId?: string;
+  comment?: string;
+  lines: InvoiceLine[]; // empty for invoices imported from Kimai (no line data)
+  entryIds: string[]; // entries billed by this invoice (empty for imports)
+  paymentDate?: string; // YYYY-MM-DD when marked paid
+  createdAt: string;
+  kimaiId?: number; // provenance for invoices imported from Kimai
 }
 
 export interface TimesheetStore {
@@ -58,6 +113,8 @@ export interface TimesheetStore {
   clients: TimesheetClient[];
   projects: TimesheetProject[];
   entries: TimesheetEntry[];
+  templates: InvoiceTemplate[];
+  invoices: Invoice[];
 }
 
 // ============================================================================
@@ -98,9 +155,43 @@ function isEntry(value: unknown): value is TimesheetEntry {
   );
 }
 
+function isTemplate(value: unknown): value is InvoiceTemplate {
+  if (!isPlainObject(value)) return false;
+  return (
+    typeof value.id === 'string' &&
+    typeof value.name === 'string' &&
+    typeof value.company === 'string' &&
+    Array.isArray(value.address)
+  );
+}
+
+const INVOICE_STATUSES = new Set(['new', 'paid', 'canceled']);
+
+function isInvoice(value: unknown): value is Invoice {
+  if (!isPlainObject(value)) return false;
+  return (
+    typeof value.id === 'string' &&
+    typeof value.number === 'string' &&
+    typeof value.clientId === 'string' &&
+    typeof value.issueDate === 'string' &&
+    INVOICE_STATUSES.has(value.status as string) &&
+    typeof value.total === 'number' &&
+    Array.isArray(value.lines) &&
+    Array.isArray(value.entryIds)
+  );
+}
+
 export function isTimesheetStore(value: unknown): value is TimesheetStore {
   if (!isPlainObject(value)) return false;
   if (value.version !== 1) return false;
+  // templates/invoices are validated but may be absent (pre-invoice stores);
+  // loadTimesheetStore normalizes them to [].
+  if (value.templates !== undefined) {
+    if (!Array.isArray(value.templates) || !value.templates.every(isTemplate)) return false;
+  }
+  if (value.invoices !== undefined) {
+    if (!Array.isArray(value.invoices) || !value.invoices.every(isInvoice)) return false;
+  }
   return (
     Array.isArray(value.clients) &&
     value.clients.every(isClient) &&
@@ -119,12 +210,17 @@ export async function loadTimesheetStore(): Promise<TimesheetStore> {
   try {
     const raw = await fs.readFile(TIMESHEET_PATH, 'utf-8');
     const parsed: unknown = JSON.parse(raw);
-    if (isTimesheetStore(parsed)) return parsed;
+    if (isTimesheetStore(parsed)) {
+      // Normalize pre-invoice stores (v1 without templates/invoices arrays).
+      parsed.templates ??= [];
+      parsed.invoices ??= [];
+      return parsed;
+    }
     log.warn('[load] stored timesheet malformed — returning empty store');
   } catch {
     // Missing file (first run) or unreadable JSON — start empty either way.
   }
-  return { version: 1, clients: [], projects: [], entries: [] };
+  return { version: 1, clients: [], projects: [], entries: [], templates: [], invoices: [] };
 }
 
 export async function saveTimesheetStore(store: TimesheetStore): Promise<void> {
@@ -168,4 +264,15 @@ export function entryAmount(
 ): number {
   if (!billable) return 0;
   return Math.round((durationMinutes / 60) * hourlyRate * 100) / 100;
+}
+
+/** Next invoice number continuing the `YYYY/NNN` sequence (Kimai's format).
+ * The counter is per-year: the first invoice of a new year starts at 001. */
+export function nextInvoiceNumber(invoices: Invoice[], year: number): string {
+  let max = 0;
+  for (const inv of invoices) {
+    const m = inv.number.match(/^(\d{4})\/(\d+)$/);
+    if (m && Number(m[1]) === year) max = Math.max(max, Number(m[2]));
+  }
+  return `${year}/${String(max + 1).padStart(3, '0')}`;
 }

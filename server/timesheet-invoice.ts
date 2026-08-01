@@ -1,31 +1,14 @@
-// Invoice PDF builder — renders uninvoiced timesheet entries for one client
-// into a generic invoice with pdf-lib (drawn from scratch; no template file).
-// Deliberately unopinionated: sender block and notes are caller-supplied
-// strings, nothing personal is baked into the layout.
+// Invoice PDF builder — renders a stored Invoice (line snapshots) through an
+// InvoiceTemplate with pdf-lib, drawn from scratch. Row-work layout: one row
+// per time entry (date · what was worked on · hours · rate · amount).
+// All identity/terms content comes from the template (data, gitignored) —
+// nothing personal is baked into the layout code.
 
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from 'pdf-lib';
+import type { Invoice, InvoiceTemplate } from './timesheet-store.js';
 import { createLogger } from './logger.js';
 
 const log = createLogger('Timesheet');
-
-export interface InvoiceLine {
-  date: string; // YYYY-MM-DD
-  description: string;
-  projectName: string;
-  minutes: number;
-  hourlyRate: number;
-  amount: number;
-}
-
-export interface InvoiceInput {
-  invoiceNumber: string;
-  issueDate: string; // YYYY-MM-DD
-  clientName: string;
-  currency: string; // ISO code, used for the total label
-  from?: string[]; // sender block lines (name, address, email…)
-  notes?: string;
-  lines: InvoiceLine[];
-}
 
 // US Letter
 const PAGE_W = 612;
@@ -58,7 +41,7 @@ function fmtHours(minutes: number): string {
 function sanitize(text: string): string {
   return text
     .replace(/\s+/g, ' ')
-    .replace(/[^\x20-\x7E -ÿ–—‘’“”•…€]/g, '?')
+    .replace(/[^\x20-\x7E -ÿ–—‘’“”•…€]/g, '?')
     .trim();
 }
 
@@ -72,7 +55,10 @@ function fit(text: string, font: PDFFont, size: number, maxWidth: number): strin
   return `${t}…`;
 }
 
-export async function buildInvoicePdf(input: InvoiceInput): Promise<Uint8Array> {
+export async function buildInvoicePdf(
+  invoice: Invoice,
+  template?: InvoiceTemplate
+): Promise<Uint8Array> {
   const t0 = performance.now();
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -113,40 +99,50 @@ export async function buildInvoicePdf(input: InvoiceInput): Promise<Uint8Array> 
     return yy - 19;
   };
 
-  // ----- Header block -----
-  text(page, 'INVOICE', MARGIN, y - 10, { size: 24, bold: true });
-  text(page, `# ${sanitize(input.invoiceNumber)}`, 0, y - 8, {
+  // ----- Header: title + invoice metadata (right-aligned) -----
+  const title = sanitize(template?.title || 'Invoice').toUpperCase();
+  text(page, title, MARGIN, y - 10, { size: 24, bold: true });
+  text(page, `# ${sanitize(invoice.number)}`, 0, y, {
     size: 10,
     color: MUTED,
     rightAt: PAGE_W - MARGIN,
   });
-  text(page, `Issued ${input.issueDate}`, 0, y - 22, {
+  text(page, `Issued ${invoice.issueDate}`, 0, y - 14, {
     size: 10,
     color: MUTED,
     rightAt: PAGE_W - MARGIN,
   });
-  y -= 46;
+  text(page, `Due ${invoice.dueDate}`, 0, y - 28, {
+    size: 10,
+    color: MUTED,
+    rightAt: PAGE_W - MARGIN,
+  });
+  y -= 52;
 
-  // Sender block (optional, caller-supplied)
-  if (input.from && input.from.length > 0) {
+  // ----- Sender block from the template -----
+  if (template) {
     text(page, 'FROM', MARGIN, y, { size: 7.5, bold: true, color: MUTED });
     y -= 13;
-    for (const line of input.from) {
-      text(page, sanitize(line), MARGIN, y, { size: 9.5 });
+    text(page, sanitize(template.company), MARGIN, y, { size: 10.5, bold: true });
+    y -= 13;
+    for (const line of [...template.address, ...template.contact]) {
+      const clean = sanitize(line);
+      if (!clean) continue;
+      text(page, clean, MARGIN, y, { size: 9 });
       y -= 12;
     }
-    y -= 6;
+    y -= 8;
   }
 
   text(page, 'BILL TO', MARGIN, y, { size: 7.5, bold: true, color: MUTED });
   y -= 13;
-  text(page, sanitize(input.clientName), MARGIN, y, { size: 11, bold: true });
+  text(page, sanitize(invoice.clientName), MARGIN, y, { size: 11, bold: true });
   y -= 28;
 
-  // ----- Line table -----
+  // ----- Row-work table: one row per time entry -----
   y = tableHeader(page, y);
-  for (const line of input.lines) {
-    if (y < MARGIN + 60) {
+  for (const line of invoice.lines) {
+    if (y < MARGIN + 80) {
       page = doc.addPage([PAGE_W, PAGE_H]);
       y = tableHeader(page, PAGE_H - MARGIN);
     }
@@ -171,29 +167,61 @@ export async function buildInvoicePdf(input: InvoiceInput): Promise<Uint8Array> 
   }
 
   // ----- Totals -----
-  if (y < MARGIN + 60) {
+  if (y < MARGIN + 110) {
     page = doc.addPage([PAGE_W, PAGE_H]);
     y = PAGE_H - MARGIN;
   }
   rule(page, y + 6);
   y -= 10;
-  const totalMinutes = input.lines.reduce((s, l) => s + l.minutes, 0);
-  const totalAmount = input.lines.reduce((s, l) => s + l.amount, 0);
-  text(page, `${fmtHours(totalMinutes)} hours`, 0, y, {
+  text(page, `${fmtHours(invoice.totalMinutes)} hours`, 0, y, {
     size: 9,
     color: MUTED,
     rightAt: COLS.rate + 40,
   });
-  text(page, `TOTAL (${input.currency})`, COLS.hours - 60, y - 18, { size: 9, bold: true });
-  text(page, fmtMoney(totalAmount), 0, y - 18, { size: 12, bold: true, rightAt: PAGE_W - MARGIN });
+  if (invoice.vat > 0) {
+    text(page, 'SUBTOTAL', COLS.hours - 60, y - 16, { size: 8.5, color: MUTED });
+    text(page, fmtMoney(invoice.subtotal), 0, y - 16, { size: 9, rightAt: PAGE_W - MARGIN });
+    text(page, `TAX (${invoice.vat}%)`, COLS.hours - 60, y - 30, { size: 8.5, color: MUTED });
+    text(page, fmtMoney(invoice.tax), 0, y - 30, { size: 9, rightAt: PAGE_W - MARGIN });
+    y -= 30;
+  }
+  text(page, `TOTAL (${invoice.currency})`, COLS.hours - 60, y - 18, { size: 9, bold: true });
+  text(page, fmtMoney(invoice.total), 0, y - 18, {
+    size: 12,
+    bold: true,
+    rightAt: PAGE_W - MARGIN,
+  });
+  y -= 40;
 
-  if (input.notes) {
-    text(page, sanitize(input.notes), MARGIN, MARGIN - 14, { size: 8, color: MUTED });
+  // ----- Footer: payment terms + payment details from the template -----
+  const footerLines: { str: string; bold?: boolean }[] = [];
+  if (template?.paymentTerms) {
+    footerLines.push({ str: `Payment terms: ${sanitize(template.paymentTerms)}` });
+  }
+  if (invoice.comment) footerLines.push({ str: sanitize(invoice.comment) });
+  if (template && template.paymentDetails.length > 0) {
+    footerLines.push({ str: 'PAYMENT DETAILS', bold: true });
+    for (const line of template.paymentDetails) {
+      const clean = sanitize(line);
+      if (clean) footerLines.push({ str: clean });
+    }
+  }
+  let fy = MARGIN + footerLines.length * 12;
+  if (y < fy + 10) {
+    page = doc.addPage([PAGE_W, PAGE_H]);
+  }
+  for (const line of footerLines) {
+    text(page, line.str, MARGIN, fy, {
+      size: line.bold ? 7.5 : 8,
+      bold: line.bold,
+      color: MUTED,
+    });
+    fy -= 12;
   }
 
   const bytes = await doc.save();
   log.info(
-    `[invoice] rendered ${input.lines.length} lines, ${doc.getPageCount()} page(s), ${bytes.length} bytes in ${(performance.now() - t0).toFixed(1)}ms`
+    `[invoice] rendered ${invoice.number}: ${invoice.lines.length} lines, ${doc.getPageCount()} page(s), ${bytes.length} bytes in ${(performance.now() - t0).toFixed(1)}ms`
   );
   return bytes;
 }

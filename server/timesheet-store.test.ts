@@ -34,8 +34,10 @@ import {
   isValidDate,
   isValidTime,
   loadTimesheetStore,
+  nextInvoiceNumber,
   saveTimesheetStore,
   spanMinutes,
+  type Invoice,
   type TimesheetStore,
 } from './timesheet-store.js';
 
@@ -61,6 +63,29 @@ function makeStore(): TimesheetStore {
         invoiced: false,
       },
     ],
+    templates: [],
+    invoices: [],
+  };
+}
+
+function makeInvoice(number: string): Invoice {
+  return {
+    id: `inv-${number}`,
+    number,
+    clientId: 'acme',
+    clientName: 'Acme Corp',
+    issueDate: '2026-01-10',
+    dueDate: '2026-01-24',
+    status: 'new',
+    currency: 'USD',
+    totalMinutes: 150,
+    subtotal: 250,
+    vat: 0,
+    tax: 0,
+    total: 250,
+    lines: [],
+    entryIds: [],
+    createdAt: '2026-01-10T00:00:00.000Z',
   };
 }
 
@@ -119,10 +144,44 @@ describe('shape guard', () => {
   });
 });
 
+describe('nextInvoiceNumber', () => {
+  test('continues the per-year sequence', () => {
+    const invoices = [makeInvoice('2025/031'), makeInvoice('2026/026'), makeInvoice('2026/003')];
+    expect(nextInvoiceNumber(invoices, 2026)).toBe('2026/027');
+  });
+
+  test('new year restarts at 001', () => {
+    expect(nextInvoiceNumber([makeInvoice('2026/026')], 2027)).toBe('2027/001');
+  });
+
+  test('ignores non-matching formats', () => {
+    expect(nextInvoiceNumber([makeInvoice('CUSTOM-9')], 2026)).toBe('2026/001');
+  });
+});
+
 describe('load/save roundtrip', () => {
   test('missing file yields empty store', async () => {
     const store = await loadTimesheetStore();
-    expect(store).toEqual({ version: 1, clients: [], projects: [], entries: [] });
+    expect(store).toEqual({
+      version: 1,
+      clients: [],
+      projects: [],
+      entries: [],
+      templates: [],
+      invoices: [],
+    });
+  });
+
+  test('pre-invoice stores are normalized with empty templates/invoices', async () => {
+    await fs.mkdir(tmpDataDir, { recursive: true });
+    const legacy = makeStore() as Partial<TimesheetStore>;
+    delete legacy.templates;
+    delete legacy.invoices;
+    await fs.writeFile(TIMESHEET_PATH, JSON.stringify(legacy));
+    const store = await loadTimesheetStore();
+    expect(store.templates).toEqual([]);
+    expect(store.invoices).toEqual([]);
+    expect(store.entries).toHaveLength(1);
   });
 
   test('saved store loads back identically', async () => {
