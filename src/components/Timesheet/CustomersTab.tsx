@@ -125,6 +125,7 @@ type ClientForm = {
   currency: string;
   color: string;
   defaultTemplateId: string; // '' = first active template
+  dueDays: string; // '' = template default
 };
 type ProjectForm = {
   name: string;
@@ -139,6 +140,7 @@ const EMPTY_CLIENT: ClientForm = {
   currency: 'USD',
   color: '',
   defaultTemplateId: '',
+  dueDays: '',
 };
 const EMPTY_PROJECT: ProjectForm = {
   name: '',
@@ -217,6 +219,7 @@ export function CustomersTab({
         currency: client.currency,
         color: client.color ?? '',
         defaultTemplateId: client.defaultTemplateId ?? '',
+        dueDays: client.dueDays ? String(client.dueDays) : '',
       });
       setClientModal(client.id);
     } else {
@@ -250,6 +253,7 @@ export function CustomersTab({
       currency: clientForm.currency.trim().toUpperCase() || 'USD',
       color: clientForm.color,
       defaultTemplateId: clientForm.defaultTemplateId,
+      dueDays: clientForm.dueDays === '' ? null : Number(clientForm.dueDays),
     };
     const ok = await call(async () => {
       if (clientModal === 'new') {
@@ -517,24 +521,36 @@ export function CustomersTab({
                 />
               </div>
             </div>
-            <div>
-              <label className="text-[12px] text-surface-600 block mb-1">Default template</label>
-              <select
-                value={clientForm.defaultTemplateId}
-                onChange={(e) =>
-                  setClientForm({ ...clientForm, defaultTemplateId: e.target.value })
-                }
-                className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
-              >
-                <option value="">First active</option>
-                {store.templates
-                  .filter((t) => !t.archived)
-                  .map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-              </select>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2">
+                <label className="text-[12px] text-surface-600 block mb-1">Default template</label>
+                <select
+                  value={clientForm.defaultTemplateId}
+                  onChange={(e) =>
+                    setClientForm({ ...clientForm, defaultTemplateId: e.target.value })
+                  }
+                  className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+                >
+                  <option value="">First active</option>
+                  {store.templates
+                    .filter((t) => !t.archived)
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[12px] text-surface-600 block mb-1">Due days</label>
+                <Input
+                  type="number"
+                  value={clientForm.dueDays}
+                  onChange={(e) => setClientForm({ ...clientForm, dueDays: e.target.value })}
+                  placeholder="template"
+                  className="h-9 rounded-lg text-sm"
+                />
+              </div>
             </div>
             <ColorField
               value={clientForm.color}
