@@ -411,10 +411,10 @@ export function InvoicesTab({
         <table className="w-full text-[13px]">
           <thead>
             <tr className="text-left text-[11px] uppercase tracking-wider text-surface-500 border-b border-border">
-              <th className="px-4 py-2.5 font-semibold">
+              <th className="px-3 sm:px-4 py-2.5 font-semibold">
                 <SortHeader label="Number" k="number" />
               </th>
-              <th className="px-2 py-2.5 font-semibold">
+              <th className="px-2 py-2.5 font-semibold hidden sm:table-cell">
                 <SortHeader label="Date" k="issueDate" />
               </th>
               <th className="px-2 py-2.5 font-semibold">Customer</th>
@@ -436,17 +436,16 @@ export function InvoicesTab({
             ) : (
               filteredInvoices.map((inv) => (
                 <tr key={inv.id} className="group hover:bg-surface-100/50">
-                  <td className="px-4 py-2 font-mono tabular-nums whitespace-nowrap text-surface-900">
+                  <td className="px-3 sm:px-4 py-2 font-mono tabular-nums whitespace-nowrap text-surface-900">
                     {inv.number}
                   </td>
-                  <td className="px-2 py-2 text-surface-700 tabular-nums whitespace-nowrap">
+                  <td className="px-2 py-2 text-surface-700 tabular-nums whitespace-nowrap hidden sm:table-cell">
                     {inv.issueDate}
                   </td>
                   <td className="px-2 py-2 text-surface-800 whitespace-nowrap">
                     {clientById.get(inv.clientId)?.name ?? inv.clientName}
                     <span className="block text-[11px] text-surface-500 sm:hidden">
-                      {inv.status}
-                      {inv.paymentDate ? ` ${inv.paymentDate}` : ''}
+                      {inv.issueDate} · {inv.status}
                     </span>
                   </td>
                   <td className="px-2 py-2 text-right text-surface-600 tabular-nums whitespace-nowrap hidden md:table-cell">
