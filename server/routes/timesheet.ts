@@ -11,7 +11,11 @@ import {
   isValidTime,
   isValidDate,
   entryAmount,
+  nextInvoiceNumber,
+  type Invoice,
+  type InvoiceTemplate,
   type TimesheetEntry,
+  type TimesheetStore,
 } from '../timesheet-store.js';
 import { buildInvoicePdf } from '../timesheet-invoice.js';
 import { createLogger } from '../logger.js';
@@ -177,61 +181,15 @@ export async function handleTimesheetRoutes(
     return jsonResponse({ ok: true, updated });
   }
 
-  // POST /api/timesheet/invoice - render an invoice PDF for a client's
-  // uninvoiced billable entries (or an explicit entryIds subset). Does NOT
-  // flip the invoiced flag — review the PDF first, then mark-invoiced.
-  if (pathname === '/api/timesheet/invoice' && req.method === 'POST') {
-    const body = await readJsonBody<{
-      clientId?: string;
-      entryIds?: string[];
-      invoiceNumber?: string;
-      from?: string[];
-      notes?: string;
-    }>(req);
-    if (!body.clientId) return jsonResponse({ error: 'Missing clientId' }, 400);
-    const store = await loadTimesheetStore();
-    const client = store.clients.find((c) => c.id === body.clientId);
-    if (!client) return jsonResponse({ error: 'Client not found' }, 404);
-    const projectById = new Map(store.projects.map((p) => [p.id, p] as const));
+  // ==========================================================================
+  // Invoices — persisted records with line snapshots (billing history)
+  // ==========================================================================
 
-    const wanted = body.entryIds ? new Set(body.entryIds) : null;
-    const entries = store.entries
-      .filter((e) => {
-        if (projectById.get(e.projectId)?.clientId !== body.clientId) return false;
-        if (wanted) return wanted.has(e.id);
-        return !e.invoiced && e.billable;
-      })
-      .sort((a, b) =>
-        a.date === b.date ? a.start.localeCompare(b.start) : a.date.localeCompare(b.date)
-      );
-    if (entries.length === 0) return jsonResponse({ error: 'No entries to invoice' }, 400);
+  const invoiceResult = await handleInvoiceRoutes(req, pathname);
+  if (invoiceResult) return invoiceResult;
 
-    const issueDate = new Date().toISOString().slice(0, 10);
-    const invoiceNumber =
-      body.invoiceNumber?.trim() || `${issueDate.replace(/-/g, '')}-${client.id}`;
-    const pdf = await buildInvoicePdf({
-      invoiceNumber,
-      issueDate,
-      clientName: client.name,
-      currency: client.currency || 'USD',
-      from: body.from,
-      notes: body.notes,
-      lines: entries.map((e) => ({
-        date: e.date,
-        description: e.description,
-        projectName: projectById.get(e.projectId)?.name ?? e.projectId,
-        minutes: e.durationMinutes,
-        hourlyRate: e.hourlyRate,
-        amount: e.amount,
-      })),
-    });
-    return new Response(new Uint8Array(pdf), {
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="Invoice_${client.id}_${issueDate}.pdf"`,
-      },
-    });
-  }
+  const templateResult = await handleTemplateRoutes(req, pathname);
+  if (templateResult) return templateResult;
 
   // ==========================================================================
   // Clients
@@ -405,6 +363,269 @@ export async function handleTimesheetRoutes(
         entries: agg.entries,
       })),
     });
+  }
+
+  return null;
+}
+
+// ============================================================================
+// Invoice creation core
+// ============================================================================
+
+function addDays(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+interface CreateInvoiceBody {
+  clientId?: string;
+  entryIds?: string[]; // explicit selection; otherwise from/to window
+  from?: string; // date window over uninvoiced billable entries
+  to?: string;
+  templateId?: string;
+  number?: string;
+  comment?: string;
+}
+
+/** Assemble an Invoice record (+ the entries it bills) from a request body.
+ * Pure over the loaded store — persistence/marking is the caller's choice,
+ * so preview and create share exactly the same assembly. */
+function assembleInvoice(
+  store: TimesheetStore,
+  body: CreateInvoiceBody
+): { invoice: Invoice; entries: TimesheetEntry[]; template?: InvoiceTemplate } | { error: string } {
+  const client = store.clients.find((c) => c.id === body.clientId);
+  if (!client) return { error: 'Client not found' };
+  const template = body.templateId
+    ? store.templates.find((t) => t.id === body.templateId)
+    : store.templates.find((t) => !t.archived);
+  const projectById = new Map(store.projects.map((p) => [p.id, p] as const));
+
+  const wanted = body.entryIds ? new Set(body.entryIds) : null;
+  const entries = store.entries
+    .filter((e) => {
+      if (projectById.get(e.projectId)?.clientId !== client.id) return false;
+      if (wanted) return wanted.has(e.id);
+      if (e.invoiced || !e.billable) return false;
+      if (body.from && e.date < body.from) return false;
+      if (body.to && e.date > body.to) return false;
+      return true;
+    })
+    .sort((a, b) =>
+      a.date === b.date ? a.start.localeCompare(b.start) : a.date.localeCompare(b.date)
+    );
+  if (entries.length === 0) return { error: 'No entries to invoice' };
+  const already = entries.filter((e) => e.invoiced);
+  if (wanted && already.length > 0) {
+    return { error: `${already.length} selected entries are already invoiced` };
+  }
+
+  const issueDate = new Date().toISOString().slice(0, 10);
+  const vat = template?.vat ?? 0;
+  const totalMinutes = entries.reduce((s, e) => s + e.durationMinutes, 0);
+  const subtotal = round2(entries.reduce((s, e) => s + e.amount, 0));
+  const tax = round2(subtotal * (vat / 100));
+  const invoice: Invoice = {
+    id: crypto.randomUUID(),
+    number: body.number?.trim() || nextInvoiceNumber(store.invoices, new Date().getFullYear()),
+    clientId: client.id,
+    clientName: client.name,
+    issueDate,
+    dueDate: addDays(issueDate, template?.dueDays ?? 14),
+    status: 'new',
+    currency: client.currency || 'USD',
+    totalMinutes,
+    subtotal,
+    vat,
+    tax,
+    total: round2(subtotal + tax),
+    templateId: template?.id,
+    ...(body.comment?.trim() ? { comment: body.comment.trim() } : {}),
+    lines: entries.map((e) => ({
+      date: e.date,
+      description: e.description,
+      projectName: projectById.get(e.projectId)?.name ?? e.projectId,
+      minutes: e.durationMinutes,
+      hourlyRate: e.hourlyRate,
+      amount: e.amount,
+    })),
+    entryIds: entries.map((e) => e.id),
+    createdAt: new Date().toISOString(),
+  };
+  return { invoice, entries, template };
+}
+
+function pdfResponse(pdf: Uint8Array, invoice: Invoice): Response {
+  const safeNumber = invoice.number.replace(/[^\w-]+/g, '-');
+  return new Response(new Uint8Array(pdf), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="Invoice_${safeNumber}_${invoice.clientId}.pdf"`,
+    },
+  });
+}
+
+async function handleInvoiceRoutes(req: Request, pathname: string): Promise<Response | null> {
+  // POST /api/timesheet/invoices - create: persist record, mark entries
+  if (pathname === '/api/timesheet/invoices' && req.method === 'POST') {
+    const body = await readJsonBody<CreateInvoiceBody>(req);
+    const store = await loadTimesheetStore();
+    const result = assembleInvoice(store, body);
+    if ('error' in result) return jsonResponse({ error: result.error }, 400);
+    if (store.invoices.some((i) => i.number === result.invoice.number)) {
+      return jsonResponse({ error: `Invoice number ${result.invoice.number} already exists` }, 409);
+    }
+    const now = new Date().toISOString();
+    for (const entry of result.entries) {
+      entry.invoiced = true;
+      entry.invoicedAt = now;
+      entry.invoiceId = result.invoice.id;
+    }
+    store.invoices.push(result.invoice);
+    await saveTimesheetStore(store);
+    log.info(
+      `[invoice] created ${result.invoice.number} for client=${result.invoice.clientId}: ${result.entries.length} entries`
+    );
+    return jsonResponse({ ok: true, invoice: result.invoice });
+  }
+
+  // POST /api/timesheet/invoices/preview - render the PDF without persisting
+  if (pathname === '/api/timesheet/invoices/preview' && req.method === 'POST') {
+    const body = await readJsonBody<CreateInvoiceBody>(req);
+    const store = await loadTimesheetStore();
+    const result = assembleInvoice(store, body);
+    if ('error' in result) return jsonResponse({ error: result.error }, 400);
+    return pdfResponse(await buildInvoicePdf(result.invoice, result.template), result.invoice);
+  }
+
+  // GET /api/timesheet/invoices/:id/pdf - re-render a stored invoice
+  const pdfMatch = pathname.match(/^\/api\/timesheet\/invoices\/([^/]+)\/pdf$/);
+  if (pdfMatch && req.method === 'GET') {
+    const store = await loadTimesheetStore();
+    const invoice = store.invoices.find((i) => i.id === pdfMatch[1]);
+    if (!invoice) return jsonResponse({ error: 'Invoice not found' }, 404);
+    if (invoice.lines.length === 0) {
+      // Imported from Kimai — record only, the line data never migrated.
+      return jsonResponse({ error: 'No line data for this invoice (imported record)' }, 400);
+    }
+    const template = invoice.templateId
+      ? store.templates.find((t) => t.id === invoice.templateId)
+      : store.templates.find((t) => !t.archived);
+    return pdfResponse(await buildInvoicePdf(invoice, template), invoice);
+  }
+
+  // PUT /api/timesheet/invoices/:id - status / comment updates
+  const invoiceMatch = pathname.match(/^\/api\/timesheet\/invoices\/([^/]+)$/);
+  if (invoiceMatch && req.method === 'PUT') {
+    const body = await readJsonBody<{
+      status?: Invoice['status'];
+      paymentDate?: string;
+      comment?: string;
+    }>(req);
+    const store = await loadTimesheetStore();
+    const invoice = store.invoices.find((i) => i.id === invoiceMatch[1]);
+    if (!invoice) return jsonResponse({ error: 'Invoice not found' }, 404);
+    if (body.status !== undefined) {
+      if (!['new', 'paid', 'canceled'].includes(body.status)) {
+        return jsonResponse({ error: 'Invalid status' }, 400);
+      }
+      invoice.status = body.status;
+      if (body.status === 'paid') {
+        invoice.paymentDate = body.paymentDate || new Date().toISOString().slice(0, 10);
+      } else {
+        delete invoice.paymentDate;
+      }
+    }
+    if (body.comment !== undefined) invoice.comment = body.comment.trim() || undefined;
+    await saveTimesheetStore(store);
+    return jsonResponse({ ok: true, invoice });
+  }
+
+  // DELETE /api/timesheet/invoices/:id - remove record, un-invoice entries
+  if (invoiceMatch && req.method === 'DELETE') {
+    const store = await loadTimesheetStore();
+    const invoice = store.invoices.find((i) => i.id === invoiceMatch[1]);
+    if (!invoice) return jsonResponse({ error: 'Invoice not found' }, 404);
+    let released = 0;
+    for (const entry of store.entries) {
+      if (entry.invoiceId === invoice.id) {
+        entry.invoiced = false;
+        delete entry.invoicedAt;
+        delete entry.invoiceId;
+        released++;
+      }
+    }
+    store.invoices = store.invoices.filter((i) => i.id !== invoice.id);
+    await saveTimesheetStore(store);
+    log.info(`[invoice] deleted ${invoice.number}, released ${released} entries back to open`);
+    return jsonResponse({ ok: true, released });
+  }
+
+  return null;
+}
+
+// ============================================================================
+// Invoice templates
+// ============================================================================
+
+function templateFromBody(
+  body: Partial<InvoiceTemplate>,
+  existing?: InvoiceTemplate
+): InvoiceTemplate {
+  const strLines = (v: unknown, fallback: string[]): string[] =>
+    Array.isArray(v) ? v.map((s) => String(s)) : fallback;
+  return {
+    id: existing?.id ?? crypto.randomUUID(),
+    name: (body.name ?? existing?.name ?? 'Template').trim(),
+    title: (body.title ?? existing?.title ?? 'Invoice').trim(),
+    company: (body.company ?? existing?.company ?? '').trim(),
+    address: strLines(body.address, existing?.address ?? []),
+    contact: strLines(body.contact, existing?.contact ?? []),
+    paymentTerms: (body.paymentTerms ?? existing?.paymentTerms ?? '').trim(),
+    paymentDetails: strLines(body.paymentDetails, existing?.paymentDetails ?? []),
+    dueDays: body.dueDays !== undefined ? Number(body.dueDays) : (existing?.dueDays ?? 14),
+    vat: body.vat !== undefined ? Number(body.vat) : (existing?.vat ?? 0),
+    archived: body.archived ?? existing?.archived ?? false,
+  };
+}
+
+async function handleTemplateRoutes(req: Request, pathname: string): Promise<Response | null> {
+  // POST /api/timesheet/templates
+  if (pathname === '/api/timesheet/templates' && req.method === 'POST') {
+    const body = await readJsonBody<Partial<InvoiceTemplate>>(req);
+    if (!body.name?.trim()) return jsonResponse({ error: 'Missing name' }, 400);
+    const store = await loadTimesheetStore();
+    const template = templateFromBody(body);
+    store.templates.push(template);
+    await saveTimesheetStore(store);
+    return jsonResponse({ ok: true, template });
+  }
+
+  const templateMatch = pathname.match(/^\/api\/timesheet\/templates\/([^/]+)$/);
+  if (templateMatch && req.method === 'PUT') {
+    const body = await readJsonBody<Partial<InvoiceTemplate>>(req);
+    const store = await loadTimesheetStore();
+    const idx = store.templates.findIndex((t) => t.id === templateMatch[1]);
+    if (idx === -1) return jsonResponse({ error: 'Template not found' }, 404);
+    store.templates[idx] = templateFromBody(body, store.templates[idx]);
+    await saveTimesheetStore(store);
+    return jsonResponse({ ok: true, template: store.templates[idx] });
+  }
+
+  if (templateMatch && req.method === 'DELETE') {
+    const store = await loadTimesheetStore();
+    if (!store.templates.some((t) => t.id === templateMatch[1])) {
+      return jsonResponse({ error: 'Template not found' }, 404);
+    }
+    if (store.invoices.some((i) => i.templateId === templateMatch[1])) {
+      return jsonResponse({ error: 'Template used by invoices — archive it instead' }, 409);
+    }
+    store.templates = store.templates.filter((t) => t.id !== templateMatch[1]);
+    await saveTimesheetStore(store);
+    return jsonResponse({ ok: true });
   }
 
   return null;
