@@ -266,16 +266,19 @@ export function InvoicesTab({
     };
   }, [previewInvoice]);
 
-  const filteredTotals = useMemo(
-    () => ({
-      total: filteredInvoices.reduce((s, i) => s + i.total, 0),
-      minutes: filteredInvoices.reduce((s, i) => s + i.totalMinutes, 0),
-      openTotal: filteredInvoices
-        .filter((i) => i.status === 'new')
-        .reduce((s, i) => s + i.total, 0),
-    }),
-    [filteredInvoices]
-  );
+  const filteredTotals = useMemo(() => {
+    // Canceled invoices are voided — they stay listed but never count toward
+    // billed totals (the Kimai history has canceled re-issues that would
+    // otherwise double-count).
+    const billed = filteredInvoices.filter((i) => i.status !== 'canceled');
+    const canceled = filteredInvoices.length - billed.length;
+    return {
+      total: billed.reduce((s, i) => s + i.total, 0),
+      minutes: billed.reduce((s, i) => s + i.totalMinutes, 0),
+      openTotal: billed.filter((i) => i.status === 'new').reduce((s, i) => s + i.total, 0),
+      canceled,
+    };
+  }, [filteredInvoices]);
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortDesc(!sortDesc);
@@ -390,6 +393,9 @@ export function InvoicesTab({
               <Money>{formatUsd(filteredTotals.openTotal)}</Money>
             </span>
           </span>
+        )}
+        {filteredTotals.canceled > 0 && (
+          <span className="text-surface-500">{filteredTotals.canceled} canceled excluded</span>
         )}
       </div>
 
