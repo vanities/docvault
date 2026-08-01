@@ -9,6 +9,8 @@ export interface TimesheetClient {
   name: string;
   currency: string;
   color?: string;
+  minimumInvoice?: number;
+  defaultTemplateId?: string;
   archived: boolean;
 }
 
@@ -48,6 +50,7 @@ export interface InvoiceTemplate {
   paymentDetails: string[];
   dueDays: number;
   vat: number;
+  descriptionStyle?: 'wrap' | 'truncate';
   archived: boolean;
 }
 

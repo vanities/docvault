@@ -27,6 +27,10 @@ export interface TimesheetClient {
   name: string;
   currency: string; // ISO code, display only
   color?: string; // #rrggbb; UI falls back to a palette slot when unset
+  // Retainer floor: when an invoice's billed work comes in under this, a
+  // labeled "Monthly minimum adjustment" line tops it up at creation.
+  minimumInvoice?: number;
+  defaultTemplateId?: string; // preselected template when invoicing this client
   archived: boolean;
 }
 
@@ -71,6 +75,9 @@ export interface InvoiceTemplate {
   paymentDetails: string[]; // bank details lines, rendered in the footer
   dueDays: number;
   vat: number; // percent; 0 = no tax line
+  // Long line descriptions on the PDF: wrap to extra lines (default) or
+  // truncate with an ellipsis to keep one row per entry.
+  descriptionStyle?: 'wrap' | 'truncate';
   archived: boolean;
 }
 

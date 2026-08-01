@@ -413,6 +413,8 @@ export function InvoicesTab({
                 onChange={(e) => {
                   setClientId(e.target.value);
                   setProjectId('');
+                  // Preselect the customer's default template (still overridable)
+                  setTemplateId(clientById.get(e.target.value)?.defaultTemplateId ?? '');
                 }}
                 className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
               >
@@ -498,6 +500,15 @@ export function InvoicesTab({
                 <>
                   {selection.count} open entries · {formatHours(selection.minutes)} ·{' '}
                   <Money>{formatUsd(selection.amount)}</Money>
+                  {(() => {
+                    const min = clientById.get(clientId)?.minimumInvoice;
+                    return min && selection.amount < min ? (
+                      <span className="text-amber-400">
+                        {' '}
+                        → tops up to <Money>{formatUsd(min)}</Money> (minimum)
+                      </span>
+                    ) : null;
+                  })()}
                 </>
               ) : (
                 'No open entries in this window'
