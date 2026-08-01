@@ -2,7 +2,10 @@
 // summary, and the mark-invoiced action. Invoice PDF generation lives in
 // server/timesheet-invoice.ts (POST /api/timesheet/invoice).
 
-import { jsonResponse } from '../data.js';
+import path from 'path';
+import { promises as fs } from 'fs';
+import { jsonResponse, getEntityPath, resolveUnder, ensureDir } from '../data.js';
+import { sendEmail } from '../email.js';
 import { readJsonBody } from '../http.js';
 import {
   loadTimesheetStore,
@@ -230,6 +233,8 @@ export async function handleTimesheetRoutes(
       color?: string;
       defaultTemplateId?: string;
       dueDays?: number | null;
+      email?: string;
+      autoFileEntityId?: string;
       archived?: boolean;
     }>(req);
     const store = await loadTimesheetStore();
@@ -255,6 +260,16 @@ export async function handleTimesheetRoutes(
       const days = Number(body.dueDays);
       if (body.dueDays === null || Number.isNaN(days) || days <= 0) delete client.dueDays;
       else client.dueDays = Math.round(days);
+    }
+    if (body.email !== undefined) {
+      const email = body.email.trim();
+      if (!email) delete client.email;
+      else if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) client.email = email;
+      else return jsonResponse({ error: 'Invalid email' }, 400);
+    }
+    if (body.autoFileEntityId !== undefined) {
+      if (!body.autoFileEntityId) delete client.autoFileEntityId;
+      else client.autoFileEntityId = body.autoFileEntityId;
     }
     if (body.archived !== undefined) client.archived = body.archived;
     await saveTimesheetStore(store);
@@ -542,6 +557,36 @@ function assembleInvoice(
   return { invoice, entries, template };
 }
 
+/** Render an invoice PDF and save it into an entity's year folder, using the
+ * repo's {Source}_{Type}_{Date} document naming with collision suffixes.
+ * Returns "entityId:relative/path" or null when the entity is unknown. */
+async function fileInvoicePdf(
+  invoice: Invoice,
+  template: InvoiceTemplate | undefined,
+  entityId: string
+): Promise<string | null> {
+  const entityPath = await getEntityPath(entityId);
+  if (!entityPath) return null;
+  const year = invoice.issueDate.slice(0, 4);
+  const dir = resolveUnder(entityPath, year);
+  if (!dir) return null;
+  await ensureDir(dir);
+  const safeClient = invoice.clientName.replace(/[^\w-]+/g, '');
+  const base = `${safeClient}_Invoice_${invoice.issueDate}`;
+  let filename = `${base}.pdf`;
+  for (let n = 2; ; n++) {
+    try {
+      await fs.access(path.join(dir, filename));
+      filename = `${base}_${n}.pdf`;
+    } catch {
+      break;
+    }
+  }
+  const pdf = await buildInvoicePdf(invoice, template);
+  await fs.writeFile(path.join(dir, filename), Buffer.from(pdf));
+  return `${entityId}:${year}/${filename}`;
+}
+
 function pdfResponse(pdf: Uint8Array, invoice: Invoice): Response {
   const safeNumber = invoice.number.replace(/[^\w-]+/g, '-');
   return new Response(new Uint8Array(pdf), {
@@ -569,9 +614,24 @@ async function handleInvoiceRoutes(req: Request, pathname: string): Promise<Resp
       entry.invoiceId = result.invoice.id;
     }
     store.invoices.push(result.invoice);
+
+    // Auto-file: drop the rendered PDF into the client's configured entity
+    // docs (year folder). Best-effort — a filing failure never blocks billing.
+    const autoEntity = store.clients.find(
+      (c) => c.id === result.invoice.clientId
+    )?.autoFileEntityId;
+    if (autoEntity) {
+      try {
+        const filed = await fileInvoicePdf(result.invoice, result.template, autoEntity);
+        if (filed) result.invoice.filedPath = filed;
+      } catch (err) {
+        log.warn(`[invoice] auto-file failed for ${result.invoice.number}: ${String(err)}`);
+      }
+    }
+
     await saveTimesheetStore(store);
     log.info(
-      `[invoice] created ${result.invoice.number} for client=${result.invoice.clientId}: ${result.entries.length} entries`
+      `[invoice] created ${result.invoice.number} for client=${result.invoice.clientId}: ${result.entries.length} entries${result.invoice.filedPath ? ` (filed: ${result.invoice.filedPath})` : ''}`
     );
     return jsonResponse({ ok: true, invoice: result.invoice });
   }
@@ -596,6 +656,53 @@ async function handleInvoiceRoutes(req: Request, pathname: string): Promise<Resp
       ? store.templates.find((t) => t.id === invoice.templateId)
       : store.templates.find((t) => !t.archived);
     return pdfResponse(await buildInvoicePdf(invoice, template), invoice);
+  }
+
+  // POST /api/timesheet/invoices/:id/send - email the PDF to the client
+  const sendMatch = pathname.match(/^\/api\/timesheet\/invoices\/([^/]+)\/send$/);
+  if (sendMatch && req.method === 'POST') {
+    const body = await readJsonBody<{ to?: string }>(req);
+    const store = await loadTimesheetStore();
+    const invoice = store.invoices.find((i) => i.id === sendMatch[1]);
+    if (!invoice) return jsonResponse({ error: 'Invoice not found' }, 404);
+    const client = store.clients.find((c) => c.id === invoice.clientId);
+    const to = body.to?.trim() || client?.email;
+    if (!to) {
+      return jsonResponse(
+        { error: 'No recipient — set an email on the customer (or pass "to")' },
+        400
+      );
+    }
+    const template = invoice.templateId
+      ? store.templates.find((t) => t.id === invoice.templateId)
+      : store.templates.find((t) => !t.archived);
+    const pdf = await buildInvoicePdf(invoice, template);
+    const company = template?.company || 'Invoice';
+    const result = await sendEmail({
+      to,
+      subject: `Invoice ${invoice.number} from ${company}`,
+      html: [
+        `<p>Hi,</p>`,
+        `<p>Please find attached invoice <strong>${invoice.number}</strong> for ` +
+          `<strong>$${invoice.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>, ` +
+          `due <strong>${invoice.dueDate}</strong>.</p>`,
+        template?.paymentTerms ? `<p>Payment terms: ${template.paymentTerms}</p>` : '',
+        `<p>Thank you!</p>`,
+      ].join('\n'),
+      attachments: [
+        {
+          filename: `Invoice_${invoice.number.replace(/[^\w-]+/g, '-')}.pdf`,
+          content: Buffer.from(pdf).toString('base64'),
+          contentType: 'application/pdf',
+        },
+      ],
+    });
+    if (!result.ok) return jsonResponse({ error: result.error ?? 'Email send failed' }, 502);
+    invoice.sentAt = new Date().toISOString();
+    invoice.sentTo = to;
+    await saveTimesheetStore(store);
+    log.info(`[invoice] sent ${invoice.number} (id=${result.id ?? 'n/a'})`);
+    return jsonResponse({ ok: true, sentTo: to, sentAt: invoice.sentAt });
   }
 
   // PUT /api/timesheet/invoices/:id - status / comment updates
