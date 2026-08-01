@@ -515,7 +515,7 @@ export function TimesheetTab({
                     <td className="px-2 py-2 text-surface-600 text-[12px] whitespace-nowrap hidden sm:table-cell">
                       {client?.name} / {project?.name}
                     </td>
-                    <td className="px-2 py-2 text-surface-900 max-w-[10.5rem] sm:max-w-[26rem]">
+                    <td className="px-2 py-2 text-surface-900 max-w-[9rem] sm:max-w-[26rem]">
                       <span className="line-clamp-2">
                         {e.description || <i className="text-surface-500">no description</i>}
                       </span>
