@@ -28,6 +28,7 @@ export interface TimesheetClient {
   currency: string; // ISO code, display only
   color?: string; // #rrggbb; UI falls back to a palette slot when unset
   defaultTemplateId?: string; // preselected template when invoicing this client
+  dueDays?: number; // payment terms override; unset = template's dueDays
   archived: boolean;
 }
 

@@ -229,6 +229,7 @@ export async function handleTimesheetRoutes(
       currency?: string;
       color?: string;
       defaultTemplateId?: string;
+      dueDays?: number | null;
       archived?: boolean;
     }>(req);
     const store = await loadTimesheetStore();
@@ -249,6 +250,11 @@ export async function handleTimesheetRoutes(
       } else {
         return jsonResponse({ error: 'Template not found' }, 404);
       }
+    }
+    if (body.dueDays !== undefined) {
+      const days = Number(body.dueDays);
+      if (body.dueDays === null || Number.isNaN(days) || days <= 0) delete client.dueDays;
+      else client.dueDays = Math.round(days);
     }
     if (body.archived !== undefined) client.archived = body.archived;
     await saveTimesheetStore(store);
@@ -517,7 +523,8 @@ function assembleInvoice(
     clientId: client.id,
     clientName: client.name,
     issueDate,
-    dueDate: addDays(issueDate, template?.dueDays ?? 14),
+    // Payment terms: client override wins, then the template's default.
+    dueDate: addDays(issueDate, client.dueDays ?? template?.dueDays ?? 14),
     status: 'new',
     currency: client.currency || 'USD',
     totalMinutes,

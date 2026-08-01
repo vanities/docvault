@@ -10,6 +10,7 @@ export interface TimesheetClient {
   currency: string;
   color?: string;
   defaultTemplateId?: string;
+  dueDays?: number;
   archived: boolean;
 }
 
