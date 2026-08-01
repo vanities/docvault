@@ -97,6 +97,7 @@ import {
 } from './research.js';
 import { handleFinancialSnapshotRoutes } from './financial-snapshot.js';
 import { handleCalendarRoutes } from './calendar.js';
+import { handleTimesheetRoutes } from './timesheet.js';
 import { handleDailyNewsRoutes } from './daily-news.js';
 import { handlePoliticsRoutes } from './politics.js';
 import { listRuns, getRun } from '../deep-research-store.js';
@@ -218,7 +219,10 @@ const TOOL_NAMES = [
   'read_brain',
   'get_calendar',
   'list_calendar_events',
+  'get_timesheet_status',
   // --- Writes (require user confirmation per system prompt) ---
+  'log_time',
+  'create_invoice',
   'remember',
   'set_metadata',
   'add_calendar_event',
@@ -593,6 +597,168 @@ async function toolUpdateCalendarEvent(
     calendarEventBody(rest)
   );
   return status === 200 ? data : { error: data, status };
+}
+
+// ---------------------------------------------------------------------------
+// Timesheet tools — compact projections over /api/timesheet (the raw store is
+// hundreds of KB; never hand the model the whole thing).
+// ---------------------------------------------------------------------------
+
+interface TimesheetStoreShape {
+  clients: {
+    id: string;
+    name: string;
+    dueDays?: number;
+    email?: string;
+    archived: boolean;
+  }[];
+  projects: {
+    id: string;
+    clientId: string;
+    name: string;
+    hourlyRate: number;
+    minimumInvoice?: number;
+    archived: boolean;
+  }[];
+  entries: {
+    projectId: string;
+    date: string;
+    start: string;
+    end: string;
+    durationMinutes: number;
+    description: string;
+    amount: number;
+    billable: boolean;
+    invoiced: boolean;
+  }[];
+  invoices: {
+    number: string;
+    clientId: string;
+    issueDate: string;
+    dueDate: string;
+    status: string;
+    total: number;
+  }[];
+}
+
+async function toolGetTimesheetStatus(): Promise<unknown> {
+  const { status, data } = await invokeRoute(handleTimesheetRoutes, 'GET', '/api/timesheet');
+  if (status !== 200) return { error: data, status };
+  const store = data as TimesheetStoreShape;
+  const projectById = new Map(store.projects.map((p) => [p.id, p] as const));
+  const openByClient = new Map<string, { entries: number; minutes: number; amount: number }>();
+  for (const e of store.entries) {
+    if (e.invoiced || !e.billable) continue;
+    const cid = projectById.get(e.projectId)?.clientId ?? 'unknown';
+    const agg = openByClient.get(cid) ?? { entries: 0, minutes: 0, amount: 0 };
+    agg.entries += 1;
+    agg.minutes += e.durationMinutes;
+    agg.amount += e.amount;
+    openByClient.set(cid, agg);
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    today,
+    clients: store.clients
+      .filter((c) => !c.archived)
+      .map((c) => ({
+        id: c.id,
+        name: c.name,
+        dueDays: c.dueDays ?? null,
+        hasEmail: Boolean(c.email),
+        openUninvoiced: openByClient.get(c.id) ?? null,
+      })),
+    projects: store.projects
+      .filter((p) => !p.archived)
+      .map((p) => ({
+        id: p.id,
+        clientId: p.clientId,
+        name: p.name,
+        hourlyRate: p.hourlyRate,
+        minimumInvoice: p.minimumInvoice ?? null,
+      })),
+    recentEntries: [...store.entries]
+      .sort((a, b) =>
+        a.date === b.date ? b.start.localeCompare(a.start) : b.date.localeCompare(a.date)
+      )
+      .slice(0, 10)
+      .map((e) => ({
+        date: e.date,
+        start: e.start,
+        end: e.end,
+        project: projectById.get(e.projectId)?.name ?? e.projectId,
+        description: e.description,
+        amount: e.amount,
+        invoiced: e.invoiced,
+      })),
+    recentInvoices: [...store.invoices]
+      .sort((a, b) => b.issueDate.localeCompare(a.issueDate))
+      .slice(0, 8)
+      .map((i) => ({
+        number: i.number,
+        clientId: i.clientId,
+        issueDate: i.issueDate,
+        dueDate: i.dueDate,
+        status: i.status,
+        overdue: i.status === 'new' && i.dueDate < today,
+        total: i.total,
+      })),
+  };
+}
+
+async function toolLogTime(input: {
+  projectId: string;
+  start: string;
+  end: string;
+  description: string;
+  date?: string | null;
+  billable?: boolean | null;
+  hourlyRate?: number | null;
+}): Promise<unknown> {
+  const { status, data } = await invokeRoute(
+    handleTimesheetRoutes,
+    'POST',
+    '/api/timesheet/entries',
+    {
+      projectId: input.projectId,
+      date: input.date || new Date().toISOString().slice(0, 10),
+      start: input.start,
+      end: input.end,
+      description: input.description,
+      ...(input.billable === false ? { billable: false } : {}),
+      ...(input.hourlyRate != null ? { hourlyRate: input.hourlyRate } : {}),
+    }
+  );
+  return status === 200 ? data : { error: data, status };
+}
+
+async function toolCreateInvoice(input: {
+  clientId: string;
+  projectId?: string | null;
+  from?: string | null;
+  to?: string | null;
+}): Promise<unknown> {
+  const { status, data } = await invokeRoute(
+    handleTimesheetRoutes,
+    'POST',
+    '/api/timesheet/invoices',
+    {
+      clientId: input.clientId,
+      ...(input.projectId ? { projectId: input.projectId } : {}),
+      ...(input.from ? { from: input.from } : {}),
+      ...(input.to ? { to: input.to } : {}),
+    }
+  );
+  if (status !== 200) return { error: data, status };
+  const inv = (data as { invoice: TimesheetStoreShape['invoices'][0] & { entryIds: string[] } })
+    .invoice;
+  return {
+    ok: true,
+    number: inv.number,
+    total: inv.total,
+    dueDate: inv.dueDate,
+    entriesBilled: inv.entryIds.length,
+  };
 }
 
 async function toolDeleteCalendarEvent(input: { id: string }): Promise<unknown> {
@@ -1493,6 +1659,40 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
         },
         async (args) => jsonResult(await toolListCalendarEvents(args))
       ),
+      tool(
+        'get_timesheet_status',
+        "The user's consulting timesheet at a glance: active customers (with open uninvoiced totals per customer and payment terms), projects (ids, rates, retainer minimums), the 10 most recent entries, and the 8 most recent invoices with overdue flags. Call this FIRST for any time-tracking or invoicing question, and to resolve project ids before log_time.",
+        {},
+        async () => jsonResult(await toolGetTimesheetStatus())
+      ),
+      // -- Timesheet: writes ------------------------------------------------
+      tool(
+        'log_time',
+        "Log a completed work entry on the user's timesheet: project + start/end wall times + what was worked on. Date defaults to today. The billing rate snapshots from the project automatically (override only if the user says so). WRITE TOOL — state the entry (project, times, description) and confirm before invoking.",
+        {
+          projectId: z.string().describe('Project id from get_timesheet_status.'),
+          start: z.string().describe('Start wall time HH:MM (24h).'),
+          end: z
+            .string()
+            .describe('End wall time HH:MM (24h); before start means it crossed midnight.'),
+          description: z.string().describe('What was worked on.'),
+          date: z.string().optional().describe('YYYY-MM-DD; defaults to today.'),
+          billable: z.boolean().optional().describe('Default true.'),
+          hourlyRate: z.number().optional().describe('Rate override; default is the project rate.'),
+        },
+        async (args) => jsonResult(await toolLogTime(args))
+      ),
+      tool(
+        'create_invoice',
+        "Create an invoice from a customer's open (uninvoiced, billable) entries — optionally scoped to one project and/or a date window. Marks those entries invoiced, applies any project retainer minimum, and continues the YYYY/NNN numbering. Returns the number, total, due date, and entry count. WRITE TOOL — state the customer, scope, and expected total from get_timesheet_status and confirm before invoking.",
+        {
+          clientId: z.string().describe('Customer id from get_timesheet_status.'),
+          projectId: z.string().optional().describe('Bill only this project.'),
+          from: z.string().optional().describe('Only entries on/after this date (YYYY-MM-DD).'),
+          to: z.string().optional().describe('Only entries on/before this date (YYYY-MM-DD).'),
+        },
+        async (args) => jsonResult(await toolCreateInvoice(args))
+      ),
       // -- Calendar: writes -------------------------------------------------
       tool(
         'add_calendar_event',
@@ -1792,11 +1992,12 @@ function buildSystemPrompt(activeEntity: string | undefined, brainContent = ''):
     'get_congress_trades returns recent congressional stock/option disclosures (politician, chamber, party, buy/sell, ticker, $ range, dates) — PUBLIC STOCK Act filings, NOT the user\'s holdings. Use it for "what are politicians buying" or insider/consensus signals; optional politician/ticker/chamber/category filters.',
     'The user may have configured External Sources — cloned git repos of their own markdown (for example a personal knowledge or creative vault). For questions about their notes, projects, writing, or anything outside the tax, financial, and health data: call list_external_sources, then either search_external_sources (substring over BOTH file paths and content) or list_external_source_files (browse the tree or a folder when you have no obvious search term), then read_external_file for the full text. These are READ-ONLY and free to chain. Cite the source name and file path when you quote them.',
     "The user keeps a global calendar of birthdays, recurring tasks (maintenance chores, deadlines), and one-off events, optionally tagged by entity. get_calendar returns dated occurrences (birthday ages, overdue flags); list_calendar_events returns the underlying definitions. Tasks recur either on a fixed schedule or 'after completion' — the next due date counts from when the user actually did it. Use these for any \"when is / what's due / what's coming up\" question instead of guessing dates.",
+    'The user runs a consulting business and tracks billable time in the built-in Timesheet (customers → projects → manual start/end entries, invoices with YYYY/NNN numbering and per-project retainer minimums). get_timesheet_status is the entry point for any hours/billing/invoice question and for resolving project ids. log_time records work ("log 2h on Pulse Reels, fixed the paywall") and create_invoice bills a customer\'s open entries — both are write tools requiring confirmation.',
     'Use the provided tools to answer factually. Never invent file names, vendors, amounts, dates, lab values, supplement brands, or citations. If a file has not been parsed yet or a supplement is not in the regimen, say so — do not guess.',
     'Be concise. Use markdown tables for structured data. When citing a specific document, include its path so the user can find it.',
     [
       "WRITE TOOLS — these make persistent changes to the user's data:",
-      '  remember, set_metadata, add_calendar_event, update_calendar_event, delete_calendar_event, complete_calendar_occurrence, create_supplement, update_supplement, delete_supplement, log_sickness',
+      '  remember, set_metadata, add_calendar_event, update_calendar_event, delete_calendar_event, complete_calendar_occurrence, create_supplement, update_supplement, delete_supplement, log_sickness, log_time, create_invoice',
       'ALWAYS state what you are about to write (which entry, which fields, what values) and wait for explicit user confirmation BEFORE invoking any of them. Read tools can be chained freely without asking.',
       "remember saves ONE durable note to the user's Brain (long-term memory, shown above). Use it sparingly — only for stable preferences, decisions, or context worth recalling in every future chat, never for one-off task details or anything the app already stores. Show the exact text and confirm before saving.",
       'delete_supplement is destructive — prefer update_supplement with status:"past" if the user might want the history back.',

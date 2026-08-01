@@ -16,6 +16,7 @@ import {
   RotateCcw,
   Eye,
   FolderInput,
+  Send,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -184,6 +185,27 @@ export function InvoicesTab({
       setError(e instanceof Error ? e.message : 'Create failed');
     } finally {
       setBusy('');
+    }
+  };
+
+  const handleSend = async (invoice: Invoice) => {
+    const email = clientById.get(invoice.clientId)?.email;
+    if (!email) {
+      setError(`Set an email on ${invoice.clientName} first (Customers & Projects → Edit).`);
+      return;
+    }
+    const ok = await confirm({
+      title: `Email invoice ${invoice.number}?`,
+      description: `The PDF (${formatUsd(invoice.total)}, due ${invoice.dueDate}) will be sent to ${email}.${invoice.sentAt ? ` Already sent ${invoice.sentAt.slice(0, 10)}.` : ''}`,
+      confirmLabel: 'Send email',
+    });
+    if (!ok) return;
+    setError('');
+    try {
+      await tsJson(`/invoices/${invoice.id}/send`, 'POST', {});
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Send failed');
     }
   };
 
@@ -369,6 +391,8 @@ export function InvoicesTab({
     </button>
   );
 
+  const todayYmd = new Date().toISOString().slice(0, 10);
+
   const statusBadge = (inv: Invoice) => {
     if (inv.status === 'paid')
       return (
@@ -381,6 +405,12 @@ export function InvoicesTab({
       );
     if (inv.status === 'canceled')
       return <span className="text-[11px] text-surface-500">canceled</span>;
+    if (inv.dueDate < todayYmd)
+      return (
+        <span className="text-[11px] text-rose-400 font-semibold" title={`Due ${inv.dueDate}`}>
+          overdue
+        </span>
+      );
     return <span className="text-[11px] text-amber-400">new</span>;
   };
 
@@ -448,6 +478,8 @@ export function InvoicesTab({
           </Button>
         </div>
       </div>
+
+      {error && !createOpen && <p className="text-[12px] text-danger-400 mb-2">{error}</p>}
 
       {/* Filtered totals — recomputes with every filter change */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2 text-[12px] text-surface-600 tabular-nums">
@@ -706,6 +738,12 @@ export function InvoicesTab({
                           >
                             <FileDown className="w-3.5 h-3.5" />
                             Download PDF
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => void handleSend(inv)}>
+                            <Send className="w-3.5 h-3.5" />
+                            {inv.sentAt
+                              ? `Resend email (sent ${inv.sentAt.slice(0, 10)})`
+                              : 'Send to client'}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openFileToEntity(inv)}>
                             <FolderInput className="w-3.5 h-3.5" />

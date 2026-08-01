@@ -11,6 +11,8 @@ export interface TimesheetClient {
   color?: string;
   defaultTemplateId?: string;
   dueDays?: number;
+  email?: string;
+  autoFileEntityId?: string;
   archived: boolean;
 }
 
@@ -77,6 +79,9 @@ export interface Invoice {
   entryIds: string[];
   projectIds?: string[];
   paymentDate?: string;
+  sentAt?: string;
+  sentTo?: string;
+  filedPath?: string;
   createdAt: string;
   kimaiId?: number;
 }

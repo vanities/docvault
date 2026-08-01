@@ -4,7 +4,7 @@
 // buttons open the same modal empty. Archive/delete confirm first.
 // Colors flow to entry rows, invoice rows, and every chart.
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Plus,
   Trash2,
@@ -126,6 +126,8 @@ type ClientForm = {
   color: string;
   defaultTemplateId: string; // '' = first active template
   dueDays: string; // '' = template default
+  email: string; // '' = none; where Send Invoice delivers
+  autoFileEntityId: string; // '' = off; entity docs that get each new invoice PDF
 };
 type ProjectForm = {
   name: string;
@@ -141,6 +143,8 @@ const EMPTY_CLIENT: ClientForm = {
   color: '',
   defaultTemplateId: '',
   dueDays: '',
+  email: '',
+  autoFileEntityId: '',
 };
 const EMPTY_PROJECT: ProjectForm = {
   name: '',
@@ -172,6 +176,17 @@ export function CustomersTab({
     [store]
   );
   const clientColors = useMemo(() => buildClientColorMap(store.clients), [store.clients]);
+
+  // Entity list for the auto-file picker (tax entities only).
+  const [entities, setEntities] = useState<{ id: string; name: string; type?: string }[]>([]);
+  useEffect(() => {
+    void fetch('/api/entities')
+      .then(
+        (r) => r.json() as Promise<{ entities?: { id: string; name: string; type?: string }[] }>
+      )
+      .then((d) => setEntities((d.entities ?? []).filter((e) => e.type !== 'docs')))
+      .catch(() => setEntities([]));
+  }, []);
 
   const clientTotals = useMemo(() => {
     const agg = new Map<string, { minutes: number; amount: number }>();
@@ -220,6 +235,8 @@ export function CustomersTab({
         color: client.color ?? '',
         defaultTemplateId: client.defaultTemplateId ?? '',
         dueDays: client.dueDays ? String(client.dueDays) : '',
+        email: client.email ?? '',
+        autoFileEntityId: client.autoFileEntityId ?? '',
       });
       setClientModal(client.id);
     } else {
@@ -254,6 +271,8 @@ export function CustomersTab({
       color: clientForm.color,
       defaultTemplateId: clientForm.defaultTemplateId,
       dueDays: clientForm.dueDays === '' ? null : Number(clientForm.dueDays),
+      email: clientForm.email.trim(),
+      autoFileEntityId: clientForm.autoFileEntityId,
     };
     const ok = await call(async () => {
       if (clientModal === 'new') {
@@ -550,6 +569,41 @@ export function CustomersTab({
                   placeholder="template"
                   className="h-9 rounded-lg text-sm"
                 />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[12px] text-surface-600 block mb-1">Email</label>
+                <Input
+                  type="email"
+                  value={clientForm.email}
+                  onChange={(e) => setClientForm({ ...clientForm, email: e.target.value })}
+                  placeholder="billing@client.com"
+                  className="h-9 rounded-lg text-sm"
+                />
+                <p className="text-[11px] text-surface-500 mt-1">Where Send Invoice delivers.</p>
+              </div>
+              <div>
+                <label className="text-[12px] text-surface-600 block mb-1">
+                  Auto-file invoices to
+                </label>
+                <select
+                  value={clientForm.autoFileEntityId}
+                  onChange={(e) =>
+                    setClientForm({ ...clientForm, autoFileEntityId: e.target.value })
+                  }
+                  className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+                >
+                  <option value="">Off</option>
+                  {entities.map((en) => (
+                    <option key={en.id} value={en.id}>
+                      {en.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-surface-500 mt-1">
+                  New invoice PDFs save into this entity&apos;s year folder.
+                </p>
               </div>
             </div>
             <ColorField

@@ -29,6 +29,8 @@ export interface TimesheetClient {
   color?: string; // #rrggbb; UI falls back to a palette slot when unset
   defaultTemplateId?: string; // preselected template when invoicing this client
   dueDays?: number; // payment terms override; unset = template's dueDays
+  email?: string; // where "Send invoice" delivers the PDF
+  autoFileEntityId?: string; // entity whose docs get a copy of each new invoice PDF
   archived: boolean;
 }
 
@@ -116,6 +118,9 @@ export interface Invoice {
   projectIds?: string[]; // distinct projects billed — drives history filtering
   // (absent on Kimai imports; those only match the "all projects" filter)
   paymentDate?: string; // YYYY-MM-DD when marked paid
+  sentAt?: string; // ISO timestamp of the last email send
+  sentTo?: string; // recipient of the last email send
+  filedPath?: string; // "entityId:relative/path" when auto-filed into entity docs
   createdAt: string;
   kimaiId?: number; // provenance for invoices imported from Kimai
 }
