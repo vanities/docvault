@@ -24,10 +24,18 @@ const TABS: { value: Tab; label: string }[] = [
   { value: 'templates', label: 'Templates' },
 ];
 
+const HOUR24_KEY = 'docvault-timesheet-24h';
+
 export function TimesheetView() {
   const [store, setStore] = useState<TimesheetStore | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('timesheet');
+  const [hour24, setHour24] = useState(() => localStorage.getItem(HOUR24_KEY) !== '12');
+
+  const toggleHour24 = (value: boolean) => {
+    setHour24(value);
+    localStorage.setItem(HOUR24_KEY, value ? '24' : '12');
+  };
 
   const refresh = useCallback(async () => {
     try {
@@ -62,6 +70,21 @@ export function TimesheetView() {
             Billable hours, clients, and invoicing
           </p>
         </div>
+        {/* Clock format preference — persisted locally */}
+        <div className="flex items-center rounded-lg border border-border overflow-hidden text-[11px]">
+          <button
+            onClick={() => toggleHour24(true)}
+            className={`px-2 py-1 ${hour24 ? 'bg-surface-200/60 text-surface-950' : 'text-surface-600 hover:text-surface-900'}`}
+          >
+            24h
+          </button>
+          <button
+            onClick={() => toggleHour24(false)}
+            className={`px-2 py-1 ${!hour24 ? 'bg-surface-200/60 text-surface-950' : 'text-surface-600 hover:text-surface-900'}`}
+          >
+            12h
+          </button>
+        </div>
       </div>
 
       {/* Tabs — horizontally scrollable on narrow screens. overflow-y must be
@@ -84,7 +107,7 @@ export function TimesheetView() {
         ))}
       </div>
 
-      {tab === 'timesheet' && <TimesheetTab store={store} refresh={refresh} />}
+      {tab === 'timesheet' && <TimesheetTab store={store} refresh={refresh} hour24={hour24} />}
       {tab === 'invoices' && <InvoicesTab store={store} refresh={refresh} />}
       {tab === 'analytics' && <AnalyticsTab store={store} />}
       {tab === 'customers' && <CustomersTab store={store} refresh={refresh} />}
