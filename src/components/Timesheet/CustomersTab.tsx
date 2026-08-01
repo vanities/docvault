@@ -178,6 +178,8 @@ export function CustomersTab({
   const [projectModal, setProjectModal] = useState<string | null>(null);
   const [clientForm, setClientForm] = useState<ClientForm>(EMPTY_CLIENT);
   const [projectForm, setProjectForm] = useState<ProjectForm>(EMPTY_PROJECT);
+  // Project modal is tabbed (Details | Email) to keep its height sane.
+  const [projectTab, setProjectTab] = useState<'details' | 'email'>('details');
 
   const projectById = useMemo(
     () => new Map(store.projects.map((p) => [p.id, p] as const)),
@@ -255,6 +257,7 @@ export function CustomersTab({
 
   const openProjectModal = (project?: TimesheetProject) => {
     setError('');
+    setProjectTab('details');
     if (project) {
       setProjectForm({
         name: project.name,
@@ -656,7 +659,24 @@ export function CustomersTab({
           <DialogHeader>
             <DialogTitle>{projectModal === 'new' ? 'Add Project' : 'Edit Project'}</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-1 gap-4">
+          {/* Tab bar keeps the modal short — details vs email template */}
+          <div className="flex items-center gap-1 border-b border-border -mt-1">
+            {(['details', 'email'] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setProjectTab(t)}
+                className={`px-3 py-1.5 text-[13px] font-medium border-b-2 -mb-px transition-colors ${
+                  projectTab === t
+                    ? 'border-lime-400 text-surface-950'
+                    : 'border-transparent text-surface-600 hover:text-surface-900'
+                }`}
+              >
+                {t === 'details' ? 'Details' : 'Email'}
+              </button>
+            ))}
+          </div>
+          <div className={`grid grid-cols-1 gap-4 ${projectTab === 'details' ? '' : 'hidden'}`}>
             <div>
               <label className="text-[12px] text-surface-600 block mb-1">Customer</label>
               <select
@@ -716,9 +736,13 @@ export function CustomersTab({
             <p className="text-[11px] text-surface-500 -mt-2">
               Default inherits the customer&apos;s color.
             </p>
+          </div>
 
-            {/* Email defaults — prefill the invoice compose modal */}
-            <div className="border-t border-border/50 pt-3">
+          {/* Email tab — defaults that prefill the invoice compose modal.
+              Both tabs stay mounted (hidden, not unmounted) so switching
+              never loses unsaved edits; Save submits every field. */}
+          <div className={`grid grid-cols-1 gap-4 ${projectTab === 'email' ? '' : 'hidden'}`}>
+            <div>
               <p className="text-[12px] font-semibold text-surface-800 mb-1">
                 Invoice email defaults
               </p>
@@ -811,8 +835,8 @@ export function CustomersTab({
                 </div>
               </div>
             </div>
-            {error && <p className="text-[12px] text-danger-400">{error}</p>}
           </div>
+          {error && <p className="text-[12px] text-danger-400">{error}</p>}
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setProjectModal(null)}>
               Cancel
