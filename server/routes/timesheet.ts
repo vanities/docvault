@@ -538,10 +538,7 @@ async function handleInvoiceRoutes(req: Request, pathname: string): Promise<Resp
     const store = await loadTimesheetStore();
     const invoice = store.invoices.find((i) => i.id === pdfMatch[1]);
     if (!invoice) return jsonResponse({ error: 'Invoice not found' }, 404);
-    if (invoice.lines.length === 0) {
-      // Imported from Kimai — record only, the line data never migrated.
-      return jsonResponse({ error: 'No line data for this invoice (imported record)' }, 400);
-    }
+    // Line-less invoices (Kimai imports) render as a summary PDF.
     const template = invoice.templateId
       ? store.templates.find((t) => t.id === invoice.templateId)
       : store.templates.find((t) => !t.archived);

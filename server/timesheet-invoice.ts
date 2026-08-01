@@ -140,29 +140,46 @@ export async function buildInvoicePdf(
   y -= 28;
 
   // ----- Row-work table: one row per time entry -----
-  y = tableHeader(page, y);
-  for (const line of invoice.lines) {
-    if (y < MARGIN + 80) {
-      page = doc.addPage([PAGE_W, PAGE_H]);
-      y = tableHeader(page, PAGE_H - MARGIN);
+  if (invoice.lines.length > 0) {
+    y = tableHeader(page, y);
+    for (const line of invoice.lines) {
+      if (y < MARGIN + 80) {
+        page = doc.addPage([PAGE_W, PAGE_H]);
+        y = tableHeader(page, PAGE_H - MARGIN);
+      }
+      const desc = sanitize(line.description) || sanitize(line.projectName);
+      text(page, line.date, COLS.date, y, { size: 8.5, color: MUTED });
+      text(
+        page,
+        fit(
+          `${desc}  ·  ${sanitize(line.projectName)}`,
+          font,
+          8.5,
+          COLS.hours - COLS.description - 10
+        ),
+        COLS.description,
+        y,
+        { size: 8.5 }
+      );
+      text(page, fmtHours(line.minutes), 0, y, { size: 8.5, rightAt: COLS.hours + 40 });
+      text(page, fmtMoney(line.hourlyRate), 0, y, { size: 8.5, rightAt: COLS.rate + 40 });
+      text(page, fmtMoney(line.amount), 0, y, { size: 8.5, rightAt: PAGE_W - MARGIN });
+      y -= 14;
     }
-    const desc = sanitize(line.description) || sanitize(line.projectName);
-    text(page, line.date, COLS.date, y, { size: 8.5, color: MUTED });
+  } else {
+    // Imported record (Kimai kept no line data): honest single summary row.
+    y = tableHeader(page, y);
+    text(page, invoice.issueDate, COLS.date, y, { size: 8.5, color: MUTED });
     text(
       page,
-      fit(
-        `${desc}  ·  ${sanitize(line.projectName)}`,
-        font,
-        8.5,
-        COLS.hours - COLS.description - 10
-      ),
+      'Services rendered — imported record, line detail unavailable',
       COLS.description,
       y,
-      { size: 8.5 }
+      {
+        size: 8.5,
+      }
     );
-    text(page, fmtHours(line.minutes), 0, y, { size: 8.5, rightAt: COLS.hours + 40 });
-    text(page, fmtMoney(line.hourlyRate), 0, y, { size: 8.5, rightAt: COLS.rate + 40 });
-    text(page, fmtMoney(line.amount), 0, y, { size: 8.5, rightAt: PAGE_W - MARGIN });
+    text(page, fmtMoney(invoice.total), 0, y, { size: 8.5, rightAt: PAGE_W - MARGIN });
     y -= 14;
   }
 
@@ -173,11 +190,13 @@ export async function buildInvoicePdf(
   }
   rule(page, y + 6);
   y -= 10;
-  text(page, `${fmtHours(invoice.totalMinutes)} hours`, 0, y, {
-    size: 9,
-    color: MUTED,
-    rightAt: COLS.rate + 40,
-  });
+  if (invoice.totalMinutes > 0) {
+    text(page, `${fmtHours(invoice.totalMinutes)} hours`, 0, y, {
+      size: 9,
+      color: MUTED,
+      rightAt: COLS.rate + 40,
+    });
+  }
   if (invoice.vat > 0) {
     text(page, 'SUBTOTAL', COLS.hours - 60, y - 16, { size: 8.5, color: MUTED });
     text(page, fmtMoney(invoice.subtotal), 0, y - 16, { size: 9, rightAt: PAGE_W - MARGIN });

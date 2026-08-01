@@ -211,6 +211,17 @@ export function InvoicesTab({
     return rows;
   }, [store.invoices, filterClient, filterProject, filterStatus, sortKey, sortDesc]);
 
+  const filteredTotals = useMemo(
+    () => ({
+      total: filteredInvoices.reduce((s, i) => s + i.total, 0),
+      minutes: filteredInvoices.reduce((s, i) => s + i.totalMinutes, 0),
+      openTotal: filteredInvoices
+        .filter((i) => i.status === 'new')
+        .reduce((s, i) => s + i.total, 0),
+    }),
+    [filteredInvoices]
+  );
+
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortDesc(!sortDesc);
     else {
@@ -290,16 +301,29 @@ export function InvoicesTab({
           <option value="paid">Paid</option>
           <option value="canceled">Canceled</option>
         </select>
-        <span className="text-[12px] text-surface-500 tabular-nums hidden sm:inline">
-          {filteredInvoices.length} invoices ·{' '}
-          <Money>{formatUsd(filteredInvoices.reduce((s, i) => s + i.total, 0))}</Money>
-        </span>
         <div className="ml-auto">
           <Button size="sm" onClick={openCreate}>
             <Plus className="w-4 h-4" />
             New Invoice
           </Button>
         </div>
+      </div>
+
+      {/* Filtered totals — recomputes with every filter change */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2 text-[12px] text-surface-600 tabular-nums">
+        <span>{filteredInvoices.length} invoices</span>
+        {filteredTotals.minutes > 0 && <span>{formatHours(filteredTotals.minutes)}</span>}
+        <span className="font-mono font-semibold text-surface-900">
+          <Money>{formatUsd(filteredTotals.total)}</Money>
+        </span>
+        {filteredTotals.openTotal > 0 && (
+          <span>
+            unpaid{' '}
+            <span className="font-mono font-semibold text-amber-400">
+              <Money>{formatUsd(filteredTotals.openTotal)}</Money>
+            </span>
+          </span>
+        )}
       </div>
 
       {/* Create modal */}
@@ -489,42 +513,51 @@ export function InvoicesTab({
                     {statusBadge(inv)}
                   </td>
                   <td className="px-2 py-2">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon-xs" aria-label="Invoice actions">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {inv.lines.length > 0 && (
+                    <div className="flex items-center justify-end gap-0.5">
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        title="Download PDF"
+                        aria-label={`Download ${inv.number} PDF`}
+                        onClick={() => void downloadPdf(`/invoices/${inv.id}/pdf`)}
+                      >
+                        <FileDown className="w-3.5 h-3.5" />
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon-xs" aria-label="Invoice actions">
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
                           <DropdownMenuItem
                             onClick={() => void downloadPdf(`/invoices/${inv.id}/pdf`)}
                           >
                             <FileDown className="w-3.5 h-3.5" />
                             Download PDF
                           </DropdownMenuItem>
-                        )}
-                        {inv.status === 'new' ? (
-                          <DropdownMenuItem onClick={() => void handleMarkStatus(inv, 'paid')}>
-                            <CircleCheck className="w-3.5 h-3.5" />
-                            Mark paid
+                          {inv.status === 'new' ? (
+                            <DropdownMenuItem onClick={() => void handleMarkStatus(inv, 'paid')}>
+                              <CircleCheck className="w-3.5 h-3.5" />
+                              Mark paid
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem onClick={() => void handleMarkStatus(inv, 'new')}>
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              Reopen
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => void handleDelete(inv)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Delete
                           </DropdownMenuItem>
-                        ) : (
-                          <DropdownMenuItem onClick={() => void handleMarkStatus(inv, 'new')}>
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            Reopen
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => void handleDelete(inv)}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </td>
                 </tr>
               ))
