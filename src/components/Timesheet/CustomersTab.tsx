@@ -719,8 +719,13 @@ export function CustomersTab({
 
             {/* Email defaults — prefill the invoice compose modal */}
             <div className="border-t border-border/50 pt-3">
-              <p className="text-[12px] font-semibold text-surface-800 mb-2">
+              <p className="text-[12px] font-semibold text-surface-800 mb-1">
                 Invoice email defaults
+              </p>
+              <p className="text-[11px] text-surface-500 mb-3">
+                Pre-fills the Send Invoice compose window for invoices billing this project — you
+                always review and can edit everything before sending.
+                {' Use {{placeholder}} variables anywhere; they fill in from the actual invoice.'}
               </p>
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div>
@@ -728,18 +733,25 @@ export function CustomersTab({
                   <Input
                     value={projectForm.emailTo}
                     onChange={(e) => setProjectForm({ ...projectForm, emailTo: e.target.value })}
-                    placeholder="customer email"
+                    placeholder="billing@client.com"
                     className="h-9 rounded-lg text-sm"
                   />
+                  <p className="text-[11px] text-surface-500 mt-1">
+                    Blank = the customer&apos;s email from their profile.
+                  </p>
                 </div>
                 <div>
                   <label className="text-[12px] text-surface-600 block mb-1">From</label>
                   <Input
                     value={projectForm.emailFrom}
                     onChange={(e) => setProjectForm({ ...projectForm, emailFrom: e.target.value })}
-                    placeholder="default sender"
+                    placeholder="Name <you@yourdomain.com>"
                     className="h-9 rounded-lg text-sm"
                   />
+                  <p className="text-[11px] text-surface-500 mt-1">
+                    Blank = your configured sender. Custom senders must use a domain verified with
+                    your email provider.
+                  </p>
                 </div>
               </div>
               <div className="mb-3">
@@ -747,26 +759,56 @@ export function CustomersTab({
                 <Input
                   value={projectForm.emailSubject}
                   onChange={(e) => setProjectForm({ ...projectForm, emailSubject: e.target.value })}
-                  placeholder="Invoice {{number}} from {{company}}"
+                  placeholder="Invoice {{number}} — {{month}}"
                   className="h-9 rounded-lg text-sm"
                 />
               </div>
-              <div>
+              <div className="mb-3">
                 <label className="text-[12px] text-surface-600 block mb-1">Body</label>
                 <textarea
                   value={projectForm.emailBody}
                   onChange={(e) => setProjectForm({ ...projectForm, emailBody: e.target.value })}
                   placeholder={
-                    'Hi,\n\nPlease find attached invoice {{number}} for {{month}} — {{total}}, due {{dueDate}}.\n\nThank you!'
+                    'Hi,\n\nAttached is invoice {{number}} for {{month}} — {{total}} ({{hours}} hours), due {{dueDate}}.\n\nThank you!'
                   }
                   rows={4}
                   className="w-full rounded-lg text-sm bg-surface-100 border border-border px-3 py-2"
                 />
                 <p className="text-[11px] text-surface-500 mt-1">
-                  {
-                    'Placeholders: {{number}} {{client}} {{project}} {{total}} {{dueDate}} {{issueDate}} {{month}} {{hours}} {{company}}'
-                  }
+                  Plain text; blank lines become paragraphs. The invoice PDF is always attached.
                 </p>
+              </div>
+              <div className="rounded-lg bg-surface-100/60 border border-border/50 px-3 py-2">
+                <p className="text-[11px] font-semibold text-surface-700 mb-1">Placeholders</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] text-surface-600">
+                  <span>
+                    <code>{'{{number}}'}</code> — invoice number (2026/027)
+                  </span>
+                  <span>
+                    <code>{'{{month}}'}</code> — billing month (July 2026)
+                  </span>
+                  <span>
+                    <code>{'{{total}}'}</code> — total billed ($12,000.00)
+                  </span>
+                  <span>
+                    <code>{'{{hours}}'}</code> — hours on the invoice
+                  </span>
+                  <span>
+                    <code>{'{{dueDate}}'}</code> — payment due date
+                  </span>
+                  <span>
+                    <code>{'{{issueDate}}'}</code> — date issued
+                  </span>
+                  <span>
+                    <code>{'{{client}}'}</code> — customer name
+                  </span>
+                  <span>
+                    <code>{'{{project}}'}</code> — this project&apos;s name
+                  </span>
+                  <span>
+                    <code>{'{{company}}'}</code> — your company (from the PDF template)
+                  </span>
+                </div>
               </div>
             </div>
             {error && <p className="text-[12px] text-danger-400">{error}</p>}
