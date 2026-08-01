@@ -166,6 +166,7 @@ All state lives in `DATA_DIR` (default `./data`, `/data` in Docker) as `.docvaul
 | `.docvault-settings.json`    | API keys, exchange secrets, sync config      |
 | `.docvault-parsed.json`      | Cached AI parse results                      |
 | `.docvault-calendar.json`    | Calendar events (birthdays, recurring tasks) |
+| `.docvault-timesheet.json`   | Time tracking (clients, projects, entries)   |
 | `.docvault-metadata.json`    | Document tags/notes                          |
 | `.docvault-sync-status.json` | Dropbox sync status (written by NAS cron)    |
 

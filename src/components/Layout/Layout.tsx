@@ -48,6 +48,9 @@ const SalesView = lazy(() => import('../Sales/SalesView').then((m) => ({ default
 const MileageView = lazy(() =>
   import('../Mileage/MileageView').then((m) => ({ default: m.MileageView }))
 );
+const TimesheetView = lazy(() =>
+  import('../Timesheet/TimesheetView').then((m) => ({ default: m.TimesheetView }))
+);
 const GoldView = lazy(() => import('../Gold/GoldView').then((m) => ({ default: m.GoldView })));
 const PropertyView = lazy(() =>
   import('../Property/PropertyView').then((m) => ({ default: m.PropertyView }))
@@ -205,6 +208,8 @@ export function Layout() {
         return <SalesView />;
       case 'mileage':
         return <MileageView />;
+      case 'timesheet':
+        return <TimesheetView />;
       case 'gold':
         return <GoldView />;
       case 'property':

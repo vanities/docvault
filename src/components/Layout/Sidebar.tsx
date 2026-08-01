@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Calculator,
+  Clock,
   Bitcoin,
   Landmark,
   PieChart,
@@ -502,6 +503,7 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
     if (
       activeView === 'sales' ||
       activeView === 'mileage' ||
+      activeView === 'timesheet' ||
       activeView === 'income' ||
       activeView === 'chat' ||
       activeView === 'calendar' // global view — never bounce off it on entity switch
@@ -701,6 +703,16 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
                 icon={Car}
                 activeColor="bg-sky-500/10"
                 activeTextColor="text-sky-400"
+                activeView={activeView}
+                isProcessing={isProcessing}
+                onClick={handleViewClick}
+              />
+              <NavButton
+                view="timesheet"
+                label="Timesheet"
+                icon={Clock}
+                activeColor="bg-lime-500/10"
+                activeTextColor="text-lime-400"
                 activeView={activeView}
                 isProcessing={isProcessing}
                 onClick={handleViewClick}
