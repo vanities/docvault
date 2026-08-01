@@ -10,14 +10,16 @@ import { Clock, Loader2 } from 'lucide-react';
 import { tsJson, type TimesheetStore } from './types';
 import { TimesheetTab } from './TimesheetTab';
 import { InvoicesTab } from './InvoicesTab';
+import { AnalyticsTab } from './AnalyticsTab';
 import { CustomersTab } from './CustomersTab';
 import { TemplatesTab } from './TemplatesTab';
 
-type Tab = 'timesheet' | 'invoices' | 'customers' | 'templates';
+type Tab = 'timesheet' | 'invoices' | 'analytics' | 'customers' | 'templates';
 
 const TABS: { value: Tab; label: string }[] = [
   { value: 'timesheet', label: 'Timesheet' },
   { value: 'invoices', label: 'Invoices' },
+  { value: 'analytics', label: 'Analytics' },
   { value: 'customers', label: 'Customers & Projects' },
   { value: 'templates', label: 'Templates' },
 ];
@@ -81,6 +83,7 @@ export function TimesheetView() {
 
       {tab === 'timesheet' && <TimesheetTab store={store} refresh={refresh} />}
       {tab === 'invoices' && <InvoicesTab store={store} refresh={refresh} />}
+      {tab === 'analytics' && <AnalyticsTab store={store} />}
       {tab === 'customers' && <CustomersTab store={store} refresh={refresh} />}
       {tab === 'templates' && <TemplatesTab store={store} refresh={refresh} />}
     </div>
