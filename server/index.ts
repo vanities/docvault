@@ -67,6 +67,7 @@ import { handleLiabilityRoutes } from './routes/liabilities.js';
 import { handleAccountAnnotationRoutes } from './routes/account-annotations.js';
 import { handleMiscRoutes } from './routes/misc.js';
 import { handleCalendarRoutes } from './routes/calendar.js';
+import { handleTimesheetRoutes } from './routes/timesheet.js';
 import { handleHealthRoutes } from './routes/health.js';
 import { handleDNARoutes } from './routes/dna.js';
 import { handleAncestryRoutes } from './routes/ancestry.js';
@@ -1418,6 +1419,10 @@ export async function handleRequest(req: Request): Promise<Response> {
   // calendar routes (global calendar: birthdays, recurring tasks, one-offs)
   const calendarResponse = await handleCalendarRoutes(req, url, pathname);
   if (calendarResponse) return calendarResponse;
+
+  // timesheet routes (clients/projects/entries + invoicing rollups)
+  const timesheetResponse = await handleTimesheetRoutes(req, url, pathname);
+  if (timesheetResponse) return timesheetResponse;
 
   // sales routes (extracted to routes/sales.ts)
   const salesResponse = await handleSalesRoutes(req, url, pathname);

@@ -153,6 +153,7 @@ export type NavView =
   | 'portfolio'
   | 'sales'
   | 'mileage'
+  | 'timesheet'
   | 'gold'
   | 'property'
   | 'income'
@@ -381,6 +382,7 @@ export function AppProvider({ children }: AppProviderProps) {
         'portfolio',
         'sales',
         'mileage',
+        'timesheet',
         'gold',
         'solo-401k',
         'estimated-tax',

@@ -119,6 +119,8 @@ scripts/*
 !server/routes/calendar.test.ts
 # Exception: calendar view math tests are pure date/grid computation with fabricated fixtures, no personal data
 !src/components/Calendar/calendarMath.test.ts
+# Exception: timesheet store tests use fabricated client/entry fixtures in a tmpdir, no personal data
+!server/timesheet-store.test.ts
 
 # Internal design docs
 docs/PRD-shadcn-migration.md
