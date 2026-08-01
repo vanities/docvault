@@ -264,8 +264,17 @@ export async function handleTimesheetRoutes(
     if (body.email !== undefined) {
       const email = body.email.trim();
       if (!email) delete client.email;
-      else if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) client.email = email;
-      else return jsonResponse({ error: 'Invalid email' }, 400);
+      else {
+        // Comma/semicolon-separated lists are allowed (multiple recipients);
+        // every piece must look like an address.
+        const parts = email
+          .split(/[,;]+/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const valid = parts.length > 0 && parts.every((p) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p));
+        if (!valid) return jsonResponse({ error: 'Invalid email (comma-separate multiple)' }, 400);
+        client.email = parts.join(', ');
+      }
     }
     if (body.autoFileEntityId !== undefined) {
       if (!body.autoFileEntityId) delete client.autoFileEntityId;

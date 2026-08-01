@@ -595,12 +595,15 @@ export function CustomersTab({
                 <label className="text-[12px] text-surface-600 block mb-1">Email</label>
                 <Input
                   type="email"
+                  multiple
                   value={clientForm.email}
                   onChange={(e) => setClientForm({ ...clientForm, email: e.target.value })}
-                  placeholder="billing@client.com"
+                  placeholder="billing@client.com, cc@client.com"
                   className="h-9 rounded-lg text-sm"
                 />
-                <p className="text-[11px] text-surface-500 mt-1">Where Send Invoice delivers.</p>
+                <p className="text-[11px] text-surface-500 mt-1">
+                  Where Send Invoice delivers. Comma-separate multiple recipients.
+                </p>
               </div>
               <div>
                 <label className="text-[12px] text-surface-600 block mb-1">
@@ -761,7 +764,7 @@ export function CustomersTab({
                     className="h-9 rounded-lg text-sm"
                   />
                   <p className="text-[11px] text-surface-500 mt-1">
-                    Blank = the customer&apos;s email from their profile.
+                    Blank = the customer&apos;s email from their profile. Comma-separate multiple.
                   </p>
                 </div>
                 <div>

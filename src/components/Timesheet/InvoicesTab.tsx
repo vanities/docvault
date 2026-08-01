@@ -906,9 +906,10 @@ export function InvoicesTab({
                   <label className="text-[12px] text-surface-600 block mb-1">To</label>
                   <Input
                     type="email"
+                    multiple
                     value={draft.to}
                     onChange={(e) => setDraft({ ...draft, to: e.target.value })}
-                    placeholder="recipient@client.com"
+                    placeholder="a@client.com, b@client.com"
                     className="h-9 rounded-lg text-sm"
                   />
                 </div>
