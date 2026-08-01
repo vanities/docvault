@@ -7,6 +7,13 @@ import { Plus } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { Money } from '../common/Money';
 import { tsJson, formatHours, formatUsd, type TimesheetStore } from './types';
 
@@ -17,6 +24,8 @@ export function CustomersTab({
   store: TimesheetStore;
   refresh: () => Promise<void>;
 }) {
+  const [addClientOpen, setAddClientOpen] = useState(false);
+  const [addProjectOpen, setAddProjectOpen] = useState(false);
   const [newClientName, setNewClientName] = useState('');
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectClient, setNewProjectClient] = useState('');
@@ -84,9 +93,15 @@ export function CustomersTab({
       {error && <p className="lg:col-span-2 text-[12px] text-danger-400">{error}</p>}
 
       {/* Customers */}
-      <Card variant="glass" className="p-5">
-        <h3 className="text-[14px] font-semibold text-surface-950 mb-3">Customers</h3>
-        <table className="w-full text-[13px] mb-4">
+      <Card variant="glass" className="p-5 overflow-x-auto">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-[14px] font-semibold text-surface-950">Customers</h3>
+          <Button size="sm" variant="outline" onClick={() => setAddClientOpen(true)}>
+            <Plus className="w-3.5 h-3.5" />
+            Add
+          </Button>
+        </div>
+        <table className="w-full text-[13px]">
           <thead>
             <tr className="text-left text-[11px] uppercase tracking-wider text-surface-500 border-b border-border">
               <th className="py-2 font-semibold">Name</th>
@@ -132,34 +147,18 @@ export function CustomersTab({
             })}
           </tbody>
         </table>
-        <div className="flex gap-2">
-          <Input
-            value={newClientName}
-            onChange={(e) => setNewClientName(e.target.value)}
-            placeholder="New customer name"
-            className="h-8 rounded-lg text-[13px]"
-          />
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!newClientName.trim()}
-            onClick={() =>
-              void call(async () => {
-                await tsJson('/clients', 'POST', { name: newClientName.trim() });
-                setNewClientName('');
-              })
-            }
-          >
+      </Card>
+
+      {/* Projects */}
+      <Card variant="glass" className="p-5 overflow-x-auto">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-[14px] font-semibold text-surface-950">Projects</h3>
+          <Button size="sm" variant="outline" onClick={() => setAddProjectOpen(true)}>
             <Plus className="w-3.5 h-3.5" />
             Add
           </Button>
         </div>
-      </Card>
-
-      {/* Projects */}
-      <Card variant="glass" className="p-5">
-        <h3 className="text-[14px] font-semibold text-surface-950 mb-3">Projects</h3>
-        <table className="w-full text-[13px] mb-4">
+        <table className="w-full text-[13px]">
           <thead>
             <tr className="text-left text-[11px] uppercase tracking-wider text-surface-500 border-b border-border">
               <th className="py-2 font-semibold">Project</th>
@@ -214,55 +213,116 @@ export function CustomersTab({
             })}
           </tbody>
         </table>
-        <div className="flex gap-2">
-          <select
-            value={newProjectClient}
-            onChange={(e) => setNewProjectClient(e.target.value)}
-            className="h-8 rounded-lg text-[12px] bg-surface-100 border border-border px-2"
-          >
-            <option value="">Customer…</option>
-            {store.clients
-              .filter((c) => !c.archived)
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-          </select>
-          <Input
-            value={newProjectName}
-            onChange={(e) => setNewProjectName(e.target.value)}
-            placeholder="Project name"
-            className="h-8 rounded-lg text-[13px]"
-          />
-          <Input
-            type="number"
-            value={newProjectRate}
-            onChange={(e) => setNewProjectRate(e.target.value)}
-            placeholder="$/h"
-            className="h-8 w-20 rounded-lg text-[13px]"
-          />
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!newProjectName.trim() || !newProjectClient}
-            onClick={() =>
-              void call(async () => {
-                await tsJson('/projects', 'POST', {
-                  name: newProjectName.trim(),
-                  clientId: newProjectClient,
-                  hourlyRate: newProjectRate === '' ? 0 : Number(newProjectRate),
-                });
-                setNewProjectName('');
-                setNewProjectRate('');
-              })
-            }
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Add
-          </Button>
-        </div>
       </Card>
+
+      {/* Add customer modal */}
+      <Dialog open={addClientOpen} onOpenChange={(open) => !open && setAddClientOpen(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Customer</DialogTitle>
+          </DialogHeader>
+          <div>
+            <label className="text-[12px] text-surface-600 block mb-1">Name</label>
+            <Input
+              value={newClientName}
+              onChange={(e) => setNewClientName(e.target.value)}
+              placeholder="Customer name"
+              className="h-9 rounded-lg text-sm"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setAddClientOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={!newClientName.trim()}
+              onClick={() =>
+                void call(async () => {
+                  await tsJson('/clients', 'POST', { name: newClientName.trim() });
+                  setNewClientName('');
+                  setAddClientOpen(false);
+                })
+              }
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Customer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add project modal */}
+      <Dialog open={addProjectOpen} onOpenChange={(open) => !open && setAddProjectOpen(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Project</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-1 gap-4">
+            <div>
+              <label className="text-[12px] text-surface-600 block mb-1">Customer</label>
+              <select
+                value={newProjectClient}
+                onChange={(e) => setNewProjectClient(e.target.value)}
+                className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+              >
+                <option value="">Select…</option>
+                {store.clients
+                  .filter((c) => !c.archived)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[12px] text-surface-600 block mb-1">Project name</label>
+              <Input
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+                placeholder="Project name"
+                className="h-9 rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-[12px] text-surface-600 block mb-1">Hourly rate ($/h)</label>
+              <Input
+                type="number"
+                value={newProjectRate}
+                onChange={(e) => setNewProjectRate(e.target.value)}
+                placeholder="0"
+                className="h-9 rounded-lg text-sm"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setAddProjectOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={!newProjectName.trim() || !newProjectClient}
+              onClick={() =>
+                void call(async () => {
+                  await tsJson('/projects', 'POST', {
+                    name: newProjectName.trim(),
+                    clientId: newProjectClient,
+                    hourlyRate: newProjectRate === '' ? 0 : Number(newProjectRate),
+                  });
+                  setNewProjectName('');
+                  setNewProjectRate('');
+                  setAddProjectOpen(false);
+                })
+              }
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Project
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

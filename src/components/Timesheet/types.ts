@@ -69,6 +69,7 @@ export interface Invoice {
   comment?: string;
   lines: unknown[];
   entryIds: string[];
+  projectIds?: string[];
   paymentDate?: string;
   createdAt: string;
   kimaiId?: number;

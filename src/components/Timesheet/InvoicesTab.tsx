@@ -1,13 +1,20 @@
-// Invoices tab — Kimai-style billing: a create panel (customer + date window
-// over open entries + template, with PDF preview before committing) and the
-// persisted invoice history (sortable, filterable, mark-paid / download /
-// delete). Deleting an invoice releases its entries back to open.
+// Invoices tab — persisted invoice history (sortable, filterable by
+// customer/project/status) with a modal create flow: customer + optional
+// project + date window over open entries + template, PDF preview before
+// committing. Deleting an invoice releases its entries back to open.
 
 import { useState, useMemo } from 'react';
-import { FileDown, Loader2, Trash2, ArrowUp, ArrowDown, Receipt } from 'lucide-react';
+import { FileDown, Loader2, Trash2, ArrowUp, ArrowDown, Plus } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { Money } from '../common/Money';
 import {
@@ -29,18 +36,21 @@ export function InvoicesTab({
   refresh: () => Promise<void>;
 }) {
   const { confirm, ConfirmDialog } = useConfirmDialog();
-  const [error, setError] = useState('');
 
-  // Create panel
+  // Create modal
+  const [createOpen, setCreateOpen] = useState(false);
   const [clientId, setClientId] = useState('');
+  const [projectId, setProjectId] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [templateId, setTemplateId] = useState('');
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState<'' | 'preview' | 'create'>('');
+  const [error, setError] = useState('');
 
   // History filters/sort
   const [filterClient, setFilterClient] = useState('all');
+  const [filterProject, setFilterProject] = useState('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'new' | 'paid' | 'canceled'>('all');
   const [sortKey, setSortKey] = useState<SortKey>('issueDate');
   const [sortDesc, setSortDesc] = useState(true);
@@ -51,28 +61,25 @@ export function InvoicesTab({
     [store]
   );
 
-  // Open (billable, uninvoiced) totals per client — what's available to bill.
+  // Open (billable, uninvoiced) counts per client — shown in the picker.
   const openByClient = useMemo(() => {
-    const agg = new Map<string, { minutes: number; amount: number; count: number }>();
+    const agg = new Map<string, number>();
     for (const e of store.entries) {
       if (e.invoiced || !e.billable) continue;
       const cid = projectById.get(e.projectId)?.clientId;
       if (!cid) continue;
-      const a = agg.get(cid) ?? { minutes: 0, amount: 0, count: 0 };
-      a.minutes += e.durationMinutes;
-      a.amount += e.amount;
-      a.count += 1;
-      agg.set(cid, a);
+      agg.set(cid, (agg.get(cid) ?? 0) + 1);
     }
     return agg;
   }, [store, projectById]);
 
-  // What the current create-panel selection would bill.
+  // What the current create-modal selection would bill.
   const selection = useMemo(() => {
     if (!clientId) return null;
     const entries = store.entries.filter((e) => {
       if (e.invoiced || !e.billable) return false;
       if (projectById.get(e.projectId)?.clientId !== clientId) return false;
+      if (projectId && e.projectId !== projectId) return false;
       if (from && e.date < from) return false;
       if (to && e.date > to) return false;
       return true;
@@ -82,15 +89,22 @@ export function InvoicesTab({
       minutes: entries.reduce((s, e) => s + e.durationMinutes, 0),
       amount: entries.reduce((s, e) => s + e.amount, 0),
     };
-  }, [store, clientId, from, to, projectById]);
+  }, [store, clientId, projectId, from, to, projectById]);
 
   const createBody = () => ({
     clientId,
+    ...(projectId ? { projectId } : {}),
     ...(from ? { from } : {}),
     ...(to ? { to } : {}),
     ...(templateId ? { templateId } : {}),
     ...(comment.trim() ? { comment: comment.trim() } : {}),
   });
+
+  const openCreate = () => {
+    setError('');
+    setComment('');
+    setCreateOpen(true);
+  };
 
   const handlePreview = async () => {
     setBusy('preview');
@@ -108,7 +122,7 @@ export function InvoicesTab({
     if (!selection || selection.count === 0) return;
     const ok = await confirm({
       title: 'Create invoice?',
-      description: `${selection.count} open entries (${formatHours(selection.minutes)}) will be invoiced and marked. You can delete the invoice later to release them.`,
+      description: `${selection.count} open entries (${formatHours(selection.minutes)}) will be invoiced and marked. Deleting the invoice later releases them.`,
       confirmLabel: 'Create invoice',
     });
     if (!ok) return;
@@ -116,7 +130,7 @@ export function InvoicesTab({
     setError('');
     try {
       const result = await tsJson<{ invoice: Invoice }>('/invoices', 'POST', createBody());
-      setComment('');
+      setCreateOpen(false);
       await refresh();
       await downloadPdf(`/invoices/${result.invoice.id}/pdf`);
     } catch (e) {
@@ -150,6 +164,7 @@ export function InvoicesTab({
   const filteredInvoices = useMemo(() => {
     const rows = store.invoices.filter((inv) => {
       if (filterClient !== 'all' && inv.clientId !== filterClient) return false;
+      if (filterProject !== 'all' && !(inv.projectIds ?? []).includes(filterProject)) return false;
       if (filterStatus !== 'all' && inv.status !== filterStatus) return false;
       return true;
     });
@@ -167,7 +182,7 @@ export function InvoicesTab({
       }
     });
     return rows;
-  }, [store.invoices, filterClient, filterStatus, sortKey, sortDesc]);
+  }, [store.invoices, filterClient, filterProject, filterStatus, sortKey, sortDesc]);
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortDesc(!sortDesc);
@@ -207,81 +222,153 @@ export function InvoicesTab({
     <div>
       <ConfirmDialog />
 
-      {/* Create invoice */}
-      <Card variant="glass" className="p-5 mb-6">
-        <h3 className="text-[14px] font-semibold text-surface-950 mb-4 flex items-center gap-2">
-          <Receipt className="w-4 h-4 text-lime-400" />
-          Create Invoice
-        </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-3">
-          <div>
-            <label className="text-[12px] text-surface-600 block mb-1">Customer</label>
-            <select
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
-            >
-              <option value="">Select…</option>
-              {store.clients
-                .filter((c) => !c.archived)
-                .map((c) => {
-                  const open = openByClient.get(c.id);
-                  return (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                      {open ? ` (${open.count} open)` : ''}
-                    </option>
-                  );
-                })}
-            </select>
-          </div>
-          <div>
-            <label className="text-[12px] text-surface-600 block mb-1">From (optional)</label>
-            <Input
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              className="h-9 rounded-lg text-sm"
-            />
-          </div>
-          <div>
-            <label className="text-[12px] text-surface-600 block mb-1">To (optional)</label>
-            <Input
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              className="h-9 rounded-lg text-sm"
-            />
-          </div>
-          <div>
-            <label className="text-[12px] text-surface-600 block mb-1">Template</label>
-            <select
-              value={templateId}
-              onChange={(e) => setTemplateId(e.target.value)}
-              className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
-            >
-              <option value="">Default</option>
-              {store.templates
-                .filter((t) => !t.archived)
-                .map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-[12px] text-surface-600 block mb-1">Comment (optional)</label>
-            <Input
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              placeholder="Shown on the PDF"
-              className="h-9 rounded-lg text-sm"
-            />
-          </div>
+      {/* Toolbar: filters + create button */}
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        <select
+          value={filterClient}
+          onChange={(e) => {
+            setFilterClient(e.target.value);
+            setFilterProject('all');
+          }}
+          className="h-8 rounded-lg text-[12px] bg-surface-100 border border-border px-2"
+        >
+          <option value="all">All customers</option>
+          {store.clients.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={filterProject}
+          onChange={(e) => setFilterProject(e.target.value)}
+          className="h-8 rounded-lg text-[12px] bg-surface-100 border border-border px-2"
+        >
+          <option value="all">All projects</option>
+          {store.projects
+            .filter((p) => filterClient === 'all' || p.clientId === filterClient)
+            .map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+        </select>
+        <select
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
+          className="h-8 rounded-lg text-[12px] bg-surface-100 border border-border px-2"
+        >
+          <option value="all">All statuses</option>
+          <option value="new">New</option>
+          <option value="paid">Paid</option>
+          <option value="canceled">Canceled</option>
+        </select>
+        <span className="text-[12px] text-surface-500 tabular-nums hidden sm:inline">
+          {filteredInvoices.length} invoices ·{' '}
+          <Money>{formatUsd(filteredInvoices.reduce((s, i) => s + i.total, 0))}</Money>
+        </span>
+        <div className="ml-auto">
+          <Button size="sm" onClick={openCreate}>
+            <Plus className="w-4 h-4" />
+            New Invoice
+          </Button>
         </div>
-        <div className="flex items-center justify-between">
-          <span className="text-[13px] text-surface-600 tabular-nums">
+      </div>
+
+      {/* Create modal */}
+      <Dialog open={createOpen} onOpenChange={(open) => !open && setCreateOpen(false)}>
+        <DialogContent className="sm:max-w-xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>New Invoice</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-[12px] text-surface-600 block mb-1">Customer</label>
+              <select
+                value={clientId}
+                onChange={(e) => {
+                  setClientId(e.target.value);
+                  setProjectId('');
+                }}
+                className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+              >
+                <option value="">Select…</option>
+                {store.clients
+                  .filter((c) => !c.archived)
+                  .map((c) => {
+                    const open = openByClient.get(c.id);
+                    return (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                        {open ? ` (${open} open)` : ''}
+                      </option>
+                    );
+                  })}
+              </select>
+            </div>
+            <div>
+              <label className="text-[12px] text-surface-600 block mb-1">Project (optional)</label>
+              <select
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+                className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+              >
+                <option value="">All projects</option>
+                {store.projects
+                  .filter((p) => p.clientId === clientId)
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[12px] text-surface-600 block mb-1">From (optional)</label>
+              <Input
+                type="date"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                className="h-9 rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-[12px] text-surface-600 block mb-1">To (optional)</label>
+              <Input
+                type="date"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                className="h-9 rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-[12px] text-surface-600 block mb-1">Template</label>
+              <select
+                value={templateId}
+                onChange={(e) => setTemplateId(e.target.value)}
+                className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+              >
+                <option value="">Default</option>
+                {store.templates
+                  .filter((t) => !t.archived)
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[12px] text-surface-600 block mb-1">Comment (optional)</label>
+              <Input
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="Shown on the PDF"
+                className="h-9 rounded-lg text-sm"
+              />
+            </div>
+          </div>
+          <div className="text-[13px] text-surface-600 tabular-nums">
             {selection ? (
               selection.count > 0 ? (
                 <>
@@ -294,9 +381,12 @@ export function InvoicesTab({
             ) : (
               'Pick a customer to see open entries'
             )}
-          </span>
-          <div className="flex items-center gap-2">
-            {error && <span className="text-[12px] text-danger-400">{error}</span>}
+            {error && <span className="block text-danger-400 mt-1">{error}</span>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -312,39 +402,9 @@ export function InvoicesTab({
             >
               {busy === 'create' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create Invoice'}
             </Button>
-          </div>
-        </div>
-      </Card>
-
-      {/* History filters */}
-      <div className="flex flex-wrap items-center gap-2 mb-2">
-        <select
-          value={filterClient}
-          onChange={(e) => setFilterClient(e.target.value)}
-          className="h-8 rounded-lg text-[12px] bg-surface-100 border border-border px-2"
-        >
-          <option value="all">All customers</option>
-          {store.clients.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-        <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
-          className="h-8 rounded-lg text-[12px] bg-surface-100 border border-border px-2"
-        >
-          <option value="all">All statuses</option>
-          <option value="new">New</option>
-          <option value="paid">Paid</option>
-          <option value="canceled">Canceled</option>
-        </select>
-        <span className="text-[12px] text-surface-500 tabular-nums ml-auto">
-          {filteredInvoices.length} invoices ·{' '}
-          <Money>{formatUsd(filteredInvoices.reduce((s, i) => s + i.total, 0))}</Money>
-        </span>
-      </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* History table */}
       <Card variant="glass" className="overflow-x-auto">
@@ -358,11 +418,11 @@ export function InvoicesTab({
                 <SortHeader label="Date" k="issueDate" />
               </th>
               <th className="px-2 py-2.5 font-semibold">Customer</th>
-              <th className="px-2 py-2.5 font-semibold text-right">Hours</th>
+              <th className="px-2 py-2.5 font-semibold text-right hidden md:table-cell">Hours</th>
               <th className="px-2 py-2.5 font-semibold text-right">
                 <SortHeader label="Total" k="total" />
               </th>
-              <th className="px-2 py-2.5 font-semibold">Status</th>
+              <th className="px-2 py-2.5 font-semibold hidden sm:table-cell">Status</th>
               <th className="px-2 py-2.5" />
             </tr>
           </thead>
@@ -370,7 +430,7 @@ export function InvoicesTab({
             {filteredInvoices.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-center text-surface-500">
-                  No invoices yet.
+                  No invoices match the current filter.
                 </td>
               </tr>
             ) : (
@@ -384,16 +444,22 @@ export function InvoicesTab({
                   </td>
                   <td className="px-2 py-2 text-surface-800 whitespace-nowrap">
                     {clientById.get(inv.clientId)?.name ?? inv.clientName}
+                    <span className="block text-[11px] text-surface-500 sm:hidden">
+                      {inv.status}
+                      {inv.paymentDate ? ` ${inv.paymentDate}` : ''}
+                    </span>
                   </td>
-                  <td className="px-2 py-2 text-right text-surface-600 tabular-nums whitespace-nowrap">
+                  <td className="px-2 py-2 text-right text-surface-600 tabular-nums whitespace-nowrap hidden md:table-cell">
                     {inv.totalMinutes > 0 ? formatHours(inv.totalMinutes) : '—'}
                   </td>
                   <td className="px-2 py-2 text-right font-mono tabular-nums text-surface-900 whitespace-nowrap">
                     <Money>{formatUsd(inv.total)}</Money>
                   </td>
-                  <td className="px-2 py-2 whitespace-nowrap">{statusBadge(inv)}</td>
+                  <td className="px-2 py-2 whitespace-nowrap hidden sm:table-cell">
+                    {statusBadge(inv)}
+                  </td>
                   <td className="px-2 py-2">
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                       {inv.lines.length > 0 && (
                         <Button
                           variant="ghost"

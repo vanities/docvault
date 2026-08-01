@@ -8,6 +8,13 @@ import { Plus, Loader2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { tsJson, type InvoiceTemplate, type TimesheetStore } from './types';
 
@@ -156,13 +163,13 @@ export function TemplatesTab({
 
       {error && <p className="text-[12px] text-danger-400 mb-3">{error}</p>}
 
-      {/* Editor */}
-      {editingId !== null && (
-        <Card variant="glass" className="p-5 mb-6">
-          <h3 className="text-[14px] font-semibold text-surface-950 mb-4">
-            {editingId === 'new' ? 'New Template' : 'Edit Template'}
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+      {/* Editor modal */}
+      <Dialog open={editingId !== null} onOpenChange={(open) => !open && setEditingId(null)}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingId === 'new' ? 'New Template' : 'Edit Template'}</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {field('name', 'Name', { placeholder: 'e.g. Row Work' })}
             {field('title', 'PDF title')}
             {field('company', 'Company', { placeholder: 'Sender company name' })}
@@ -175,7 +182,7 @@ export function TemplatesTab({
             {field('paymentTerms', 'Payment terms', { placeholder: 'e.g. Net 14' })}
             {area('paymentDetails', 'Payment details (one line each)', 'Bank routing / account')}
           </div>
-          <div className="flex justify-end gap-2">
+          <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setEditingId(null)}>
               Cancel
             </Button>
@@ -186,9 +193,9 @@ export function TemplatesTab({
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Template'}
             </Button>
-          </div>
-        </Card>
-      )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* List */}
       <Card variant="glass" className="divide-y divide-border/50">

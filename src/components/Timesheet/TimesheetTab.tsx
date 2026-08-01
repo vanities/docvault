@@ -1,12 +1,21 @@
 // Timesheet tab — Kimai-style entry table: date-range presets + custom
 // window, client/project/status filters, description search, sortable
-// columns, totals for the current filter, and the log/edit form.
+// columns, totals for the current filter. Log/edit happens in a modal.
+// Mobile: row actions stay visible (no hover on touch), secondary columns
+// collapse, and the table scrolls horizontally inside its card.
 
 import { useState, useMemo } from 'react';
-import { Plus, Trash2, Edit3, Loader2, X, ChevronDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Trash2, Edit3, Loader2, ChevronDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { Money } from '../common/Money';
 import {
@@ -51,8 +60,8 @@ export function TimesheetTab({
   const [sortKey, setSortKey] = useState<SortKey>('date');
   const [sortDesc, setSortDesc] = useState(true);
 
-  // Entry form
-  const [showForm, setShowForm] = useState(false);
+  // Entry modal
+  const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [formProjectId, setFormProjectId] = useState('');
@@ -142,18 +151,10 @@ export function TimesheetTab({
     }
   };
 
-  const SortHeader = ({
-    label,
-    k,
-    className,
-  }: {
-    label: string;
-    k: SortKey;
-    className?: string;
-  }) => (
+  const SortHeader = ({ label, k }: { label: string; k: SortKey }) => (
     <button
       onClick={() => toggleSort(k)}
-      className={`inline-flex items-center gap-0.5 hover:text-surface-900 ${className ?? ''}`}
+      className="inline-flex items-center gap-0.5 hover:text-surface-900"
     >
       {label}
       {sortKey === k &&
@@ -161,8 +162,8 @@ export function TimesheetTab({
     </button>
   );
 
-  // ----- Entry form -----
-  const resetForm = () => {
+  // ----- Entry modal -----
+  const openNew = () => {
     setEditingId(null);
     setFormDate(todayYMD());
     setFormStart('09:00');
@@ -170,6 +171,7 @@ export function TimesheetTab({
     setFormDescription('');
     setFormRate('');
     setFormBillable(true);
+    setFormOpen(true);
   };
 
   const openEdit = (entry: TimesheetEntry) => {
@@ -181,8 +183,7 @@ export function TimesheetTab({
     setFormDescription(entry.description);
     setFormRate(String(entry.hourlyRate));
     setFormBillable(entry.billable);
-    setShowForm(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setFormOpen(true);
   };
 
   const formMinutes = spanMinutes(formStart, formEnd);
@@ -205,8 +206,7 @@ export function TimesheetTab({
       };
       if (editingId) await tsJson(`/entries/${editingId}`, 'PUT', body);
       else await tsJson('/entries', 'POST', body);
-      resetForm();
-      setShowForm(false);
+      setFormOpen(false);
       await refresh();
     } finally {
       setSubmitting(false);
@@ -323,35 +323,23 @@ export function TimesheetTab({
             resetPage();
           }}
           placeholder="Search descriptions…"
-          className="h-8 rounded-lg text-[12px] w-48"
+          className="h-8 rounded-lg text-[12px] w-full sm:w-48"
         />
         <div className="ml-auto">
-          <Button
-            size="sm"
-            variant={showForm && !editingId ? 'outline' : 'default'}
-            onClick={() => {
-              if (showForm && !editingId) {
-                setShowForm(false);
-                resetForm();
-              } else {
-                resetForm();
-                setShowForm(true);
-              }
-            }}
-          >
-            {showForm && !editingId ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-            {showForm && !editingId ? 'Cancel' : 'Log Time'}
+          <Button size="sm" onClick={openNew}>
+            <Plus className="w-4 h-4" />
+            Log Time
           </Button>
         </div>
       </div>
 
-      {/* Log / edit form */}
-      {showForm && (
-        <Card variant="glass" className="p-5 mb-5">
-          <h3 className="text-[14px] font-semibold text-surface-950 mb-4">
-            {editingId ? 'Edit Entry' : 'Log Time'}
-          </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+      {/* Log / edit modal */}
+      <Dialog open={formOpen} onOpenChange={(open) => !open && setFormOpen(false)}>
+        <DialogContent className="sm:max-w-xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingId ? 'Edit Entry' : 'Log Time'}</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <label className="text-[12px] text-surface-600 block mb-1">Project</label>
               <select
@@ -405,7 +393,7 @@ export function TimesheetTab({
                 />
               </div>
             </div>
-            <div className="col-span-2 sm:col-span-3">
+            <div className="col-span-2">
               <label className="text-[12px] text-surface-600 block mb-1">Description</label>
               <Input
                 value={formDescription}
@@ -426,9 +414,7 @@ export function TimesheetTab({
                 className="h-9 rounded-lg text-sm"
               />
             </div>
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+            <div className="flex items-end pb-1.5">
               <label className="flex items-center gap-2 text-[13px] text-surface-700 cursor-pointer">
                 <input
                   type="checkbox"
@@ -437,29 +423,22 @@ export function TimesheetTab({
                 />
                 Billable
               </label>
-              <span className="text-[13px] text-surface-600 tabular-nums">
-                {formatHours(formMinutes)}
-                {formBillable && formMinutes > 0 && (
-                  <>
-                    {' · '}
-                    <Money>{formatUsd(formAmount)}</Money>
-                  </>
-                )}
-              </span>
             </div>
-            <div className="flex gap-2">
-              {editingId && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    resetForm();
-                    setShowForm(false);
-                  }}
-                >
-                  Cancel
-                </Button>
+          </div>
+          <DialogFooter className="items-center gap-3 sm:justify-between">
+            <span className="text-[13px] text-surface-600 tabular-nums">
+              {formatHours(formMinutes)}
+              {formBillable && formMinutes > 0 && (
+                <>
+                  {' · '}
+                  <Money>{formatUsd(formAmount)}</Money>
+                </>
               )}
+            </span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setFormOpen(false)}>
+                Cancel
+              </Button>
               <Button
                 size="sm"
                 disabled={submitting || !formProjectId || formMinutes === 0}
@@ -474,9 +453,9 @@ export function TimesheetTab({
                 )}
               </Button>
             </div>
-          </div>
-        </Card>
-      )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Totals strip for the current filter */}
       <div className="flex items-center gap-4 mb-2 text-[12px] text-surface-600 tabular-nums">
@@ -496,19 +475,19 @@ export function TimesheetTab({
               <th className="px-4 py-2.5 font-semibold">
                 <SortHeader label="Date" k="date" />
               </th>
-              <th className="px-2 py-2.5 font-semibold">Time</th>
-              <th className="px-2 py-2.5 font-semibold">Customer / Project</th>
+              <th className="px-2 py-2.5 font-semibold hidden md:table-cell">Time</th>
+              <th className="px-2 py-2.5 font-semibold hidden sm:table-cell">Customer / Project</th>
               <th className="px-2 py-2.5 font-semibold">Description</th>
               <th className="px-2 py-2.5 font-semibold text-right">
                 <SortHeader label="Hours" k="duration" />
               </th>
-              <th className="px-2 py-2.5 font-semibold text-right">
+              <th className="px-2 py-2.5 font-semibold text-right hidden md:table-cell">
                 <SortHeader label="Rate" k="rate" />
               </th>
               <th className="px-2 py-2.5 font-semibold text-right">
                 <SortHeader label="Amount" k="amount" />
               </th>
-              <th className="px-2 py-2.5 font-semibold">Status</th>
+              <th className="px-2 py-2.5 font-semibold hidden sm:table-cell">Status</th>
               <th className="px-2 py-2.5" />
             </tr>
           </thead>
@@ -528,27 +507,31 @@ export function TimesheetTab({
                     <td className="px-4 py-2 text-surface-700 tabular-nums whitespace-nowrap">
                       {e.date}
                     </td>
-                    <td className="px-2 py-2 text-surface-500 tabular-nums text-[12px] whitespace-nowrap">
+                    <td className="px-2 py-2 text-surface-500 tabular-nums text-[12px] whitespace-nowrap hidden md:table-cell">
                       {e.start}–{e.end}
                     </td>
-                    <td className="px-2 py-2 text-surface-600 text-[12px] whitespace-nowrap">
+                    <td className="px-2 py-2 text-surface-600 text-[12px] whitespace-nowrap hidden sm:table-cell">
                       {client?.name} / {project?.name}
                     </td>
-                    <td className="px-2 py-2 text-surface-900 max-w-[26rem]">
+                    <td className="px-2 py-2 text-surface-900 max-w-[16rem] sm:max-w-[26rem]">
                       <span className="line-clamp-2">
                         {e.description || <i className="text-surface-500">no description</i>}
+                      </span>
+                      <span className="block text-[11px] text-surface-500 sm:hidden">
+                        {client?.name} / {project?.name}
+                        {!e.billable ? ' · non-billable' : e.invoiced ? ' · invoiced' : ' · open'}
                       </span>
                     </td>
                     <td className="px-2 py-2 text-right text-surface-700 tabular-nums whitespace-nowrap">
                       {formatHours(e.durationMinutes)}
                     </td>
-                    <td className="px-2 py-2 text-right text-surface-600 tabular-nums whitespace-nowrap">
+                    <td className="px-2 py-2 text-right text-surface-600 tabular-nums whitespace-nowrap hidden md:table-cell">
                       {e.billable ? <Money>{formatUsd(e.hourlyRate)}</Money> : '—'}
                     </td>
                     <td className="px-2 py-2 text-right font-mono tabular-nums text-surface-800 whitespace-nowrap">
                       {e.billable ? <Money>{formatUsd(e.amount)}</Money> : '—'}
                     </td>
-                    <td className="px-2 py-2 whitespace-nowrap">
+                    <td className="px-2 py-2 whitespace-nowrap hidden sm:table-cell">
                       {!e.billable ? (
                         <span className="text-[11px] text-surface-500">non-billable</span>
                       ) : e.invoiced ? (
@@ -558,7 +541,7 @@ export function TimesheetTab({
                       )}
                     </td>
                     <td className="px-2 py-2">
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                         <Button variant="ghost" size="icon-xs" onClick={() => openEdit(e)}>
                           <Edit3 className="w-3.5 h-3.5" />
                         </Button>
