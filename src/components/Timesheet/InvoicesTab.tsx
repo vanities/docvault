@@ -15,6 +15,7 @@ import {
   CircleCheck,
   RotateCcw,
   Eye,
+  FolderInput,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -81,6 +82,16 @@ export function InvoicesTab({
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
 
+  // File-to-entity modal — render the PDF into an entity's documents where
+  // the regular AI parse pipeline (invoice parser) can pick it up.
+  const [fileInvoice, setFileInvoice] = useState<Invoice | null>(null);
+  const [fileEntity, setFileEntity] = useState('');
+  const [fileYear, setFileYear] = useState('');
+  const [fileParse, setFileParse] = useState(true);
+  const [fileBusy, setFileBusy] = useState(false);
+  const [fileResult, setFileResult] = useState('');
+  const [entities, setEntities] = useState<{ id: string; name: string; type?: string }[]>([]);
+
   const clientById = useMemo(() => new Map(store.clients.map((c) => [c.id, c] as const)), [store]);
   const projectById = useMemo(
     () => new Map(store.projects.map((p) => [p.id, p] as const)),
@@ -111,10 +122,19 @@ export function InvoicesTab({
       if (to && e.date > to) return false;
       return true;
     });
+    // Per-project retainer floors: deficit = how much the top-up lines add.
+    let deficit = 0;
+    for (const pid of new Set(entries.map((e) => e.projectId))) {
+      const min = projectById.get(pid)?.minimumInvoice;
+      if (!min) continue;
+      const projSum = entries.filter((e) => e.projectId === pid).reduce((s, e) => s + e.amount, 0);
+      if (projSum < min) deficit += min - projSum;
+    }
     return {
       count: entries.length,
       minutes: entries.reduce((s, e) => s + e.durationMinutes, 0),
       amount: entries.reduce((s, e) => s + e.amount, 0),
+      deficit,
     };
   }, [store, clientId, projectId, from, to, projectById]);
 
@@ -233,6 +253,56 @@ export function InvoicesTab({
 
   const openPreview = (invoice: Invoice) => {
     setPreviewInvoice(invoice);
+  };
+
+  const openFileToEntity = (invoice: Invoice) => {
+    setFileInvoice(invoice);
+    setFileYear(invoice.issueDate.slice(0, 4));
+    setFileResult('');
+    if (entities.length === 0) {
+      void fetch('/api/entities')
+        .then(
+          (r) => r.json() as Promise<{ entities?: { id: string; name: string; type?: string }[] }>
+        )
+        .then((d) => {
+          const tax = (d.entities ?? []).filter((e) => e.type !== 'docs');
+          setEntities(tax);
+          // default to a business-looking entity when present
+          const biz = tax.find((e) => /llc|business|corp/i.test(e.name)) ?? tax[0];
+          if (biz) setFileEntity(biz.id);
+        })
+        .catch(() => setEntities([]));
+    }
+  };
+
+  const handleFileToEntity = async () => {
+    if (!fileInvoice || !fileEntity || !fileYear) return;
+    setFileBusy(true);
+    setFileResult('');
+    try {
+      const pdf = await fetch(`${TS}/invoices/${fileInvoice.id}/pdf`);
+      if (!pdf.ok) throw new Error(`PDF render failed (${pdf.status})`);
+      const blob = await pdf.blob();
+      const clientName = clientById.get(fileInvoice.clientId)?.name ?? fileInvoice.clientId;
+      // {Source}_{Type}_{Date} — the repo's document naming convention
+      const filename = `${clientName.replace(/[^\w-]+/g, '')}_Invoice_${fileInvoice.issueDate}.pdf`;
+      const up = await fetch(
+        `/api/upload?entity=${encodeURIComponent(fileEntity)}&path=${encodeURIComponent(fileYear)}&filename=${encodeURIComponent(filename)}`,
+        { method: 'POST', body: blob }
+      );
+      const upJson = (await up.json()) as { ok?: boolean; path?: string; error?: string };
+      if (!up.ok || !upJson.path) throw new Error(upJson.error ?? 'Upload failed');
+      if (fileParse) {
+        await fetch(`/api/parse/${encodeURIComponent(fileEntity)}/${upJson.path}`, {
+          method: 'POST',
+        });
+      }
+      setFileResult(`Filed as ${upJson.path}${fileParse ? ' · parsed' : ''}`);
+    } catch (e) {
+      setFileResult(e instanceof Error ? e.message : 'Filing failed');
+    } finally {
+      setFileBusy(false);
+    }
   };
 
   // Snap the year filter to a real year once data arrives (e.g. a January
@@ -500,15 +570,15 @@ export function InvoicesTab({
                 <>
                   {selection.count} open entries · {formatHours(selection.minutes)} ·{' '}
                   <Money>{formatUsd(selection.amount)}</Money>
-                  {(() => {
-                    const min = clientById.get(clientId)?.minimumInvoice;
-                    return min && selection.amount < min ? (
-                      <span className="text-amber-400">
-                        {' '}
-                        → tops up to <Money>{formatUsd(min)}</Money> (minimum)
-                      </span>
-                    ) : null;
-                  })()}
+                  {selection.deficit > 0 && (
+                    <span className="text-amber-400">
+                      {' '}
+                      → tops up to <Money>
+                        {formatUsd(selection.amount + selection.deficit)}
+                      </Money>{' '}
+                      (minimum)
+                    </span>
+                  )}
                 </>
               ) : (
                 'No open entries in this window'
@@ -637,6 +707,10 @@ export function InvoicesTab({
                             <FileDown className="w-3.5 h-3.5" />
                             Download PDF
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openFileToEntity(inv)}>
+                            <FolderInput className="w-3.5 h-3.5" />
+                            File to entity…
+                          </DropdownMenuItem>
                           {inv.status === 'new' ? (
                             <DropdownMenuItem onClick={() => void handleMarkStatus(inv, 'paid')}>
                               <CircleCheck className="w-3.5 h-3.5" />
@@ -666,6 +740,67 @@ export function InvoicesTab({
           </tbody>
         </table>
       </Card>
+
+      {/* File-to-entity modal — save the PDF into an entity's documents */}
+      <Dialog open={fileInvoice !== null} onOpenChange={(open) => !open && setFileInvoice(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>File Invoice {fileInvoice?.number} to Entity</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-[12px] text-surface-600 block mb-1">Entity</label>
+              <select
+                value={fileEntity}
+                onChange={(e) => setFileEntity(e.target.value)}
+                className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+              >
+                {entities.length === 0 && <option value="">Loading…</option>}
+                {entities.map((en) => (
+                  <option key={en.id} value={en.id}>
+                    {en.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[12px] text-surface-600 block mb-1">Folder (year)</label>
+              <Input
+                value={fileYear}
+                onChange={(e) => setFileYear(e.target.value)}
+                className="h-9 rounded-lg text-sm"
+              />
+            </div>
+            <label className="col-span-2 flex items-center gap-2 text-[13px] text-surface-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={fileParse}
+                onChange={(e) => setFileParse(e.target.checked)}
+              />
+              Run AI parse after filing
+            </label>
+            {fileResult && (
+              <p
+                className={`col-span-2 text-[12px] ${fileResult.startsWith('Filed') ? 'text-emerald-400' : 'text-danger-400'}`}
+              >
+                {fileResult}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setFileInvoice(null)}>
+              {fileResult.startsWith('Filed') ? 'Close' : 'Cancel'}
+            </Button>
+            <Button
+              size="sm"
+              disabled={fileBusy || !fileEntity || !fileYear || fileResult.startsWith('Filed')}
+              onClick={() => void handleFileToEntity()}
+            >
+              {fileBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'File Invoice'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* PDF preview modal — inline render via blob URL, no download needed */}
       <Dialog

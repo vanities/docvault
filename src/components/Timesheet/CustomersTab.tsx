@@ -124,19 +124,29 @@ type ClientForm = {
   name: string;
   currency: string;
   color: string;
-  minimumInvoice: string; // '' = none
   defaultTemplateId: string; // '' = first active template
 };
-type ProjectForm = { name: string; clientId: string; hourlyRate: string; color: string };
+type ProjectForm = {
+  name: string;
+  clientId: string;
+  hourlyRate: string;
+  color: string;
+  minimumInvoice: string; // '' = none (retainer floor for this engagement)
+};
 
 const EMPTY_CLIENT: ClientForm = {
   name: '',
   currency: 'USD',
   color: '',
-  minimumInvoice: '',
   defaultTemplateId: '',
 };
-const EMPTY_PROJECT: ProjectForm = { name: '', clientId: '', hourlyRate: '', color: '' };
+const EMPTY_PROJECT: ProjectForm = {
+  name: '',
+  clientId: '',
+  hourlyRate: '',
+  color: '',
+  minimumInvoice: '',
+};
 
 export function CustomersTab({
   store,
@@ -206,7 +216,6 @@ export function CustomersTab({
         name: client.name,
         currency: client.currency,
         color: client.color ?? '',
-        minimumInvoice: client.minimumInvoice ? String(client.minimumInvoice) : '',
         defaultTemplateId: client.defaultTemplateId ?? '',
       });
       setClientModal(client.id);
@@ -224,6 +233,7 @@ export function CustomersTab({
         clientId: project.clientId,
         hourlyRate: String(project.hourlyRate),
         color: project.color ?? '',
+        minimumInvoice: project.minimumInvoice ? String(project.minimumInvoice) : '',
       });
       setProjectModal(project.id);
     } else {
@@ -239,7 +249,6 @@ export function CustomersTab({
       name: clientForm.name.trim(),
       currency: clientForm.currency.trim().toUpperCase() || 'USD',
       color: clientForm.color,
-      minimumInvoice: clientForm.minimumInvoice === '' ? null : Number(clientForm.minimumInvoice),
       defaultTemplateId: clientForm.defaultTemplateId,
     };
     const ok = await call(async () => {
@@ -266,6 +275,7 @@ export function CustomersTab({
       clientId: projectForm.clientId,
       hourlyRate: projectForm.hourlyRate === '' ? 0 : Number(projectForm.hourlyRate),
       color: projectForm.color,
+      minimumInvoice: projectForm.minimumInvoice === '' ? null : Number(projectForm.minimumInvoice),
     };
     const ok = await call(async () => {
       if (projectModal === 'new') {
@@ -274,8 +284,8 @@ export function CustomersTab({
           clientId: body.clientId,
           hourlyRate: body.hourlyRate,
         });
-        if (body.color)
-          await tsJson(`/projects/${created.project.id}`, 'PUT', { color: body.color });
+        // detail fields ride a follow-up PUT: the creation route stays minimal
+        await tsJson(`/projects/${created.project.id}`, 'PUT', body);
       } else {
         await tsJson(`/projects/${projectModal}`, 'PUT', body);
       }
@@ -507,41 +517,24 @@ export function CustomersTab({
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[12px] text-surface-600 block mb-1">
-                  Invoice minimum ($)
-                </label>
-                <Input
-                  type="number"
-                  value={clientForm.minimumInvoice}
-                  onChange={(e) => setClientForm({ ...clientForm, minimumInvoice: e.target.value })}
-                  placeholder="none"
-                  className="h-9 rounded-lg text-sm"
-                />
-                <p className="text-[11px] text-surface-500 mt-1">
-                  Invoices under this get a labeled top-up line.
-                </p>
-              </div>
-              <div>
-                <label className="text-[12px] text-surface-600 block mb-1">Default template</label>
-                <select
-                  value={clientForm.defaultTemplateId}
-                  onChange={(e) =>
-                    setClientForm({ ...clientForm, defaultTemplateId: e.target.value })
-                  }
-                  className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
-                >
-                  <option value="">First active</option>
-                  {store.templates
-                    .filter((t) => !t.archived)
-                    .map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
-                </select>
-              </div>
+            <div>
+              <label className="text-[12px] text-surface-600 block mb-1">Default template</label>
+              <select
+                value={clientForm.defaultTemplateId}
+                onChange={(e) =>
+                  setClientForm({ ...clientForm, defaultTemplateId: e.target.value })
+                }
+                className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+              >
+                <option value="">First active</option>
+                {store.templates
+                  .filter((t) => !t.archived)
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+              </select>
             </div>
             <ColorField
               value={clientForm.color}
@@ -615,6 +608,19 @@ export function CustomersTab({
                   className="h-9 rounded-lg text-sm"
                 />
               </div>
+            </div>
+            <div>
+              <label className="text-[12px] text-surface-600 block mb-1">Invoice minimum ($)</label>
+              <Input
+                type="number"
+                value={projectForm.minimumInvoice}
+                onChange={(e) => setProjectForm({ ...projectForm, minimumInvoice: e.target.value })}
+                placeholder="none"
+                className="h-9 rounded-lg text-sm"
+              />
+              <p className="text-[11px] text-surface-500 mt-1">
+                Retainer floor — invoices billing this project under it get a labeled top-up line.
+              </p>
             </div>
             <ColorField
               value={projectForm.color}

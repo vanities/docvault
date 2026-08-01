@@ -9,7 +9,6 @@ export interface TimesheetClient {
   name: string;
   currency: string;
   color?: string;
-  minimumInvoice?: number;
   defaultTemplateId?: string;
   archived: boolean;
 }
@@ -20,6 +19,7 @@ export interface TimesheetProject {
   name: string;
   hourlyRate: number;
   color?: string;
+  minimumInvoice?: number;
   archived: boolean;
 }
 

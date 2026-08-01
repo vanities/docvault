@@ -27,9 +27,6 @@ export interface TimesheetClient {
   name: string;
   currency: string; // ISO code, display only
   color?: string; // #rrggbb; UI falls back to a palette slot when unset
-  // Retainer floor: when an invoice's billed work comes in under this, a
-  // labeled "Monthly minimum adjustment" line tops it up at creation.
-  minimumInvoice?: number;
   defaultTemplateId?: string; // preselected template when invoicing this client
   archived: boolean;
 }
@@ -40,6 +37,9 @@ export interface TimesheetProject {
   name: string;
   hourlyRate: number; // default rate applied to NEW entries
   color?: string; // #rrggbb; falls back to the client's color when unset
+  // Retainer floor for THIS engagement: when an invoice's billed work for
+  // this project comes in under it, creation appends a labeled top-up line.
+  minimumInvoice?: number;
   archived: boolean;
 }
 

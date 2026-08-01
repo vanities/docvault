@@ -228,7 +228,6 @@ export async function handleTimesheetRoutes(
       name?: string;
       currency?: string;
       color?: string;
-      minimumInvoice?: number | null;
       defaultTemplateId?: string;
       archived?: boolean;
     }>(req);
@@ -242,14 +241,6 @@ export async function handleTimesheetRoutes(
       if (!parsed.ok) return jsonResponse({ error: 'Invalid color (want #rrggbb)' }, 400);
       if (parsed.color) client.color = parsed.color;
       else delete client.color;
-    }
-    if (body.minimumInvoice !== undefined) {
-      const min = Number(body.minimumInvoice);
-      if (body.minimumInvoice === null || Number.isNaN(min) || min <= 0) {
-        delete client.minimumInvoice;
-      } else {
-        client.minimumInvoice = min;
-      }
     }
     if (body.defaultTemplateId !== undefined) {
       if (!body.defaultTemplateId) delete client.defaultTemplateId;
@@ -312,6 +303,7 @@ export async function handleTimesheetRoutes(
       clientId?: string;
       hourlyRate?: number;
       color?: string;
+      minimumInvoice?: number | null;
       archived?: boolean;
     }>(req);
     const store = await loadTimesheetStore();
@@ -330,6 +322,14 @@ export async function handleTimesheetRoutes(
       if (!parsed.ok) return jsonResponse({ error: 'Invalid color (want #rrggbb)' }, 400);
       if (parsed.color) project.color = parsed.color;
       else delete project.color;
+    }
+    if (body.minimumInvoice !== undefined) {
+      const min = Number(body.minimumInvoice);
+      if (body.minimumInvoice === null || Number.isNaN(min) || min <= 0) {
+        delete project.minimumInvoice;
+      } else {
+        project.minimumInvoice = min;
+      }
     }
     if (body.archived !== undefined) project.archived = body.archived;
     await saveTimesheetStore(store);
@@ -480,8 +480,10 @@ function assembleInvoice(
   const totalMinutes = entries.reduce((s, e) => s + e.durationMinutes, 0);
   let subtotal = round2(entries.reduce((s, e) => s + e.amount, 0));
 
-  // Retainer floor: top up to the client's minimum with a labeled adjustment
-  // line so the entry detail stays visible and the math stays explicit.
+  // Retainer floors are per PROJECT: each project with a minimum that has
+  // work on this invoice gets its own labeled top-up line when its billed
+  // subtotal comes in under the floor. Projects without entries here are
+  // not being billed this cycle, so their floors don't apply.
   const lines = entries.map((e) => ({
     date: e.date,
     description: e.description,
@@ -490,16 +492,22 @@ function assembleInvoice(
     hourlyRate: e.hourlyRate,
     amount: e.amount,
   }));
-  if (client.minimumInvoice && subtotal < client.minimumInvoice) {
-    lines.push({
-      date: issueDate,
-      description: 'Monthly minimum adjustment',
-      projectName: '',
-      minutes: 0,
-      hourlyRate: 0,
-      amount: round2(client.minimumInvoice - subtotal),
-    });
-    subtotal = round2(client.minimumInvoice);
+  for (const pid of new Set(entries.map((e) => e.projectId))) {
+    const project = projectById.get(pid);
+    if (!project?.minimumInvoice) continue;
+    const projSum = entries.filter((e) => e.projectId === pid).reduce((s, e) => s + e.amount, 0);
+    if (projSum < project.minimumInvoice) {
+      const topUp = round2(project.minimumInvoice - projSum);
+      lines.push({
+        date: issueDate,
+        description: `Monthly minimum adjustment — ${project.name}`,
+        projectName: '',
+        minutes: 0,
+        hourlyRate: 0,
+        amount: topUp,
+      });
+      subtotal = round2(subtotal + topUp);
+    }
   }
 
   const tax = round2(subtotal * (vat / 100));
