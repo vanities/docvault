@@ -8,6 +8,7 @@ export interface TimesheetClient {
   id: string;
   name: string;
   currency: string;
+  color?: string;
   archived: boolean;
 }
 
@@ -16,6 +17,7 @@ export interface TimesheetProject {
   clientId: string;
   name: string;
   hourlyRate: number;
+  color?: string;
   archived: boolean;
 }
 
@@ -148,6 +150,24 @@ export const CLIENT_PALETTE = [
 
 export const CHART_ACCENT = CLIENT_PALETTE[0];
 export const CHART_CONTEXT_GRAY = '#5b6070'; // de-emphasis series
+
+/** Client id → display color: the user-picked color when set, otherwise the
+ * palette slot for the client's stable store position. Single source of truth
+ * so tables, charts, and pickers all agree. */
+export function buildClientColorMap(clients: TimesheetClient[]): Map<string, string> {
+  return new Map(
+    clients.map((c, i) => [c.id, c.color || CLIENT_PALETTE[i % CLIENT_PALETTE.length]] as const)
+  );
+}
+
+/** Project display color: its own color, else its client's. */
+export function projectDisplayColor(
+  project: TimesheetProject | undefined,
+  clientColors: Map<string, string>
+): string {
+  if (!project) return CHART_CONTEXT_GRAY;
+  return project.color || clientColors.get(project.clientId) || CHART_CONTEXT_GRAY;
+}
 
 export function compactUsd(value: number): string {
   if (Math.abs(value) >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;

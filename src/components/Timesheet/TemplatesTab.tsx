@@ -4,7 +4,22 @@
 // around the rows so nothing is retyped per invoice.
 
 import { useState } from 'react';
-import { Plus, Loader2 } from 'lucide-react';
+import {
+  Plus,
+  Loader2,
+  MoreHorizontal,
+  Pencil,
+  Archive,
+  ArchiveRestore,
+  Trash2,
+} from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -103,6 +118,19 @@ export function TemplatesTab({
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleToggleArchived = async (t: InvoiceTemplate) => {
+    const ok = await confirm({
+      title: `${t.archived ? 'Unarchive' : 'Archive'} "${t.name}"?`,
+      description: t.archived
+        ? 'It will reappear in the template picker.'
+        : 'Archived templates are hidden from the picker; existing invoices keep rendering with it.',
+      confirmLabel: t.archived ? 'Unarchive' : 'Archive',
+    });
+    if (!ok) return;
+    await tsJson(`/templates/${t.id}`, 'PUT', { archived: !t.archived });
+    await refresh();
   };
 
   const handleDelete = async (t: InvoiceTemplate) => {
@@ -217,26 +245,32 @@ export function TemplatesTab({
                   {t.vat > 0 ? ` · VAT ${t.vat}%` : ''}
                 </span>
               </div>
-              <button
-                className="text-[11px] text-surface-600 hover:text-surface-900"
-                onClick={() => startEdit(t)}
-              >
-                edit
-              </button>
-              <button
-                className="text-[11px] text-surface-500 hover:text-surface-800"
-                onClick={() =>
-                  void tsJson(`/templates/${t.id}`, 'PUT', { archived: !t.archived }).then(refresh)
-                }
-              >
-                {t.archived ? 'unarchive' : 'archive'}
-              </button>
-              <button
-                className="text-[11px] text-danger-400 hover:underline"
-                onClick={() => void handleDelete(t)}
-              >
-                delete
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon-xs" aria-label={`${t.name} actions`}>
+                    <MoreHorizontal className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => startEdit(t)}>
+                    <Pencil className="w-3.5 h-3.5" />
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => void handleToggleArchived(t)}>
+                    {t.archived ? (
+                      <ArchiveRestore className="w-3.5 h-3.5" />
+                    ) : (
+                      <Archive className="w-3.5 h-3.5" />
+                    )}
+                    {t.archived ? 'Unarchive' : 'Archive'}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="destructive" onClick={() => void handleDelete(t)}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           ))
         )}
