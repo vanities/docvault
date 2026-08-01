@@ -23,6 +23,10 @@ export interface TimesheetProject {
   hourlyRate: number;
   color?: string;
   minimumInvoice?: number;
+  emailTo?: string;
+  emailFrom?: string;
+  emailSubject?: string;
+  emailBody?: string;
   archived: boolean;
 }
 

@@ -43,6 +43,14 @@ export interface TimesheetProject {
   // Retainer floor for THIS engagement: when an invoice's billed work for
   // this project comes in under it, creation appends a labeled top-up line.
   minimumInvoice?: number;
+  // Email defaults for invoices billing this project. Support {{placeholder}}
+  // substitution: number, client, project, total, dueDate, issueDate, month,
+  // hours, company. Resolved into an editable draft before sending — nothing
+  // is ever sent without the user seeing and confirming the composed email.
+  emailTo?: string;
+  emailFrom?: string;
+  emailSubject?: string;
+  emailBody?: string;
   archived: boolean;
 }
 
