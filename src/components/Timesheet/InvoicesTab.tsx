@@ -4,7 +4,17 @@
 // committing. Deleting an invoice releases its entries back to open.
 
 import { useState, useMemo } from 'react';
-import { FileDown, Loader2, Trash2, ArrowUp, ArrowDown, Plus } from 'lucide-react';
+import {
+  FileDown,
+  Loader2,
+  Trash2,
+  ArrowUp,
+  ArrowDown,
+  Plus,
+  MoreHorizontal,
+  CircleCheck,
+  RotateCcw,
+} from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +25,13 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { Money } from '../common/Money';
 import {
@@ -22,6 +39,7 @@ import {
   downloadPdf,
   formatUsd,
   formatHours,
+  buildClientColorMap,
   type Invoice,
   type TimesheetStore,
 } from './types';
@@ -60,6 +78,7 @@ export function InvoicesTab({
     () => new Map(store.projects.map((p) => [p.id, p] as const)),
     [store]
   );
+  const clientColors = useMemo(() => buildClientColorMap(store.clients), [store.clients]);
 
   // Open (billable, uninvoiced) counts per client — shown in the picker.
   const openByClient = useMemo(() => {
@@ -141,6 +160,14 @@ export function InvoicesTab({
   };
 
   const handleMarkStatus = async (invoice: Invoice, status: Invoice['status']) => {
+    if (status === 'paid') {
+      const ok = await confirm({
+        title: `Mark ${invoice.number} paid?`,
+        description: `${invoice.clientName} · ${formatUsd(invoice.total)} will be recorded as paid today.`,
+        confirmLabel: 'Mark paid',
+      });
+      if (!ok) return;
+    }
     await tsJson(`/invoices/${invoice.id}`, 'PUT', { status });
     await refresh();
   };
@@ -443,8 +470,12 @@ export function InvoicesTab({
                     {inv.issueDate}
                   </td>
                   <td className="px-2 py-2 text-surface-800 whitespace-nowrap">
+                    <span
+                      className="inline-block w-2 h-2 rounded-full mr-1.5 align-middle"
+                      style={{ backgroundColor: clientColors.get(inv.clientId) ?? '#5b6070' }}
+                    />
                     {clientById.get(inv.clientId)?.name ?? inv.clientName}
-                    <span className="block text-[11px] text-surface-500 sm:hidden">
+                    <span className="block text-[11px] text-surface-500 sm:hidden pl-3.5">
                       {inv.issueDate} · {inv.status}
                     </span>
                   </td>
@@ -458,41 +489,42 @@ export function InvoicesTab({
                     {statusBadge(inv)}
                   </td>
                   <td className="px-2 py-2">
-                    <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                      {inv.lines.length > 0 && (
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          title="Download PDF"
-                          onClick={() => void downloadPdf(`/invoices/${inv.id}/pdf`)}
-                        >
-                          <FileDown className="w-3.5 h-3.5" />
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon-xs" aria-label="Invoice actions">
+                          <MoreHorizontal className="w-4 h-4" />
                         </Button>
-                      )}
-                      {inv.status === 'new' ? (
-                        <button
-                          className="text-[11px] text-emerald-400 hover:underline whitespace-nowrap"
-                          onClick={() => void handleMarkStatus(inv, 'paid')}
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {inv.lines.length > 0 && (
+                          <DropdownMenuItem
+                            onClick={() => void downloadPdf(`/invoices/${inv.id}/pdf`)}
+                          >
+                            <FileDown className="w-3.5 h-3.5" />
+                            Download PDF
+                          </DropdownMenuItem>
+                        )}
+                        {inv.status === 'new' ? (
+                          <DropdownMenuItem onClick={() => void handleMarkStatus(inv, 'paid')}>
+                            <CircleCheck className="w-3.5 h-3.5" />
+                            Mark paid
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem onClick={() => void handleMarkStatus(inv, 'new')}>
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            Reopen
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => void handleDelete(inv)}
                         >
-                          mark paid
-                        </button>
-                      ) : (
-                        <button
-                          className="text-[11px] text-surface-500 hover:underline whitespace-nowrap"
-                          onClick={() => void handleMarkStatus(inv, 'new')}
-                        >
-                          reopen
-                        </button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        className="text-danger-400"
-                        onClick={() => void handleDelete(inv)}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </td>
                 </tr>
               ))

@@ -26,6 +26,7 @@ export interface TimesheetClient {
   id: string;
   name: string;
   currency: string; // ISO code, display only
+  color?: string; // #rrggbb; UI falls back to a palette slot when unset
   archived: boolean;
 }
 
@@ -34,6 +35,7 @@ export interface TimesheetProject {
   clientId: string;
   name: string;
   hourlyRate: number; // default rate applied to NEW entries
+  color?: string; // #rrggbb; falls back to the client's color when unset
   archived: boolean;
 }
 

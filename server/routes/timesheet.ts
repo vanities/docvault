@@ -28,6 +28,16 @@ const slug = (name: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
 
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+/** Normalize a color field: valid hex passes, '' clears, anything else is
+ * rejected by returning undefined alongside `ok: false`. */
+function parseColor(value: unknown): { ok: boolean; color?: string } {
+  if (value === '' || value === null) return { ok: true }; // clear
+  if (typeof value === 'string' && HEX_COLOR.test(value)) return { ok: true, color: value };
+  return { ok: false };
+}
+
 /** Unique id derived from a display name; suffixes on collision. */
 function uniqueId(name: string, taken: Set<string>): string {
   const base = slug(name) || 'item';
@@ -214,12 +224,23 @@ export async function handleTimesheetRoutes(
   // PUT /api/timesheet/clients/:id
   const clientMatch = pathname.match(/^\/api\/timesheet\/clients\/([^/]+)$/);
   if (clientMatch && req.method === 'PUT') {
-    const body = await readJsonBody<{ name?: string; currency?: string; archived?: boolean }>(req);
+    const body = await readJsonBody<{
+      name?: string;
+      currency?: string;
+      color?: string;
+      archived?: boolean;
+    }>(req);
     const store = await loadTimesheetStore();
     const client = store.clients.find((c) => c.id === clientMatch[1]);
     if (!client) return jsonResponse({ error: 'Client not found' }, 404);
     if (body.name !== undefined) client.name = body.name.trim();
     if (body.currency !== undefined) client.currency = body.currency.trim().toUpperCase();
+    if (body.color !== undefined) {
+      const parsed = parseColor(body.color);
+      if (!parsed.ok) return jsonResponse({ error: 'Invalid color (want #rrggbb)' }, 400);
+      if (parsed.color) client.color = parsed.color;
+      else delete client.color;
+    }
     if (body.archived !== undefined) client.archived = body.archived;
     await saveTimesheetStore(store);
     return jsonResponse({ ok: true, client });
@@ -272,6 +293,7 @@ export async function handleTimesheetRoutes(
       name?: string;
       clientId?: string;
       hourlyRate?: number;
+      color?: string;
       archived?: boolean;
     }>(req);
     const store = await loadTimesheetStore();
@@ -285,6 +307,12 @@ export async function handleTimesheetRoutes(
     }
     if (body.name !== undefined) project.name = body.name.trim();
     if (body.hourlyRate !== undefined) project.hourlyRate = Number(body.hourlyRate);
+    if (body.color !== undefined) {
+      const parsed = parseColor(body.color);
+      if (!parsed.ok) return jsonResponse({ error: 'Invalid color (want #rrggbb)' }, 400);
+      if (parsed.color) project.color = parsed.color;
+      else delete project.color;
+    }
     if (body.archived !== undefined) project.archived = body.archived;
     await saveTimesheetStore(store);
     return jsonResponse({ ok: true, project });

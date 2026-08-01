@@ -1,9 +1,10 @@
-// Customers & Projects tab — proper management tables (Kimai's admin pages
-// collapsed into one). Rates live on projects; changing a rate only affects
-// future entries (existing entries keep their snapshot).
+// Customers & Projects tab — management tables with inline rename, per-row
+// color pickers (the color flows to entry rows, invoices, and every chart),
+// and an ellipsis menu per row for archive/delete, both behind confirmation.
+// Rates live on projects; changing a rate only affects future entries.
 
 import { useState, useMemo } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2, Archive, ArchiveRestore, MoreHorizontal } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,8 +15,50 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { Money } from '../common/Money';
-import { tsJson, formatHours, formatUsd, type TimesheetStore } from './types';
+import {
+  tsJson,
+  formatHours,
+  formatUsd,
+  buildClientColorMap,
+  projectDisplayColor,
+  type TimesheetStore,
+} from './types';
+
+/** Color dot that opens the native color picker; commits on change. */
+function ColorDot({
+  color,
+  label,
+  onCommit,
+}: {
+  color: string;
+  label: string;
+  onCommit: (hex: string) => void;
+}) {
+  return (
+    <label
+      className="inline-block w-4 h-4 rounded-full cursor-pointer border border-border/60 shrink-0"
+      style={{ backgroundColor: color }}
+      title={`${label} color — click to change`}
+    >
+      <input
+        type="color"
+        value={color}
+        onChange={(e) => onCommit(e.target.value)}
+        className="sr-only"
+        aria-label={`${label} color`}
+      />
+    </label>
+  );
+}
 
 export function CustomersTab({
   store,
@@ -24,6 +67,7 @@ export function CustomersTab({
   store: TimesheetStore;
   refresh: () => Promise<void>;
 }) {
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const [addClientOpen, setAddClientOpen] = useState(false);
   const [addProjectOpen, setAddProjectOpen] = useState(false);
   const [newClientName, setNewClientName] = useState('');
@@ -36,8 +80,8 @@ export function CustomersTab({
     () => new Map(store.projects.map((p) => [p.id, p] as const)),
     [store]
   );
+  const clientColors = useMemo(() => buildClientColorMap(store.clients), [store.clients]);
 
-  // Per-client and per-project lifetime totals give the tables some context.
   const clientTotals = useMemo(() => {
     const agg = new Map<string, { minutes: number; amount: number }>();
     for (const e of store.entries) {
@@ -88,8 +132,73 @@ export function CustomersTab({
     void call(() => tsJson(`/projects/${id}`, 'PUT', { hourlyRate: value }));
   };
 
+  const toggleArchived = async (
+    kind: 'clients' | 'projects',
+    id: string,
+    name: string,
+    archived: boolean
+  ) => {
+    const ok = await confirm({
+      title: `${archived ? 'Archive' : 'Unarchive'} ${name}?`,
+      description: archived
+        ? 'Archived items are hidden from pickers but keep their history.'
+        : 'It will reappear in pickers and forms.',
+      confirmLabel: archived ? 'Archive' : 'Unarchive',
+    });
+    if (!ok) return;
+    await call(() => tsJson(`/${kind}/${id}`, 'PUT', { archived }));
+  };
+
+  const deleteItem = async (kind: 'clients' | 'projects', id: string, name: string) => {
+    const ok = await confirm({
+      title: `Delete ${name}?`,
+      description:
+        kind === 'clients'
+          ? 'Only possible when no projects reference this customer.'
+          : 'Only possible when no entries reference this project.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
+    await call(() => tsJson(`/${kind}/${id}`, 'DELETE'));
+  };
+
+  const rowMenu = (
+    kind: 'clients' | 'projects',
+    item: { id: string; name: string; archived: boolean }
+  ) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon-xs" aria-label={`${item.name} actions`}>
+          <MoreHorizontal className="w-4 h-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem
+          onClick={() => void toggleArchived(kind, item.id, item.name, !item.archived)}
+        >
+          {item.archived ? (
+            <ArchiveRestore className="w-3.5 h-3.5" />
+          ) : (
+            <Archive className="w-3.5 h-3.5" />
+          )}
+          {item.archived ? 'Unarchive' : 'Archive'}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          variant="destructive"
+          onClick={() => void deleteItem(kind, item.id, item.name)}
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <ConfirmDialog />
       {error && <p className="lg:col-span-2 text-[12px] text-danger-400">{error}</p>}
 
       {/* Customers */}
@@ -104,7 +213,9 @@ export function CustomersTab({
         <table className="w-full text-[13px]">
           <thead>
             <tr className="text-left text-[11px] uppercase tracking-wider text-surface-500 border-b border-border">
-              <th className="py-2 font-semibold">Name</th>
+              <th className="py-2 font-semibold" colSpan={2}>
+                Name
+              </th>
               <th className="py-2 font-semibold text-right">Lifetime</th>
               <th className="py-2" />
             </tr>
@@ -114,6 +225,15 @@ export function CustomersTab({
               const totals = clientTotals.get(c.id);
               return (
                 <tr key={c.id} className={c.archived ? 'opacity-50' : ''}>
+                  <td className="py-1.5 pr-2 w-6">
+                    <ColorDot
+                      color={clientColors.get(c.id) ?? '#5b6070'}
+                      label={c.name}
+                      onCommit={(hex) =>
+                        void call(() => tsJson(`/clients/${c.id}`, 'PUT', { color: hex }))
+                      }
+                    />
+                  </td>
                   <td className="py-1.5 pr-2">
                     <Input
                       defaultValue={c.name}
@@ -131,16 +251,7 @@ export function CustomersTab({
                     )}
                   </td>
                   <td className="py-1.5 pl-2 text-right whitespace-nowrap">
-                    <button
-                      className="text-[11px] text-surface-500 hover:text-surface-800"
-                      onClick={() =>
-                        void call(() =>
-                          tsJson(`/clients/${c.id}`, 'PUT', { archived: !c.archived })
-                        )
-                      }
-                    >
-                      {c.archived ? 'unarchive' : 'archive'}
-                    </button>
+                    {rowMenu('clients', c)}
                   </td>
                 </tr>
               );
@@ -161,10 +272,12 @@ export function CustomersTab({
         <table className="w-full text-[13px]">
           <thead>
             <tr className="text-left text-[11px] uppercase tracking-wider text-surface-500 border-b border-border">
-              <th className="py-2 font-semibold">Project</th>
+              <th className="py-2 font-semibold" colSpan={2}>
+                Project
+              </th>
               <th className="py-2 font-semibold">Customer</th>
               <th className="py-2 font-semibold text-right">Rate $/h</th>
-              <th className="py-2 font-semibold text-right">Entries</th>
+              <th className="py-2 font-semibold text-right hidden xl:table-cell">Entries</th>
               <th className="py-2" />
             </tr>
           </thead>
@@ -173,6 +286,16 @@ export function CustomersTab({
               const totals = projectTotals.get(p.id);
               return (
                 <tr key={p.id} className={p.archived ? 'opacity-50' : ''}>
+                  <td className="py-1.5 pr-2 w-6">
+                    {/* falls back to the client color until a custom one is set */}
+                    <ColorDot
+                      color={projectDisplayColor(p, clientColors)}
+                      label={p.name}
+                      onCommit={(hex) =>
+                        void call(() => tsJson(`/projects/${p.id}`, 'PUT', { color: hex }))
+                      }
+                    />
+                  </td>
                   <td className="py-1.5 pr-2">
                     <Input
                       defaultValue={p.name}
@@ -193,20 +316,11 @@ export function CustomersTab({
                       />
                     </Money>
                   </td>
-                  <td className="py-1.5 text-right text-[12px] text-surface-600 tabular-nums whitespace-nowrap">
+                  <td className="py-1.5 text-right text-[12px] text-surface-600 tabular-nums whitespace-nowrap hidden xl:table-cell">
                     {totals ? `${totals.entries} · ${formatHours(totals.minutes)}` : '—'}
                   </td>
                   <td className="py-1.5 pl-2 text-right whitespace-nowrap">
-                    <button
-                      className="text-[11px] text-surface-500 hover:text-surface-800"
-                      onClick={() =>
-                        void call(() =>
-                          tsJson(`/projects/${p.id}`, 'PUT', { archived: !p.archived })
-                        )
-                      }
-                    >
-                      {p.archived ? 'unarchive' : 'archive'}
-                    </button>
+                    {rowMenu('projects', p)}
                   </td>
                 </tr>
               );

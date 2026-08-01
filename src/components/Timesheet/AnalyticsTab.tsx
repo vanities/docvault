@@ -12,7 +12,7 @@ import { Card } from '@/components/ui/card';
 import { useAppContext } from '../../contexts/AppContext';
 import { Money } from '../common/Money';
 import {
-  CLIENT_PALETTE,
+  buildClientColorMap,
   formatUsd,
   formatHours,
   todayYMD,
@@ -90,17 +90,16 @@ export function AnalyticsTab({ store }: { store: TimesheetStore }) {
     [store]
   );
 
-  // Stable client → color assignment: store order (migration order), color
-  // follows the client regardless of filters or which charts it appears in.
-  const clientColors = useMemo(
-    () =>
-      store.clients.map((c, i) => ({
-        id: c.id,
-        name: c.name,
-        color: CLIENT_PALETTE[i % CLIENT_PALETTE.length],
-      })),
-    [store.clients]
-  );
+  // Client color: the user-picked color when set, else the stable palette
+  // slot — either way it follows the client across every chart and filter.
+  const clientColors = useMemo(() => {
+    const colorMap = buildClientColorMap(store.clients);
+    return store.clients.map((c) => ({
+      id: c.id,
+      name: c.name,
+      color: colorMap.get(c.id)!,
+    }));
+  }, [store.clients]);
 
   const a = useMemo(() => {
     const today = todayYMD();

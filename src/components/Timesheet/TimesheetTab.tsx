@@ -5,7 +5,16 @@
 // collapse, and the table scrolls horizontally inside its card.
 
 import { useState, useMemo } from 'react';
-import { Plus, Trash2, Edit3, Loader2, ChevronDown, ArrowUp, ArrowDown } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  Edit3,
+  Loader2,
+  ChevronDown,
+  ArrowUp,
+  ArrowDown,
+  MoreHorizontal,
+} from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +25,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { Money } from '../common/Money';
 import {
@@ -25,6 +40,8 @@ import {
   todayYMD,
   spanMinutes,
   presetRange,
+  buildClientColorMap,
+  projectDisplayColor,
   RANGE_PRESETS,
   type RangePreset,
   type TimesheetStore,
@@ -77,6 +94,7 @@ export function TimesheetTab({
     () => new Map(store.projects.map((p) => [p.id, p] as const)),
     [store]
   );
+  const clientColors = useMemo(() => buildClientColorMap(store.clients), [store.clients]);
 
   const range = preset === 'custom' ? { from: customFrom, to: customTo } : presetRange(preset);
 
@@ -502,6 +520,7 @@ export function TimesheetTab({
               filtered.slice(0, visibleCount).map((e) => {
                 const project = projectById.get(e.projectId);
                 const client = project ? clientById.get(project.clientId) : undefined;
+                const dotColor = projectDisplayColor(project, clientColors);
                 return (
                   <tr key={e.id} className="group hover:bg-surface-100/50">
                     <td className="px-3 sm:px-4 py-2 text-surface-700 tabular-nums whitespace-nowrap">
@@ -513,6 +532,10 @@ export function TimesheetTab({
                       {e.start}–{e.end}
                     </td>
                     <td className="px-2 py-2 text-surface-600 text-[12px] whitespace-nowrap hidden sm:table-cell">
+                      <span
+                        className="inline-block w-2 h-2 rounded-full mr-1.5 align-middle"
+                        style={{ backgroundColor: dotColor }}
+                      />
                       {client?.name} / {project?.name}
                     </td>
                     <td className="px-2 py-2 text-surface-900 max-w-[9rem] sm:max-w-[26rem]">
@@ -520,6 +543,10 @@ export function TimesheetTab({
                         {e.description || <i className="text-surface-500">no description</i>}
                       </span>
                       <span className="block text-[11px] text-surface-500 sm:hidden">
+                        <span
+                          className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle"
+                          style={{ backgroundColor: dotColor }}
+                        />
                         {client?.name} / {project?.name}
                         {!e.billable ? ' · non-billable' : e.invoiced ? ' · invoiced' : ' · open'}
                       </span>
@@ -543,19 +570,26 @@ export function TimesheetTab({
                       )}
                     </td>
                     <td className="px-2 py-2">
-                      <div className="flex gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                        <Button variant="ghost" size="icon-xs" onClick={() => openEdit(e)}>
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          className="text-danger-400"
-                          onClick={() => void handleDelete(e)}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon-xs" aria-label="Entry actions">
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit(e)}>
+                            <Edit3 className="w-3.5 h-3.5" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => void handleDelete(e)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </td>
                   </tr>
                 );
