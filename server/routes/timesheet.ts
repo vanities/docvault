@@ -383,6 +383,7 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 interface CreateInvoiceBody {
   clientId?: string;
   entryIds?: string[]; // explicit selection; otherwise from/to window
+  projectId?: string; // bill only this project's entries
   from?: string; // date window over uninvoiced billable entries
   to?: string;
   templateId?: string;
@@ -408,6 +409,7 @@ function assembleInvoice(
   const entries = store.entries
     .filter((e) => {
       if (projectById.get(e.projectId)?.clientId !== client.id) return false;
+      if (body.projectId && e.projectId !== body.projectId) return false;
       if (wanted) return wanted.has(e.id);
       if (e.invoiced || !e.billable) return false;
       if (body.from && e.date < body.from) return false;
@@ -453,6 +455,7 @@ function assembleInvoice(
       amount: e.amount,
     })),
     entryIds: entries.map((e) => e.id),
+    projectIds: [...new Set(entries.map((e) => e.projectId))],
     createdAt: new Date().toISOString(),
   };
   return { invoice, entries, template };

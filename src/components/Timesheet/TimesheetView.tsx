@@ -62,13 +62,13 @@ export function TimesheetView() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-border mb-5">
+      {/* Tabs — horizontally scrollable on narrow screens */}
+      <div className="flex items-center gap-1 border-b border-border mb-5 overflow-x-auto">
         {TABS.map((t) => (
           <button
             key={t.value}
             onClick={() => setTab(t.value)}
-            className={`px-3.5 py-2 text-[13px] font-medium border-b-2 -mb-px transition-colors ${
+            className={`shrink-0 whitespace-nowrap px-3.5 py-2 text-[13px] font-medium border-b-2 -mb-px transition-colors ${
               tab === t.value
                 ? 'border-lime-400 text-surface-950'
                 : 'border-transparent text-surface-600 hover:text-surface-900'

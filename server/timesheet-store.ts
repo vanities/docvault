@@ -103,6 +103,8 @@ export interface Invoice {
   comment?: string;
   lines: InvoiceLine[]; // empty for invoices imported from Kimai (no line data)
   entryIds: string[]; // entries billed by this invoice (empty for imports)
+  projectIds?: string[]; // distinct projects billed — drives history filtering
+  // (absent on Kimai imports; those only match the "all projects" filter)
   paymentDate?: string; // YYYY-MM-DD when marked paid
   createdAt: string;
   kimaiId?: number; // provenance for invoices imported from Kimai
