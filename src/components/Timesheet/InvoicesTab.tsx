@@ -3,7 +3,7 @@
 // project + date window over open entries + template, PDF preview before
 // committing. Deleting an invoice releases its entries back to open.
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   FileDown,
   Loader2,
@@ -14,6 +14,7 @@ import {
   MoreHorizontal,
   CircleCheck,
   RotateCcw,
+  Eye,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -35,6 +36,7 @@ import {
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { Money } from '../common/Money';
 import {
+  TS,
   tsJson,
   downloadPdf,
   formatUsd,
@@ -70,8 +72,14 @@ export function InvoicesTab({
   const [filterClient, setFilterClient] = useState('all');
   const [filterProject, setFilterProject] = useState('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'new' | 'paid' | 'canceled'>('all');
+  const [filterYear, setFilterYear] = useState<string>(() => String(new Date().getFullYear()));
   const [sortKey, setSortKey] = useState<SortKey>('issueDate');
   const [sortDesc, setSortDesc] = useState(true);
+
+  // PDF preview modal
+  const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const clientById = useMemo(() => new Map(store.clients.map((c) => [c.id, c] as const)), [store]);
   const projectById = useMemo(
@@ -188,8 +196,18 @@ export function InvoicesTab({
     await refresh();
   };
 
+  // Years present in the history, newest first, for the year filter.
+  const invoiceYears = useMemo(
+    () =>
+      [...new Set(store.invoices.map((i) => i.issueDate.slice(0, 4)))].sort((a, b) =>
+        b.localeCompare(a)
+      ),
+    [store.invoices]
+  );
+
   const filteredInvoices = useMemo(() => {
     const rows = store.invoices.filter((inv) => {
+      if (filterYear !== 'all' && !inv.issueDate.startsWith(filterYear)) return false;
       if (filterClient !== 'all' && inv.clientId !== filterClient) return false;
       if (filterProject !== 'all' && !(inv.projectIds ?? []).includes(filterProject)) return false;
       if (filterStatus !== 'all' && inv.status !== filterStatus) return false;
@@ -209,7 +227,44 @@ export function InvoicesTab({
       }
     });
     return rows;
-  }, [store.invoices, filterClient, filterProject, filterStatus, sortKey, sortDesc]);
+  }, [store.invoices, filterYear, filterClient, filterProject, filterStatus, sortKey, sortDesc]);
+
+  // ----- PDF preview (inline render, no download) -----
+
+  const openPreview = (invoice: Invoice) => {
+    setPreviewInvoice(invoice);
+  };
+
+  // Snap the year filter to a real year once data arrives (e.g. a January
+  // with no invoices yet falls back to the newest year on record).
+  useEffect(() => {
+    if (filterYear !== 'all' && invoiceYears.length > 0 && !invoiceYears.includes(filterYear)) {
+      setFilterYear(invoiceYears[0]);
+    }
+  }, [invoiceYears, filterYear]);
+
+  useEffect(() => {
+    if (!previewInvoice) return;
+    let revoked = '';
+    setPreviewLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch(`${TS}/invoices/${previewInvoice.id}/pdf`);
+        if (!res.ok) throw new Error(`PDF failed (${res.status})`);
+        const blob = await res.blob();
+        revoked = URL.createObjectURL(blob);
+        setPreviewUrl(revoked);
+      } catch {
+        setPreviewUrl('');
+      } finally {
+        setPreviewLoading(false);
+      }
+    })();
+    return () => {
+      if (revoked) URL.revokeObjectURL(revoked);
+      setPreviewUrl('');
+    };
+  }, [previewInvoice]);
 
   const filteredTotals = useMemo(
     () => ({
@@ -262,6 +317,18 @@ export function InvoicesTab({
 
       {/* Toolbar: filters + create button */}
       <div className="flex flex-wrap items-center gap-2 mb-2">
+        <select
+          value={filterYear}
+          onChange={(e) => setFilterYear(e.target.value)}
+          className="h-8 rounded-lg text-[12px] bg-surface-100 border border-border px-2"
+        >
+          {invoiceYears.map((y) => (
+            <option key={y} value={y}>
+              {y}
+            </option>
+          ))}
+          <option value="all">All years</option>
+        </select>
         <select
           value={filterClient}
           onChange={(e) => {
@@ -486,7 +553,11 @@ export function InvoicesTab({
               </tr>
             ) : (
               filteredInvoices.map((inv) => (
-                <tr key={inv.id} className="group hover:bg-surface-100/50">
+                <tr
+                  key={inv.id}
+                  className="group hover:bg-surface-100/50 cursor-pointer"
+                  onClick={() => openPreview(inv)}
+                >
                   <td className="px-3 sm:px-4 py-2 font-mono tabular-nums whitespace-nowrap text-surface-900">
                     {inv.number}
                   </td>
@@ -512,7 +583,7 @@ export function InvoicesTab({
                   <td className="px-2 py-2 whitespace-nowrap hidden sm:table-cell">
                     {statusBadge(inv)}
                   </td>
-                  <td className="px-2 py-2">
+                  <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-0.5">
                       <Button
                         variant="ghost"
@@ -530,6 +601,10 @@ export function InvoicesTab({
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openPreview(inv)}>
+                            <Eye className="w-3.5 h-3.5" />
+                            Preview
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => void downloadPdf(`/invoices/${inv.id}/pdf`)}
                           >
@@ -565,6 +640,55 @@ export function InvoicesTab({
           </tbody>
         </table>
       </Card>
+
+      {/* PDF preview modal — inline render via blob URL, no download needed */}
+      <Dialog
+        open={previewInvoice !== null}
+        onOpenChange={(open) => !open && setPreviewInvoice(null)}
+      >
+        <DialogContent className="sm:max-w-4xl w-[calc(100%-1.5rem)] h-[85vh] flex flex-col gap-3">
+          <DialogHeader>
+            <DialogTitle>
+              Invoice {previewInvoice?.number}
+              <span className="text-surface-500 font-normal text-[13px] ml-2">
+                {previewInvoice?.clientName} · {previewInvoice?.issueDate}
+              </span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 rounded-lg overflow-hidden bg-white/95">
+            {previewLoading ? (
+              <div className="flex items-center justify-center h-full">
+                <Loader2 className="w-6 h-6 animate-spin text-surface-500" />
+              </div>
+            ) : previewUrl ? (
+              <iframe
+                src={`${previewUrl}#toolbar=0&navpanes=0`}
+                title={`Invoice ${previewInvoice?.number} preview`}
+                className="w-full h-full border-0"
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full text-[13px] text-surface-700">
+                Preview failed to load.
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setPreviewInvoice(null)}>
+              Close
+            </Button>
+            <Button
+              size="sm"
+              disabled={!previewInvoice}
+              onClick={() =>
+                previewInvoice && void downloadPdf(`/invoices/${previewInvoice.id}/pdf`)
+              }
+            >
+              <FileDown className="w-4 h-4" />
+              Download
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
