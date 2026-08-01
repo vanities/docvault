@@ -64,8 +64,11 @@ export function TimesheetView() {
         </div>
       </div>
 
-      {/* Tabs — horizontally scrollable on narrow screens */}
-      <div className="flex items-center gap-1 border-b border-border mb-5 overflow-x-auto">
+      {/* Tabs — horizontally scrollable on narrow screens. overflow-y must be
+          pinned: with only overflow-x-auto the spec forces overflow-y to auto,
+          and the active tab's -mb-px underline overlap creates ~1px of
+          vertical overflow that Safari turns into a bouncy vertical scroll. */}
+      <div className="flex items-center gap-1 border-b border-border mb-5 overflow-x-auto overflow-y-hidden">
         {TABS.map((t) => (
           <button
             key={t.value}
