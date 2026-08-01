@@ -901,27 +901,24 @@ export function InvoicesTab({
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[12px] text-surface-600 block mb-1">To</label>
-                  <Input
-                    type="email"
-                    multiple
-                    value={draft.to}
-                    onChange={(e) => setDraft({ ...draft, to: e.target.value })}
-                    placeholder="a@client.com, b@client.com"
-                    className="h-9 rounded-lg text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="text-[12px] text-surface-600 block mb-1">From</label>
-                  <Input
-                    value={draft.from}
-                    onChange={(e) => setDraft({ ...draft, from: e.target.value })}
-                    placeholder="default sender"
-                    className="h-9 rounded-lg text-sm"
-                  />
-                </div>
+              <div>
+                <label className="text-[12px] text-surface-600 block mb-1">To</label>
+                <textarea
+                  value={draft.to}
+                  onChange={(e) => setDraft({ ...draft, to: e.target.value })}
+                  placeholder="a@client.com, b@client.com"
+                  rows={2}
+                  className="w-full rounded-lg text-sm bg-surface-100 border border-border px-3 py-2"
+                />
+              </div>
+              <div>
+                <label className="text-[12px] text-surface-600 block mb-1">From</label>
+                <Input
+                  value={draft.from}
+                  onChange={(e) => setDraft({ ...draft, from: e.target.value })}
+                  placeholder="default sender"
+                  className="h-9 rounded-lg text-sm"
+                />
               </div>
               <div>
                 <label className="text-[12px] text-surface-600 block mb-1">Subject</label>
