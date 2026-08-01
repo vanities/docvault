@@ -188,24 +188,59 @@ export function InvoicesTab({
     }
   };
 
-  const handleSend = async (invoice: Invoice) => {
-    const email = clientById.get(invoice.clientId)?.email;
-    if (!email) {
-      setError(`Set an email on ${invoice.clientName} first (Customers & Projects → Edit).`);
-      return;
-    }
-    const ok = await confirm({
-      title: `Email invoice ${invoice.number}?`,
-      description: `The PDF (${formatUsd(invoice.total)}, due ${invoice.dueDate}) will be sent to ${email}.${invoice.sentAt ? ` Already sent ${invoice.sentAt.slice(0, 10)}.` : ''}`,
-      confirmLabel: 'Send email',
-    });
-    if (!ok) return;
-    setError('');
+  // Compose modal — the draft comes fully substituted from the server; what
+  // the user sees in these fields is EXACTLY what gets sent.
+  const [composeInvoice, setComposeInvoice] = useState<Invoice | null>(null);
+  const [composeLoading, setComposeLoading] = useState(false);
+  const [composeSending, setComposeSending] = useState(false);
+  const [composeResult, setComposeResult] = useState('');
+  const [draft, setDraft] = useState({ to: '', from: '', subject: '', body: '', attachment: '' });
+
+  const openCompose = (invoice: Invoice) => {
+    setComposeInvoice(invoice);
+    setComposeResult('');
+    setComposeLoading(true);
+    void tsJson<{
+      to: string;
+      from: string;
+      subject: string;
+      body: string;
+      attachment: string;
+    }>(`/invoices/${invoice.id}/email-draft`, 'GET')
+      .then((d) =>
+        setDraft({
+          to: d.to,
+          from: d.from,
+          subject: d.subject,
+          body: d.body,
+          attachment: d.attachment,
+        })
+      )
+      .catch(() => setComposeResult('Failed to load draft'))
+      .finally(() => setComposeLoading(false));
+  };
+
+  const handleComposeSend = async () => {
+    if (!composeInvoice || !draft.to.trim()) return;
+    setComposeSending(true);
+    setComposeResult('');
     try {
-      await tsJson(`/invoices/${invoice.id}/send`, 'POST', {});
+      const result = await tsJson<{ sentTo: string }>(
+        `/invoices/${composeInvoice.id}/send`,
+        'POST',
+        {
+          to: draft.to.trim(),
+          from: draft.from.trim(),
+          subject: draft.subject,
+          body: draft.body,
+        }
+      );
+      setComposeResult(`Sent to ${result.sentTo}`);
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Send failed');
+      setComposeResult(e instanceof Error ? e.message : 'Send failed');
+    } finally {
+      setComposeSending(false);
     }
   };
 
@@ -716,6 +751,17 @@ export function InvoicesTab({
                       <Button
                         variant="ghost"
                         size="icon-xs"
+                        title={
+                          inv.sentAt ? `Sent ${inv.sentAt.slice(0, 10)} — send again` : 'Send email'
+                        }
+                        aria-label={`Send ${inv.number} by email`}
+                        onClick={() => openCompose(inv)}
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
                         title="Download PDF"
                         aria-label={`Download ${inv.number} PDF`}
                         onClick={() => void downloadPdf(`/invoices/${inv.id}/pdf`)}
@@ -739,11 +785,11 @@ export function InvoicesTab({
                             <FileDown className="w-3.5 h-3.5" />
                             Download PDF
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => void handleSend(inv)}>
+                          <DropdownMenuItem onClick={() => openCompose(inv)}>
                             <Send className="w-3.5 h-3.5" />
                             {inv.sentAt
                               ? `Resend email (sent ${inv.sentAt.slice(0, 10)})`
-                              : 'Send to client'}
+                              : 'Send email…'}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openFileToEntity(inv)}>
                             <FolderInput className="w-3.5 h-3.5" />
@@ -835,6 +881,104 @@ export function InvoicesTab({
               onClick={() => void handleFileToEntity()}
             >
               {fileBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'File Invoice'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Compose modal — shows and edits exactly what will be emailed */}
+      <Dialog
+        open={composeInvoice !== null}
+        onOpenChange={(open) => !open && setComposeInvoice(null)}
+      >
+        <DialogContent className="sm:max-w-xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Send Invoice {composeInvoice?.number}</DialogTitle>
+          </DialogHeader>
+          {composeLoading ? (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className="w-5 h-5 animate-spin text-surface-500" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[12px] text-surface-600 block mb-1">To</label>
+                  <Input
+                    type="email"
+                    value={draft.to}
+                    onChange={(e) => setDraft({ ...draft, to: e.target.value })}
+                    placeholder="recipient@client.com"
+                    className="h-9 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-[12px] text-surface-600 block mb-1">From</label>
+                  <Input
+                    value={draft.from}
+                    onChange={(e) => setDraft({ ...draft, from: e.target.value })}
+                    placeholder="default sender"
+                    className="h-9 rounded-lg text-sm"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-[12px] text-surface-600 block mb-1">Subject</label>
+                <Input
+                  value={draft.subject}
+                  onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
+                  className="h-9 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-[12px] text-surface-600 block mb-1">Body</label>
+                <textarea
+                  value={draft.body}
+                  onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+                  rows={7}
+                  className="w-full rounded-lg text-sm bg-surface-100 border border-border px-3 py-2"
+                />
+              </div>
+              <p className="text-[12px] text-surface-500">
+                📎 {draft.attachment}
+                {composeInvoice?.sentAt && (
+                  <span className="ml-2 text-amber-400">
+                    already sent {composeInvoice.sentAt.slice(0, 10)}
+                    {composeInvoice.sentTo ? ` to ${composeInvoice.sentTo}` : ''}
+                  </span>
+                )}
+              </p>
+              {composeResult && (
+                <p
+                  className={`text-[12px] ${composeResult.startsWith('Sent') ? 'text-emerald-400' : 'text-danger-400'}`}
+                >
+                  {composeResult}
+                </p>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setComposeInvoice(null)}>
+              {composeResult.startsWith('Sent') ? 'Close' : 'Cancel'}
+            </Button>
+            <Button
+              size="sm"
+              disabled={
+                composeSending ||
+                composeLoading ||
+                !draft.to.trim() ||
+                composeResult.startsWith('Sent')
+              }
+              onClick={() => void handleComposeSend()}
+            >
+              {composeSending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  Send
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

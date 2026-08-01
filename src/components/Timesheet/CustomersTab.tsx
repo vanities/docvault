@@ -135,6 +135,10 @@ type ProjectForm = {
   hourlyRate: string;
   color: string;
   minimumInvoice: string; // '' = none (retainer floor for this engagement)
+  emailTo: string;
+  emailFrom: string;
+  emailSubject: string;
+  emailBody: string;
 };
 
 const EMPTY_CLIENT: ClientForm = {
@@ -152,6 +156,10 @@ const EMPTY_PROJECT: ProjectForm = {
   hourlyRate: '',
   color: '',
   minimumInvoice: '',
+  emailTo: '',
+  emailFrom: '',
+  emailSubject: '',
+  emailBody: '',
 };
 
 export function CustomersTab({
@@ -254,6 +262,10 @@ export function CustomersTab({
         hourlyRate: String(project.hourlyRate),
         color: project.color ?? '',
         minimumInvoice: project.minimumInvoice ? String(project.minimumInvoice) : '',
+        emailTo: project.emailTo ?? '',
+        emailFrom: project.emailFrom ?? '',
+        emailSubject: project.emailSubject ?? '',
+        emailBody: project.emailBody ?? '',
       });
       setProjectModal(project.id);
     } else {
@@ -299,6 +311,10 @@ export function CustomersTab({
       hourlyRate: projectForm.hourlyRate === '' ? 0 : Number(projectForm.hourlyRate),
       color: projectForm.color,
       minimumInvoice: projectForm.minimumInvoice === '' ? null : Number(projectForm.minimumInvoice),
+      emailTo: projectForm.emailTo,
+      emailFrom: projectForm.emailFrom,
+      emailSubject: projectForm.emailSubject,
+      emailBody: projectForm.emailBody,
     };
     const ok = await call(async () => {
       if (projectModal === 'new') {
@@ -700,6 +716,59 @@ export function CustomersTab({
             <p className="text-[11px] text-surface-500 -mt-2">
               Default inherits the customer&apos;s color.
             </p>
+
+            {/* Email defaults — prefill the invoice compose modal */}
+            <div className="border-t border-border/50 pt-3">
+              <p className="text-[12px] font-semibold text-surface-800 mb-2">
+                Invoice email defaults
+              </p>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className="text-[12px] text-surface-600 block mb-1">To</label>
+                  <Input
+                    value={projectForm.emailTo}
+                    onChange={(e) => setProjectForm({ ...projectForm, emailTo: e.target.value })}
+                    placeholder="customer email"
+                    className="h-9 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-[12px] text-surface-600 block mb-1">From</label>
+                  <Input
+                    value={projectForm.emailFrom}
+                    onChange={(e) => setProjectForm({ ...projectForm, emailFrom: e.target.value })}
+                    placeholder="default sender"
+                    className="h-9 rounded-lg text-sm"
+                  />
+                </div>
+              </div>
+              <div className="mb-3">
+                <label className="text-[12px] text-surface-600 block mb-1">Subject</label>
+                <Input
+                  value={projectForm.emailSubject}
+                  onChange={(e) => setProjectForm({ ...projectForm, emailSubject: e.target.value })}
+                  placeholder="Invoice {{number}} from {{company}}"
+                  className="h-9 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-[12px] text-surface-600 block mb-1">Body</label>
+                <textarea
+                  value={projectForm.emailBody}
+                  onChange={(e) => setProjectForm({ ...projectForm, emailBody: e.target.value })}
+                  placeholder={
+                    'Hi,\n\nPlease find attached invoice {{number}} for {{month}} — {{total}}, due {{dueDate}}.\n\nThank you!'
+                  }
+                  rows={4}
+                  className="w-full rounded-lg text-sm bg-surface-100 border border-border px-3 py-2"
+                />
+                <p className="text-[11px] text-surface-500 mt-1">
+                  {
+                    'Placeholders: {{number}} {{client}} {{project}} {{total}} {{dueDate}} {{issueDate}} {{month}} {{hours}} {{company}}'
+                  }
+                </p>
+              </div>
+            </div>
             {error && <p className="text-[12px] text-danger-400">{error}</p>}
           </div>
           <DialogFooter>

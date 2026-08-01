@@ -325,6 +325,10 @@ export async function handleTimesheetRoutes(
       hourlyRate?: number;
       color?: string;
       minimumInvoice?: number | null;
+      emailTo?: string;
+      emailFrom?: string;
+      emailSubject?: string;
+      emailBody?: string;
       archived?: boolean;
     }>(req);
     const store = await loadTimesheetStore();
@@ -350,6 +354,15 @@ export async function handleTimesheetRoutes(
         delete project.minimumInvoice;
       } else {
         project.minimumInvoice = min;
+      }
+    }
+    // Email template fields: '' clears, otherwise stored verbatim (with
+    // {{placeholders}} intact — substitution happens at draft time).
+    for (const key of ['emailTo', 'emailFrom', 'emailSubject', 'emailBody'] as const) {
+      if (body[key] !== undefined) {
+        const value = body[key]!.trim();
+        if (value) project[key] = value;
+        else delete project[key];
       }
     }
     if (body.archived !== undefined) project.archived = body.archived;
@@ -557,6 +570,36 @@ function assembleInvoice(
   return { invoice, entries, template };
 }
 
+/** Values available as {{placeholder}}s in project email templates. */
+function buildEmailSubstitutions(
+  invoice: Invoice,
+  clientName?: string,
+  company?: string,
+  projectName?: string
+): Record<string, string> {
+  // Billing month: the month of the first line's work, else the month before
+  // the issue date (matches the user's issue-on-the-1st cadence).
+  const firstLineDate = invoice.lines[0]?.date as string | undefined;
+  const monthSource = firstLineDate
+    ? new Date(`${firstLineDate}T00:00:00`)
+    : (() => {
+        const d = new Date(`${invoice.issueDate}T00:00:00`);
+        d.setMonth(d.getMonth() - 1);
+        return d;
+      })();
+  return {
+    number: invoice.number,
+    client: clientName ?? invoice.clientName,
+    project: projectName ?? '',
+    total: `$${invoice.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+    dueDate: invoice.dueDate,
+    issueDate: invoice.issueDate,
+    month: monthSource.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+    hours: (invoice.totalMinutes / 60).toFixed(2),
+    company: company ?? '',
+  };
+}
+
 /** Render an invoice PDF and save it into an entity's year folder, using the
  * repo's {Source}_{Type}_{Date} document naming with collision suffixes.
  * Returns "entityId:relative/path" or null when the entity is unknown. */
@@ -658,37 +701,79 @@ async function handleInvoiceRoutes(req: Request, pathname: string): Promise<Resp
     return pdfResponse(await buildInvoicePdf(invoice, template), invoice);
   }
 
-  // POST /api/timesheet/invoices/:id/send - email the PDF to the client
+  // GET /api/timesheet/invoices/:id/email-draft - resolve the email template
+  // into a concrete draft for the compose modal. Placeholders are substituted
+  // HERE (single implementation); the modal edits the result freely.
+  const draftMatch = pathname.match(/^\/api\/timesheet\/invoices\/([^/]+)\/email-draft$/);
+  if (draftMatch && req.method === 'GET') {
+    const store = await loadTimesheetStore();
+    const invoice = store.invoices.find((i) => i.id === draftMatch[1]);
+    if (!invoice) return jsonResponse({ error: 'Invoice not found' }, 404);
+    const client = store.clients.find((c) => c.id === invoice.clientId);
+    const pdfTemplate = invoice.templateId
+      ? store.templates.find((t) => t.id === invoice.templateId)
+      : store.templates.find((t) => !t.archived);
+    // First billed project with any email defaults supplies the template.
+    const emailProject = (invoice.projectIds ?? [])
+      .map((pid) => store.projects.find((p) => p.id === pid))
+      .find((p) => p && (p.emailTo || p.emailFrom || p.emailSubject || p.emailBody));
+
+    const firstProjectName = store.projects.find(
+      (p) => p.id === (invoice.projectIds ?? [])[0]
+    )?.name;
+    const sub = buildEmailSubstitutions(
+      invoice,
+      client?.name,
+      pdfTemplate?.company,
+      firstProjectName
+    );
+    const apply = (tpl: string) => tpl.replace(/\{\{\s*(\w+)\s*\}\}/g, (m, key) => sub[key] ?? m);
+    return jsonResponse({
+      to: apply(emailProject?.emailTo ?? '') || client?.email || '',
+      from: apply(emailProject?.emailFrom ?? ''), // '' = configured default sender
+      subject: apply(emailProject?.emailSubject ?? `Invoice {{number}} from {{company}}`),
+      body: apply(
+        emailProject?.emailBody ??
+          `Hi,\n\nPlease find attached invoice {{number}} for {{total}}, due {{dueDate}}.\n\nThank you!`
+      ),
+      attachment: `Invoice_${invoice.number.replace(/[^\w-]+/g, '-')}.pdf`,
+      sentAt: invoice.sentAt ?? null,
+      sentTo: invoice.sentTo ?? null,
+      placeholders: Object.keys(sub),
+    });
+  }
+
+  // POST /api/timesheet/invoices/:id/send - deliver EXACTLY the composed
+  // email (to/from/subject/body come from the modal) with the PDF attached.
   const sendMatch = pathname.match(/^\/api\/timesheet\/invoices\/([^/]+)\/send$/);
   if (sendMatch && req.method === 'POST') {
-    const body = await readJsonBody<{ to?: string }>(req);
+    const body = await readJsonBody<{
+      to?: string;
+      from?: string;
+      subject?: string;
+      body?: string;
+    }>(req);
     const store = await loadTimesheetStore();
     const invoice = store.invoices.find((i) => i.id === sendMatch[1]);
     if (!invoice) return jsonResponse({ error: 'Invoice not found' }, 404);
-    const client = store.clients.find((c) => c.id === invoice.clientId);
-    const to = body.to?.trim() || client?.email;
-    if (!to) {
-      return jsonResponse(
-        { error: 'No recipient — set an email on the customer (or pass "to")' },
-        400
-      );
-    }
+    const to = body.to?.trim();
+    if (!to) return jsonResponse({ error: 'Missing recipient' }, 400);
+    const subject = body.subject?.trim() || `Invoice ${invoice.number}`;
+    const text = body.body ?? '';
+    const html = text
+      .split(/\n{2,}/)
+      .map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`)
+      .join('\n');
     const template = invoice.templateId
       ? store.templates.find((t) => t.id === invoice.templateId)
       : store.templates.find((t) => !t.archived);
     const pdf = await buildInvoicePdf(invoice, template);
-    const company = template?.company || 'Invoice';
     const result = await sendEmail({
       to,
-      subject: `Invoice ${invoice.number} from ${company}`,
-      html: [
-        `<p>Hi,</p>`,
-        `<p>Please find attached invoice <strong>${invoice.number}</strong> for ` +
-          `<strong>$${invoice.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>, ` +
-          `due <strong>${invoice.dueDate}</strong>.</p>`,
-        template?.paymentTerms ? `<p>Payment terms: ${template.paymentTerms}</p>` : '',
-        `<p>Thank you!</p>`,
-      ].join('\n'),
+      ...(body.from?.trim() ? { from: body.from.trim() } : {}),
+      subject,
+      html,
+      text,
       attachments: [
         {
           filename: `Invoice_${invoice.number.replace(/[^\w-]+/g, '-')}.pdf`,
