@@ -658,7 +658,7 @@ export function CustomersTab({
 
       {/* Project add/edit modal */}
       <Dialog open={projectModal !== null} onOpenChange={(open) => !open && setProjectModal(null)}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{projectModal === 'new' ? 'Add Project' : 'Edit Project'}</DialogTitle>
           </DialogHeader>
@@ -754,32 +754,32 @@ export function CustomersTab({
                 always review and can edit everything before sending.
                 {' Use {{placeholder}} variables anywhere; they fill in from the actual invoice.'}
               </p>
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <div>
-                  <label className="text-[12px] text-surface-600 block mb-1">To</label>
-                  <Input
-                    value={projectForm.emailTo}
-                    onChange={(e) => setProjectForm({ ...projectForm, emailTo: e.target.value })}
-                    placeholder="billing@client.com"
-                    className="h-9 rounded-lg text-sm"
-                  />
-                  <p className="text-[11px] text-surface-500 mt-1">
-                    Blank = the customer&apos;s email from their profile. Comma-separate multiple.
-                  </p>
-                </div>
-                <div>
-                  <label className="text-[12px] text-surface-600 block mb-1">From</label>
-                  <Input
-                    value={projectForm.emailFrom}
-                    onChange={(e) => setProjectForm({ ...projectForm, emailFrom: e.target.value })}
-                    placeholder="Name <you@yourdomain.com>"
-                    className="h-9 rounded-lg text-sm"
-                  />
-                  <p className="text-[11px] text-surface-500 mt-1">
-                    Blank = your configured sender. Custom senders must use a domain verified with
-                    your email provider.
-                  </p>
-                </div>
+              <div className="mb-3">
+                <label className="text-[12px] text-surface-600 block mb-1">To</label>
+                <textarea
+                  value={projectForm.emailTo}
+                  onChange={(e) => setProjectForm({ ...projectForm, emailTo: e.target.value })}
+                  placeholder="billing@client.com, cc@client.com"
+                  rows={2}
+                  className="w-full rounded-lg text-sm bg-surface-100 border border-border px-3 py-2"
+                />
+                <p className="text-[11px] text-surface-500 mt-1">
+                  Blank = the customer&apos;s email from their profile. Comma-separate multiple
+                  recipients.
+                </p>
+              </div>
+              <div className="mb-3">
+                <label className="text-[12px] text-surface-600 block mb-1">From</label>
+                <Input
+                  value={projectForm.emailFrom}
+                  onChange={(e) => setProjectForm({ ...projectForm, emailFrom: e.target.value })}
+                  placeholder="Name <you@yourdomain.com>"
+                  className="h-9 rounded-lg text-sm"
+                />
+                <p className="text-[11px] text-surface-500 mt-1">
+                  Blank = your configured sender. Custom senders must use a domain verified with
+                  your email provider.
+                </p>
               </div>
               <div className="mb-3">
                 <label className="text-[12px] text-surface-600 block mb-1">Subject</label>
