@@ -253,6 +253,31 @@ export function presetRange(preset: RangePreset): { from: string; to: string } {
   }
 }
 
+/** Display a HH:MM wall time in the user's preferred clock format. */
+export function formatClock(value: string, hour24: boolean): string {
+  if (hour24) return value;
+  const [h, m] = value.split(':').map(Number);
+  const period = h < 12 ? 'AM' : 'PM';
+  const hour = h % 12 === 0 ? 12 : h % 12;
+  return `${hour}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+/** Now, rounded to the nearest 15 minutes, as HH:MM. */
+export function nowRounded15(): string {
+  const d = new Date();
+  let minutes = Math.round((d.getHours() * 60 + d.getMinutes()) / 15) * 15;
+  minutes = minutes % (24 * 60);
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
+/** HH:MM plus `delta` minutes, wrapping midnight. */
+export function addMinutes(time: string, delta: number): string {
+  const [h, m] = time.split(':').map(Number);
+  let total = (h * 60 + m + delta) % (24 * 60);
+  if (total < 0) total += 24 * 60;
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
 /** Wall-clock span with midnight wrap — mirrors the server derivation. */
 export function spanMinutes(start: string, end: string): number {
   const [sh, sm] = start.split(':').map(Number);

@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { Money } from '../common/Money';
+import { TimeSlotPicker } from './TimeSlotPicker';
 import {
   tsJson,
   formatUsd,
@@ -40,6 +41,9 @@ import {
   todayYMD,
   spanMinutes,
   presetRange,
+  formatClock,
+  nowRounded15,
+  addMinutes,
   buildClientColorMap,
   projectDisplayColor,
   RANGE_PRESETS,
@@ -55,9 +59,11 @@ type SortKey = 'date' | 'duration' | 'rate' | 'amount';
 export function TimesheetTab({
   store,
   refresh,
+  hour24,
 }: {
   store: TimesheetStore;
   refresh: () => Promise<void>;
+  hour24: boolean;
 }) {
   const { confirm, ConfirmDialog } = useConfirmDialog();
 
@@ -184,12 +190,21 @@ export function TimesheetTab({
   const openNew = () => {
     setEditingId(null);
     setFormDate(todayYMD());
-    setFormStart('09:00');
-    setFormEnd('17:00');
+    // Default to right now; picking a start auto-advances end to +30min.
+    const now = nowRounded15();
+    setFormStart(now);
+    setFormEnd(addMinutes(now, 30));
     setFormDescription('');
     setFormRate('');
     setFormBillable(true);
     setFormOpen(true);
+  };
+
+  const handleStartChange = (time: string) => {
+    setFormStart(time);
+    // When logging a new entry, follow the start with a 30-minute block —
+    // the end stays freely editable afterwards. Edits never auto-move.
+    if (!editingId) setFormEnd(addMinutes(time, 30));
   };
 
   const openEdit = (entry: TimesheetEntry) => {
@@ -392,32 +407,31 @@ export function TimesheetTab({
             <div className="col-span-2 sm:col-span-1 flex gap-2">
               <div className="flex-1 min-w-0">
                 <label className="text-[12px] text-surface-600 block mb-1">Start</label>
-                <Input
-                  type="time"
-                  step={900}
+                <TimeSlotPicker
                   value={formStart}
-                  onChange={(e) => setFormStart(e.target.value)}
-                  className="h-9 rounded-lg text-sm"
+                  onChange={handleStartChange}
+                  ariaLabel="Start time"
+                  hour24={hour24}
                 />
               </div>
               <div className="flex-1 min-w-0">
                 <label className="text-[12px] text-surface-600 block mb-1">End</label>
-                <Input
-                  type="time"
-                  step={900}
+                <TimeSlotPicker
                   value={formEnd}
-                  onChange={(e) => setFormEnd(e.target.value)}
-                  className="h-9 rounded-lg text-sm"
+                  onChange={setFormEnd}
+                  ariaLabel="End time"
+                  hour24={hour24}
                 />
               </div>
             </div>
             <div className="col-span-2">
               <label className="text-[12px] text-surface-600 block mb-1">Description</label>
-              <Input
+              <textarea
                 value={formDescription}
                 onChange={(e) => setFormDescription(e.target.value)}
                 placeholder="What did you work on?"
-                className="h-9 rounded-lg text-sm"
+                rows={3}
+                className="w-full rounded-lg text-sm bg-surface-100 border border-border px-3 py-2"
               />
             </div>
             <div>
@@ -529,7 +543,7 @@ export function TimesheetTab({
                       <span className="sm:hidden">{e.date.slice(5)}</span>
                     </td>
                     <td className="px-2 py-2 text-surface-500 tabular-nums text-[12px] whitespace-nowrap hidden md:table-cell">
-                      {e.start}–{e.end}
+                      {formatClock(e.start, hour24)}–{formatClock(e.end, hour24)}
                     </td>
                     <td className="px-2 py-2 text-surface-600 text-[12px] whitespace-nowrap hidden sm:table-cell">
                       <span
