@@ -26,10 +26,13 @@ import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import type { Occurrence } from './types';
 
 export interface DayAstro {
-  moon: MoonInfo;
+  moon: MoonInfo | null;
   season?: SeasonMark;
   sun?: SunTimes | null;
-  astrology: AstrologyInfo;
+  astrology: AstrologyInfo | null;
+  /** Extra almanac lines for the day: eclipses, meteor peaks, holidays, DST,
+   * forecast — already emoji-prefixed and gated by the display toggles. */
+  extras: string[];
 }
 
 interface AgendaRailProps {
@@ -92,16 +95,18 @@ export function AgendaRail({
           </div>
           {selectedDayAstro && (
             <div className="mb-2 space-y-0.5 text-[11px] text-surface-600">
-              <div>
-                {selectedDayAstro.moon.emoji} {selectedDayAstro.moon.name} ·{' '}
-                {Math.round(selectedDayAstro.moon.illumination * 100)}% lit
-                {selectedDayAstro.season && (
-                  <span>
-                    {' · '}
-                    {selectedDayAstro.season.emoji} {selectedDayAstro.season.name}
-                  </span>
-                )}
-              </div>
+              {selectedDayAstro.moon && (
+                <div>
+                  {selectedDayAstro.moon.emoji} {selectedDayAstro.moon.name} ·{' '}
+                  {Math.round(selectedDayAstro.moon.illumination * 100)}% lit
+                  {selectedDayAstro.season && (
+                    <span>
+                      {' · '}
+                      {selectedDayAstro.season.emoji} {selectedDayAstro.season.name}
+                    </span>
+                  )}
+                </div>
+              )}
               {selectedDayAstro.sun && (
                 <div>
                   ☀️ {formatClock(selectedDayAstro.sun.sunrise)} –{' '}
@@ -109,14 +114,20 @@ export function AgendaRail({
                   {formatDaylight(selectedDayAstro.sun.daylightMinutes)} of daylight
                 </div>
               )}
-              <div>
-                {selectedDayAstro.astrology.sunSign.emoji} {selectedDayAstro.astrology.sunSign.name}{' '}
-                season · Moon in {selectedDayAstro.astrology.moonSign.emoji}{' '}
-                {selectedDayAstro.astrology.moonSign.name}
-                {selectedDayAstro.astrology.mercuryRetrograde && (
-                  <span className="text-amber-400"> · ☿ Mercury retrograde</span>
-                )}
-              </div>
+              {selectedDayAstro.astrology && (
+                <div>
+                  {selectedDayAstro.astrology.sunSign.emoji}{' '}
+                  {selectedDayAstro.astrology.sunSign.name} season · Moon in{' '}
+                  {selectedDayAstro.astrology.moonSign.emoji}{' '}
+                  {selectedDayAstro.astrology.moonSign.name}
+                  {selectedDayAstro.astrology.mercuryRetrograde && (
+                    <span className="text-amber-400"> · ☿ Mercury retrograde</span>
+                  )}
+                </div>
+              )}
+              {selectedDayAstro.extras.map((line) => (
+                <div key={line}>{line}</div>
+              ))}
             </div>
           )}
           {selectedDayOccurrences.length === 0 ? (

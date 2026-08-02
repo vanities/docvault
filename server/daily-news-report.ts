@@ -390,6 +390,9 @@ function weekAheadRowParts(item: NonNullable<Edition['weekAhead']>['items'][numb
   let title = item.title;
   if (item.kind === 'birthday') {
     title = `🎂 ${title}${item.age !== undefined ? ` turns ${item.age}` : ''}`;
+  } else if (item.emoji) {
+    // Sky/holiday rows carry their own emoji (full moon, meteors, 🎉…).
+    title = `${item.emoji} ${title}`;
   }
   return { day, title };
 }

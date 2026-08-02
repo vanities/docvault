@@ -21,6 +21,7 @@ import { CodexAppServerClient, type CodexNotification } from './llm/codex-app-se
 import { handleCodexServerRequest } from './llm/codex-chat.js';
 import {
   getDailyNewsConfig,
+  getCalendarDisplayConfig,
   getDailyNewsTitle,
   getEmailConfig,
   getWeatherConfig,
@@ -54,6 +55,7 @@ import {
 } from './data.js';
 import { calendarToday, loadCalendarStore, type CalendarEventKind } from './calendar-store.js';
 import { addInterval, projectOccurrences, type Occurrence } from './calendar-recurrence.js';
+import { buildSkyWeekAheadItems } from './calendar-sky.js';
 import { fetchWeekForecast, forecastToLines, type WeatherForecast } from './weather.js';
 import { listResearchEntries, type ResearchEntry } from './routes/research.js';
 import { getLatestStrategy } from './routes/strategy.js';
@@ -177,13 +179,16 @@ export interface Digest {
   weekAhead?: WeekAheadCalendar;
 }
 
-/** One row of the rendered "Week Ahead" calendar box. */
+/** One row of the rendered "Week Ahead" calendar box. `sky`/`holiday` rows
+ * come from the shared astronomy/almanac math (server/calendar-sky.ts) and
+ * carry their own emoji. */
 export interface WeekAheadItem {
   date: string; // YYYY-MM-DD
   title: string;
-  kind: CalendarEventKind;
+  kind: CalendarEventKind | 'sky' | 'holiday';
   overdue?: boolean;
   age?: number; // birthdays: "turns N"
+  emoji?: string;
 }
 
 export interface WeekAheadCalendar {
@@ -1381,7 +1386,9 @@ export function buildCalendarDigest(
 }
 
 /** The Calendar desk: pending occurrences over the edition horizon (7d daily,
- *  30d weekly) plus overdue tasks, and the exact-date Week Ahead box. */
+ *  30d weekly) plus overdue tasks, and the exact-date Week Ahead box —
+ *  augmented with sky/almanac rows (moons, seasons, meteors, holidays, DST)
+ *  from the shared math, honoring the settings.calendar display toggles. */
 async function gatherCalendar(
   editionType: EditionType,
   warn?: WarningSink
@@ -1395,7 +1402,22 @@ async function gatherCalendar(
       { start: today, end: addInterval(today, horizonDays, 'day') },
       today
     );
-    return buildCalendarDigest(occurrences, today);
+    const digest = buildCalendarDigest(occurrences, today);
+    try {
+      const cfg = await getCalendarDisplayConfig();
+      const sky = buildSkyWeekAheadItems(today, digest.weekAhead.end, cfg);
+      if (sky.length > 0) {
+        digest.weekAhead.items = [...digest.weekAhead.items, ...sky].sort((a, b) =>
+          a.date < b.date ? -1 : 1
+        );
+        // Feed the editor too, so a full moon or meteor peak can get a line
+        // of prose (the box still owns the exact dates).
+        for (const s of sky) digest.items.push(`Sky ${s.date}: ${s.title}.`);
+      }
+    } catch (err) {
+      emitDigestWarning(warn, 'calendar/sky', err);
+    }
+    return digest;
   } catch (err) {
     emitDigestWarning(warn, 'calendar', err);
     return { items: [], weekAhead: null };

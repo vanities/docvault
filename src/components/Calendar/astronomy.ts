@@ -33,6 +33,12 @@ export interface MoonPhaseMark {
   emoji: string;
   label: string;
   instant: Date;
+  /** Set when the syzygy happens close enough to a lunar node for an eclipse
+   * (visible somewhere on Earth; marginal partial/penumbral ones may be
+   * skipped — thresholds are conservative). */
+  eclipse?: 'solar' | 'lunar';
+  /** Full moon near perigee (< ~361,500 km, Nolle-style). */
+  supermoon?: boolean;
 }
 
 export const PHASE_META: Record<PrincipalPhase, { emoji: string; label: string }> = {
@@ -135,6 +141,55 @@ function approxK(date: Date): number {
   return (yearFrac - 2000) * 12.3685;
 }
 
+/** Moon's argument of latitude F at series index k, radians — the moon's
+ * angular distance from its orbital node. Eclipses need a syzygy near a node
+ * (F near 0° or 180°). */
+function phaseF(k: number): number {
+  const T = k / 1236.85;
+  return (160.7108 + 390.67050284 * k - 0.0016118 * T * T - 0.00000227 * T * T * T) * DEG;
+}
+
+// Meeus ch. 54: no eclipse when |sin F| > 0.36. Tighter cutoffs keep only
+// eclipses that actually occur: solar certain below ~13.9° from the node,
+// umbral lunar below ~12.1°.
+const SOLAR_ECLIPSE_SIN_F = Math.sin(13.9 * DEG);
+const LUNAR_ECLIPSE_SIN_F = Math.sin(12.1 * DEG);
+
+/** Geocentric Earth-moon distance in km (Meeus ch. 47 distance series,
+ * main terms — ±~50 km, plenty for supermoon classification). */
+export function moonDistanceKm(date: Date): number {
+  const T = julianCenturies(date);
+  const D = (297.8501921 + 445267.1114034 * T - 0.0018819 * T * T) * DEG;
+  const M = (357.5291092 + 35999.0502909 * T - 0.0001536 * T * T) * DEG;
+  const Mp = (134.9633964 + 477198.8675055 * T + 0.0087414 * T * T) * DEG;
+  const F = (93.272095 + 483202.0175233 * T - 0.0036539 * T * T) * DEG;
+  const { cos } = Math;
+  return (
+    385000.56 -
+    20905.355 * cos(Mp) -
+    3699.111 * cos(2 * D - Mp) -
+    2955.968 * cos(2 * D) -
+    569.925 * cos(2 * Mp) +
+    246.158 * cos(2 * D - 2 * Mp) -
+    204.586 * cos(2 * D - M) -
+    170.733 * cos(2 * D + Mp) -
+    152.138 * cos(2 * D - M - Mp) -
+    129.62 * cos(M - Mp) +
+    108.743 * cos(D) +
+    104.755 * cos(M + Mp) +
+    79.661 * cos(Mp - 2 * F) +
+    48.888 * cos(M) -
+    34.782 * cos(4 * D - Mp) +
+    30.824 * cos(4 * D - 2 * Mp) +
+    24.208 * cos(2 * D + M - Mp) -
+    23.21 * cos(3 * Mp) -
+    21.636 * cos(4 * D - 3 * Mp)
+  );
+}
+
+// Nolle-style cutoff: full moon within ~90% of perigee range.
+const SUPERMOON_KM = 361_500;
+
 /** Principal moon phases whose instant falls on a LOCAL day within
  * [startISO, endISO], keyed by local YYYY-MM-DD. */
 export function moonPhasesByDate(startISO: string, endISO: string): Map<string, MoonPhaseMark> {
@@ -150,10 +205,18 @@ export function moonPhasesByDate(startISO: string, endISO: string): Map<string, 
       [0.5, 'full'],
       [0.75, 'last-quarter'],
     ] as [number, PrincipalPhase][]) {
-      const instant = phaseInstant(kBase + i + offset);
+      const k = kBase + i + offset;
+      const instant = phaseInstant(k);
       if (instant < start || instant > end) continue;
       const meta = PHASE_META[phase];
-      out.set(localISODate(instant), { phase, emoji: meta.emoji, label: meta.label, instant });
+      const mark: MoonPhaseMark = { phase, emoji: meta.emoji, label: meta.label, instant };
+      const sinF = Math.abs(Math.sin(phaseF(k)));
+      if (phase === 'new' && sinF < SOLAR_ECLIPSE_SIN_F) mark.eclipse = 'solar';
+      if (phase === 'full') {
+        if (sinF < LUNAR_ECLIPSE_SIN_F) mark.eclipse = 'lunar';
+        if (moonDistanceKm(instant) < SUPERMOON_KM) mark.supermoon = true;
+      }
+      out.set(localISODate(instant), mark);
     }
   }
   return out;

@@ -42,6 +42,7 @@ import { PoliticsDataSection } from './PoliticsDataSection';
 import { AiLabsKeysSection } from './AiLabsKeysSection';
 import { EmailSettingsSection } from './EmailSettingsSection';
 import { WeatherSettingsSection } from './WeatherSettingsSection';
+import { CalendarSettingsSection } from './CalendarSettingsSection';
 import { ExternalSourcesSection } from './ExternalSourcesSection';
 import { BrainSection } from './BrainSection';
 import { SkillsSection } from './SkillsSection';
@@ -1386,6 +1387,7 @@ export function SettingsView() {
         )}
 
         {showIn(['maps']) && <WeatherSettingsSection />}
+        {showIn(['maps']) && <CalendarSettingsSection />}
 
         {showIn(['voice']) && <ChatSettingsSection />}
 
