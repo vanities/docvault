@@ -386,6 +386,37 @@ export interface Settings {
      */
     timezone?: string;
   };
+  /** Calendar display-layer toggles. Everything defaults ON; the calendar UI
+   * and the Daily News Week Ahead box both respect these, so turning a layer
+   * off removes it everywhere. Location for sun times/weather comes from the
+   * `weather` block above (the single location source of truth). */
+  calendar?: CalendarDisplaySettings;
+}
+
+export interface CalendarDisplaySettings {
+  showMoon?: boolean; // phases + eclipses + supermoons
+  showSeasons?: boolean; // equinoxes/solstices
+  showAstrology?: boolean; // zodiac signs + Mercury retrograde
+  showMeteors?: boolean;
+  showSunTimes?: boolean;
+  showHolidays?: boolean;
+  showDst?: boolean;
+  showWeather?: boolean;
+}
+
+/** Calendar display toggles with defaults applied (absent = ON). */
+export async function getCalendarDisplayConfig(): Promise<Required<CalendarDisplaySettings>> {
+  const c = (await loadSettings()).calendar ?? {};
+  return {
+    showMoon: c.showMoon !== false,
+    showSeasons: c.showSeasons !== false,
+    showAstrology: c.showAstrology !== false,
+    showMeteors: c.showMeteors !== false,
+    showSunTimes: c.showSunTimes !== false,
+    showHolidays: c.showHolidays !== false,
+    showDst: c.showDst !== false,
+    showWeather: c.showWeather !== false,
+  };
 }
 
 export interface FileInfo {

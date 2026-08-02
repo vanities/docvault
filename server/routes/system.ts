@@ -166,6 +166,7 @@ export async function handleSettingsRoutes(
             : undefined,
       },
       weather: settings.weather ?? {},
+      calendar: settings.calendar ?? {},
       hasCodexAuth: (await getCodexAuthStatus()).signedIn,
     });
   }
@@ -198,6 +199,7 @@ export async function handleSettingsRoutes(
       dailyNews?: unknown;
       email?: unknown;
       weather?: unknown;
+      calendar?: unknown;
     }>(req);
     const settings = await loadSettings();
 
@@ -486,6 +488,25 @@ export async function handleSettingsRoutes(
       // IANA timezone for this location — derived from the geocoded city (or a
       // manual override). The app-wide source of truth (see tz.ts).
       if (isValidTimeZone(w.timezone)) settings.weather.timezone = w.timezone;
+    }
+
+    // Calendar display-layer toggles (booleans only; absent = ON).
+    if (body.calendar && typeof body.calendar === 'object') {
+      settings.calendar = settings.calendar ?? {};
+      const toggles = [
+        'showMoon',
+        'showSeasons',
+        'showAstrology',
+        'showMeteors',
+        'showSunTimes',
+        'showHolidays',
+        'showDst',
+        'showWeather',
+      ] as const;
+      const c = body.calendar as Record<string, unknown>;
+      for (const key of toggles) {
+        if (typeof c[key] === 'boolean') settings.calendar[key] = c[key];
+      }
     }
 
     await saveSettings(settings);

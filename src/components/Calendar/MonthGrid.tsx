@@ -17,10 +17,18 @@ export interface AstroMark {
   label: string;
 }
 
+export interface DayWeather {
+  emoji: string;
+  hi: number;
+  lo: number;
+}
+
 interface MonthGridProps {
   days: GridDay[];
   occurrencesByDate: Map<string, Occurrence[]>;
   astroByDate: Map<string, AstroMark[]>;
+  holidaysByDate: Map<string, string>;
+  weatherByDate: Map<string, DayWeather>;
   selectedDate: string | null;
   entities: EntityConfig[];
   onSelectDay: (date: string) => void;
@@ -32,6 +40,8 @@ export function MonthGrid({
   days,
   occurrencesByDate,
   astroByDate,
+  holidaysByDate,
+  weatherByDate,
   selectedDate,
   entities,
   onSelectDay,
@@ -59,6 +69,8 @@ export function MonthGrid({
             col={i % 7}
             occurrences={occurrencesByDate.get(day.date) ?? []}
             astro={astroByDate.get(day.date)}
+            holiday={holidaysByDate.get(day.date)}
+            weather={weatherByDate.get(day.date)}
             selected={selectedDate === day.date}
             entities={entities}
             onSelectDay={onSelectDay}
@@ -77,6 +89,8 @@ interface DayCellProps {
   col: number;
   occurrences: Occurrence[];
   astro: AstroMark[] | undefined;
+  holiday: string | undefined;
+  weather: DayWeather | undefined;
   selected: boolean;
   entities: EntityConfig[];
   onSelectDay: (date: string) => void;
@@ -90,6 +104,8 @@ function DayCell({
   col,
   occurrences,
   astro,
+  holiday,
+  weather,
   selected,
   entities,
   onSelectDay,
@@ -122,25 +138,44 @@ function DayCell({
         hover:bg-surface-100/50 transition-colors
       `}
     >
-      <div className="flex items-center justify-between">
-        {/* Astronomy layer: principal moon phases + solstice/equinox marks. */}
-        <span className="flex gap-0.5 text-[10px] leading-none opacity-70">
+      <div className="flex items-center justify-between gap-0.5">
+        {/* Sky/almanac layer: moon phases, eclipses, seasons, meteors, DST. */}
+        <span className="flex gap-0.5 text-[10px] leading-none opacity-70 min-w-0 overflow-hidden">
           {astro?.map((a) => (
             <span key={a.label} title={a.label}>
               {a.emoji}
             </span>
           ))}
         </span>
-        <span
-          className={`text-[11px] tabular-nums ${
-            day.isToday
-              ? 'bg-accent-500/20 text-accent-400 font-semibold rounded-full w-5 h-5 flex items-center justify-center -mr-0.5 -mt-0.5'
-              : 'text-surface-600'
-          }`}
-        >
-          {dayNumber}
+        <span className="flex items-center gap-1 shrink-0">
+          {weather && (
+            <span
+              className="hidden md:inline text-[9px] text-surface-600 leading-none"
+              title={`${weather.emoji} ${Math.round(weather.hi)}° / ${Math.round(weather.lo)}°`}
+            >
+              {weather.emoji}
+              {Math.round(weather.hi)}°
+            </span>
+          )}
+          <span
+            className={`text-[11px] tabular-nums ${
+              day.isToday
+                ? 'bg-accent-500/20 text-accent-400 font-semibold rounded-full w-5 h-5 flex items-center justify-center -mr-0.5 -mt-0.5'
+                : 'text-surface-600'
+            }`}
+          >
+            {dayNumber}
+          </span>
         </span>
       </div>
+      {holiday && (
+        <div
+          className="hidden md:block text-[9px] italic text-surface-600 truncate leading-tight"
+          title={holiday}
+        >
+          {holiday}
+        </div>
+      )}
 
       {/* Desktop: chips */}
       <div className="hidden md:flex flex-col gap-0.5 mt-0.5">

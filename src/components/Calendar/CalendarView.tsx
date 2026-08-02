@@ -32,6 +32,7 @@ import {
   seasonMarksByDate,
   sunTimesForDate,
 } from './astronomy';
+import { dstTransitionsByDate, meteorShowersByDate, usHolidaysByDate } from './almanac';
 import { requestJson } from '../../api/client';
 import { API_BASE } from '../../constants';
 import type { AstroMark } from './MonthGrid';
@@ -42,6 +43,28 @@ const AGENDA_PAST_DAYS = 60;
 // Forward horizon feeds both the near-term buckets and the month-grouped
 // "Coming Months" outlook in the rail.
 const AGENDA_FUTURE_DAYS = 180;
+
+interface WeatherDaySummary {
+  date: string;
+  emoji: string;
+  hi: number;
+  lo: number;
+}
+
+/** Per-layer display toggles, server-persisted in settings.calendar so the
+ * Daily News respects the same choices. Everything defaults ON. */
+export interface CalendarDisplaySettings {
+  showMoon?: boolean; // phases + eclipses + supermoons
+  showSeasons?: boolean; // equinoxes/solstices
+  showAstrology?: boolean; // zodiac signs + Mercury retrograde
+  showMeteors?: boolean;
+  showSunTimes?: boolean;
+  showHolidays?: boolean;
+  showDst?: boolean;
+  showWeather?: boolean;
+}
+
+const on = (v: boolean | undefined) => v !== false;
 
 function shiftDays(iso: string, days: number): string {
   const d = parseISODate(iso);
@@ -64,49 +87,118 @@ export function CalendarView() {
   const localToday = todayISO();
   const gridDays = useMemo(() => monthGridDays(cursor, localToday), [cursor, localToday]);
 
-  // Astronomy layer — pure client-side math over the visible grid window.
+  const [display, setDisplay] = useState<CalendarDisplaySettings>({});
+
+  // Astronomy + almanac layers — pure client-side math over the grid window,
+  // each gated by its settings toggle.
   const astroByDate = useMemo(() => {
     const start = gridDays[0].date;
     const end = gridDays[gridDays.length - 1].date;
     const map = new Map<string, AstroMark[]>();
-    for (const [date, mark] of moonPhasesByDate(start, end)) {
-      map.set(date, [{ emoji: mark.emoji, label: mark.label }]);
-    }
-    for (const [date, mark] of seasonMarksByDate(start, end)) {
+    const push = (date: string, mark: AstroMark) => {
       const list = map.get(date) ?? [];
-      list.push({ emoji: mark.emoji, label: mark.name });
+      list.push(mark);
       map.set(date, list);
+    };
+    if (on(display.showMoon)) {
+      for (const [date, mark] of moonPhasesByDate(start, end)) {
+        if (mark.supermoon) {
+          push(date, { emoji: '🌝', label: 'Supermoon (full moon near perigee)' });
+        } else {
+          push(date, { emoji: mark.emoji, label: mark.label });
+        }
+        if (mark.eclipse === 'solar') push(date, { emoji: '⚫', label: 'Solar eclipse' });
+        if (mark.eclipse === 'lunar') push(date, { emoji: '🔴', label: 'Lunar eclipse' });
+      }
     }
-    for (const [date, station] of mercuryStationsByDate(start, end)) {
-      const list = map.get(date) ?? [];
-      list.push({ emoji: '☿', label: station.label });
-      map.set(date, list);
+    if (on(display.showSeasons)) {
+      for (const [date, mark] of seasonMarksByDate(start, end)) {
+        push(date, { emoji: mark.emoji, label: mark.name });
+      }
+    }
+    if (on(display.showAstrology)) {
+      for (const [date, station] of mercuryStationsByDate(start, end)) {
+        push(date, { emoji: '☿', label: station.label });
+      }
+    }
+    if (on(display.showMeteors)) {
+      for (const [date, mark] of meteorShowersByDate(start, end)) {
+        push(date, { emoji: mark.emoji, label: mark.label });
+      }
+    }
+    if (on(display.showDst)) {
+      for (const [date, mark] of dstTransitionsByDate(start, end)) {
+        push(date, { emoji: mark.emoji, label: mark.label });
+      }
     }
     return map;
-  }, [gridDays]);
+  }, [gridDays, display]);
 
-  // Sunrise/sunset reuses the weather location when one is configured.
+  const holidaysByDate = useMemo(
+    () =>
+      on(display.showHolidays)
+        ? usHolidaysByDate(gridDays[0].date, gridDays[gridDays.length - 1].date)
+        : new Map<string, string>(),
+    [gridDays, display]
+  );
+
+  // Week forecast (same cached source as the Daily News weather box).
+  const [weatherByDate, setWeatherByDate] = useState<Map<string, WeatherDaySummary>>(new Map());
+  useEffect(() => {
+    if (!on(display.showWeather)) return;
+    requestJson<{
+      forecast: { days: { date: string; emoji: string; hi: number; lo: number }[] } | null;
+    }>(`${API_BASE}/weather/forecast`)
+      .then((res) => {
+        if (!res.forecast) return;
+        setWeatherByDate(new Map(res.forecast.days.map((d) => [d.date, d])));
+      })
+      .catch(() => {});
+  }, [display.showWeather]);
+
+  // Sunrise/sunset reuses the weather location (the single location source of
+  // truth — configured in Settings with the geocode picker); the same fetch
+  // loads the per-layer calendar display toggles.
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   useEffect(() => {
-    requestJson<{ weather?: { latitude?: number; longitude?: number } }>(`${API_BASE}/settings`)
+    requestJson<{
+      weather?: { latitude?: number; longitude?: number };
+      calendar?: CalendarDisplaySettings;
+    }>(`${API_BASE}/settings`)
       .then((s) => {
         if (typeof s.weather?.latitude === 'number' && typeof s.weather?.longitude === 'number') {
           setCoords({ latitude: s.weather.latitude, longitude: s.weather.longitude });
         }
+        if (s.calendar) setDisplay(s.calendar);
       })
       .catch(() => {});
   }, []);
 
   const selectedDayAstro = useMemo<DayAstro | null>(() => {
     if (!selectedDate) return null;
-    const seasonByDate = seasonMarksByDate(selectedDate, selectedDate);
+    const seasonByDate = on(display.showSeasons)
+      ? seasonMarksByDate(selectedDate, selectedDate)
+      : new Map<string, never>();
+    const marks = astroByDate.get(selectedDate) ?? [];
+    const extras: string[] = marks
+      .filter((m) => !['New moon', 'First quarter', 'Full moon', 'Last quarter'].includes(m.label))
+      .map((m) => `${m.emoji} ${m.label}`);
+    const holiday = holidaysByDate.get(selectedDate);
+    if (holiday) extras.push(`🎉 ${holiday}`);
+    const weather = weatherByDate.get(selectedDate);
+    if (weather)
+      extras.push(`${weather.emoji} ${Math.round(weather.hi)}° / ${Math.round(weather.lo)}°`);
     return {
-      moon: moonInfoForDate(selectedDate),
+      moon: on(display.showMoon) ? moonInfoForDate(selectedDate) : null,
       season: seasonByDate.get(selectedDate),
-      sun: coords ? sunTimesForDate(selectedDate, coords.latitude, coords.longitude) : null,
-      astrology: astrologyForDate(selectedDate),
+      sun:
+        on(display.showSunTimes) && coords
+          ? sunTimesForDate(selectedDate, coords.latitude, coords.longitude)
+          : null,
+      astrology: on(display.showAstrology) ? astrologyForDate(selectedDate) : null,
+      extras,
     };
-  }, [selectedDate, coords]);
+  }, [selectedDate, coords, display, astroByDate, holidaysByDate, weatherByDate]);
 
   // Union window: visible grid ∪ agenda horizon.
   const windowStart = useMemo(() => {
@@ -295,6 +387,8 @@ export function CalendarView() {
                 days={gridDays}
                 occurrencesByDate={occurrencesByDate}
                 astroByDate={astroByDate}
+                holidaysByDate={holidaysByDate}
+                weatherByDate={weatherByDate}
                 selectedDate={selectedDate}
                 entities={entities}
                 onSelectDay={(date) => setSelectedDate((cur) => (cur === date ? null : date))}

@@ -6,6 +6,7 @@
 import { describe, expect, test } from 'vite-plus/test';
 import {
   astrologyForDate,
+  moonDistanceKm,
   formatDaylight,
   isMercuryRetrograde,
   mercuryStationsByDate,
@@ -221,5 +222,45 @@ describe('astrology layer', () => {
     expect(zodiacSign(30).name).toBe('Taurus');
     expect(zodiacSign(359).name).toBe('Pisces');
     expect(zodiacSign(-10).name).toBe('Pisces');
+  });
+});
+
+describe('eclipses and supermoons', () => {
+  test('anchors: the Aug 1999 total solar and Jan 2000 total lunar eclipses', () => {
+    const aug99 = moonPhasesByDate('1999-08-01', '1999-08-31');
+    const solarDay = [...aug99.values()].find((m) => m.eclipse === 'solar');
+    expect(solarDay).toBeDefined();
+    expect(solarDay!.instant.getUTCDate()).toBe(11);
+
+    const jan00 = moonPhasesByDate('2000-01-01', '2000-01-31');
+    const lunarDay = [...jan00.values()].find((m) => m.eclipse === 'lunar');
+    expect(lunarDay).toBeDefined();
+    expect(lunarDay!.instant.getUTCDate()).toBe(21);
+  });
+
+  test('a year has a plausible number of eclipses (structural)', () => {
+    const marks = [...moonPhasesByDate('2026-01-01', '2026-12-31').values()];
+    const eclipses = marks.filter((m) => m.eclipse);
+    expect(eclipses.length).toBeGreaterThanOrEqual(2);
+    expect(eclipses.length).toBeLessThanOrEqual(7);
+    // Solar eclipses only at new moons, lunar only at full moons.
+    for (const e of eclipses) {
+      expect(e.eclipse === 'solar' ? e.phase : 'new').toBe('new');
+      if (e.eclipse === 'lunar') expect(e.phase).toBe('full');
+    }
+  });
+
+  test('moon distance stays within the physical range; some full moons are super', () => {
+    const marks = [...moonPhasesByDate('2026-01-01', '2027-12-31').values()];
+    const fulls = marks.filter((m) => m.phase === 'full');
+    for (const f of fulls) {
+      const d = moonDistanceKm(f.instant);
+      expect(d).toBeGreaterThan(354_000);
+      expect(d).toBeLessThan(407_500);
+    }
+    const supers = fulls.filter((m) => m.supermoon);
+    // Typically 3-4 per year under the ~361,500 km Nolle-style cutoff.
+    expect(supers.length).toBeGreaterThanOrEqual(3);
+    expect(supers.length).toBeLessThanOrEqual(10);
   });
 });

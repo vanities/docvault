@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import { createLogger } from './logger.js';
 import { parseWithAI } from './parsers/ai.js';
 import { withAILimit } from './aiLimiter.js';
-import { geocodePlace } from './weather.js';
+import { fetchWeekForecast, geocodePlace } from './weather.js';
 import { readJsonBody } from './http.js';
 
 // Shared data layer — all types, constants, loaders, and utilities
@@ -41,6 +41,7 @@ import {
   isAuthenticated,
   getClaudeModel,
   getAnthropicKey,
+  getWeatherConfig,
   assertAuthConfiguredForStartup,
 } from './data.js';
 import type { EntityConfig, FileInfo, ParsedData } from './data.js';
@@ -1560,6 +1561,22 @@ export async function handleRequest(req: Request): Promise<Response> {
   // Daily News weather location picker (no Geoapify key required).
   if (pathname === '/api/weather/geocode' && req.method === 'GET') {
     return jsonResponse({ results: await geocodePlace(url.searchParams.get('q') ?? '') });
+  }
+
+  // GET /api/weather/forecast - cached week forecast (same source as the Daily
+  // News weather box) for the calendar grid's forecast layer.
+  if (pathname === '/api/weather/forecast' && req.method === 'GET') {
+    const weatherCfg = await getWeatherConfig();
+    if (!weatherCfg.enabled || weatherCfg.latitude == null || weatherCfg.longitude == null) {
+      return jsonResponse({ forecast: null });
+    }
+    const forecast = await fetchWeekForecast({
+      latitude: weatherCfg.latitude,
+      longitude: weatherCfg.longitude,
+      label: weatherCfg.label,
+      units: weatherCfg.units,
+    });
+    return jsonResponse({ forecast });
   }
 
   // GET /api/geocode/autocomplete?text=... - Proxy to Geoapify autocomplete
