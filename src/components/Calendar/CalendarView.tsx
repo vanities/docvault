@@ -24,7 +24,14 @@ import {
   type MonthCursor,
 } from './calendarMath';
 import { useCalendarApi, useOccurrences } from './useCalendarApi';
-import { moonInfoForDate, moonPhasesByDate, seasonMarksByDate, sunTimesForDate } from './astronomy';
+import {
+  astrologyForDate,
+  mercuryStationsByDate,
+  moonInfoForDate,
+  moonPhasesByDate,
+  seasonMarksByDate,
+  sunTimesForDate,
+} from './astronomy';
 import { requestJson } from '../../api/client';
 import { API_BASE } from '../../constants';
 import type { AstroMark } from './MonthGrid';
@@ -70,6 +77,11 @@ export function CalendarView() {
       list.push({ emoji: mark.emoji, label: mark.name });
       map.set(date, list);
     }
+    for (const [date, station] of mercuryStationsByDate(start, end)) {
+      const list = map.get(date) ?? [];
+      list.push({ emoji: '☿', label: station.label });
+      map.set(date, list);
+    }
     return map;
   }, [gridDays]);
 
@@ -92,6 +104,7 @@ export function CalendarView() {
       moon: moonInfoForDate(selectedDate),
       season: seasonByDate.get(selectedDate),
       sun: coords ? sunTimesForDate(selectedDate, coords.latitude, coords.longitude) : null,
+      astrology: astrologyForDate(selectedDate),
     };
   }, [selectedDate, coords]);
 

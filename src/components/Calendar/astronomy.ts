@@ -333,3 +333,181 @@ export function formatClock(d: Date): string {
 export function formatDaylight(minutes: number): string {
   return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
 }
+
+// ---------------------------------------------------------------------------
+// Astrology layer — still real orbital mechanics: tropical zodiac signs are
+// 30° slices of ecliptic longitude (Meeus ch. 25 sun / ch. 47 moon,
+// truncated), and Mercury retrograde is the apparent geocentric longitude
+// reversal computed from JPL's approximate Keplerian elements (valid
+// 1800-2050, ~arcminute accuracy — stations land within hours).
+// ---------------------------------------------------------------------------
+
+const ZODIAC = [
+  { name: 'Aries', emoji: '♈' },
+  { name: 'Taurus', emoji: '♉' },
+  { name: 'Gemini', emoji: '♊' },
+  { name: 'Cancer', emoji: '♋' },
+  { name: 'Leo', emoji: '♌' },
+  { name: 'Virgo', emoji: '♍' },
+  { name: 'Libra', emoji: '♎' },
+  { name: 'Scorpio', emoji: '♏' },
+  { name: 'Sagittarius', emoji: '♐' },
+  { name: 'Capricorn', emoji: '♑' },
+  { name: 'Aquarius', emoji: '♒' },
+  { name: 'Pisces', emoji: '♓' },
+];
+
+export interface ZodiacSign {
+  name: string;
+  emoji: string;
+}
+
+export function zodiacSign(eclipticLongitude: number): ZodiacSign {
+  const lon = ((eclipticLongitude % 360) + 360) % 360;
+  return ZODIAC[Math.floor(lon / 30) % 12];
+}
+
+function julianCenturies(date: Date): number {
+  return (date.getTime() / 86_400_000 + JD_UNIX_EPOCH - 2451545) / 36525;
+}
+
+/** Apparent ecliptic longitude of the sun, degrees (Meeus ch. 25). */
+export function sunLongitude(date: Date): number {
+  const T = julianCenturies(date);
+  const L0 = 280.46646 + 36000.76983 * T + 0.0003032 * T * T;
+  const M = (357.52911 + 35999.05029 * T - 0.0001537 * T * T) * DEG;
+  const C =
+    (1.914602 - 0.004817 * T) * Math.sin(M) +
+    (0.019993 - 0.000101 * T) * Math.sin(2 * M) +
+    0.000289 * Math.sin(3 * M);
+  const omega = (125.04 - 1934.136 * T) * DEG;
+  // True longitude corrected for nutation + aberration → apparent.
+  const lambda = L0 + C - 0.00569 - 0.00478 * Math.sin(omega);
+  return ((lambda % 360) + 360) % 360;
+}
+
+/** Geocentric ecliptic longitude of the moon, degrees (Meeus ch. 47,
+ * main periodic terms — ~0.05° accuracy; the moon moves ~13°/day). */
+export function moonLongitude(date: Date): number {
+  const T = julianCenturies(date);
+  const Lp = 218.3164477 + 481267.88123421 * T - 0.0015786 * T * T;
+  const D = (297.8501921 + 445267.1114034 * T - 0.0018819 * T * T) * DEG;
+  const M = (357.5291092 + 35999.0502909 * T - 0.0001536 * T * T) * DEG;
+  const Mp = (134.9633964 + 477198.8675055 * T + 0.0087414 * T * T) * DEG;
+  const F = (93.272095 + 483202.0175233 * T - 0.0036539 * T * T) * DEG;
+  const { sin } = Math;
+  const lambda =
+    Lp +
+    6.288774 * sin(Mp) +
+    1.274027 * sin(2 * D - Mp) +
+    0.658314 * sin(2 * D) +
+    0.213618 * sin(2 * Mp) -
+    0.185116 * sin(M) -
+    0.114332 * sin(2 * F) +
+    0.058793 * sin(2 * D - 2 * Mp) +
+    0.057066 * sin(2 * D - M - Mp) +
+    0.053322 * sin(2 * D + Mp) +
+    0.045758 * sin(2 * D - M) -
+    0.040923 * sin(M - Mp) -
+    0.03472 * sin(D) -
+    0.030383 * sin(M + Mp) +
+    0.015327 * sin(2 * D - 2 * F) -
+    0.012528 * sin(Mp + 2 * F) +
+    0.01098 * sin(Mp - 2 * F);
+  return ((lambda % 360) + 360) % 360;
+}
+
+// JPL approximate Keplerian elements (J2000 values + per-century rates).
+// [a AU, e, I°, L°, ϖ°, Ω°] — element and rate rows per body.
+const MERCURY_EL = [0.38709927, 0.20563593, 7.00497902, 252.2503235, 77.45779628, 48.33076593];
+const MERCURY_RATE = [
+  0.00000037, 0.00001906, -0.00594749, 149472.67411175, 0.16047689, -0.12534081,
+];
+const EARTH_EL = [1.00000261, 0.01671123, -0.00001531, 100.46457166, 102.93768193, 0];
+const EARTH_RATE = [0.00000562, -0.00004392, -0.01294668, 35999.37244981, 0.32327364, 0];
+
+function heliocentricXY(el: number[], rate: number[], T: number): { x: number; y: number } {
+  const [a, e, I, L, w_, O] = el.map((v, i) => v + rate[i] * T);
+  const omega = (w_ - O) * DEG;
+  const Om = O * DEG;
+  const inc = I * DEG;
+  let M = (((L - w_) % 360) + 360) % 360;
+  M *= DEG;
+  let E = M + e * Math.sin(M);
+  for (let i = 0; i < 6; i++) E = E + (M - (E - e * Math.sin(E))) / (1 - e * Math.cos(E));
+  const xp = a * (Math.cos(E) - e);
+  const yp = a * Math.sqrt(1 - e * e) * Math.sin(E);
+  const { sin, cos } = Math;
+  return {
+    x:
+      (cos(omega) * cos(Om) - sin(omega) * sin(Om) * cos(inc)) * xp +
+      (-sin(omega) * cos(Om) - cos(omega) * sin(Om) * cos(inc)) * yp,
+    y:
+      (cos(omega) * sin(Om) + sin(omega) * cos(Om) * cos(inc)) * xp +
+      (-sin(omega) * sin(Om) + cos(omega) * cos(Om) * cos(inc)) * yp,
+  };
+}
+
+/** Geocentric apparent ecliptic longitude of Mercury, degrees. */
+export function mercuryLongitude(date: Date): number {
+  const T = julianCenturies(date);
+  const m = heliocentricXY(MERCURY_EL, MERCURY_RATE, T);
+  const e = heliocentricXY(EARTH_EL, EARTH_RATE, T);
+  const lambda = Math.atan2(m.y - e.y, m.x - e.x) / DEG;
+  return ((lambda % 360) + 360) % 360;
+}
+
+/** Is Mercury apparently retrograde (geocentric longitude decreasing) at
+ * local noon of a YYYY-MM-DD? Central difference over ±12h. */
+export function isMercuryRetrograde(iso: string): boolean {
+  const noon = new Date(`${iso}T12:00:00`).getTime();
+  const before = mercuryLongitude(new Date(noon - 43_200_000));
+  const after = mercuryLongitude(new Date(noon + 43_200_000));
+  let delta = after - before;
+  if (delta > 180) delta -= 360;
+  if (delta < -180) delta += 360;
+  return delta < 0;
+}
+
+export interface AstrologyInfo {
+  sunSign: ZodiacSign;
+  moonSign: ZodiacSign;
+  mercuryRetrograde: boolean;
+}
+
+/** Tropical sun/moon signs + Mercury retrograde status at local noon. */
+export function astrologyForDate(iso: string): AstrologyInfo {
+  const at = new Date(`${iso}T12:00:00`);
+  return {
+    sunSign: zodiacSign(sunLongitude(at)),
+    moonSign: zodiacSign(moonLongitude(at)),
+    mercuryRetrograde: isMercuryRetrograde(iso),
+  };
+}
+
+export interface StationMark {
+  label: string;
+  direction: 'retrograde' | 'direct';
+}
+
+/** Days within [startISO, endISO] where Mercury's apparent motion flips —
+ * the astrological "stations". Keyed by local YYYY-MM-DD. */
+export function mercuryStationsByDate(startISO: string, endISO: string): Map<string, StationMark> {
+  const out = new Map<string, StationMark>();
+  const start = new Date(`${startISO}T12:00:00`);
+  const end = new Date(`${endISO}T12:00:00`);
+  let prev: boolean | null = null;
+  for (let t = start.getTime() - 86_400_000; t <= end.getTime(); t += 86_400_000) {
+    const d = new Date(t);
+    const iso = localISODate(d);
+    const retro = isMercuryRetrograde(iso);
+    if (prev !== null && retro !== prev && t >= start.getTime()) {
+      out.set(iso, {
+        direction: retro ? 'retrograde' : 'direct',
+        label: retro ? 'Mercury stations retrograde' : 'Mercury stations direct',
+      });
+    }
+    prev = retro;
+  }
+  return out;
+}

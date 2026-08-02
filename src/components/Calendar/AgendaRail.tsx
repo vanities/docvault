@@ -17,6 +17,7 @@ import { occurrenceLabel, occurrenceStyle } from './occurrenceStyle';
 import {
   formatClock,
   formatDaylight,
+  type AstrologyInfo,
   type MoonInfo,
   type SeasonMark,
   type SunTimes,
@@ -28,6 +29,7 @@ export interface DayAstro {
   moon: MoonInfo;
   season?: SeasonMark;
   sun?: SunTimes | null;
+  astrology: AstrologyInfo;
 }
 
 interface AgendaRailProps {
@@ -107,6 +109,14 @@ export function AgendaRail({
                   {formatDaylight(selectedDayAstro.sun.daylightMinutes)} of daylight
                 </div>
               )}
+              <div>
+                {selectedDayAstro.astrology.sunSign.emoji} {selectedDayAstro.astrology.sunSign.name}{' '}
+                season · Moon in {selectedDayAstro.astrology.moonSign.emoji}{' '}
+                {selectedDayAstro.astrology.moonSign.name}
+                {selectedDayAstro.astrology.mercuryRetrograde && (
+                  <span className="text-amber-400"> · ☿ Mercury retrograde</span>
+                )}
+              </div>
             </div>
           )}
           {selectedDayOccurrences.length === 0 ? (
