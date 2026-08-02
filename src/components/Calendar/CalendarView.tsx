@@ -24,6 +24,11 @@ import {
   type MonthCursor,
 } from './calendarMath';
 import { useCalendarApi, useOccurrences } from './useCalendarApi';
+import { moonInfoForDate, moonPhasesByDate, seasonMarksByDate, sunTimesForDate } from './astronomy';
+import { requestJson } from '../../api/client';
+import { API_BASE } from '../../constants';
+import type { AstroMark } from './MonthGrid';
+import type { DayAstro } from './AgendaRail';
 import type { CalendarEventInput, Occurrence } from './types';
 
 const AGENDA_PAST_DAYS = 60;
@@ -51,6 +56,44 @@ export function CalendarView() {
 
   const localToday = todayISO();
   const gridDays = useMemo(() => monthGridDays(cursor, localToday), [cursor, localToday]);
+
+  // Astronomy layer — pure client-side math over the visible grid window.
+  const astroByDate = useMemo(() => {
+    const start = gridDays[0].date;
+    const end = gridDays[gridDays.length - 1].date;
+    const map = new Map<string, AstroMark[]>();
+    for (const [date, mark] of moonPhasesByDate(start, end)) {
+      map.set(date, [{ emoji: mark.emoji, label: mark.label }]);
+    }
+    for (const [date, mark] of seasonMarksByDate(start, end)) {
+      const list = map.get(date) ?? [];
+      list.push({ emoji: mark.emoji, label: mark.name });
+      map.set(date, list);
+    }
+    return map;
+  }, [gridDays]);
+
+  // Sunrise/sunset reuses the weather location when one is configured.
+  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  useEffect(() => {
+    requestJson<{ weather?: { latitude?: number; longitude?: number } }>(`${API_BASE}/settings`)
+      .then((s) => {
+        if (typeof s.weather?.latitude === 'number' && typeof s.weather?.longitude === 'number') {
+          setCoords({ latitude: s.weather.latitude, longitude: s.weather.longitude });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const selectedDayAstro = useMemo<DayAstro | null>(() => {
+    if (!selectedDate) return null;
+    const seasonByDate = seasonMarksByDate(selectedDate, selectedDate);
+    return {
+      moon: moonInfoForDate(selectedDate),
+      season: seasonByDate.get(selectedDate),
+      sun: coords ? sunTimesForDate(selectedDate, coords.latitude, coords.longitude) : null,
+    };
+  }, [selectedDate, coords]);
 
   // Union window: visible grid ∪ agenda horizon.
   const windowStart = useMemo(() => {
@@ -238,6 +281,7 @@ export function CalendarView() {
               <MonthGrid
                 days={gridDays}
                 occurrencesByDate={occurrencesByDate}
+                astroByDate={astroByDate}
                 selectedDate={selectedDate}
                 entities={entities}
                 onSelectDay={(date) => setSelectedDate((cur) => (cur === date ? null : date))}
@@ -252,6 +296,7 @@ export function CalendarView() {
           occurrences={agendaSlice}
           selectedDate={selectedDate}
           selectedDayOccurrences={selectedDate ? (occurrencesByDate.get(selectedDate) ?? []) : []}
+          selectedDayAstro={selectedDayAstro}
           today={today}
           entities={entities}
           onClearSelection={() => setSelectedDate(null)}

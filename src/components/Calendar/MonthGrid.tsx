@@ -12,9 +12,15 @@ import type { Occurrence } from './types';
 const MAX_CHIPS = 3;
 const MAX_DOTS = 4;
 
+export interface AstroMark {
+  emoji: string;
+  label: string;
+}
+
 interface MonthGridProps {
   days: GridDay[];
   occurrencesByDate: Map<string, Occurrence[]>;
+  astroByDate: Map<string, AstroMark[]>;
   selectedDate: string | null;
   entities: EntityConfig[];
   onSelectDay: (date: string) => void;
@@ -25,6 +31,7 @@ interface MonthGridProps {
 export function MonthGrid({
   days,
   occurrencesByDate,
+  astroByDate,
   selectedDate,
   entities,
   onSelectDay,
@@ -51,6 +58,7 @@ export function MonthGrid({
             row={Math.floor(i / 7)}
             col={i % 7}
             occurrences={occurrencesByDate.get(day.date) ?? []}
+            astro={astroByDate.get(day.date)}
             selected={selectedDate === day.date}
             entities={entities}
             onSelectDay={onSelectDay}
@@ -68,6 +76,7 @@ interface DayCellProps {
   row: number;
   col: number;
   occurrences: Occurrence[];
+  astro: AstroMark[] | undefined;
   selected: boolean;
   entities: EntityConfig[];
   onSelectDay: (date: string) => void;
@@ -80,6 +89,7 @@ function DayCell({
   row,
   col,
   occurrences,
+  astro,
   selected,
   entities,
   onSelectDay,
@@ -112,7 +122,15 @@ function DayCell({
         hover:bg-surface-100/50 transition-colors
       `}
     >
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-between">
+        {/* Astronomy layer: principal moon phases + solstice/equinox marks. */}
+        <span className="flex gap-0.5 text-[10px] leading-none opacity-70">
+          {astro?.map((a) => (
+            <span key={a.label} title={a.label}>
+              {a.emoji}
+            </span>
+          ))}
+        </span>
         <span
           className={`text-[11px] tabular-nums ${
             day.isToday
