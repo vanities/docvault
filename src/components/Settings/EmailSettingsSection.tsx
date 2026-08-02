@@ -110,10 +110,10 @@ export function EmailSettingsSection() {
         Email (Resend)
       </h3>
       <p className="text-[12px] text-surface-600 mb-4">
-        Delivers Newsstand editions to your inbox — scheduled editions send automatically when this
-        is on; you can also email any edition on demand from the Newsstand. The{' '}
-        <span className="font-medium">From</span> domain must be verified in your Resend dashboard
-        (or use <code className="font-mono">onboarding@resend.dev</code> for testing).
+        Powers all outbound email from DocVault: Newsstand editions <em>and</em> invoice emails sent
+        from the Timesheet. The <span className="font-medium">From</span> domain must be verified in
+        your Resend dashboard (or use <code className="font-mono">onboarding@resend.dev</code> for
+        testing).
       </p>
 
       <div className="space-y-4">
@@ -121,7 +121,8 @@ export function EmailSettingsSection() {
           <div>
             <p className="text-[13px] font-medium text-surface-900">Enable email delivery</p>
             <p className="text-[11px] text-surface-500">
-              Auto-email scheduled editions when they publish.
+              Auto-email scheduled Newsstand editions when they publish. Manual sends (an edition on
+              demand, invoice emails) work regardless — they only need the key and From below.
             </p>
           </div>
           <button
@@ -156,6 +157,11 @@ export function EmailSettingsSection() {
               className="text-[13px]"
             />
           </div>
+          <p className="sm:col-span-2 text-[11px] text-surface-500 -mt-1">
+            This From is the <span className="font-medium">default sender for everything</span> —
+            Newsstand editions and Timesheet invoice emails alike. Invoice sends can override it per
+            project (project → Email tab) or per email in the compose window.
+          </p>
           <div className="sm:col-span-2">
             <label className="block text-[12px] text-surface-600 mb-1">
               To (one address per line, or comma-separated)
@@ -168,7 +174,8 @@ export function EmailSettingsSection() {
               className="w-full text-[13px] bg-surface-100/60 border border-border/40 rounded-lg px-2.5 py-1.5 resize-y"
             />
             <p className="text-[11px] text-surface-500 mt-1">
-              Every edition is sent to all of these recipients.
+              Every Newsstand edition goes to all of these. Invoice emails do NOT use this list —
+              their recipients come from the customer profile / project template / compose window.
             </p>
           </div>
           <div>
