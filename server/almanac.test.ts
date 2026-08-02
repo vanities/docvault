@@ -9,7 +9,7 @@ import {
   meteorShowersByDate,
   usHolidaysByDate,
   usHolidaysForYear,
-} from './almanac';
+} from './almanac.js';
 
 describe('usHolidays', () => {
   test('2026 nth-weekday holidays land on the right dates', () => {

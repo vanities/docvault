@@ -17,7 +17,7 @@ import {
   moonPhasesByDate,
   seasonMarksByDate,
   sunTimesForDate,
-} from './astronomy';
+} from './astronomy.js';
 
 const HOUR = 3_600_000;
 

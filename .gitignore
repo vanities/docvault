@@ -120,9 +120,11 @@ scripts/*
 # Exception: calendar view math tests are pure date/grid computation with fabricated fixtures, no personal data
 !src/components/Calendar/calendarMath.test.ts
 # Exception: astronomy tests are pure celestial math with published almanac anchors, no personal data
-!src/components/Calendar/astronomy.test.ts
+!server/astronomy.test.ts
 # Exception: almanac tests are rule-based holiday/meteor/DST math with synthetic offsets, no personal data
-!src/components/Calendar/almanac.test.ts
+!server/almanac.test.ts
+# Exception: no-src-imports guard scans repo source only, no personal data
+!server/no-src-imports.test.ts
 # Exception: calendar-sky tests are pure toggle-gating over shared celestial math, no personal data
 !server/calendar-sky.test.ts
 # Exception: timesheet store tests use fabricated client/entry fixtures in a tmpdir, no personal data

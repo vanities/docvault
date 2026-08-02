@@ -7,12 +7,8 @@
 // getCalendarDisplayConfig): a layer turned off in the calendar disappears
 // from the paper too.
 
-import { moonPhasesByDate, seasonMarksByDate } from '../src/components/Calendar/astronomy';
-import {
-  dstTransitionsByDate,
-  meteorShowersByDate,
-  usHolidaysByDate,
-} from '../src/components/Calendar/almanac';
+import { moonPhasesByDate, seasonMarksByDate } from './astronomy.js';
+import { dstTransitionsByDate, meteorShowersByDate, usHolidaysByDate } from './almanac.js';
 import type { CalendarDisplaySettings } from './data.js';
 
 export interface SkyWeekAheadItem {
