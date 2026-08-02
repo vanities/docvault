@@ -14,13 +14,27 @@ import {
 } from './calendarMath';
 import { EventChip } from './EventChip';
 import { occurrenceLabel, occurrenceStyle } from './occurrenceStyle';
+import {
+  formatClock,
+  formatDaylight,
+  type MoonInfo,
+  type SeasonMark,
+  type SunTimes,
+} from './astronomy';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import type { Occurrence } from './types';
+
+export interface DayAstro {
+  moon: MoonInfo;
+  season?: SeasonMark;
+  sun?: SunTimes | null;
+}
 
 interface AgendaRailProps {
   occurrences: Occurrence[]; // agenda horizon slice (today-60d .. today+180d)
   selectedDate: string | null;
   selectedDayOccurrences: Occurrence[];
+  selectedDayAstro: DayAstro | null;
   today: string;
   entities: EntityConfig[];
   onClearSelection: () => void;
@@ -40,6 +54,7 @@ export function AgendaRail({
   occurrences,
   selectedDate,
   selectedDayOccurrences,
+  selectedDayAstro,
   today,
   entities,
   onClearSelection,
@@ -73,6 +88,27 @@ export function AgendaRail({
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
+          {selectedDayAstro && (
+            <div className="mb-2 space-y-0.5 text-[11px] text-surface-600">
+              <div>
+                {selectedDayAstro.moon.emoji} {selectedDayAstro.moon.name} ·{' '}
+                {Math.round(selectedDayAstro.moon.illumination * 100)}% lit
+                {selectedDayAstro.season && (
+                  <span>
+                    {' · '}
+                    {selectedDayAstro.season.emoji} {selectedDayAstro.season.name}
+                  </span>
+                )}
+              </div>
+              {selectedDayAstro.sun && (
+                <div>
+                  ☀️ {formatClock(selectedDayAstro.sun.sunrise)} –{' '}
+                  {formatClock(selectedDayAstro.sun.sunset)} ·{' '}
+                  {formatDaylight(selectedDayAstro.sun.daylightMinutes)} of daylight
+                </div>
+              )}
+            </div>
+          )}
           {selectedDayOccurrences.length === 0 ? (
             <p className="text-[12px] text-surface-600">Nothing on this day.</p>
           ) : (
