@@ -21,7 +21,7 @@ import {
   type MoonInfo,
   type SeasonMark,
   type SunTimes,
-} from './astronomy';
+} from '../../../server/astronomy';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import type { Occurrence } from './types';
 

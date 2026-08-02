@@ -31,8 +31,12 @@ import {
   moonPhasesByDate,
   seasonMarksByDate,
   sunTimesForDate,
-} from './astronomy';
-import { dstTransitionsByDate, meteorShowersByDate, usHolidaysByDate } from './almanac';
+} from '../../../server/astronomy';
+import {
+  dstTransitionsByDate,
+  meteorShowersByDate,
+  usHolidaysByDate,
+} from '../../../server/almanac';
 import { requestJson } from '../../api/client';
 import { API_BASE } from '../../constants';
 import type { AstroMark } from './MonthGrid';
