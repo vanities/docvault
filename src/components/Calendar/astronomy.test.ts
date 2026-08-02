@@ -5,7 +5,13 @@
 
 import { describe, expect, test } from 'vite-plus/test';
 import {
+  astrologyForDate,
   formatDaylight,
+  isMercuryRetrograde,
+  mercuryStationsByDate,
+  moonLongitude,
+  sunLongitude,
+  zodiacSign,
   moonInfoForDate,
   moonPhasesByDate,
   seasonMarksByDate,
@@ -130,5 +136,90 @@ describe('sunTimesForDate', () => {
 
   test('formatDaylight renders h/m', () => {
     expect(formatDaylight(754)).toBe('12h 34m');
+  });
+});
+
+describe('astrology layer', () => {
+  test('sun longitude is ~0° at the March equinox (tropical Aries by definition)', () => {
+    // The tropical zodiac is DEFINED by the equinox: sun enters Aries there.
+    const marks = seasonMarksByDate('2026-01-01', '2026-12-31');
+    const equinox = [...marks.values()].find((m) => m.name === 'March equinox')!;
+    const lon = sunLongitude(equinox.instant);
+    const dist = Math.min(lon, 360 - lon);
+    expect(dist).toBeLessThan(0.1);
+  });
+
+  test('sun signs across the year', () => {
+    expect(astrologyForDate('2026-08-02').sunSign.name).toBe('Leo');
+    expect(astrologyForDate('2026-01-01').sunSign.name).toBe('Capricorn');
+    expect(astrologyForDate('2026-04-25').sunSign.name).toBe('Taurus');
+    expect(astrologyForDate('2026-11-01').sunSign.name).toBe('Scorpio');
+  });
+
+  test('at full moon, moon opposes sun (longitudes 180° apart)', () => {
+    // Anchored to the Jan 2000 eclipse full moon — an eclipse means the
+    // opposition is nearly exact.
+    const at = new Date(Date.UTC(2000, 0, 21, 4, 44));
+    let diff = Math.abs(moonLongitude(at) - sunLongitude(at));
+    if (diff > 180) diff = 360 - diff;
+    expect(Math.abs(diff - 180)).toBeLessThan(1);
+  });
+
+  test('moon changes sign every ~2.3 days (12-14 changes per month)', () => {
+    let changes = 0;
+    let prev = astrologyForDate('2026-08-01').moonSign.name;
+    for (let d = 2; d <= 31; d++) {
+      const cur = astrologyForDate(`2026-08-${String(d).padStart(2, '0')}`).moonSign.name;
+      if (cur !== prev) changes++;
+      prev = cur;
+    }
+    expect(changes).toBeGreaterThanOrEqual(11);
+    expect(changes).toBeLessThanOrEqual(15);
+  });
+
+  test('Mercury is retrograde ~19-22% of days, in 3-4 spells of ~3 weeks', () => {
+    let retroDays = 0;
+    const spells: number[] = [];
+    let run = 0;
+    for (let t = Date.UTC(2026, 0, 1); t <= Date.UTC(2026, 11, 31); t += 86_400_000) {
+      const d = new Date(t);
+      const iso = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(
+        d.getUTCDate()
+      ).padStart(2, '0')}`;
+      if (isMercuryRetrograde(iso)) {
+        retroDays++;
+        run++;
+      } else if (run > 0) {
+        spells.push(run);
+        run = 0;
+      }
+    }
+    if (run > 0) spells.push(run);
+    expect(retroDays).toBeGreaterThan(55);
+    expect(retroDays).toBeLessThan(85);
+    const fullSpells = spells.filter((s) => s > 5); // ignore year-boundary fragments
+    expect(fullSpells.length).toBeGreaterThanOrEqual(3);
+    expect(fullSpells.length).toBeLessThanOrEqual(4);
+    for (const s of fullSpells) {
+      expect(s).toBeGreaterThan(17);
+      expect(s).toBeLessThan(27);
+    }
+  });
+
+  test('mercuryStationsByDate marks paired retrograde/direct flips', () => {
+    const stations = mercuryStationsByDate('2026-01-01', '2026-12-31');
+    const dirs = [...stations.values()].map((s) => s.direction);
+    expect(stations.size).toBeGreaterThanOrEqual(6);
+    expect(stations.size).toBeLessThanOrEqual(8);
+    // Alternating retrograde/direct.
+    for (let i = 1; i < dirs.length; i++) expect(dirs[i]).not.toBe(dirs[i - 1]);
+  });
+
+  test('zodiacSign slices the ecliptic into 30° signs', () => {
+    expect(zodiacSign(0).name).toBe('Aries');
+    expect(zodiacSign(29.9).name).toBe('Aries');
+    expect(zodiacSign(30).name).toBe('Taurus');
+    expect(zodiacSign(359).name).toBe('Pisces');
+    expect(zodiacSign(-10).name).toBe('Pisces');
   });
 });
