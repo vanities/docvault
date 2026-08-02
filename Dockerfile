@@ -22,6 +22,9 @@ COPY vite.config.ts ./
 COPY index.html ./
 COPY public/ ./public/
 COPY src/ ./src/
+# The frontend imports shared pure math (astronomy/almanac) from server/, so
+# the build stage needs it too — vite bundles those modules into the app.
+COPY server/ ./server/
 
 RUN ./node_modules/vite-plus/bin/vp build
 
