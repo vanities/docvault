@@ -31,6 +31,18 @@ function fmtMoney(value: number): string {
   return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/** Slash-formatted numbers ("2026/024") read as dates to bill-pay extractors
+ * and mismatch the attachment filename — render with hyphens instead. */
+export function displayInvoiceNumber(number: string): string {
+  return number.replace(/\//g, '-');
+}
+
+const CURRENCY_SYMBOLS: Record<string, string> = { USD: '$', EUR: '€', GBP: '£' };
+
+function fmtMoneyWithSymbol(value: number, currency: string): string {
+  return `${CURRENCY_SYMBOLS[currency] ?? ''}${fmtMoney(value)}`;
+}
+
 function fmtHours(minutes: number): string {
   return (minutes / 60).toFixed(2);
 }
@@ -85,6 +97,10 @@ export async function buildInvoicePdf(
 ): Promise<Uint8Array> {
   const t0 = performance.now();
   const doc = await PDFDocument.create();
+  const number = displayInvoiceNumber(invoice.number);
+  // Bill-pay systems (Mercury et al.) read PDF metadata as a payee signal.
+  doc.setTitle(template ? `${template.company} — Invoice ${number}` : `Invoice ${number}`);
+  if (template) doc.setAuthor(template.company);
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
 
@@ -124,24 +140,34 @@ export async function buildInvoicePdf(
   };
 
   // ----- Header: title + invoice metadata (right-aligned) -----
+  // Labels are deliberately the canonical anchors bill-pay extractors key on
+  // ("Invoice #:", "Due Date:", "Amount Due:"), and the total is stated on
+  // page 1 so multi-page invoices can't be mis-summed by page-limited OCR.
   const title = sanitize(template?.title || 'Invoice').toUpperCase();
   text(page, title, MARGIN, y - 10, { size: 24, bold: true });
-  text(page, `# ${sanitize(invoice.number)}`, 0, y, {
+  text(page, `Invoice #: ${sanitize(number)}`, 0, y, {
     size: 10,
     color: MUTED,
     rightAt: PAGE_W - MARGIN,
   });
-  text(page, `Issued ${invoice.issueDate}`, 0, y - 14, {
+  text(page, `Invoice Date: ${invoice.issueDate}`, 0, y - 14, {
     size: 10,
     color: MUTED,
     rightAt: PAGE_W - MARGIN,
   });
-  text(page, `Due ${invoice.dueDate}`, 0, y - 28, {
+  text(page, `Due Date: ${invoice.dueDate}`, 0, y - 28, {
     size: 10,
     color: MUTED,
     rightAt: PAGE_W - MARGIN,
   });
-  y -= 52;
+  text(
+    page,
+    `Amount Due: ${fmtMoneyWithSymbol(invoice.total, invoice.currency)} (${invoice.currency})`,
+    0,
+    y - 44,
+    { size: 10.5, bold: true, rightAt: PAGE_W - MARGIN }
+  );
+  y -= 68;
 
   // ----- Sender block from the template -----
   if (template) {
@@ -230,7 +256,7 @@ export async function buildInvoicePdf(
     y -= 30;
   }
   text(page, `TOTAL (${invoice.currency})`, COLS.hours - 60, y - 18, { size: 9, bold: true });
-  text(page, fmtMoney(invoice.total), 0, y - 18, {
+  text(page, fmtMoneyWithSymbol(invoice.total, invoice.currency), 0, y - 18, {
     size: 12,
     bold: true,
     rightAt: PAGE_W - MARGIN,
@@ -243,8 +269,11 @@ export async function buildInvoicePdf(
     footerLines.push({ str: `Payment terms: ${sanitize(template.paymentTerms)}` });
   }
   if (invoice.comment) footerLines.push({ str: sanitize(invoice.comment) });
-  if (template && template.paymentDetails.length > 0) {
+  if (template) {
     footerLines.push({ str: 'PAYMENT DETAILS', bold: true });
+    // Explicit payee line — bill-pay extractors need a name to attribute
+    // the bill to, and the FROM block alone isn't a reliable signal.
+    footerLines.push({ str: `Pay to: ${sanitize(template.company)}` });
     for (const line of template.paymentDetails) {
       const clean = sanitize(line);
       if (clean) footerLines.push({ str: clean });

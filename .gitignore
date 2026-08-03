@@ -129,6 +129,8 @@ scripts/*
 !server/calendar-sky.test.ts
 # Exception: timesheet store tests use fabricated client/entry fixtures in a tmpdir, no personal data
 !server/timesheet-store.test.ts
+# Exception: invoice PDF tests use a fully synthetic Acme/Globex invoice fixture, no personal data
+!server/timesheet-invoice.test.ts
 
 # Internal design docs
 docs/PRD-shadcn-migration.md
