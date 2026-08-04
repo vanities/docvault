@@ -140,6 +140,40 @@ Heavily inspired by [t3.chat](https://t3.chat) — a multi-thread Claude chat th
 </tr>
 </table>
 
+### Time Tracking & Billing
+
+- **Timesheet** — customers → projects → time entries, with per-project rates snapshotted onto each entry so later rate changes never rewrite billing history.
+- **Two ways to log time** — a start/end span, or **just hours** ("2.5h doing X") when you didn't watch the clock. Both produce the same entry; only the span-based one appears on the hour-of-day punchcard.
+- **Sub-clients** — optional sub-divisions of a project (an end client, matter, workstream, or cost code). Tag an entry with one and every report groups by it. Archive a sub-client to retire it without disturbing the entries that already reference it.
+- **Invoices** — generated from uninvoiced entries, rendered to PDF from a reusable template (sender identity, payment terms, bank details), with per-project retainer floors that add a labeled top-up line. Invoice PDFs carry the labels bill-pay systems parse (`Invoice #:`, `Due Date:`, a page-one `Amount Due:`), so multi-page invoices can't be mis-read by page-limited OCR.
+- **Send invoices by email** with the PDF attached, from an editable draft you always review first.
+- **Scheduled timesheet reports** — email a categorized summary of recent entries to a billing contact on a schedule, as HTML plus a CSV attachment. See below.
+
+#### Scheduled timesheet reports
+
+Timesheet → **Weekly Report** configures a recurring email so whoever pays you can drop your hours straight into their own billing run.
+
+| Setting    | What it does                                                        |
+| ---------- | ------------------------------------------------------------------- |
+| Cadence    | Every week, every 2 weeks, or every month                           |
+| Day + hour | When in that period it sends (plus an optional timezone override)   |
+| Window     | How many days back the report covers — defaults to 7                |
+| Recipients | Comma-separated; the same report goes to all of them                |
+| Scope      | Which clients (and optionally which projects) the recipient may see |
+| Categories | Keyword rules that bucket entries when they aren't tagged           |
+
+**Scope is the important one.** A report goes to one client's billing contact, so leaving scope empty means that recipient sees _every_ client's hours. Pick the clients this recipient is entitled to.
+
+Each entry's category is resolved most-trustworthy-source-first:
+
+1. its **sub-client**, if tagged — a recorded fact
+2. the first **keyword rule** that matches its description or project — an inference
+3. the **project name** — the honest fallback
+
+Prefer sub-clients over keyword rules. A long entry covering several tickets matches whichever rule is listed first, which is how a week of infrastructure work ends up filed under "Meetings."
+
+The report is **read-only over your entries**: it never marks anything invoiced and never creates an invoice, so it's independent of the invoicing flow. It includes non-billable entries (flagged as such) and doesn't care whether an entry has already been billed. Preview any window before enabling anything, download the CSV, or send off-cycle with **Send now** — a manual send records the same watermark, so it suppresses that period's automatic delivery instead of double-sending.
+
 ### Backup, Sync, Observability
 
 - **Encrypted backup/restore** — AES-256-GCM zip of all config + parsed data, downloadable on demand.

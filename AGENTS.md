@@ -154,21 +154,25 @@ ssh nas 'node -e "const fs=require(\"fs\"); const d=JSON.parse(fs.readFileSync(\
 
 Missing any of these causes the sidebar click to silently render the wrong view. This contract is enforced by `src/contexts/navigation-wiring.test.ts` (runs in CI) — if it fails, it names the missing entry.
 
+**Time entries have two shapes.** `TimesheetEntry.start`/`.end` are OPTIONAL — duration-first ("quick") entries carry only `durationMinutes` and have no clock position. Never dereference `entry.start` without a guard; use `entryTimeKey()` from `server/timesheet-store.ts` when sorting and `isDurationEntry()` when a UI needs to render a span. The shape guard rejects a half-set span (one of start/end without the other), and consumers that genuinely need a clock time — like the Analytics punchcard — must skip untimed entries rather than defaulting them to 00:00. Note `server/routes/chat.ts` keeps its own duplicated `TimesheetStoreShape` behind an `as` cast, so the compiler will NOT catch this class of break there; update it by hand.
+
+**Sub-client scoping is a privacy boundary.** A scheduled timesheet report is addressed to one client's billing contact, so `WeeklyReportConfig.clientIds`/`projectIds` filter entries before anything is rendered (empty = every client). Don't "simplify" that filter away, and don't make an entry whose project is missing default into a scoped report. Category resolution order is sub-client → keyword rule → project name, and sub-client must stay first: keyword rules are inferences over prose and a multi-topic entry matches whichever rule is listed first.
+
 **Package installs:** This project uses both pnpm and bun. After adding a dependency with `pnpm add <pkg>`, always run `bun install` to sync `bun.lock`, then commit both `package.json` and `bun.lock`. The Docker build uses `bun install --frozen-lockfile` so an out-of-sync `bun.lock` breaks CI. `pnpm-lock.yaml` is gitignored.
 
 ## Architecture
 
 All state lives in `DATA_DIR` (default `./data`, `/data` in Docker) as `.docvault-*.json` files:
 
-| File                         | Purpose                                      |
-| ---------------------------- | -------------------------------------------- |
-| `.docvault-config.json`      | Entity definitions (names, types, metadata)  |
-| `.docvault-settings.json`    | API keys, exchange secrets, sync config      |
-| `.docvault-parsed.json`      | Cached AI parse results                      |
-| `.docvault-calendar.json`    | Calendar events (birthdays, recurring tasks) |
-| `.docvault-timesheet.json`   | Time tracking (clients, projects, entries)   |
-| `.docvault-metadata.json`    | Document tags/notes                          |
-| `.docvault-sync-status.json` | Dropbox sync status (written by NAS cron)    |
+| File                         | Purpose                                                                            |
+| ---------------------------- | ---------------------------------------------------------------------------------- |
+| `.docvault-config.json`      | Entity definitions (names, types, metadata)                                        |
+| `.docvault-settings.json`    | API keys, exchange secrets, sync config                                            |
+| `.docvault-parsed.json`      | Cached AI parse results                                                            |
+| `.docvault-calendar.json`    | Calendar events (birthdays, recurring tasks)                                       |
+| `.docvault-timesheet.json`   | Time tracking (clients, projects w/ sub-clients, entries, invoices, report config) |
+| `.docvault-metadata.json`    | Document tags/notes                                                                |
+| `.docvault-sync-status.json` | Dropbox sync status (written by NAS cron)                                          |
 
 Entity types: `tax` (year-based views with income/expenses) or `docs` (flat file listing).
 
@@ -195,6 +199,15 @@ All endpoints prefixed `/api/`. Entity-aware. Key routes:
 - `POST /parse-all/:entity/:year` — batch parse
 - `GET /tax-summary/:year` — consolidated tax data
 - `POST /backup` / `POST /restore` — encrypted backup/restore
+
+Timesheet (all under `/api/timesheet`):
+
+- `POST /entries` — log time. Either `start`+`end` (span) or `durationMinutes` (quick entry); sending one half of a span is a 400. Optional `subClientId` must exist on the entry's project.
+- `PUT /entries/:id` — same fields; `null` on `start`/`end`/`subClientId` explicitly CLEARS them (that's how an entry converts between the two shapes), `undefined` leaves them alone.
+- `PUT /projects/:id` — `subClients` is edited as a WHOLE list; new rows get ids assigned server-side. Removing one still referenced by an entry is a 409 — archive it instead.
+- `GET|PUT /weekly-report/config` — schedule, scope, category rules. `lastSentWeek`/`lastSentAt` are server-owned: the PUT re-applies the stored values over whatever the client sends, so a stale form can't reopen an already-sent period. Saving re-arms the scheduler via `armWeeklyReportTimer()`.
+- `GET /weekly-report/preview?end=YYYY-MM-DD` — dry run: rows, category totals, CSV, and HTML for any window, without sending.
+- `POST /weekly-report/send` — send now; writes the same watermark the scheduler checks.
 
 ## Docker
 

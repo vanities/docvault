@@ -1,6 +1,6 @@
 // Weekly Report tab — configure the scheduled categorized timesheet email
-// (recipients, send day/hour/timezone, keyword→category rules), preview any
-// week's report, download its CSV, and send off-cycle on demand.
+// (cadence, window, recipients, client/project scope, keyword→category rules),
+// preview any period, download its CSV, and send off-cycle on demand.
 
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Plus, Send, Trash2, Download, Eye } from 'lucide-react';
@@ -12,6 +12,7 @@ import { Money } from '../common/Money';
 import {
   tsJson,
   formatUsd,
+  type ReportCadence,
   type TimesheetStore,
   type WeeklyReportConfig,
   type WeeklyReportPreview,
@@ -44,6 +45,8 @@ export function WeeklyReportTab({ store }: { store: TimesheetStore }) {
   const [day, setDay] = useState(5);
   const [hour, setHour] = useState(15);
   const [timezone, setTimezone] = useState('');
+  const [cadence, setCadence] = useState<ReportCadence>('weekly');
+  const [windowDays, setWindowDays] = useState(7);
   const [clientIds, setClientIds] = useState<string[]>([]);
   const [projectIds, setProjectIds] = useState<string[]>([]);
   const [rules, setRules] = useState<RuleForm[]>([]);
@@ -62,6 +65,8 @@ export function WeeklyReportTab({ store }: { store: TimesheetStore }) {
         setDay(config.day);
         setHour(config.hour);
         setTimezone(config.timezone ?? '');
+        setCadence(config.cadence ?? 'weekly');
+        setWindowDays(config.windowDays ?? 7);
         setClientIds(config.clientIds ?? []);
         setProjectIds(config.projectIds ?? []);
         setRules(config.categories.map((c) => ({ name: c.name, keywords: c.keywords.join(', ') })));
@@ -77,6 +82,8 @@ export function WeeklyReportTab({ store }: { store: TimesheetStore }) {
       to,
       day,
       hour,
+      cadence,
+      windowDays,
       ...(timezone.trim() ? { timezone: timezone.trim() } : {}),
       clientIds,
       projectIds,
@@ -90,7 +97,7 @@ export function WeeklyReportTab({ store }: { store: TimesheetStore }) {
         }))
         .filter((r) => r.name),
     }),
-    [enabled, to, day, hour, timezone, clientIds, projectIds, rules]
+    [enabled, to, day, hour, cadence, windowDays, timezone, clientIds, projectIds, rules]
   );
 
   const save = async () => {
@@ -145,8 +152,10 @@ export function WeeklyReportTab({ store }: { store: TimesheetStore }) {
     }
     const end = previewEnd || 'today';
     const ok = await confirm({
-      title: 'Send weekly report?',
-      description: `Emails the report for the week ending ${end} to ${target}.`,
+      title: 'Send timesheet report?',
+      description:
+        `Emails the last ${windowDays} days of entries (ending ${end}) to ${target}. ` +
+        `This also marks the period as sent, so the next scheduled run will skip it.`,
       confirmLabel: 'Send',
     });
     if (!ok) return;
@@ -182,13 +191,39 @@ export function WeeklyReportTab({ store }: { store: TimesheetStore }) {
       <Card className="p-4 space-y-3">
         <h3 className="text-[13px] font-semibold">Schedule &amp; Delivery</h3>
         <p className="text-[12px] text-surface-500">
-          Emails a categorized summary of the trailing 7 days of time entries (HTML + CSV
-          attachment) so hours can be folded into downstream client bills.
+          Emails a categorized summary of the last {windowDays} days of time entries (HTML + CSV
+          attachment) so hours can be folded into downstream client bills. Nothing is marked
+          invoiced — this is independent of the Invoices tab.
         </p>
         <label className="flex items-center gap-2 text-[13px] text-surface-700 cursor-pointer">
           <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-          Send automatically every week
+          Send automatically on this schedule
         </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={cadence}
+            onChange={(e) => setCadence(e.target.value as ReportCadence)}
+            className={SELECT_CLS}
+            aria-label="Cadence"
+          >
+            <option value="weekly">Every week</option>
+            <option value="biweekly">Every 2 weeks</option>
+            <option value="monthly">Every month</option>
+          </select>
+          <label className="flex items-center gap-2 text-[12px] text-surface-600">
+            covering the last
+            <Input
+              type="number"
+              min="1"
+              max="90"
+              value={windowDays}
+              onChange={(e) => setWindowDays(Number(e.target.value) || 1)}
+              className="h-8 text-[12px] w-16"
+              aria-label="Window days"
+            />
+            days
+          </label>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <Input
             value={to}
@@ -298,8 +333,11 @@ export function WeeklyReportTab({ store }: { store: TimesheetStore }) {
       <Card className="p-4 space-y-3">
         <h3 className="text-[13px] font-semibold">Categories</h3>
         <p className="text-[12px] text-surface-500">
-          Rules run top-down; the first keyword match on an entry&apos;s description or project
-          wins. Unmatched entries fall back to their project name.
+          A category is resolved in this order: the entry&apos;s <strong>sub-client</strong> if it
+          has one, then the first <strong>keyword rule</strong> that matches its description or
+          project, then the <strong>project name</strong>. Tagging entries with a sub-client is more
+          reliable than keyword rules — a long entry mentioning several things matches whichever
+          rule happens to be listed first.
         </p>
         {rules.map((rule, i) => (
           <div key={i} className="flex flex-wrap items-center gap-2">
@@ -412,6 +450,7 @@ export function WeeklyReportTab({ store }: { store: TimesheetStore }) {
                   <tr className="text-left text-surface-500">
                     <th className="py-1 px-2 font-medium">Date</th>
                     <th className="py-1 px-2 font-medium">Category</th>
+                    <th className="py-1 px-2 font-medium">Source</th>
                     <th className="py-1 px-2 font-medium">Description</th>
                     <th className="py-1 px-2 font-medium text-right">Hours</th>
                   </tr>
@@ -421,6 +460,9 @@ export function WeeklyReportTab({ store }: { store: TimesheetStore }) {
                     <tr key={i} className="border-t border-border align-top">
                       <td className="py-1 px-2 whitespace-nowrap">{r.date}</td>
                       <td className="py-1 px-2 whitespace-nowrap">{r.category}</td>
+                      <td className="py-1 px-2 whitespace-nowrap text-surface-500">
+                        {r.subClient ? 'sub-client' : r.category === r.project ? 'project' : 'rule'}
+                      </td>
                       <td className="py-1 px-2">
                         {r.description || r.project}
                         {r.billable ? '' : ' (non-billable)'}
@@ -430,7 +472,7 @@ export function WeeklyReportTab({ store }: { store: TimesheetStore }) {
                   ))}
                   {preview.rows.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="py-3 px-2 text-center text-surface-500">
+                      <td colSpan={5} className="py-3 px-2 text-center text-surface-500">
                         No entries in this window.
                       </td>
                     </tr>

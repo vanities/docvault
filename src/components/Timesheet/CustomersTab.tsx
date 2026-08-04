@@ -139,6 +139,9 @@ type ProjectForm = {
   emailFrom: string;
   emailSubject: string;
   emailBody: string;
+  // Edited as a whole list; ids are absent on rows added here and assigned by
+  // the server on save. Archived rows stay selectable on entries that use them.
+  subClients: { id?: string; name: string; archived: boolean }[];
 };
 
 const EMPTY_CLIENT: ClientForm = {
@@ -160,6 +163,7 @@ const EMPTY_PROJECT: ProjectForm = {
   emailFrom: '',
   emailSubject: '',
   emailBody: '',
+  subClients: [],
 };
 
 export function CustomersTab({
@@ -179,7 +183,7 @@ export function CustomersTab({
   const [clientForm, setClientForm] = useState<ClientForm>(EMPTY_CLIENT);
   const [projectForm, setProjectForm] = useState<ProjectForm>(EMPTY_PROJECT);
   // Project modal is tabbed (Details | Email) to keep its height sane.
-  const [projectTab, setProjectTab] = useState<'details' | 'email'>('details');
+  const [projectTab, setProjectTab] = useState<'details' | 'email' | 'subclients'>('details');
 
   const projectById = useMemo(
     () => new Map(store.projects.map((p) => [p.id, p] as const)),
@@ -269,6 +273,11 @@ export function CustomersTab({
         emailFrom: project.emailFrom ?? '',
         emailSubject: project.emailSubject ?? '',
         emailBody: project.emailBody ?? '',
+        subClients: (project.subClients ?? []).map((s) => ({
+          id: s.id,
+          name: s.name,
+          archived: s.archived,
+        })),
       });
       setProjectModal(project.id);
     } else {
@@ -318,6 +327,7 @@ export function CustomersTab({
       emailFrom: projectForm.emailFrom,
       emailSubject: projectForm.emailSubject,
       emailBody: projectForm.emailBody,
+      subClients: projectForm.subClients.filter((s) => s.name.trim() !== ''),
     };
     const ok = await call(async () => {
       if (projectModal === 'new') {
@@ -664,7 +674,7 @@ export function CustomersTab({
           </DialogHeader>
           {/* Tab bar keeps the modal short — details vs email template */}
           <div className="flex items-center gap-1 border-b border-border -mt-1">
-            {(['details', 'email'] as const).map((t) => (
+            {(['details', 'subclients', 'email'] as const).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -675,7 +685,7 @@ export function CustomersTab({
                     : 'border-transparent text-surface-600 hover:text-surface-900'
                 }`}
               >
-                {t === 'details' ? 'Details' : 'Email'}
+                {t === 'details' ? 'Details' : t === 'subclients' ? 'Sub-clients' : 'Email'}
               </button>
             ))}
           </div>
@@ -744,6 +754,81 @@ export function CustomersTab({
           {/* Email tab — defaults that prefill the invoice compose modal.
               Both tabs stay mounted (hidden, not unmounted) so switching
               never loses unsaved edits; Save submits every field. */}
+          <div className={`grid grid-cols-1 gap-4 ${projectTab === 'subclients' ? '' : 'hidden'}`}>
+            <div>
+              <p className="text-[12px] font-semibold text-surface-800 mb-1">
+                Sub-clients on this project
+              </p>
+              <p className="text-[11px] text-surface-500 mb-3">
+                Optional sub-divisions you can tag a time entry with — an end client, matter,
+                workstream, or cost code. Timesheet reports group by sub-client when set, which
+                beats guessing a category from the description text. Archive one to retire it
+                without touching the entries that already reference it.
+              </p>
+              {projectForm.subClients.length === 0 && (
+                <p className="text-[12px] text-surface-500 mb-3">
+                  None yet — this project&apos;s hours report under the project name.
+                </p>
+              )}
+              {projectForm.subClients.map((sub, i) => (
+                <div key={i} className="flex items-center gap-2 mb-2">
+                  <Input
+                    value={sub.name}
+                    onChange={(e) =>
+                      setProjectForm({
+                        ...projectForm,
+                        subClients: projectForm.subClients.map((s, j) =>
+                          j === i ? { ...s, name: e.target.value } : s
+                        ),
+                      })
+                    }
+                    placeholder="Sub-client name"
+                    className="h-9 rounded-lg text-sm flex-1"
+                  />
+                  <label className="flex items-center gap-1.5 text-[12px] text-surface-600 cursor-pointer whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={sub.archived}
+                      onChange={(e) =>
+                        setProjectForm({
+                          ...projectForm,
+                          subClients: projectForm.subClients.map((s, j) =>
+                            j === i ? { ...s, archived: e.target.checked } : s
+                          ),
+                        })
+                      }
+                    />
+                    Archived
+                  </label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setProjectForm({
+                        ...projectForm,
+                        subClients: projectForm.subClients.filter((_, j) => j !== i),
+                      })
+                    }
+                    aria-label="Remove sub-client"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setProjectForm({
+                    ...projectForm,
+                    subClients: [...projectForm.subClients, { name: '', archived: false }],
+                  })
+                }
+              >
+                <Plus className="w-4 h-4 mr-1" /> Add sub-client
+              </Button>
+            </div>
+          </div>
           <div className={`grid grid-cols-1 gap-4 ${projectTab === 'email' ? '' : 'hidden'}`}>
             <div>
               <p className="text-[12px] font-semibold text-surface-800 mb-1">

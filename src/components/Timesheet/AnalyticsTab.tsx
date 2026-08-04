@@ -160,6 +160,9 @@ export function AnalyticsTab({ store }: { store: TimesheetStore }) {
 
       // Punchcard: distribute the entry's minutes across the hour cells it
       // spans (wrapping midnight), anchored to the entry date's weekday.
+      // Duration-first entries have no clock position, so they can't be placed
+      // on an hour grid — they're counted in every other stat, just not here.
+      if (!e.start) continue;
       const dow = (new Date(`${e.date}T00:00:00`).getDay() + 6) % 7; // Mon=0
       const [sh, sm] = e.start.split(':').map(Number);
       let cursor = sh * 60 + sm;

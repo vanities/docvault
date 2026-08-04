@@ -30,6 +30,8 @@ vi.mock('./logger.js', () => ({
 import {
   TIMESHEET_PATH,
   entryAmount,
+  entryTimeKey,
+  isDurationEntry,
   isTimesheetStore,
   isValidDate,
   isValidTime,
@@ -141,6 +143,33 @@ describe('shape guard', () => {
     const store = makeStore();
     delete (store.entries[0] as Partial<(typeof store.entries)[0]>).durationMinutes;
     expect(isTimesheetStore(store)).toBe(false);
+  });
+
+  test('accepts duration-first entries with no start/end', () => {
+    const store = makeStore();
+    const entry = store.entries[0] as Partial<(typeof store.entries)[0]>;
+    delete entry.start;
+    delete entry.end;
+    expect(isTimesheetStore(store)).toBe(true);
+  });
+
+  test('rejects a half-set span — one of start/end without the other', () => {
+    const store = makeStore();
+    delete (store.entries[0] as Partial<(typeof store.entries)[0]>).end;
+    expect(isTimesheetStore(store)).toBe(false);
+  });
+});
+
+describe('entry span helpers', () => {
+  test('entryTimeKey sorts untimed entries after timed ones', () => {
+    expect(entryTimeKey({ start: '09:00' })).toBe('09:00');
+    expect(entryTimeKey({}) > entryTimeKey({ start: '23:59' })).toBe(true);
+  });
+
+  test('isDurationEntry detects a missing span', () => {
+    expect(isDurationEntry({ start: '09:00', end: '17:00' })).toBe(false);
+    expect(isDurationEntry({})).toBe(true);
+    expect(isDurationEntry({ start: '09:00' })).toBe(true);
   });
 });
 

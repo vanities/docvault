@@ -16,11 +16,18 @@ export interface TimesheetClient {
   archived: boolean;
 }
 
+export interface SubClient {
+  id: string;
+  name: string;
+  archived: boolean;
+}
+
 export interface TimesheetProject {
   id: string;
   clientId: string;
   name: string;
   hourlyRate: number;
+  subClients?: SubClient[];
   color?: string;
   minimumInvoice?: number;
   emailTo?: string;
@@ -34,9 +41,11 @@ export interface TimesheetEntry {
   id: string;
   projectId: string;
   date: string;
-  start: string;
-  end: string;
+  /** Absent on duration-first ("quick") entries — always guard before use. */
+  start?: string;
+  end?: string;
   durationMinutes: number;
+  subClientId?: string;
   description: string;
   hourlyRate: number;
   amount: number;
@@ -107,11 +116,15 @@ export interface WeeklyReportRule {
   keywords: string[];
 }
 
+export type ReportCadence = 'weekly' | 'biweekly' | 'monthly';
+
 export interface WeeklyReportConfig {
   enabled: boolean;
   to: string;
   day: number; // 0-6, 0=Sunday
   hour: number; // 0-23
+  cadence: ReportCadence;
+  windowDays: number;
   timezone?: string;
   clientIds: string[]; // empty = all clients
   projectIds: string[]; // empty = all projects
@@ -125,6 +138,7 @@ export interface WeeklyReportRow {
   category: string;
   client: string;
   project: string;
+  subClient: string;
   description: string;
   minutes: number;
   hourlyRate: number;

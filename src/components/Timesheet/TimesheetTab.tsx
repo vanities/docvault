@@ -94,6 +94,11 @@ export function TimesheetTab({
   const [formDescription, setFormDescription] = useState('');
   const [formRate, setFormRate] = useState('');
   const [formBillable, setFormBillable] = useState(true);
+  const [formSubClientId, setFormSubClientId] = useState('');
+  // Quick mode logs a duration ("3h doing X") with no clock position; timed
+  // mode keeps the original start/end span. Both write the same entry record.
+  const [formQuick, setFormQuick] = useState(false);
+  const [formHours, setFormHours] = useState('');
 
   const clientById = useMemo(() => new Map(store.clients.map((c) => [c.id, c] as const)), [store]);
   const projectById = useMemo(
@@ -141,7 +146,7 @@ export function TimesheetTab({
           return dir * (a.amount - b.amount);
         default:
           return a.date === b.date
-            ? dir * a.start.localeCompare(b.start)
+            ? dir * (a.start ?? '99:99').localeCompare(b.start ?? '99:99')
             : dir * a.date.localeCompare(b.date);
       }
     });
@@ -197,6 +202,9 @@ export function TimesheetTab({
     setFormDescription('');
     setFormRate('');
     setFormBillable(true);
+    setFormSubClientId('');
+    setFormQuick(false);
+    setFormHours('');
     setFormOpen(true);
   };
 
@@ -208,31 +216,52 @@ export function TimesheetTab({
   };
 
   const openEdit = (entry: TimesheetEntry) => {
+    const quick = !entry.start || !entry.end;
     setEditingId(entry.id);
     setFormProjectId(entry.projectId);
     setFormDate(entry.date);
-    setFormStart(entry.start);
-    setFormEnd(entry.end);
+    setFormStart(entry.start ?? nowRounded15());
+    setFormEnd(entry.end ?? addMinutes(entry.start ?? nowRounded15(), 30));
     setFormDescription(entry.description);
     setFormRate(String(entry.hourlyRate));
     setFormBillable(entry.billable);
+    setFormSubClientId(entry.subClientId ?? '');
+    setFormQuick(quick);
+    setFormHours(quick ? (entry.durationMinutes / 60).toFixed(2) : '');
     setFormOpen(true);
   };
 
-  const formMinutes = spanMinutes(formStart, formEnd);
+  const formMinutes = formQuick
+    ? Math.round((Number(formHours) || 0) * 60)
+    : spanMinutes(formStart, formEnd);
   const formProject = projectById.get(formProjectId);
+  // Only offer sub-clients that are still active, plus whichever one this
+  // entry already points at (so editing an old entry can't silently drop it).
+  const formSubClients = (formProject?.subClients ?? []).filter(
+    (s) => !s.archived || s.id === formSubClientId
+  );
   const effectiveRate = formRate !== '' ? Number(formRate) : (formProject?.hourlyRate ?? 0);
   const formAmount = formBillable ? (formMinutes / 60) * effectiveRate : 0;
 
   const handleSubmit = async () => {
-    if (!formProjectId || !formDate || !formStart || !formEnd || formMinutes === 0) return;
+    if (!formProjectId || !formDate || formMinutes === 0) return;
+    if (!formQuick && (!formStart || !formEnd)) return;
     setSubmitting(true);
     try {
+      // Switching an existing entry between modes must CLEAR the other shape's
+      // fields, so an edit sends null ("remove this"). A create just omits
+      // them — the POST route rejects a null start as a malformed span.
+      const span = formQuick
+        ? editingId
+          ? { start: null, end: null, durationMinutes: formMinutes }
+          : { durationMinutes: formMinutes }
+        : { start: formStart, end: formEnd };
       const body = {
         projectId: formProjectId,
         date: formDate,
-        start: formStart,
-        end: formEnd,
+        ...span,
+        ...(editingId ? { subClientId: formSubClientId || null } : {}),
+        ...(!editingId && formSubClientId ? { subClientId: formSubClientId } : {}),
         description: formDescription,
         billable: formBillable,
         ...(formRate !== '' ? { hourlyRate: Number(formRate) } : {}),
@@ -372,6 +401,29 @@ export function TimesheetTab({
           <DialogHeader>
             <DialogTitle>{editingId ? 'Edit Entry' : 'Log Time'}</DialogTitle>
           </DialogHeader>
+          <div className="flex items-center gap-1 mb-1">
+            {[
+              { quick: false, label: 'Start / end' },
+              { quick: true, label: 'Just hours' },
+            ].map((mode) => (
+              <button
+                key={mode.label}
+                type="button"
+                onClick={() => {
+                  // Carry the duration across so switching modes never loses it.
+                  if (mode.quick && !formQuick) setFormHours((formMinutes / 60).toFixed(2));
+                  setFormQuick(mode.quick);
+                }}
+                className={`h-7 px-3 rounded-lg text-[12px] border ${
+                  formQuick === mode.quick
+                    ? 'bg-surface-200 border-border text-surface-900'
+                    : 'bg-transparent border-transparent text-surface-500 hover:text-surface-700'
+                }`}
+              >
+                {mode.label}
+              </button>
+            ))}
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <label className="text-[12px] text-surface-600 block mb-1">Project</label>
@@ -404,26 +456,62 @@ export function TimesheetTab({
                 className="h-9 rounded-lg text-sm"
               />
             </div>
-            <div className="col-span-2 sm:col-span-1 flex gap-2">
-              <div className="flex-1 min-w-0">
-                <label className="text-[12px] text-surface-600 block mb-1">Start</label>
-                <TimeSlotPicker
-                  value={formStart}
-                  onChange={handleStartChange}
-                  ariaLabel="Start time"
-                  hour24={hour24}
+            {formQuick ? (
+              <div className="col-span-2 sm:col-span-1">
+                <label className="text-[12px] text-surface-600 block mb-1">Hours</label>
+                <Input
+                  type="number"
+                  step="0.25"
+                  min="0"
+                  inputMode="decimal"
+                  value={formHours}
+                  onChange={(e) => setFormHours(e.target.value)}
+                  placeholder="e.g. 2.5"
+                  className="h-9 rounded-lg text-sm"
+                  aria-label="Hours worked"
                 />
               </div>
-              <div className="flex-1 min-w-0">
-                <label className="text-[12px] text-surface-600 block mb-1">End</label>
-                <TimeSlotPicker
-                  value={formEnd}
-                  onChange={setFormEnd}
-                  ariaLabel="End time"
-                  hour24={hour24}
-                />
+            ) : (
+              <div className="col-span-2 sm:col-span-1 flex gap-2">
+                <div className="flex-1 min-w-0">
+                  <label className="text-[12px] text-surface-600 block mb-1">Start</label>
+                  <TimeSlotPicker
+                    value={formStart}
+                    onChange={handleStartChange}
+                    ariaLabel="Start time"
+                    hour24={hour24}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <label className="text-[12px] text-surface-600 block mb-1">End</label>
+                  <TimeSlotPicker
+                    value={formEnd}
+                    onChange={setFormEnd}
+                    ariaLabel="End time"
+                    hour24={hour24}
+                  />
+                </div>
               </div>
-            </div>
+            )}
+            {formSubClients.length > 0 && (
+              <div className="col-span-2">
+                <label className="text-[12px] text-surface-600 block mb-1">
+                  Sub-client <span className="text-surface-500">(optional)</span>
+                </label>
+                <select
+                  value={formSubClientId}
+                  onChange={(e) => setFormSubClientId(e.target.value)}
+                  className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+                >
+                  <option value="">None</option>
+                  {formSubClients.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="col-span-2">
               <label className="text-[12px] text-surface-600 block mb-1">Description</label>
               <textarea
@@ -543,7 +631,11 @@ export function TimesheetTab({
                       <span className="sm:hidden">{e.date.slice(5)}</span>
                     </td>
                     <td className="px-2 py-2 text-surface-500 tabular-nums text-[12px] whitespace-nowrap hidden md:table-cell">
-                      {formatClock(e.start, hour24)}–{formatClock(e.end, hour24)}
+                      {e.start && e.end ? (
+                        `${formatClock(e.start, hour24)}–${formatClock(e.end, hour24)}`
+                      ) : (
+                        <span title="Logged as a duration, not a clock span">—</span>
+                      )}
                     </td>
                     <td className="px-2 py-2 text-surface-600 text-[12px] whitespace-nowrap hidden sm:table-cell">
                       <span

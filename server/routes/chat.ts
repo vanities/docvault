@@ -623,9 +623,11 @@ interface TimesheetStoreShape {
   entries: {
     projectId: string;
     date: string;
-    start: string;
-    end: string;
+    // Absent on duration-first entries — never dereference without a guard.
+    start?: string;
+    end?: string;
     durationMinutes: number;
+    subClientId?: string;
     description: string;
     amount: number;
     billable: boolean;
@@ -679,13 +681,16 @@ async function toolGetTimesheetStatus(): Promise<unknown> {
       })),
     recentEntries: [...store.entries]
       .sort((a, b) =>
-        a.date === b.date ? b.start.localeCompare(a.start) : b.date.localeCompare(a.date)
+        a.date === b.date
+          ? (b.start ?? '').localeCompare(a.start ?? '')
+          : b.date.localeCompare(a.date)
       )
       .slice(0, 10)
       .map((e) => ({
         date: e.date,
-        start: e.start,
-        end: e.end,
+        start: e.start ?? null,
+        end: e.end ?? null,
+        hours: Number((e.durationMinutes / 60).toFixed(2)),
         project: projectById.get(e.projectId)?.name ?? e.projectId,
         description: e.description,
         amount: e.amount,
