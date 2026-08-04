@@ -133,6 +133,28 @@ export interface Invoice {
   kimaiId?: number; // provenance for invoices imported from Kimai
 }
 
+/** A keyword rule mapping raw work-log text onto a billing category. Rules
+ * are tried in order; the first whose keyword matches the entry's description
+ * or project name wins. Unmatched entries fall back to their project name. */
+export interface WeeklyReportRule {
+  name: string;
+  keywords: string[];
+}
+
+/** Config for the scheduled weekly timesheet report — a categorized summary
+ * of the trailing week's raw entries (HTML email + CSV attachment) sent to a
+ * billing contact so hours can be folded into downstream client bills. */
+export interface WeeklyReportConfig {
+  enabled: boolean;
+  to: string; // comma/semicolon-separated recipients (sendEmail parses)
+  day: number; // 0-6 (0=Sunday) — local weekday to send on
+  hour: number; // 0-23 — local hour to send at
+  timezone?: string; // IANA zone override; unset = global configured timezone
+  categories: WeeklyReportRule[];
+  lastSentWeek?: string; // YYYY-MM-DD week-ending date of the last send (dedup)
+  lastSentAt?: string; // ISO timestamp of the last send
+}
+
 export interface TimesheetStore {
   version: 1;
   clients: TimesheetClient[];
@@ -140,6 +162,7 @@ export interface TimesheetStore {
   entries: TimesheetEntry[];
   templates: InvoiceTemplate[];
   invoices: Invoice[];
+  weeklyReport?: WeeklyReportConfig;
 }
 
 // ============================================================================

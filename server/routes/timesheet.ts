@@ -4,7 +4,7 @@
 
 import path from 'path';
 import { promises as fs } from 'fs';
-import { jsonResponse, getEntityPath, resolveUnder, ensureDir } from '../data.js';
+import { jsonResponse, getEntityPath, resolveUnder, ensureDir, loadSettings } from '../data.js';
 import { sendEmail } from '../email.js';
 import { readJsonBody } from '../http.js';
 import {
@@ -21,6 +21,17 @@ import {
   type TimesheetStore,
 } from '../timesheet-store.js';
 import { buildInvoicePdf } from '../timesheet-invoice.js';
+import {
+  normalizeWeeklyReportConfig,
+  weekWindow,
+  collectReportRows,
+  categoryTotals,
+  buildReportCsv,
+  buildReportHtml,
+  sendWeeklyReport,
+} from '../timesheet-report.js';
+import { armWeeklyReportTimer } from '../scheduler.js';
+import { zonedYMD, getConfiguredTimezone } from '../tz.js';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('Timesheet');
@@ -203,6 +214,9 @@ export async function handleTimesheetRoutes(
 
   const templateResult = await handleTemplateRoutes(req, pathname);
   if (templateResult) return templateResult;
+
+  const weeklyReportResult = await handleWeeklyReportRoutes(req, url, pathname);
+  if (weeklyReportResult) return weeklyReportResult;
 
   // ==========================================================================
   // Clients
@@ -912,6 +926,88 @@ async function handleTemplateRoutes(req: Request, pathname: string): Promise<Res
     store.templates = store.templates.filter((t) => t.id !== templateMatch[1]);
     await saveTimesheetStore(store);
     return jsonResponse({ ok: true });
+  }
+
+  return null;
+}
+
+// ============================================================================
+// Weekly report — scheduled categorized summary for a billing contact
+// ============================================================================
+
+async function handleWeeklyReportRoutes(
+  req: Request,
+  url: URL,
+  pathname: string
+): Promise<Response | null> {
+  // GET /api/timesheet/weekly-report/config
+  if (pathname === '/api/timesheet/weekly-report/config' && req.method === 'GET') {
+    const store = await loadTimesheetStore();
+    return jsonResponse({ config: normalizeWeeklyReportConfig(store.weeklyReport) });
+  }
+
+  // PUT /api/timesheet/weekly-report/config - save + re-arm the send timer.
+  // The lastSent* watermarks are server-owned: whatever the client submits,
+  // the stored values win, so a stale form can't reopen an already-sent week.
+  if (pathname === '/api/timesheet/weekly-report/config' && req.method === 'PUT') {
+    const body = await readJsonBody<Record<string, unknown>>(req);
+    const store = await loadTimesheetStore();
+    const existing = normalizeWeeklyReportConfig(store.weeklyReport);
+    const next = normalizeWeeklyReportConfig(body);
+    if (existing.lastSentWeek) next.lastSentWeek = existing.lastSentWeek;
+    if (existing.lastSentAt) next.lastSentAt = existing.lastSentAt;
+    store.weeklyReport = next;
+    await saveTimesheetStore(store);
+    armWeeklyReportTimer();
+    log.info(
+      `[weekly-report] config saved: enabled=${next.enabled} day=${next.day} hour=${next.hour} ` +
+        `rules=${next.categories.length}`
+    );
+    return jsonResponse({ ok: true, config: next });
+  }
+
+  // GET /api/timesheet/weekly-report/preview?end=YYYY-MM-DD - dry-run render
+  if (pathname === '/api/timesheet/weekly-report/preview' && req.method === 'GET') {
+    const store = await loadTimesheetStore();
+    const cfg = normalizeWeeklyReportConfig(store.weeklyReport);
+    const endParam = url.searchParams.get('end');
+    if (endParam && !isValidDate(endParam)) {
+      return jsonResponse({ error: 'end must be YYYY-MM-DD' }, 400);
+    }
+    const settings = await loadSettings();
+    const tz = cfg.timezone ?? getConfiguredTimezone(settings);
+    const window = weekWindow(endParam || zonedYMD(new Date(), tz));
+    const rows = collectReportRows(store, cfg, window);
+    return jsonResponse({
+      window,
+      rows,
+      categories: categoryTotals(rows).map(({ category, minutes, amount }) => ({
+        category,
+        minutes,
+        amount,
+      })),
+      totalMinutes: rows.reduce((s, r) => s + r.minutes, 0),
+      totalAmount: rows.reduce((s, r) => s + r.amount, 0),
+      csv: buildReportCsv(rows),
+      html: buildReportHtml(rows, window),
+    });
+  }
+
+  // POST /api/timesheet/weekly-report/send - manual off-cycle send; records
+  // the same dedup watermark as the scheduler, so sending by hand on the
+  // configured send-day suppresses that day's automatic delivery.
+  if (pathname === '/api/timesheet/weekly-report/send' && req.method === 'POST') {
+    const body = await readJsonBody<{ end?: string }>(req);
+    if (body.end !== undefined && !isValidDate(body.end)) {
+      return jsonResponse({ error: 'end must be YYYY-MM-DD' }, 400);
+    }
+    const store = await loadTimesheetStore();
+    const cfg = normalizeWeeklyReportConfig(store.weeklyReport);
+    const settings = await loadSettings();
+    const tz = cfg.timezone ?? getConfiguredTimezone(settings);
+    const result = await sendWeeklyReport(body.end || zonedYMD(new Date(), tz));
+    if (!result.ok) return jsonResponse({ error: result.error ?? 'Send failed' }, 502);
+    return jsonResponse(result);
   }
 
   return null;

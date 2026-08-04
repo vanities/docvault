@@ -97,6 +97,47 @@ export interface TimesheetStore {
   entries: TimesheetEntry[];
   templates: InvoiceTemplate[];
   invoices: Invoice[];
+  weeklyReport?: WeeklyReportConfig;
+}
+
+// Weekly report — mirrors server/timesheet-report.ts shapes.
+
+export interface WeeklyReportRule {
+  name: string;
+  keywords: string[];
+}
+
+export interface WeeklyReportConfig {
+  enabled: boolean;
+  to: string;
+  day: number; // 0-6, 0=Sunday
+  hour: number; // 0-23
+  timezone?: string;
+  categories: WeeklyReportRule[];
+  lastSentWeek?: string;
+  lastSentAt?: string;
+}
+
+export interface WeeklyReportRow {
+  date: string;
+  category: string;
+  client: string;
+  project: string;
+  description: string;
+  minutes: number;
+  hourlyRate: number;
+  amount: number;
+  billable: boolean;
+}
+
+export interface WeeklyReportPreview {
+  window: { start: string; end: string };
+  rows: WeeklyReportRow[];
+  categories: { category: string; minutes: number; amount: number }[];
+  totalMinutes: number;
+  totalAmount: number;
+  csv: string;
+  html: string;
 }
 
 // ---------------------------------------------------------------------------
