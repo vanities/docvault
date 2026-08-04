@@ -25,8 +25,16 @@ export const DEFAULT_WEEKLY_REPORT: WeeklyReportConfig = {
   to: '',
   day: 5, // Friday
   hour: 15,
+  clientIds: [],
+  projectIds: [],
   categories: [],
 };
+
+function stringList(raw: unknown): string[] {
+  return Array.isArray(raw)
+    ? raw.filter((v): v is string => typeof v === 'string' && v !== '')
+    : [];
+}
 
 function clampInt(n: unknown, lo: number, hi: number, fallback: number): number {
   const v = typeof n === 'number' && Number.isFinite(n) ? Math.round(n) : fallback;
@@ -55,6 +63,8 @@ export function normalizeWeeklyReportConfig(raw: unknown): WeeklyReportConfig {
     ...(typeof r.timezone === 'string' && r.timezone.trim() !== ''
       ? { timezone: r.timezone.trim() }
       : {}),
+    clientIds: stringList(r.clientIds),
+    projectIds: stringList(r.projectIds),
     categories,
     ...(typeof r.lastSentWeek === 'string' ? { lastSentWeek: r.lastSentWeek } : {}),
     ...(typeof r.lastSentAt === 'string' ? { lastSentAt: r.lastSentAt } : {}),
@@ -141,7 +151,9 @@ function fmtMoney(value: number): string {
   return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-/** All entries dated inside the window, categorized and sorted by date/start. */
+/** All entries dated inside the window AND inside the configured client/project
+ * scope, categorized and sorted by date/start. The scope filter is what keeps
+ * one client's billing contact from seeing another client's work. */
 export function collectReportRows(
   store: TimesheetStore,
   cfg: WeeklyReportConfig,
@@ -149,8 +161,16 @@ export function collectReportRows(
 ): ReportRow[] {
   const projects = new Map(store.projects.map((p) => [p.id, p]));
   const clients = new Map(store.clients.map((c) => [c.id, c]));
+  const clientScope = new Set(cfg.clientIds);
+  const projectScope = new Set(cfg.projectIds);
+  const inScope = (projectId: string): boolean => {
+    if (projectScope.size > 0 && !projectScope.has(projectId)) return false;
+    if (clientScope.size === 0) return true;
+    const clientId = projects.get(projectId)?.clientId;
+    return clientId !== undefined && clientScope.has(clientId);
+  };
   return store.entries
-    .filter((e) => e.date >= window.start && e.date <= window.end)
+    .filter((e) => e.date >= window.start && e.date <= window.end && inScope(e.projectId))
     .sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start))
     .map((e) => {
       const project = projects.get(e.projectId);

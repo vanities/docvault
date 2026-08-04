@@ -114,7 +114,7 @@ export function TimesheetView() {
       {tab === 'analytics' && <AnalyticsTab store={store} />}
       {tab === 'customers' && <CustomersTab store={store} refresh={refresh} />}
       {tab === 'templates' && <TemplatesTab store={store} refresh={refresh} />}
-      {tab === 'weekly-report' && <WeeklyReportTab />}
+      {tab === 'weekly-report' && <WeeklyReportTab store={store} />}
     </div>
   );
 }
