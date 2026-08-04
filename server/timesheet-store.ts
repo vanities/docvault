@@ -150,6 +150,10 @@ export interface WeeklyReportConfig {
   day: number; // 0-6 (0=Sunday) — local weekday to send on
   hour: number; // 0-23 — local hour to send at
   timezone?: string; // IANA zone override; unset = global configured timezone
+  // Scope: a report goes to ONE client's billing contact, so it must be able
+  // to exclude other clients' work. Empty = no filter (every entry).
+  clientIds: string[];
+  projectIds: string[];
   categories: WeeklyReportRule[];
   lastSentWeek?: string; // YYYY-MM-DD week-ending date of the last send (dedup)
   lastSentAt?: string; // ISO timestamp of the last send

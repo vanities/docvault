@@ -9,7 +9,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { Money } from '../common/Money';
-import { tsJson, formatUsd, type WeeklyReportConfig, type WeeklyReportPreview } from './types';
+import {
+  tsJson,
+  formatUsd,
+  type TimesheetStore,
+  type WeeklyReportConfig,
+  type WeeklyReportPreview,
+} from './types';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -24,7 +30,7 @@ function fmtHours(minutes: number): string {
   return (minutes / 60).toFixed(2);
 }
 
-export function WeeklyReportTab() {
+export function WeeklyReportTab({ store }: { store: TimesheetStore }) {
   const { confirm, ConfirmDialog } = useConfirmDialog();
 
   const [loading, setLoading] = useState(true);
@@ -38,6 +44,8 @@ export function WeeklyReportTab() {
   const [day, setDay] = useState(5);
   const [hour, setHour] = useState(15);
   const [timezone, setTimezone] = useState('');
+  const [clientIds, setClientIds] = useState<string[]>([]);
+  const [projectIds, setProjectIds] = useState<string[]>([]);
   const [rules, setRules] = useState<RuleForm[]>([]);
 
   // Preview
@@ -54,6 +62,8 @@ export function WeeklyReportTab() {
         setDay(config.day);
         setHour(config.hour);
         setTimezone(config.timezone ?? '');
+        setClientIds(config.clientIds ?? []);
+        setProjectIds(config.projectIds ?? []);
         setRules(config.categories.map((c) => ({ name: c.name, keywords: c.keywords.join(', ') })));
         setLastSent({ week: config.lastSentWeek, at: config.lastSentAt });
       })
@@ -68,6 +78,8 @@ export function WeeklyReportTab() {
       day,
       hour,
       ...(timezone.trim() ? { timezone: timezone.trim() } : {}),
+      clientIds,
+      projectIds,
       categories: rules
         .map((r) => ({
           name: r.name.trim(),
@@ -78,7 +90,7 @@ export function WeeklyReportTab() {
         }))
         .filter((r) => r.name),
     }),
-    [enabled, to, day, hour, timezone, rules]
+    [enabled, to, day, hour, timezone, clientIds, projectIds, rules]
   );
 
   const save = async () => {
@@ -221,6 +233,65 @@ export function WeeklyReportTab() {
             Last sent: week ending {lastSent.week}
             {lastSent.at ? ` (${new Date(lastSent.at).toLocaleString()})` : ''}
           </p>
+        )}
+      </Card>
+
+      <Card className="p-4 space-y-3">
+        <h3 className="text-[13px] font-semibold">Scope</h3>
+        <p className="text-[12px] text-surface-500">
+          Which work this recipient may see. Leave everything unchecked to include all clients —
+          otherwise only the selected clients&apos; (and projects&apos;) entries are reported.
+        </p>
+        <div className="flex flex-wrap gap-x-5 gap-y-1.5">
+          {store.clients
+            .filter((c) => !c.archived)
+            .map((c) => (
+              <label
+                key={c.id}
+                className="flex items-center gap-2 text-[13px] text-surface-700 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={clientIds.includes(c.id)}
+                  onChange={(e) =>
+                    setClientIds(
+                      e.target.checked
+                        ? [...clientIds, c.id]
+                        : clientIds.filter((id) => id !== c.id)
+                    )
+                  }
+                />
+                {c.name}
+              </label>
+            ))}
+        </div>
+        {clientIds.length > 0 && (
+          <div className="flex flex-wrap gap-x-5 gap-y-1.5 pt-1 border-t border-border">
+            {store.projects
+              .filter((p) => !p.archived && clientIds.includes(p.clientId))
+              .map((p) => (
+                <label
+                  key={p.id}
+                  className="flex items-center gap-2 text-[12px] text-surface-600 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={projectIds.includes(p.id)}
+                    onChange={(e) =>
+                      setProjectIds(
+                        e.target.checked
+                          ? [...projectIds, p.id]
+                          : projectIds.filter((id) => id !== p.id)
+                      )
+                    }
+                  />
+                  {p.name}
+                </label>
+              ))}
+            <span className="text-[12px] text-surface-500">
+              (no project checked = all of the selected clients&apos; projects)
+            </span>
+          </div>
         )}
       </Card>
 

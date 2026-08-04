@@ -113,6 +113,8 @@ export interface WeeklyReportConfig {
   day: number; // 0-6, 0=Sunday
   hour: number; // 0-23
   timezone?: string;
+  clientIds: string[]; // empty = all clients
+  projectIds: string[]; // empty = all projects
   categories: WeeklyReportRule[];
   lastSentWeek?: string;
   lastSentAt?: string;
