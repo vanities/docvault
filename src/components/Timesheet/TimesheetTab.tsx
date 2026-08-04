@@ -73,6 +73,7 @@ export function TimesheetTab({
   const [customTo, setCustomTo] = useState('');
   const [filterClient, setFilterClient] = useState('all');
   const [filterProject, setFilterProject] = useState('all');
+  const [filterSubClient, setFilterSubClient] = useState('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'open' | 'invoiced' | 'non-billable'>(
     'all'
   );
@@ -106,6 +107,31 @@ export function TimesheetTab({
     [store]
   );
   const clientColors = useMemo(() => buildClientColorMap(store.clients), [store.clients]);
+  // Sub-clients on the projects the customer/project filters currently allow,
+  // deduped by id so the same name on two projects lists once (and matches
+  // both, since ids are slugged from the name).
+  const subClientOptions = useMemo(() => {
+    const seen = new Map<string, { id: string; name: string }>();
+    for (const p of store.projects) {
+      if (filterClient !== 'all' && p.clientId !== filterClient) continue;
+      if (filterProject !== 'all' && p.id !== filterProject) continue;
+      for (const s of p.subClients ?? []) {
+        if (!s.archived && !seen.has(s.id)) seen.set(s.id, { id: s.id, name: s.name });
+      }
+    }
+    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [store.projects, filterClient, filterProject]);
+
+  // Narrowing the customer/project filter can hide the sub-client dropdown
+  // entirely. Fall back to 'all' when the current pick is no longer offered —
+  // otherwise a filter the user can't see would silently empty the table.
+  const activeSubClient =
+    subClientOptions.length === 0 ||
+    (filterSubClient !== 'all' &&
+      filterSubClient !== 'none' &&
+      !subClientOptions.some((s) => s.id === filterSubClient))
+      ? 'all'
+      : filterSubClient;
 
   const range = preset === 'custom' ? { from: customFrom, to: customTo } : presetRange(preset);
 
@@ -129,6 +155,10 @@ export function TimesheetTab({
       const clientId = projectById.get(e.projectId)?.clientId;
       if (filterClient !== 'all' && clientId !== filterClient) return false;
       if (filterProject !== 'all' && e.projectId !== filterProject) return false;
+      if (activeSubClient === 'none' && e.subClientId) return false;
+      if (activeSubClient !== 'all' && activeSubClient !== 'none') {
+        if (e.subClientId !== activeSubClient) return false;
+      }
       if (filterStatus === 'open' && (e.invoiced || !e.billable)) return false;
       if (filterStatus === 'invoiced' && !e.invoiced) return false;
       if (filterStatus === 'non-billable' && e.billable) return false;
@@ -157,6 +187,7 @@ export function TimesheetTab({
     range.to,
     filterClient,
     filterProject,
+    activeSubClient,
     filterStatus,
     search,
     sortKey,
@@ -365,6 +396,26 @@ export function TimesheetTab({
               </option>
             ))}
         </select>
+        {/* Sub-client filter appears only once the visible projects define any,
+            so installs that don't subdivide never see a dead dropdown. */}
+        {subClientOptions.length > 0 && (
+          <select
+            value={activeSubClient}
+            onChange={(e) => {
+              setFilterSubClient(e.target.value);
+              resetPage();
+            }}
+            className="h-8 rounded-lg text-[12px] bg-surface-100 border border-border px-2"
+          >
+            <option value="all">All sub-clients</option>
+            <option value="none">Untagged</option>
+            {subClientOptions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        )}
         <select
           value={filterStatus}
           onChange={(e) => {
@@ -623,6 +674,9 @@ export function TimesheetTab({
                 const project = projectById.get(e.projectId);
                 const client = project ? clientById.get(project.clientId) : undefined;
                 const dotColor = projectDisplayColor(project, clientColors);
+                const subClientName = e.subClientId
+                  ? project?.subClients?.find((s) => s.id === e.subClientId)?.name
+                  : undefined;
                 return (
                   <tr key={e.id} className="group hover:bg-surface-100/50">
                     <td className="px-3 sm:px-4 py-2 text-surface-700 tabular-nums whitespace-nowrap">
@@ -643,6 +697,11 @@ export function TimesheetTab({
                         style={{ backgroundColor: dotColor }}
                       />
                       {client?.name} / {project?.name}
+                      {subClientName && (
+                        <span className="block ml-3.5 text-[11px] text-surface-500">
+                          ↳ {subClientName}
+                        </span>
+                      )}
                     </td>
                     <td className="px-2 py-2 text-surface-900 max-w-[9rem] sm:max-w-[26rem]">
                       <span className="line-clamp-2">
@@ -654,6 +713,7 @@ export function TimesheetTab({
                           style={{ backgroundColor: dotColor }}
                         />
                         {client?.name} / {project?.name}
+                        {subClientName ? ` ↳ ${subClientName}` : ''}
                         {!e.billable ? ' · non-billable' : e.invoiced ? ' · invoiced' : ' · open'}
                       </span>
                     </td>
