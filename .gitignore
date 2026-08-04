@@ -56,6 +56,10 @@ scripts/*
 **/*.spec.tsx
 # Exception: Politics dashboard tests use synthetic congressional payloads, no personal data
 !src/components/Politics/politicsData.test.ts
+# Exception: entity-selection guard tests use fabricated entity ids (Acme LLC), no personal data
+!src/contexts/entity-selection.test.ts
+# Exception: navigation-wiring contract test regex-parses source files, no personal data
+!src/contexts/navigation-wiring.test.ts
 # Exception: skill-trigger tests are pure string logic with fabricated skill names, no personal data
 !src/utils/skillTrigger.test.ts
 # Exception: quant math tests are pure computation, no personal data

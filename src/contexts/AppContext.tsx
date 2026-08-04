@@ -58,6 +58,13 @@ function sanitizePersistedYear(value: string | null, currentYear: number): numbe
   return isValidPersistedYear(parsed, currentYear) ? parsed : currentYear;
 }
 
+// 'all' is a client-side pseudo-entity (the sidebar's "All Entities" option) —
+// it never appears in the server's entity list, so the stale-entity fallback
+// must treat it as always valid or selecting it instantly reverts.
+export function isKnownEntitySelection(selectedEntity: Entity, entities: EntityConfig[]): boolean {
+  return selectedEntity === 'all' || entities.some((entity) => entity.id === selectedEntity);
+}
+
 // Browser-side history reader. Since chat history moved server-side
 // (/api/chat/threads), this is only a migration source for pre-server
 // localStorage history and an offline fallback when the server is down.
@@ -751,7 +758,7 @@ export function AppProvider({ children }: AppProviderProps) {
   // Once the server's entity list is known, fall back to the first valid entity.
   useEffect(() => {
     if (entities.length === 0) return;
-    if (entities.some((entity) => entity.id === selectedEntity)) return;
+    if (isKnownEntitySelection(selectedEntity, entities)) return;
     const fallback = entities[0].id;
     setSelectedEntityState(fallback);
     localStorage.setItem('docvault-entity', fallback);
