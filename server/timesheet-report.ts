@@ -1,15 +1,24 @@
-// Weekly timesheet report — a categorized summary of the trailing week's raw
-// time entries, delivered as an HTML email with a CSV attachment so a billing
+// Scheduled timesheet report — a categorized summary of recent raw time
+// entries, delivered as an HTML email with a CSV attachment so a billing
 // contact can fold the hours into downstream client bills without re-typing.
 //
 // Pure pieces (window math, the due-gate, categorization, HTML/CSV rendering)
 // are exported for unit tests; only sendWeeklyReport touches the store, the
 // clock, and email. Scheduling mirrors Daily News: the scheduler arms a
 // self-rescheduling timeout at the configured local hour and the gate here
-// decides whether a send is actually due (weekday match + once per week).
+// decides whether a send is actually due (weekday + hour + cadence gap).
+//
+// Two invariants worth keeping: the client/project scope filter is a privacy
+// boundary (one recipient must not see another client's hours), and category
+// resolution puts the recorded sub-client ahead of keyword rules.
 
-import type { TimesheetStore, WeeklyReportConfig, WeeklyReportRule } from './timesheet-store.js';
-import { loadTimesheetStore, saveTimesheetStore } from './timesheet-store.js';
+import type {
+  ReportCadence,
+  TimesheetStore,
+  WeeklyReportConfig,
+  WeeklyReportRule,
+} from './timesheet-store.js';
+import { entryTimeKey, loadTimesheetStore, saveTimesheetStore } from './timesheet-store.js';
 import { sendEmail } from './email.js';
 import { zonedParts } from './tz.js';
 import { createLogger } from './logger.js';
@@ -25,9 +34,22 @@ export const DEFAULT_WEEKLY_REPORT: WeeklyReportConfig = {
   to: '',
   day: 5, // Friday
   hour: 15,
+  cadence: 'weekly',
+  windowDays: 7,
   clientIds: [],
   projectIds: [],
   categories: [],
+};
+
+const CADENCES: ReportCadence[] = ['weekly', 'biweekly', 'monthly'];
+
+/** Minimum days between sends. Weekly needs none — the weekday gate already
+ * enforces a 7-day rhythm. The others are set a day under the nominal period
+ * so a DST shift or a short month can't push a send into the following week. */
+const MIN_GAP_DAYS: Record<ReportCadence, number> = {
+  weekly: 0,
+  biweekly: 13,
+  monthly: 27,
 };
 
 function stringList(raw: unknown): string[] {
@@ -60,6 +82,10 @@ export function normalizeWeeklyReportConfig(raw: unknown): WeeklyReportConfig {
     to: typeof r.to === 'string' ? r.to.trim() : '',
     day: clampInt(r.day, 0, 6, DEFAULT_WEEKLY_REPORT.day),
     hour: clampInt(r.hour, 0, 23, DEFAULT_WEEKLY_REPORT.hour),
+    cadence: CADENCES.includes(r.cadence as ReportCadence)
+      ? (r.cadence as ReportCadence)
+      : DEFAULT_WEEKLY_REPORT.cadence,
+    windowDays: clampInt(r.windowDays, 1, 90, DEFAULT_WEEKLY_REPORT.windowDays),
     ...(typeof r.timezone === 'string' && r.timezone.trim() !== ''
       ? { timezone: r.timezone.trim() }
       : {}),
@@ -80,15 +106,25 @@ export interface ReportWindow {
   end: string; // YYYY-MM-DD inclusive
 }
 
-/** The 7-day window ending on `weekEnd` (both bounds inclusive). Pure string
- * date math via Date.UTC — never touches the process timezone. */
-export function weekWindow(weekEnd: string): ReportWindow {
-  const [y, m, d] = weekEnd.split('-').map(Number);
-  const start = new Date(Date.UTC(y, m - 1, d - 6));
-  const ymd = `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, '0')}-${String(
-    start.getUTCDate()
+function shiftYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const at = new Date(Date.UTC(y, m - 1, d + days));
+  return `${at.getUTCFullYear()}-${String(at.getUTCMonth() + 1).padStart(2, '0')}-${String(
+    at.getUTCDate()
   ).padStart(2, '0')}`;
-  return { start: ymd, end: weekEnd };
+}
+
+/** Whole days from `from` to `to` (both YYYY-MM-DD). */
+export function daysBetween(from: string, to: string): number {
+  const [fy, fm, fd] = from.split('-').map(Number);
+  const [ty, tm, td] = to.split('-').map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / (24 * 60 * 60 * 1000));
+}
+
+/** The `days`-long window ending on `weekEnd` (both bounds inclusive). Pure
+ * string date math via Date.UTC — never touches the process timezone. */
+export function weekWindow(weekEnd: string, days = 7): ReportWindow {
+  return { start: shiftYmd(weekEnd, -(Math.max(1, days) - 1)), end: weekEnd };
 }
 
 /**
@@ -106,6 +142,13 @@ export function weeklyReportDue(
   if (parts.weekday !== cfg.day) return null;
   if (parts.hour < cfg.hour) return null;
   if (cfg.lastSentWeek === parts.ymd) return null;
+  // Cadence gate: biweekly/monthly skip send-days that fall inside the period
+  // already covered. Measured from the last send, so a missed week self-heals
+  // on the next send-day instead of drifting the schedule forward.
+  const minGap = MIN_GAP_DAYS[cfg.cadence] ?? 0;
+  if (minGap > 0 && cfg.lastSentWeek && daysBetween(cfg.lastSentWeek, parts.ymd) < minGap) {
+    return null;
+  }
   return parts.ymd;
 }
 
@@ -113,13 +156,24 @@ export function weeklyReportDue(
 // Categorization + rows
 // ============================================================================
 
-/** First matching rule wins (keywords are case-insensitive substring matches
- * against description + project name); unmatched falls back to project name. */
+/**
+ * Resolve an entry's reporting category, most-trustworthy source first:
+ *
+ *   1. sub-client — recorded fact, set by the person who did the work
+ *   2. keyword rule — an inference from prose; first match wins
+ *   3. project name — the honest fallback
+ *
+ * Sub-client outranks keyword rules deliberately: rules guess a category from
+ * a description, and a day-long entry mentioning many things matches whichever
+ * rule happens to be listed first. An explicit tag is never wrong that way.
+ */
 export function categorizeEntry(
   description: string,
   projectName: string,
-  rules: WeeklyReportRule[]
+  rules: WeeklyReportRule[],
+  subClientName?: string
 ): string {
+  if (subClientName) return subClientName;
   const hay = `${description}\n${projectName}`.toLowerCase();
   for (const rule of rules) {
     if (rule.keywords.some((k) => hay.includes(k.trim().toLowerCase()))) return rule.name;
@@ -132,6 +186,7 @@ export interface ReportRow {
   category: string;
   client: string;
   project: string;
+  subClient: string; // '' when the entry isn't tagged
   description: string; // collapsed to one line
   minutes: number;
   hourlyRate: number;
@@ -171,15 +226,19 @@ export function collectReportRows(
   };
   return store.entries
     .filter((e) => e.date >= window.start && e.date <= window.end && inScope(e.projectId))
-    .sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start))
+    .sort((a, b) => a.date.localeCompare(b.date) || entryTimeKey(a).localeCompare(entryTimeKey(b)))
     .map((e) => {
       const project = projects.get(e.projectId);
       const client = project ? clients.get(project.clientId) : undefined;
+      const subClient = e.subClientId
+        ? project?.subClients?.find((s) => s.id === e.subClientId)?.name
+        : undefined;
       return {
         date: e.date,
-        category: categorizeEntry(e.description, project?.name ?? '', cfg.categories),
+        category: categorizeEntry(e.description, project?.name ?? '', cfg.categories, subClient),
         client: client?.name ?? '',
         project: project?.name ?? '',
+        subClient: subClient ?? '',
         description: oneLine(e.description),
         minutes: e.durationMinutes,
         hourlyRate: e.hourlyRate,
@@ -198,13 +257,14 @@ export function csvEscape(field: string): string {
 }
 
 export function buildReportCsv(rows: ReportRow[]): string {
-  const header = 'Date,Category,Client,Project,Description,Hours,Rate,Amount,Billable';
+  const header = 'Date,Category,Client,Project,Sub-client,Description,Hours,Rate,Amount,Billable';
   const lines = rows.map((r) =>
     [
       r.date,
       csvEscape(r.category),
       csvEscape(r.client),
       csvEscape(r.project),
+      csvEscape(r.subClient),
       csvEscape(r.description),
       fmtHours(r.minutes),
       r.hourlyRate.toFixed(2),
@@ -279,7 +339,7 @@ export function buildReportHtml(rows: ReportRow[], window: ReportWindow): string
 
   return (
     `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1d1d1f;max-width:680px;">` +
-    `<h2 style="margin:0 0 4px;">Weekly Timesheet</h2>` +
+    `<h2 style="margin:0 0 4px;">Timesheet</h2>` +
     `<p style="margin:0 0 14px;color:#6b6b73;">${window.start} to ${window.end} · ` +
     `${fmtHours(totalMinutes)} hours · $${fmtMoney(totalAmount)}</p>` +
     (rows.length === 0
@@ -313,7 +373,7 @@ export async function sendWeeklyReport(weekEnd: string): Promise<WeeklyReportRes
   const t0 = performance.now();
   const store = await loadTimesheetStore();
   const cfg = normalizeWeeklyReportConfig(store.weeklyReport);
-  const window = weekWindow(weekEnd);
+  const window = weekWindow(weekEnd, cfg.windowDays);
   const rows = collectReportRows(store, cfg, window);
   const totalMinutes = rows.reduce((s, r) => s + r.minutes, 0);
   const base = { weekEnd, rowCount: rows.length, totalMinutes };
@@ -323,7 +383,7 @@ export async function sendWeeklyReport(weekEnd: string): Promise<WeeklyReportRes
     return { ...base, ok: false, error: 'No recipient configured' };
   }
 
-  const subject = `Weekly timesheet ${window.start} to ${window.end} (${fmtHours(totalMinutes)}h)`;
+  const subject = `Timesheet ${window.start} to ${window.end} (${fmtHours(totalMinutes)}h)`;
   const result = await sendEmail({
     to: cfg.to,
     subject,

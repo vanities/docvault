@@ -15,6 +15,8 @@ import {
   isValidDate,
   entryAmount,
   nextInvoiceNumber,
+  entryTimeKey,
+  type SubClient,
   type Invoice,
   type InvoiceTemplate,
   type TimesheetEntry,
@@ -76,40 +78,59 @@ export async function handleTimesheetRoutes(
   // Entries
   // ==========================================================================
 
-  // POST /api/timesheet/entries - log a completed entry (manual start/end)
+  // POST /api/timesheet/entries - log a completed entry. Two shapes:
+  //   timed:    start + end (wall clock; duration is derived)
+  //   duration: durationMinutes alone ("3h doing X", no clock position)
+  // Both may carry a subClientId naming the project sub-division served.
   if (pathname === '/api/timesheet/entries' && req.method === 'POST') {
     const body = await readJsonBody<{
       projectId?: string;
       date?: string;
       start?: string;
       end?: string;
+      durationMinutes?: number;
+      subClientId?: string;
       description?: string;
       hourlyRate?: number; // optional override; defaults to project rate
       billable?: boolean;
     }>(req);
     const { projectId, date, start, end } = body;
-    if (!projectId || !date || !start || !end) {
-      return jsonResponse({ error: 'Missing projectId, date, start, or end' }, 400);
-    }
+    if (!projectId || !date) return jsonResponse({ error: 'Missing projectId or date' }, 400);
     if (!isValidDate(date)) return jsonResponse({ error: 'Invalid date (want YYYY-MM-DD)' }, 400);
-    if (!isValidTime(start) || !isValidTime(end)) {
+    const timed = start !== undefined || end !== undefined;
+    if (timed && (!start || !end)) {
+      return jsonResponse({ error: 'Set both start and end, or neither' }, 400);
+    }
+    if (!timed && body.durationMinutes === undefined) {
+      return jsonResponse({ error: 'Provide start+end or durationMinutes' }, 400);
+    }
+    if (timed && (!isValidTime(start!) || !isValidTime(end!))) {
       return jsonResponse({ error: 'Invalid start/end (want HH:MM)' }, 400);
     }
     const store = await loadTimesheetStore();
     const project = store.projects.find((p) => p.id === projectId);
     if (!project) return jsonResponse({ error: 'Project not found' }, 404);
+    if (body.subClientId !== undefined) {
+      if (!project.subClients?.some((s) => s.id === body.subClientId)) {
+        return jsonResponse({ error: 'Sub-client not found on this project' }, 404);
+      }
+    }
 
-    const durationMinutes = spanMinutes(start, end);
-    if (durationMinutes === 0) return jsonResponse({ error: 'Zero-length entry' }, 400);
+    const durationMinutes = timed
+      ? spanMinutes(start!, end!)
+      : Math.round(Number(body.durationMinutes));
+    if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+      return jsonResponse({ error: 'Zero-length entry' }, 400);
+    }
     const billable = body.billable !== false;
     const hourlyRate = body.hourlyRate !== undefined ? Number(body.hourlyRate) : project.hourlyRate;
     const entry: TimesheetEntry = {
       id: crypto.randomUUID(),
       projectId,
       date,
-      start,
-      end,
+      ...(timed ? { start, end } : {}),
       durationMinutes,
+      ...(body.subClientId ? { subClientId: body.subClientId } : {}),
       description: body.description?.trim() || '',
       hourlyRate,
       amount: entryAmount(durationMinutes, hourlyRate, billable),
@@ -118,7 +139,10 @@ export async function handleTimesheetRoutes(
     };
     store.entries.push(entry);
     await saveTimesheetStore(store);
-    log.info(`[entry] logged ${durationMinutes}min on project=${projectId} date=${date}`);
+    log.info(
+      `[entry] logged ${durationMinutes}min (${timed ? 'timed' : 'duration'}) on ` +
+        `project=${projectId}${body.subClientId ? ` sub=${body.subClientId}` : ''} date=${date}`
+    );
     return jsonResponse({ ok: true, entry });
   }
 
@@ -128,8 +152,10 @@ export async function handleTimesheetRoutes(
     const body = await readJsonBody<{
       projectId?: string;
       date?: string;
-      start?: string;
-      end?: string;
+      start?: string | null;
+      end?: string | null;
+      durationMinutes?: number;
+      subClientId?: string | null;
       description?: string;
       hourlyRate?: number;
       billable?: boolean;
@@ -149,13 +175,30 @@ export async function handleTimesheetRoutes(
       if (!isValidDate(body.date)) return jsonResponse({ error: 'Invalid date' }, 400);
       entry.date = body.date;
     }
+    // null explicitly CLEARS a clock time (converting a timed entry to a
+    // duration-first one); undefined leaves it alone.
     if (body.start !== undefined) {
-      if (!isValidTime(body.start)) return jsonResponse({ error: 'Invalid start' }, 400);
-      entry.start = body.start;
+      if (body.start === null) delete entry.start;
+      else if (!isValidTime(body.start)) return jsonResponse({ error: 'Invalid start' }, 400);
+      else entry.start = body.start;
     }
     if (body.end !== undefined) {
-      if (!isValidTime(body.end)) return jsonResponse({ error: 'Invalid end' }, 400);
-      entry.end = body.end;
+      if (body.end === null) delete entry.end;
+      else if (!isValidTime(body.end)) return jsonResponse({ error: 'Invalid end' }, 400);
+      else entry.end = body.end;
+    }
+    if ((entry.start === undefined) !== (entry.end === undefined)) {
+      return jsonResponse({ error: 'Set both start and end, or neither' }, 400);
+    }
+    if (body.subClientId !== undefined) {
+      if (body.subClientId === null) delete entry.subClientId;
+      else {
+        const project = store.projects.find((p) => p.id === entry.projectId);
+        if (!project?.subClients?.some((s) => s.id === body.subClientId)) {
+          return jsonResponse({ error: 'Sub-client not found on this project' }, 404);
+        }
+        entry.subClientId = body.subClientId;
+      }
     }
     if (body.description !== undefined) entry.description = body.description.trim();
     if (body.hourlyRate !== undefined) entry.hourlyRate = Number(body.hourlyRate);
@@ -165,8 +208,16 @@ export async function handleTimesheetRoutes(
       if (body.invoiced) entry.invoicedAt = new Date().toISOString();
       else delete entry.invoicedAt;
     }
-    // Re-derive: duration from times, amount from duration/rate/billable.
-    entry.durationMinutes = spanMinutes(entry.start, entry.end);
+    // Re-derive: duration from the span when timed, else take it verbatim.
+    if (entry.start !== undefined && entry.end !== undefined) {
+      entry.durationMinutes = spanMinutes(entry.start, entry.end);
+    } else if (body.durationMinutes !== undefined) {
+      const minutes = Math.round(Number(body.durationMinutes));
+      if (!Number.isFinite(minutes) || minutes <= 0) {
+        return jsonResponse({ error: 'durationMinutes must be a positive number' }, 400);
+      }
+      entry.durationMinutes = minutes;
+    }
     if (entry.durationMinutes === 0) return jsonResponse({ error: 'Zero-length entry' }, 400);
     entry.amount = entryAmount(entry.durationMinutes, entry.hourlyRate, entry.billable);
     await saveTimesheetStore(store);
@@ -352,11 +403,39 @@ export async function handleTimesheetRoutes(
       emailFrom?: string;
       emailSubject?: string;
       emailBody?: string;
+      subClients?: { id?: string; name?: string; archived?: boolean }[];
       archived?: boolean;
     }>(req);
     const store = await loadTimesheetStore();
     const project = store.projects.find((p) => p.id === projectMatch[1]);
     if (!project) return jsonResponse({ error: 'Project not found' }, 404);
+    // Sub-clients are edited as a whole list. Ids are assigned here for new
+    // rows; a sub-client still referenced by an entry can be archived but not
+    // removed, so historical entries never point at a vanished sub-client.
+    if (body.subClients !== undefined) {
+      const taken = new Set<string>();
+      const next: SubClient[] = [];
+      for (const raw of body.subClients) {
+        const name = raw?.name?.trim();
+        if (!name) continue;
+        const id = raw.id && !taken.has(raw.id) ? raw.id : uniqueId(name, taken);
+        taken.add(id);
+        next.push({ id, name, archived: raw.archived === true });
+      }
+      const dropped = (project.subClients ?? []).filter((s) => !next.some((n) => n.id === s.id));
+      const inUse = dropped.filter((s) =>
+        store.entries.some((e) => e.subClientId === s.id && e.projectId === project.id)
+      );
+      if (inUse.length > 0) {
+        return jsonResponse(
+          {
+            error: `${inUse.map((s) => s.name).join(', ')} still used by time entries — archive instead of removing`,
+          },
+          409
+        );
+      }
+      project.subClients = next;
+    }
     if (body.clientId !== undefined) {
       if (!store.clients.some((c) => c.id === body.clientId)) {
         return jsonResponse({ error: 'Client not found' }, 404);
@@ -524,7 +603,9 @@ function assembleInvoice(
       return true;
     })
     .sort((a, b) =>
-      a.date === b.date ? a.start.localeCompare(b.start) : a.date.localeCompare(b.date)
+      a.date === b.date
+        ? entryTimeKey(a).localeCompare(entryTimeKey(b))
+        : a.date.localeCompare(b.date)
     );
   if (entries.length === 0) return { error: 'No entries to invoice' };
   const already = entries.filter((e) => e.invoiced);
@@ -976,7 +1057,7 @@ async function handleWeeklyReportRoutes(
     }
     const settings = await loadSettings();
     const tz = cfg.timezone ?? getConfiguredTimezone(settings);
-    const window = weekWindow(endParam || zonedYMD(new Date(), tz));
+    const window = weekWindow(endParam || zonedYMD(new Date(), tz), cfg.windowDays);
     const rows = collectReportRows(store, cfg, window);
     return jsonResponse({
       window,

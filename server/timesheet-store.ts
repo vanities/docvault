@@ -34,11 +34,24 @@ export interface TimesheetClient {
   archived: boolean;
 }
 
+/** A billable sub-division of a project — the end client, matter, workstream,
+ * or cost code an hour actually served. Defined per project and attached to a
+ * time entry, so downstream reporting groups by recorded fact instead of
+ * guessing a category from the description text. */
+export interface SubClient {
+  id: string;
+  name: string;
+  archived: boolean;
+}
+
 export interface TimesheetProject {
   id: string;
   clientId: string;
   name: string;
   hourlyRate: number; // default rate applied to NEW entries
+  // Optional sub-divisions billable under this project. Absent/empty means the
+  // project isn't subdivided; entries just belong to the project itself.
+  subClients?: SubClient[];
   color?: string; // #rrggbb; falls back to the client's color when unset
   // Retainer floor for THIS engagement: when an invoice's billed work for
   // this project comes in under it, creation appends a labeled top-up line.
@@ -58,9 +71,13 @@ export interface TimesheetEntry {
   id: string;
   projectId: string;
   date: string; // YYYY-MM-DD (local date of start)
-  start: string; // HH:MM local wall time
-  end: string; // HH:MM local wall time; end < start means it crossed midnight
-  durationMinutes: number;
+  // Wall-clock span. Both are ABSENT on duration-first ("quick") entries, where
+  // the user logs "3h doing X" without pinning it to a clock time — so any
+  // consumer must tolerate undefined rather than assume a span exists.
+  start?: string; // HH:MM local wall time
+  end?: string; // HH:MM local wall time; end < start means it crossed midnight
+  durationMinutes: number; // authoritative; derived from start/end when present
+  subClientId?: string; // sub-division of the project this hour served
   description: string;
   hourlyRate: number; // snapshot of the project rate when logged
   amount: number; // billable ? durationMinutes/60 * hourlyRate : 0
@@ -144,11 +161,17 @@ export interface WeeklyReportRule {
 /** Config for the scheduled weekly timesheet report — a categorized summary
  * of the trailing week's raw entries (HTML email + CSV attachment) sent to a
  * billing contact so hours can be folded into downstream client bills. */
+/** How often the report goes out. The weekday+hour still decide WHEN within
+ * the period; cadence adds a minimum gap so biweekly/monthly skip send-days. */
+export type ReportCadence = 'weekly' | 'biweekly' | 'monthly';
+
 export interface WeeklyReportConfig {
   enabled: boolean;
   to: string; // comma/semicolon-separated recipients (sendEmail parses)
   day: number; // 0-6 (0=Sunday) — local weekday to send on
   hour: number; // 0-23 — local hour to send at
+  cadence: ReportCadence;
+  windowDays: number; // 1-90 — how far back the report reaches from the send date
   timezone?: string; // IANA zone override; unset = global configured timezone
   // Scope: a report goes to ONE client's billing contact, so it must be able
   // to exclude other clients' work. Empty = no filter (every entry).
@@ -185,8 +208,15 @@ function isClient(value: unknown): value is TimesheetClient {
   return typeof value.id === 'string' && typeof value.name === 'string';
 }
 
+function isSubClient(value: unknown): value is SubClient {
+  return isPlainObject(value) && typeof value.id === 'string' && typeof value.name === 'string';
+}
+
 function isProject(value: unknown): value is TimesheetProject {
   if (!isPlainObject(value)) return false;
+  if (value.subClients !== undefined) {
+    if (!Array.isArray(value.subClients) || !value.subClients.every(isSubClient)) return false;
+  }
   return (
     typeof value.id === 'string' &&
     typeof value.clientId === 'string' &&
@@ -197,12 +227,17 @@ function isProject(value: unknown): value is TimesheetProject {
 
 function isEntry(value: unknown): value is TimesheetEntry {
   if (!isPlainObject(value)) return false;
+  // start/end are optional (duration-first entries omit both), but a partial
+  // span is corrupt — reject one-without-the-other rather than half-render it.
+  const hasStart = typeof value.start === 'string';
+  const hasEnd = typeof value.end === 'string';
+  if (hasStart !== hasEnd) return false;
+  if (value.start !== undefined && !hasStart) return false;
+  if (value.end !== undefined && !hasEnd) return false;
   return (
     typeof value.id === 'string' &&
     typeof value.projectId === 'string' &&
     typeof value.date === 'string' &&
-    typeof value.start === 'string' &&
-    typeof value.end === 'string' &&
     typeof value.durationMinutes === 'number'
   );
 }
@@ -291,6 +326,18 @@ export async function saveTimesheetStore(store: TimesheetStore): Promise<void> {
 // ============================================================================
 
 /** Minutes between two HH:MM wall times, wrapping across midnight. */
+/** Sort key for ordering entries within a day. Duration-first entries have no
+ * clock position, so they sort after every timed entry rather than at 00:00. */
+export function entryTimeKey(entry: Pick<TimesheetEntry, 'start'>): string {
+  return entry.start ?? '99:99';
+}
+
+/** True when the entry was logged as a duration ("3h doing X") rather than a
+ * wall-clock span. Consumers that render a time range must check this. */
+export function isDurationEntry(entry: Pick<TimesheetEntry, 'start' | 'end'>): boolean {
+  return entry.start === undefined || entry.end === undefined;
+}
+
 export function spanMinutes(start: string, end: string): number {
   const [sh, sm] = start.split(':').map(Number);
   const [eh, em] = end.split(':').map(Number);
