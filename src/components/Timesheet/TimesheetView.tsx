@@ -13,8 +13,9 @@ import { InvoicesTab } from './InvoicesTab';
 import { AnalyticsTab } from './AnalyticsTab';
 import { CustomersTab } from './CustomersTab';
 import { TemplatesTab } from './TemplatesTab';
+import { WeeklyReportTab } from './WeeklyReportTab';
 
-type Tab = 'timesheet' | 'invoices' | 'analytics' | 'customers' | 'templates';
+type Tab = 'timesheet' | 'invoices' | 'analytics' | 'customers' | 'templates' | 'weekly-report';
 
 const TABS: { value: Tab; label: string }[] = [
   { value: 'timesheet', label: 'Timesheet' },
@@ -22,6 +23,7 @@ const TABS: { value: Tab; label: string }[] = [
   { value: 'analytics', label: 'Analytics' },
   { value: 'customers', label: 'Customers & Projects' },
   { value: 'templates', label: 'Templates' },
+  { value: 'weekly-report', label: 'Weekly Report' },
 ];
 
 const HOUR24_KEY = 'docvault-timesheet-24h';
@@ -112,6 +114,7 @@ export function TimesheetView() {
       {tab === 'analytics' && <AnalyticsTab store={store} />}
       {tab === 'customers' && <CustomersTab store={store} refresh={refresh} />}
       {tab === 'templates' && <TemplatesTab store={store} refresh={refresh} />}
+      {tab === 'weekly-report' && <WeeklyReportTab />}
     </div>
   );
 }

@@ -37,6 +37,12 @@ import {
   type EditionType,
 } from './daily-news-store.js';
 import { dailyNewsPlan, msUntilNextLocalHour } from './daily-news-schedule.js';
+import { loadTimesheetStore } from './timesheet-store.js';
+import {
+  normalizeWeeklyReportConfig,
+  weeklyReportDue,
+  sendWeeklyReport,
+} from './timesheet-report.js';
 import { getConfiguredTimezone, zonedYMD } from './tz.js';
 import { createLogger } from './logger.js';
 
@@ -63,6 +69,9 @@ let politicsRefreshTimer: ReturnType<typeof setInterval> | null = null;
 // Daily News fires at the configured local hour via a self-rescheduling
 // timeout (not an interval) so the send minute doesn't drift with deploys.
 let dailyNewsTimer: ReturnType<typeof setTimeout> | null = null;
+// Weekly timesheet report — same self-rescheduling pattern; config lives in
+// the timesheet store, so the arm function reloads it on every (re)schedule.
+let weeklyReportTimer: ReturnType<typeof setTimeout> | null = null;
 
 // ============================================================================
 // Schedule status tracking — persists last-ran timestamps per task to
@@ -75,6 +84,7 @@ export type ScheduleTaskName =
   | 'quantRefresh'
   | 'politicsRefresh'
   | 'dailyNewsRefresh'
+  | 'weeklyTimesheetReport'
   | 'encryptedBackup';
 
 export interface ScheduleTaskStatus {
@@ -104,6 +114,7 @@ export async function loadScheduleStatus(): Promise<ScheduleStatusMap> {
     quantRefresh: emptyStatus(),
     politicsRefresh: emptyStatus(),
     dailyNewsRefresh: emptyStatus(),
+    weeklyTimesheetReport: emptyStatus(),
     encryptedBackup: emptyStatus(),
   };
   try {
@@ -456,6 +467,51 @@ export async function runDailyNewsTick(): Promise<void> {
   }
 }
 
+/** Send the weekly timesheet report if one is due (weekday + hour + once per
+ * week). Safe to call at any time — the gate makes off-schedule calls no-ops. */
+export async function runWeeklyReportTick(): Promise<void> {
+  try {
+    const [settings, store] = await Promise.all([loadSettings(), loadTimesheetStore()]);
+    const cfg = normalizeWeeklyReportConfig(store.weeklyReport);
+    const weekEnd = weeklyReportDue(new Date(), cfg, getConfiguredTimezone(settings));
+    if (!weekEnd) return;
+    await trackRun('weeklyTimesheetReport', async () => {
+      logScheduler.info(`Weekly timesheet report due — sending week ending ${weekEnd}`);
+      const result = await sendWeeklyReport(weekEnd);
+      if (!result.ok) throw new Error(result.error ?? 'Weekly report send failed');
+    });
+  } catch (err) {
+    logScheduler.error('Weekly timesheet report tick failed:', String(err));
+  }
+}
+
+/** (Re)arm the weekly report timer from current config. Exported so the
+ * config route can re-arm after edits without restarting every scheduler. */
+export function armWeeklyReportTimer(): void {
+  if (weeklyReportTimer) clearTimeout(weeklyReportTimer);
+  weeklyReportTimer = null;
+  void Promise.all([loadSettings(), loadTimesheetStore()])
+    .then(([settings, store]) => {
+      const cfg = normalizeWeeklyReportConfig(store.weeklyReport);
+      if (!cfg.enabled) {
+        logScheduler.info('Weekly timesheet report: disabled');
+        return;
+      }
+      const tz = cfg.timezone ?? getConfiguredTimezone(settings);
+      const delayMs = msUntilNextLocalHour(new Date(), cfg.hour, tz);
+      weeklyReportTimer = setTimeout(() => {
+        void runWeeklyReportTick().finally(armWeeklyReportTimer);
+      }, delayMs);
+      logScheduler.info(
+        `Weekly timesheet report: next check in ${Math.round(delayMs / 60000)}m ` +
+          `(sends weekday ${cfg.day} at ${String(cfg.hour).padStart(2, '0')}:00 ${tz})`
+      );
+    })
+    .catch((err) => {
+      logScheduler.error('Weekly timesheet report arm failed:', String(err));
+    });
+}
+
 export async function runDropboxSync(): Promise<void> {
   return trackRun('dropboxSync', async () => {
     // Create encrypted config backup before syncing (if password is configured)
@@ -507,11 +563,13 @@ export function startScheduler(schedules: Settings['schedules'] = {}): void {
   if (quantRefreshTimer) clearInterval(quantRefreshTimer);
   if (politicsRefreshTimer) clearInterval(politicsRefreshTimer);
   if (dailyNewsTimer) clearTimeout(dailyNewsTimer);
+  if (weeklyReportTimer) clearTimeout(weeklyReportTimer);
   snapshotTimer = null;
   dropboxSyncTimer = null;
   quantRefreshTimer = null;
   politicsRefreshTimer = null;
   dailyNewsTimer = null;
+  weeklyReportTimer = null;
 
   const snapshotEnabled = schedules?.snapshotEnabled !== false; // default on
   const snapshotMinutes = schedules?.snapshotIntervalMinutes || DEFAULT_SNAPSHOT_INTERVAL;
@@ -578,6 +636,11 @@ export function startScheduler(schedules: Settings['schedules'] = {}): void {
   } else {
     logScheduler.info('Daily News: disabled');
   }
+
+  // Weekly timesheet report — config lives in the TIMESHEET store (not
+  // settings.schedules), so arming reloads it itself. Boot catch-up tick:
+  // a restart after the send hour on the send day still delivers the report.
+  void runWeeklyReportTick().finally(armWeeklyReportTimer);
 }
 
 // Initialize scheduler on startup — take an immediate snapshot then start intervals
