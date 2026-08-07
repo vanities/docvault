@@ -389,3 +389,51 @@ describe('buildReportHtml', () => {
     expect(buildReportHtml([], window)).toContain('No time entries');
   });
 });
+
+describe('multi-line descriptions', () => {
+  const window = weekWindow('2026-07-31');
+
+  function storeWithLog(): TimesheetStore {
+    const store = makeStore();
+    store.entries = [
+      {
+        id: 'log',
+        projectId: 'p1',
+        date: '2026-07-28',
+        durationMinutes: 60,
+        description:
+          'Completed:\n- ABC-1: Did a thing\n- ABC-2: Did another\n\n\nIn Review:\n- ABC-3: Pending',
+        hourlyRate: 100,
+        amount: 100,
+        billable: true,
+        invoiced: false,
+      },
+    ];
+    return store;
+  }
+
+  it('keeps line structure instead of flattening the work log', () => {
+    const rows = collectReportRows(storeWithLog(), CFG, window);
+    expect(rows[0].description.split('\n')).toEqual([
+      'Completed:',
+      '- ABC-1: Did a thing',
+      '- ABC-2: Did another',
+      '',
+      'In Review:',
+      '- ABC-3: Pending',
+    ]);
+  });
+
+  it('renders those breaks as <br> in the email body', () => {
+    const rows = collectReportRows(storeWithLog(), CFG, window);
+    const html = buildReportHtml(rows, window);
+    expect(html).toContain('Completed:<br>- ABC-1: Did a thing<br>');
+    expect(html).not.toContain('- ABC-1: Did a thing - ABC-2');
+  });
+
+  it('quotes the embedded newlines in CSV so the row stays intact', () => {
+    const csv = buildReportCsv(collectReportRows(storeWithLog(), CFG, window));
+    expect(csv.split('\n')[0]).toContain('Description');
+    expect(csv).toContain('"Completed:\n- ABC-1: Did a thing');
+  });
+});

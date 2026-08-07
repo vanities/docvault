@@ -194,8 +194,17 @@ export interface ReportRow {
   billable: boolean;
 }
 
-function oneLine(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
+/** Normalize a description for reporting: keep line structure (a multi-line
+ * work log is a list, and flattening it produces an unreadable run-on), but
+ * collapse runs of blank lines and trailing spaces. CSV quotes embedded
+ * newlines and the HTML renderer converts them to <br>, so both are safe. */
+function tidyLines(text: string): string {
+  return text
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+/g, ' ').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function fmtHours(minutes: number): string {
@@ -239,7 +248,7 @@ export function collectReportRows(
         client: client?.name ?? '',
         project: project?.name ?? '',
         subClient: subClient ?? '',
-        description: oneLine(e.description),
+        description: tidyLines(e.description),
         minutes: e.durationMinutes,
         hourlyRate: e.hourlyRate,
         amount: e.amount,
@@ -301,6 +310,12 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+/** Escape, then keep the line breaks a work log depends on — email clients
+ * collapse raw newlines, so a bulleted description needs explicit <br>. */
+function multiline(s: string): string {
+  return esc(s).replace(/\n/g, '<br>');
+}
+
 const TD = 'padding:6px 10px;border-bottom:1px solid #e5e5ea;font-size:13px;';
 const TH = `${TD}text-align:left;color:#6b6b73;font-size:11px;text-transform:uppercase;`;
 
@@ -315,7 +330,7 @@ export function buildReportHtml(rows: ReportRow[], window: ReportWindow): string
         .map(
           (r) =>
             `<tr><td style="${TD}white-space:nowrap;">${r.date}</td>` +
-            `<td style="${TD}">${esc(r.description) || esc(r.project)}${r.billable ? '' : ' <em>(non-billable)</em>'}</td>` +
+            `<td style="${TD}">${multiline(r.description) || esc(r.project)}${r.billable ? '' : ' <em>(non-billable)</em>'}</td>` +
             `<td style="${TD}text-align:right;">${fmtHours(r.minutes)}</td></tr>`
         )
         .join('');
