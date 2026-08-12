@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vite-plus/test';
 import {
   applySourceCitations,
   buildCalendarDigest,
+  buildOvernightMetricBits,
   buildResearchDigestItems,
   selectDailyNewsStepCount,
   snapshotFromAllResponseBody,
@@ -99,6 +100,103 @@ describe('daily-news digest helpers', () => {
     expect(items.join('\n')).toContain('New report 2');
     expect(items.join('\n')).not.toContain('Old report');
     expect(items.join('\n')).not.toContain('Blank report');
+  });
+});
+
+describe('buildOvernightMetricBits', () => {
+  // Values mirror the real 2026-08-10 incident: the paper printed the
+  // 2026-08-09 night (6.9h) as "last night" because the phone hadn't synced
+  // the current day yet, and the only staleness check keyed off activity.
+  const heartFresh = { date: '2026-08-10', restingHR: 58, hrv: 43 };
+  const sleepAug9 = { date: '2026-08-09', asleepMinutes: 412, deepMinutes: 54, remMinutes: 82 };
+
+  test('same-day sleep reads as last night, stages included, no provenance label', () => {
+    const bits = buildOvernightMetricBits(
+      {
+        heart: { daily: [heartFresh] },
+        sleep: { daily: [{ ...sleepAug9, date: '2026-08-10' }] },
+      },
+      { useAvg: false, afterSince, editionDate: '2026-08-10' }
+    );
+
+    expect(bits).toContain('resting HR 58');
+    expect(bits).toContain('HRV 43');
+    expect(bits).toContain('6.9h sleep (0.9h deep, 1.4h REM)');
+    expect(bits.join(' ')).not.toContain('from 2026');
+  });
+
+  test('REGRESSION: a day-old night is labelled, never passed off as last night', () => {
+    // The since-window check alone passes a one-day-old night (day keys count
+    // as end-of-day), which is exactly how the 2026-08-10 edition printed the
+    // 08-09 night unlabelled. Only date === editionDate counts as last night.
+    const bits = buildOvernightMetricBits(
+      { heart: { daily: [heartFresh] }, sleep: { daily: [sleepAug9] } },
+      { useAvg: false, afterSince: () => true, editionDate: '2026-08-10' }
+    );
+
+    expect(bits).toContain('6.9h sleep (0.9h deep, 1.4h REM) — from 2026-08-09, not last night');
+  });
+
+  test('stale heart metrics carry their own date independently of sleep', () => {
+    const bits = buildOvernightMetricBits(
+      {
+        heart: { daily: [{ date: '2026-08-08', restingHR: 61, hrv: 39 }] },
+        sleep: { daily: [{ ...sleepAug9, date: '2026-08-10' }] },
+      },
+      {
+        useAvg: false,
+        afterSince: (d) => (d ?? '') >= '2026-08-10',
+        editionDate: '2026-08-10',
+      }
+    );
+
+    expect(bits).toContain('resting HR 61 (from 2026-08-08)');
+    expect(bits).toContain('HRV 39 (from 2026-08-08)');
+    // Sleep is current — it must not inherit the heart staleness.
+    expect(bits).toContain('6.9h sleep (0.9h deep, 1.4h REM)');
+  });
+
+  test('without an edition date, sleep falls back to the since-window check', () => {
+    const stale = buildOvernightMetricBits(
+      { sleep: { daily: [sleepAug9] } },
+      { useAvg: false, afterSince: () => false }
+    );
+    expect(stale).toContain('6.9h sleep (0.9h deep, 1.4h REM) — from 2026-08-09, not last night');
+
+    const fresh = buildOvernightMetricBits(
+      { sleep: { daily: [sleepAug9] } },
+      { useAvg: false, afterSince: () => true }
+    );
+    expect(fresh).toContain('6.9h sleep (0.9h deep, 1.4h REM)');
+  });
+
+  test('weekly averages keep the /night phrasing and skip provenance labels', () => {
+    const bits = buildOvernightMetricBits(
+      {
+        heart: {
+          daily: [
+            { date: '2026-08-09', restingHR: 60, hrv: 40 },
+            { date: '2026-08-10', restingHR: 56, hrv: 46 },
+          ],
+        },
+        sleep: {
+          daily: [
+            { date: '2026-08-09', asleepMinutes: 400 },
+            { date: '2026-08-10', asleepMinutes: 440 },
+          ],
+        },
+      },
+      { useAvg: true, afterSince: () => false, editionDate: '2026-08-10' }
+    );
+
+    expect(bits).toContain('resting HR 58');
+    expect(bits).toContain('HRV 43');
+    expect(bits).toContain('7.0h sleep/night');
+    expect(bits.join(' ')).not.toContain('from 2026');
+  });
+
+  test('missing series produce no bits', () => {
+    expect(buildOvernightMetricBits({}, { useAvg: false, afterSince })).toEqual([]);
   });
 });
 
