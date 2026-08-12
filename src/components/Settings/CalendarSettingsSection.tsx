@@ -22,17 +22,56 @@ interface CalendarToggles {
   showHolidays?: boolean;
   showDst?: boolean;
   showWeather?: boolean;
+  showOverdue?: boolean;
 }
 
-const TOGGLE_META: { key: keyof CalendarToggles; label: string; hint: string }[] = [
-  { key: 'showMoon', label: 'Moon phases', hint: 'new/quarter/full glyphs, supermoons, eclipses' },
-  { key: 'showSeasons', label: 'Seasons', hint: 'equinoxes and solstices' },
-  { key: 'showAstrology', label: 'Astrology', hint: 'zodiac signs, Mercury retrograde' },
-  { key: 'showMeteors', label: 'Meteor showers', hint: 'annual peak nights' },
-  { key: 'showSunTimes', label: 'Sunrise & sunset', hint: 'day panel, uses the weather location' },
-  { key: 'showHolidays', label: 'US holidays', hint: 'federal holidays on the grid' },
-  { key: 'showDst', label: 'Clock changes', hint: 'daylight-saving transitions' },
-  { key: 'showWeather', label: 'Forecast on grid', hint: 'next 7 days, from the weather location' },
+// `defaultOn` mirrors the server's getCalendarDisplayConfig: layers are ON
+// when absent, but overdue is opt-in — keep the two in sync.
+const TOGGLE_META: {
+  key: keyof CalendarToggles;
+  label: string;
+  hint: string;
+  defaultOn: boolean;
+}[] = [
+  {
+    key: 'showMoon',
+    label: 'Moon phases',
+    hint: 'new/quarter/full glyphs, supermoons, eclipses',
+    defaultOn: true,
+  },
+  { key: 'showSeasons', label: 'Seasons', hint: 'equinoxes and solstices', defaultOn: true },
+  {
+    key: 'showAstrology',
+    label: 'Astrology',
+    hint: 'zodiac signs, Mercury retrograde',
+    defaultOn: true,
+  },
+  { key: 'showMeteors', label: 'Meteor showers', hint: 'annual peak nights', defaultOn: true },
+  {
+    key: 'showSunTimes',
+    label: 'Sunrise & sunset',
+    hint: 'day panel, uses the weather location',
+    defaultOn: true,
+  },
+  {
+    key: 'showHolidays',
+    label: 'US holidays',
+    hint: 'federal holidays on the grid',
+    defaultOn: true,
+  },
+  { key: 'showDst', label: 'Clock changes', hint: 'daylight-saving transitions', defaultOn: true },
+  {
+    key: 'showWeather',
+    label: 'Forecast on grid',
+    hint: 'next 7 days, from the weather location',
+    defaultOn: true,
+  },
+  {
+    key: 'showOverdue',
+    label: 'Overdue tasks',
+    hint: 'off by default — the “Overdue” rail bucket, red chip rings, red day dot',
+    defaultOn: false,
+  },
 ];
 
 export function CalendarSettingsSection() {
@@ -79,11 +118,11 @@ export function CalendarSettingsSection() {
         <Loader2 className="w-4 h-4 animate-spin text-surface-600" />
       ) : (
         <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2 mb-4">
-          {TOGGLE_META.map(({ key, label, hint }) => (
+          {TOGGLE_META.map(({ key, label, hint, defaultOn }) => (
             <label key={key} className="flex items-start gap-2 text-[13px] text-surface-900">
               <input
                 type="checkbox"
-                checked={toggles[key] !== false}
+                checked={toggles[key] ?? defaultOn}
                 onChange={(e) => setToggles((t) => ({ ...t, [key]: e.target.checked }))}
                 className="accent-emerald-500 mt-0.5"
               />

@@ -56,7 +56,8 @@ interface WeatherDaySummary {
 }
 
 /** Per-layer display toggles, server-persisted in settings.calendar so the
- * Daily News respects the same choices. Everything defaults ON. */
+ * Daily News respects the same choices. Everything defaults ON except
+ * `showOverdue`, which is opt-IN. */
 export interface CalendarDisplaySettings {
   showMoon?: boolean; // phases + eclipses + supermoons
   showSeasons?: boolean; // equinoxes/solstices
@@ -66,6 +67,7 @@ export interface CalendarDisplaySettings {
   showHolidays?: boolean;
   showDst?: boolean;
   showWeather?: boolean;
+  showOverdue?: boolean; // past-due bucket, red rings, red day dot
 }
 
 const on = (v: boolean | undefined) => v !== false;
@@ -223,13 +225,22 @@ export function CalendarView() {
     setOptimistic(new Map());
   }, [occurrences]);
 
+  // Overdue is opt-in (see CalendarDisplaySettings). Clearing the flag here —
+  // one choke point — is what silences the red chip rings, the mobile red day
+  // dot, and the red relative label downstream; the agenda bucket is dropped
+  // separately in AgendaRail (it buckets on date, not on this flag).
+  const showOverdue = display.showOverdue === true;
+
   const effectiveOccurrences = useMemo(() => {
-    if (optimistic.size === 0) return occurrences;
+    if (optimistic.size === 0 && showOverdue) return occurrences;
     return occurrences.map((occ) => {
       const flip = optimistic.get(`${occ.eventId}:${occ.date}`);
-      return flip === undefined ? occ : { ...occ, completed: flip, overdue: false };
+      const completed = flip === undefined ? occ.completed : flip;
+      const overdue = showOverdue && flip === undefined ? occ.overdue : false;
+      if (completed === occ.completed && overdue === occ.overdue) return occ;
+      return { ...occ, completed, overdue };
     });
-  }, [occurrences, optimistic]);
+  }, [occurrences, optimistic, showOverdue]);
 
   const occurrencesByDate = useMemo(
     () => groupOccurrencesByDate(effectiveOccurrences),
@@ -410,6 +421,7 @@ export function CalendarView() {
           selectedDayAstro={selectedDayAstro}
           today={today}
           entities={entities}
+          showOverdue={showOverdue}
           onClearSelection={() => setSelectedDate(null)}
           onToggleComplete={handleToggleComplete}
           onOpenOccurrence={handleOpenOccurrence}

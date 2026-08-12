@@ -402,9 +402,14 @@ export interface CalendarDisplaySettings {
   showHolidays?: boolean;
   showDst?: boolean;
   showWeather?: boolean;
+  /** Past-due nagging on the calendar: the "Overdue" agenda bucket, red rings
+   * on chips, and the red day dot. The ONE toggle here that defaults OFF —
+   * absent means off, so a stale task doesn't sit there glowing red. */
+  showOverdue?: boolean;
 }
 
-/** Calendar display toggles with defaults applied (absent = ON). */
+/** Calendar display toggles with defaults applied (absent = ON, except
+ * `showOverdue`, which is opt-IN). */
 export async function getCalendarDisplayConfig(): Promise<Required<CalendarDisplaySettings>> {
   const c = (await loadSettings()).calendar ?? {};
   return {
@@ -416,6 +421,7 @@ export async function getCalendarDisplayConfig(): Promise<Required<CalendarDispl
     showHolidays: c.showHolidays !== false,
     showDst: c.showDst !== false,
     showWeather: c.showWeather !== false,
+    showOverdue: c.showOverdue === true,
   };
 }
 
