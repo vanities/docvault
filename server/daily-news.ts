@@ -298,9 +298,10 @@ interface SnapMetrics {
   activity?: {
     daily?: Array<{ date?: string; steps?: number | null; steps7dAvg?: number | null }>;
   };
-  heart?: { daily?: Array<{ restingHR?: number | null; hrv?: number | null }> };
+  heart?: { daily?: Array<{ date?: string; restingHR?: number | null; hrv?: number | null }> };
   sleep?: {
     daily?: Array<{
+      date?: string;
       asleepMinutes?: number | null;
       deepMinutes?: number | null;
       remMinutes?: number | null;
@@ -366,6 +367,66 @@ export function selectDailyNewsStepCount(
     ? (last((dailyAct ?? []).filter((d) => d.date != null && d.date < cutoff)) ?? lastAct)
     : lastAct;
   return lastCompleteAct?.steps ?? undefined;
+}
+
+/**
+ * Overnight metric bits (resting HR / HRV / sleep) for a person's digest line,
+ * with PER-METRIC staleness. The old code keyed staleness solely off the
+ * latest ACTIVITY day, so a sleep series that lagged behind (phone hadn't
+ * synced the current day by the 9 AM edition) was narrated as "last night"
+ * with coaching attached — the 2026-08-10 edition printed the 08-09 night
+ * unlabelled that way.
+ *
+ * Sleep on a daily edition is stricter than the since-window: day keys count
+ * as end-of-day in `afterSince`, so a one-day-old night passes the window.
+ * Only a sleep day equal to `editionDate` (sleep is keyed to the WAKE day) is
+ * "last night"; anything else is labelled `— from <date>, not last night`.
+ * Heart metrics use the window check and carry a `(from <date>)` label when
+ * they predate it. Weekly averages (`useAvg`) label nothing — they're a
+ * 7-day figure, not a claim about one night.
+ */
+export function buildOvernightMetricBits(
+  snap: Pick<SnapMetrics, 'heart' | 'sleep'>,
+  opts: { useAvg: boolean; afterSince: AfterSince; editionDate?: string }
+): string[] {
+  const bits: string[] = [];
+  const { useAvg, afterSince, editionDate } = opts;
+
+  const lastHeart = last(snap.heart?.daily);
+  const heartSuffix =
+    !useAvg && lastHeart?.date && !afterSince(lastHeart.date) ? ` (from ${lastHeart.date})` : '';
+  const rhr = useAvg ? avgLastN(snap.heart?.daily, (d) => d.restingHR) : lastHeart?.restingHR;
+  const hrv = useAvg ? avgLastN(snap.heart?.daily, (d) => d.hrv) : lastHeart?.hrv;
+  if (typeof rhr === 'number') bits.push(`resting HR ${Math.round(rhr)}${heartSuffix}`);
+  if (typeof hrv === 'number') bits.push(`HRV ${Math.round(hrv)}${heartSuffix}`);
+
+  const lastSleep = last(snap.sleep?.daily);
+  const sleepMin = useAvg
+    ? avgLastN(snap.sleep?.daily, (d) => d.asleepMinutes)
+    : lastSleep?.asleepMinutes;
+  if (typeof sleepMin === 'number') {
+    let sleepBit = `${(sleepMin / 60).toFixed(1)}h sleep${useAvg ? '/night' : ''}`;
+    // Daily editions report last night concretely, stages included.
+    if (!useAvg) {
+      const stages = [
+        typeof lastSleep?.deepMinutes === 'number'
+          ? `${(lastSleep.deepMinutes / 60).toFixed(1)}h deep`
+          : null,
+        typeof lastSleep?.remMinutes === 'number'
+          ? `${(lastSleep.remMinutes / 60).toFixed(1)}h REM`
+          : null,
+      ].filter(Boolean);
+      if (stages.length) sleepBit += ` (${stages.join(', ')})`;
+      const sleepFresh = lastSleep?.date
+        ? editionDate
+          ? lastSleep.date === editionDate
+          : afterSince(lastSleep.date)
+        : true; // no date on the record — nothing to judge against, keep old behavior
+      if (!sleepFresh) sleepBit += ` — from ${lastSleep?.date}, not last night`;
+    }
+    bits.push(sleepBit);
+  }
+  return bits;
 }
 
 // Markets shows the CURRENT market state (signals, watchlist) plus the net-worth
@@ -1027,39 +1088,14 @@ async function gatherHealth(
         // values but is labelled "as of <date>" rather than averaged.
         const useAvg = editionType === 'weekly' && !stale;
         // Daily editions use the last complete day for step count; overnight
-        // metrics (sleep/RHR/HRV) stay latest.
+        // metrics (sleep/RHR/HRV) stay latest, with PER-METRIC staleness labels
+        // — the global `stale` above only sees the activity series, and sleep
+        // regularly lags it when the phone hasn't synced by edition time.
         const steps = selectDailyNewsStepCount(dailyAct, { useAverage: useAvg, editionDate });
-        const rhr = useAvg
-          ? avgLastN(snap.heart?.daily, (d) => d.restingHR)
-          : last(snap.heart?.daily)?.restingHR;
-        const hrv = useAvg
-          ? avgLastN(snap.heart?.daily, (d) => d.hrv)
-          : last(snap.heart?.daily)?.hrv;
-        const lastSleep = last(snap.sleep?.daily);
-        const sleepMin = useAvg
-          ? avgLastN(snap.sleep?.daily, (d) => d.asleepMinutes)
-          : lastSleep?.asleepMinutes;
         const lb = snap.body?.headline?.currentLb;
         if (typeof steps === 'number')
           bits.push(`${Math.round(steps).toLocaleString()} steps${useAvg ? '/day' : ''}`);
-        if (typeof rhr === 'number') bits.push(`resting HR ${Math.round(rhr)}`);
-        if (typeof hrv === 'number') bits.push(`HRV ${Math.round(hrv)}`);
-        if (typeof sleepMin === 'number') {
-          let sleepBit = `${(sleepMin / 60).toFixed(1)}h sleep${useAvg ? '/night' : ''}`;
-          // Daily editions report last night concretely, stages included.
-          if (!useAvg) {
-            const stages = [
-              typeof lastSleep?.deepMinutes === 'number'
-                ? `${(lastSleep.deepMinutes / 60).toFixed(1)}h deep`
-                : null,
-              typeof lastSleep?.remMinutes === 'number'
-                ? `${(lastSleep.remMinutes / 60).toFixed(1)}h REM`
-                : null,
-            ].filter(Boolean);
-            if (stages.length) sleepBit += ` (${stages.join(', ')})`;
-          }
-          bits.push(sleepBit);
-        }
+        bits.push(...buildOvernightMetricBits(snap, { useAvg, afterSince, editionDate }));
         if (typeof lb === 'number') bits.push(`${Math.round(lb)} lb`);
         if (editionType === 'weekly') {
           const w = snap.workouts?.headline;
@@ -1543,7 +1579,7 @@ function buildSystem(
     'Immediately before the "## Action Items" list, include a "## Forecast & Opportunities" section — the edition\'s one FORWARD-looking desk. Synthesize across ALL desks (markets, politics, tech, health, local, research, finance) the most important things LIKELY to happen in the next day-to-week and what the owner could do about them. For EACH opportunity give, in tight prose: (1) the forward call and rough timeframe — what is likely, and by when; (2) a concrete option the owner could take; (3) sizing proportional to the owner\'s actual situation (a starter position, a dollar amount, or "watch only"); (4) the bull case AND the key risk / bear case in the same breath; (5) a confidence read — low, medium, or high. Prefer a few high-quality calls over a long list. This is the one place you may reason FORWARD beyond the literal digest, but every forecast must be built on a fact, date, signal, holding, or prediction-market probability that appears in the digest — never invent an event, price, or number. When an opportunity could be expressed through a risky instrument (e.g. far-out-of-the-money or short-dated options), name the risk plainly and prefer the lower-risk expression (shares, a longer horizon, or a smaller size) — surface the option, do not cheerlead it. If nothing forward-looking is well-supported, write one honest line saying so rather than padding. Frame everything as reasoned possibilities from the owner\'s own data and the odds, never as guaranteed advice.',
     'END the edition with a "## Action Items" section: a short, prioritized list of the SPECIFIC financial moves the data suggests the owner consider right now — and for EACH one, state the WHY in the same sentence, citing the concrete data point that motivates it. Draw across ALL desks, e.g.: an estimated-tax installment due within the window (pay $X by DATE — safe-harbor shortfall is $Y); idle cash to deploy or a deductible-contribution headroom; an allocation that has drifted (one sleeve now N% of net worth) worth trimming/rebalancing; a high-rate debt to prioritize vs. a 0% one to leave; a funding-stress or yield-curve signal that argues for caution or duration; a due or overdue calendar task or deadline. Rank by urgency and dollar impact. Ground every item in a number or date that appears in the digest — if the data does not support a concrete action, write a brief honest "No pressing money moves" line rather than inventing one. Frame as reasoned considerations from the owner\'s own data, never as guaranteed advice.',
     'When the "Research & Analysis" desk is present it carries the FULL text of newly-filed research (ZeroHedge, Lyn Alden, George Gammon, political transcripts, etc.) — actually read it and synthesize the key arguments, attributing analysts by name, rather than merely noting that a piece was filed.',
-    "In the Health section, give EVERY person who appears in the digest their OWN paragraph — never blend two people into one paragraph. Start each person's paragraph with their name in bold (e.g. `**<name>** — ...`) and separate paragraphs with a blank line, so each reads as a distinct mini-report citing that person's actual numbers. Do NOT let one person's story (e.g. an active illness) crowd the others out of the section; a sick household member leads the section but still gets only their own paragraph, not the whole desk. Be a supportive coach as well as a reporter: when someone's numbers are good (steps, workouts, resting heart rate, weight trend), say so plainly — one warm, specific affirmation per person is welcome. When sleep falls short (under ~7 hours total, or under ~1 hour of deep sleep), call it out directly with a gentle, actionable nudge (e.g. an earlier wind-down tonight) rather than burying it in neutral prose. Encouraging and concrete, never clinical or scolding.",
+    "In the Health section, give EVERY person who appears in the digest their OWN paragraph — never blend two people into one paragraph. Start each person's paragraph with their name in bold (e.g. `**<name>** — ...`) and separate paragraphs with a blank line, so each reads as a distinct mini-report citing that person's actual numbers. Do NOT let one person's story (e.g. an active illness) crowd the others out of the section; a sick household member leads the section but still gets only their own paragraph, not the whole desk. Be a supportive coach as well as a reporter: when someone's numbers are good (steps, workouts, resting heart rate, weight trend), say so plainly — one warm, specific affirmation per person is welcome. When sleep falls short (under ~7 hours total, or under ~1 hour of deep sleep), call it out directly with a gentle, actionable nudge (e.g. an earlier wind-down tonight) rather than burying it in neutral prose. Encouraging and concrete, never clinical or scolding. STALENESS: a metric carrying a 'from YYYY-MM-DD' note (e.g. `6.9h sleep — from 2026-08-09, not last night`) is data the phone has NOT synced since that date. Attribute it to that date explicitly, NEVER present it as last night's or today's reading, skip the sleep-shortfall coaching for it, and instead mention once, briefly, that that person's health sync is behind.",
     editionType === 'weekly'
       ? 'This is the WEEKLY DEEP-DIVE, covering the whole week: be substantial and thorough. Draw connections across desks, surface the week\'s through-lines, weave in the "state of things" the digest provides (balance sheet, holdings, health baselines), then a "## The Week in Review" synthesis, then the "## Forecast & Opportunities" section (described below) as the week-ahead outlook, and finally close with the "## Action Items" list (described below) as the very last section. Let the length match the depth of the material — a rich week warrants a long edition.'
       : "This is the DAILY edition, covering only what arrived since the last edition — the day's developments. Be substantive about that day: read and synthesize the full research filed today and report the concrete new items with their numbers and names. Keep the scope to the day — do not recap the whole week or restate standing balances (the weekly deep-dive does the week-in-review).",
