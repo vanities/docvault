@@ -1,7 +1,7 @@
 // Upcoming agenda — the right rail on desktop, stacked under the grid on
 // mobile. A selected day pins its full occurrence list at the top (that's
 // where "+N more" and mobile day-taps land); below it, pending occurrences
-// bucket into Overdue / Today / This Week, then a month-grouped "Coming
+// bucket into Overdue (opt-in) / Today / This Week, then a month-grouped "Coming
 // Months" outlook covers the rest of the ~6-month fetched horizon.
 
 import { X } from 'lucide-react';
@@ -42,6 +42,10 @@ interface AgendaRailProps {
   selectedDayAstro: DayAstro | null;
   today: string;
   entities: EntityConfig[];
+  /** Opt-in past-due nagging. When off, the Overdue bucket is dropped entirely
+   * — those tasks still live on the grid at their real date, they just stop
+   * piling up at the top of the rail. */
+  showOverdue: boolean;
   onClearSelection: () => void;
   onToggleComplete: (occ: Occurrence) => void;
   onOpenOccurrence: (occ: Occurrence) => void;
@@ -62,13 +66,15 @@ export function AgendaRail({
   selectedDayAstro,
   today,
   entities,
+  showOverdue,
   onClearSelection,
   onToggleComplete,
   onOpenOccurrence,
   onAddOnDay,
 }: AgendaRailProps) {
   const buckets = agendaBuckets(occurrences, today);
-  const total = buckets.overdue.length + buckets.today.length + buckets.week.length;
+  const visibleBuckets = showOverdue ? BUCKET_META : BUCKET_META.filter((b) => b.key !== 'overdue');
+  const total = visibleBuckets.reduce((n, b) => n + buckets[b.key].length, 0);
   // Beyond this week: month-grouped outlook over the fetched horizon.
   const monthGroups = comingMonthGroups(occurrences, addDays(today, 7), today);
 
@@ -164,7 +170,7 @@ export function AgendaRail({
             </span>
           )}
         </div>
-        {BUCKET_META.map(({ key, label, tone }) => {
+        {visibleBuckets.map(({ key, label, tone }) => {
           const list = buckets[key];
           if (list.length === 0) return null;
           return (

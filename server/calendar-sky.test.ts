@@ -13,6 +13,7 @@ const ALL_ON = {
   showHolidays: true,
   showDst: true,
   showWeather: true,
+  showOverdue: true, // unused by the sky builder; present to satisfy Required<>
 };
 
 describe('buildSkyWeekAheadItems', () => {

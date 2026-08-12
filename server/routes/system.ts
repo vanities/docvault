@@ -490,7 +490,8 @@ export async function handleSettingsRoutes(
       if (isValidTimeZone(w.timezone)) settings.weather.timezone = w.timezone;
     }
 
-    // Calendar display-layer toggles (booleans only; absent = ON).
+    // Calendar display-layer toggles (booleans only; absent = ON, except
+    // showOverdue which is opt-in — see getCalendarDisplayConfig).
     if (body.calendar && typeof body.calendar === 'object') {
       settings.calendar = settings.calendar ?? {};
       const toggles = [
@@ -502,6 +503,7 @@ export async function handleSettingsRoutes(
         'showHolidays',
         'showDst',
         'showWeather',
+        'showOverdue',
       ] as const;
       const c = body.calendar as Record<string, unknown>;
       for (const key of toggles) {
