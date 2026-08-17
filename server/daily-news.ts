@@ -1380,17 +1380,25 @@ async function gatherResearchDeep(
 /** Format pending calendar occurrences into digest lines + the rendered
  *  "Week Ahead" box data. Pure — testable without the store. Desk lines use
  *  whatever horizon the occurrences were projected over; the box always
- *  covers today..+7d plus anything overdue, capped at 20 rows. */
+ *  covers today..+7d plus anything overdue, capped at 20 rows.
+ *
+ *  `showOverdue` mirrors settings.calendar.showOverdue (opt-IN, default off)
+ *  and is REQUIRED so a new caller can't silently reintroduce the nagging.
+ *  When off the past-due tail is dropped outright rather than just losing its
+ *  chip: projectOccurrences deliberately drags overdue tasks in from BEFORE
+ *  the window, and the box filter below has no lower bound, so an un-flagged
+ *  8/06 row would still sit inside a "Week Ahead" that starts 8/17. */
 export function buildCalendarDigest(
   occurrences: Occurrence[],
-  today: string
+  today: string,
+  showOverdue: boolean
 ): { items: string[]; weekAhead: WeekAheadCalendar } {
   const overdueDays = (date: string): number => {
     const [y1, m1, d1] = date.split('-').map(Number);
     const [y2, m2, d2] = today.split('-').map(Number);
     return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86_400_000);
   };
-  const pending = occurrences.filter((o) => !o.completed);
+  const pending = occurrences.filter((o) => !o.completed && (showOverdue || !o.overdue));
   const items = pending.map((o) => {
     if (o.kind === 'birthday') {
       return `Birthday ${o.date}: ${o.title}${o.age !== undefined ? ` turns ${o.age}` : ''}.`;
@@ -1422,9 +1430,10 @@ export function buildCalendarDigest(
 }
 
 /** The Calendar desk: pending occurrences over the edition horizon (7d daily,
- *  30d weekly) plus overdue tasks, and the exact-date Week Ahead box —
- *  augmented with sky/almanac rows (moons, seasons, meteors, holidays, DST)
- *  from the shared math, honoring the settings.calendar display toggles. */
+ *  30d weekly) plus overdue tasks when that layer is on, and the exact-date
+ *  Week Ahead box — augmented with sky/almanac rows (moons, seasons, meteors,
+ *  holidays, DST) from the shared math, honoring the settings.calendar
+ *  display toggles. */
 async function gatherCalendar(
   editionType: EditionType,
   warn?: WarningSink
@@ -1433,14 +1442,17 @@ async function gatherCalendar(
     const horizonDays = editionType === 'weekly' ? 30 : 7;
     const today = await calendarToday();
     const store = await loadCalendarStore();
+    // Loaded BEFORE the digest, not just for the sky rows: overdue nagging is
+    // the one opt-in layer, and the edition is a second consumer of it
+    // alongside CalendarView.
+    const cfg = await getCalendarDisplayConfig();
     const occurrences = projectOccurrences(
       store.events,
       { start: today, end: addInterval(today, horizonDays, 'day') },
       today
     );
-    const digest = buildCalendarDigest(occurrences, today);
+    const digest = buildCalendarDigest(occurrences, today, cfg.showOverdue);
     try {
-      const cfg = await getCalendarDisplayConfig();
       const sky = buildSkyWeekAheadItems(today, digest.weekAhead.end, cfg);
       if (sky.length > 0) {
         digest.weekAhead.items = [...digest.weekAhead.items, ...sky].sort((a, b) =>

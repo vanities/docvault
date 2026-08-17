@@ -302,7 +302,8 @@ describe('buildCalendarDigest', () => {
           recurrenceLabel: 'one-off',
         }),
       ],
-      TODAY
+      TODAY,
+      true
     );
     expect(items).toEqual([
       'Due 2026-08-03: Replace air filter (every 3 months).',
@@ -323,7 +324,8 @@ describe('buildCalendarDigest', () => {
         occ({ title: 'Beyond the week', date: '2026-08-20' }),
         ...many,
       ],
-      TODAY
+      TODAY,
+      true
     );
     expect(weekAhead.start).toBe(TODAY);
     expect(weekAhead.end).toBe('2026-08-07');
@@ -345,10 +347,61 @@ describe('buildCalendarDigest', () => {
           recurrenceLabel: 'yearly',
         }),
       ],
-      TODAY
+      TODAY,
+      true
     );
     expect(weekAhead.items).toEqual([
       { date: '2026-08-01', title: 'Sam', kind: 'birthday', age: 12 },
     ]);
+  });
+
+  // The edition is a SECOND consumer of settings.calendar.showOverdue next to
+  // CalendarView; before this it re-derived overdue from projectOccurrences and
+  // never asked, so past-due tasks kept nagging from a "Week Ahead" box.
+  test('showOverdue=false drops the past-due tail from BOTH desk lines and the box', () => {
+    const { items, weekAhead } = buildCalendarDigest(
+      [
+        occ({ title: 'Late chore', date: '2026-07-27', overdue: true }),
+        occ({ title: 'Missed dentist', date: '2026-07-20', overdue: true }),
+        occ({ title: 'Upcoming chore', date: '2026-08-03' }),
+      ],
+      TODAY,
+      false
+    );
+    expect(items).toEqual(['Due 2026-08-03: Upcoming chore (every 3 months).']);
+    expect(weekAhead.items.map((i) => i.title)).toEqual(['Upcoming chore']);
+  });
+
+  // Regression guard for the real shape of the bug: the box filter is
+  // `date <= weekEnd || overdue` with NO lower bound, so merely clearing the
+  // flag would leave a 7/20 row sitting inside a window that starts 7/31.
+  test('showOverdue=false removes the row entirely, not just the overdue chip', () => {
+    const { weekAhead } = buildCalendarDigest(
+      [occ({ title: 'Late chore', date: '2026-07-27', overdue: true })],
+      TODAY,
+      false
+    );
+    expect(weekAhead.items).toEqual([]);
+  });
+
+  test('showOverdue=false leaves past non-completable rows alone', () => {
+    // Birthdays/events are never flagged overdue, so the toggle must not eat
+    // them even when they predate the window.
+    const { weekAhead } = buildCalendarDigest(
+      [
+        occ({
+          kind: 'birthday',
+          title: 'Sam',
+          date: '2026-07-29',
+          age: 12,
+          completable: false,
+          overdue: false,
+          recurrenceLabel: 'yearly',
+        }),
+      ],
+      TODAY,
+      false
+    );
+    expect(weekAhead.items.map((i) => i.title)).toEqual(['Sam']);
   });
 });
