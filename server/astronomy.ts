@@ -389,12 +389,34 @@ export function sunTimesForDate(iso: string, latitude: number, longitude: number
   };
 }
 
-export function formatClock(d: Date): string {
-  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+/** Wall-clock rendering of an instant. `timeZone` is optional so the browser
+ * (Calendar) keeps using its own zone, while the server passes the household
+ * zone explicitly — the container's own TZ is not the source of truth. */
+export function formatClock(d: Date, timeZone?: string): string {
+  return d.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    ...(timeZone ? { timeZone } : {}),
+  });
 }
 
 export function formatDaylight(minutes: number): string {
   return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
+}
+
+/** Day-over-day change in daylight, almanac style: "+2m 17s", "-2m 00s", "+1s".
+ * Seconds are the right unit: within a few days of a solstice the daily change
+ * drops under a minute, so rounding to minutes would read as a flat "0m" for a
+ * fortnight. The sunrise/sunset approximation's error is systematic day to day,
+ * so it largely cancels in this difference — the turnaround still lands on the
+ * solstice. */
+export function formatDaylightDelta(seconds: number): string {
+  const rounded = Math.round(seconds);
+  const sign = rounded < 0 ? '-' : '+';
+  const abs = Math.abs(rounded);
+  const m = Math.floor(abs / 60);
+  const s = abs % 60;
+  return m > 0 ? `${sign}${m}m ${String(s).padStart(2, '0')}s` : `${sign}${s}s`;
 }
 
 // ---------------------------------------------------------------------------
