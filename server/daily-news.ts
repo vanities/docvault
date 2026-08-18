@@ -55,8 +55,9 @@ import {
 } from './data.js';
 import { calendarToday, loadCalendarStore, type CalendarEventKind } from './calendar-store.js';
 import { addInterval, projectOccurrences, type Occurrence } from './calendar-recurrence.js';
-import { buildSkyWeekAheadItems } from './calendar-sky.js';
+import { buildSkyWeekAheadItems, buildSunAlmanac, type SunAlmanac } from './calendar-sky.js';
 import { fetchWeekForecast, forecastToLines, type WeatherForecast } from './weather.js';
+import { getConfiguredTimezone } from './tz.js';
 import { listResearchEntries, type ResearchEntry } from './routes/research.js';
 import { getLatestStrategy } from './routes/strategy.js';
 import { getLatestHealthAnalysis } from './routes/health-analysis.js';
@@ -175,6 +176,8 @@ export interface Digest {
   sourceWarnings: DigestSourceWarning[];
   /** Week-ahead forecast for the rendered weather box (Open-Meteo); optional. */
   weather?: WeatherForecast;
+  /** Sunrise/sunset/daylight for the edition's date, for the rendered sun strip. */
+  sun?: SunAlmanac;
   /** Calendar week-ahead for the rendered box (exact dates, never through the LLM). */
   weekAhead?: WeekAheadCalendar;
 }
@@ -215,6 +218,8 @@ export interface GenerateResult {
   };
   /** Forecast carried through so the renderer can draw the weather box. */
   weather?: WeatherForecast;
+  /** Sun almanac carried through so the renderer can draw the sun strip. */
+  sun?: SunAlmanac;
   /** Calendar week-ahead carried through so the renderer can draw its box. */
   weekAhead?: WeekAheadCalendar;
 }
@@ -1488,6 +1493,37 @@ async function gatherWeather(warn?: WarningSink): Promise<WeatherForecast | null
   }
 }
 
+/** Sunrise/sunset/daylight for the edition's own date, at the configured
+ *  location. Two deliberate gates, and only two:
+ *   • settings.calendar.showSunTimes — the same layer switch the Calendar's
+ *     agenda uses, so turning sun times off there turns them off in the paper.
+ *   • coordinates being set at all (settings.weather is the single location
+ *     source). NOT weather.enabled: this is local astronomical math, not an
+ *     Open-Meteo fetch, so an off/failing forecast shouldn't take it down.
+ *  Formatted in the household timezone, not the container's. */
+async function gatherSun(editionDate?: string, warn?: WarningSink): Promise<SunAlmanac | null> {
+  try {
+    const [location, display, settings] = await Promise.all([
+      getWeatherConfig(),
+      getCalendarDisplayConfig(),
+      loadSettings(),
+    ]);
+    if (location.latitude == null || location.longitude == null) return null;
+    const date =
+      editionDate && /^\d{4}-\d{2}-\d{2}$/.test(editionDate) ? editionDate : await calendarToday();
+    return buildSunAlmanac(
+      date,
+      location.latitude,
+      location.longitude,
+      getConfiguredTimezone(settings),
+      display
+    );
+  } catch (err) {
+    emitDigestWarning(warn, 'sun', err);
+    return null;
+  }
+}
+
 /** Gather the full digest across all desks, windowed by `sinceISO`. */
 export async function gatherDigest(
   editionType: EditionType,
@@ -1521,7 +1557,7 @@ export async function gatherDigest(
   };
   const t0 = Date.now();
 
-  const [markets, politics, finance, health, docsResult, researchDeep, calendar, weather] =
+  const [markets, politics, finance, health, docsResult, researchDeep, calendar, weather, sun] =
     await Promise.all([
       gatherMarkets(editionType, sinceISO, warn),
       gatherPolitics(afterSince, warn),
@@ -1531,6 +1567,7 @@ export async function gatherDigest(
       gatherResearchDeep(afterSince, warn),
       gatherCalendar(editionType, warn),
       gatherWeather(warn),
+      gatherSun(editionDate, warn),
     ]);
   const docs = docsResult.items;
 
@@ -1556,6 +1593,7 @@ export async function gatherDigest(
       `finance=${finance.length} health=${health.length} research=${researchDeep.research.length} ` +
       `docs=${docs.length} calendar=${calendar.items.length} ` +
       `weather=${weather ? `${weather.days.length}d` : 'off'} ` +
+      `sun=${sun ? `${sun.sunrise}/${sun.sunset}` : 'off'} ` +
       `(sections=${sections.length} items=${itemCount}) in ${Date.now() - t0}ms`
   );
   return {
@@ -1568,6 +1606,7 @@ export async function gatherDigest(
     citations: researchDeep.citations,
     sourceWarnings,
     weather: weather ?? undefined,
+    sun: sun ?? undefined,
     weekAhead: calendar.weekAhead ?? undefined,
   };
 }
@@ -1633,6 +1672,19 @@ function renderDigestPrompt(digest: Digest, title: string, dateLabel: string): s
         `one brief line of the lede if it's relevant):`
     );
     for (const line of forecastToLines(digest.weather)) lines.push(`- ${line}`);
+    lines.push('');
+  }
+  if (digest.sun) {
+    // Same contract as the weather box: rendered separately, so the editor gets
+    // it only as optional seasonal color — never as its own section.
+    lines.push(
+      `Almanac — sunrise ${digest.sun.sunrise}, sunset ${digest.sun.sunset}, ` +
+        `${digest.sun.daylight} of daylight` +
+        (digest.sun.delta ? ` (${digest.sun.delta} vs. yesterday)` : '') +
+        `. A sun strip is rendered separately, so do NOT write a dedicated ` +
+        `almanac/daylight section; you MAY use it for one line of seasonal ` +
+        `color in the lede if it's genuinely relevant.`
+    );
     lines.push('');
   }
   if (digest.weekAhead && digest.weekAhead.items.length > 0) {
@@ -1724,6 +1776,7 @@ export async function synthesizeEdition(
       sourceWarnings: digest.sourceWarnings,
     },
     weather: digest.weather,
+    sun: digest.sun,
     weekAhead: digest.weekAhead,
   };
 }

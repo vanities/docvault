@@ -318,6 +318,12 @@ footer { margin-top:40px; border-top:1px solid var(--rule); padding-top:16px; co
 .wx-day .t { color:var(--fg); white-space:nowrap; }
 .wx-day .t .lo { color:var(--muted); }
 .wx-day .p { color:var(--accent); font-size:10px; }
+.sunbox { display:flex; align-items:baseline; flex-wrap:wrap; gap:6px 16px; margin:0; padding:8px 0 9px;
+  border-bottom:1px solid var(--rule); font:12px/1.4 system-ui,sans-serif; color:var(--muted); }
+.sunbox .sun-label { font:700 11px/1 system-ui,sans-serif; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--muted); padding-right:2px; white-space:nowrap; }
+.sunbox .sv { color:var(--fg); font-weight:600; white-space:nowrap; }
+.sunbox .sd { color:var(--accent); white-space:nowrap; }
 .calbox { margin:10px 0 2px; padding:8px 0 10px; border-bottom:1px solid var(--rule); }
 .calbox .cal-label { font:700 11px/1 system-ui,sans-serif; letter-spacing:.1em; text-transform:uppercase;
   color:var(--muted); display:block; margin-bottom:6px; }
@@ -375,6 +381,50 @@ function renderWeatherEmail(w: Edition['weather'], s: ReturnType<typeof themeSty
     `<tr><td style="font:700 11px/1 system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:${s.muted};padding:8px 6px;white-space:nowrap;vertical-align:middle;">${escapeHtml(
       w.label
     )} · °${w.units}</td>${cells}</tr></table>`
+  );
+}
+
+/** The sun strip's three readings, shared by the HTML and email renderers so
+ *  they can never drift. Values arrive pre-formatted in the household timezone
+ *  (see buildSunAlmanac) — the renderer does no date math of its own. */
+function sunParts(sun: NonNullable<Edition['sun']>): Array<{ label: string; value: string }> {
+  return [
+    { label: '🌅 Sunrise', value: sun.sunrise },
+    { label: '🌇 Sunset', value: sun.sunset },
+    { label: '☀️ Daylight', value: sun.daylight },
+  ];
+}
+
+/** The almanac sun strip — sunrise/sunset/daylight for the edition's own date,
+ *  rendered directly from server-computed values so the LLM never touches the
+ *  clock times. Empty string when the edition carries no sun reading (layer off,
+ *  no location, or polar day/night). */
+function renderSunBox(sun: Edition['sun']): string {
+  if (!sun) return '';
+  const cells = sunParts(sun)
+    .map((p) => `<span>${p.label} <span class="sv">${escapeHtml(p.value)}</span></span>`)
+    .join('');
+  const delta = sun.delta ? `<span class="sd">${escapeHtml(sun.delta)} vs. yesterday</span>` : '';
+  return `<div class="sunbox"><span class="sun-label">Sun</span>${cells}${delta}</div>`;
+}
+
+/** Email-safe sun strip — inline styles only, mirroring renderWeatherEmail. */
+function renderSunEmail(sun: Edition['sun'], s: ReturnType<typeof themeStyle>): string {
+  if (!sun) return '';
+  const cells = sunParts(sun)
+    .map(
+      (p) =>
+        `<span style="white-space:nowrap;">${p.label} <span style="color:${s.fg};font-weight:600;">${escapeHtml(p.value)}</span></span>`
+    )
+    .join('&nbsp;&nbsp;&nbsp; ');
+  const delta = sun.delta
+    ? `&nbsp;&nbsp;&nbsp; <span style="color:${s.accent};white-space:nowrap;">${escapeHtml(sun.delta)} vs. yesterday</span>`
+    : '';
+  return (
+    `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 14px;border-collapse:collapse;border-bottom:1px solid ${s.rule};">` +
+    `<tr><td style="font:12px/1.7 system-ui,sans-serif;color:${s.muted};padding:0 0 8px;">` +
+    `<span style="font:700 11px/1 system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;">Sun</span>` +
+    `&nbsp;&nbsp;&nbsp; ${cells}${delta}</td></tr></table>`
   );
 }
 
@@ -513,6 +563,7 @@ export function renderEditionHtml(edition: Edition, heroSrc?: string): string {
       : ''
   }<span class="badge">${editionBadge(edition)}</span></div>
   ${weatherHtml}
+  ${renderSunBox(edition.sun)}
   ${renderWeekAheadBox(edition.weekAhead)}
   ${indexHtml}
   <article class="edition">${body}</article>
@@ -548,6 +599,7 @@ export function renderEditionEmailHtml(edition: Edition, heroSrc?: string): stri
       : ''
   } · ${editionBadge(edition)}</div>
   ${renderWeatherEmail(edition.weather, s)}
+  ${renderSunEmail(edition.sun, s)}
   ${renderWeekAheadEmail(edition.weekAhead, s)}
   <div style="font-size:16px;line-height:1.6;">${body}</div>
   ${sourceNotes}

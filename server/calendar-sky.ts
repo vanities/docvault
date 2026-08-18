@@ -7,7 +7,14 @@
 // getCalendarDisplayConfig): a layer turned off in the calendar disappears
 // from the paper too.
 
-import { moonPhasesByDate, seasonMarksByDate } from './astronomy.js';
+import {
+  formatClock,
+  formatDaylight,
+  formatDaylightDelta,
+  moonPhasesByDate,
+  seasonMarksByDate,
+  sunTimesForDate,
+} from './astronomy.js';
 import { dstTransitionsByDate, meteorShowersByDate, usHolidaysByDate } from './almanac.js';
 import type { CalendarDisplaySettings } from './data.js';
 
@@ -64,4 +71,67 @@ export function buildSkyWeekAheadItems(
   }
   out.sort((a, b) => (a.date < b.date ? -1 : 1));
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// The almanac sun line — sunrise/sunset for the edition's own date. Unlike the
+// sky rows above (dated events inside a week-long window), this is a reading
+// for ONE day, so it renders as its own strip beside the weather rather than as
+// a Week Ahead row.
+// ---------------------------------------------------------------------------
+
+export interface SunAlmanac {
+  /** YYYY-MM-DD these readings are for. */
+  date: string;
+  /** Already formatted in the household timezone, e.g. "6:08 AM". */
+  sunrise: string;
+  sunset: string;
+  /** Length of the day, e.g. "13h 25m". */
+  daylight: string;
+  /** Change vs. yesterday, e.g. "-2m 00s"; absent if yesterday can't be computed. */
+  delta?: string;
+}
+
+/** Yesterday's YYYY-MM-DD. UTC arithmetic on the date parts only — no clock
+ * component, so a DST boundary can't shift it. */
+function previousDay(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
+}
+
+/**
+ * Sunrise/sunset/daylight for `iso` at a location, pre-formatted for rendering.
+ *
+ * Gated by cfg.showSunTimes — the same "a layer off in the Calendar is off in
+ * the paper" contract the sky rows follow. Returns null when the layer is off
+ * or the sun never rises/sets that day (polar latitudes).
+ *
+ * Times are formatted with an EXPLICIT `timeZone` rather than the process zone:
+ * the server renders this, and the container's TZ is not the source of truth
+ * (see getConfiguredTimezone).
+ */
+export function buildSunAlmanac(
+  iso: string,
+  latitude: number,
+  longitude: number,
+  timeZone: string,
+  cfg: Required<CalendarDisplaySettings>
+): SunAlmanac | null {
+  if (!cfg.showSunTimes) return null;
+  const today = sunTimesForDate(iso, latitude, longitude);
+  if (!today) return null;
+  const yesterday = sunTimesForDate(previousDay(iso), latitude, longitude);
+  const deltaSeconds = yesterday
+    ? (today.sunset.getTime() -
+        today.sunrise.getTime() -
+        (yesterday.sunset.getTime() - yesterday.sunrise.getTime())) /
+      1000
+    : null;
+  return {
+    date: iso,
+    sunrise: formatClock(today.sunrise, timeZone),
+    sunset: formatClock(today.sunset, timeZone),
+    daylight: formatDaylight(today.daylightMinutes),
+    ...(deltaSeconds !== null ? { delta: formatDaylightDelta(deltaSeconds) } : {}),
+  };
 }

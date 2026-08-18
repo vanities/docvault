@@ -26,6 +26,7 @@ import { generateHeadlineImage } from './daily-news-image.js';
 import { narrateEdition } from './daily-news-narration.js';
 import { listThemes } from './daily-news-themes.js';
 import type { WeatherForecast } from './weather.js';
+import type { SunAlmanac } from './calendar-sky.js';
 
 const log = createLogger('DailyNewsStore');
 const STORE_PATH = path.join(DATA_DIR, '.docvault-daily-news.json');
@@ -46,6 +47,8 @@ export interface Edition {
   sample?: boolean;
   /** Week-ahead weather forecast for the rendered box (Open-Meteo); optional. */
   weather?: WeatherForecast;
+  /** Sunrise/sunset/daylight for this edition's date, for the sun strip; optional. */
+  sun?: SunAlmanac;
   /** Calendar week-ahead for the rendered box (exact dates); optional. */
   weekAhead?: WeekAheadCalendar;
   /** Synthesized newspaper markdown. */
@@ -176,6 +179,7 @@ export async function startEdition(
         body: result.body,
         theme: result.theme,
         weather: result.weather,
+        sun: result.sun,
         weekAhead: result.weekAhead,
         digestMeta: result.digestMeta,
         usage: result.usage,
@@ -287,6 +291,7 @@ export async function startThemeSamples(
           body: result.body,
           theme: result.theme,
           weather: result.weather,
+          sun: result.sun,
           weekAhead: result.weekAhead,
           digestMeta: result.digestMeta,
           usage: result.usage,

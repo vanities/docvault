@@ -78,6 +78,39 @@ describe('daily-news-report', () => {
     }
   });
 
+  test('renders the sun strip in both the full edition and the email body', () => {
+    const withSun: Edition = {
+      ...edition('## Main\n\nBody'),
+      sun: {
+        date: '2026-06-05',
+        sunrise: '5:31 AM',
+        sunset: '8:04 PM',
+        daylight: '14h 33m',
+        delta: '+42s',
+      },
+    };
+
+    // Email clients strip <style> blocks, so the email variant has to carry its
+    // own inline-styled copy — a strip that only shows in the downloadable HTML
+    // is the exact bug this pins.
+    for (const html of [renderEditionHtml(withSun), renderEditionEmailHtml(withSun)]) {
+      expect(html).toContain('5:31 AM');
+      expect(html).toContain('8:04 PM');
+      expect(html).toContain('14h 33m');
+      expect(html).toContain('+42s vs. yesterday');
+    }
+  });
+
+  test('omits the sun strip entirely when the edition carries no reading', () => {
+    for (const html of [
+      renderEditionHtml(edition('## Main\n\nBody')),
+      renderEditionEmailHtml(edition('## Main\n\nBody')),
+    ]) {
+      expect(html).not.toContain('vs. yesterday');
+      expect(html).not.toContain('Sunrise');
+    }
+  });
+
   test('strips unsafe HTML from the markdown body in full and email renders', () => {
     const body = [
       '## Safe headline',
