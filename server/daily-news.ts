@@ -68,6 +68,7 @@ import { listRuns } from './deep-research-store.js';
 import { loadQuantCache } from './routes/quant.js';
 import { fetchTickerPrices } from './ticker-prices.js';
 import { loadPoliticsFeedPayload } from './politics/feed-store.js';
+import { buildPoliticsTradeDigest } from './politics/news-digest.js';
 import type { BillRecord, ExecutiveActionRecord, TradeRecord } from './politics/types.js';
 import { readBrainContent } from './brain.js';
 import { sendEmail } from './email.js';
@@ -615,7 +616,13 @@ async function gatherMarkets(
   return items;
 }
 
-async function gatherPolitics(afterSince: AfterSince, warn?: WarningSink): Promise<string[]> {
+async function gatherPolitics(
+  afterSince: AfterSince,
+  editionType: EditionType,
+  sinceISO: string,
+  editionDate?: string,
+  warn?: WarningSink
+): Promise<string[]> {
   const items: string[] = [];
   try {
     const feed = await loadPoliticsFeedPayload();
@@ -637,18 +644,35 @@ async function gatherPolitics(afterSince: AfterSince, warn?: WarningSink): Promi
     }
     const trades = (feed.trades as { trades?: TradeRecord[] } | TradeRecord[] | undefined) ?? [];
     const tradeList = Array.isArray(trades) ? trades : (trades.trades ?? []);
-    const recentTrades = tradeList.filter((t) => afterSince(t.filingDate ?? t.tradeDate));
-    for (const t of recentTrades) {
-      items.push(
-        `${t.politicianName} (${t.chamber}) ${t.category} ${t.ticker ?? t.assetName}` +
-          `${t.amount ? ` ${t.amount}` : ''} — traded ${t.tradeDate}` +
-          `${t.filingDate ? `, filed ${t.filingDate}` : ''}.`
-      );
-    }
+    // Trades go through the tiered digest (consensus clusters → notable
+    // individuals → collapsed tail) rather than one flat line per transaction,
+    // so the desk leads with several members moving the same name instead of
+    // burying it under Treasury bills. See server/politics/news-digest.ts.
+    const today = await politicsToday(editionDate);
+    const tradeDigest = buildPoliticsTradeDigest(tradeList, {
+      since: sinceISO.slice(0, 10),
+      today,
+      standingDays: editionType === 'weekly' ? 30 : 7,
+    });
+    items.push(...tradeDigest.lines);
+    log.info(
+      `[digest] politics/trades window=${tradeDigest.windowStart}` +
+        `${tradeDigest.standing ? ' (standing)' : ''} disclosed=${tradeDigest.counts.disclosed} ` +
+        `members=${tradeDigest.counts.members} clusters=${tradeDigest.counts.clusters} ` +
+        `notable=${tradeDigest.counts.notable} tail=${tradeDigest.counts.tail}`
+    );
   } catch (err) {
     emitDigestWarning(warn, 'politics/feed', err);
   }
   return items;
+}
+
+/** Anchor date for the politics standing window — the edition's own date when
+ *  it has one, else the household's today. Kept out of buildPoliticsTradeDigest
+ *  so that stays clock-free and unit-testable. */
+async function politicsToday(editionDate?: string): Promise<string> {
+  if (editionDate && /^\d{4}-\d{2}-\d{2}$/.test(editionDate)) return editionDate;
+  return calendarToday();
 }
 
 /** Estimated-tax and contribution stores are keyed by `entity/year`
@@ -1560,7 +1584,7 @@ export async function gatherDigest(
   const [markets, politics, finance, health, docsResult, researchDeep, calendar, weather, sun] =
     await Promise.all([
       gatherMarkets(editionType, sinceISO, warn),
-      gatherPolitics(afterSince, warn),
+      gatherPolitics(afterSince, editionType, sinceISO, editionDate, warn),
       gatherFinance(afterSince, includeBodies, includeState, warn, editionDate),
       gatherHealth(afterSince, includeBodies, includeState, editionType, warn, editionDate),
       gatherDocs(afterSince, since, warn),
@@ -1626,6 +1650,7 @@ function buildSystem(
     "You are given a structured digest of everything that changed across the owner's data since the last edition, organized by desk.",
     'Write a cohesive newspaper edition in clean markdown. Open with a one-paragraph front-page lede summarizing the single most important development. Then write one `##` section per desk, in the order given, in tight journalistic prose (not bullet dumps) — lead with what changed and why it matters, cite the specific numbers, dates, and names from the digest. Digest items may carry a source tag like [S12] in their heading; when a story draws on a tagged item, hyperlink its most load-bearing phrase reference-style — [the phrase][S12] — using only tags that appear in the digest. Never write raw URLs or invent tags; at most one link per story. Cover EVERY desk that has material (the digest is comprehensive — markets, politics, local news, personal finance, health, research, documents); omit only a desk with genuinely no items. In the Local News section, report like a hometown paper: lead with what affects the reader directly (rates, closures, construction, schools), keep names and dates concrete.',
     'In the "Personal Finance & Business" section, treat tax and retirement items as the financially actionable content they are: when an estimated-tax installment due date, safe-harbor progress, retirement-contribution progress, a filed return, or a new income source/asset appears in the digest, report it concretely with the numbers and dates — an upcoming estimated-tax deadline in particular is worth a clear heads-up.',
+    'In the "Politics" section, LEAD with congressional and executive-branch trading whenever the digest carries it, and lead that with CONSENSUS: a digest item prefixed "CONSENSUS BUY"/"CONSENSUS SELL" means several different members traded the SAME ticker the SAME direction inside a short window — that is the story, so name the ticker, the member count, the window, and several of the members by name. Items prefixed "NOTABLE" are individually significant single trades (size, or an actual option contract) — give the biggest ones a sentence each with the member, ticker, direction, dollar band, and the gap between the trade date and the disclosure date. A collapsed "Also disclosed" line is background volume: mention it in at most one clause, never expand it. If an item says the trades are NOT new today, say plainly that no fresh filings landed and frame the material as standing context. Never present a disclosure date as the date the trade happened — under the STOCK Act these lag by up to 45 days, and that lag is itself worth noting when it is long. Use ONLY the chamber the digest states for each member, verbatim — never infer or add a title ("Sen.", "Rep.") that the digest did not give you, since members with similar names sit in different chambers and a wrong attribution discredits the whole desk.',
     'In the "Markets & Macro" section, give proportional coverage to EVERY asset class the owner actually holds — crypto, equities, precious metals, and real estate — using the per-asset-class moves and metals/equity signals in the digest. Crypto is often the most volatile sleeve, but do not let it crowd out the others: when metals or real-estate equity moved (or held flat while crypto fell), say so explicitly, since that is the diversification story. Lead the section with whatever moved most, not crypto by default.',
     'Immediately before the "## Action Items" list, include a "## Forecast & Opportunities" section — the edition\'s one FORWARD-looking desk. Synthesize across ALL desks (markets, politics, tech, health, local, research, finance) the most important things LIKELY to happen in the next day-to-week and what the owner could do about them. For EACH opportunity give, in tight prose: (1) the forward call and rough timeframe — what is likely, and by when; (2) a concrete option the owner could take; (3) sizing proportional to the owner\'s actual situation (a starter position, a dollar amount, or "watch only"); (4) the bull case AND the key risk / bear case in the same breath; (5) a confidence read — low, medium, or high. Prefer a few high-quality calls over a long list. This is the one place you may reason FORWARD beyond the literal digest, but every forecast must be built on a fact, date, signal, holding, or prediction-market probability that appears in the digest — never invent an event, price, or number. When an opportunity could be expressed through a risky instrument (e.g. far-out-of-the-money or short-dated options), name the risk plainly and prefer the lower-risk expression (shares, a longer horizon, or a smaller size) — surface the option, do not cheerlead it. If nothing forward-looking is well-supported, write one honest line saying so rather than padding. Frame everything as reasoned possibilities from the owner\'s own data and the odds, never as guaranteed advice.',
     'END the edition with a "## Action Items" section: a short, prioritized list of the SPECIFIC financial moves the data suggests the owner consider right now — and for EACH one, state the WHY in the same sentence, citing the concrete data point that motivates it. Draw across ALL desks, e.g.: an estimated-tax installment due within the window (pay $X by DATE — safe-harbor shortfall is $Y); idle cash to deploy or a deductible-contribution headroom; an allocation that has drifted (one sleeve now N% of net worth) worth trimming/rebalancing; a high-rate debt to prioritize vs. a 0% one to leave; a funding-stress or yield-curve signal that argues for caution or duration; a due or overdue calendar task or deadline. Rank by urgency and dollar impact. Ground every item in a number or date that appears in the digest — if the data does not support a concrete action, write a brief honest "No pressing money moves" line rather than inventing one. Frame as reasoned considerations from the owner\'s own data, never as guaranteed advice.',
