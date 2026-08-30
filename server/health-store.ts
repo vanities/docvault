@@ -17,9 +17,9 @@
 //     The route files re-export them for back-compat.
 
 import { promises as fs } from 'fs';
-import { randomUUID } from 'crypto';
 import path from 'path';
 import { createLogger } from './logger.js';
+import { createWriteLock, writeJsonAtomic } from './write-lock.js';
 import { DATA_DIR, ensureDir, type HealthPerson } from './data.js';
 import type { AppleHealthSummary } from './parsers/apple-health.js';
 import type { PersonSnapshots } from './parsers/apple-health-snapshots.js';
@@ -243,14 +243,7 @@ export async function loadHealthStore(): Promise<HealthStore> {
  * iOS app landing during a clinical ingest, or two people syncing at once)
  * reliably overlap.
  */
-let writeChain: Promise<unknown> = Promise.resolve();
-
-function withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
-  // Chain off the previous write, but never inherit its rejection.
-  const run = writeChain.then(fn, fn);
-  writeChain = run.catch(() => {});
-  return run;
-}
+const withWriteLock = createWriteLock();
 
 /**
  * Atomic save — write to a UNIQUE temp file, then rename over the target.
@@ -267,17 +260,9 @@ function withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
 export async function saveHealthStore(store: HealthStore): Promise<void> {
   return withWriteLock(async () => {
     await ensureDir(DATA_DIR);
-    const tmp = `${HEALTH_STORE_FILE}.${process.pid}.${randomUUID()}.tmp`;
     const t0 = Date.now();
-    try {
-      await fs.writeFile(tmp, JSON.stringify(store, null, 2));
-      await fs.rename(tmp, HEALTH_STORE_FILE);
-      log.debug(`[store] saved in ${Date.now() - t0}ms`);
-    } catch (err) {
-      // Never leave a partial temp file behind to accumulate in DATA_DIR.
-      await fs.unlink(tmp).catch(() => {});
-      throw err;
-    }
+    await writeJsonAtomic(HEALTH_STORE_FILE, store);
+    log.debug(`[store] saved in ${Date.now() - t0}ms`);
   });
 }
 
@@ -297,14 +282,7 @@ export async function updateHealthStore<T>(
     const store = await loadHealthStore();
     const result = await mutate(store);
     await ensureDir(DATA_DIR);
-    const tmp = `${HEALTH_STORE_FILE}.${process.pid}.${randomUUID()}.tmp`;
-    try {
-      await fs.writeFile(tmp, JSON.stringify(store, null, 2));
-      await fs.rename(tmp, HEALTH_STORE_FILE);
-    } catch (err) {
-      await fs.unlink(tmp).catch(() => {});
-      throw err;
-    }
+    await writeJsonAtomic(HEALTH_STORE_FILE, store);
     return result;
   });
 }

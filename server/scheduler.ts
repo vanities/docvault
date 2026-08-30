@@ -23,6 +23,7 @@ import {
   monthsBetween,
 } from './data.js';
 import type { Settings } from './data.js';
+import { createWriteLock, writeJsonAtomic } from './write-lock.js';
 import { fetchAllBalances } from './crypto.js';
 import { buildPortfolio, fetchAllSnapTradeHoldings, type BrokerAccount } from './brokers.js';
 import {
@@ -129,19 +130,48 @@ export async function loadScheduleStatus(): Promise<ScheduleStatusMap> {
 
 async function writeScheduleStatus(status: ScheduleStatusMap): Promise<void> {
   try {
-    await fs.writeFile(SCHEDULE_STATUS_FILE, JSON.stringify(status, null, 2));
+    await writeJsonAtomic(SCHEDULE_STATUS_FILE, status);
   } catch {
     /* non-fatal — status is best-effort */
   }
 }
 
+/** Scheduled tasks overlap freely, so every status update shares one lock. */
+const withStatusLock = createWriteLock();
+
+/**
+ * Patch one task's status. The read-modify-write runs under a lock because
+ * tasks genuinely fire at the same moment — dropboxSync and encryptedBackup
+ * start 1ms apart. Unlocked, one task's read-modify-write silently drops the
+ * other's fields, which is how politicsRefresh ended up recorded with a
+ * lastSuccessAt NEWER than its lastRanAt.
+ */
 async function updateScheduleStatus(
   name: ScheduleTaskName,
   patch: Partial<ScheduleTaskStatus>
 ): Promise<void> {
-  const status = await loadScheduleStatus();
-  status[name] = { ...status[name], ...patch };
-  await writeScheduleStatus(status);
+  await withStatusLock(async () => {
+    const status = await loadScheduleStatus();
+    status[name] = { ...status[name], ...patch };
+    await writeScheduleStatus(status);
+  });
+}
+
+/**
+ * Clear `running` flags left over from a previous process. Nothing survives a
+ * restart, so any task still marked running at boot was interrupted — by a
+ * deploy, a crash, or an OOM kill. Leaving the flag set makes the status file
+ * (and the Settings UI reading it) claim a task has been running for hours.
+ */
+export async function clearStaleRunningFlags(): Promise<void> {
+  await withStatusLock(async () => {
+    const status = await loadScheduleStatus();
+    const stale = (Object.keys(status) as ScheduleTaskName[]).filter((k) => status[k]?.running);
+    if (stale.length === 0) return;
+    for (const k of stale) status[k] = { ...status[k], running: false };
+    await writeScheduleStatus(status);
+    logScheduler.info(`Cleared stale running flag(s) from a previous process: ${stale.join(', ')}`);
+  });
 }
 
 /** Wraps a scheduled task, recording run timestamps + any thrown error. */
@@ -631,6 +661,11 @@ export async function runDropboxSync(): Promise<void> {
 }
 
 export function startScheduler(schedules: Settings['schedules'] = {}): void {
+  // Any task still flagged `running` belongs to a process that no longer
+  // exists — clear it before arming new timers so the status file reflects
+  // reality rather than whatever a deploy interrupted.
+  void clearStaleRunningFlags();
+
   // Clear existing timers
   if (snapshotTimer) clearInterval(snapshotTimer);
   if (dropboxSyncTimer) clearInterval(dropboxSyncTimer);
