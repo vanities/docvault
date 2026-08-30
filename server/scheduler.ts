@@ -19,6 +19,7 @@ import {
   savePropertyData,
   fetchMetalSpotPrices,
   saveSnapshot,
+  loadSnapshots,
   monthsBetween,
 } from './data.js';
 import type { Settings } from './data.js';
@@ -276,20 +277,51 @@ async function takePortfolioSnapshotInner(): Promise<void> {
     }
   }
 
-  // Compute gold/precious metals value from entries + spot prices
+  // Compute gold/precious metals value from entries + spot prices.
+  //
+  // A missing spot price means "unknown", NEVER "$0" — pricing a holding at
+  // zero craters both the Gold chart and totalValue for that day, and the bad
+  // row then sits in history forever. If any held metal can't be priced we
+  // carry the last known-good goldValue forward instead of writing a hole.
   let goldValue = 0;
+  let goldPriced = true;
   try {
     const goldData = await loadGoldData();
     if (goldData.entries.length > 0) {
       const spotPrices = await fetchMetalSpotPrices();
+      const unpriced = new Set<string>();
       for (const entry of goldData.entries) {
-        const spotPrice = spotPrices[entry.metal] || 0;
+        const spotPrice = spotPrices[entry.metal];
+        if (typeof spotPrice !== 'number' || spotPrice <= 0) {
+          unpriced.add(entry.metal);
+          continue;
+        }
         // Size denomination = pure metal content (e.g. "1 oz Eagle" = 1 oz pure gold)
         goldValue += entry.weightOz * entry.quantity * spotPrice;
       }
+      if (unpriced.size > 0) {
+        goldPriced = false;
+        logGold.warn(
+          `No spot price for ${[...unpriced].join(', ')} — carrying previous goldValue forward`
+        );
+      }
     }
   } catch (err) {
+    goldPriced = false;
     logGold.warn('Gold value calc failed:', String(err));
+  }
+
+  if (!goldPriced) {
+    const prior = await loadSnapshots();
+    const lastGood = [...prior]
+      .reverse()
+      .find((s) => typeof s.goldValue === 'number' && s.goldValue > 0);
+    if (lastGood) {
+      logGold.info(
+        `[gold] carried forward goldValue from ${lastGood.date} (partial=${Math.round(goldValue)})`
+      );
+      goldValue = lastGood.goldValue!;
+    }
   }
 
   // Compute property value + apply monthly mortgage amortization

@@ -1537,26 +1537,44 @@ export async function fetchMetalSpotPrices(): Promise<Record<string, number>> {
       spark?: {
         result?: { symbol: string; response?: { meta?: { regularMarketPrice?: number } }[] }[];
       };
-    } & Record<string, { close?: number[] } | undefined>;
+    } & Record<
+      string,
+      { close?: number[] | null; previousClose?: number | null; chartPreviousClose?: number | null }
+    >;
     const prices: Record<string, number> = {};
 
     for (const [metal, ticker] of Object.entries(METAL_FUTURES)) {
       const flat = data[ticker];
-      if (flat?.close?.length) {
-        prices[metal] = flat.close[flat.close.length - 1];
-        continue;
-      }
+      // Intraday series first — the live price while the pit is open.
+      const last = flat?.close?.length ? flat.close[flat.close.length - 1] : undefined;
+      // ...then the nested spark shape some responses use...
       const spark = data.spark?.result?.find((r: { symbol: string }) => r.symbol === ticker);
-      const close = spark?.response?.[0]?.meta?.regularMarketPrice;
-      if (close) prices[metal] = close;
+      const meta = spark?.response?.[0]?.meta?.regularMarketPrice;
+      // ...and finally the prior settle. Metals futures are closed all weekend,
+      // so on Sat/Sun Yahoo returns `close: null, timestamp: []` but still
+      // carries `chartPreviousClose`. Without this fallback the whole map came
+      // back empty and every holding priced at $0 (see the Sunday craters in
+      // the portfolio history).
+      const prevClose = flat?.chartPreviousClose ?? flat?.previousClose ?? undefined;
+
+      const price = last ?? meta ?? prevClose;
+      if (typeof price === 'number' && price > 0) prices[metal] = price;
     }
 
+    if (Object.keys(prices).length === 0) {
+      // A shape we don't understand is a failure, not "everything is free".
+      throw new Error('Yahoo Finance returned no usable metal prices');
+    }
+
+    logGold.debug(
+      `[spot] resolved ${Object.keys(prices).length}/${Object.keys(METAL_FUTURES).length} metals in ${Date.now() - now}ms`
+    );
     metalPriceCache = prices;
     metalPriceCacheTime = now;
     return prices;
   } catch (err) {
     logGold.warn(`Spot price fetch failed: ${err}`);
-    return metalPriceCache; // return stale cache if available
+    return metalPriceCache; // return stale cache if available (may be empty)
   }
 }
 
