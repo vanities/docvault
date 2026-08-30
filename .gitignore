@@ -143,6 +143,9 @@ scripts/*
 # Exception: metal spot-price tests stub the Yahoo response with fabricated round-number quotes, no personal data
 !server/metal-spot-prices.test.ts
 
+# Exception: account-classification tests use fabricated names, masks, and balances, no personal data
+!server/account-classify.test.ts
+
 # Internal design docs
 docs/PRD-shadcn-migration.md
 

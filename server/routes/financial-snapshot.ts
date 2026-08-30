@@ -26,56 +26,16 @@ import {
   scanDirectory,
   jsonResponse,
 } from '../data.js';
-import type { EntityConfig, FileInfo, Contribution401k, AccountAnnotation } from '../data.js';
+import type { EntityConfig, FileInfo, Contribution401k } from '../data.js';
 import { loadLegacyShapedReminders } from '../calendar-store.js';
 import type { IncomeItem } from '../analytics/index.js';
 
-// Account categorization — uses explicit annotation.type first, falls back to
-// name heuristics. Critical for downstream consumers (LLM strategy skill) that
-// need to distinguish liquid cash from credit card / loan liabilities.
-export type AccountCategory =
-  | 'depository'
-  | 'credit-card'
-  | 'line-of-credit'
-  | 'auto-loan'
-  | 'personal-loan'
-  | 'student-loan'
-  | 'mortgage'
-  | 'other-liability';
-
-export function categorizeAccount(
-  name: string,
-  annotation: AccountAnnotation | undefined,
-  balance: number
-): AccountCategory {
-  const t = annotation?.type;
-  if (
-    t === 'credit-card' ||
-    t === 'auto-loan' ||
-    t === 'personal-loan' ||
-    t === 'student-loan' ||
-    t === 'mortgage'
-  ) {
-    return t;
-  }
-  const n = name.toLowerCase();
-  // Credit cards — match common issuer / product names
-  if (
-    /\b(visa|mastercard|discover)\b/.test(n) ||
-    /\bamex\b|american express/.test(n) ||
-    /credit card|rewards card|signature card|prime rewards/.test(n)
-  ) {
-    return 'credit-card';
-  }
-  if (/line of credit|heloc/.test(n)) return 'line-of-credit';
-  if (/mortgage/.test(n)) return 'mortgage';
-  if (/(vehicle|auto|car)\s*loan|loan.*(vehicle|auto|truck|car)/.test(n)) return 'auto-loan';
-  if (/\bloan\b/.test(n)) return 'personal-loan';
-  // Unknown negative balances should not be silently lumped into cash —
-  // flag them so they show up as needing annotation.
-  if (balance < 0) return 'other-liability';
-  return 'depository';
-}
+// Account categorization lives in server/account-classify.ts so the Banks UI
+// badge and these snapshot totals can never disagree. Re-exported here because
+// downstream consumers (and tests) already import it from this module.
+import { categorizeAccount, type AccountCategory } from '../account-classify.js';
+export { categorizeAccount };
+export type { AccountCategory };
 
 export async function handleFinancialSnapshotRoutes(
   req: Request,
