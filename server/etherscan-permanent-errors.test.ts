@@ -7,7 +7,9 @@
 // Strings below are the verbatim API responses, no credentials.
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test';
 import {
+  ETHERSCAN_KEYED_RATE_DELAY_MS,
   classifyPermanentEtherscanError,
+  etherscanRateDelayMs,
   fetchChainBalances,
   resetEtherscanFailureReports,
 } from './crypto.js';
@@ -89,3 +91,28 @@ describe('fetchChainBalances — fail fast on permanent errors', () => {
     expect(out).toEqual([]);
   });
 }, 20_000);
+
+describe('etherscanRateDelayMs', () => {
+  // The keyed plan permits 3 calls/sec. Pacing above that ceiling rate-limits
+  // the sweep against itself and then pays exponential backoff to recover —
+  // 103 self-inflicted retries in a single boot at the old 210ms.
+  const PLAN_CALLS_PER_SEC = 3;
+  const MIN_SAFE_MS = 1000 / PLAN_CALLS_PER_SEC; // 333.33
+
+  test('the keyed delay stays under the documented 3 calls/sec ceiling', () => {
+    expect(ETHERSCAN_KEYED_RATE_DELAY_MS).toBeGreaterThan(MIN_SAFE_MS);
+  });
+
+  test('but is not needlessly slow — a sweep still has to finish', () => {
+    expect(ETHERSCAN_KEYED_RATE_DELAY_MS).toBeLessThan(MIN_SAFE_MS * 2);
+  });
+
+  test('unkeyed access is paced for the 1-per-5s limit', () => {
+    expect(etherscanRateDelayMs(false)).toBeGreaterThanOrEqual(5000);
+  });
+
+  test('both call sites derive from one constant, so they cannot disagree', () => {
+    // They previously hardcoded 210 and 250 independently.
+    expect(etherscanRateDelayMs(true)).toBe(ETHERSCAN_KEYED_RATE_DELAY_MS);
+  });
+});

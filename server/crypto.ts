@@ -779,6 +779,22 @@ export function resetEtherscanFailureReports(): void {
   reportedEtherscanFailures.clear();
 }
 
+/**
+ * Etherscan's free keyed plan allows 3 calls/sec. The sweep used to pace at
+ * 210-250ms (4-4.8 req/s), i.e. ABOVE the ceiling, so it rate-limited itself and
+ * then paid exponential backoff to recover — 103 retries in one boot, every one
+ * self-inflicted. Pacing just under the real limit is strictly faster than
+ * exceeding it and retrying.
+ *
+ * Unkeyed access is 1 call per 5s, hence the much larger floor.
+ */
+export const ETHERSCAN_KEYED_RATE_DELAY_MS = 360; // ~2.8 req/s, under the 3/s cap
+export const ETHERSCAN_UNKEYED_RATE_DELAY_MS = 5100;
+
+export function etherscanRateDelayMs(hasKey: boolean): number {
+  return hasKey ? ETHERSCAN_KEYED_RATE_DELAY_MS : ETHERSCAN_UNKEYED_RATE_DELAY_MS;
+}
+
 async function etherscanFetch(
   url: string,
   label: string,
@@ -898,7 +914,7 @@ const GET_STAKER_PRINCIPAL_ABI = [
 
 async function fetchChainlinkStakedBalance(address: string): Promise<number> {
   const apiKeyParam = etherscanApiKey ? `&apikey=${etherscanApiKey}` : '';
-  const rateDelay = etherscanApiKey ? 250 : 5100;
+  const rateDelay = etherscanRateDelayMs(!!etherscanApiKey);
   let total = 0;
 
   for (const pool of CHAINLINK_STAKING_POOLS) {
@@ -995,7 +1011,7 @@ export async function fetchChainBalances(
   const balances: Balance[] = [];
   const base = `${ETHERSCAN_API}?chainid=${chainId}`;
   const apiKeyParam = etherscanApiKey ? `&apikey=${etherscanApiKey}` : '';
-  const rateDelay = etherscanApiKey ? 210 : 5100;
+  const rateDelay = etherscanRateDelayMs(!!etherscanApiKey);
 
   const log = createLogger(`Chain ${chainId}`);
   log.info(
