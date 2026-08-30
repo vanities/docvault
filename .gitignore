@@ -146,6 +146,11 @@ scripts/*
 # Exception: account-classification tests use fabricated names, masks, and balances, no personal data
 !server/account-classify.test.ts
 
+# Exception: SimpleFIN balance tests stub the HTTP response with fabricated institutions/amounts, no personal data
+!server/simplefin-balances.test.ts
+# Exception: history-series tests are pure missing-vs-zero logic over fabricated figures, no personal data
+!src/components/common/historySeries.test.ts
+
 # Internal design docs
 docs/PRD-shadcn-migration.md
 
