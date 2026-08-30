@@ -23,6 +23,7 @@ vi.mock('../logger.js', () => ({
     warn: () => {},
     error: () => {},
     debug: () => {},
+    timer: () => () => 0,
   }),
 }));
 

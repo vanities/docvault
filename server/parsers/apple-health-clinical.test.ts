@@ -355,3 +355,92 @@ describe('buildClinicalSummary — misc', () => {
     expect(summary.labsByTest[1].name).toBe('Normal Test');
   });
 });
+
+describe('buildClinicalSummary — non-conforming FHIR shapes', () => {
+  // Real exports sometimes collapse a single-element array to a bare object.
+  // `category?.some(...)` then threw "o.category?.some is not a function" and
+  // aborted the ENTIRE ingest for that person — optional chaining guards null,
+  // not a value of the wrong type. These fixtures are fabricated.
+  const labCoding = [
+    {
+      system: 'http://terminology.hl7.org/CodeSystem/observation-category',
+      code: 'laboratory',
+    },
+  ];
+  const codeBlock = {
+    text: 'HDL Cholesterol',
+    coding: [{ system: 'http://loinc.org', code: '2085-9', display: 'HDL Cholesterol' }],
+  };
+
+  test('a bare-object category is handled instead of crashing the ingest', () => {
+    const obs = {
+      resourceType: 'Observation' as const,
+      id: 'obs-object-category',
+      status: 'final',
+      // NOT an array — the exact shape that threw in production.
+      category: { text: 'Laboratory', coding: labCoding },
+      code: codeBlock,
+      valueQuantity: { value: 62, unit: 'mg/dL' },
+      effectiveDateTime: '2024-06-15T09:00:00Z',
+    } as unknown as Parameters<typeof buildClinicalSummary>[0][number];
+
+    expect(() => buildClinicalSummary([obs])).not.toThrow();
+    const summary = buildClinicalSummary([obs]);
+    // And it must still be RECOGNIZED as a lab, not merely survive.
+    expect(summary.labsByTest).toHaveLength(1);
+    expect(summary.labsByTest[0].loinc).toBe('2085-9');
+  });
+
+  test('a bare-object coding inside category is also handled', () => {
+    const obs = {
+      resourceType: 'Observation' as const,
+      id: 'obs-object-coding',
+      status: 'final',
+      category: [{ text: 'Laboratory', coding: labCoding[0] }],
+      code: codeBlock,
+      valueQuantity: { value: 55, unit: 'mg/dL' },
+      effectiveDateTime: '2024-07-15T09:00:00Z',
+    } as unknown as Parameters<typeof buildClinicalSummary>[0][number];
+
+    expect(() => buildClinicalSummary([obs])).not.toThrow();
+    expect(buildClinicalSummary([obs]).labsByTest).toHaveLength(1);
+  });
+
+  test('one malformed record does not abort the whole batch', () => {
+    // The production impact was total: a single bad record threw and the entire
+    // person's ingest failed, so nothing landed.
+    const good = {
+      resourceType: 'Observation' as const,
+      id: 'obs-good',
+      status: 'final',
+      category: [{ text: 'Laboratory', coding: labCoding }],
+      code: codeBlock,
+      valueQuantity: { value: 70, unit: 'mg/dL' },
+      effectiveDateTime: '2024-08-15T09:00:00Z',
+    };
+    const weird = {
+      resourceType: 'Observation' as const,
+      id: 'obs-weird',
+      status: 'final',
+      category: { coding: labCoding },
+      code: codeBlock,
+      valueQuantity: { value: 71, unit: 'mg/dL' },
+      effectiveDateTime: '2024-08-16T09:00:00Z',
+    } as unknown as typeof good;
+
+    const summary = buildClinicalSummary([weird, good]);
+    expect(summary.labsByTest[0].points.length).toBe(2);
+  });
+
+  test('a missing category is still not a crash', () => {
+    const obs = {
+      resourceType: 'Observation' as const,
+      id: 'obs-no-category',
+      status: 'final',
+      code: codeBlock,
+      valueQuantity: { value: 62, unit: 'mg/dL' },
+      effectiveDateTime: '2024-06-15T09:00:00Z',
+    } as unknown as Parameters<typeof buildClinicalSummary>[0][number];
+    expect(() => buildClinicalSummary([obs])).not.toThrow();
+  });
+});

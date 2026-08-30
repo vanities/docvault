@@ -16,7 +16,13 @@ const tmpDataDir = vi.hoisted(() => {
 });
 
 vi.mock('./logger.js', () => ({
-  createLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
+  createLogger: () => ({
+    debug: () => {},
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+    timer: () => () => 0,
+  }),
 }));
 
 import {

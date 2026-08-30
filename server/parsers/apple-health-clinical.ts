@@ -413,8 +413,23 @@ export function extractRefId(ref: string | undefined): string | null {
   return tail || null;
 }
 
+/**
+ * FHIR fields typed as arrays do not always arrive as arrays. Exports in the
+ * wild collapse a single-element list to a bare object, so `category` may be
+ * `{...}` where the spec (and our types) say `[{...}]`. Calling an array method
+ * on that throws and aborts the whole ingest for that person — this was live
+ * for months as "o.category?.some is not a function".
+ *
+ * Optional chaining does NOT protect against this: `?.` guards null/undefined,
+ * not a value of the wrong shape. Normalize instead of guarding.
+ */
+function asArray<T>(v: T[] | T | null | undefined): T[] {
+  if (v === null || v === undefined) return [];
+  return Array.isArray(v) ? v : [v];
+}
+
 function firstCoding(cc: FhirCodeableConcept | undefined): FhirCoding | null {
-  return cc?.coding?.[0] ?? null;
+  return asArray(cc?.coding)[0] ?? null;
 }
 
 function isLoincCoding(c: FhirCoding | undefined): boolean {
@@ -460,8 +475,7 @@ function clinicalStatusCode(cc: FhirCodeableConcept | undefined): string | null 
 function interpretationCode(
   i: FhirCodeableConcept[] | FhirCodeableConcept | null | undefined
 ): string | null {
-  if (!i) return null;
-  const cc = Array.isArray(i) ? i[0] : i;
+  const cc = asArray(i)[0];
   if (!cc) return null;
   return firstCoding(cc)?.code ?? cc.text ?? null;
 }
@@ -478,11 +492,14 @@ function derivedFlag(
   return 'normal';
 }
 
+function hasCategoryCode(o: { category?: FhirCodeableConcept[] }, code: string): boolean {
+  return asArray(o.category).some((c) => asArray(c?.coding).some((cc) => cc?.code === code));
+}
 function isLabObservation(o: FhirObservation): boolean {
-  return o.category?.some((c) => c.coding?.some((cc) => cc.code === 'laboratory')) ?? false;
+  return hasCategoryCode(o, 'laboratory');
 }
 function isVitalsObservation(o: FhirObservation): boolean {
-  return o.category?.some((c) => c.coding?.some((cc) => cc.code === 'vital-signs')) ?? false;
+  return hasCategoryCode(o, 'vital-signs');
 }
 
 // ---------------------------------------------------------------------------
@@ -537,7 +554,8 @@ function normalizeObservation(o: FhirObservation): LabResult {
 }
 
 function normalizeDiagnosticReport(d: FhirDiagnosticReport): LabPanel {
-  const categoryCode = firstCoding(d.category?.[0])?.code ?? d.category?.[0]?.text ?? null;
+  const category0 = asArray(d.category)[0];
+  const categoryCode = firstCoding(category0)?.code ?? category0?.text ?? null;
   const effectiveAt = d.effectiveDateTime ?? d.issued ?? null;
   const resultIds = (d.result ?? [])
     .map((r) => extractRefId(r.reference))
@@ -697,7 +715,7 @@ function normalizeDocumentRef(d: FhirDocumentReference): DocumentRef {
   return {
     id: d.id ?? '',
     name: displayName(d.type, 'Document'),
-    category: firstCoding(d.category?.[0])?.display ?? d.category?.[0]?.text ?? null,
+    category: firstCoding(asArray(d.category)[0])?.display ?? asArray(d.category)[0]?.text ?? null,
     date: extractDate(d.date),
     description: d.description ?? null,
   };
