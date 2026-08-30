@@ -22,6 +22,13 @@ import {
   X,
 } from 'lucide-react';
 import type { PortfolioSnapshot } from '../../types';
+import {
+  ACCOUNT_ANNOTATION_TYPES,
+  accountIconKind,
+  accountTypeLabel,
+  isAccountAnnotationType,
+  type AccountAnnotation,
+} from '../../../server/account-classify';
 import { API_BASE } from '../../constants';
 import { HistoryChart } from '../common/HistoryChart';
 import { Card } from '@/components/ui/card';
@@ -44,16 +51,6 @@ interface SimplefinAccount {
 interface SimplefinBalanceCache {
   accounts: SimplefinAccount[];
   lastUpdated: string;
-}
-
-interface AccountAnnotation {
-  rate?: number;
-  type?: string;
-  originalBalance?: number;
-  term?: number;
-  startDate?: string;
-  monthlyPayment?: number;
-  notes?: string;
 }
 
 // Institution colors
@@ -89,47 +86,24 @@ function timeAgo(isoStr: string): string {
   return new Date(isoStr).toLocaleDateString();
 }
 
-function accountIcon(name: string) {
-  const lower = name.toLowerCase();
-  if (
-    lower.includes('credit') ||
-    lower.includes('card') ||
-    lower.includes('visa') ||
-    lower.includes('amex') ||
-    lower.includes('mastercard')
-  )
-    return <CreditCard className="w-3.5 h-3.5" />;
-  if (lower.includes('saving') || lower.includes('money market'))
-    return <PiggyBank className="w-3.5 h-3.5" />;
-  if (
-    lower.includes('loan') ||
-    lower.includes('vehicle') ||
-    lower.includes('auto') ||
-    lower.includes('mortgage')
-  )
-    return <Car className="w-3.5 h-3.5" />;
-  if (lower.includes('checking') || lower.includes('chk'))
-    return <DollarSign className="w-3.5 h-3.5" />;
-  return <Landmark className="w-3.5 h-3.5" />;
-}
-
-function accountType(name: string): string {
-  const lower = name.toLowerCase();
-  if (
-    lower.includes('credit') ||
-    lower.includes('visa') ||
-    lower.includes('amex') ||
-    lower.includes('mastercard') ||
-    lower.includes('rewards')
-  )
-    return 'Credit Card';
-  if (lower.includes('saving')) return 'Savings';
-  if (lower.includes('money market')) return 'Money Market';
-  if (lower.includes('vehicle') || lower.includes('auto')) return 'Auto Loan';
-  if (lower.includes('mortgage')) return 'Mortgage';
-  if (lower.includes('loan') || lower.includes('line of credit')) return 'Loan';
-  if (lower.includes('checking') || lower.includes('chk')) return 'Checking';
-  return 'Account';
+// Classification is shared with the server (server/account-classify.ts) so the
+// badge here always agrees with the snapshot's debt totals. It also fixes the
+// old naive `includes('chk')` match, which read the "chk" letter run inside a
+// surname like PASCHKE as the CHK checking abbreviation and filed two business
+// credit cards under Checking.
+function accountIcon(name: string, annotation: AccountAnnotation | undefined, balance: number) {
+  switch (accountIconKind(name, annotation, balance)) {
+    case 'card':
+      return <CreditCard className="w-3.5 h-3.5" />;
+    case 'savings':
+      return <PiggyBank className="w-3.5 h-3.5" />;
+    case 'loan':
+      return <Car className="w-3.5 h-3.5" />;
+    case 'checking':
+      return <DollarSign className="w-3.5 h-3.5" />;
+    default:
+      return <Landmark className="w-3.5 h-3.5" />;
+  }
 }
 
 // Extract mask (last 4 digits) from account name like "Account Name (1234)"
@@ -183,12 +157,11 @@ function AnnotationEditor({
             className="w-full h-7 rounded-md text-xs bg-surface-0 border border-border px-2"
           >
             <option value="">—</option>
-            <option value="auto-loan">Auto Loan</option>
-            <option value="personal-loan">Personal Loan</option>
-            <option value="student-loan">Student Loan</option>
-            <option value="credit-card">Credit Card</option>
-            <option value="mortgage">Mortgage</option>
-            <option value="other">Other</option>
+            {ACCOUNT_ANNOTATION_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
           </select>
         </div>
         <div>
@@ -225,7 +198,7 @@ function AnnotationEditor({
           onClick={() => {
             const ann: AccountAnnotation = {};
             if (rate) ann.rate = parseFloat(rate) / 100;
-            if (type) ann.type = type;
+            if (isAccountAnnotationType(type)) ann.type = type;
             if (monthlyPayment) ann.monthlyPayment = parseFloat(monthlyPayment);
             if (annNotes.trim()) ann.notes = annNotes.trim();
             onSave(accountId, ann);
@@ -349,16 +322,18 @@ function AccountRows({
       <div className="px-5">
         {accounts.map((acct) => {
           const { displayName, mask } = extractMask(acct.name);
-          const type = accountType(acct.name);
-          const isNegative = acct.balance < 0;
           const ann = annotations[acct.id];
-          const hasAnnotation = ann && (ann.rate || ann.type || ann.monthlyPayment);
+          const type = accountTypeLabel(acct.name, ann, acct.balance);
+          const isNegative = acct.balance < 0;
+          const hasAnnotation = ann && (ann.rate || ann.type || ann.monthlyPayment || ann.notes);
 
           return (
             <div key={acct.id}>
               <div className="flex items-center justify-between py-3 border-b border-border/30 last:border-0">
                 <div className="flex items-center gap-2.5">
-                  <span className="text-surface-500">{accountIcon(acct.name)}</span>
+                  <span className="text-surface-500">
+                    {accountIcon(acct.name, ann, acct.balance)}
+                  </span>
                   <div>
                     <div className="flex items-center gap-1.5">
                       <p className="text-[13px] font-medium text-surface-900">{displayName}</p>
@@ -368,6 +343,18 @@ function AccountRows({
                     </div>
                     <div className="flex items-center gap-1.5">
                       <p className="text-[11px] text-surface-500">{type}</p>
+                      {/* The bank's own name is often useless for telling two
+                          accounts apart (Chase names business cards after the
+                          cardholder, so both Ink cards arrive as "J. PASCHKE").
+                          The user's note is the identifying label — show it. */}
+                      {ann?.notes && (
+                        <>
+                          <span className="text-[11px] text-surface-600">·</span>
+                          <span className="text-[11px] text-surface-600 font-medium">
+                            {ann.notes}
+                          </span>
+                        </>
+                      )}
                       {hasAnnotation && ann.rate && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-accent-500/10 text-accent-500 font-medium">
                           {(ann.rate * 100).toFixed(2)}%

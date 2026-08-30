@@ -1737,15 +1737,10 @@ export async function saveLiabilities(data: LiabilitiesData): Promise<void> {
 // Account Annotations (rates, types for SimpleFIN accounts)
 // ============================================================================
 
-export interface AccountAnnotation {
-  rate?: number; // interest rate as decimal (e.g., 0.02 for 2%)
-  type?: 'auto-loan' | 'personal-loan' | 'student-loan' | 'credit-card' | 'mortgage' | 'other';
-  originalBalance?: number;
-  term?: number; // months
-  startDate?: string; // YYYY-MM-DD
-  monthlyPayment?: number;
-  notes?: string;
-}
+// Declared in account-classify.ts (a pure module the frontend also imports) and
+// re-exported here so existing `from './data.js'` importers keep working.
+import type { AccountAnnotation } from './account-classify.js';
+export type { AccountAnnotation };
 
 // Keyed by SimpleFIN account ID
 export type AccountAnnotationsData = Record<string, AccountAnnotation>;
