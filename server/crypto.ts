@@ -726,6 +726,59 @@ export function setEtherscanApiKey(key: string | undefined): void {
 // helper retries both HTTP-level AND body-level failures with exponential
 // backoff. "No transactions found" is returned as-is — it's a valid
 // terminal response, not an error.
+
+/**
+ * Etherscan reports permanent configuration problems the same way it reports
+ * transient rate limits: HTTP 200 with `{status:"0", message:"NOTOK"}`. The
+ * distinguishing detail is in `result`. Retrying a permanent failure only adds
+ * latency and buries the real cause under a wall of retry warnings.
+ */
+type EtherscanPermanentKind = 'invalid-key' | 'chain-not-entitled';
+
+export function classifyPermanentEtherscanError(text: string): EtherscanPermanentKind | null {
+  const t = text.toLowerCase();
+  if (t.includes('invalid api key')) return 'invalid-key';
+  if (t.includes('not supported for this chain') || t.includes('upgrade your api plan')) {
+    return 'chain-not-entitled';
+  }
+  return null;
+}
+
+/**
+ * Log each distinct permanent failure ONCE per process. A balance sweep touches
+ * dozens of tokens per chain, so without this the same misconfiguration is
+ * reported dozens of times and the signal is lost.
+ */
+const reportedEtherscanFailures = new Set<string>();
+
+function noteEtherscanPermanentFailure(
+  kind: EtherscanPermanentKind,
+  label: string,
+  text: string,
+  log: Logger
+): void {
+  // Key problems are global; entitlement problems are per-chain.
+  const scope = kind === 'invalid-key' ? 'invalid-key' : `${kind}:${label.split(' ')[0]}`;
+  if (reportedEtherscanFailures.has(scope)) return;
+  reportedEtherscanFailures.add(scope);
+  if (kind === 'invalid-key') {
+    log.error(
+      `Etherscan API key rejected (${text}). On-chain wallet balances will be MISSING ` +
+        `from the portfolio until the key in Settings is corrected.`
+    );
+  } else {
+    log.warn(
+      `${label}: chain not available on the current Etherscan plan (${text}). ` +
+        `Skipping it — balances on this chain are excluded from the portfolio.`
+    );
+  }
+}
+
+/** Test seam: reset the once-per-process report memo. */
+export function resetEtherscanFailureReports(): void {
+  reportedEtherscanFailures.clear();
+}
+
 async function etherscanFetch(
   url: string,
   label: string,
@@ -754,12 +807,30 @@ async function etherscanFetch(
           result?: unknown;
         };
         if (data.status === '0') {
-          const msg = String(data.message ?? data.result ?? '');
+          // `message` is usually the bare string "NOTOK"; the actual reason is
+          // in `result`. Check both so a permanent failure isn't misread as a
+          // transient one.
+          const msg = String(data.message ?? '');
+          const detail = String(data.result ?? '');
+          const text = `${msg} ${detail}`.trim();
+
           // Expected terminal cases — don't burn retries on them.
           if (msg === 'No transactions found' || msg === 'No records found') {
             return data;
           }
-          lastErr = new Error(`status=0: ${msg}`);
+
+          // PERMANENT failures. Retrying these is pure latency: a bad key and
+          // an unentitled chain are exactly as bad on attempt 6 as on attempt
+          // 1. Left as "retryable" they cost ~31s of backoff per asset per
+          // chain, which is what turned a portfolio snapshot into a 32-minute
+          // job while silently reporting no on-chain balances.
+          const permanent = classifyPermanentEtherscanError(text);
+          if (permanent) {
+            noteEtherscanPermanentFailure(permanent, label, text, log);
+            return null;
+          }
+
+          lastErr = new Error(`status=0: ${text || 'NOTOK'}`);
         } else {
           return data;
         }
