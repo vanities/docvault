@@ -13,6 +13,7 @@ import {
 import type { PortfolioSnapshot } from '../../types';
 import { Button } from '@/components/ui/button';
 import { useAppContext } from '../../contexts/AppContext';
+import { observedEndpoints, seriesValue, type HistoryPoint } from './historySeries';
 
 // Time ranges
 const RANGES = [
@@ -88,28 +89,29 @@ export function HistoryChart({
               ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
               : d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
 
-        const point: Record<string, string | number> = { date: dateLabel, fullDate: s.date };
+        // An absent field means "not observed that day" — e.g. the banks could
+        // not be read. seriesValue passes that through as null so recharts
+        // breaks the line into a gap instead of plotting a $0 crater that reads
+        // as a real balance drop. `|| 0` here is what made outages look like
+        // losses. See historySeries.test.ts.
+        const point: HistoryPoint = { date: dateLabel, fullDate: s.date };
         for (const line of lines) {
-          point[line.key] = (s as unknown as Record<string, number>)[line.key] || 0;
+          point[line.key] = seriesValue(s as unknown as Record<string, unknown>, line.key);
         }
         return point;
       });
   }, [snapshots, range, lines]);
 
-  // Calculate change
-  const firstVal = filteredData.length > 0 ? Number(filteredData[0][lines[0]?.key] || 0) : 0;
-  const lastVal =
-    filteredData.length > 0 ? Number(filteredData[filteredData.length - 1][lines[0]?.key] || 0) : 0;
+  // Change is measured over OBSERVED points only. Anchoring on a gap day would
+  // compare against a missing reading and report a fictional swing.
+  const { first: firstVal, last: lastVal } = observedEndpoints(filteredData, lines[0]?.key ?? '');
 
   // For stacked charts, sum all lines for total change
-  const firstTotal =
-    filteredData.length > 0
-      ? lines.reduce((sum, l) => sum + Number(filteredData[0][l.key] || 0), 0)
-      : 0;
-  const lastTotal =
-    filteredData.length > 0
-      ? lines.reduce((sum, l) => sum + Number(filteredData[filteredData.length - 1][l.key] || 0), 0)
-      : 0;
+  const rowsWithAny = filteredData.filter((p) => lines.some((l) => p[l.key] !== null));
+  const sumRow = (row: HistoryPoint | undefined) =>
+    row ? lines.reduce((sum, l) => sum + Number(row[l.key] ?? 0), 0) : 0;
+  const firstTotal = sumRow(rowsWithAny[0]);
+  const lastTotal = sumRow(rowsWithAny[rowsWithAny.length - 1]);
 
   const useTotal = stacked || lines.length > 1;
   const change = useTotal ? lastTotal - firstTotal : lastVal - firstVal;
@@ -239,10 +241,9 @@ export function HistoryChart({
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             formatter={(value: any, name: any) => {
               const lineConfig = lines.find((l) => l.key === String(name));
-              return [
-                blurNumbers ? '$•••' : formatUsdFull(Number(value)),
-                lineConfig?.label || String(name),
-              ];
+              const label = lineConfig?.label || String(name);
+              if (value === null || value === undefined) return ['No data', label];
+              return [blurNumbers ? '$•••' : formatUsdFull(Number(value)), label];
             }}
             labelFormatter={(_, payload) => {
               const fullDate = payload?.[0]?.payload?.fullDate;
@@ -267,6 +268,7 @@ export function HistoryChart({
                   stroke={line.color}
                   strokeWidth={1.5}
                   fill={`url(#grad-${line.key})`}
+                  connectNulls={false}
                   dot={false}
                   activeDot={{ r: 3, fill: line.color, stroke: '#1e293b', strokeWidth: 2 }}
                 />
@@ -278,6 +280,7 @@ export function HistoryChart({
                   dataKey={line.key}
                   stroke={line.color}
                   strokeWidth={2}
+                  connectNulls={false}
                   dot={false}
                   activeDot={{ r: 4, fill: line.color, stroke: '#1e293b', strokeWidth: 2 }}
                 />

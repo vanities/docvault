@@ -124,11 +124,29 @@ export async function fetchBalances(config: SimplefinConfig): Promise<SimplefinA
 
   const data = (await res.json()) as SimplefinResponse;
 
+  // SimpleFIN signals a broken connection IN THE BODY, with HTTP 200: the
+  // `errors` array carries things like "Connection to <bank> needs attention"
+  // while `accounts` comes back empty or short. Treating that as success means
+  // the caller sees no exception, sums an empty list to $0, records that as the
+  // day's bank balance, and overwrites the fallback cache with the empty list —
+  // destroying the only data that could have covered the outage.
+  const accounts = data.accounts ?? [];
   if (data.errors?.length) {
-    log.warn('Warnings:', JSON.stringify(data.errors));
+    log.warn(
+      `SimpleFIN reported ${data.errors.length} connection error(s):`,
+      JSON.stringify(data.errors)
+    );
   }
+  if (accounts.length === 0) {
+    // A configured connection never legitimately returns zero accounts.
+    const detail = data.errors?.length ? `: ${data.errors.join('; ')}` : ' (no errors reported)';
+    throw new Error(`SimpleFIN returned no accounts${detail}`);
+  }
+  log.info(
+    `[balances] fetched ${accounts.length} accounts, ${data.errors?.length ?? 0} connection error(s)`
+  );
 
-  return data.accounts.map((acct) => ({
+  return accounts.map((acct) => ({
     id: acct.id,
     name: acct.name,
     connId: acct.org?.id || '',

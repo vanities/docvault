@@ -244,37 +244,62 @@ async function takePortfolioSnapshotInner(): Promise<void> {
     }
   }
 
-  // Fetch live bank balances from SimpleFIN and update cache
-  let bankValue = 0;
+  // Fetch live bank balances from SimpleFIN and update cache.
+  //
+  // `bankValue` is deliberately `number | null`: null means "we could not read
+  // the banks today", which is NOT the same as "the accounts hold $0". Note
+  // that a real bankValue is often NEGATIVE — it nets credit-card balances
+  // against cash — so "missing" can never be encoded as a number at all.
+  //
+  // The old code summed an empty account list to 0 and wrote that as the day's
+  // balance. Worse, the success path also rewrote the cache, so a bad response
+  // destroyed the very fallback meant to cover it. No such day is present in
+  // the recorded history, so this is hardening against a latent fault, not a
+  // repair of observed damage.
+  let bankValue: number | null = null;
+
+  const sumAccounts = (accts: { balance?: number }[]) =>
+    accts.reduce((sum, a) => sum + (a.balance || 0), 0);
+
+  const readBankCache = async (): Promise<number | null> => {
+    try {
+      const bankData = await fs.readFile(SIMPLEFIN_CACHE_FILE, 'utf-8');
+      const cached: SimplefinBalanceCache = JSON.parse(bankData);
+      // An empty cache is a previously-clobbered one — not a real $0.
+      if (!cached.accounts?.length) return null;
+      return sumAccounts(cached.accounts);
+    } catch {
+      return null;
+    }
+  };
+
   if (settings.simplefin?.accessUrl) {
+    const t0 = Date.now();
     try {
       const bankAccounts = await fetchSimplefinBalances(settings.simplefin);
-      bankValue = bankAccounts.reduce((sum, a) => sum + (a.balance || 0), 0);
+      // fetchBalances throws on an empty list, so reaching here means real data.
+      bankValue = sumAccounts(bankAccounts);
       const cache: SimplefinBalanceCache = {
         accounts: bankAccounts,
         lastUpdated: new Date().toISOString(),
       };
       await fs.writeFile(SIMPLEFIN_CACHE_FILE, JSON.stringify(cache, null, 2));
-      logSimpleFIN.info('SimpleFIN bank cache updated');
+      logSimpleFIN.info(
+        `SimpleFIN bank cache updated (${bankAccounts.length} accounts in ${Date.now() - t0}ms)`
+      );
     } catch (err) {
+      // Leave the cache alone — it is the only fallback we have.
       logSimpleFIN.warn('SimpleFIN fetch failed, using cached data:', String(err));
-      try {
-        const bankData = await fs.readFile(SIMPLEFIN_CACHE_FILE, 'utf-8');
-        const cached: SimplefinBalanceCache = JSON.parse(bankData);
-        bankValue = cached.accounts.reduce((sum, a) => sum + (a.balance || 0), 0);
-      } catch {
-        // No cache
+      bankValue = await readBankCache();
+      if (bankValue === null) {
+        logSimpleFIN.error(
+          'SimpleFIN fetch failed and no usable cache — bankValue recorded as unknown'
+        );
       }
     }
   } else {
-    // No SimpleFIN configured — read cache if it exists
-    try {
-      const bankData = await fs.readFile(SIMPLEFIN_CACHE_FILE, 'utf-8');
-      const cached: SimplefinBalanceCache = JSON.parse(bankData);
-      bankValue = cached.accounts.reduce((sum, a) => sum + (a.balance || 0), 0);
-    } catch {
-      // No bank data
-    }
+    // No SimpleFIN configured — read cache if it exists (manual import, etc.)
+    bankValue = await readBankCache();
   }
 
   // Compute gold/precious metals value from entries + spot prices.
@@ -374,18 +399,35 @@ async function takePortfolioSnapshotInner(): Promise<void> {
   const brokerValue = brokerPortfolio?.totalValue || 0;
   const today = zonedYMD(new Date(), getConfiguredTimezone(settings));
 
+  // If the banks could not be read, record bankValue as ABSENT (the field is
+  // optional) so the Bank chart draws a gap rather than a crater. totalValue
+  // still has to be a number, so it uses the last known bank figure — a
+  // one-day-stale total beats a total that silently drops by the bank balance.
+  let bankForTotal = bankValue;
+  if (bankValue === null) {
+    const prior = await loadSnapshots();
+    const lastKnown = [...prior].reverse().find((s) => typeof s.bankValue === 'number');
+    bankForTotal = lastKnown?.bankValue ?? 0;
+    logSimpleFIN.warn(
+      `[snapshot] bankValue unknown for ${today} — omitting it and using ` +
+        `${lastKnown ? `the ${lastKnown.date} figure` : '0'} for totalValue only`
+    );
+  }
+
   await saveSnapshot({
     date: today,
-    totalValue: cryptoValue + brokerValue + bankValue + goldValue + propertyValue,
+    totalValue: cryptoValue + brokerValue + (bankForTotal ?? 0) + goldValue + propertyValue,
     cryptoValue,
     brokerValue,
-    bankValue,
+    ...(bankValue === null ? {} : { bankValue }),
     goldValue,
     propertyValue,
     shortTermGains: brokerPortfolio?.shortTermGains || 0,
     longTermGains: brokerPortfolio?.longTermGains || 0,
   });
-  logSnapshots.info(`Portfolio snapshot saved for ${today}`);
+  logSnapshots.info(
+    `Portfolio snapshot saved for ${today}` + (bankValue === null ? ' (bank: unknown)' : '')
+  );
 }
 
 async function createEncryptedConfigBackup(password: string): Promise<string | null> {
