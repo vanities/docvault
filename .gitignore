@@ -140,6 +140,9 @@ scripts/*
 # Exception: weekly report tests are pure window/gate/categorize/CSV logic over synthetic Globex fixtures, no personal data
 !server/timesheet-report.test.ts
 
+# Exception: metal spot-price tests stub the Yahoo response with fabricated round-number quotes, no personal data
+!server/metal-spot-prices.test.ts
+
 # Internal design docs
 docs/PRD-shadcn-migration.md
 
