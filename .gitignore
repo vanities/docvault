@@ -151,6 +151,11 @@ scripts/*
 # Exception: history-series tests are pure missing-vs-zero logic over fabricated figures, no personal data
 !src/components/common/historySeries.test.ts
 
+# Exception: health-store concurrency tests use synthetic person ids in a tmpdir, no personal data
+!server/health-store-concurrency.test.ts
+# Exception: logger-mock contract test only reads test sources for stub completeness, no personal data
+!server/logger-mock-contract.test.ts
+
 # Internal design docs
 docs/PRD-shadcn-migration.md
 

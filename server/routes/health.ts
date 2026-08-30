@@ -51,6 +51,7 @@ import type { HealthPerson } from '../data.js';
 import {
   loadHealthStore,
   saveHealthStore,
+  updateHealthStore,
   storeKey,
   requirePerson,
   type IllnessNote,
@@ -1138,14 +1139,17 @@ export async function handleHealthRoutes(
 
       const allResources = await loadClinicalRecords(dir);
       const summary = buildClinicalSummary(allResources);
-      const store = await loadHealthStore();
-      if (!store.clinical) store.clinical = {};
-      const keys = Object.keys(store.summaries).filter((k) => k.startsWith(`${personId}/`));
-      for (const k of keys) {
-        store.clinical[k] = summary;
-        delete store.snapshots[k];
-      }
-      await saveHealthStore(store);
+      // Transactional: load + mutate + save under one lock. A separate
+      // load/save pair here would let a concurrent HealthKit sync read the
+      // store between our two calls and then overwrite everything we wrote.
+      await updateHealthStore((store) => {
+        if (!store.clinical) store.clinical = {};
+        const keys = Object.keys(store.summaries).filter((k) => k.startsWith(`${personId}/`));
+        for (const k of keys) {
+          store.clinical[k] = summary;
+          delete store.snapshots[k];
+        }
+      });
     } catch (writeErr) {
       const errMsg = writeErr instanceof Error ? writeErr.message : String(writeErr);
       log.error(`Clinical ingest failed for ${personId}: ${errMsg}`);
