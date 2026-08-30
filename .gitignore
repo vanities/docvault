@@ -159,6 +159,9 @@ scripts/*
 # Exception: write-lock tests are pure concurrency/atomicity logic in a tmpdir, no personal data
 !server/write-lock.test.ts
 
+# Exception: etherscan error-classification tests use verbatim API error strings, no credentials
+!server/etherscan-permanent-errors.test.ts
+
 # Internal design docs
 docs/PRD-shadcn-migration.md
 
