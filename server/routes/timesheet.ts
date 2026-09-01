@@ -4,7 +4,14 @@
 
 import path from 'path';
 import { promises as fs } from 'fs';
-import { jsonResponse, getEntityPath, resolveUnder, ensureDir, loadSettings } from '../data.js';
+import {
+  jsonResponse,
+  getEntityPath,
+  resolveUnder,
+  ensureDir,
+  loadSettings,
+  getEmailConfig,
+} from '../data.js';
 import { sendEmail } from '../email.js';
 import { readJsonBody } from '../http.js';
 import {
@@ -835,6 +842,7 @@ async function handleInvoiceRoutes(req: Request, pathname: string): Promise<Resp
     return jsonResponse({
       to: apply(emailProject?.emailTo ?? '') || client?.email || '',
       from: apply(emailProject?.emailFrom ?? ''), // '' = configured default sender
+      cc: (await getEmailConfig()).ccEmail ?? '',
       subject: apply(emailProject?.emailSubject ?? `Invoice {{number}} from {{company}}`),
       body: apply(
         emailProject?.emailBody ??
@@ -854,6 +862,7 @@ async function handleInvoiceRoutes(req: Request, pathname: string): Promise<Resp
     const body = await readJsonBody<{
       to?: string;
       from?: string;
+      cc?: string;
       subject?: string;
       body?: string;
     }>(req);
@@ -875,6 +884,8 @@ async function handleInvoiceRoutes(req: Request, pathname: string): Promise<Resp
     const result = await sendEmail({
       to,
       ...(body.from?.trim() ? { from: body.from.trim() } : {}),
+      // Absent → the configured ccEmail applies; '' explicitly suppresses it.
+      ...(body.cc !== undefined ? { cc: body.cc } : {}),
       subject,
       html,
       text,

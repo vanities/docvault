@@ -27,6 +27,8 @@ export interface SendEmailInput {
   to?: string;
   /** Sender "Name <addr>" or bare address. Defaults to fromName/fromEmail. */
   from?: string;
+  /** Carbon copy. Defaults to the configured ccEmail; pass '' to suppress it. */
+  cc?: string;
   subject: string;
   html: string;
   text?: string;
@@ -42,6 +44,7 @@ export interface SendEmailResult {
 interface ResendPayloadResult {
   payload?: Record<string, unknown>;
   recipients: string[];
+  cc: string[];
   from?: string;
   error?: string;
 }
@@ -80,12 +83,17 @@ function parseRecipients(s: string | undefined): string[] {
 /** Build the exact Resend API payload. Exported for regression tests. */
 export function buildResendPayload(
   input: SendEmailInput,
-  cfg: Pick<EmailConfig, 'fromEmail' | 'fromName' | 'toEmail'>
+  cfg: Pick<EmailConfig, 'fromEmail' | 'fromName' | 'toEmail' | 'ccEmail'>
 ): ResendPayloadResult {
   const from = input.from || defaultFrom(cfg.fromEmail, cfg.fromName);
   const recipients = parseRecipients(input.to ?? cfg.toEmail);
-  if (!from) return { from, recipients, error: 'No from address configured' };
-  if (!recipients.length) return { from, recipients, error: 'No to address configured' };
+  // An explicit cc wins — including '' to suppress the configured default.
+  const ccRaw = input.cc !== undefined ? input.cc : cfg.ccEmail;
+  // Never cc someone already on the To line; Resend would deliver twice.
+  const toKeys = new Set(recipients.map((r) => r.toLowerCase()));
+  const cc = parseRecipients(ccRaw).filter((a) => !toKeys.has(a.toLowerCase()));
+  if (!from) return { from, recipients, cc, error: 'No from address configured' };
+  if (!recipients.length) return { from, recipients, cc, error: 'No to address configured' };
 
   const payload: Record<string, unknown> = {
     from,
@@ -93,6 +101,7 @@ export function buildResendPayload(
     subject: input.subject,
     html: input.html,
   };
+  if (cc.length) payload.cc = cc;
   if (input.text) payload.text = input.text;
   if (input.attachments?.length) {
     payload.attachments = input.attachments.map((a) => ({
@@ -103,7 +112,7 @@ export function buildResendPayload(
     }));
   }
 
-  return { payload, recipients, from };
+  return { payload, recipients, cc, from };
 }
 
 /**
@@ -118,11 +127,12 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     log.warn('[send] skipped — no Resend API key configured');
     return { ok: false, error: 'No Resend API key configured' };
   }
-  const { payload, recipients, error } = buildResendPayload(input, cfg);
+  const { payload, recipients, cc, error } = buildResendPayload(input, cfg);
   if (error || !payload) return { ok: false, error: error ?? 'Could not build email payload' };
 
   log.info(
     `[send] to=${recipients.length} recipient(s) [${recipients.map(redactEmail).join(', ')}] ` +
+      (cc.length ? `cc=${cc.length} [${cc.map(redactEmail).join(', ')}] ` : '') +
       `subject="${input.subject.slice(0, 60)}" ` +
       `attachments=${input.attachments?.length ?? 0} htmlBytes=${input.html.length}`
   );
