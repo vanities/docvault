@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vite-plus/test';
 import { inflateSync } from 'node:zlib';
 import { PDFDocument } from 'pdf-lib';
-import { buildInvoicePdf, displayInvoiceNumber } from './timesheet-invoice.js';
+import { buildInvoicePdf, displayInvoiceNumber, invoiceParsedData } from './timesheet-invoice.js';
 import type { Invoice, InvoiceTemplate } from './timesheet-store.js';
 
 const template: InvoiceTemplate = {
@@ -116,5 +116,28 @@ describe('buildInvoicePdf', () => {
     expect(doc.getTitle()).toBe('Invoice 2026-024');
     expect(doc.getAuthor()).toBeUndefined();
     expect(extractStreamText(bytes)).toContain('Amount Due: $1,234.50 (USD)');
+  });
+});
+
+describe('invoiceParsedData', () => {
+  it('carries the fields the analytics invoice extractor reads', () => {
+    const entry = invoiceParsedData(invoice, template);
+    // extractInvoice keys on documentType, then customer/amount/invoiceNumber.
+    expect(entry.documentType).toBe('invoice');
+    expect(entry.customer).toBe('Globex Corporation');
+    expect(entry.amount).toBe(1234.5);
+    expect(entry.invoiceNumber).toBe('2026/024');
+    expect(entry.invoiceDate).toBe('2026-08-01');
+    expect(entry.dueDate).toBe('2026-08-15');
+    expect(entry.hours).toBe(10);
+    expect(entry.vendor).toBe('Acme Consulting LLC');
+    expect(entry.parsed).toBe(true);
+    expect(entry.parsedBy).toBe('timesheet-auto-file');
+  });
+
+  it('omits vendor without a template', () => {
+    const entry = invoiceParsedData(invoice);
+    expect('vendor' in entry).toBe(false);
+    expect(entry.amount).toBe(1234.5);
   });
 });
