@@ -27,6 +27,10 @@ export function getInvoiceSummary(
   const invoices: InvoiceItem[] = [];
 
   for (const file of files) {
+    // Folder direction is authoritative: a document filed under expenses/ is
+    // money OUT, never invoice revenue — e.g. a vendor's receipt named
+    // "*_Invoice_*" must not count as income.
+    if (/(^|\/)expenses\//.test(file.path)) continue;
     const parsedKey = `${entityId}/${file.path}`;
     const parsed = parsedDataMap[parsedKey];
     const meta = metadataMap[parsedKey];

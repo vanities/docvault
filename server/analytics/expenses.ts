@@ -53,6 +53,10 @@ export function getExpenseSummary(
   const expenses: ExpenseItem[] = [];
 
   for (const file of files) {
+    // Folder direction is authoritative: a document filed under income/ is
+    // money IN, never an expense — e.g. the business's own invoices (whose
+    // parses may lack documentType) must not count as spending.
+    if (/(^|\/)income\//.test(file.path)) continue;
     const parsedKey = `${entityId}/${file.path}`;
     const parsed = parsedDataMap[parsedKey];
     const meta = metadataMap[parsedKey];
