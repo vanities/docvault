@@ -8,7 +8,11 @@ export function Solo401kView() {
   // "all" analytics gives us cross-entity data: per-entity bank deposits + K-1 items
   const allAnalytics = useAnalytics('all', selectedYear);
 
-  // Find the SE entity — the one with revenue deposits (Schedule C business)
+  // Find the SE entity — the Schedule C business. Prefer bank-deposit revenue;
+  // when no bank statements are parsed, fall back to the entity with the
+  // highest invoice total. Without a fallback this used to silently resolve
+  // to "all", which summed EVERY entity's expenses (e.g. partnership farm
+  // equipment) into the Schedule C worksheet.
   const seEntity = useMemo(() => {
     let best = '';
     let bestRevenue = 0;
@@ -18,8 +22,16 @@ export function Solo401kView() {
         best = entityId;
       }
     }
+    if (best) return best;
+    let bestInvoiced = 0;
+    for (const [entityId, total] of Object.entries(allAnalytics.invoiceSummary.byEntity ?? {})) {
+      if (total > bestInvoiced) {
+        bestInvoiced = total;
+        best = entityId;
+      }
+    }
     return best;
-  }, [allAnalytics.bankDepositDetails]);
+  }, [allAnalytics.bankDepositDetails, allAnalytics.invoiceSummary.byEntity]);
 
   // Fetch the SE entity's analytics for accurate gross/expenses
   const seAnalytics = useAnalytics(seEntity || 'all', selectedYear);
@@ -61,7 +73,6 @@ export function Solo401kView() {
         defaultExpenses={defaultExpenses}
         k1SEEarnings={k1SEEarnings}
         taxYear={selectedYear}
-        entity={seEntity || 'all'}
       />
     </div>
   );

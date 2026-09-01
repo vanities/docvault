@@ -67,6 +67,7 @@ interface InvoicesResponse {
   invoiceTotal: number;
   invoiceCount: number;
   byCustomer: InvoiceCustomerGroup[];
+  byEntity?: Record<string, number>;
 }
 
 interface RetirementResponse {
@@ -283,6 +284,7 @@ export function useAnalytics(
     invoiceTotal: data.invoices?.invoiceTotal || 0,
     invoiceCount: data.invoices?.invoiceCount || 0,
     byCustomer: data.invoices?.byCustomer || [],
+    byEntity: data.invoices?.byEntity,
   };
 
   // Map retirement response
