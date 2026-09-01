@@ -294,7 +294,7 @@ export function useFileSystemServer() {
 
         // Upload file with entity
         const arrayBuffer = await file.arrayBuffer();
-        const data = await requestJson<{ ok?: boolean }>(
+        const data = await requestJson<{ ok?: boolean; path?: string }>(
           `${API_BASE}/upload?entity=${encodeURIComponent(entity)}&path=${encodeURIComponent(destPath)}&filename=${encodeURIComponent(filename)}`,
           {
             method: 'POST',
@@ -306,7 +306,10 @@ export function useFileSystemServer() {
         );
         if (!data.ok) return false;
 
-        // Save parsed data separately if provided
+        // Save parsed data separately if provided. MUST use the path the
+        // server returned: on a name collision the server dedupes the file to
+        // "name_2.ext", and saving under the requested name would overwrite
+        // the parse entry of the file already sitting at that name.
         if (parsedData) {
           try {
             await requestJson<{ ok?: boolean }>(`${API_BASE}/save-parsed`, {
@@ -314,7 +317,7 @@ export function useFileSystemServer() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 entity,
-                filePath: `${destPath}/${filename}`,
+                filePath: data.path ?? `${destPath}/${filename}`,
                 parsedData,
               }),
             });
