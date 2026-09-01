@@ -17,7 +17,6 @@ interface Solo401kCalculatorProps {
   defaultExpenses: number;
   k1SEEarnings?: number;
   taxYear: number;
-  entity: string;
 }
 
 interface Contribution {
@@ -134,7 +133,6 @@ export function Solo401kCalculator({
   defaultExpenses,
   k1SEEarnings = 0,
   taxYear,
-  entity,
 }: Solo401kCalculatorProps) {
   const [expanded, setExpanded] = useState(true);
   const [grossInput, setGrossInput] = useState(defaultGross.toFixed(0));
@@ -158,10 +156,14 @@ export function Solo401kCalculator({
   const [addAmount, setAddAmount] = useState('');
   const [addType, setAddType] = useState<'employee' | 'employer'>('employee');
 
-  // Load contributions from server
+  // Contributions are PERSON-level, not entity-level: a solo 401(k) spans
+  // every business the owner controls (controlled-group rules), so the ledger
+  // always lives under the "all" scope regardless of which entity supplies
+  // the income defaults. The server merges legacy per-entity rows on GET and
+  // consolidates on PUT.
   useEffect(() => {
     contribLoadedRef.current = false;
-    requestJson<{ contributions?: Contribution[] }>(`/api/contributions/${entity}/${taxYear}`)
+    requestJson<{ contributions?: Contribution[] }>(`/api/contributions/all/${taxYear}`)
       .then((data) => {
         setContributions(data.contributions || []);
         contribLoadedRef.current = true;
@@ -169,17 +171,17 @@ export function Solo401kCalculator({
       .catch(() => {
         contribLoadedRef.current = true;
       });
-  }, [entity, taxYear]);
+  }, [taxYear]);
 
   // Save contributions to server when they change (skip initial load)
   useEffect(() => {
     if (!contribLoadedRef.current) return;
-    requestJson<unknown>(`/api/contributions/${entity}/${taxYear}`, {
+    requestJson<unknown>(`/api/contributions/all/${taxYear}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contributions }),
     }).catch(() => {});
-  }, [contributions, entity, taxYear]);
+  }, [contributions, taxYear]);
 
   const calc = useMemo(
     () =>
@@ -482,7 +484,7 @@ export function Solo401kCalculator({
               </div>
             )}
 
-            {/* Add contribution form (hidden in "all" aggregate view) */}
+            {/* Add contribution form — writes to the person-level ledger */}
             <div className="grid grid-cols-2 sm:flex gap-2 items-end">
               <div className="sm:flex-shrink-0">
                 <label className="block text-[10px] text-surface-500 mb-1">Date</label>
