@@ -37,6 +37,30 @@ export function displayInvoiceNumber(number: string): string {
   return number.replace(/\//g, '-');
 }
 
+/** Parse-cache entry for an auto-filed invoice PDF. The invoice record already
+ * holds everything the analytics extractors read (extractInvoice keys on
+ * documentType/customer/amount/invoiceNumber), so filing writes this directly
+ * instead of leaving the PDF to a later AI parse. */
+export function invoiceParsedData(
+  invoice: Invoice,
+  template?: InvoiceTemplate
+): Record<string, string | number | boolean> {
+  return {
+    parsed: true,
+    parsedAt: new Date().toISOString(),
+    parsedBy: 'timesheet-auto-file',
+    documentType: 'invoice',
+    invoiceNumber: invoice.number,
+    invoiceDate: invoice.issueDate,
+    dueDate: invoice.dueDate,
+    customer: invoice.clientName,
+    amount: invoice.total,
+    currency: invoice.currency,
+    hours: Number((invoice.totalMinutes / 60).toFixed(2)),
+    ...(template?.company ? { vendor: template.company } : {}),
+  };
+}
+
 const CURRENCY_SYMBOLS: Record<string, string> = { USD: '$', EUR: '€', GBP: '£' };
 
 function fmtMoneyWithSymbol(value: number, currency: string): string {

@@ -11,6 +11,8 @@ import {
   ensureDir,
   loadSettings,
   getEmailConfig,
+  loadParsedData,
+  saveParsedData,
 } from '../data.js';
 import { sendEmail } from '../email.js';
 import { readJsonBody } from '../http.js';
@@ -29,7 +31,7 @@ import {
   type TimesheetEntry,
   type TimesheetStore,
 } from '../timesheet-store.js';
-import { buildInvoicePdf } from '../timesheet-invoice.js';
+import { buildInvoicePdf, invoiceParsedData } from '../timesheet-invoice.js';
 import {
   normalizeWeeklyReportConfig,
   weekWindow,
@@ -711,9 +713,12 @@ function buildEmailSubstitutions(
   };
 }
 
-/** Render an invoice PDF and save it into an entity's year folder, using the
- * repo's {Source}_{Type}_{Date} document naming with collision suffixes.
- * Returns "entityId:relative/path" or null when the entity is unknown. */
+/** Render an invoice PDF and save it into the entity's <year>/income/other
+ * folder (where uploaded invoices live), using the repo's document naming with
+ * collision suffixes. Also writes the parse-cache entry from the invoice
+ * record — the data is already structured, so the filed PDF never sits
+ * "unparsed" waiting for an AI pass. Returns "entityId:relative/path" or null
+ * when the entity is unknown. */
 async function fileInvoicePdf(
   invoice: Invoice,
   template: InvoiceTemplate | undefined,
@@ -722,7 +727,8 @@ async function fileInvoicePdf(
   const entityPath = await getEntityPath(entityId);
   if (!entityPath) return null;
   const year = invoice.issueDate.slice(0, 4);
-  const dir = resolveUnder(entityPath, year);
+  const relDir = `${year}/income/other`;
+  const dir = resolveUnder(entityPath, relDir);
   if (!dir) return null;
   await ensureDir(dir);
   const safeClient = invoice.clientName.replace(/[^\w-]+/g, '');
@@ -738,7 +744,14 @@ async function fileInvoicePdf(
   }
   const pdf = await buildInvoicePdf(invoice, template);
   await fs.writeFile(path.join(dir, filename), Buffer.from(pdf));
-  return `${entityId}:${year}/${filename}`;
+  const relPath = `${relDir}/${filename}`;
+  // Keyed by the FINAL on-disk name (collision suffix included) — writing
+  // under the requested name would clobber an existing file's parse entry.
+  const parsedMap = await loadParsedData();
+  parsedMap[`${entityId}/${relPath}`] = invoiceParsedData(invoice, template);
+  await saveParsedData(parsedMap);
+  log.info(`[invoice] filed ${invoice.number} at ${entityId}/${relPath} (+parse entry)`);
+  return `${entityId}:${relPath}`;
 }
 
 function pdfResponse(pdf: Uint8Array, invoice: Invoice): Response {
@@ -900,6 +913,24 @@ async function handleInvoiceRoutes(req: Request, pathname: string): Promise<Resp
     if (!result.ok) return jsonResponse({ error: result.error ?? 'Email send failed' }, 502);
     invoice.sentAt = new Date().toISOString();
     invoice.sentTo = to;
+    // A sent invoice is a business record: file it into the client's entity
+    // docs if creation didn't already (e.g. autoFileEntityId set after the
+    // fact, or older invoices). Best-effort — filing never blocks the send.
+    if (!invoice.filedPath) {
+      const autoEntity = store.clients.find((c) => c.id === invoice.clientId)?.autoFileEntityId;
+      if (autoEntity) {
+        try {
+          const filed = await fileInvoicePdf(invoice, template, autoEntity);
+          if (filed) invoice.filedPath = filed;
+        } catch (err) {
+          log.warn(`[invoice] file-on-send failed for ${invoice.number}: ${String(err)}`);
+        }
+      } else {
+        log.warn(
+          `[invoice] sent ${invoice.number} but client ${invoice.clientId} has no autoFileEntityId — not filed into entity docs`
+        );
+      }
+    }
     await saveTimesheetStore(store);
     log.info(`[invoice] sent ${invoice.number} (id=${result.id ?? 'n/a'})`);
     return jsonResponse({ ok: true, sentTo: to, sentAt: invoice.sentAt });
