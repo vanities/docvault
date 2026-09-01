@@ -1,16 +1,16 @@
 // IRS Pub 560 Deduction Worksheet for Self-Employed — pure computation.
 // Used by Solo401kCalculator component and tested directly.
 
-// IRS limits by year
+// IRS limits by year (2026 per IR-2025 announcement: deferral $24,500, 415(c) $72,000)
 export const EMPLOYEE_LIMIT: Record<number, number> = {
   2024: 23000,
   2025: 23500,
-  2026: 23500,
+  2026: 24500,
 };
 export const COMBINED_CAP: Record<number, number> = {
   2024: 69000,
   2025: 70000,
-  2026: 70000,
+  2026: 72000,
 };
 
 export function computeSolo401k(
