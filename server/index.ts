@@ -1227,6 +1227,7 @@ export async function handleRequest(req: Request): Promise<Response> {
       let invoiceTotal = 0,
         invoiceCount = 0;
       const invoiceByCustomer = new Map<string, { total: number; count: number }>();
+      const invoiceTotalsByEntity: Record<string, number> = {};
       let retirementResult: ReturnType<typeof getRetirementSummary> = null;
 
       for (const entity of entities) {
@@ -1285,6 +1286,9 @@ export async function handleRequest(req: Request): Promise<Response> {
         );
         invoiceTotal += invSummary.invoiceTotal;
         invoiceCount += invSummary.invoiceCount;
+        if (invSummary.invoiceTotal > 0) {
+          invoiceTotalsByEntity[entity.id] = invSummary.invoiceTotal;
+        }
         for (const cust of invSummary.byCustomer) {
           const existing = invoiceByCustomer.get(cust.customer);
           if (existing) {
@@ -1393,6 +1397,10 @@ export async function handleRequest(req: Request): Promise<Response> {
           byCustomer: Array.from(invoiceByCustomer.entries())
             .map(([customer, { total, count }]) => ({ customer, total, count }))
             .sort((a, b) => b.total - a.total),
+          // Per-entity totals so "all" consumers (e.g. the Solo 401(k) view's
+          // SE-entity detection) can find the invoicing business without
+          // per-entity bank statements.
+          byEntity: invoiceTotalsByEntity,
         },
         retirement: retirementResult,
         documentCount,

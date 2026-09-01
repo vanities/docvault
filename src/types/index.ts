@@ -293,6 +293,8 @@ export interface InvoiceSummaryData {
   invoiceTotal: number;
   invoiceCount: number;
   byCustomer: InvoiceCustomerGroup[];
+  /** Per-entity invoice totals; populated only in the "all" aggregate view. */
+  byEntity?: Record<string, number>;
 }
 
 // Retirement summary for QuickStats
