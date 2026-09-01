@@ -107,10 +107,13 @@ export async function handleMiscRoutes(
     const allData = await loadContributions();
 
     if (entity === 'all') {
-      // Aggregate contributions from all entities for this year
+      // A solo 401(k) is per PERSON: controlled-group rules aggregate every
+      // business the owner controls into one employer, so the plan ledger is
+      // person-level. "all" merges the canonical person ledger (all/<year>)
+      // with any legacy per-entity rows.
       const merged: (typeof allData)[string] = [];
       for (const [key, items] of Object.entries(allData)) {
-        if (key.endsWith(`/${year}`) && key !== `all/${year}` && Array.isArray(items)) {
+        if (key.endsWith(`/${year}`) && Array.isArray(items)) {
           merged.push(...items);
         }
       }
@@ -125,17 +128,24 @@ export async function handleMiscRoutes(
   const contribPutMatch = pathname.match(/^\/api\/contributions\/([^/]+)\/(\d{4})$/);
   if (contribPutMatch && req.method === 'PUT') {
     const entity = contribPutMatch[1];
-    // "all" is read-only — contributions must be edited per-entity
-    if (entity === 'all') {
-      return jsonResponse({ ok: true, readOnly: true });
-    }
-    const key = `${entity}/${contribPutMatch[2]}`;
+    const year = contribPutMatch[2];
     const { contributions } = await readJsonBody<{ contributions?: Contribution401k[] }>(req);
     if (!Array.isArray(contributions)) {
       return jsonResponse({ error: 'contributions must be an array' }, 400);
     }
     const allData = await loadContributions();
-    allData[key] = contributions;
+    if (entity === 'all') {
+      // Person-level write: the submitted list is the WHOLE merged ledger
+      // (clients edit what GET "all" returned), so consolidate it into the
+      // canonical all/<year> key and clear the legacy per-entity rows it
+      // absorbed — otherwise the next merge would duplicate them.
+      for (const key of Object.keys(allData)) {
+        if (key.endsWith(`/${year}`)) delete allData[key];
+      }
+      allData[`all/${year}`] = contributions;
+    } else {
+      allData[`${entity}/${year}`] = contributions;
+    }
     await saveContributions(allData);
     return jsonResponse({ ok: true, contributions });
   }

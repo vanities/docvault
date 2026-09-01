@@ -56,6 +56,8 @@ scripts/*
 **/*.spec.tsx
 # Exception: Politics dashboard tests use synthetic congressional payloads, no personal data
 !src/components/Politics/politicsData.test.ts
+# Exception: 401k contributions API tests use fabricated entities/amounts (consulting-llc, farm-llc), no personal data
+!server/routes/contributions.test.ts
 # Exception: entity-selection guard tests use fabricated entity ids (Acme LLC), no personal data
 !src/contexts/entity-selection.test.ts
 # Exception: navigation-wiring contract test regex-parses source files, no personal data
