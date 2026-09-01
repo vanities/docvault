@@ -234,12 +234,15 @@ export function extractExpense(parsed: ParsedData, _filename: string): ExpenseIt
   // Invoices are INCOME documents (money owed to the business), not expenses
   if (docType === 'invoice') return null;
 
-  // Only extract from receipt-like documents
+  // Only extract from receipt-like documents. The gate must accept the same
+  // amount fields the body reads — receipt parses often carry totalAmount
+  // with no amount (and no documentType).
+  const amountValue = (parsed.totalAmount || parsed.amount) as number | undefined;
   if (
     docType === 'receipt' ||
-    (parsed.amount && (parsed.vendor || parsed.category) && docType !== 'invoice')
+    (amountValue && (parsed.vendor || parsed.category) && docType !== 'invoice')
   ) {
-    const amount = (parsed.totalAmount || parsed.amount) as number;
+    const amount = amountValue as number;
     if (!amount || amount <= 0) return null;
     return {
       vendor: (parsed.vendor || 'Unknown') as string,
