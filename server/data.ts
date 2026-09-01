@@ -364,6 +364,8 @@ export interface Settings {
     fromEmail?: string;
     fromName?: string;
     toEmail?: string;
+    /** Always copied on outbound mail (comma/semicolon separated). */
+    ccEmail?: string;
     enabled?: boolean;
   };
   /**
@@ -631,6 +633,8 @@ export interface EmailConfig {
   fromEmail?: string;
   fromName?: string;
   toEmail?: string;
+  /** Copied on every outbound email unless a caller passes its own cc. */
+  ccEmail?: string;
   enabled: boolean;
 }
 
@@ -643,6 +647,7 @@ export async function getEmailConfig(): Promise<EmailConfig> {
     fromEmail: settings.email?.fromEmail,
     fromName: settings.email?.fromName,
     toEmail: settings.email?.toEmail,
+    ccEmail: settings.email?.ccEmail,
     enabled: settings.email?.enabled ?? false,
   };
 }

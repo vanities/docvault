@@ -157,6 +157,7 @@ export async function handleSettingsRoutes(
         fromEmail: settings.email?.fromEmail ?? '',
         fromName: settings.email?.fromName ?? '',
         toEmail: settings.email?.toEmail ?? '',
+        ccEmail: settings.email?.ccEmail ?? '',
         enabled: settings.email?.enabled ?? false,
         hasResendApiKey: !!(settings.email?.resendApiKey || process.env.RESEND_API_KEY),
         resendApiKeyHint: settings.email?.resendApiKey
@@ -449,11 +450,12 @@ export async function handleSettingsRoutes(
         fromEmail?: unknown;
         fromName?: unknown;
         toEmail?: unknown;
+        ccEmail?: unknown;
         enabled?: unknown;
         resendApiKey?: unknown;
         clearResendApiKey?: unknown;
       };
-      for (const k of ['fromEmail', 'fromName', 'toEmail'] as const) {
+      for (const k of ['fromEmail', 'fromName', 'toEmail', 'ccEmail'] as const) {
         const v = em[k];
         if (typeof v === 'string') settings.email[k] = v.trim() || undefined;
       }

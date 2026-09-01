@@ -17,6 +17,7 @@ interface EmailData {
   fromEmail?: string;
   fromName?: string;
   toEmail?: string;
+  ccEmail?: string;
   enabled?: boolean;
   hasResendApiKey?: boolean;
   resendApiKeyHint?: string;
@@ -31,6 +32,7 @@ export function EmailSettingsSection() {
   const [fromEmail, setFromEmail] = useState('');
   const [fromName, setFromName] = useState('');
   const [toEmail, setToEmail] = useState('');
+  const [ccEmail, setCcEmail] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [hasKey, setHasKey] = useState(false);
   const [keyHint, setKeyHint] = useState('');
@@ -43,6 +45,7 @@ export function EmailSettingsSection() {
       setFromEmail(e.fromEmail ?? '');
       setFromName(e.fromName ?? '');
       setToEmail(e.toEmail ?? '');
+      setCcEmail(e.ccEmail ?? '');
       setHasKey(e.hasResendApiKey ?? false);
       setKeyHint(e.resendApiKeyHint ?? '');
     } catch {
@@ -59,7 +62,7 @@ export function EmailSettingsSection() {
   const save = async () => {
     setSaving(true);
     try {
-      const email: Record<string, unknown> = { enabled, fromEmail, fromName, toEmail };
+      const email: Record<string, unknown> = { enabled, fromEmail, fromName, toEmail, ccEmail };
       if (apiKey.trim()) email.resendApiKey = apiKey.trim();
       const d = await requestJson<{ ok?: boolean }>(`${API_BASE}/settings`, {
         method: 'POST',
@@ -176,6 +179,22 @@ export function EmailSettingsSection() {
             <p className="text-[11px] text-surface-500 mt-1">
               Every Newsstand edition goes to all of these. Invoice emails do NOT use this list —
               their recipients come from the customer profile / project template / compose window.
+            </p>
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-[12px] text-surface-600 mb-1">
+              Always CC (one address per line, or comma-separated)
+            </label>
+            <textarea
+              value={ccEmail}
+              onChange={(e) => setCcEmail(e.target.value)}
+              placeholder={'you@example.com'}
+              rows={2}
+              className="w-full text-[13px] bg-surface-100/60 border border-border/40 rounded-lg px-2.5 py-1.5 resize-y"
+            />
+            <p className="text-[11px] text-surface-500 mt-1">
+              Copied on EVERY outbound email — invoices, the weekly timesheet report, and Newsstand
+              editions. Anyone already on the To line is skipped, so nobody is delivered twice.
             </p>
           </div>
           <div>
