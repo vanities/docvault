@@ -470,7 +470,9 @@ export function DocumentViewer({
                   <iframe
                     src={fileUrl}
                     title={`Preview of ${document.fileName}`}
-                    sandbox="allow-downloads allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin"
+                    // Browsers' built-in PDF viewers are script-driven: without
+                    // allow-scripts the toolbar renders but the page stays blank.
+                    sandbox="allow-scripts allow-downloads allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin"
                     referrerPolicy="no-referrer"
                     className="w-full h-full rounded-lg bg-white"
                   />
