@@ -44,9 +44,12 @@ export function EventChip({
 
   return (
     <div
-      className={`group/chip flex items-center gap-1 w-full min-w-0 border px-1.5 py-0.5 text-[11px] leading-4 transition-colors ${style.bg} ${style.border} ${style.text} ${
-        occ.completed ? 'opacity-45' : ''
-      } ${occ.overdue ? 'ring-1 ring-red-500/40' : ''} ${
+      className={`group/chip flex items-center gap-1 min-w-0 border px-1.5 py-0.5 text-[11px] leading-4 transition-colors ${style.bg} ${style.border} ${style.text} ${
+        // A band segment must STRETCH into the negative margins below. `w-full`
+        // pins width to the cell's content box, so the margins would only shift
+        // the box and leave a gap at every join; self-stretch lets it grow.
+        multiDay ? 'self-stretch' : 'w-full'
+      } ${occ.completed ? 'opacity-45' : ''} ${occ.overdue ? 'ring-1 ring-red-500/40' : ''} ${
         // Square off + bleed into the cell padding wherever the band continues
         // into the neighbouring day, so the joins read as one bar.
         isStart ? 'rounded-l-md' : 'rounded-l-none border-l-0 -ml-1 md:-ml-1.5 pl-1'
