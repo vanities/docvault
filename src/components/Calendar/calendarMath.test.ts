@@ -7,10 +7,14 @@ import {
   comingMonthGroups,
   agendaBuckets,
   daysUntil,
+  formatDateRange,
   groupOccurrencesByDate,
+  isOngoing,
   monthGridDays,
   monthTitle,
+  occurrenceTimingLabel,
   relativeLabel,
+  spanLength,
 } from './calendarMath';
 import type { Occurrence } from './types';
 
@@ -110,8 +114,42 @@ describe('groupOccurrencesByDate / agendaBuckets', () => {
       occ({ title: 'B', date: '2026-08-01' }),
       occ({ title: 'C', date: '2026-08-02' }),
     ]);
-    expect(grouped.get('2026-08-01')?.map((o) => o.title)).toEqual(['A', 'B']);
+    expect(grouped.get('2026-08-01')?.map((s) => s.occ.title)).toEqual(['A', 'B']);
     expect(grouped.get('2026-08-02')).toHaveLength(1);
+  });
+
+  test('a multi-day occurrence gets one segment per day it covers', () => {
+    const grouped = groupOccurrencesByDate([
+      occ({ title: 'Trip to Denver', kind: 'event', date: '2026-08-03', endDate: '2026-08-06' }),
+      occ({ title: 'Single day', date: '2026-08-05' }),
+    ]);
+    expect([...grouped.keys()]).toEqual(['2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06']);
+    const trip = ['2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06'].map(
+      (d) => grouped.get(d)!.find((s) => s.occ.title === 'Trip to Denver')!
+    );
+    expect(trip.map((s) => [s.dayIndex, s.isStart, s.isEnd])).toEqual([
+      [1, true, false],
+      [2, false, false],
+      [3, false, false],
+      [4, false, true],
+    ]);
+    expect(trip.every((s) => s.dayCount === 4)).toBe(true);
+    // The single-day event still gets exactly one segment, on its own day.
+    expect(grouped.get('2026-08-05')).toHaveLength(2);
+    expect(grouped.get('2026-08-04')?.map((s) => s.occ.title)).toEqual(['Trip to Denver']);
+  });
+
+  test('a span crossing a month boundary keeps counting days', () => {
+    const grouped = groupOccurrencesByDate([
+      occ({ title: 'Conference', kind: 'event', date: '2026-08-30', endDate: '2026-09-02' }),
+    ]);
+    expect([...grouped.keys()]).toEqual(['2026-08-30', '2026-08-31', '2026-09-01', '2026-09-02']);
+  });
+
+  test('spanLength counts both ends', () => {
+    expect(spanLength(occ({ date: '2026-08-03' }))).toBe(1);
+    expect(spanLength(occ({ date: '2026-08-03', endDate: '2026-08-03' }))).toBe(1);
+    expect(spanLength(occ({ date: '2026-08-03', endDate: '2026-08-09' }))).toBe(7);
   });
 
   test('buckets pending occurrences and drops completed ones', () => {
@@ -136,6 +174,44 @@ describe('groupOccurrencesByDate / agendaBuckets', () => {
     expect(buckets.today.map((o) => o.title)).toEqual(['Today task']);
     expect(buckets.week.map((o) => o.title)).toEqual(['This week']);
     expect(buckets.later.map((o) => o.title)).toEqual(['Later']);
+  });
+
+  test('an in-progress multi-day event buckets under Today, not Overdue', () => {
+    const buckets = agendaBuckets(
+      [
+        // Started Monday, runs through next week — today sits inside it.
+        occ({
+          title: 'Trip to Denver',
+          kind: 'event',
+          completable: false,
+          date: '2026-07-28',
+          endDate: '2026-08-04',
+        }),
+        // Ended yesterday: history, and non-completable, so it drops out.
+        occ({
+          title: 'Last trip',
+          kind: 'event',
+          completable: false,
+          date: '2026-07-25',
+          endDate: '2026-07-30',
+        }),
+        // A task whose span already closed is genuinely overdue.
+        occ({ title: 'Multi-day chore', date: '2026-07-25', endDate: '2026-07-30' }),
+        // Starts inside the week — still a future item.
+        occ({
+          title: 'Next trip',
+          kind: 'event',
+          completable: false,
+          date: '2026-08-03',
+          endDate: '2026-08-09',
+        }),
+      ],
+      TODAY
+    );
+    expect(buckets.today.map((o) => o.title)).toEqual(['Trip to Denver']);
+    expect(buckets.overdue.map((o) => o.title)).toEqual(['Multi-day chore']);
+    expect(buckets.week.map((o) => o.title)).toEqual(['Next trip']);
+    expect(buckets.later).toEqual([]);
   });
 
   test('week boundary is 7 days inclusive', () => {
@@ -176,5 +252,31 @@ describe('comingMonthGroups', () => {
 
   test('empty when nothing lies beyond the boundary', () => {
     expect(comingMonthGroups([occ({ date: '2026-08-01' })], AFTER, TODAY)).toEqual([]);
+  });
+});
+
+describe('span labels', () => {
+  const TODAY = '2026-07-31';
+
+  test('isOngoing only covers a span already started and not yet finished', () => {
+    const trip = occ({ date: '2026-07-28', endDate: '2026-08-04' });
+    expect(isOngoing(trip, TODAY)).toBe(true);
+    expect(isOngoing(trip, '2026-07-28')).toBe(false); // first day: not yet "ongoing"
+    expect(isOngoing(trip, '2026-08-04')).toBe(true); // last day still counts
+    expect(isOngoing(trip, '2026-08-05')).toBe(false);
+    expect(isOngoing(occ({ date: '2026-07-31' }), TODAY)).toBe(false); // single-day
+  });
+
+  test('timing label counts the day within a running span', () => {
+    const trip = occ({ date: '2026-07-28', endDate: '2026-08-04' });
+    expect(occurrenceTimingLabel(trip, TODAY)).toBe('day 4 of 8');
+    // Before it starts it reads like any other upcoming item.
+    expect(occurrenceTimingLabel(trip, '2026-07-27')).toBe('tomorrow');
+  });
+
+  test('formatDateRange collapses the shared month and year', () => {
+    expect(formatDateRange('2026-10-03', '2026-10-09')).toBe('Oct 3 – 9');
+    expect(formatDateRange('2026-10-30', '2026-11-02')).toBe('Oct 30 – Nov 2');
+    expect(formatDateRange('2026-12-28', '2027-01-03')).toBe('Dec 28, 2026 – Jan 3, 2027');
   });
 });

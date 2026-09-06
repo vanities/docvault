@@ -530,6 +530,7 @@ interface CalendarEventInput {
   kind?: 'birthday' | 'task' | 'event';
   title?: string;
   date?: string;
+  endDate?: string | null;
   recurrence?: {
     interval: number;
     unit: 'day' | 'week' | 'month' | 'year';
@@ -1644,7 +1645,7 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
       // -- Calendar: reads --------------------------------------------------
       tool(
         'get_calendar',
-        'Projected calendar occurrences (birthdays with "turns N" ages, recurring task due dates with overdue flags, one-off events) over a date window. Defaults to today through +60 days; overdue pending tasks surface even when their due date is past. Use for "what\'s coming up", "what\'s overdue", "when is X due".',
+        'Projected calendar occurrences (birthdays with "turns N" ages, recurring task due dates with overdue flags, one-off events, multi-day events carrying an endDate) over a date window. Defaults to today through +60 days; overdue pending tasks surface even when their due date is past. Use for "what\'s coming up", "what\'s overdue", "when is X due".',
         {
           start: z.string().optional().describe('YYYY-MM-DD (default today).'),
           end: z.string().optional().describe('YYYY-MM-DD (default today + 60 days).'),
@@ -1701,13 +1702,21 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
       // -- Calendar: writes -------------------------------------------------
       tool(
         'add_calendar_event',
-        "Create a calendar event. kind 'birthday' = yearly, optional birthYear for ages; 'task' = completable, optionally recurring (anchor 'fixed' keeps the schedule, 'afterCompletion' counts the next due date from when the user actually completes it — right for maintenance chores); 'event' = non-completable date. WRITE TOOL — confirm before invoking.",
+        "Create a calendar event. kind 'birthday' = yearly, optional birthYear for ages; 'task' = completable, optionally recurring (anchor 'fixed' keeps the schedule, 'afterCompletion' counts the next due date from when the user actually completes it — right for maintenance chores); 'event' = non-completable date. Set endDate for anything that runs across several days (a trip, a conference). WRITE TOOL — confirm before invoking.",
         {
           kind: z.enum(['birthday', 'task', 'event']),
           title: z.string(),
           date: z
             .string()
-            .describe('YYYY-MM-DD anchor: the birth date for birthdays, first due date for tasks.'),
+            .describe(
+              'YYYY-MM-DD anchor: the birth date for birthdays, first due date for tasks, the start day for events.'
+            ),
+          endDate: z
+            .string()
+            .optional()
+            .describe(
+              'YYYY-MM-DD inclusive LAST day, for multi-day events like trips or conferences. Omit for single-day. Not allowed on birthdays; a recurring span must end before its next occurrence starts.'
+            ),
           recurrence: z
             .object({
               interval: z.number().int().min(1),
@@ -1725,11 +1734,18 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
       ),
       tool(
         'update_calendar_event',
-        "Update a calendar event's title, date, recurrence, birthYear, entity tag, notes, or status (archive with status 'archived'; kind is immutable). WRITE TOOL — confirm before invoking.",
+        "Update a calendar event's title, date, endDate (multi-day span), recurrence, birthYear, entity tag, notes, or status (archive with status 'archived'; kind is immutable). WRITE TOOL — confirm before invoking.",
         {
           id: z.string().describe('Event id from list_calendar_events/get_calendar.'),
           title: z.string().optional(),
-          date: z.string().optional().describe('YYYY-MM-DD'),
+          date: z.string().optional().describe('YYYY-MM-DD start/anchor date.'),
+          endDate: z
+            .string()
+            .nullable()
+            .optional()
+            .describe(
+              'YYYY-MM-DD inclusive last day of a multi-day span; null makes it single-day.'
+            ),
           recurrence: z
             .object({
               interval: z.number().int().min(1),

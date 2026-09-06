@@ -15,7 +15,8 @@ export interface CalendarEvent {
   id: string;
   kind: CalendarEventKind;
   title: string;
-  date: string; // YYYY-MM-DD anchor
+  date: string; // YYYY-MM-DD anchor (first day of a span)
+  endDate?: string; // inclusive last day of a multi-day event; absent = single-day
   recurrence?: CalendarRecurrence | null;
   birthYear?: number;
   entityId?: string;
@@ -36,7 +37,8 @@ export interface Occurrence {
   eventId: string;
   kind: CalendarEventKind;
   title: string;
-  date: string; // YYYY-MM-DD
+  date: string; // YYYY-MM-DD (first day of a span)
+  endDate?: string; // inclusive last day; set only on multi-day occurrences
   entityId?: string;
   notes?: string;
   completable: boolean;
@@ -52,6 +54,7 @@ export interface CalendarEventInput {
   kind: CalendarEventKind;
   title: string;
   date: string;
+  endDate?: string | null;
   recurrence?: CalendarRecurrence | null;
   birthYear?: number | null;
   entityId?: string | null;

@@ -2,8 +2,13 @@
 // chips with a "+N more" overflow that pins the day in the agenda panel;
 // below md the cells collapse to color dots and the whole cell becomes the
 // tap target (the day agenda panel under the grid carries the detail).
+//
+// Cells are keyed by DaySegment, not Occurrence: a multi-day event supplies a
+// segment for each day it covers, so the same band appears in every cell of
+// the run. Sunday cells repeat the title, since that's where a band that
+// began earlier in the week restarts on a new row.
 
-import { WEEKDAY_LABELS, type GridDay } from './calendarMath';
+import { WEEKDAY_LABELS, type DaySegment, type GridDay } from './calendarMath';
 import { EventChip } from './EventChip';
 import { occurrenceStyle } from './occurrenceStyle';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
@@ -25,7 +30,7 @@ export interface DayWeather {
 
 interface MonthGridProps {
   days: GridDay[];
-  occurrencesByDate: Map<string, Occurrence[]>;
+  segmentsByDate: Map<string, DaySegment[]>;
   astroByDate: Map<string, AstroMark[]>;
   holidaysByDate: Map<string, string>;
   weatherByDate: Map<string, DayWeather>;
@@ -38,7 +43,7 @@ interface MonthGridProps {
 
 export function MonthGrid({
   days,
-  occurrencesByDate,
+  segmentsByDate,
   astroByDate,
   holidaysByDate,
   weatherByDate,
@@ -67,7 +72,7 @@ export function MonthGrid({
             day={day}
             row={Math.floor(i / 7)}
             col={i % 7}
-            occurrences={occurrencesByDate.get(day.date) ?? []}
+            segments={segmentsByDate.get(day.date) ?? []}
             astro={astroByDate.get(day.date)}
             holiday={holidaysByDate.get(day.date)}
             weather={weatherByDate.get(day.date)}
@@ -87,7 +92,7 @@ interface DayCellProps {
   day: GridDay;
   row: number;
   col: number;
-  occurrences: Occurrence[];
+  segments: DaySegment[];
   astro: AstroMark[] | undefined;
   holiday: string | undefined;
   weather: DayWeather | undefined;
@@ -102,7 +107,7 @@ function DayCell({
   day,
   row,
   col,
-  occurrences,
+  segments,
   astro,
   holiday,
   weather,
@@ -113,8 +118,8 @@ function DayCell({
   onOpenOccurrence,
 }: DayCellProps) {
   const dayNumber = Number(day.date.slice(8, 10));
-  const overflow = occurrences.length - MAX_CHIPS;
-  const hasOverdue = occurrences.some((o) => o.overdue);
+  const overflow = segments.length - MAX_CHIPS;
+  const hasOverdue = segments.some((s) => s.occ.overdue);
 
   return (
     <div
@@ -179,11 +184,12 @@ function DayCell({
 
       {/* Desktop: chips */}
       <div className="hidden md:flex flex-col gap-0.5 mt-0.5">
-        {occurrences.slice(0, MAX_CHIPS).map((occ) => (
+        {segments.slice(0, MAX_CHIPS).map((segment) => (
           <EventChip
-            key={`${occ.eventId}:${occ.date}`}
-            occ={occ}
+            key={`${segment.occ.eventId}:${segment.occ.date}`}
+            segment={segment}
             entities={entities}
+            repeatTitle={col === 0}
             onToggleComplete={onToggleComplete}
             onOpen={onOpenOccurrence}
           />
@@ -197,17 +203,17 @@ function DayCell({
 
       {/* Mobile: dots */}
       <div className="flex md:hidden flex-wrap items-center gap-0.5 mt-1 min-h-[8px]">
-        {occurrences.slice(0, MAX_DOTS).map((occ) => (
+        {segments.slice(0, MAX_DOTS).map(({ occ, dayCount }) => (
           <span
             key={`${occ.eventId}:${occ.date}`}
-            className={`w-1.5 h-1.5 rounded-full ${occurrenceStyle(occ, entities).dot} ${
-              occ.completed ? 'opacity-40' : ''
-            }`}
+            className={`h-1.5 ${dayCount > 1 ? 'w-3 rounded-sm' : 'w-1.5 rounded-full'} ${
+              occurrenceStyle(occ, entities).dot
+            } ${occ.completed ? 'opacity-40' : ''}`}
           />
         ))}
-        {occurrences.length > MAX_DOTS && (
+        {segments.length > MAX_DOTS && (
           <span className="text-[9px] leading-none text-surface-600">
-            +{occurrences.length - MAX_DOTS}
+            +{segments.length - MAX_DOTS}
           </span>
         )}
       </div>

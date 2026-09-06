@@ -25,14 +25,17 @@ export interface Occurrence {
   eventId: string;
   kind: CalendarEventKind;
   title: string;
-  date: string; // YYYY-MM-DD due/occurrence date
+  date: string; // YYYY-MM-DD due/occurrence date (first day of a span)
+  // Inclusive last day, set only when this occurrence spans MULTIPLE days.
+  // Single-day occurrences omit it — use occurrenceEnd() to read either.
+  endDate?: string;
   entityId?: string;
   notes?: string;
   completable: boolean; // kind === 'task'
   completed: boolean; // a completion record exists (done OR skipped)
   skipped?: boolean;
   completedOn?: string;
-  overdue: boolean; // pending task occurrence with date < today
+  overdue: boolean; // pending task occurrence whose LAST day is before today
   age?: number; // birthdays with birthYear: occurrence year - birthYear
   recurrenceLabel: string; // "monthly", "every 6 months after completion", "one-off"
 }
@@ -47,6 +50,25 @@ const YMD_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 export function daysInMonth(year: number, month: number): number {
   // Day 0 of the next month, pinned to UTC so local timezone can't shift it.
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/** Whole days from `start` to `end` (negative when end precedes start).
+ * UTC-pinned, so a DST boundary inside the range can't shift the count. */
+export function diffDays(start: string, end: string): number {
+  const a = parseParts(start);
+  const b = parseParts(end);
+  return Math.round((Date.UTC(b.y, b.m - 1, b.d) - Date.UTC(a.y, a.m - 1, a.d)) / 86_400_000);
+}
+
+/** Last day an occurrence covers: its span end, or its own date when single-day. */
+export function occurrenceEnd(occ: Pick<Occurrence, 'date' | 'endDate'>): string {
+  return occ.endDate ?? occ.date;
+}
+
+/** Days an event's span covers, 0 when single-day. Birthdays never span. */
+export function eventSpanDays(event: Pick<CalendarEvent, 'kind' | 'date' | 'endDate'>): number {
+  if (event.kind === 'birthday' || !event.endDate || event.endDate <= event.date) return 0;
+  return diffDays(event.date, event.endDate);
 }
 
 export function isYMD(value: string): boolean {
@@ -123,6 +145,14 @@ export function projectEvent(
     (event.completions ?? []).map((c) => [c.occurrenceDate, c] as const)
   );
   const includeOverdueTail = window.start <= today;
+  // Span length recurs with the event: every occurrence covers the same
+  // number of days as the anchor does.
+  const spanDays = eventSpanDays(event);
+  const spanEnd = (date: string): string | undefined =>
+    spanDays > 0 ? addInterval(date, spanDays, 'day') : undefined;
+  // A multi-day occurrence is "past" only once its LAST day is behind us — a
+  // trip you are in the middle of is neither overdue nor out of window.
+  const lastDay = (date: string): string => spanEnd(date) ?? date;
 
   const base = {
     eventId: event.id,
@@ -136,13 +166,15 @@ export function projectEvent(
 
   const occurrenceAt = (date: string): Occurrence => {
     const completion = completionsByDate.get(date);
+    const end = spanEnd(date);
     return {
       ...base,
       date,
+      ...(end ? { endDate: end } : {}),
       completed: completion !== undefined,
       skipped: completion?.skipped,
       completedOn: completion?.completedOn,
-      overdue: completable && completion === undefined && date < today,
+      overdue: completable && completion === undefined && lastDay(date) < today,
     };
   };
 
@@ -175,7 +207,7 @@ export function projectEvent(
       a.completedOn < b.completedOn ? -1 : 1
     );
     for (const c of completions) {
-      if (c.occurrenceDate >= window.start && c.occurrenceDate <= window.end) {
+      if (lastDay(c.occurrenceDate) >= window.start && c.occurrenceDate <= window.end) {
         out.push(occurrenceAt(c.occurrenceDate));
       }
     }
@@ -183,12 +215,14 @@ export function projectEvent(
     const due = latest ? addInterval(latest.completedOn, interval, unit) : event.date;
     // The pending occurrence surfaces even before window.start — it's the
     // only projection of this task's future, and overdue must not hide.
-    if (due <= window.end && (due >= window.start || includeOverdueTail)) {
+    if (due <= window.end && (lastDay(due) >= window.start || includeOverdueTail)) {
+      const end = spanEnd(due);
       out.push({
         ...base,
         date: due,
+        ...(end ? { endDate: end } : {}),
         completed: false,
-        overdue: due < today,
+        overdue: lastDay(due) < today,
       });
     }
     return out;
@@ -198,12 +232,12 @@ export function projectEvent(
   if (!event.recurrence) {
     const date = event.date;
     const completion = completionsByDate.get(date);
-    const inWindow = date >= window.start && date <= window.end;
+    const inWindow = lastDay(date) >= window.start && date <= window.end;
     const pendingOverdueBeforeWindow =
       completable &&
       completion === undefined &&
-      date < window.start &&
-      date <= today &&
+      lastDay(date) < window.start &&
+      lastDay(date) <= today &&
       includeOverdueTail;
     return inWindow || pendingOverdueBeforeWindow ? [occurrenceAt(date)] : [];
   }
@@ -217,9 +251,14 @@ export function projectEvent(
   for (let k = 0; k < MAX_FIXED_ITERATIONS; k++) {
     const date = addInterval(event.date, k * interval, unit);
     if (date > window.end) break;
-    if (date >= window.start) {
+    if (lastDay(date) >= window.start) {
       out.push(occurrenceAt(date));
-    } else if (completable && !completionsByDate.has(date) && date <= today && includeOverdueTail) {
+    } else if (
+      completable &&
+      !completionsByDate.has(date) &&
+      lastDay(date) <= today &&
+      includeOverdueTail
+    ) {
       // Track only the latest missed occurrence — "filter is overdue" once,
       // not once per missed month.
       latestOverdueBeforeWindow = occurrenceAt(date);
@@ -236,9 +275,15 @@ export function projectOccurrences(
   today: string
 ): Occurrence[] {
   const out = events.flatMap((event) => projectEvent(event, window, today));
-  out.sort((a, b) =>
-    a.date === b.date ? a.title.localeCompare(b.title) : a.date < b.date ? -1 : 1
-  );
+  out.sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    // Multi-day spans first (longest first) so a trip renders as the top band
+    // of every cell it crosses instead of hopping rows day to day.
+    const aEnd = occurrenceEnd(a);
+    const bEnd = occurrenceEnd(b);
+    if (aEnd !== bEnd) return aEnd > bEnd ? -1 : 1;
+    return a.title.localeCompare(b.title);
+  });
   return out;
 }
 

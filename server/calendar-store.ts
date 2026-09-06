@@ -66,8 +66,15 @@ export interface CalendarEvent {
   kind: CalendarEventKind;
   title: string;
   // Anchor date YYYY-MM-DD. Birthday: any year with the right MM-DD (the
-  // birth date itself when known). Task: first due date. Event: the date.
+  // birth date itself when known). Task: first due date. Event: the (start)
+  // date.
   date: string;
+  // Inclusive last day of a MULTI-DAY event (trips, conferences, a stretch of
+  // vacation). Absent/equal to `date` = a single-day event. Never set for
+  // birthdays. The span length (endDate - date, in days) is what recurs: each
+  // projected occurrence carries the same number of days, and the span must
+  // close before the next occurrence opens (validated in routes/calendar.ts).
+  endDate?: string;
   // null/undefined = one-off. Ignored for birthdays (implicitly yearly fixed).
   recurrence?: CalendarRecurrence | null;
   birthYear?: number; // birthdays only — enables "turns N"
@@ -102,6 +109,7 @@ function isCalendarEvent(value: unknown): value is CalendarEvent {
     typeof value.id === 'string' &&
     typeof value.title === 'string' &&
     typeof value.date === 'string' &&
+    (value.endDate === undefined || typeof value.endDate === 'string') &&
     EVENT_KINDS.has(value.kind as string) &&
     EVENT_STATUSES.has(value.status as string) &&
     Array.isArray(value.completions)

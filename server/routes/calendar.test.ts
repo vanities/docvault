@@ -148,6 +148,106 @@ describe('event CRUD', () => {
   });
 });
 
+describe('multi-day spans', () => {
+  test('creates a span, projects an endDate, and clears it with null', async () => {
+    const created = await call('POST', '/api/calendar/events', {
+      kind: 'event',
+      title: 'Trip to Denver',
+      date: '2026-08-03',
+      endDate: '2026-08-09',
+    });
+    expect(created.status).toBe(200);
+    expect(created.data.event.endDate).toBe('2026-08-09');
+
+    const id = created.data.event.id;
+    const occs = await call('GET', '/api/calendar/occurrences?start=2026-08-01&end=2026-08-31');
+    expect(occs.data.occurrences).toHaveLength(1);
+    expect(occs.data.occurrences[0]).toMatchObject({
+      date: '2026-08-03',
+      endDate: '2026-08-09',
+    });
+
+    // A window that only touches the tail of the span still sees it — the
+    // grid must paint the days it covers, not just its first one.
+    const tail = await call('GET', '/api/calendar/occurrences?start=2026-08-08&end=2026-08-20');
+    expect(tail.data.occurrences.map((o: Occurrence) => o.date)).toEqual(['2026-08-03']);
+
+    const cleared = await call('PUT', `/api/calendar/events/${id}`, { endDate: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.data.event.endDate).toBeUndefined();
+  });
+
+  test('a same-day endDate normalizes away instead of being stored', async () => {
+    const created = await call('POST', '/api/calendar/events', {
+      kind: 'event',
+      title: 'One-day offsite',
+      date: '2026-08-03',
+      endDate: '2026-08-03',
+    });
+    expect(created.status).toBe(200);
+    expect(created.data.event.endDate).toBeUndefined();
+  });
+
+  test('span recurs at the same length on every occurrence', async () => {
+    await call('POST', '/api/calendar/events', {
+      kind: 'event',
+      title: 'Quarterly onsite week',
+      date: '2026-01-05',
+      endDate: '2026-01-09',
+      recurrence: { interval: 3, unit: 'month', anchor: 'fixed' },
+    });
+    const occs = await call('GET', '/api/calendar/occurrences?start=2026-01-01&end=2026-12-31');
+    expect(occs.data.occurrences.map((o: Occurrence) => [o.date, o.endDate])).toEqual([
+      ['2026-01-05', '2026-01-09'],
+      ['2026-04-05', '2026-04-09'],
+      ['2026-07-05', '2026-07-09'],
+      ['2026-10-05', '2026-10-09'],
+    ]);
+  });
+
+  test('validation 400s on spans', async () => {
+    const base = { kind: 'event', title: 'Trip', date: '2026-08-03' };
+    const cases: [Record<string, unknown>, RegExp][] = [
+      [{ ...base, endDate: 'nope' }, /valid YYYY-MM-DD/],
+      [{ ...base, endDate: '2026-08-02' }, /must not precede/],
+      [{ ...base, endDate: '2028-08-03' }, /at most 366 days/],
+      [
+        { kind: 'birthday', title: 'Alex', date: '1990-08-03', endDate: '1990-08-05' },
+        /single-day/,
+      ],
+      [
+        {
+          ...base,
+          endDate: '2026-08-20',
+          recurrence: { interval: 1, unit: 'week', anchor: 'fixed' },
+        },
+        /before its next occurrence/,
+      ],
+    ];
+    for (const [body, message] of cases) {
+      const res = await call('POST', '/api/calendar/events', body);
+      expect(res.status).toBe(400);
+      expect(res.data.error).toMatch(message);
+    }
+  });
+
+  test('an update that would overlap the next occurrence is rejected and changes nothing', async () => {
+    const created = await call('POST', '/api/calendar/events', {
+      kind: 'event',
+      title: 'Weekly onsite',
+      date: '2026-08-03',
+      endDate: '2026-08-05',
+      recurrence: { interval: 1, unit: 'week', anchor: 'fixed' },
+    });
+    const id = created.data.event.id;
+    // A 10-day span would still be running when the next week starts.
+    const bad = await call('PUT', `/api/calendar/events/${id}`, { endDate: '2026-08-13' });
+    expect(bad.status).toBe(400);
+    const after = await call('GET', '/api/calendar/events');
+    expect(after.data.events[0].endDate).toBe('2026-08-05');
+  });
+});
+
 describe('occurrences', () => {
   test('explicit window projects recurrence with entity filter', async () => {
     await call('POST', '/api/calendar/events', {

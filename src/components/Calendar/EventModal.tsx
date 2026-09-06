@@ -2,8 +2,13 @@
 // birthday (implicitly yearly, optional birth year for "turns N"), task
 // (completable, optional recurrence with fixed vs after-completion
 // anchoring), event (a date, optionally recurring, never completable).
+//
+// Anything but a birthday can span multiple days (a trip, a conference): the
+// span is stored as an inclusive end date and recurs at the same length, so
+// the server rejects a span that would still be running when the next
+// occurrence starts.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Loader2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,10 +64,26 @@ interface EventModalProps {
 
 const FIELD_LABEL = 'text-xs font-medium text-surface-700 uppercase tracking-wide';
 
+/** Whole days between two YYYY-MM-DD strings, UTC-pinned so a DST boundary
+ * inside the range can't shift the count. */
+function daysBetween(start: string, end: string): number {
+  const [sy, sm, sd] = start.split('-').map(Number);
+  const [ey, em, ed] = end.split('-').map(Number);
+  return Math.round((Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / 86_400_000);
+}
+
+function addDays(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  return dt.toISOString().slice(0, 10);
+}
+
 export function EventModal({ state, entities, onClose, onSave, onDelete }: EventModalProps) {
   const [kind, setKind] = useState<CalendarEventKind>('task');
   const [title, setTitle] = useState('');
   const [date, setDate] = useState('');
+  const [multiDay, setMultiDay] = useState(false);
+  const [endDate, setEndDate] = useState('');
   const [birthYearInput, setBirthYearInput] = useState('');
   const [repeats, setRepeats] = useState(false);
   const [interval, setInterval] = useState('1');
@@ -83,6 +104,8 @@ export function EventModal({ state, entities, onClose, onSave, onDelete }: Event
     setKind(ev?.kind ?? 'task');
     setTitle(ev?.title ?? '');
     setDate(ev?.date ?? state.defaultDate ?? '');
+    setMultiDay(Boolean(ev?.endDate));
+    setEndDate(ev?.endDate ?? '');
     setBirthYearInput(ev?.birthYear !== undefined ? String(ev.birthYear) : '');
     setRepeats(Boolean(ev?.recurrence));
     setInterval(ev?.recurrence ? String(ev.recurrence.interval) : '1');
@@ -104,7 +127,17 @@ export function EventModal({ state, entities, onClose, onSave, onDelete }: Event
     }
   }, [kind, date, editing]);
 
-  const canSave = title.trim().length > 0 && /^\d{4}-\d{2}-\d{2}$/.test(date) && !submitting;
+  const spanning = kind !== 'birthday' && multiDay;
+  const spanDays = useMemo(() => {
+    if (!spanning || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || endDate < date) return 0;
+    return daysBetween(date, endDate) + 1;
+  }, [spanning, date, endDate]);
+
+  const canSave =
+    title.trim().length > 0 &&
+    /^\d{4}-\d{2}-\d{2}$/.test(date) &&
+    (!spanning || spanDays > 1) &&
+    !submitting;
 
   const handleSave = async () => {
     if (!canSave || !state) return;
@@ -115,6 +148,8 @@ export function EventModal({ state, entities, onClose, onSave, onDelete }: Event
       kind,
       title: title.trim(),
       date,
+      // null clears an existing span — that's how a trip becomes a single day.
+      endDate: spanning && spanDays > 1 ? endDate : null,
       recurrence:
         kind !== 'birthday' && repeats
           ? {
@@ -158,7 +193,7 @@ export function EventModal({ state, entities, onClose, onSave, onDelete }: Event
             <DialogTitle>{editing ? 'Edit Event' : 'New Event'}</DialogTitle>
             <DialogDescription>
               Birthdays repeat yearly on their date. Tasks can repeat on a fixed schedule or from
-              each completion.
+              each completion. Trips and anything else lasting several days get an end date.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -199,17 +234,47 @@ export function EventModal({ state, entities, onClose, onSave, onDelete }: Event
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label htmlFor="calendar-event-date" className={FIELD_LABEL}>
-                  {kind === 'birthday' ? 'Birth date' : kind === 'task' ? 'First due' : 'Date'}
+                  {kind === 'birthday'
+                    ? 'Birth date'
+                    : spanning
+                      ? 'Starts'
+                      : kind === 'task'
+                        ? 'First due'
+                        : 'Date'}
                 </label>
                 <Input
                   id="calendar-event-date"
                   type="date"
                   value={date}
-                  onChange={(e) => setDate(e.target.value)}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    // Moving the start of a span drags the end along, keeping
+                    // the trip the same length instead of inverting it.
+                    if (multiDay && date && endDate && /^\d{4}-\d{2}-\d{2}$/.test(next)) {
+                      setEndDate(addDays(endDate, daysBetween(date, next)));
+                    }
+                    setDate(next);
+                  }}
                   className="mt-1.5"
                   disabled={submitting}
                 />
               </div>
+              {spanning && (
+                <div>
+                  <label htmlFor="calendar-event-end-date" className={FIELD_LABEL}>
+                    Ends
+                  </label>
+                  <Input
+                    id="calendar-event-end-date"
+                    type="date"
+                    value={endDate}
+                    min={date || undefined}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="mt-1.5"
+                    disabled={submitting}
+                  />
+                </div>
+              )}
               {kind === 'birthday' && (
                 <div>
                   <label htmlFor="calendar-event-birthyear" className={FIELD_LABEL}>
@@ -227,6 +292,33 @@ export function EventModal({ state, entities, onClose, onSave, onDelete }: Event
                 </div>
               )}
             </div>
+
+            {kind !== 'birthday' && (
+              <div className="space-y-1">
+                <label className="flex items-center gap-2 text-[13px] text-surface-900">
+                  <input
+                    type="checkbox"
+                    checked={multiDay}
+                    onChange={(e) => {
+                      setMultiDay(e.target.checked);
+                      // Seed the end a day out so the field opens on a valid
+                      // two-day span instead of an empty, unsaveable one.
+                      if (e.target.checked && !endDate && date) setEndDate(addDays(date, 1));
+                    }}
+                    disabled={submitting}
+                    className="accent-emerald-500"
+                  />
+                  Spans multiple days
+                </label>
+                {spanning && (
+                  <p className="text-[11px] text-surface-600 pl-6">
+                    {spanDays > 1
+                      ? `${spanDays} days, end included. Shows as one band across the calendar.`
+                      : 'Pick an end date after the start date.'}
+                  </p>
+                )}
+              </div>
+            )}
 
             {kind !== 'birthday' && (
               <div className="rounded-lg border border-border-subtle p-3 space-y-3">

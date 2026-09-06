@@ -191,10 +191,11 @@ The report is **read-only over your entries**: it never marks anything invoiced 
 ### Other
 
 - Mileage log with address autocomplete.
-- Calendar: birthdays ("turns N"), one-offs, and recurring tasks with fixed or
-  after-completion scheduling — month grid, agenda, chat tools, and a "Week
-  Ahead" box in the Daily News edition. Absorbs the old deadline reminders
-  (existing data migrates automatically).
+- Calendar: birthdays ("turns N"), one-offs, multi-day events (trips,
+  conferences — rendered as a band across the days they cover), and recurring
+  tasks with fixed or after-completion scheduling — month grid, agenda, chat
+  tools, and a "Week Ahead" box in the Daily News edition. Absorbs the old
+  deadline reminders (existing data migrates automatically).
 - Username/password auth with session cookies.
 - Docker-ready: single container, auto-published to GHCR (amd64 + arm64).
 

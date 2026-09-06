@@ -335,6 +335,93 @@ describe('projectEvent — one-offs and archiving', () => {
   });
 });
 
+describe('multi-day spans', () => {
+  test('every occurrence carries the anchor span, clamped month math included', () => {
+    const trip = makeEvent({
+      kind: 'event',
+      title: 'Onsite week',
+      date: '2026-01-29',
+      endDate: '2026-02-02',
+      recurrence: { interval: 1, unit: 'month', anchor: 'fixed' },
+    });
+    const occs = projectEvent(trip, { start: '2026-01-01', end: '2026-04-30' }, '2026-01-01');
+    expect(occs.map((o) => [o.date, o.endDate])).toEqual([
+      ['2026-01-29', '2026-02-02'],
+      ['2026-02-28', '2026-03-04'], // Feb clamps the anchor day, the span follows it
+      ['2026-03-29', '2026-04-02'],
+      ['2026-04-29', '2026-05-03'],
+    ]);
+  });
+
+  test('a span that started before the window still projects', () => {
+    const trip = makeEvent({
+      kind: 'event',
+      title: 'Trip to Denver',
+      date: '2026-07-28',
+      endDate: '2026-08-04',
+      recurrence: null,
+    });
+    // Window opens mid-trip: the occurrence belongs to it, at its real start.
+    const occs = projectEvent(trip, { start: '2026-08-01', end: '2026-08-31' }, '2026-08-01');
+    expect(occs.map((o) => o.date)).toEqual(['2026-07-28']);
+    // Once the last day is behind the window it drops out again.
+    expect(projectEvent(trip, { start: '2026-08-05', end: '2026-08-31' }, '2026-08-05')).toEqual(
+      []
+    );
+  });
+
+  test('a task is overdue only once its LAST day has passed', () => {
+    const chore = makeEvent({
+      title: 'Deep clean the garage',
+      date: '2026-07-28',
+      endDate: '2026-08-04',
+    });
+    const during = projectEvent(chore, { start: '2026-07-01', end: '2026-08-31' }, '2026-08-01');
+    expect(during[0].overdue).toBe(false);
+    const after = projectEvent(chore, { start: '2026-07-01', end: '2026-08-31' }, '2026-08-05');
+    expect(after[0].overdue).toBe(true);
+  });
+
+  test('birthdays never span, even with a stray endDate', () => {
+    const bday = makeEvent({
+      kind: 'birthday',
+      title: 'Birthday — Alex',
+      date: '1990-03-10',
+      endDate: '1990-03-14',
+    });
+    const occs = projectEvent(bday, { start: '2026-01-01', end: '2026-12-31' }, '2026-01-01');
+    expect(occs).toHaveLength(1);
+    expect(occs[0].endDate).toBeUndefined();
+  });
+
+  test('a single-day event carries no endDate', () => {
+    const one = makeEvent({ kind: 'event', date: '2026-08-03' });
+    const occs = projectEvent(one, { start: '2026-08-01', end: '2026-08-31' }, '2026-08-01');
+    expect(occs[0].endDate).toBeUndefined();
+  });
+
+  test('afterCompletion tasks span from each new due date', () => {
+    const chore = makeEvent({
+      title: 'Repaint the deck',
+      date: '2026-01-05',
+      endDate: '2026-01-07',
+      recurrence: { interval: 6, unit: 'month', anchor: 'afterCompletion' },
+      completions: [
+        {
+          occurrenceDate: '2026-01-05',
+          completedOn: '2026-01-10',
+          completedAt: '2026-01-10T09:00:00.000Z',
+        },
+      ],
+    });
+    const occs = projectEvent(chore, { start: '2026-01-01', end: '2026-12-31' }, '2026-02-01');
+    expect(occs.map((o) => [o.date, o.endDate])).toEqual([
+      ['2026-01-05', '2026-01-07'],
+      ['2026-07-10', '2026-07-12'],
+    ]);
+  });
+});
+
 describe('projectOccurrences', () => {
   test('merges events sorted by date then title', () => {
     const events = [
@@ -348,6 +435,22 @@ describe('projectOccurrences', () => {
       '2026-08-01'
     );
     expect(occs.map((o) => o.title)).toEqual(['Birthday — Alex', 'Apple task', 'Zebra task']);
+  });
+
+  test('on a shared start date the longest span sorts first', () => {
+    const events = [
+      makeEvent({ title: 'Apple task', date: '2026-08-05' }),
+      makeEvent({ kind: 'event', title: 'Short trip', date: '2026-08-05', endDate: '2026-08-07' }),
+      makeEvent({ kind: 'event', title: 'Long trip', date: '2026-08-05', endDate: '2026-08-12' }),
+    ];
+    const occs = projectOccurrences(
+      events,
+      { start: '2026-08-01', end: '2026-08-31' },
+      '2026-08-01'
+    );
+    // Bands first, longest outermost, so a run keeps the same row across the
+    // cells it crosses; single-day chips settle underneath.
+    expect(occs.map((o) => o.title)).toEqual(['Long trip', 'Short trip', 'Apple task']);
   });
 });
 
