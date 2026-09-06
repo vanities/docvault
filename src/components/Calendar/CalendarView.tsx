@@ -242,7 +242,9 @@ export function CalendarView() {
     });
   }, [occurrences, optimistic, showOverdue]);
 
-  const occurrencesByDate = useMemo(
+  // Grid/day-panel index: multi-day events expand to one segment per covered
+  // day here, while the agenda keeps working off whole occurrences.
+  const segmentsByDate = useMemo(
     () => groupOccurrencesByDate(effectiveOccurrences),
     [effectiveOccurrences]
   );
@@ -351,7 +353,7 @@ export function CalendarView() {
             Calendar
           </h2>
           <p className="text-[13px] text-surface-800 mt-1">
-            Birthdays, recurring tasks, and dates worth remembering — across every entity.
+            Birthdays, recurring tasks, trips, and dates worth remembering — across every entity.
           </p>
         </div>
         <Button size="sm" onClick={() => setModal({ mode: 'create', defaultDate: today })}>
@@ -400,7 +402,7 @@ export function CalendarView() {
             <div className={loading ? 'opacity-60 pointer-events-none' : ''}>
               <MonthGrid
                 days={gridDays}
-                occurrencesByDate={occurrencesByDate}
+                segmentsByDate={segmentsByDate}
                 astroByDate={astroByDate}
                 holidaysByDate={holidaysByDate}
                 weatherByDate={weatherByDate}
@@ -417,7 +419,7 @@ export function CalendarView() {
         <AgendaRail
           occurrences={agendaSlice}
           selectedDate={selectedDate}
-          selectedDayOccurrences={selectedDate ? (occurrencesByDate.get(selectedDate) ?? []) : []}
+          selectedDaySegments={selectedDate ? (segmentsByDate.get(selectedDate) ?? []) : []}
           selectedDayAstro={selectedDayAstro}
           today={today}
           entities={entities}

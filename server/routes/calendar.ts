@@ -27,7 +27,13 @@ import {
   type CalendarEventKind,
   type CalendarRecurrence,
 } from '../calendar-store.js';
-import { addInterval, isYMD, nextOccurrence, projectOccurrences } from '../calendar-recurrence.js';
+import {
+  addInterval,
+  diffDays,
+  isYMD,
+  nextOccurrence,
+  projectOccurrences,
+} from '../calendar-recurrence.js';
 
 const log = createLogger('Calendar');
 
@@ -37,13 +43,11 @@ const MAX_WINDOW_DAYS = 800;
 const DEFAULT_WINDOW_DAYS = 60;
 
 const KINDS: CalendarEventKind[] = ['birthday', 'task', 'event'];
+// Longest multi-day span we accept. A trip or sabbatical fits comfortably;
+// anything longer is a standing state, not a calendar event, and every
+// consumer that paints one cell per covered day would pay for it.
+const MAX_SPAN_DAYS = 366;
 const UNITS = ['day', 'week', 'month', 'year'];
-
-function daysBetween(start: string, end: string): number {
-  const [sy, sm, sd] = start.split('-').map(Number);
-  const [ey, em, ed] = end.split('-').map(Number);
-  return Math.round((Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / 86_400_000);
-}
 
 /** Validate a recurrence payload for a given kind. Returns an error string or
  * null. Birthdays carry no explicit recurrence (implicitly yearly). */
@@ -69,10 +73,44 @@ function recurrenceError(recurrence: unknown, kind: CalendarEventKind): string |
   return null;
 }
 
+/** Validate a multi-day span against the event it belongs to. `endDate` is
+ * the INCLUSIVE last day; equal to `date` (or absent) means single-day.
+ * Returns an error string or null. */
+function spanError(
+  endDate: unknown,
+  kind: CalendarEventKind,
+  date: string,
+  recurrence: CalendarRecurrence | null | undefined
+): string | null {
+  if (endDate === null || endDate === undefined || endDate === '') return null;
+  if (typeof endDate !== 'string' || !isYMD(endDate)) {
+    return 'endDate must be a valid YYYY-MM-DD';
+  }
+  if (kind === 'birthday') return 'Birthdays are single-day — omit endDate';
+  if (endDate < date) return 'endDate must not precede date';
+  if (diffDays(date, endDate) > MAX_SPAN_DAYS) {
+    return `A multi-day event may span at most ${MAX_SPAN_DAYS} days`;
+  }
+  // Every occurrence carries the same span, so an overlong span on a
+  // recurring event would have occurrence k still running when k+1 starts.
+  if (recurrence && endDate >= addInterval(date, recurrence.interval, recurrence.unit)) {
+    return 'A recurring multi-day event must end before its next occurrence begins';
+  }
+  return null;
+}
+
+/** Normalize a validated endDate: a span of zero days is just a single-day
+ * event, and storing `endDate === date` would only give consumers a second
+ * way to say the same thing. */
+function normalizeEndDate(endDate: string | null | undefined, date: string): string | undefined {
+  return endDate && endDate > date ? endDate : undefined;
+}
+
 interface EventBody {
   kind?: CalendarEventKind;
   title?: string;
   date?: string;
+  endDate?: string | null;
   recurrence?: CalendarRecurrence | null;
   birthYear?: number | null;
   entityId?: string | null;
@@ -110,6 +148,8 @@ export async function handleCalendarRoutes(
     }
     const recErr = recurrenceError(body.recurrence, kind);
     if (recErr) return jsonResponse({ error: recErr }, 400);
+    const spanErr = spanError(body.endDate, kind, date, body.recurrence);
+    if (spanErr) return jsonResponse({ error: spanErr }, 400);
     if (body.birthYear !== undefined && body.birthYear !== null) {
       if (kind !== 'birthday') {
         return jsonResponse({ error: 'birthYear is only valid for birthdays' }, 400);
@@ -125,6 +165,9 @@ export async function handleCalendarRoutes(
       kind,
       title: title.trim(),
       date,
+      ...(kind !== 'birthday' && normalizeEndDate(body.endDate, date)
+        ? { endDate: body.endDate as string }
+        : {}),
       recurrence: kind === 'birthday' ? null : (body.recurrence ?? null),
       ...(body.birthYear !== undefined && body.birthYear !== null
         ? { birthYear: body.birthYear }
@@ -139,7 +182,11 @@ export async function handleCalendarRoutes(
     const store = await loadCalendarStore();
     store.events.push(event);
     await saveCalendarStore(store);
-    log.info(`[create] kind=${kind} id=${event.id} recurring=${event.recurrence !== null}`);
+    log.info(
+      `[create] kind=${kind} id=${event.id} recurring=${event.recurrence !== null} span=${
+        event.endDate ? `${diffDays(event.date, event.endDate) + 1}d` : '1d'
+      }`
+    );
     return jsonResponse({ ok: true, event });
   }
 
@@ -152,7 +199,7 @@ export async function handleCalendarRoutes(
       return jsonResponse({ error: 'start and end must be valid YYYY-MM-DD' }, 400);
     }
     if (end < start) return jsonResponse({ error: 'end must not precede start' }, 400);
-    if (daysBetween(start, end) > MAX_WINDOW_DAYS) {
+    if (diffDays(start, end) > MAX_WINDOW_DAYS) {
       return jsonResponse({ error: `window exceeds ${MAX_WINDOW_DAYS} days` }, 400);
     }
     const entity = url.searchParams.get('entity');
@@ -187,17 +234,25 @@ export async function handleCalendarRoutes(
       }
       event.title = body.title.trim();
     }
-    if (body.date !== undefined) {
-      if (!isYMD(body.date ?? '')) {
-        return jsonResponse({ error: 'date must be a valid YYYY-MM-DD' }, 400);
-      }
-      event.date = body.date;
+    // date, endDate and recurrence constrain each other, so they are merged
+    // and validated as one unit rather than field by field.
+    const nextDate = body.date === undefined ? event.date : (body.date ?? '');
+    if (!isYMD(nextDate)) {
+      return jsonResponse({ error: 'date must be a valid YYYY-MM-DD' }, 400);
     }
+    const nextRecurrence = body.recurrence === undefined ? event.recurrence : body.recurrence;
     if (body.recurrence !== undefined) {
       const recErr = recurrenceError(body.recurrence, event.kind);
       if (recErr) return jsonResponse({ error: recErr }, 400);
-      event.recurrence = body.recurrence;
     }
+    const nextEndDate = body.endDate === undefined ? event.endDate : body.endDate;
+    const spanErr = spanError(nextEndDate, event.kind, nextDate, nextRecurrence);
+    if (spanErr) return jsonResponse({ error: spanErr }, 400);
+    event.date = nextDate;
+    event.recurrence = nextRecurrence;
+    const normalizedEnd = normalizeEndDate(nextEndDate, nextDate);
+    if (normalizedEnd) event.endDate = normalizedEnd;
+    else delete event.endDate;
     if (body.birthYear !== undefined) {
       if (body.birthYear === null) {
         delete event.birthYear;

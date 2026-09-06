@@ -9,8 +9,12 @@ import {
   addDays,
   agendaBuckets,
   comingMonthGroups,
+  formatDateRange,
+  isOngoing,
+  occurrenceEnd,
+  occurrenceTimingLabel,
   parseISODate,
-  relativeLabel,
+  type DaySegment,
 } from './calendarMath';
 import { EventChip } from './EventChip';
 import { occurrenceLabel, occurrenceStyle } from './occurrenceStyle';
@@ -38,7 +42,7 @@ export interface DayAstro {
 interface AgendaRailProps {
   occurrences: Occurrence[]; // agenda horizon slice (today-60d .. today+180d)
   selectedDate: string | null;
-  selectedDayOccurrences: Occurrence[];
+  selectedDaySegments: DaySegment[];
   selectedDayAstro: DayAstro | null;
   today: string;
   entities: EntityConfig[];
@@ -53,6 +57,8 @@ interface AgendaRailProps {
 }
 
 // Near-term buckets; everything past "This Week" renders as month groups.
+// A multi-day event already under way sits in "Today" for the whole run — see
+// agendaBuckets — and shows "day 3 of 7" instead of a relative date.
 const BUCKET_META: { key: 'overdue' | 'today' | 'week'; label: string; tone: string }[] = [
   { key: 'overdue', label: 'Overdue', tone: 'text-red-400' },
   { key: 'today', label: 'Today', tone: 'text-accent-400' },
@@ -62,7 +68,7 @@ const BUCKET_META: { key: 'overdue' | 'today' | 'week'; label: string; tone: str
 export function AgendaRail({
   occurrences,
   selectedDate,
-  selectedDayOccurrences,
+  selectedDaySegments,
   selectedDayAstro,
   today,
   entities,
@@ -136,15 +142,18 @@ export function AgendaRail({
               ))}
             </div>
           )}
-          {selectedDayOccurrences.length === 0 ? (
+          {selectedDaySegments.length === 0 ? (
             <p className="text-[12px] text-surface-600">Nothing on this day.</p>
           ) : (
             <div className="space-y-1">
-              {selectedDayOccurrences.map((occ) => (
+              {selectedDaySegments.map((segment) => (
                 <EventChip
-                  key={`${occ.eventId}:${occ.date}`}
-                  occ={occ}
+                  key={`${segment.occ.eventId}:${segment.occ.date}`}
+                  segment={segment}
                   entities={entities}
+                  /* The panel lists one day on its own — always name the event,
+                     even when this day is the middle of a span. */
+                  repeatTitle
                   onToggleComplete={onToggleComplete}
                   onOpen={onOpenOccurrence}
                 />
@@ -242,6 +251,8 @@ function AgendaRow({
   onOpen: (occ: Occurrence) => void;
 }) {
   const style = occurrenceStyle(occ, entities);
+  const range = occ.endDate ? formatDateRange(occ.date, occurrenceEnd(occ)) : null;
+  const ongoing = isOngoing(occ, today);
   return (
     <li className="flex items-center gap-2 min-h-[28px]">
       {occ.completable ? (
@@ -252,7 +263,9 @@ function AgendaRow({
           className="shrink-0 w-4 h-4 rounded-full border border-surface-500/60 hover:border-emerald-400 hover:bg-emerald-500/15 transition-colors"
         />
       ) : (
-        <span className={`shrink-0 w-2 h-2 rounded-full ml-1 mr-1 ${style.dot}`} />
+        <span
+          className={`shrink-0 h-2 ml-1 mr-1 ${range ? 'w-4 rounded-sm' : 'w-2 rounded-full'} ${style.dot}`}
+        />
       )}
       <button
         type="button"
@@ -261,16 +274,17 @@ function AgendaRow({
         title={occ.notes ? `${occurrenceLabel(occ)} — ${occ.notes}` : undefined}
       >
         {occurrenceLabel(occ)}
+        {range && <span className="text-surface-600"> · {range}</span>}
         {occ.recurrenceLabel !== 'one-off' && occ.kind !== 'birthday' && (
           <span className="text-surface-600"> · {occ.recurrenceLabel}</span>
         )}
       </button>
       <span
         className={`shrink-0 text-[11px] tabular-nums ${
-          occ.overdue ? 'text-red-400' : 'text-surface-600'
+          occ.overdue ? 'text-red-400' : ongoing ? 'text-accent-400' : 'text-surface-600'
         }`}
       >
-        {relativeLabel(occ.date, today)}
+        {occurrenceTimingLabel(occ, today)}
       </span>
     </li>
   );

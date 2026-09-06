@@ -438,6 +438,16 @@ function weekAheadRowParts(item: NonNullable<Edition['weekAhead']>['items'][numb
     day: 'numeric',
   });
   let title = item.title;
+  if (item.endDate) {
+    // Multi-day row: the day column holds the start, the title carries the
+    // run so a trip reads as a range instead of a lone first day.
+    const through = new Date(`${item.endDate}T12:00:00`).toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'numeric',
+      day: 'numeric',
+    });
+    title = `${title} → ${through}`;
+  }
   if (item.kind === 'birthday') {
     title = `🎂 ${title}${item.age !== undefined ? ` turns ${item.age}` : ''}`;
   } else if (item.emoji) {
