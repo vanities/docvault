@@ -173,6 +173,7 @@ All state lives in `DATA_DIR` (default `./data`, `/data` in Docker) as `.docvaul
 | `.docvault-timesheet.json`   | Time tracking (clients, projects w/ sub-clients, entries, invoices, report config) |
 | `.docvault-metadata.json`    | Document tags/notes                                                                |
 | `.docvault-sync-status.json` | Dropbox sync status (written by NAS cron)                                          |
+| `.docvault-email-log.json`   | Sent-mail log: every outbound email attempt, newest 500 (Settings → Email)         |
 
 Entity types: `tax` (year-based views with income/expenses) or `docs` (flat file listing).
 

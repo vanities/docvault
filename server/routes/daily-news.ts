@@ -7,7 +7,8 @@
 //   GET    /api/daily-news/:id/edition.html    → downloadable newspaper HTML
 //   POST   /api/daily-news/:id/email           → email this edition on demand
 //   DELETE /api/daily-news/:id                 → remove an edition
-//   POST   /api/email/test                     → send a test email (verify Resend)
+//
+// The email test ping + sent-mail log live in routes/email.ts.
 
 import path from 'path';
 import { jsonResponse, loadSettings, DATA_DIR } from '../data.js';
@@ -25,7 +26,6 @@ import { notifyEditionReady } from '../daily-news.js';
 import { renderEditionHtml, editionFilename } from '../daily-news-report.js';
 import { listThemes, THEME_CYCLE } from '../daily-news-themes.js';
 import { readEditionImage } from '../daily-news-image.js';
-import { sendEmail } from '../email.js';
 
 /** Today's date in the configured Daily News timezone as YYYY-MM-DD — matches
  *  the scheduler's per-day dedup key (see daily-news-schedule.ts) so a manual
@@ -40,17 +40,7 @@ export async function handleDailyNewsRoutes(
   url: URL,
   pathname: string
 ): Promise<Response | null> {
-  if (!pathname.startsWith('/api/daily-news') && pathname !== '/api/email/test') return null;
-
-  // POST /api/email/test — fire a tiny test email so the user can verify their
-  // Resend config + verified sending domain from the Settings UI.
-  if (pathname === '/api/email/test' && req.method === 'POST') {
-    const res = await sendEmail({
-      subject: 'DocVault test email',
-      html: '<p>This is a test email from DocVault. If you can read this, Resend is wired up correctly.</p>',
-    });
-    return jsonResponse(res, res.ok ? 200 : 400);
-  }
+  if (!pathname.startsWith('/api/daily-news')) return null;
 
   // POST /api/daily-news/run — generate now, return the id immediately.
   // notify:false → an on-demand edition does NOT auto-email (only scheduled

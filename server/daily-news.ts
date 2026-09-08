@@ -2195,6 +2195,8 @@ export async function notifyEditionReady(
   }
 
   const res = await sendEmail({
+    purpose: 'news',
+    ref: `edition:${edition.id}`,
     subject,
     html: renderEditionEmailHtml(edition, emailHeroSrc),
     attachments,

@@ -855,7 +855,8 @@ async function handleInvoiceRoutes(req: Request, pathname: string): Promise<Resp
     return jsonResponse({
       to: apply(emailProject?.emailTo ?? '') || client?.email || '',
       from: apply(emailProject?.emailFrom ?? ''), // '' = configured default sender
-      cc: (await getEmailConfig()).ccEmail ?? '',
+      // Client-facing send → the "CC on client emails" setting is the default.
+      cc: (await getEmailConfig()).cc.client ?? '',
       subject: apply(emailProject?.emailSubject ?? `Invoice {{number}} from {{company}}`),
       body: apply(
         emailProject?.emailBody ??
@@ -895,9 +896,11 @@ async function handleInvoiceRoutes(req: Request, pathname: string): Promise<Resp
       : store.templates.find((t) => !t.archived);
     const pdf = await buildInvoicePdf(invoice, template);
     const result = await sendEmail({
+      purpose: 'client',
+      ref: `invoice:${invoice.id}`,
       to,
       ...(body.from?.trim() ? { from: body.from.trim() } : {}),
-      // Absent → the configured ccEmail applies; '' explicitly suppresses it.
+      // Absent → the configured client CC applies; '' explicitly suppresses it.
       ...(body.cc !== undefined ? { cc: body.cc } : {}),
       subject,
       html,

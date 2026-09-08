@@ -119,6 +119,8 @@ scripts/*
 !server/research-domain-wiring.test.ts
 # CC-on-outbound-email rules; fabricated addresses only
 !server/email-cc.test.ts
+# Exception: sent-mail log store tests use fabricated addresses in a tmpdir, no personal data
+!server/email-log.test.ts
 # Exception: blur-coverage test scans component source for unblurred money renders, no personal data
 !src/components/blur-coverage.test.ts
 # Exception: calendar recurrence tests are pure date math with fabricated event fixtures, no personal data

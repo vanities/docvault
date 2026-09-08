@@ -364,7 +364,16 @@ export interface Settings {
     fromEmail?: string;
     fromName?: string;
     toEmail?: string;
-    /** Always copied on outbound mail (comma/semicolon separated). */
+    /**
+     * Per-audience CC lists (comma/semicolon/newline separated). `news` rides on
+     * Newsstand editions; `client` on client-facing mail (invoices, the weekly
+     * timesheet report). Test pings never CC.
+     */
+    cc?: {
+      news?: string;
+      client?: string;
+    };
+    /** @deprecated Pre-split single CC — read as `cc.client` when `cc` is absent. */
     ccEmail?: string;
     enabled?: boolean;
   };
@@ -633,9 +642,27 @@ export interface EmailConfig {
   fromEmail?: string;
   fromName?: string;
   toEmail?: string;
-  /** Copied on every outbound email unless a caller passes its own cc. */
-  ccEmail?: string;
+  /** Default CC per send purpose (see email.ts `defaultCcFor`). A caller's own cc overrides. */
+  cc: EmailCcConfig;
   enabled: boolean;
+}
+
+export interface EmailCcConfig {
+  /** CC on Newsstand editions (daily/weekly news). */
+  news?: string;
+  /** CC on client-facing mail: invoices + the weekly timesheet report. */
+  client?: string;
+}
+
+/** Resolve the per-purpose CC lists, honouring the legacy single `ccEmail`
+ *  (it pre-dates the split and always meant "copy me on client sends" in
+ *  practice — Newsstand already goes To the owner). */
+export function resolveEmailCc(email: Settings['email']): EmailCcConfig {
+  const cc = email?.cc;
+  return {
+    news: cc?.news?.trim() || undefined,
+    client: (cc?.client ?? (cc ? undefined : email?.ccEmail))?.trim() || undefined,
+  };
 }
 
 /** Outbound email (Resend) config. apiKey: settings value overrides RESEND_API_KEY env. */
@@ -647,7 +674,7 @@ export async function getEmailConfig(): Promise<EmailConfig> {
     fromEmail: settings.email?.fromEmail,
     fromName: settings.email?.fromName,
     toEmail: settings.email?.toEmail,
-    ccEmail: settings.email?.ccEmail,
+    cc: resolveEmailCc(settings.email),
     enabled: settings.email?.enabled ?? false,
   };
 }

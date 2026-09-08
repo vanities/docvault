@@ -400,6 +400,8 @@ export async function sendWeeklyReport(weekEnd: string): Promise<WeeklyReportRes
 
   const subject = `Timesheet ${window.start} to ${window.end} (${fmtHours(totalMinutes)}h)`;
   const result = await sendEmail({
+    purpose: 'client',
+    ref: `weekly-report:${weekEnd}`,
     to: cfg.to,
     subject,
     html: buildReportHtml(rows, window),

@@ -12,6 +12,7 @@ import {
   jsonResponse,
   loadConfig,
   loadSettings,
+  resolveEmailCc,
   saveSettings,
   sessionCookie,
   sessions,
@@ -157,7 +158,10 @@ export async function handleSettingsRoutes(
         fromEmail: settings.email?.fromEmail ?? '',
         fromName: settings.email?.fromName ?? '',
         toEmail: settings.email?.toEmail ?? '',
-        ccEmail: settings.email?.ccEmail ?? '',
+        cc: (() => {
+          const cc = resolveEmailCc(settings.email);
+          return { news: cc.news ?? '', client: cc.client ?? '' };
+        })(),
         enabled: settings.email?.enabled ?? false,
         hasResendApiKey: !!(settings.email?.resendApiKey || process.env.RESEND_API_KEY),
         resendApiKeyHint: settings.email?.resendApiKey
@@ -450,14 +454,33 @@ export async function handleSettingsRoutes(
         fromEmail?: unknown;
         fromName?: unknown;
         toEmail?: unknown;
+        cc?: unknown;
         ccEmail?: unknown;
         enabled?: unknown;
         resendApiKey?: unknown;
         clearResendApiKey?: unknown;
       };
-      for (const k of ['fromEmail', 'fromName', 'toEmail', 'ccEmail'] as const) {
+      for (const k of ['fromEmail', 'fromName', 'toEmail'] as const) {
         const v = em[k];
         if (typeof v === 'string') settings.email[k] = v.trim() || undefined;
+      }
+      // Per-audience CC. Writing the split object retires the legacy single
+      // `ccEmail` so the two can never disagree; a stale client still sending
+      // only `ccEmail` maps onto the client slot (its historical meaning).
+      if (em.cc && typeof em.cc === 'object') {
+        const cc = em.cc as { news?: unknown; client?: unknown };
+        const prev = resolveEmailCc(settings.email);
+        const pick = (v: unknown, fallback?: string) =>
+          typeof v === 'string' ? v.trim() || undefined : fallback;
+        settings.email.cc = {
+          news: pick(cc.news, prev.news),
+          client: pick(cc.client, prev.client),
+        };
+        delete settings.email.ccEmail;
+      } else if (typeof em.ccEmail === 'string') {
+        const prev = resolveEmailCc(settings.email);
+        settings.email.cc = { news: prev.news, client: em.ccEmail.trim() || undefined };
+        delete settings.email.ccEmail;
       }
       if (typeof em.enabled === 'boolean') settings.email.enabled = em.enabled;
       if (em.clearResendApiKey) {
