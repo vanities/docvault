@@ -90,6 +90,7 @@ import { handleSkillsRoutes } from './routes/skills.js';
 import { handleFormsRoutes } from './routes/forms.js';
 import { handleDeepResearchRoutes } from './routes/deep-research.js';
 import { handleDailyNewsRoutes } from './routes/daily-news.js';
+import { handleEmailRoutes } from './routes/email.js';
 import { handleModelsRoutes } from './routes/models.js';
 import { handleCodexAuthRoutes } from './routes/codex-auth.js';
 import { handleBackupRoutes } from './routes/backup.js';
@@ -1534,9 +1535,13 @@ export async function handleRequest(req: Request): Promise<Response> {
   const deepResearchResponse = await handleDeepResearchRoutes(req, url, pathname);
   if (deepResearchResponse) return deepResearchResponse;
 
-  // Daily News — scheduled newspaper editions + the email-test endpoint.
+  // Daily News — scheduled newspaper editions.
   const dailyNewsResponse = await handleDailyNewsRoutes(req, url, pathname);
   if (dailyNewsResponse) return dailyNewsResponse;
+
+  // Outbound email — test ping + the sent-mail log.
+  const emailResponse = await handleEmailRoutes(req, url, pathname);
+  if (emailResponse) return emailResponse;
 
   const modelsResponse = await handleModelsRoutes(req, url, pathname);
   if (modelsResponse) return modelsResponse;

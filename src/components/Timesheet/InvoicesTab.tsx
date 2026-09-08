@@ -194,7 +194,14 @@ export function InvoicesTab({
   const [composeLoading, setComposeLoading] = useState(false);
   const [composeSending, setComposeSending] = useState(false);
   const [composeResult, setComposeResult] = useState('');
-  const [draft, setDraft] = useState({ to: '', from: '', subject: '', body: '', attachment: '' });
+  const [draft, setDraft] = useState({
+    to: '',
+    from: '',
+    cc: '',
+    subject: '',
+    body: '',
+    attachment: '',
+  });
 
   const openCompose = (invoice: Invoice) => {
     setComposeInvoice(invoice);
@@ -203,6 +210,7 @@ export function InvoicesTab({
     void tsJson<{
       to: string;
       from: string;
+      cc: string;
       subject: string;
       body: string;
       attachment: string;
@@ -211,6 +219,7 @@ export function InvoicesTab({
         setDraft({
           to: d.to,
           from: d.from,
+          cc: d.cc ?? '',
           subject: d.subject,
           body: d.body,
           attachment: d.attachment,
@@ -231,6 +240,9 @@ export function InvoicesTab({
         {
           to: draft.to.trim(),
           from: draft.from.trim(),
+          // Sent verbatim: '' means "no CC on this one" (overrides the
+          // Settings → Email client CC), so the server must not treat it as absent.
+          cc: draft.cc.trim(),
           subject: draft.subject,
           body: draft.body,
         }
@@ -919,6 +931,19 @@ export function InvoicesTab({
                   placeholder="default sender"
                   className="h-9 rounded-lg text-sm"
                 />
+              </div>
+              <div>
+                <label className="text-[12px] text-surface-600 block mb-1">CC</label>
+                <Input
+                  value={draft.cc}
+                  onChange={(e) => setDraft({ ...draft, cc: e.target.value })}
+                  placeholder="nobody"
+                  className="h-9 rounded-lg text-sm"
+                />
+                <p className="text-[10px] text-surface-500 mt-1">
+                  Pre-filled from Settings → Email → CC on client emails. Clear it to send this one
+                  without a copy.
+                </p>
               </div>
               <div>
                 <label className="text-[12px] text-surface-600 block mb-1">Subject</label>
