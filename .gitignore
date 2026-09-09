@@ -62,6 +62,8 @@ scripts/*
 !src/contexts/entity-selection.test.ts
 # Exception: navigation-wiring contract test regex-parses source files, no personal data
 !src/contexts/navigation-wiring.test.ts
+# Exception: chat-thread merge tests use fabricated thread ids/messages, no personal data
+!src/contexts/chatPersistence.test.ts
 # Exception: skill-trigger tests are pure string logic with fabricated skill names, no personal data
 !src/utils/skillTrigger.test.ts
 # Exception: quant math tests are pure computation, no personal data
