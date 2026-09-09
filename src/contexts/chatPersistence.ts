@@ -136,3 +136,24 @@ export function pruneThreadsState(
     ? next
     : { threads: {}, activeThreadId: null };
 }
+
+/**
+ * Reconcile two thread sets; the newest write for each thread id wins.
+ *
+ * Used at boot to fold the server's copy together with whatever this browser
+ * is holding. Threads the user created while the server was unreachable must
+ * survive, but for a thread both sides know about the more recently updated
+ * copy is authoritative — that's how an edit made on another device wins over
+ * a stale localStorage fallback, and how an offline edit here isn't lost when
+ * the server finally answers.
+ */
+export function mergeThreadsState(base: ThreadsState, overlay: ThreadsState): ThreadsState {
+  const threads: Record<string, PersistedThread> = { ...base.threads };
+  for (const [id, thread] of Object.entries(overlay.threads)) {
+    const existing = threads[id];
+    if (!existing || safeTime(thread.updatedAt) >= safeTime(existing.updatedAt)) {
+      threads[id] = thread;
+    }
+  }
+  return { threads, activeThreadId: overlay.activeThreadId ?? base.activeThreadId };
+}

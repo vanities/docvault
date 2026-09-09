@@ -15,6 +15,7 @@ import type { Entity, TaxDocument, DocumentType, ExpenseCategory, Todo } from '.
 import { uuidV4 } from '../utils/uuid';
 import {
   EMPTY_CHAT_STATS,
+  mergeThreadsState,
   pruneThreadsState,
   type PersistedThread,
   type ThreadsState,
@@ -40,6 +41,10 @@ export type { ChatStats, PersistedThread, ThreadsState } from './chatPersistence
 const CHAT_THREADS_STORAGE_KEY = 'docvault-chat-threads-v1';
 const LEGACY_CHAT_HISTORY_KEY = 'docvault-chat-history-v1';
 const LEGACY_CHAT_META_KEY = 'docvault-chat-meta-v1';
+// Boot hydration retry backoff: start fast so a blip costs almost nothing,
+// cap so a long outage doesn't spin.
+const CHAT_HYDRATE_RETRY_MS = 2000;
+const CHAT_HYDRATE_MAX_RETRY_MS = 30_000;
 const MIN_PERSISTED_YEAR = 1900;
 const MAX_FUTURE_YEAR_OFFSET = 5;
 
@@ -446,32 +451,57 @@ export function AppProvider({ children }: AppProviderProps) {
     threads: {},
     activeThreadId: null,
   }));
+  // Hydration is tracked in state, not just a ref, so the persistence effect
+  // below re-runs (and flushes) the moment a retried hydration succeeds.
+  const [chatHydrated, setChatHydrated] = useState(false);
   const chatHydratedRef = useRef(false);
   const chatThreadsRef = useRef(chatThreads);
 
-  // Hydrate once on boot: server state wins; merge in anything the user
-  // created before hydration finished; migrate pre-server localStorage
-  // history when the server has none yet.
+  useEffect(() => {
+    chatHydratedRef.current = chatHydrated;
+  }, [chatHydrated]);
+
+  // Hydrate on boot: show this browser's fallback immediately, then reconcile
+  // with the server's copy (newest write per thread wins).
+  //
+  // Hydration counts as complete ONLY once the server has actually answered.
+  // A failed GET used to flip the flag anyway, so a flaky boot — routine over
+  // the LAN/VPN — would hydrate from an empty browser fallback and then PUT
+  // that emptiness straight over real server-side history. Until the server
+  // answers we keep retrying and write nothing but the local fallback.
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
+    let retryTimer = 0;
+
+    const local = loadLocalThreadsState();
+    if (Object.keys(local.threads).length > 0) {
+      setChatThreads((prev) => mergeThreadsState(local, prev));
+    }
+
+    const attempt = async (delayMs: number): Promise<void> => {
       let server: ThreadsState | null = null;
       try {
         server = await requestJson<ThreadsState>('/api/chat/threads');
       } catch {
-        // Server unreachable — fall back to whatever this browser has.
+        // Server unreachable — keep showing the local copy and try again.
       }
       if (cancelled) return;
-      const local = loadLocalThreadsState();
-      const base = server && Object.keys(server.threads).length > 0 ? server : local;
-      setChatThreads((prev) => ({
-        threads: { ...base.threads, ...prev.threads },
-        activeThreadId: prev.activeThreadId ?? base.activeThreadId,
-      }));
-      chatHydratedRef.current = true;
-    })();
+      if (!server) {
+        retryTimer = window.setTimeout(
+          () => void attempt(Math.min(delayMs * 2, CHAT_HYDRATE_MAX_RETRY_MS)),
+          delayMs
+        );
+        return;
+      }
+      const fromServer = server;
+      setChatThreads((prev) => mergeThreadsState(fromServer, prev));
+      setChatHydrated(true);
+    };
+
+    void attempt(CHAT_HYDRATE_RETRY_MS);
     return () => {
       cancelled = true;
+      window.clearTimeout(retryTimer);
     };
   }, []);
 
@@ -479,7 +509,15 @@ export function AppProvider({ children }: AppProviderProps) {
   // and gets dropped, on failure it becomes the fallback.
   useEffect(() => {
     chatThreadsRef.current = chatThreads;
-    if (!chatHydratedRef.current) return;
+    if (!chatHydrated) {
+      // We haven't seen the server's copy yet — PUTting now could clobber it.
+      // Park anything the user has typed in the browser fallback instead; the
+      // flush below runs as soon as hydration lands.
+      if (Object.keys(chatThreads.threads).length > 0) {
+        saveThreadsToLocalFallback(chatThreads);
+      }
+      return;
+    }
     const timer = window.setTimeout(() => {
       const pruned = pruneThreadsState(chatThreadsRef.current);
       requestJson<{ ok: boolean }>('/api/chat/threads', {
@@ -497,7 +535,7 @@ export function AppProvider({ children }: AppProviderProps) {
         .catch(() => saveThreadsToLocalFallback(pruned));
     }, 1500);
     return () => window.clearTimeout(timer);
-  }, [chatThreads]);
+  }, [chatThreads, chatHydrated]);
 
   // Flush pending history before the tab goes away (debounce may not fire).
   useEffect(() => {
