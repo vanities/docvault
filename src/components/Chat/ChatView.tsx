@@ -928,8 +928,8 @@ function EmptyState({
         for voice input — works great on phones.
       </p>
       <p className="text-[11px] text-surface-500 max-w-md mb-6 leading-relaxed">
-        Chat history is stored in DocVault&apos;s data directory and is automatically pruned to
-        recent threads and messages to limit retention.
+        Chat history is kept in full in DocVault&apos;s data directory. The sidebar lists your most
+        recent chats — everything else is searchable under &ldquo;See more&rdquo;.
       </p>
       {!configured && (
         <Button variant="outline" size="sm" onClick={onOpenSettings}>

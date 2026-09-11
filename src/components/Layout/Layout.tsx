@@ -18,6 +18,9 @@ const AllFilesView = lazy(() =>
   import('../AllFiles/AllFilesView').then((m) => ({ default: m.AllFilesView }))
 );
 const ChatView = lazy(() => import('../Chat/ChatView').then((m) => ({ default: m.ChatView })));
+const ChatHistoryView = lazy(() =>
+  import('../Chat/ChatHistoryView').then((m) => ({ default: m.ChatHistoryView }))
+);
 const CalendarView = lazy(() =>
   import('../Calendar/CalendarView').then((m) => ({ default: m.CalendarView }))
 );
@@ -180,6 +183,8 @@ export function Layout() {
         return <AllFilesView />;
       case 'chat':
         return <ChatView />;
+      case 'chat-history':
+        return <ChatHistoryView />;
       case 'external-sources':
         return <ExternalSourcesView />;
       case 'deep-research':

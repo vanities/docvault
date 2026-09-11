@@ -12,6 +12,19 @@ export interface PersistedThread {
   stats: ChatStats;
   createdAt: string;
   updatedAt: string;
+  /**
+   * How many messages the SERVER holds for this thread. Transcripts load lazily
+   * — an unopened thread arrives with `messages: []` — so this is what tells a
+   * consumer the difference between "empty chat" and "not fetched yet".
+   */
+  messageCount?: number;
+  /** First chunk of the conversation text, for list rows that have no transcript. */
+  preview?: string;
+}
+
+/** True when a thread's transcript still has to be fetched from the server. */
+export function isThreadUnloaded(thread: PersistedThread): boolean {
+  return (thread.messageCount ?? thread.messages.length) > 0 && thread.messages.length === 0;
 }
 
 export interface ThreadsState {
@@ -63,11 +76,12 @@ function serializedLength(state: ThreadsState): number {
 }
 
 /**
- * Privacy + quota guard for persisted chat transcripts.
+ * Quota guard for the BROWSER FALLBACK copy only.
  *
- * Chat can contain sensitive document details, so persistence is intentionally
- * bounded: only recent threads/messages are retained, and the whole serialized
- * payload must stay below a conservative localStorage budget.
+ * The server keeps chat history in full (one file per thread) — nothing is
+ * pruned there. This bound exists because the offline fallback lives in
+ * localStorage, which has a hard multi-megabyte quota and would throw rather
+ * than degrade. Never apply it to what gets sent to the server.
  */
 export function pruneThreadsState(
   state: ThreadsState,

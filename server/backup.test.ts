@@ -74,6 +74,27 @@ describe('backup bundle round-trip', () => {
     );
   });
 
+  test('captures chat-threads/ subtree — full history is not reconstructible', async () => {
+    // Chat history is kept in full as one file per thread. The root index
+    // (.docvault-chat-threads.json) only points at them, so a bundle that
+    // captured the index alone would restore an archive with no transcripts.
+    await fs.writeFile(path.join(scratchDir, '.docvault-settings.json'), JSON.stringify({}));
+    const threadsDir = path.join(scratchDir, 'chat-threads');
+    await fs.mkdir(threadsDir, { recursive: true });
+    await fs.writeFile(
+      path.join(threadsDir, 'thread-a.json'),
+      JSON.stringify({ id: 'thread-a', messages: [{ role: 'user', content: 'hello' }] })
+    );
+
+    const bundle = await createBackupBundle('pw', scratchDir);
+    const unpacked = await unpackBundle(bundle, 'pw');
+
+    expect(unpacked['chat-threads/thread-a.json']).toBeDefined();
+    expect(
+      JSON.parse(new TextDecoder().decode(unpacked['chat-threads/thread-a.json'])).messages
+    ).toHaveLength(1);
+  });
+
   test('captures health/ subtree recursively with binary fidelity', async () => {
     await fs.writeFile(path.join(scratchDir, '.docvault-settings.json'), JSON.stringify({}));
     const exportsDir = path.join(scratchDir, 'health', 'person-abc', 'exports');
