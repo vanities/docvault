@@ -6,7 +6,7 @@
 // files server-side and returns a summary plus a snippet per hit. Opening a row
 // is what pulls that one transcript down.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, MessageSquare, Search, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { requestJson } from '../../api/client';
@@ -73,7 +73,7 @@ function highlight(text: string, query: string): React.ReactNode {
 }
 
 export function ChatHistoryView() {
-  const { openChatThread, deleteChatThread, chatThreads } = useAppContext();
+  const { openChatThread, deleteChatThread } = useAppContext();
 
   const [query, setQuery] = useState('');
   const [from, setFrom] = useState('');
@@ -83,6 +83,15 @@ export function ChatHistoryView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
+  /**
+   * Size of the whole archive, learned from an UNFILTERED response.
+   *
+   * Deliberately not derived from the context's thread index: that index is a
+   * snapshot from this tab's last hydration, so a thread added since (by another
+   * tab, or by the server) would appear in the list below while the heading
+   * still quoted the stale number.
+   */
+  const [archiveTotal, setArchiveTotal] = useState<number | null>(null);
 
   // Guards against a slow early request overwriting a newer result — typing
   // fast enough fires several searches and they can land out of order.
@@ -108,6 +117,7 @@ export function ChatHistoryView() {
         setHits((prev) => (append ? [...prev, ...result.hits] : result.hits));
         setTotal(result.total);
         setOffset(nextOffset);
+        if (!query.trim() && !from && !to) setArchiveTotal(result.total);
       } catch {
         if (seq !== requestSeq.current) return;
         setError('Could not load chat history.');
@@ -128,16 +138,12 @@ export function ChatHistoryView() {
     deleteChatThread(id);
     setHits((prev) => prev.filter((h) => h.thread.id !== id));
     setTotal((prev) => Math.max(0, prev - 1));
+    setArchiveTotal((prev) => (prev === null ? prev : Math.max(0, prev - 1)));
   };
 
   const hasFilters = Boolean(query.trim() || from || to);
   const shown = hits.length;
   const canLoadMore = shown < total;
-
-  const totalArchived = useMemo(
-    () => Object.keys(chatThreads.threads).length,
-    [chatThreads.threads]
-  );
 
   return (
     <div className="p-4 sm:p-6 max-w-4xl mx-auto">
@@ -147,8 +153,8 @@ export function ChatHistoryView() {
           Chat history
         </h2>
         <p className="text-[13px] text-surface-700">
-          Every conversation is kept. Search the full text of {totalArchived || total} chat
-          {(totalArchived || total) === 1 ? '' : 's'}.
+          Every conversation is kept. Search the full text of {archiveTotal ?? total} chat
+          {(archiveTotal ?? total) === 1 ? '' : 's'}.
         </p>
       </div>
 
