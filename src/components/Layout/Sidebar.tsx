@@ -32,6 +32,7 @@ import {
   Newspaper,
   Telescope,
   Cpu,
+  History,
   X,
 } from 'lucide-react';
 import { useAppContext, type NavView, type PersistedThread } from '../../contexts/AppContext';
@@ -423,6 +424,9 @@ function ThreadRow({
   );
 }
 
+// Recent chats shown in the rail before falling through to the history page.
+const SIDEBAR_THREAD_LIMIT = 15;
+
 function ChatThreadList() {
   const { chatThreads, switchChatThread, deleteChatThread, newChatThread, setActiveView } =
     useAppContext();
@@ -431,6 +435,11 @@ function ChatThreadList() {
     () => Object.values(chatThreads.threads).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     [chatThreads.threads]
   );
+  // History is kept in full, so the rail shows only the most recent chats and
+  // hands the rest to the searchable history page. Without this cap the sidebar
+  // would grow without bound as the archive does.
+  const visible = sorted.slice(0, SIDEBAR_THREAD_LIMIT);
+  const overflow = sorted.length - visible.length;
 
   const handleNew = () => {
     newChatThread();
@@ -455,7 +464,7 @@ function ChatThreadList() {
       {sorted.length === 0 ? (
         <div className="px-2 py-1 text-[11px] text-surface-500 italic">No chats yet</div>
       ) : (
-        sorted.map((t) => (
+        visible.map((t) => (
           <ThreadRow
             key={t.id}
             thread={t}
@@ -464,6 +473,16 @@ function ChatThreadList() {
             onDelete={deleteChatThread}
           />
         ))
+      )}
+      {overflow > 0 && (
+        <button
+          type="button"
+          onClick={() => setActiveView('chat-history')}
+          className="w-full flex items-center gap-1.5 px-2 py-1 rounded text-[12px] text-surface-700 hover:text-surface-950 hover:bg-surface-200/50"
+        >
+          <History className="w-3 h-3" />
+          See more ({overflow})
+        </button>
       )}
     </div>
   );

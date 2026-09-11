@@ -112,6 +112,11 @@ export async function handleBackupRoutes(req: Request, pathname: string): Promis
           await safeWriteUnder(name, data);
           restored.push(name);
         }
+        // Current format: chat-threads/ subtree (one transcript per thread)
+        else if (name.startsWith('chat-threads/')) {
+          await safeWriteUnder(name, data);
+          restored.push(name);
+        }
         // Legacy format: settings.json / config.json / data/* from older backups
         else if (name === 'settings.json') {
           await safeWriteUnder(path.basename(SETTINGS_PATH), data);

@@ -15,6 +15,7 @@ import type { Entity, TaxDocument, DocumentType, ExpenseCategory, Todo } from '.
 import { uuidV4 } from '../utils/uuid';
 import {
   EMPTY_CHAT_STATS,
+  isThreadUnloaded,
   mergeThreadsState,
   pruneThreadsState,
   type PersistedThread,
@@ -37,6 +38,29 @@ export type { ChatStats, PersistedThread, ThreadsState } from './chatPersistence
 // chatPersistence.ts so private chat history cannot grow unbounded.
 // localStorage remains only as a migration source + offline fallback.
 // ---------------------------------------------------------------------------
+
+/**
+ * Shape of GET /api/chat/threads — the thread index, plus the active
+ * transcript so the open chat paints without a second round trip. Every other
+ * thread arrives as metadata only and is fetched when opened.
+ */
+interface ServerThreadsIndex {
+  threads: Record<string, Omit<PersistedThread, 'messages'>>;
+  activeThreadId: string | null;
+  activeThread?: PersistedThread | null;
+}
+
+function serverIndexToThreadsState(index: ServerThreadsIndex): ThreadsState {
+  const threads: Record<string, PersistedThread> = {};
+  for (const [id, summary] of Object.entries(index.threads ?? {})) {
+    threads[id] = { ...summary, messages: [] };
+  }
+  const active = index.activeThread;
+  if (active && threads[active.id]) {
+    threads[active.id] = { ...threads[active.id], messages: active.messages ?? [] };
+  }
+  return { threads, activeThreadId: index.activeThreadId ?? null };
+}
 
 const CHAT_THREADS_STORAGE_KEY = 'docvault-chat-threads-v1';
 const LEGACY_CHAT_HISTORY_KEY = 'docvault-chat-history-v1';
@@ -151,6 +175,7 @@ export type NavView =
   | 'business-docs'
   | 'all-files'
   | 'chat'
+  | 'chat-history'
   | 'external-sources'
   | 'deep-research'
   | 'daily-news'
@@ -349,10 +374,14 @@ interface AppContextValue {
   updateActiveChatThread: (updater: (t: PersistedThread) => Partial<PersistedThread>) => void;
   /** Mint a fresh thread, switch to it, and return its id. */
   newChatThread: () => string;
-  /** Switch the active thread. */
+  /** Switch the active thread, fetching its transcript if not yet loaded. */
   switchChatThread: (id: string) => void;
   /** Delete a thread; if it was active, falls back to the next-most-recent. */
   deleteChatThread: (id: string) => void;
+  /** Fetch one thread's transcript on demand. Threads list without one. */
+  loadChatThreadMessages: (id: string) => Promise<void>;
+  /** Open a thread in the chat view — used by the history page. */
+  openChatThread: (id: string) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -382,6 +411,7 @@ export function AppProvider({ children }: AppProviderProps) {
         'tax-year',
         'business-docs',
         'all-files',
+        'chat-history',
         'chat',
         'external-sources',
         'deep-research',
@@ -456,17 +486,29 @@ export function AppProvider({ children }: AppProviderProps) {
   const [chatHydrated, setChatHydrated] = useState(false);
   const chatHydratedRef = useRef(false);
   const chatThreadsRef = useRef(chatThreads);
+  // Threads whose transcript is already being fetched, so a double-click on a
+  // history row doesn't fire two requests for the same conversation.
+  const loadingThreadsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     chatHydratedRef.current = chatHydrated;
   }, [chatHydrated]);
 
+  useEffect(() => {
+    chatThreadsRef.current = chatThreads;
+  }, [chatThreads]);
+
   // Hydrate on boot: show this browser's fallback immediately, then reconcile
   // with the server's copy (newest write per thread wins).
   //
+  // The server answers with the thread INDEX plus the active transcript only.
+  // History is kept in full, so pulling every transcript on boot would mean
+  // downloading the entire archive before the first message paints; the rest
+  // load when a thread is actually opened.
+  //
   // Hydration counts as complete ONLY once the server has actually answered.
   // A failed GET used to flip the flag anyway, so a flaky boot — routine over
-  // the LAN/VPN — would hydrate from an empty browser fallback and then PUT
+  // the LAN/VPN — would hydrate from an empty browser fallback and then write
   // that emptiness straight over real server-side history. Until the server
   // answers we keep retrying and write nothing but the local fallback.
   useEffect(() => {
@@ -479,9 +521,9 @@ export function AppProvider({ children }: AppProviderProps) {
     }
 
     const attempt = async (delayMs: number): Promise<void> => {
-      let server: ThreadsState | null = null;
+      let server: ServerThreadsIndex | null = null;
       try {
-        server = await requestJson<ThreadsState>('/api/chat/threads');
+        server = await requestJson<ServerThreadsIndex>('/api/chat/threads');
       } catch {
         // Server unreachable — keep showing the local copy and try again.
       }
@@ -493,7 +535,7 @@ export function AppProvider({ children }: AppProviderProps) {
         );
         return;
       }
-      const fromServer = server;
+      const fromServer = serverIndexToThreadsState(server);
       setChatThreads((prev) => mergeThreadsState(fromServer, prev));
       setChatHydrated(true);
     };
@@ -505,47 +547,70 @@ export function AppProvider({ children }: AppProviderProps) {
     };
   }, []);
 
-  // Debounced server persistence; on success the browser copy is redundant
-  // and gets dropped, on failure it becomes the fallback.
+  // The only thread whose content can change is the active one (every mutation
+  // path goes through updateActiveChatThread), so that is the only thread worth
+  // writing. This is what keeps save cost flat as history grows: it's one
+  // transcript per save, not the whole archive.
+  const activeChatThread = chatThreads.activeThreadId
+    ? (chatThreads.threads[chatThreads.activeThreadId] ?? null)
+    : null;
+
   useEffect(() => {
-    chatThreadsRef.current = chatThreads;
     if (!chatHydrated) {
-      // We haven't seen the server's copy yet — PUTting now could clobber it.
+      // We haven't seen the server's copy yet — writing now could clobber it.
       // Park anything the user has typed in the browser fallback instead; the
-      // flush below runs as soon as hydration lands.
-      if (Object.keys(chatThreads.threads).length > 0) {
-        saveThreadsToLocalFallback(chatThreads);
+      // save below runs as soon as hydration lands.
+      if (Object.keys(chatThreadsRef.current.threads).length > 0) {
+        saveThreadsToLocalFallback(chatThreadsRef.current);
       }
       return;
     }
+    if (!activeChatThread) return;
     const timer = window.setTimeout(() => {
-      const pruned = pruneThreadsState(chatThreadsRef.current);
-      requestJson<{ ok: boolean }>('/api/chat/threads', {
+      requestJson<{ ok: boolean }>(`/api/chat/threads/${activeChatThread.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(pruned),
+        body: JSON.stringify(activeChatThread),
       })
         .then(() => {
+          // Saved server-side; the browser copy is now redundant. Holding on to
+          // it would leave transcripts sitting in cleartext localStorage.
           try {
             localStorage.removeItem(CHAT_THREADS_STORAGE_KEY);
           } catch {
             /* storage unavailable */
           }
         })
-        .catch(() => saveThreadsToLocalFallback(pruned));
+        .catch(() => saveThreadsToLocalFallback(chatThreadsRef.current));
     }, 1500);
     return () => window.clearTimeout(timer);
-  }, [chatThreads, chatHydrated]);
+  }, [activeChatThread, chatHydrated]);
 
-  // Flush pending history before the tab goes away (debounce may not fire).
+  // Which thread is open is index-level state, so it rides separately from the
+  // transcript write above — switching chats shouldn't re-upload a transcript.
+  useEffect(() => {
+    if (!chatHydrated) return;
+    void requestJson<{ ok: boolean }>('/api/chat/threads/active', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ activeThreadId: chatThreads.activeThreadId }),
+    }).catch(() => {
+      /* pointer is cosmetic; the next successful save re-syncs it */
+    });
+  }, [chatThreads.activeThreadId, chatHydrated]);
+
+  // Flush the open transcript before the tab goes away (debounce may not fire).
   useEffect(() => {
     const flush = () => {
       if (!chatHydratedRef.current) return;
+      const state = chatThreadsRef.current;
+      const thread = state.activeThreadId ? state.threads[state.activeThreadId] : null;
+      if (!thread) return;
       try {
-        void fetch('/api/chat/threads', {
+        void fetch(`/api/chat/threads/${thread.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(pruneThreadsState(chatThreadsRef.current)),
+          body: JSON.stringify(thread),
           keepalive: true,
         });
       } catch {
@@ -556,23 +621,54 @@ export function AppProvider({ children }: AppProviderProps) {
     return () => window.removeEventListener('pagehide', flush);
   }, []);
 
+  /**
+   * Pull a thread's transcript on demand.
+   *
+   * Threads arrive from the index with `messages: []`; this fills one in the
+   * first time it's opened. No-ops when the transcript is already present or
+   * a fetch for it is already in flight.
+   */
+  const loadChatThreadMessages = useCallback(async (id: string): Promise<void> => {
+    const existing = chatThreadsRef.current.threads[id];
+    if (!existing || !isThreadUnloaded(existing) || loadingThreadsRef.current.has(id)) return;
+    loadingThreadsRef.current.add(id);
+    try {
+      const full = await requestJson<PersistedThread>(`/api/chat/threads/${id}`);
+      setChatThreads((prev) => {
+        const current = prev.threads[id];
+        if (!current) return prev;
+        return {
+          ...prev,
+          threads: {
+            ...prev.threads,
+            [id]: { ...current, messages: full.messages ?? [], messageCount: full.messageCount },
+          },
+        };
+      });
+    } catch {
+      /* leave it unloaded; opening it again retries */
+    } finally {
+      loadingThreadsRef.current.delete(id);
+    }
+  }, []);
+  // NOTE: none of these prune. History is kept in full server-side; the only
+  // bounded copy is the localStorage fallback (see chatPersistence.ts).
   const updateActiveChatThread = useCallback(
     (updater: (t: PersistedThread) => Partial<PersistedThread>) => {
       setChatThreads((prev) => {
         if (!prev.activeThreadId) return prev;
         const current = prev.threads[prev.activeThreadId];
         if (!current) return prev;
-        return pruneThreadsState({
+        const next = { ...current, ...updater(current), updatedAt: new Date().toISOString() };
+        return {
           ...prev,
           threads: {
             ...prev.threads,
-            [prev.activeThreadId]: {
-              ...current,
-              ...updater(current),
-              updatedAt: new Date().toISOString(),
-            },
+            // messageCount tracks what this client now holds, so the thread
+            // doesn't look "unloaded" to isThreadUnloaded after an edit.
+            [prev.activeThreadId]: { ...next, messageCount: next.messages.length },
           },
-        });
+        };
       });
     },
     []
@@ -581,29 +677,34 @@ export function AppProvider({ children }: AppProviderProps) {
   const newChatThread = useCallback((): string => {
     const id = uuidV4();
     const now = new Date().toISOString();
-    setChatThreads((prev) =>
-      pruneThreadsState({
-        activeThreadId: id,
-        threads: {
-          ...prev.threads,
-          [id]: {
-            id,
-            title: 'New chat',
-            resumeSessionId: null,
-            messages: [],
-            stats: EMPTY_CHAT_STATS,
-            createdAt: now,
-            updatedAt: now,
-          },
+    setChatThreads((prev) => ({
+      activeThreadId: id,
+      threads: {
+        ...prev.threads,
+        [id]: {
+          id,
+          title: 'New chat',
+          resumeSessionId: null,
+          messages: [],
+          stats: EMPTY_CHAT_STATS,
+          createdAt: now,
+          updatedAt: now,
+          messageCount: 0,
+          preview: '',
         },
-      })
-    );
+      },
+    }));
     return id;
   }, []);
 
-  const switchChatThread = useCallback((id: string) => {
-    setChatThreads((prev) => (prev.threads[id] ? { ...prev, activeThreadId: id } : prev));
-  }, []);
+  const switchChatThread = useCallback(
+    (id: string) => {
+      setChatThreads((prev) => (prev.threads[id] ? { ...prev, activeThreadId: id } : prev));
+      // Opening a thread from the index is the moment its transcript is needed.
+      void loadChatThreadMessages(id);
+    },
+    [loadChatThreadMessages]
+  );
 
   const deleteChatThread = useCallback((id: string) => {
     setChatThreads((prev) => {
@@ -615,9 +716,24 @@ export function AppProvider({ children }: AppProviderProps) {
               rest[b].updatedAt.localeCompare(rest[a].updatedAt)
             )[0] ?? null)
           : prev.activeThreadId;
-      return pruneThreadsState({ threads: rest, activeThreadId: newActive });
+      return { threads: rest, activeThreadId: newActive };
+    });
+    // Deletion has to reach the server: with full retention there is no pruning
+    // pass that would eventually drop the file on its own.
+    void requestJson<{ ok: boolean }>(`/api/chat/threads/${id}`, { method: 'DELETE' }).catch(() => {
+      /* the row is gone locally; a failed delete resurfaces on next hydrate */
     });
   }, []);
+
+  const openChatThread = useCallback(
+    (id: string) => {
+      switchChatThread(id);
+      setActiveViewState('chat');
+      localStorage.setItem('docvault-view', 'chat');
+      window.location.hash = 'chat';
+    },
+    [switchChatThread]
+  );
 
   const setActiveView = useCallback((view: NavView) => {
     setActiveViewState(view);
@@ -875,6 +991,8 @@ export function AppProvider({ children }: AppProviderProps) {
     newChatThread,
     switchChatThread,
     deleteChatThread,
+    loadChatThreadMessages,
+    openChatThread,
 
     // Documents
     scannedDocuments,

@@ -65,6 +65,7 @@ async function collectDirRecursive(
  *   2. The entire `health/` subtree (Apple Health raw zip/xml exports +
  *      iOS Shortcut daily deltas). health/ is NOT in the Dropbox rclone map,
  *      so the encrypted bundle is its only off-site copy.
+ *   3. The entire `chat-threads/` subtree (one full transcript per thread).
  *
  * Does NOT capture:
  *   - Entity document subdirectories (synced directly by the sync script)
@@ -98,6 +99,11 @@ export async function collectBackupFiles(
 
   // 2) health/ subtree (recursive)
   await collectDirRecursive(path.join(dataDir, 'health'), 'health', files);
+
+  // 3) chat-threads/ subtree — one transcript per thread. Chat history is kept
+  // in full and is NOT reconstructible from anything else, so it belongs in the
+  // bundle alongside the root .docvault-*.json index that points at it.
+  await collectDirRecursive(path.join(dataDir, 'chat-threads'), 'chat-threads', files);
 
   return files;
 }

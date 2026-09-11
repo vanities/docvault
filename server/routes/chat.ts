@@ -101,7 +101,17 @@ import { handleTimesheetRoutes } from './timesheet.js';
 import { handleDailyNewsRoutes } from './daily-news.js';
 import { handlePoliticsRoutes } from './politics.js';
 import { listRuns, getRun } from '../deep-research-store.js';
-import { loadChatThreads, saveChatThreads, isChatThreadsState } from '../chat-threads-store.js';
+import {
+  deleteThread,
+  importThreadsState,
+  isChatThreadsState,
+  isValidThreadId,
+  loadIndex,
+  loadThread,
+  saveThread,
+  searchThreads,
+  setActiveThreadId,
+} from '../chat-threads-store.js';
 import { logAiCall } from '../ai/usage-log.js';
 import { createLogger } from '../logger.js';
 
@@ -2159,7 +2169,7 @@ async function buildUserMessageContent(
 
 export async function handleChatRoutes(
   req: Request,
-  _url: URL,
+  url: URL,
   pathname: string
 ): Promise<Response | null> {
   // GET /api/chat/attachments/:chatId/:fileName — serve a stored attachment so
@@ -2223,17 +2233,77 @@ export async function handleChatRoutes(
     });
   }
 
+  // --- Chat history ------------------------------------------------------
+  // History is kept in full and stored one file per thread, so these routes
+  // deal in the index plus individual transcripts rather than one big blob.
+  // See server/chat-threads-store.ts for the layout and why.
+
+  // Must be matched before the /:id route below, or "search" reads as a thread id.
+  if (pathname === '/api/chat/threads/search') {
+    if (req.method !== 'GET') return jsonResponse({ error: 'Method not allowed' }, 405);
+    const params = url.searchParams;
+    const limit = Number(params.get('limit') ?? '25');
+    const offset = Number(params.get('offset') ?? '0');
+    const result = await searchThreads({
+      query: params.get('q') ?? undefined,
+      from: params.get('from') ?? undefined,
+      to: params.get('to') ?? undefined,
+      limit: Number.isFinite(limit) ? limit : undefined,
+      offset: Number.isFinite(offset) ? offset : undefined,
+    });
+    return jsonResponse(result);
+  }
+
   if (pathname === '/api/chat/threads') {
     if (req.method === 'GET') {
-      return jsonResponse(await loadChatThreads());
+      // Index plus the active transcript: the open chat renders on boot without
+      // a second round trip, and every other thread loads when it's opened.
+      const index = await loadIndex();
+      const activeThread = index.activeThreadId ? await loadThread(index.activeThreadId) : null;
+      return jsonResponse({ ...index, activeThread });
     }
     if (req.method === 'PUT') {
+      // Legacy whole-state save from a tab still running pre-split JS. Merges.
       const body = await readJsonBody<unknown>(req);
       if (!isChatThreadsState(body)) {
         return jsonResponse({ error: 'Invalid chat threads state shape' }, 400);
       }
-      await saveChatThreads(body);
-      return jsonResponse({ ok: true });
+      const imported = await importThreadsState(body);
+      return jsonResponse({ ok: true, imported });
+    }
+    return jsonResponse({ error: 'Method not allowed' }, 405);
+  }
+
+  if (pathname === '/api/chat/threads/active') {
+    if (req.method !== 'PUT') return jsonResponse({ error: 'Method not allowed' }, 405);
+    const body = await readJsonBody<{ activeThreadId?: string | null }>(req);
+    const next = body?.activeThreadId ?? null;
+    if (next !== null && !isValidThreadId(next)) {
+      return jsonResponse({ error: 'Invalid thread id' }, 400);
+    }
+    await setActiveThreadId(next);
+    return jsonResponse({ ok: true });
+  }
+
+  const threadMatch = pathname.match(/^\/api\/chat\/threads\/([^/]+)$/);
+  if (threadMatch) {
+    const threadId = decodeURIComponent(threadMatch[1]);
+    if (!isValidThreadId(threadId)) return jsonResponse({ error: 'Invalid thread id' }, 400);
+
+    if (req.method === 'GET') {
+      const thread = await loadThread(threadId);
+      if (!thread) return jsonResponse({ error: 'Thread not found' }, 404);
+      return jsonResponse(thread);
+    }
+    if (req.method === 'PUT') {
+      const body = await readJsonBody<unknown>(req);
+      const saved = await saveThread(threadId, body);
+      if (!saved) return jsonResponse({ error: 'Invalid thread id' }, 400);
+      return jsonResponse({ ok: true, messageCount: saved.messageCount });
+    }
+    if (req.method === 'DELETE') {
+      const existed = await deleteThread(threadId);
+      return jsonResponse({ ok: true, existed });
     }
     return jsonResponse({ error: 'Method not allowed' }, 405);
   }
