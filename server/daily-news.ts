@@ -40,6 +40,7 @@ import {
   loadPropertyData,
   loadIncomeData,
   loadEstimatedTaxes,
+  type EstimatedTaxPayment,
   loadContributions,
   loadAssets,
   loadFederalTax,
@@ -695,21 +696,49 @@ function bucketsForYear<T>(data: Record<string, T>, year: number): T[] {
     .map(([, v]) => v);
 }
 
-/** Next IRS quarterly estimated-tax due date on/after `now`, as YYYY-MM-DD.
- *  Standard calendar-year deadlines: Apr 15, Jun 15, Sep 15, and Jan 15 of the
- *  following year. Returns null once the final installment for the year passes. */
-function nextEstimatedTaxDue(taxYear: number, now: Date = new Date()): string | null {
-  const deadlines = [
-    `${taxYear}-04-15`,
-    `${taxYear}-06-15`,
-    `${taxYear}-09-15`,
-    `${taxYear + 1}-01-15`,
+/** The weekly "Estimated taxes" state line: paid-to-date vs. target, which
+ *  quarters are paid, and the next UNPAID installment's deadline.
+ *
+ *  The next-due date must skip quarters that already have a payment. A purely
+ *  calendar-based "next deadline on/after today" reports Q3's Sep 15 as due
+ *  even when Q3 was paid on Sep 1, and the editor then (reasonably) writes a
+ *  shortfall headline against the cash balance. Standard calendar-year
+ *  deadlines: Apr 15, Jun 15, Sep 15, Jan 15 of the following year. */
+export function describeEstimatedTaxState(
+  buckets: { payments?: EstimatedTaxPayment[]; config?: { annualTarget?: number } }[],
+  taxYear: number,
+  now: Date = new Date()
+): string | null {
+  if (!buckets.length) return null;
+  const payments = buckets.flatMap((b) => b.payments ?? []);
+  const paid = payments.reduce((s, p) => s + p.amount, 0);
+  const target = buckets.reduce((s, b) => s + (b.config?.annualTarget ?? 0), 0);
+  const paidQuarters = new Set(payments.map((p) => p.quarter));
+  const deadlines: [1 | 2 | 3 | 4, string][] = [
+    [1, `${taxYear}-04-15`],
+    [2, `${taxYear}-06-15`],
+    [3, `${taxYear}-09-15`],
+    [4, `${taxYear + 1}-01-15`],
   ];
   const t = now.getTime();
-  for (const d of deadlines) {
-    if (new Date(`${d}T23:59:59`).getTime() >= t) return d;
+  const next = deadlines.find(
+    ([q, d]) => !paidQuarters.has(q) && new Date(`${d}T23:59:59`).getTime() >= t
+  );
+  const paidList = deadlines.filter(([q]) => paidQuarters.has(q)).map(([q]) => `Q${q}`);
+  let schedule = '';
+  if (paidList.length === 4) schedule = '; all 4 installments paid';
+  else {
+    if (paidList.length) schedule += `; ${paidList.join(', ')} paid`;
+    if (next) schedule += `; next unpaid installment Q${next[0]} due ${next[1]}`;
   }
-  return null;
+  return (
+    `Estimated taxes ${taxYear}: $${Math.round(paid).toLocaleString()} paid` +
+    (target > 0
+      ? ` of $${Math.round(target).toLocaleString()} target (${Math.round((paid / target) * 100)}%)`
+      : '') +
+    schedule +
+    '.'
+  );
 }
 
 async function gatherFinance(
@@ -994,20 +1023,11 @@ async function gatherFinance(
     // Estimated taxes — paid-to-date vs. annual target + next quarterly due date,
     // summed across every entity bucket for the year.
     try {
-      const buckets = bucketsForYear(await loadEstimatedTaxes(), taxYear);
-      if (buckets.length) {
-        const paid = buckets.flatMap((b) => b.payments ?? []).reduce((s, p) => s + p.amount, 0);
-        const target = buckets.reduce((s, b) => s + (b.config?.annualTarget ?? 0), 0);
-        const due = nextEstimatedTaxDue(taxYear);
-        items.push(
-          `Estimated taxes ${taxYear}: $${Math.round(paid).toLocaleString()} paid` +
-            (target > 0
-              ? ` of $${Math.round(target).toLocaleString()} target (${Math.round((paid / target) * 100)}%)`
-              : '') +
-            (due ? `; next installment due ${due}` : '') +
-            '.'
-        );
-      }
+      const line = describeEstimatedTaxState(
+        bucketsForYear(await loadEstimatedTaxes(), taxYear),
+        taxYear
+      );
+      if (line) items.push(line);
     } catch (err) {
       emitDigestWarning(warn, 'finance/estimated-taxes-state', err);
     }
