@@ -4,6 +4,7 @@ import {
   buildCalendarDigest,
   buildOvernightMetricBits,
   buildResearchDigestItems,
+  describeEstimatedTaxState,
   selectDailyNewsStepCount,
   snapshotFromAllResponseBody,
 } from './daily-news.js';
@@ -403,5 +404,61 @@ describe('buildCalendarDigest', () => {
       false
     );
     expect(weekAhead.items.map((i) => i.title)).toEqual(['Sam']);
+  });
+});
+
+describe('describeEstimatedTaxState', () => {
+  const pay = (quarter: 1 | 2 | 3 | 4, date: string) => ({
+    id: `q${quarter}`,
+    date,
+    quarter,
+    amount: 1000,
+  });
+
+  test('skips an installment already paid early — next due is the first UNPAID quarter', () => {
+    // Q3 paid 9/01, two weeks before its 9/15 deadline: the edition on 9/13 must
+    // not tell the reader Q3 is still due.
+    const line = describeEstimatedTaxState(
+      [
+        {
+          config: { annualTarget: 4000 },
+          payments: [pay(1, '2026-04-11'), pay(2, '2026-06-03'), pay(3, '2026-09-01')],
+        },
+      ],
+      2026,
+      new Date('2026-09-13T12:00:00')
+    );
+    expect(line).toContain('$3,000 paid of $4,000 target (75%)');
+    expect(line).toContain('Q1, Q2, Q3 paid');
+    expect(line).toContain('next unpaid installment Q4 due 2027-01-15');
+    expect(line).not.toContain('2026-09-15');
+  });
+
+  test('an unpaid quarter whose deadline is still ahead is the next due', () => {
+    const line = describeEstimatedTaxState(
+      [{ config: { annualTarget: 4000 }, payments: [pay(1, '2026-04-11'), pay(2, '2026-06-03')] }],
+      2026,
+      new Date('2026-09-13T12:00:00')
+    );
+    expect(line).toContain('next unpaid installment Q3 due 2026-09-15');
+  });
+
+  test('all four quarters paid says so instead of naming a deadline', () => {
+    const line = describeEstimatedTaxState(
+      [
+        {
+          config: { annualTarget: 4000 },
+          payments: [pay(1, 'a'), pay(2, 'b'), pay(3, 'c'), pay(4, 'd')],
+        },
+      ],
+      2026,
+      new Date('2026-09-13T12:00:00')
+    );
+    expect(line).toContain('all 4 installments paid');
+    expect(line).not.toMatch(/due \d{4}/);
+  });
+
+  test('no buckets → null (nothing to report)', () => {
+    expect(describeEstimatedTaxState([], 2026, new Date('2026-09-13T12:00:00'))).toBeNull();
   });
 });
