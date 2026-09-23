@@ -5,6 +5,7 @@ import {
   buildOvernightMetricBits,
   buildResearchDigestItems,
   describeEstimatedTaxState,
+  renderDigestPrompt,
   selectDailyNewsStepCount,
   snapshotFromAllResponseBody,
 } from './daily-news.js';
@@ -460,5 +461,60 @@ describe('describeEstimatedTaxState', () => {
 
   test('no buckets → null (nothing to report)', () => {
     expect(describeEstimatedTaxState([], 2026, new Date('2026-09-13T12:00:00'))).toBeNull();
+  });
+});
+
+describe('renderDigestPrompt — previous-edition dedup context', () => {
+  const base: Digest = {
+    editionType: 'daily',
+    sinceISO: '2026-01-01T14:00:00.000Z',
+    sections: [{ desk: 'Markets & Macro', items: ['Gold (GLD) $100 (+10% 1y).'] }],
+    itemCount: 1,
+    sources: ['Markets & Macro'],
+    pulled: [],
+    sourceWarnings: [],
+  };
+
+  test('includes the previous edition as a fenced reference block, after the digest', () => {
+    const prompt = renderDigestPrompt(
+      {
+        ...base,
+        previousEdition: {
+          editionDate: '2026-01-01',
+          editionType: 'daily',
+          body: 'Gold is up 10% on the year.',
+        },
+      },
+      'Test Dispatch',
+      'Friday, January 2'
+    );
+    expect(prompt).toContain('PREVIOUS EDITION (daily, 2026-01-01)');
+    expect(prompt).toContain(
+      '<<<PREVIOUS_EDITION\nGold is up 10% on the year.\nPREVIOUS_EDITION>>>'
+    );
+    expect(prompt.indexOf('## Markets & Macro')).toBeLessThan(prompt.indexOf('PREVIOUS EDITION'));
+  });
+
+  test('clips an oversized previous edition', () => {
+    const prompt = renderDigestPrompt(
+      {
+        ...base,
+        previousEdition: {
+          editionDate: '2026-01-01',
+          editionType: 'weekly',
+          body: 'x'.repeat(50_000),
+        },
+      },
+      'Test Dispatch',
+      'Friday, January 2'
+    );
+    expect(prompt).toContain('[…truncated]');
+    expect(prompt.length).toBeLessThan(35_000);
+  });
+
+  test('omits the block when there is no previous edition', () => {
+    expect(renderDigestPrompt(base, 'Test Dispatch', 'Friday, January 2')).not.toContain(
+      'PREVIOUS_EDITION'
+    );
   });
 });

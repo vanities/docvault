@@ -188,7 +188,22 @@ export interface Digest {
   sun?: SunAlmanac;
   /** Calendar week-ahead for the rendered box (exact dates, never through the LLM). */
   weekAhead?: WeekAheadCalendar;
+  /** The last completed edition, shown to the editor (dailies only) as "what the
+   *  reader was already told" so standing facts and repeated recommendations
+   *  aren't restated every morning. Not part of the digest's own item count. */
+  previousEdition?: PreviousEdition;
 }
+
+/** The prior edition's text, for cross-edition dedup. */
+export interface PreviousEdition {
+  editionDate: string;
+  editionType: EditionType;
+  body: string;
+}
+
+/** Cap on how much of the previous edition goes into the prompt. A normal daily
+ *  is ~20-25K chars; this only clips an unusually long weekly deep-dive. */
+const PREVIOUS_EDITION_MAX_CHARS = 30_000;
 
 /** One row of the rendered "Week Ahead" calendar box. `sky`/`holiday` rows
  * come from the shared astronomy/almanac math (server/calendar-sky.ts) and
@@ -1585,7 +1600,8 @@ async function gatherSun(editionDate?: string, warn?: WarningSink): Promise<SunA
 export async function gatherDigest(
   editionType: EditionType,
   sinceISO: string,
-  editionDate?: string
+  editionDate?: string,
+  previousEdition?: PreviousEdition
 ): Promise<Digest> {
   const since = new Date(sinceISO).getTime();
   // Date-only values (YYYY-MM-DD) are treated as end-of-day so a same-day item
@@ -1651,6 +1667,7 @@ export async function gatherDigest(
       `docs=${docs.length} calendar=${calendar.items.length} ` +
       `weather=${weather ? `${weather.days.length}d` : 'off'} ` +
       `sun=${sun ? `${sun.sunrise}/${sun.sunset}` : 'off'} ` +
+      `previous=${editionType === 'daily' && previousEdition ? `${previousEdition.editionDate}(${previousEdition.body.length}ch)` : 'none'} ` +
       `(sections=${sections.length} items=${itemCount}) in ${Date.now() - t0}ms`
   );
   return {
@@ -1665,6 +1682,10 @@ export async function gatherDigest(
     weather: weather ?? undefined,
     sun: sun ?? undefined,
     weekAhead: calendar.weekAhead ?? undefined,
+    // Dailies only: the weekly deep-dive is the one edition that SHOULD restate
+    // the standing state of things, so it gets no "already told" context.
+    previousEdition:
+      editionType === 'daily' && previousEdition?.body.trim() ? previousEdition : undefined,
   };
 }
 
@@ -1682,16 +1703,18 @@ function buildSystem(
     `You are the editor-in-chief of "${title}", a personal daily newspaper for a single reader (the owner of this data).`,
     "You are given a structured digest of everything that changed across the owner's data since the last edition, organized by desk.",
     'Write a cohesive newspaper edition in clean markdown. Open with a one-paragraph front-page lede summarizing the single most important development. Then write one `##` section per desk, in the order given, in tight journalistic prose (not bullet dumps) — lead with what changed and why it matters, cite the specific numbers, dates, and names from the digest. Digest items may carry a source tag like [S12] in their heading; when a story draws on a tagged item, hyperlink its most load-bearing phrase reference-style — [the phrase][S12] — using only tags that appear in the digest. Never write raw URLs or invent tags; at most one link per story. Cover EVERY desk that has material (the digest is comprehensive — markets, politics, local news, personal finance, health, research, documents); omit only a desk with genuinely no items. In the Local News section, report like a hometown paper: lead with what affects the reader directly (rates, closures, construction, schools), keep names and dates concrete.',
-    'In the "Personal Finance & Business" section, treat tax and retirement items as the financially actionable content they are: when an estimated-tax installment due date, safe-harbor progress, retirement-contribution progress, a filed return, or a new income source/asset appears in the digest, report it concretely with the numbers and dates — an upcoming estimated-tax deadline in particular is worth a clear heads-up.',
+    'In the "Personal Finance & Business" section, treat tax and retirement items as the financially actionable content they are: when an estimated-tax installment due date, safe-harbor progress, retirement-contribution progress, a filed return, or a new income source/asset appears in the digest, report it concretely with the numbers and dates — an upcoming estimated-tax deadline in particular is worth a clear heads-up. When NONE of those appear, say nothing about them — do not write "no installment / no contribution / no return arrived" lines.',
     'In the "Politics" section, LEAD with congressional and executive-branch trading whenever the digest carries it, and lead that with CONSENSUS: a digest item prefixed "CONSENSUS BUY"/"CONSENSUS SELL" means several different members traded the SAME ticker the SAME direction inside a short window — that is the story, so name the ticker, the member count, the window, and several of the members by name. Items prefixed "NOTABLE" are individually significant single trades (size, or an actual option contract) — give the biggest ones a sentence each with the member, ticker, direction, dollar band, and the gap between the trade date and the disclosure date. A collapsed "Also disclosed" line is background volume: mention it in at most one clause, never expand it. If an item says the trades are NOT new today, say plainly that no fresh filings landed and frame the material as standing context. Never present a disclosure date as the date the trade happened — under the STOCK Act these lag by up to 45 days, and that lag is itself worth noting when it is long. Use ONLY the chamber the digest states for each member, verbatim — never infer or add a title ("Sen.", "Rep.") that the digest did not give you, since members with similar names sit in different chambers and a wrong attribution discredits the whole desk.',
     'In the "Markets & Macro" section, give proportional coverage to EVERY asset class the owner actually holds — crypto, equities, precious metals, and real estate — using the per-asset-class moves and metals/equity signals in the digest. Crypto is often the most volatile sleeve, but do not let it crowd out the others: when metals or real-estate equity moved (or held flat while crypto fell), say so explicitly, since that is the diversification story. Lead the section with whatever moved most, not crypto by default.',
     'Immediately before the "## Action Items" list, include a "## Forecast & Opportunities" section — the edition\'s one FORWARD-looking desk. Synthesize across ALL desks (markets, politics, tech, health, local, research, finance) the most important things LIKELY to happen in the next day-to-week and what the owner could do about them. For EACH opportunity give, in tight prose: (1) the forward call and rough timeframe — what is likely, and by when; (2) a concrete option the owner could take; (3) sizing proportional to the owner\'s actual situation (a starter position, a dollar amount, or "watch only"); (4) the bull case AND the key risk / bear case in the same breath; (5) a confidence read — low, medium, or high. Prefer a few high-quality calls over a long list. This is the one place you may reason FORWARD beyond the literal digest, but every forecast must be built on a fact, date, signal, holding, or prediction-market probability that appears in the digest — never invent an event, price, or number. When an opportunity could be expressed through a risky instrument (e.g. far-out-of-the-money or short-dated options), name the risk plainly and prefer the lower-risk expression (shares, a longer horizon, or a smaller size) — surface the option, do not cheerlead it. If nothing forward-looking is well-supported, write one honest line saying so rather than padding. Frame everything as reasoned possibilities from the owner\'s own data and the odds, never as guaranteed advice.',
     'END the edition with a "## Action Items" section: a short, prioritized list of the SPECIFIC financial moves the data suggests the owner consider right now — and for EACH one, state the WHY in the same sentence, citing the concrete data point that motivates it. Draw across ALL desks, e.g.: an estimated-tax installment due within the window (pay $X by DATE — safe-harbor shortfall is $Y); idle cash to deploy or a deductible-contribution headroom; an allocation that has drifted (one sleeve now N% of net worth) worth trimming/rebalancing; a high-rate debt to prioritize vs. a 0% one to leave; a funding-stress or yield-curve signal that argues for caution or duration; a due or overdue calendar task or deadline. Rank by urgency and dollar impact. Ground every item in a number or date that appears in the digest — if the data does not support a concrete action, write a brief honest "No pressing money moves" line rather than inventing one. Frame as reasoned considerations from the owner\'s own data, never as guaranteed advice.',
     'When the "Research & Analysis" desk is present it carries the FULL text of newly-filed research (ZeroHedge, Lyn Alden, George Gammon, political transcripts, etc.) — actually read it and synthesize the key arguments, attributing analysts by name, rather than merely noting that a piece was filed.',
     "In the Health section, give EVERY person who appears in the digest their OWN paragraph — never blend two people into one paragraph. Start each person's paragraph with their name in bold (e.g. `**<name>** — ...`) and separate paragraphs with a blank line, so each reads as a distinct mini-report citing that person's actual numbers. Do NOT let one person's story (e.g. an active illness) crowd the others out of the section; a sick household member leads the section but still gets only their own paragraph, not the whole desk. Be a supportive coach as well as a reporter: when someone's numbers are good (steps, workouts, resting heart rate, weight trend), say so plainly — one warm, specific affirmation per person is welcome. When sleep falls short (under ~7 hours total, or under ~1 hour of deep sleep), call it out directly with a gentle, actionable nudge (e.g. an earlier wind-down tonight) rather than burying it in neutral prose. Encouraging and concrete, never clinical or scolding. STALENESS: a metric carrying a 'from YYYY-MM-DD' note (e.g. `6.9h sleep — from 2026-08-09, not last night`) is data the phone has NOT synced since that date. Attribute it to that date explicitly, NEVER present it as last night's or today's reading, skip the sleep-shortfall coaching for it, and instead mention once, briefly, that that person's health sync is behind.",
+    'SAY EACH THING ONCE. Within this edition, every fact, number, and recommendation appears in exactly one place: the lede may headline a story, but the desk that carries it owns the numbers, and "## Forecast & Opportunities" / "## Action Items" refer back to a fact briefly instead of re-citing every figure again. Do not restate the same statistic (e.g. a sleeve\'s share of net worth, a prediction-market probability) in multiple sections. "Documents & Deadlines" lists only filings not already covered by another desk — never re-count or re-summarize the research. Do not narrate absences ("nothing arrived", "no X appeared", "the regimen is unchanged") — if a topic has nothing new, leave it out; the only permitted absence line is the Action Items fallback.',
     editionType === 'weekly'
       ? 'This is the WEEKLY DEEP-DIVE, covering the whole week: be substantial and thorough. Draw connections across desks, surface the week\'s through-lines, weave in the "state of things" the digest provides (balance sheet, holdings, health baselines), then a "## The Week in Review" synthesis, then the "## Forecast & Opportunities" section (described below) as the week-ahead outlook, and finally close with the "## Action Items" list (described below) as the very last section. Let the length match the depth of the material — a rich week warrants a long edition.'
-      : "This is the DAILY edition, covering only what arrived since the last edition — the day's developments. Be substantive about that day: read and synthesize the full research filed today and report the concrete new items with their numbers and names. Keep the scope to the day — do not recap the whole week or restate standing balances (the weekly deep-dive does the week-in-review).",
+      : "This is the DAILY edition, covering only what arrived since the last edition — the day's developments. Be substantive about that day: read and synthesize the full research filed today and report the concrete new items with their numbers and names. Keep the scope to the day — do not recap the whole week or restate standing balances (the weekly deep-dive does the week-in-review). Long-horizon context in the digest — 1-year returns (e.g. gold or silver up N% on the year), distance below an all-time high and days since it, sentiment/season indexes, prediction markets, a sleeve's share of net worth — is STANDING context, not news: mention it only when it moved materially or is the direct point of a new story, never as daily filler.",
+    'When a "PREVIOUS EDITION" block follows the digest, it is what the reader was already told in the last edition. Do NOT repeat its standing facts, framing, background explanations, or recommendations. Carry something forward only when it CHANGED materially (say what changed: "up from 12% yesterday"), when a date it flagged is now imminent, or when the digest carries genuinely new information about it. A Forecast or Action Item the previous edition already made is omitted unless its underlying numbers moved materially — do not re-issue the same advice every morning. A research story it already covered gets only its new developments, not a re-summary. Never quote or mention the previous edition itself.',
     'When the "Calendar" desk is present it carries the household\'s upcoming birthdays, recurring tasks, and deadlines with exact dates. Do NOT write a standalone schedule section (a "Week Ahead" box is rendered separately with the exact dates) — instead fold due/overdue tasks into Action Items, and give any birthday in the window a brief warm mention in the lede or a relevant desk, using only the ages ("turns N") given in the digest.',
     'Use ONLY facts present in the digest — do not invent data, prices, or events, and do not speculate beyond what is given (the "## Forecast & Opportunities" section is the sole exception, and even there you may reason forward only from facts, signals, dates, and odds that appear in the digest). If the digest is sparse, write a short edition; never pad.',
     'Output clean markdown only — no preamble like "Here is the edition".',
@@ -1709,7 +1732,7 @@ function buildSystem(
   return parts.join('\n');
 }
 
-function renderDigestPrompt(digest: Digest, title: string, dateLabel: string): string {
+export function renderDigestPrompt(digest: Digest, title: string, dateLabel: string): string {
   const lines: string[] = [
     `Edition: ${title} — ${digest.editionType === 'weekly' ? 'WEEKLY DEEP-DIVE' : 'DAILY'} for ${dateLabel}.`,
     `Digest window: changes since ${digest.sinceISO}.`,
@@ -1753,6 +1776,22 @@ function renderDigestPrompt(digest: Digest, title: string, dateLabel: string): s
     );
     lines.push('');
   }
+  const prev = digest.previousEdition;
+  if (prev) {
+    const body =
+      prev.body.length > PREVIOUS_EDITION_MAX_CHARS
+        ? `${prev.body.slice(0, PREVIOUS_EDITION_MAX_CHARS)}\n[…truncated]`
+        : prev.body;
+    lines.push(
+      `PREVIOUS EDITION (${prev.editionType}, ${prev.editionDate}) — already read by the ` +
+        `owner. Reference only, NOT a source of new facts: use it to avoid repeating ` +
+        `what it already said.`,
+      '<<<PREVIOUS_EDITION',
+      body.trim(),
+      'PREVIOUS_EDITION>>>',
+      ''
+    );
+  }
   return lines.join('\n');
 }
 
@@ -1765,9 +1804,10 @@ function renderDigestPrompt(digest: Digest, title: string, dateLabel: string): s
 export async function generateEdition(
   editionType: EditionType,
   editionDate: string,
-  sinceISO: string
+  sinceISO: string,
+  previousEdition?: PreviousEdition
 ): Promise<GenerateResult> {
-  const digest = await gatherDigest(editionType, sinceISO, editionDate);
+  const digest = await gatherDigest(editionType, sinceISO, editionDate, previousEdition);
   return synthesizeEdition(editionType, editionDate, sinceISO, digest);
 }
 
