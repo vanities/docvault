@@ -21,6 +21,7 @@ import {
   type GenerateResult,
   type WeekAheadCalendar,
   type Digest,
+  type PreviousEdition,
 } from './daily-news.js';
 import { generateHeadlineImage } from './daily-news-image.js';
 import { narrateEdition } from './daily-news-narration.js';
@@ -94,7 +95,8 @@ export interface EditionSummary {
 export type Generator = (
   editionType: EditionType,
   editionDate: string,
-  sinceISO: string
+  sinceISO: string,
+  previousEdition?: PreviousEdition
 ) => Promise<GenerateResult>;
 
 /** A `running` edition older than this is treated as crashed (retry allowed). */
@@ -137,6 +139,18 @@ async function lastDoneEditionTimestamp(): Promise<string | null> {
   return stamps.length ? stamps[stamps.length - 1] : null;
 }
 
+/** The most recent COMPLETED, non-sample edition's text — handed to the editor
+ *  so a daily doesn't re-tell the reader what they read yesterday. */
+async function lastDoneEdition(): Promise<PreviousEdition | undefined> {
+  const editions = await loadEditions();
+  const last = Object.values(editions)
+    .filter((e) => e.status === 'done' && !e.sample && e.body)
+    .sort((a, b) => (a.completedAt ?? a.createdAt).localeCompare(b.completedAt ?? b.createdAt))
+    .pop();
+  if (!last?.body) return undefined;
+  return { editionDate: last.editionDate, editionType: last.editionType, body: last.body };
+}
+
 /**
  * Persist a `running` edition, fire the generator in the background, return its
  * id. When `notify` (default true — the scheduler's behavior), the finished
@@ -157,6 +171,7 @@ export async function startEdition(
     editionType === 'weekly'
       ? isoDaysAgo(7)
       : ((await lastDoneEditionTimestamp()) ?? isoDaysAgo(2));
+  const previous = await lastDoneEdition();
 
   const id = crypto.randomUUID();
   const editions = await loadEditions();
@@ -168,10 +183,13 @@ export async function startEdition(
     createdAt: new Date().toISOString(),
   };
   await saveEditions(editions);
-  log.info(`[start] id=${id} type=${editionType} date=${editionDate} since=${sinceISO}`);
+  log.info(
+    `[start] id=${id} type=${editionType} date=${editionDate} since=${sinceISO} ` +
+      `previous=${previous ? previous.editionDate : 'none'}`
+  );
 
   // Background — the caller does not await this; the client polls getEdition(id).
-  void generator(editionType, editionDate, sinceISO)
+  void generator(editionType, editionDate, sinceISO, previous)
     .then(async (result) => {
       await patchEdition(id, {
         status: 'done',
@@ -266,7 +284,7 @@ export async function startThemeSamples(
   void (async () => {
     let digest: Digest;
     try {
-      digest = await gatherDigest(editionType, sinceISO, editionDate);
+      digest = await gatherDigest(editionType, sinceISO, editionDate, await lastDoneEdition());
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       log.error(`[samples] shared digest failed, erroring all: ${message}`);
