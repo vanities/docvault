@@ -20,7 +20,7 @@
     "prepare": "vp config"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.126",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.280",
     "@anthropic-ai/sdk": "^0.73.0",
     "bplist-creator": "^0.1.1",
     "bplist-parser": "^0.3.2",
