@@ -17,6 +17,16 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -204,6 +214,38 @@ function getPropertyBgColor(type: PropertyType): string {
   }
 }
 
+type PropertyChange = { label: string; from: string; to: string };
+
+function diffProperty(
+  before: PropertyEntry,
+  after: Omit<PropertyEntry, 'id' | 'createdAt' | 'currentValueDate'>
+): PropertyChange[] {
+  const usd = (n: number | undefined) => (n == null ? '—' : formatUsd(n));
+  const txt = (v: string | number | undefined) => (v == null || v === '' ? '—' : String(v));
+  const pct = (r: number | undefined) => (r == null ? '—' : `${(r * 100).toFixed(2)}%`);
+  const fields: [string, string, string][] = [
+    ['Name', txt(before.name), txt(after.name)],
+    [
+      'Type',
+      formatPropertyType(before.type as PropertyType),
+      formatPropertyType(after.type as PropertyType),
+    ],
+    ['Address', formatAddress(before.address), formatAddress(after.address)],
+    ['Acreage', txt(before.acreage), txt(after.acreage)],
+    ['Square feet', txt(before.squareFeet), txt(after.squareFeet)],
+    ['Purchase date', txt(before.purchaseDate), txt(after.purchaseDate)],
+    ['Purchase price', usd(before.purchasePrice), usd(after.purchasePrice)],
+    ['Current value', usd(before.currentValue), usd(after.currentValue)],
+    ['Annual property tax', usd(before.annualPropertyTax), usd(after.annualPropertyTax)],
+    ['Lender', txt(before.mortgage?.lender), txt(after.mortgage?.lender)],
+    ['Mortgage balance', usd(before.mortgage?.balance), usd(after.mortgage?.balance)],
+    ['Interest rate', pct(before.mortgage?.rate), pct(after.mortgage?.rate)],
+    ['Monthly payment', usd(before.mortgage?.monthlyPayment), usd(after.mortgage?.monthlyPayment)],
+    ['Notes', txt(before.notes), txt(after.notes)],
+  ];
+  return fields.filter(([, a, b]) => a !== b).map(([label, from, to]) => ({ label, from, to }));
+}
+
 // =============================================================================
 // Component
 // =============================================================================
@@ -215,6 +257,10 @@ export function PropertyView() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const [pendingSave, setPendingSave] = useState<{
+    body: Omit<PropertyEntry, 'id' | 'createdAt' | 'currentValueDate'>;
+    changes: PropertyChange[];
+  } | null>(null);
 
   // Form state
   const [name, setName] = useState('');
@@ -294,39 +340,37 @@ export function PropertyView() {
     setShowForm(true);
   };
 
-  // The form renders at the top of the view, but Edit lives at the bottom of an
-  // expanded card (below the amortization table) — bring the form into view or
-  // the click looks like it did nothing.
+  // Edit swaps the expanded card's details (incl. the tall amortization table)
+  // for the form in place — scroll so the form's top is visible.
   useEffect(() => {
     if (showForm) formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [showForm, editingId]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim() || !street.trim() || !purchasePrice || !currentValue) return;
+  type PropertyBody = Omit<PropertyEntry, 'id' | 'createdAt' | 'currentValueDate'>;
 
+  const buildBody = (): PropertyBody => ({
+    name: name.trim(),
+    type: propertyType,
+    address: { street: street.trim(), city: city.trim(), state, zip: zip.trim() },
+    acreage: acreage ? Number(acreage) : undefined,
+    squareFeet: squareFeet ? Number(squareFeet) : undefined,
+    purchaseDate: purchaseDate || new Date().toISOString().split('T')[0],
+    purchasePrice: parseCurrency(purchasePrice),
+    currentValue: parseCurrency(currentValue),
+    annualPropertyTax: annualPropertyTax ? parseCurrency(annualPropertyTax) : undefined,
+    mortgage: mortgageLender
+      ? {
+          lender: mortgageLender.trim(),
+          balance: parseCurrency(mortgageBalance),
+          rate: Number(mortgageRate || 0) / 100,
+          monthlyPayment: parseCurrency(mortgagePayment),
+        }
+      : undefined,
+    notes: notes.trim() || undefined,
+  });
+
+  const saveProperty = async (body: PropertyBody) => {
     setSubmitting(true);
-    const body = {
-      name: name.trim(),
-      type: propertyType,
-      address: { street: street.trim(), city: city.trim(), state, zip: zip.trim() },
-      acreage: acreage ? Number(acreage) : undefined,
-      squareFeet: squareFeet ? Number(squareFeet) : undefined,
-      purchaseDate: purchaseDate || new Date().toISOString().split('T')[0],
-      purchasePrice: parseCurrency(purchasePrice),
-      currentValue: parseCurrency(currentValue),
-      annualPropertyTax: annualPropertyTax ? parseCurrency(annualPropertyTax) : undefined,
-      mortgage: mortgageLender
-        ? {
-            lender: mortgageLender.trim(),
-            balance: parseCurrency(mortgageBalance),
-            rate: Number(mortgageRate || 0) / 100,
-            monthlyPayment: parseCurrency(mortgagePayment),
-          }
-        : undefined,
-      notes: notes.trim() || undefined,
-    };
-
     try {
       const url = editingId ? `${API}/${editingId}` : API;
       const method = editingId ? 'PUT' : 'POST';
@@ -347,12 +391,35 @@ export function PropertyView() {
         }
         resetForm();
         setShowForm(false);
+      } else {
+        console.error(`[property] save failed status=${res.status}`);
       }
     } catch (err) {
-      console.error('Failed to save property:', err);
+      console.error('[property] save failed:', err);
     } finally {
       setSubmitting(false);
+      setPendingSave(null);
     }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !street.trim() || !purchasePrice || !currentValue) return;
+
+    const body = buildBody();
+    if (!editingId) {
+      void saveProperty(body);
+      return;
+    }
+    // Edits go through a confirm step that lists exactly what changed
+    const original = data.entries.find((en) => en.id === editingId);
+    const changes = original ? diffProperty(original, body) : [];
+    if (changes.length === 0) {
+      resetForm();
+      setShowForm(false);
+      return;
+    }
+    setPendingSave({ body, changes });
   };
 
   const handleDelete = async (id: string) => {
@@ -400,6 +467,268 @@ export function PropertyView() {
     );
   }
 
+  const formNode = showForm ? (
+    <form ref={formRef} onSubmit={handleSubmit} className="glass-card rounded-xl p-5 space-y-4">
+      <h3 className="text-sm font-semibold text-surface-950">
+        {editingId ? 'Edit Property' : 'Add New Property'}
+      </h3>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Name */}
+        <div>
+          <label className="block text-xs font-medium text-surface-600 mb-1">Property Name</label>
+          <Input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g., Lakeside House"
+            required
+            className="h-9 rounded-lg text-sm"
+          />
+        </div>
+
+        {/* Type */}
+        <div>
+          <label className="block text-xs font-medium text-surface-600 mb-1">Type</label>
+          <Select
+            value={propertyType}
+            onValueChange={(val) => setPropertyType(val as PropertyType)}
+          >
+            <SelectTrigger className="w-full text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PROPERTY_TYPES.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Address */}
+        <div className="md:col-span-2">
+          <label className="block text-xs font-medium text-surface-600 mb-1">Street Address</label>
+          <Input
+            type="text"
+            value={street}
+            onChange={(e) => setStreet(e.target.value)}
+            placeholder="123 Main St"
+            required
+            className="h-9 rounded-lg text-sm"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-surface-600 mb-1">City</label>
+          <Input
+            type="text"
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            placeholder="Springfield"
+            required
+            className="h-9 rounded-lg text-sm"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-surface-600 mb-1">State</label>
+            <Select value={state} onValueChange={setState}>
+              <SelectTrigger className="w-full text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {US_STATES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-surface-600 mb-1">ZIP</label>
+            <Input
+              type="text"
+              value={zip}
+              onChange={(e) => setZip(e.target.value)}
+              placeholder="37174"
+              className="h-9 rounded-lg text-sm"
+            />
+          </div>
+        </div>
+
+        {/* Size */}
+        <div>
+          <label className="block text-xs font-medium text-surface-600 mb-1">
+            Acreage <span className="text-surface-500">(optional)</span>
+          </label>
+          <Input
+            type="number"
+            value={acreage}
+            onChange={(e) => setAcreage(e.target.value)}
+            placeholder="0.5"
+            step="0.01"
+            min="0"
+            className="h-9 rounded-lg text-sm"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-surface-600 mb-1">
+            Square Feet <span className="text-surface-500">(optional)</span>
+          </label>
+          <Input
+            type="number"
+            value={squareFeet}
+            onChange={(e) => setSquareFeet(e.target.value)}
+            placeholder="2400"
+            min="0"
+            className="h-9 rounded-lg text-sm"
+          />
+        </div>
+
+        {/* Financial */}
+        <div>
+          <label className="block text-xs font-medium text-surface-600 mb-1">Purchase Date</label>
+          <Input
+            type="date"
+            value={purchaseDate}
+            onChange={(e) => setPurchaseDate(e.target.value)}
+            className="h-9 rounded-lg text-sm"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-surface-600 mb-1">Purchase Price</label>
+          <CurrencyInput
+            value={purchasePrice}
+            onChange={setPurchasePrice}
+            placeholder="350,000"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-surface-600 mb-1">
+            Current Estimated Value
+          </label>
+          <CurrencyInput
+            value={currentValue}
+            onChange={setCurrentValue}
+            placeholder="425,000"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-surface-600 mb-1">
+            Annual Property Tax <span className="text-surface-500">(optional)</span>
+          </label>
+          <CurrencyInput
+            value={annualPropertyTax}
+            onChange={setAnnualPropertyTax}
+            placeholder="3,200"
+          />
+        </div>
+      </div>
+
+      {/* Mortgage Section */}
+      <div>
+        <h4 className="text-xs font-semibold text-surface-600 uppercase tracking-wider mb-3">
+          Mortgage <span className="normal-case font-normal">(leave blank if paid off)</span>
+        </h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-surface-600 mb-1">Lender</label>
+            <Input
+              type="text"
+              value={mortgageLender}
+              onChange={(e) => setMortgageLender(e.target.value)}
+              placeholder="e.g., Rocket Mortgage"
+              className="h-9 rounded-lg text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-surface-600 mb-1">
+              Remaining Balance
+            </label>
+            <CurrencyInput
+              value={mortgageBalance}
+              onChange={setMortgageBalance}
+              placeholder="280,000"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-surface-600 mb-1">
+              Interest Rate (%)
+            </label>
+            <Input
+              type="text"
+              inputMode="decimal"
+              value={mortgageRate}
+              onChange={(e) => {
+                if (/^[0-9.]*$/.test(e.target.value) || e.target.value === '') {
+                  setMortgageRate(e.target.value);
+                }
+              }}
+              placeholder="6.5"
+              className="h-9 rounded-lg text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-surface-600 mb-1">
+              Monthly Payment
+            </label>
+            <CurrencyInput
+              value={mortgagePayment}
+              onChange={setMortgagePayment}
+              placeholder="2,100"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Notes */}
+      <div>
+        <label className="block text-xs font-medium text-surface-600 mb-1">
+          Notes <span className="text-surface-500">(optional)</span>
+        </label>
+        <Input
+          type="text"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Parcel number, HOA, etc."
+          className="h-9 rounded-lg text-sm"
+        />
+      </div>
+
+      <div className="flex justify-end gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            setShowForm(false);
+            resetForm();
+          }}
+        >
+          Cancel
+        </Button>
+        <Button
+          type="submit"
+          size="sm"
+          disabled={submitting || !name.trim() || !purchasePrice || !currentValue}
+          className="bg-emerald-600 hover:bg-emerald-500"
+        >
+          {submitting ? 'Saving...' : editingId ? 'Done' : 'Add Property'}
+        </Button>
+      </div>
+    </form>
+  ) : null;
+
   return (
     <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6">
       {/* Header */}
@@ -419,8 +748,10 @@ export function PropertyView() {
           type="button"
           size="sm"
           onClick={() => {
+            // While editing inline, Add switches to a blank add form rather than closing
+            const wasEditing = editingId !== null;
             resetForm();
-            setShowForm(!showForm);
+            setShowForm(wasEditing || !showForm);
           }}
           className="bg-emerald-600 hover:bg-emerald-500"
         >
@@ -463,276 +794,8 @@ export function PropertyView() {
         </div>
       )}
 
-      {/* Add/Edit Form */}
-      {showForm && (
-        <form ref={formRef} onSubmit={handleSubmit} className="glass-card rounded-xl p-5 space-y-4">
-          <h3 className="text-sm font-semibold text-surface-950">
-            {editingId ? 'Edit Property' : 'Add New Property'}
-          </h3>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Name */}
-            <div>
-              <label className="block text-xs font-medium text-surface-600 mb-1">
-                Property Name
-              </label>
-              <Input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., Lakeside House"
-                required
-                className="h-9 rounded-lg text-sm"
-              />
-            </div>
-
-            {/* Type */}
-            <div>
-              <label className="block text-xs font-medium text-surface-600 mb-1">Type</label>
-              <Select
-                value={propertyType}
-                onValueChange={(val) => setPropertyType(val as PropertyType)}
-              >
-                <SelectTrigger className="w-full text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PROPERTY_TYPES.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Address */}
-            <div className="md:col-span-2">
-              <label className="block text-xs font-medium text-surface-600 mb-1">
-                Street Address
-              </label>
-              <Input
-                type="text"
-                value={street}
-                onChange={(e) => setStreet(e.target.value)}
-                placeholder="123 Main St"
-                required
-                className="h-9 rounded-lg text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-surface-600 mb-1">City</label>
-              <Input
-                type="text"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                placeholder="Springfield"
-                required
-                className="h-9 rounded-lg text-sm"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-surface-600 mb-1">State</label>
-                <Select value={state} onValueChange={setState}>
-                  <SelectTrigger className="w-full text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {US_STATES.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-surface-600 mb-1">ZIP</label>
-                <Input
-                  type="text"
-                  value={zip}
-                  onChange={(e) => setZip(e.target.value)}
-                  placeholder="37174"
-                  className="h-9 rounded-lg text-sm"
-                />
-              </div>
-            </div>
-
-            {/* Size */}
-            <div>
-              <label className="block text-xs font-medium text-surface-600 mb-1">
-                Acreage <span className="text-surface-500">(optional)</span>
-              </label>
-              <Input
-                type="number"
-                value={acreage}
-                onChange={(e) => setAcreage(e.target.value)}
-                placeholder="0.5"
-                step="0.01"
-                min="0"
-                className="h-9 rounded-lg text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-surface-600 mb-1">
-                Square Feet <span className="text-surface-500">(optional)</span>
-              </label>
-              <Input
-                type="number"
-                value={squareFeet}
-                onChange={(e) => setSquareFeet(e.target.value)}
-                placeholder="2400"
-                min="0"
-                className="h-9 rounded-lg text-sm"
-              />
-            </div>
-
-            {/* Financial */}
-            <div>
-              <label className="block text-xs font-medium text-surface-600 mb-1">
-                Purchase Date
-              </label>
-              <Input
-                type="date"
-                value={purchaseDate}
-                onChange={(e) => setPurchaseDate(e.target.value)}
-                className="h-9 rounded-lg text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-surface-600 mb-1">
-                Purchase Price
-              </label>
-              <CurrencyInput
-                value={purchasePrice}
-                onChange={setPurchasePrice}
-                placeholder="350,000"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-surface-600 mb-1">
-                Current Estimated Value
-              </label>
-              <CurrencyInput
-                value={currentValue}
-                onChange={setCurrentValue}
-                placeholder="425,000"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-surface-600 mb-1">
-                Annual Property Tax <span className="text-surface-500">(optional)</span>
-              </label>
-              <CurrencyInput
-                value={annualPropertyTax}
-                onChange={setAnnualPropertyTax}
-                placeholder="3,200"
-              />
-            </div>
-          </div>
-
-          {/* Mortgage Section */}
-          <div>
-            <h4 className="text-xs font-semibold text-surface-600 uppercase tracking-wider mb-3">
-              Mortgage <span className="normal-case font-normal">(leave blank if paid off)</span>
-            </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-surface-600 mb-1">Lender</label>
-                <Input
-                  type="text"
-                  value={mortgageLender}
-                  onChange={(e) => setMortgageLender(e.target.value)}
-                  placeholder="e.g., Rocket Mortgage"
-                  className="h-9 rounded-lg text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-surface-600 mb-1">
-                  Remaining Balance
-                </label>
-                <CurrencyInput
-                  value={mortgageBalance}
-                  onChange={setMortgageBalance}
-                  placeholder="280,000"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-surface-600 mb-1">
-                  Interest Rate (%)
-                </label>
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  value={mortgageRate}
-                  onChange={(e) => {
-                    if (/^[0-9.]*$/.test(e.target.value) || e.target.value === '') {
-                      setMortgageRate(e.target.value);
-                    }
-                  }}
-                  placeholder="6.5"
-                  className="h-9 rounded-lg text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-surface-600 mb-1">
-                  Monthly Payment
-                </label>
-                <CurrencyInput
-                  value={mortgagePayment}
-                  onChange={setMortgagePayment}
-                  placeholder="2,100"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="block text-xs font-medium text-surface-600 mb-1">
-              Notes <span className="text-surface-500">(optional)</span>
-            </label>
-            <Input
-              type="text"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Parcel number, HOA, etc."
-              className="h-9 rounded-lg text-sm"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setShowForm(false);
-                resetForm();
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              size="sm"
-              disabled={submitting || !name.trim() || !purchasePrice || !currentValue}
-              className="bg-emerald-600 hover:bg-emerald-500"
-            >
-              {submitting ? 'Saving...' : editingId ? 'Update Property' : 'Add Property'}
-            </Button>
-          </div>
-        </form>
-      )}
+      {/* Add form — an edit renders inline inside the card being edited */}
+      {!editingId && formNode}
 
       {/* Entries List */}
       {data.entries.length === 0 ? (
@@ -744,8 +807,60 @@ export function PropertyView() {
           </p>
         </Card>
       ) : (
-        <PropertyList entries={data.entries} onDelete={handleDelete} onEdit={populateForm} />
+        <PropertyList
+          entries={data.entries}
+          onDelete={handleDelete}
+          onEdit={populateForm}
+          editingId={editingId}
+          editForm={editingId ? formNode : null}
+        />
       )}
+
+      <AlertDialog
+        open={pendingSave !== null}
+        onOpenChange={(open) => {
+          if (!open && !submitting) setPendingSave(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save these changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingSave?.changes.length === 1
+                ? '1 field will be updated on'
+                : `${pendingSave?.changes.length ?? 0} fields will be updated on`}{' '}
+              {name.trim() || 'this property'}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <ul className="space-y-1.5 text-sm">
+            {pendingSave?.changes.map((c) => (
+              <li key={c.label} className="flex flex-wrap items-baseline gap-x-2">
+                <span className="text-surface-600">{c.label}:</span>
+                <span className="text-surface-500 line-through">
+                  <Money>{c.from}</Money>
+                </span>
+                <span className="text-surface-400">→</span>
+                <span className="font-medium text-surface-950">
+                  <Money>{c.to}</Money>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={submitting}>Keep editing</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={submitting}
+              onClick={(e) => {
+                e.preventDefault();
+                if (pendingSave) void saveProperty(pendingSave.body);
+              }}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white"
+            >
+              {submitting ? 'Saving...' : 'Yes, save'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -758,10 +873,14 @@ function PropertyList({
   entries,
   onDelete,
   onEdit,
+  editingId,
+  editForm,
 }: {
   entries: PropertyEntry[];
   onDelete: (id: string) => void;
   onEdit: (entry: PropertyEntry) => void;
+  editingId: string | null;
+  editForm: React.ReactNode;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -820,133 +939,136 @@ function PropertyList({
               </div>
             </button>
 
-            {isExpanded && (
-              <div className="px-4 pb-4 border-t border-border pt-3">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                  <div>
-                    <span className="text-surface-500">Purchase Price</span>
-                    <p className="font-medium text-surface-900">
-                      <Money>{formatUsd(entry.purchasePrice)}</Money>
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-surface-500">Current Value</span>
-                    <p className="font-medium text-surface-900">
-                      <Money>{formatUsd(entry.currentValue)}</Money>
-                    </p>
-                    {entry.currentValueDate && (
-                      <p className="text-[10px] text-surface-400">
-                        Updated {entry.currentValueDate}
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <span className="text-surface-500">Equity</span>
-                    <p className="font-medium text-surface-900">
-                      <Money>{formatUsd(equity)}</Money>
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-surface-500">Appreciation</span>
-                    <p
-                      className={`font-medium ${appreciation >= 0 ? 'text-accent-500' : 'text-danger-500'}`}
+            {editingId === entry.id && editForm ? (
+              <div className="px-4 pb-4 border-t border-border pt-3">{editForm}</div>
+            ) : (
+              isExpanded && (
+                <div className="px-4 pb-4 border-t border-border pt-3">
+                  <div className="mb-3 flex justify-end gap-2">
+                    <Button type="button" variant="ghost" size="xs" onClick={() => onEdit(entry)}>
+                      <Edit3 className="w-3.5 h-3.5" />
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost-danger"
+                      size="xs"
+                      onClick={() => onDelete(entry.id)}
                     >
-                      {appreciation >= 0 ? '+' : ''}
-                      <Money>{formatUsd(appreciation)}</Money>
-                    </p>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Delete
+                    </Button>
                   </div>
-                  {entry.purchaseDate && (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                     <div>
-                      <span className="text-surface-500">Purchase Date</span>
-                      <p className="font-medium text-surface-900">{entry.purchaseDate}</p>
-                    </div>
-                  )}
-                  {entry.acreage && (
-                    <div>
-                      <span className="text-surface-500">Acreage</span>
-                      <p className="font-medium text-surface-900">{entry.acreage} acres</p>
-                    </div>
-                  )}
-                  {entry.squareFeet && (
-                    <div>
-                      <span className="text-surface-500">Square Feet</span>
+                      <span className="text-surface-500">Purchase Price</span>
                       <p className="font-medium text-surface-900">
-                        {entry.squareFeet.toLocaleString()} sqft
+                        <Money>{formatUsd(entry.purchasePrice)}</Money>
                       </p>
                     </div>
-                  )}
-                  {entry.annualPropertyTax && (
                     <div>
-                      <span className="text-surface-500">Annual Tax</span>
+                      <span className="text-surface-500">Current Value</span>
                       <p className="font-medium text-surface-900">
-                        <Money>{formatUsd(entry.annualPropertyTax)}</Money>
+                        <Money>{formatUsd(entry.currentValue)}</Money>
+                      </p>
+                      {entry.currentValueDate && (
+                        <p className="text-[10px] text-surface-400">
+                          Updated {entry.currentValueDate}
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-surface-500">Equity</span>
+                      <p className="font-medium text-surface-900">
+                        <Money>{formatUsd(equity)}</Money>
                       </p>
                     </div>
-                  )}
-                </div>
-
-                {/* Mortgage details */}
-                {entry.mortgage && (
-                  <div className="mt-3 p-3 bg-surface-100/50 rounded-lg">
-                    <h4 className="text-xs font-semibold text-surface-600 mb-2">Mortgage</h4>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                      <div>
-                        <span className="text-surface-500">Lender</span>
-                        <p className="font-medium text-surface-900">{entry.mortgage.lender}</p>
-                      </div>
-                      <div>
-                        <span className="text-surface-500">Balance</span>
-                        <p className="font-medium text-surface-900">
-                          <Money>{formatUsd(entry.mortgage.balance)}</Money>
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-surface-500">Rate</span>
-                        <p className="font-medium text-surface-900">
-                          {(entry.mortgage.rate * 100).toFixed(2)}%
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-surface-500">Monthly Payment</span>
-                        <p className="font-medium text-surface-900">
-                          <Money>{formatUsd(entry.mortgage.monthlyPayment)}</Money>
-                        </p>
-                      </div>
+                    <div>
+                      <span className="text-surface-500">Appreciation</span>
+                      <p
+                        className={`font-medium ${appreciation >= 0 ? 'text-accent-500' : 'text-danger-500'}`}
+                      >
+                        {appreciation >= 0 ? '+' : ''}
+                        <Money>{formatUsd(appreciation)}</Money>
+                      </p>
                     </div>
-                    {entry.mortgage.monthlyPayment > 0 && entry.mortgage.balance > 0 && (
-                      <div className="mt-3 pt-3 border-t border-border/60">
-                        <LoanAmortization
-                          name={entry.name}
-                          lender={entry.mortgage.lender}
-                          balance={entry.mortgage.balance}
-                          annualRate={entry.mortgage.rate}
-                          monthlyPayment={entry.mortgage.monthlyPayment}
-                        />
+                    {entry.purchaseDate && (
+                      <div>
+                        <span className="text-surface-500">Purchase Date</span>
+                        <p className="font-medium text-surface-900">{entry.purchaseDate}</p>
+                      </div>
+                    )}
+                    {entry.acreage && (
+                      <div>
+                        <span className="text-surface-500">Acreage</span>
+                        <p className="font-medium text-surface-900">{entry.acreage} acres</p>
+                      </div>
+                    )}
+                    {entry.squareFeet && (
+                      <div>
+                        <span className="text-surface-500">Square Feet</span>
+                        <p className="font-medium text-surface-900">
+                          {entry.squareFeet.toLocaleString()} sqft
+                        </p>
+                      </div>
+                    )}
+                    {entry.annualPropertyTax && (
+                      <div>
+                        <span className="text-surface-500">Annual Tax</span>
+                        <p className="font-medium text-surface-900">
+                          <Money>{formatUsd(entry.annualPropertyTax)}</Money>
+                        </p>
                       </div>
                     )}
                   </div>
-                )}
 
-                {entry.notes && (
-                  <p className="text-xs text-surface-500 mt-2 italic">{entry.notes}</p>
-                )}
+                  {/* Mortgage details */}
+                  {entry.mortgage && (
+                    <div className="mt-3 p-3 bg-surface-100/50 rounded-lg">
+                      <h4 className="text-xs font-semibold text-surface-600 mb-2">Mortgage</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                        <div>
+                          <span className="text-surface-500">Lender</span>
+                          <p className="font-medium text-surface-900">{entry.mortgage.lender}</p>
+                        </div>
+                        <div>
+                          <span className="text-surface-500">Balance</span>
+                          <p className="font-medium text-surface-900">
+                            <Money>{formatUsd(entry.mortgage.balance)}</Money>
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-surface-500">Rate</span>
+                          <p className="font-medium text-surface-900">
+                            {(entry.mortgage.rate * 100).toFixed(2)}%
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-surface-500">Monthly Payment</span>
+                          <p className="font-medium text-surface-900">
+                            <Money>{formatUsd(entry.mortgage.monthlyPayment)}</Money>
+                          </p>
+                        </div>
+                      </div>
+                      {entry.mortgage.monthlyPayment > 0 && entry.mortgage.balance > 0 && (
+                        <div className="mt-3 pt-3 border-t border-border/60">
+                          <LoanAmortization
+                            name={entry.name}
+                            lender={entry.mortgage.lender}
+                            balance={entry.mortgage.balance}
+                            annualRate={entry.mortgage.rate}
+                            monthlyPayment={entry.mortgage.monthlyPayment}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-                <div className="mt-3 flex justify-end gap-2">
-                  <Button type="button" variant="ghost" size="xs" onClick={() => onEdit(entry)}>
-                    <Edit3 className="w-3.5 h-3.5" />
-                    Edit
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost-danger"
-                    size="xs"
-                    onClick={() => onDelete(entry.id)}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    Delete
-                  </Button>
+                  {entry.notes && (
+                    <p className="text-xs text-surface-500 mt-2 italic">{entry.notes}</p>
+                  )}
                 </div>
-              </div>
+              )
             )}
           </Card>
         );
