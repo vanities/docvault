@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   MapPin,
   Plus,
@@ -214,6 +214,7 @@ export function PropertyView() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
 
   // Form state
   const [name, setName] = useState('');
@@ -292,6 +293,13 @@ export function PropertyView() {
     setEditingId(entry.id);
     setShowForm(true);
   };
+
+  // The form renders at the top of the view, but Edit lives at the bottom of an
+  // expanded card (below the amortization table) — bring the form into view or
+  // the click looks like it did nothing.
+  useEffect(() => {
+    if (showForm) formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [showForm, editingId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -457,7 +465,7 @@ export function PropertyView() {
 
       {/* Add/Edit Form */}
       {showForm && (
-        <form onSubmit={handleSubmit} className="glass-card rounded-xl p-5 space-y-4">
+        <form ref={formRef} onSubmit={handleSubmit} className="glass-card rounded-xl p-5 space-y-4">
           <h3 className="text-sm font-semibold text-surface-950">
             {editingId ? 'Edit Property' : 'Add New Property'}
           </h3>
