@@ -1,3 +1,4 @@
+import { PortfolioChanges } from '../common/PortfolioChanges';
 import { useState, useEffect, useCallback } from 'react';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import {
@@ -800,6 +801,12 @@ export function BanksView() {
               </span>
             </div>
           </Card>
+
+          <PortfolioChanges
+            snapshots={snapshots}
+            rows={[{ key: 'bankValue', label: 'Banks (net balance)' }]}
+            className="mb-6"
+          />
 
           {/* History Chart */}
           {snapshots.filter((s) => (s.bankValue || 0) !== 0).length >= 2 && (

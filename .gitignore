@@ -54,6 +54,11 @@ scripts/*
 **/*.test.tsx
 **/*.spec.ts
 **/*.spec.tsx
+# Exception: historical change math/render tests use only fabricated balances and quotes
+!src/utils/portfolioChanges.test.ts
+!src/utils/marketChanges.test.ts
+!src/components/common/PortfolioChanges.test.tsx
+!server/ticker-prices.test.ts
 # Exception: Politics dashboard tests use synthetic congressional payloads, no personal data
 !src/components/Politics/politicsData.test.ts
 # Exception: 401k contributions API tests use fabricated entities/amounts (consulting-llc, farm-llc), no personal data

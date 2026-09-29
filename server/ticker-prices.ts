@@ -19,6 +19,7 @@ import YahooFinance from 'yahoo-finance2';
 const yahooFinance = new YahooFinance();
 import { DATA_DIR, ensureDir } from './data.js';
 import { createLogger } from './logger.js';
+import { marketPerformance, type MarketPerformance } from './market-changes.js';
 
 const log = createLogger('TickerPrices');
 
@@ -30,6 +31,8 @@ export interface TickerQuote {
   symbol: string;
   price: number | null;
   currency: string | null;
+  /** Historical 1D / 7D / 1M price changes per unit in the quote currency. */
+  performance: MarketPerformance | null;
   /** 1-year price change as a percentage (current vs ~1y-ago close). */
   oneYearChangePct: number | null;
   fiftyTwoWeekHigh: number | null;
@@ -75,6 +78,7 @@ async function saveCache(store: CacheStore): Promise<void> {
 }
 
 function isStale(quote: TickerQuote): boolean {
+  if (quote.performance === undefined) return true; // Upgrade old cached quotes.
   const ttl = quote.error ? FAILURE_TTL_MS : SUCCESS_TTL_MS;
   return Date.now() - new Date(quote.fetchedAt).getTime() > ttl;
 }
@@ -122,6 +126,15 @@ async function fetchOne(symbol: string): Promise<TickerQuote> {
       symbol,
       price,
       currency: meta.currency ?? null,
+      performance:
+        price === null
+          ? null
+          : marketPerformance(
+              price,
+              meta.regularMarketTime,
+              meta.exchangeTimezoneName || 'UTC',
+              chart.quotes ?? []
+            ),
       oneYearChangePct,
       fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh ?? null,
       fiftyTwoWeekLow: meta.fiftyTwoWeekLow ?? null,
@@ -135,6 +148,7 @@ async function fetchOne(symbol: string): Promise<TickerQuote> {
       symbol,
       price: null,
       currency: null,
+      performance: null,
       oneYearChangePct: null,
       fiftyTwoWeekHigh: null,
       fiftyTwoWeekLow: null,
