@@ -1,3 +1,5 @@
+import type { PortfolioSnapshot } from '../../types';
+import { PortfolioChanges } from '../common/PortfolioChanges';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   MapPin,
@@ -253,6 +255,7 @@ function diffProperty(
 export function PropertyView() {
   const [data, setData] = useState<PropertyData>({ entries: [] });
   const [loading, setLoading] = useState(true);
+  const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -295,6 +298,12 @@ export function PropertyView() {
 
   useEffect(() => {
     void fetchData();
+    void fetch('/api/portfolio/snapshots')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((rows) => {
+        if (Array.isArray(rows)) setSnapshots(rows);
+      })
+      .catch(() => {});
   }, [fetchData]);
 
   const resetForm = () => {
@@ -793,6 +802,12 @@ export function PropertyView() {
           </Card>
         </div>
       )}
+
+      <PortfolioChanges
+        snapshots={snapshots}
+        rows={[{ key: 'propertyValue', label: 'Property equity' }]}
+        className="mb-6"
+      />
 
       {/* Add form — an edit renders inline inside the card being edited */}
       {!editingId && formNode}

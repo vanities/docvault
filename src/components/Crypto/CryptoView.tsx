@@ -1,3 +1,7 @@
+import { HoldingChangeHeaders, HoldingChanges, HoldingChangesNote } from '../common/HoldingChanges';
+import { usePerformanceQuotes } from '../../hooks/usePerformanceQuotes';
+import { performanceSymbol, type PerformanceQuote } from '../../../server/market-changes';
+import { PortfolioChanges } from '../common/PortfolioChanges';
 import { useState, useEffect, useCallback } from 'react';
 import {
   RefreshCw,
@@ -330,55 +334,60 @@ function AssetRow({
   balance,
   totalValue,
   colorIndex,
+  quote,
 }: {
   balance: CryptoBalance;
   totalValue: number;
   colorIndex: number;
+  quote: PerformanceQuote | undefined;
 }) {
   const pct = totalValue > 0 ? ((balance.usdValue || 0) / totalValue) * 100 : 0;
   const barColor = ASSET_COLORS[colorIndex % ASSET_COLORS.length];
   const textColor = ASSET_TEXT_COLORS[colorIndex % ASSET_TEXT_COLORS.length];
 
   return (
-    <div className="flex items-center gap-3 py-3 border-b border-border/30 last:border-0">
-      {/* Asset icon */}
-      <div className={`w-9 h-9 rounded-full flex items-center justify-center ${barColor}/15`}>
-        <span className={`text-[11px] font-mono font-bold ${textColor}`}>
-          {balance.asset.slice(0, 3)}
-        </span>
-      </div>
+    <div className="grid grid-cols-[minmax(300px,1fr)_repeat(3,110px)] gap-4 py-3 border-b border-border/30 last:border-0 items-center">
+      <div className="flex items-center gap-3 min-w-0">
+        {/* Asset icon */}
+        <div className={`w-9 h-9 rounded-full flex items-center justify-center ${barColor}/15`}>
+          <span className={`text-[11px] font-mono font-bold ${textColor}`}>
+            {balance.asset.slice(0, 3)}
+          </span>
+        </div>
 
-      {/* Asset info + allocation bar */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-2">
-            <p className="text-[13px] font-semibold text-surface-950">{balance.asset}</p>
-            {DEAD_TOKENS.has(balance.asset) && (
-              <span className="text-[9px] px-1 py-0.5 rounded bg-red-500/10 text-red-400 font-medium">
-                defunct
+        {/* Asset info + allocation bar */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <p className="text-[13px] font-semibold text-surface-950">{balance.asset}</p>
+              {DEAD_TOKENS.has(balance.asset) && (
+                <span className="text-[9px] px-1 py-0.5 rounded bg-red-500/10 text-red-400 font-medium">
+                  defunct
+                </span>
+              )}
+              <p className="text-[11px] text-surface-500 font-mono">
+                <Money>{formatAmount(balance.amount, balance.asset)}</Money>
+              </p>
+            </div>
+            <div className="text-right flex items-center gap-2">
+              <span className="text-[11px] text-surface-500 tabular-nums">
+                <Money>{pct.toFixed(1)}%</Money>
               </span>
-            )}
-            <p className="text-[11px] text-surface-500 font-mono">
-              <Money>{formatAmount(balance.amount, balance.asset)}</Money>
-            </p>
+              <p className="text-[14px] font-semibold text-surface-950 tabular-nums">
+                {balance.usdValue ? <Money>{formatUsd(balance.usdValue)}</Money> : '--'}
+              </p>
+            </div>
           </div>
-          <div className="text-right flex items-center gap-2">
-            <span className="text-[11px] text-surface-500 tabular-nums">
-              <Money>{pct.toFixed(1)}%</Money>
-            </span>
-            <p className="text-[14px] font-semibold text-surface-950 tabular-nums">
-              {balance.usdValue ? <Money>{formatUsd(balance.usdValue)}</Money> : '--'}
-            </p>
+          {/* Allocation bar */}
+          <div className="w-full h-1.5 bg-surface-200/50 rounded-full overflow-hidden">
+            <div
+              className={`h-full ${barColor} rounded-full transition-all duration-500 ease-out`}
+              style={{ width: `${Math.max(pct, 0.5)}%` }}
+            />
           </div>
-        </div>
-        {/* Allocation bar */}
-        <div className="w-full h-1.5 bg-surface-200/50 rounded-full overflow-hidden">
-          <div
-            className={`h-full ${barColor} rounded-full transition-all duration-500 ease-out`}
-            style={{ width: `${Math.max(pct, 0.5)}%` }}
-          />
         </div>
       </div>
+      <HoldingChanges quote={quote} quantity={balance.amount} />
     </div>
   );
 }
@@ -401,6 +410,10 @@ export function CryptoView() {
 
   // Snapshots for history chart
   const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>([]);
+  const quotes = usePerformanceQuotes(
+    portfolio?.byAsset.map((asset) => performanceSymbol(asset.asset, true)) ?? [],
+    portfolio?.lastUpdated
+  );
 
   // Gains state
   const [gains, setGains] = useState<CryptoGainsSummary | null>(null);
@@ -768,21 +781,35 @@ export function CryptoView() {
             </div>
           </Card>
 
+          <PortfolioChanges
+            snapshots={snapshots}
+            rows={[{ key: 'cryptoValue', label: 'Crypto' }]}
+            className="mb-6"
+          />
+
           {/* By Asset (with top-5 collapse) */}
           {filteredAssets.length > 0 && (
             <Card variant="glass" className="overflow-hidden mb-6">
               <div className="px-5 pt-5 pb-2">
                 <h3 className="text-[14px] font-semibold text-surface-950">Holdings</h3>
               </div>
-              <div className="px-5">
-                {visibleAssets.map((balance, i) => (
-                  <AssetRow
-                    key={balance.asset}
-                    balance={balance}
-                    totalValue={portfolio?.totalUsdValue || 0}
-                    colorIndex={i}
-                  />
-                ))}
+              <div className="px-5 overflow-x-auto">
+                <HoldingChangesNote />
+                <div className="min-w-[680px]">
+                  <div className="grid grid-cols-[minmax(300px,1fr)_repeat(3,110px)] gap-4 py-2 border-b border-border/50 text-[11px] text-surface-500">
+                    <div>Asset / Value</div>
+                    <HoldingChangeHeaders />
+                  </div>
+                  {visibleAssets.map((balance, i) => (
+                    <AssetRow
+                      key={balance.asset}
+                      balance={balance}
+                      totalValue={portfolio?.totalUsdValue || 0}
+                      colorIndex={i}
+                      quote={quotes[performanceSymbol(balance.asset, true) ?? '']}
+                    />
+                  ))}
+                </div>
               </div>
               {hiddenCount > 0 && (
                 <Button

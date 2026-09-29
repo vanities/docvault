@@ -1,3 +1,4 @@
+import { PortfolioChanges } from '../common/PortfolioChanges';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Coins,
@@ -780,6 +781,12 @@ export function GoldView() {
           </div>
         </Card>
       )}
+
+      <PortfolioChanges
+        snapshots={snapshots}
+        rows={[{ key: 'goldValue', label: 'Gold & precious metals' }]}
+        className="mb-6"
+      />
 
       {/* Gold History Chart */}
       {snapshots.filter((s) => s.goldValue && s.goldValue > 0).length >= 2 && (

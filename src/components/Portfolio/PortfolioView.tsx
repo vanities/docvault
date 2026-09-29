@@ -1,3 +1,7 @@
+import { HoldingChangeHeaders, HoldingChanges, HoldingChangesNote } from '../common/HoldingChanges';
+import { usePerformanceQuotes } from '../../hooks/usePerformanceQuotes';
+import { performanceSymbol } from '../../../server/market-changes';
+import { PortfolioChanges } from '../common/PortfolioChanges';
 import { useState, useEffect, useCallback } from 'react';
 import {
   RefreshCw,
@@ -67,6 +71,8 @@ interface PortfolioSlice {
   detail?: string;
   gainType?: 'short-term' | 'long-term' | 'unknown';
   gainLoss?: number;
+  symbol?: string | null;
+  quantity?: number;
 }
 
 export function PortfolioView() {
@@ -187,6 +193,8 @@ export function PortfolioView() {
         label: asset.asset,
         value: asset.usdValue || 0,
         type: 'crypto',
+        symbol: performanceSymbol(asset.asset, true),
+        quantity: asset.amount,
       });
     }
   }
@@ -204,6 +212,8 @@ export function PortfolioView() {
       } else {
         for (const holding of account.holdings) {
           slices.push({
+            symbol: performanceSymbol(holding.ticker),
+            quantity: holding.shares,
             label: holding.ticker,
             value: holding.marketValue || 0,
             type: 'broker',
@@ -233,6 +243,11 @@ export function PortfolioView() {
       detail: 'Real estate equity',
     });
   }
+
+  const quotes = usePerformanceQuotes(
+    slices.map((slice) => slice.symbol ?? null),
+    `${brokers?.lastUpdated ?? ''}:${crypto?.lastUpdated ?? ''}`
+  );
 
   slices.sort((a, b) => b.value - a.value);
   const topSlices = showAllSlices ? slices : slices.slice(0, 10);
@@ -421,6 +436,19 @@ export function PortfolioView() {
               </div>
             )}
           </Card>
+
+          <PortfolioChanges
+            snapshots={snapshots}
+            rows={[
+              { key: 'totalValue', label: 'Total portfolio' },
+              { key: 'brokerValue', label: 'Brokerages' },
+              { key: 'cryptoValue', label: 'Crypto' },
+              { key: 'bankValue', label: 'Banks (net balance)' },
+              { key: 'goldValue', label: 'Gold & precious metals' },
+              { key: 'propertyValue', label: 'Property equity' },
+            ]}
+            className="mb-6"
+          />
 
           {/* Portfolio History — full width */}
           <Card variant="glass" className="p-5 mb-6">
@@ -713,13 +741,15 @@ export function PortfolioView() {
 
               {/* Table header */}
               <div className="px-5 overflow-x-auto scrollbar-hide">
-                <div className="min-w-[520px]">
-                  <div className="grid grid-cols-12 gap-2 py-2 text-[11px] font-medium text-surface-500 uppercase tracking-wider border-b border-border/50">
-                    <div className="col-span-4">Asset</div>
-                    <div className="col-span-2 text-right">Value</div>
-                    <div className="col-span-2 text-right">Gain/Loss</div>
-                    <div className="col-span-2 text-right">Allocation</div>
-                    <div className="col-span-2 text-right">Type</div>
+                <div className="min-w-[1050px]">
+                  <HoldingChangesNote />
+                  <div className="grid grid-cols-[minmax(180px,2fr)_repeat(7,minmax(100px,1fr))] gap-2 py-2 text-[11px] font-medium text-surface-500 uppercase tracking-wider border-b border-border/50">
+                    <div className="min-w-0">Asset</div>
+                    <div className="min-w-0 text-right">Value</div>
+                    <div className="min-w-0 text-right">Gain/Loss</div>
+                    <div className="min-w-0 text-right">Allocation</div>
+                    <div className="min-w-0 text-right">Type</div>
+                    <HoldingChangeHeaders />
                   </div>
 
                   {topSlices.map((slice, i) => {
@@ -728,9 +758,9 @@ export function PortfolioView() {
                     return (
                       <div
                         key={`${slice.label}-${slice.detail || i}`}
-                        className="grid grid-cols-12 gap-2 py-3 border-b border-border/30 last:border-0 items-center"
+                        className="grid grid-cols-[minmax(180px,2fr)_repeat(7,minmax(100px,1fr))] gap-2 py-3 border-b border-border/30 last:border-0 items-center"
                       >
-                        <div className="col-span-4">
+                        <div className="min-w-0">
                           <p className="text-[13px] font-mono font-bold text-surface-950">
                             {slice.label}
                           </p>
@@ -738,12 +768,12 @@ export function PortfolioView() {
                             <p className="text-[11px] text-surface-500">{slice.detail}</p>
                           )}
                         </div>
-                        <div className="col-span-2 text-right">
+                        <div className="min-w-0 text-right">
                           <span className="text-[13px] font-medium text-surface-950">
                             <Money>{formatUsd(slice.value)}</Money>
                           </span>
                         </div>
-                        <div className="col-span-2 text-right">
+                        <div className="min-w-0 text-right">
                           {slice.gainLoss != null && slice.gainLoss !== 0 ? (
                             <div>
                               <span
@@ -764,7 +794,7 @@ export function PortfolioView() {
                             <span className="text-[11px] text-surface-500">—</span>
                           )}
                         </div>
-                        <div className="col-span-2">
+                        <div className="min-w-0">
                           <div className="flex items-center gap-2 justify-end">
                             <div className="w-16 h-1.5 bg-surface-200/50 rounded-full overflow-hidden">
                               <div
@@ -777,7 +807,7 @@ export function PortfolioView() {
                             </span>
                           </div>
                         </div>
-                        <div className="col-span-2 text-right">
+                        <div className="min-w-0 text-right">
                           <span
                             className={`text-[11px] px-1.5 py-0.5 rounded-full font-medium ${
                               slice.type === 'crypto'
@@ -788,6 +818,10 @@ export function PortfolioView() {
                             {slice.type === 'crypto' ? 'Crypto' : 'Stock'}
                           </span>
                         </div>
+                        <HoldingChanges
+                          quote={quotes[slice.symbol ?? '']}
+                          quantity={slice.quantity ?? 0}
+                        />
                       </div>
                     );
                   })}
