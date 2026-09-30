@@ -24,7 +24,7 @@ import {
 } from './data.js';
 import type { Settings } from './data.js';
 import { createWriteLock, writeJsonAtomic } from './write-lock.js';
-import { fetchAllBalances } from './crypto.js';
+import { assertCryptoValued, fetchAllBalances } from './crypto.js';
 import { buildPortfolio, fetchAllSnapTradeHoldings, type BrokerAccount } from './brokers.js';
 import {
   fetchBalances as fetchSimplefinBalances,
@@ -249,8 +249,9 @@ async function takePortfolioSnapshotInner(): Promise<void> {
         cryptoConfig.etherscanKey,
         cryptoConfig.manualHoldings
       );
-      cryptoValue = cryptoPortfolio.totalUsdValue || 0;
-      await fs.writeFile(CRYPTO_CACHE_FILE, JSON.stringify(cryptoPortfolio, null, 2));
+      assertCryptoValued(cryptoPortfolio);
+      cryptoValue = cryptoPortfolio.totalUsdValue;
+      await writeJsonAtomic(CRYPTO_CACHE_FILE, cryptoPortfolio);
       logSnapshots.info('Crypto cache updated');
     } catch (err) {
       logSnapshots.warn('Crypto fetch failed, using cached data:', String(err));
@@ -258,9 +259,12 @@ async function takePortfolioSnapshotInner(): Promise<void> {
       try {
         const cryptoData = await fs.readFile(CRYPTO_CACHE_FILE, 'utf-8');
         const cached = JSON.parse(cryptoData);
-        cryptoValue = cached.totalUsdValue || 0;
+        assertCryptoValued(cached);
+        if (!cached.sources.length) throw new Error('Empty crypto cache');
+        cryptoValue = cached.totalUsdValue;
       } catch {
-        // No cache either
+        // Preserve existing history when both live pricing and its cache fail.
+        throw new Error('Snapshot not saved: crypto valuation unavailable');
       }
     }
   } else {

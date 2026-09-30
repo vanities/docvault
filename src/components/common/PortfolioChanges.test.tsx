@@ -36,6 +36,7 @@ describe('portfolio change columns', () => {
       'overflow-x-auto',
     ])
       expect(html).toContain(text);
+    expect(html.match(/<thead[\s\S]*?<\/thead>/)?.[0].match(/<tr\b/g)).toHaveLength(1);
   });
 
   test('hides both money and percentages under the existing privacy toggle', () => {

@@ -59,6 +59,8 @@ scripts/*
 !src/utils/marketChanges.test.ts
 !src/components/common/PortfolioChanges.test.tsx
 !server/ticker-prices.test.ts
+# Exception: crypto pricing outage tests use fabricated holdings and isolated temporary caches
+!server/crypto-pricing.test.ts
 # Exception: Politics dashboard tests use synthetic congressional payloads, no personal data
 !src/components/Politics/politicsData.test.ts
 # Exception: 401k contributions API tests use fabricated entities/amounts (consulting-llc, farm-llc), no personal data

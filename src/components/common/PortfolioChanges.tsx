@@ -68,27 +68,18 @@ export function PortfolioChanges({
           </caption>
           <thead className="text-[11px] text-surface-500">
             <tr className="border-b border-border/50">
-              <th scope="col" rowSpan={2} className="py-2 pr-4 text-left font-medium">
+              <th scope="col" className="py-2 pr-4 text-left font-medium whitespace-nowrap">
                 Portfolio
               </th>
-              <th scope="col" rowSpan={2} className="py-2 px-3 font-medium">
+              <th scope="col" className="py-2 px-3 font-medium whitespace-nowrap">
                 Snapshot value
               </th>
               {CHANGE_PERIODS.map((period) => (
-                <th
+                <PeriodHeadings
                   key={period}
-                  scope="colgroup"
-                  colSpan={2}
-                  className="py-2 px-3 text-center font-medium border-l border-border/30"
+                  period={period}
                   title={latest ? `Compared with ${comparisonDay(latest.date, period)}` : undefined}
-                >
-                  {period}
-                </th>
-              ))}
-            </tr>
-            <tr className="border-b border-border/50">
-              {CHANGE_PERIODS.map((period) => (
-                <PeriodHeadings key={period} />
+                />
               ))}
             </tr>
           </thead>
@@ -131,14 +122,18 @@ export function PortfolioChanges({
   );
 }
 
-function PeriodHeadings() {
+function PeriodHeadings({ period, title }: { period: string; title?: string }) {
   return (
     <>
-      <th scope="col" className="py-1.5 px-3 font-medium border-l border-border/30">
-        $
+      <th
+        scope="col"
+        title={title}
+        className="py-2 px-3 font-medium whitespace-nowrap border-l border-border/30"
+      >
+        {period} $
       </th>
-      <th scope="col" className="py-1.5 px-3 font-medium">
-        %
+      <th scope="col" title={title} className="py-2 px-3 font-medium whitespace-nowrap">
+        {period} %
       </th>
     </>
   );

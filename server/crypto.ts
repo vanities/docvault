@@ -3,12 +3,17 @@
 // =============================================================================
 // Fetches balances from exchanges (Coinbase, Gemini, Kraken) and on-chain
 // wallets (BTC via Blockstream, ETH via Etherscan/public RPC).
-// Prices from CoinGecko free API (no key required).
+// Prices from CoinGecko with public Coinbase/Yahoo/Kraken fallbacks and a disk cache.
 // Trade history from exchange APIs for cost basis / gains tracking.
 
 import crypto from 'crypto';
+import { promises as fs } from 'fs';
+import path from 'path';
 import { encodeFunctionData, decodeFunctionResult } from 'viem';
 import { createLogger, type Logger } from './logger.js';
+import { DATA_DIR, CRYPTO_CACHE_FILE } from './data.js';
+import { fetchTickerPrices } from './ticker-prices.js';
+import { writeJsonAtomic } from './write-lock.js';
 
 // -----------------------------------------------------------------------------
 // Types
@@ -96,11 +101,14 @@ export interface CryptoGainsSummary {
 }
 
 // -----------------------------------------------------------------------------
-// Price Cache (CoinGecko, 60s TTL)
+// Price Cache (60s memory TTL, persisted fallback across restarts)
 // -----------------------------------------------------------------------------
 
 let priceCache: Record<string, number> = {};
 let priceCacheTime = 0;
+let priceCacheLoaded = false;
+let priceRefresh: Promise<Record<string, number>> | null = null;
+const PRICE_CACHE_FILE = path.join(DATA_DIR, '.docvault-crypto-prices.json');
 const PRICE_CACHE_TTL = 60_000; // 1 minute
 
 // Per-namespace loggers (created once at module load)
@@ -176,6 +184,47 @@ export const COINGECKO_IDS: Record<string, string> = {
 };
 
 export async function fetchPrices(assets: string[]): Promise<Record<string, number>> {
+  const prices = await (priceRefresh ??= refreshPrices().finally(() => {
+    priceRefresh = null;
+  }));
+  return {
+    ...prices,
+    ...Object.fromEntries(
+      assets
+        .map((asset) => [asset, prices[asset.toUpperCase()]])
+        .filter(([, price]) => price !== undefined)
+    ),
+  };
+}
+
+function validPrice(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+async function refreshPrices(): Promise<Record<string, number>> {
+  if (!priceCacheLoaded) {
+    // Seed the first upgrade from the last valued portfolio; then prefer the
+    // dedicated price cache. Neither cache is cleared by a process restart.
+    try {
+      const portfolio = JSON.parse(await fs.readFile(CRYPTO_CACHE_FILE, 'utf8'));
+      for (const balance of portfolio.byAsset ?? []) {
+        if (validPrice(balance.amount) && validPrice(balance.usdValue)) {
+          priceCache[String(balance.asset).toUpperCase()] = balance.usdValue / balance.amount;
+        }
+      }
+    } catch {
+      /* No prior portfolio. */
+    }
+    try {
+      const saved = JSON.parse(await fs.readFile(PRICE_CACHE_FILE, 'utf8'));
+      for (const [symbol, price] of Object.entries(saved.prices ?? {})) {
+        if (validPrice(price)) priceCache[symbol] = price;
+      }
+    } catch {
+      /* No persisted prices yet. */
+    }
+    priceCacheLoaded = true;
+  }
   const now = Date.now();
   if (now - priceCacheTime < PRICE_CACHE_TTL && Object.keys(priceCache).length > 0) {
     const age = Math.round((now - priceCacheTime) / 1000);
@@ -188,55 +237,136 @@ export async function fetchPrices(assets: string[]): Promise<Record<string, numb
   // Always fetch all known IDs so the cache is comprehensive regardless of
   // which assets triggered the refresh (avoids partial-cache misses).
   const ids = Object.values(COINGECKO_IDS);
-  void assets; // caller-provided list unused after moving to full fetch
 
   logCoinGecko.info(`Fetching prices for ${ids.length} assets...`);
   const elapsed = logCoinGecko.timer();
 
+  const fresh: Record<string, number> = {};
   try {
     const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
     if (!res.ok) {
-      logCoinGecko.warn(
-        `HTTP ${res.status} — using stale cache (${Object.keys(priceCache).length} assets)`
-      );
-      return priceCache;
+      throw new Error(`HTTP ${res.status}`);
     }
 
     const data = (await res.json()) as Record<string, { usd?: number } | undefined>;
 
     // Build reverse map: UPPERCASE symbol -> price
     // Then also map original-case symbols so lookups work either way
-    const prices: Record<string, number> = {};
     for (const [upperSymbol, cgId] of Object.entries(COINGECKO_IDS)) {
-      if (data[cgId]?.usd) {
-        prices[upperSymbol] = data[cgId].usd;
+      const price = data[cgId]?.usd;
+      if (validPrice(price)) {
+        fresh[upperSymbol] = price;
       }
     }
-    // Also store prices keyed by original asset casing
-    for (const asset of assets) {
-      const upper = asset.toUpperCase();
-      if (prices[upper] && !prices[asset]) {
-        prices[asset] = prices[upper];
-      }
-    }
-    // Stablecoins fallback
-    if (!prices['USDC']) prices['USDC'] = 1;
-    if (!prices['USDT']) prices['USDT'] = 1;
-    if (!prices['USD']) prices['USD'] = 1;
-
     const missing = ids.filter((id) => !data[id]?.usd).length;
     logCoinGecko.info(
-      `Prices fetched in ${elapsed()}ms — ${Object.keys(prices).length} resolved, ${missing} missing from API`
+      `Prices fetched in ${elapsed()}ms — ${Object.keys(fresh).length} resolved, ${missing} missing from API`
     );
-
-    priceCache = prices;
-    priceCacheTime = now;
-    return prices;
   } catch (err) {
-    logCoinGecko.warn(`Fetch failed (${err}) — using stale cache`);
-    return priceCache;
+    logCoinGecko.warn(`Fetch failed (${err}) — trying fallback providers`);
   }
+
+  if (Object.keys(COINGECKO_IDS).some((symbol) => !fresh[symbol])) {
+    try {
+      // Rates are asset units per USD; invert to get USD per asset.
+      // https://docs.cdp.coinbase.com/coinbase-app/track-apis/exchange-rates
+      const res = await fetch('https://api.coinbase.com/v2/exchange-rates?currency=USD', {
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as {
+        data?: { currency?: string; rates?: Record<string, string> };
+      };
+      if (data.data?.currency !== 'USD') throw new Error('Unexpected quote currency');
+      for (const symbol of Object.keys(COINGECKO_IDS)) {
+        const rate = Number(data.data.rates?.[symbol]);
+        if (!fresh[symbol] && validPrice(rate) && validPrice(1 / rate)) fresh[symbol] = 1 / rate;
+      }
+    } catch (err) {
+      logCoinGecko.warn(`Coinbase fallback failed (${err}) — trying Yahoo quotes`);
+    }
+  }
+
+  const missing = Object.keys(COINGECKO_IDS).filter((symbol) => !fresh[symbol]);
+  if (missing.length > 0) {
+    try {
+      const { quotes } = await fetchTickerPrices(missing.map((symbol) => `${symbol}-USD`));
+      for (const quote of quotes) {
+        if (!quote.error && quote.currency === 'USD' && validPrice(quote.price)) {
+          fresh[quote.symbol.replace(/-USD$/, '')] = quote.price;
+        }
+      }
+    } catch (err) {
+      logCoinGecko.warn(`Fallback failed (${err}) — retaining last known prices`);
+    }
+  }
+
+  if (missing.some((symbol) => !fresh[symbol])) {
+    try {
+      // One public batch fills gaps in Yahoo's crypto coverage. Display names
+      // make the USD quote explicit (BTC/USD rather than legacy XXBTZUSD).
+      const res = await fetch('https://api.kraken.com/0/public/Ticker?assetVersion=1', {
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as {
+        error?: string[];
+        result?: Record<string, { c?: string[] }>;
+      };
+      if (data.error?.length) throw new Error(data.error.join(', '));
+      for (const symbol of missing) {
+        const price = Number(data.result?.[`${symbol}/USD`]?.c?.[0]);
+        if (!fresh[symbol] && validPrice(price)) fresh[symbol] = price;
+      }
+    } catch (err) {
+      logCoinGecko.warn(`Kraken fallback failed (${err}) — retaining last known prices`);
+    }
+  }
+
+  priceCache = { ...priceCache, ...fresh, USD: 1 };
+  // Preserve the existing stablecoin fallback even when CoinGecko is down.
+  priceCache.USDC ??= 1;
+  priceCache.USDT ??= 1;
+  priceCacheTime = now;
+  if (Object.keys(fresh).length > 0) {
+    try {
+      await writeJsonAtomic(PRICE_CACHE_FILE, {
+        prices: priceCache,
+        savedAt: new Date(now).toISOString(),
+      });
+    } catch (err) {
+      logCoinGecko.warn(`Could not persist prices: ${err}`);
+    }
+  }
+  return priceCache;
+}
+
+/** A provider outage is unknown value, not a legitimate zero balance. */
+export function assertCryptoValued(portfolio: {
+  sources: SourceBalance[];
+  totalUsdValue: number;
+}): void {
+  if (!Array.isArray(portfolio.sources) || !Number.isFinite(portfolio.totalUsdValue)) {
+    throw new Error('Crypto valuation unavailable');
+  }
+  for (const source of portfolio.sources) {
+    if (source.error) throw new Error(`Crypto source unavailable: ${source.error}`);
+    assertBalancesValued(source.balances);
+  }
+}
+
+function assertBalancesValued(balances: Balance[]): void {
+  const missing = balances.filter(
+    (balance) =>
+      balance.amount > 0 &&
+      (COINGECKO_IDS[balance.asset.toUpperCase()] || balance.asset.toUpperCase() === 'USD') &&
+      !validPrice(balance.usdValue)
+  );
+  if (missing.length)
+    throw new Error(
+      `Crypto prices unavailable for ${[...new Set(missing.map((b) => b.asset))].join(', ')}`
+    );
 }
 
 // -----------------------------------------------------------------------------
@@ -1533,6 +1663,7 @@ export async function fetchSourceBalance(
       for (const b of balances) {
         b.usdValue = b.amount * (prices[b.asset] || prices[b.asset.toUpperCase()] || 0);
       }
+      assertBalancesValued(balances);
       return {
         sourceId: exchange.id,
         sourceType: 'exchange',
@@ -1564,6 +1695,7 @@ export async function fetchSourceBalance(
       for (const b of balances) {
         b.usdValue = b.amount * (prices[b.asset] || prices[b.asset.toUpperCase()] || 0);
       }
+      assertBalancesValued(balances);
       return {
         sourceId: wallet.id,
         sourceType: 'wallet',
@@ -1655,6 +1787,7 @@ export async function fetchAllBalances(
     for (const b of balances) {
       b.usdValue = b.amount * (prices[b.asset] || prices[b.asset.toUpperCase()] || 0);
     }
+    assertBalancesValued(balances);
   };
 
   // Fetch all exchange balances in parallel — emit each source as it completes
@@ -1684,7 +1817,7 @@ export async function fetchAllBalances(
         lastUpdated: new Date().toISOString(),
       };
       sources.push(source);
-      onSource?.(source);
+      if (!source.error) onSource?.(source);
     })
   );
 
@@ -1713,7 +1846,7 @@ export async function fetchAllBalances(
         lastUpdated: new Date().toISOString(),
       };
       sources.push(source);
-      onSource?.(source);
+      if (!source.error) onSource?.(source);
     })
   );
 
@@ -1740,7 +1873,7 @@ export async function fetchAllBalances(
       lastUpdated: new Date().toISOString(),
     };
     sources.push(source);
-    onSource?.(source);
+    if (!source.error) onSource?.(source);
   }
 
   // Manual holdings — self-custodied / untracked assets (e.g. Monero) the user
@@ -1748,9 +1881,10 @@ export async function fetchAllBalances(
   // it with the already-loaded price map. Each becomes its own source so it lands
   // in byAsset + totalUsdValue exactly like a fetched wallet.
   for (const source of manualHoldingsToSources(manualHoldings, prices, new Date().toISOString())) {
+    assertBalancesValued(source.balances);
     source.balances.forEach((b) => allAssets.add(b.asset));
     sources.push(source);
-    onSource?.(source);
+    if (!source.error) onSource?.(source);
   }
 
   onProgress?.(completed, totalSteps, 'Done');
@@ -1772,6 +1906,7 @@ export async function fetchAllBalances(
     .sort((a, b) => (b.usdValue || 0) - (a.usdValue || 0));
 
   const totalUsdValue = sources.reduce((sum, s) => sum + s.totalUsdValue, 0);
+  assertCryptoValued({ sources, totalUsdValue });
 
   logBalances.info(
     `Complete — $${totalUsdValue.toFixed(0)} total across ${sources.length} sources in ${elapsed()}ms`
