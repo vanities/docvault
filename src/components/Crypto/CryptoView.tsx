@@ -542,6 +542,8 @@ export function CryptoView() {
                 cachedPortfolio = updated;
                 return updated;
               });
+            } else if (msg.type === 'error') {
+              setError(msg.message);
             } else if (msg.type === 'result') {
               // Final result supersedes incremental state with correct byAsset ordering
               delete msg.type;

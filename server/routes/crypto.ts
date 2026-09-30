@@ -5,7 +5,13 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { loadSettings, saveSettings, jsonResponse, CRYPTO_CACHE_FILE, DATA_DIR } from '../data.js';
 import type { CryptoExchangeConfig, CryptoWalletConfig } from '../data.js';
-import { fetchAllBalances, fetchSourceBalance, fetchCryptoGains } from '../crypto.js';
+import {
+  assertCryptoValued,
+  fetchAllBalances,
+  fetchSourceBalance,
+  fetchCryptoGains,
+} from '../crypto.js';
+import { writeJsonAtomic } from '../write-lock.js';
 import { readJsonBody } from '../http.js';
 
 export async function handleCryptoRoutes(
@@ -184,7 +190,7 @@ export async function handleCryptoRoutes(
     // Helper to save results to cache file
     const saveCryptoCache = async (portfolio: object) => {
       try {
-        await fs.writeFile(CRYPTO_CACHE_FILE, JSON.stringify(portfolio, null, 2));
+        await writeJsonAtomic(CRYPTO_CACHE_FILE, portfolio);
       } catch {
         // Non-critical — cache write failure doesn't block response
       }
@@ -200,20 +206,27 @@ export async function handleCryptoRoutes(
         async start(controller) {
           const send = (data: unknown) =>
             controller.enqueue(encoder.encode(JSON.stringify(data) + '\n'));
-          const portfolio = await fetchAllBalances(
-            cryptoConfig.exchanges,
-            cryptoConfig.wallets,
-            cryptoConfig.etherscanKey,
-            cryptoConfig.manualHoldings,
-            (current, total, label) => {
-              send({ type: 'progress', current, total, label });
-            },
-            (source) => {
-              send({ type: 'source', source });
-            }
-          );
-          await saveCryptoCache(portfolio);
-          send({ type: 'result', ...portfolio });
+          try {
+            const portfolio = await fetchAllBalances(
+              cryptoConfig.exchanges,
+              cryptoConfig.wallets,
+              cryptoConfig.etherscanKey,
+              cryptoConfig.manualHoldings,
+              (current, total, label) => {
+                send({ type: 'progress', current, total, label });
+              },
+              (source) => {
+                send({ type: 'source', source });
+              }
+            );
+            await saveCryptoCache(portfolio);
+            send({ type: 'result', ...portfolio });
+          } catch (err) {
+            send({
+              type: 'error',
+              message: err instanceof Error ? err.message : 'Crypto refresh failed',
+            });
+          }
           controller.close();
         },
       });
@@ -253,6 +266,7 @@ export async function handleCryptoRoutes(
         cryptoConfig.wallets,
         cryptoConfig.etherscanKey
       );
+      assertCryptoValued({ sources: [source], totalUsdValue: source.totalUsdValue });
       // Update the source in the cache file
       try {
         const cacheRaw = await fs.readFile(CRYPTO_CACHE_FILE, 'utf-8');
@@ -265,7 +279,7 @@ export async function handleCryptoRoutes(
           0
         );
         cache.lastUpdated = new Date().toISOString();
-        await fs.writeFile(CRYPTO_CACHE_FILE, JSON.stringify(cache, null, 2));
+        await writeJsonAtomic(CRYPTO_CACHE_FILE, cache);
       } catch {
         // Cache update is non-critical
       }
