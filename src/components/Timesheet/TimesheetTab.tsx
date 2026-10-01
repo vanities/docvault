@@ -14,6 +14,7 @@ import {
   ArrowUp,
   ArrowDown,
   MoreHorizontal,
+  Lock,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -51,6 +52,7 @@ import {
   type TimesheetStore,
   type TimesheetEntry,
 } from './types';
+import { billedOn } from './billing';
 
 const PAGE_SIZE = 50;
 
@@ -100,11 +102,17 @@ export function TimesheetTab({
   // mode keeps the original start/end span. Both write the same entry record.
   const [formQuick, setFormQuick] = useState(false);
   const [formHours, setFormHours] = useState('');
+  const [formError, setFormError] = useState('');
+  const [actionError, setActionError] = useState('');
 
   const clientById = useMemo(() => new Map(store.clients.map((c) => [c.id, c] as const)), [store]);
   const projectById = useMemo(
     () => new Map(store.projects.map((p) => [p.id, p] as const)),
     [store]
+  );
+  const invoiceById = useMemo(
+    () => new Map(store.invoices.map((i) => [i.id, i] as const)),
+    [store.invoices]
   );
   const clientColors = useMemo(() => buildClientColorMap(store.clients), [store.clients]);
   // Sub-clients on the projects the customer/project filters currently allow,
@@ -199,6 +207,8 @@ export function TimesheetTab({
     () => ({
       minutes: filtered.reduce((s, e) => s + e.durationMinutes, 0),
       amount: filtered.reduce((s, e) => s + e.amount, 0),
+      billed: filtered.filter((e) => e.invoiced).length,
+      open: filtered.filter((e) => !e.invoiced && e.billable).length,
     }),
     [filtered]
   );
@@ -236,6 +246,7 @@ export function TimesheetTab({
     setFormSubClientId('');
     setFormQuick(false);
     setFormHours('');
+    setFormError('');
     setFormOpen(true);
   };
 
@@ -259,6 +270,7 @@ export function TimesheetTab({
     setFormSubClientId(entry.subClientId ?? '');
     setFormQuick(quick);
     setFormHours(quick ? (entry.durationMinutes / 60).toFixed(2) : '');
+    setFormError('');
     setFormOpen(true);
   };
 
@@ -274,33 +286,48 @@ export function TimesheetTab({
   const effectiveRate = formRate !== '' ? Number(formRate) : (formProject?.hourlyRate ?? 0);
   const formAmount = formBillable ? (formMinutes / 60) * effectiveRate : 0;
 
+  // The invoice a billed entry is locked to. Its billed values render
+  // read-only and only the notes are sent — the server enforces the same.
+  const editingEntry = editingId ? store.entries.find((e) => e.id === editingId) : undefined;
+  const editLock = editingEntry ? billedOn(invoiceById, editingEntry) : undefined;
+
   const handleSubmit = async () => {
     if (!formProjectId || !formDate || formMinutes === 0) return;
     if (!formQuick && (!formStart || !formEnd)) return;
     setSubmitting(true);
+    setFormError('');
     try {
-      // Switching an existing entry between modes must CLEAR the other shape's
-      // fields, so an edit sends null ("remove this"). A create just omits
-      // them — the POST route rejects a null start as a malformed span.
-      const span = formQuick
-        ? editingId
-          ? { start: null, end: null, durationMinutes: formMinutes }
-          : { durationMinutes: formMinutes }
-        : { start: formStart, end: formEnd };
-      const body = {
-        projectId: formProjectId,
-        date: formDate,
-        ...span,
-        ...(editingId ? { subClientId: formSubClientId || null } : {}),
-        ...(!editingId && formSubClientId ? { subClientId: formSubClientId } : {}),
-        description: formDescription,
-        billable: formBillable,
-        ...(formRate !== '' ? { hourlyRate: Number(formRate) } : {}),
-      };
-      if (editingId) await tsJson(`/entries/${editingId}`, 'PUT', body);
-      else await tsJson('/entries', 'POST', body);
+      if (editingId && editLock) {
+        await tsJson(`/entries/${editingId}`, 'PUT', {
+          description: formDescription,
+          subClientId: formSubClientId || null,
+        });
+      } else {
+        // Switching an existing entry between modes must CLEAR the other
+        // shape's fields, so an edit sends null ("remove this"). A create just
+        // omits them — the POST route rejects a null start as a malformed span.
+        const span = formQuick
+          ? editingId
+            ? { start: null, end: null, durationMinutes: formMinutes }
+            : { durationMinutes: formMinutes }
+          : { start: formStart, end: formEnd };
+        const body = {
+          projectId: formProjectId,
+          date: formDate,
+          ...span,
+          ...(editingId ? { subClientId: formSubClientId || null } : {}),
+          ...(!editingId && formSubClientId ? { subClientId: formSubClientId } : {}),
+          description: formDescription,
+          billable: formBillable,
+          ...(formRate !== '' ? { hourlyRate: Number(formRate) } : {}),
+        };
+        if (editingId) await tsJson(`/entries/${editingId}`, 'PUT', body);
+        else await tsJson('/entries', 'POST', body);
+      }
       setFormOpen(false);
       await refresh();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSubmitting(false);
     }
@@ -314,7 +341,13 @@ export function TimesheetTab({
       destructive: true,
     });
     if (!ok) return;
-    await tsJson(`/entries/${entry.id}`, 'DELETE');
+    setActionError('');
+    try {
+      await tsJson(`/entries/${entry.id}`, 'DELETE');
+    } catch (err) {
+      // e.g. 409: the entry was billed since this table last loaded.
+      setActionError(err instanceof Error ? err.message : 'Delete failed');
+    }
     await refresh();
   };
 
@@ -452,6 +485,18 @@ export function TimesheetTab({
           <DialogHeader>
             <DialogTitle>{editingId ? 'Edit Entry' : 'Log Time'}</DialogTitle>
           </DialogHeader>
+          {editLock && (
+            <div className="flex gap-2 rounded-lg border border-border bg-surface-100/60 px-3 py-2 text-[12px] text-surface-700">
+              <Lock className="w-3.5 h-3.5 mt-0.5 shrink-0 text-surface-500" aria-hidden />
+              <p>
+                Billed on invoice <span className="font-mono">{editLock.number}</span> (
+                {editLock.status}, issued {editLock.issueDate}). Hours, times, date, project, rate
+                and billable are locked to what that invoice charged, so this work can't be billed
+                twice. The description and sub-client can still change. To change billed values,
+                delete the invoice (it releases its entries) and invoice again.
+              </p>
+            </div>
+          )}
           <div className="flex items-center gap-1 mb-1">
             {[
               { quick: false, label: 'Start / end' },
@@ -460,12 +505,13 @@ export function TimesheetTab({
               <button
                 key={mode.label}
                 type="button"
+                disabled={!!editLock}
                 onClick={() => {
                   // Carry the duration across so switching modes never loses it.
                   if (mode.quick && !formQuick) setFormHours((formMinutes / 60).toFixed(2));
                   setFormQuick(mode.quick);
                 }}
-                className={`h-7 px-3 rounded-lg text-[12px] border ${
+                className={`h-7 px-3 rounded-lg text-[12px] border disabled:opacity-50 disabled:cursor-not-allowed ${
                   formQuick === mode.quick
                     ? 'bg-surface-200 border-border text-surface-900'
                     : 'bg-transparent border-transparent text-surface-500 hover:text-surface-700'
@@ -480,11 +526,12 @@ export function TimesheetTab({
               <label className="text-[12px] text-surface-600 block mb-1">Project</label>
               <select
                 value={formProjectId}
+                disabled={!!editLock}
                 onChange={(e) => {
                   setFormProjectId(e.target.value);
                   setFormRate('');
                 }}
-                className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+                className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3 disabled:opacity-60"
               >
                 <option value="">Select project…</option>
                 {projectGroups.map((g) => (
@@ -503,6 +550,7 @@ export function TimesheetTab({
               <Input
                 type="date"
                 value={formDate}
+                disabled={!!editLock}
                 onChange={(e) => setFormDate(e.target.value)}
                 className="h-9 rounded-lg text-sm"
               />
@@ -515,6 +563,7 @@ export function TimesheetTab({
                   step="0.25"
                   min="0"
                   inputMode="decimal"
+                  disabled={!!editLock}
                   value={formHours}
                   onChange={(e) => setFormHours(e.target.value)}
                   placeholder="e.g. 2.5"
@@ -531,6 +580,7 @@ export function TimesheetTab({
                     onChange={handleStartChange}
                     ariaLabel="Start time"
                     hour24={hour24}
+                    disabled={!!editLock}
                   />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -540,6 +590,7 @@ export function TimesheetTab({
                     onChange={setFormEnd}
                     ariaLabel="End time"
                     hour24={hour24}
+                    disabled={!!editLock}
                   />
                 </div>
               </div>
@@ -580,6 +631,7 @@ export function TimesheetTab({
               <Input
                 type="number"
                 value={formRate}
+                disabled={!!editLock}
                 onChange={(e) => setFormRate(e.target.value)}
                 placeholder={formProject ? String(formProject.hourlyRate) : '0'}
                 className="h-9 rounded-lg text-sm"
@@ -590,6 +642,7 @@ export function TimesheetTab({
                 <input
                   type="checkbox"
                   checked={formBillable}
+                  disabled={!!editLock}
                   onChange={(e) => setFormBillable(e.target.checked)}
                 />
                 Billable
@@ -605,6 +658,7 @@ export function TimesheetTab({
                   <Money>{formatUsd(formAmount)}</Money>
                 </>
               )}
+              {formError && <span className="block text-[12px] text-danger-400">{formError}</span>}
             </span>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={() => setFormOpen(false)}>
@@ -629,13 +683,19 @@ export function TimesheetTab({
       </Dialog>
 
       {/* Totals strip for the current filter */}
-      <div className="flex items-center gap-4 mb-2 text-[12px] text-surface-600 tabular-nums">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2 text-[12px] text-surface-600 tabular-nums">
         <span>
           {filtered.length} entries · {formatHours(totals.minutes)}
         </span>
         <span className="font-mono font-semibold text-surface-900">
           <Money>{formatUsd(totals.amount)}</Money>
         </span>
+        {(totals.billed > 0 || totals.open > 0) && (
+          <span>
+            {totals.billed} billed · <span className="text-lime-400">{totals.open} open</span>
+          </span>
+        )}
+        {actionError && <span className="text-danger-400">{actionError}</span>}
       </div>
 
       {/* Entry table */}
@@ -677,6 +737,7 @@ export function TimesheetTab({
                 const subClientName = e.subClientId
                   ? project?.subClients?.find((s) => s.id === e.subClientId)?.name
                   : undefined;
+                const lock = billedOn(invoiceById, e);
                 return (
                   <tr key={e.id} className="group hover:bg-surface-100/50">
                     <td className="px-3 sm:px-4 py-2 text-surface-700 tabular-nums whitespace-nowrap">
@@ -714,7 +775,13 @@ export function TimesheetTab({
                         />
                         {client?.name} / {project?.name}
                         {subClientName ? ` ↳ ${subClientName}` : ''}
-                        {!e.billable ? ' · non-billable' : e.invoiced ? ' · invoiced' : ' · open'}
+                        {lock
+                          ? ` · billed ${lock.number}`
+                          : !e.billable
+                            ? ' · non-billable'
+                            : e.invoiced
+                              ? ' · invoiced'
+                              : ' · open'}
                       </span>
                     </td>
                     <td className="px-2 py-2 text-right text-surface-700 tabular-nums whitespace-nowrap">
@@ -727,7 +794,15 @@ export function TimesheetTab({
                       {e.billable ? <Money>{formatUsd(e.amount)}</Money> : '—'}
                     </td>
                     <td className="px-2 py-2 whitespace-nowrap hidden sm:table-cell">
-                      {!e.billable ? (
+                      {lock ? (
+                        <span
+                          className="inline-flex items-center gap-1 text-[11px] text-surface-500"
+                          title={`Billed on invoice ${lock.number} (${lock.status}, issued ${lock.issueDate}) — locked until that invoice is deleted`}
+                        >
+                          <Lock className="w-3 h-3" aria-hidden />
+                          <span className="font-mono tabular-nums">{lock.number}</span>
+                        </span>
+                      ) : !e.billable ? (
                         <span className="text-[11px] text-surface-500">non-billable</span>
                       ) : e.invoiced ? (
                         <span className="text-[11px] text-surface-500">invoiced</span>
@@ -749,10 +824,11 @@ export function TimesheetTab({
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             variant="destructive"
+                            disabled={!!lock}
                             onClick={() => void handleDelete(e)}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
-                            Delete
+                            {lock ? `Delete — locked by ${lock.number}` : 'Delete'}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

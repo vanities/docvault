@@ -72,6 +72,17 @@ export interface InvoiceTemplate {
 
 export type InvoiceStatus = 'new' | 'paid' | 'canceled';
 
+/** A line frozen onto an invoice at creation (mirrors the server snapshot).
+ * Retainer top-up lines carry `minutes: 0`. */
+export interface InvoiceLine {
+  date: string;
+  description: string;
+  projectName: string;
+  minutes: number;
+  hourlyRate: number;
+  amount: number;
+}
+
 export interface Invoice {
   id: string;
   number: string;
@@ -88,7 +99,7 @@ export interface Invoice {
   total: number;
   templateId?: string;
   comment?: string;
-  lines: unknown[];
+  lines: InvoiceLine[]; // empty for Kimai imports (no line data)
   entryIds: string[];
   projectIds?: string[];
   paymentDate?: string;
@@ -258,6 +269,42 @@ export function formatHours(minutes: number): string {
   const m = minutes % 60;
   if (h === 0) return `${m}m`;
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+const MONTH_ABBR = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+/** "Sep 14" from YYYY-MM-DD, read straight off the string: `new Date(ymd)`
+ * is UTC midnight, which renders as the previous day west of Greenwich. */
+function monthDay(ymd: string): string {
+  return `${MONTH_ABBR[Number(ymd.slice(5, 7)) - 1]} ${Number(ymd.slice(8, 10))}`;
+}
+
+/** Compact date range — "Aug 28 – Sep 12" inside the current year, with the
+ * year spelled out otherwise ("Feb 3 – Feb 28, 2025", "Dec 1, 2025 – Jan 4,
+ * 2026") so a stale entry can't pass for this year's work. */
+export function formatDateSpan(
+  from: string,
+  to: string,
+  currentYear = new Date().getFullYear()
+): string {
+  const fromYear = Number(from.slice(0, 4));
+  const toYear = Number(to.slice(0, 4));
+  if (fromYear !== toYear) return `${monthDay(from)}, ${fromYear} – ${monthDay(to)}, ${toYear}`;
+  const year = toYear === currentYear ? '' : `, ${toYear}`;
+  return from === to ? `${monthDay(from)}${year}` : `${monthDay(from)} – ${monthDay(to)}${year}`;
 }
 
 export function todayYMD(): string {

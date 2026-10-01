@@ -205,6 +205,7 @@ Timesheet (all under `/api/timesheet`):
 
 - `POST /entries` — log time. Either `start`+`end` (span) or `durationMinutes` (quick entry); sending one half of a span is a 400. Optional `subClientId` must exist on the entry's project.
 - `PUT /entries/:id` — same fields; `null` on `start`/`end`/`subClientId` explicitly CLEARS them (that's how an entry converts between the two shapes), `undefined` leaves them alone.
+- **Billing lock:** `POST /invoices` links every entry it bills (`invoiceId`). While that invoice exists, the entry is locked — a PUT that would change its project/date/times/hours/rate/billable or un-invoice it is a 409 (description + sub-client stay editable; unchanged values re-sent by the edit modal are fine), and `DELETE /entries/:id` is a 409. `DELETE /invoices/:id` is the only release. This is what keeps an early/partial invoice's hours off the next one; `billingInvoiceOf`/`billedFieldChanges` in `server/timesheet-store.ts` define it.
 - `PUT /projects/:id` — `subClients` is edited as a WHOLE list; new rows get ids assigned server-side. Removing one still referenced by an entry is a 409 — archive it instead.
 - `GET|PUT /weekly-report/config` — schedule, scope, category rules. `lastSentWeek`/`lastSentAt` are server-owned: the PUT re-applies the stored values over whatever the client sends, so a stale form can't reopen an already-sent period. Saving re-arms the scheduler via `armWeeklyReportTimer()`.
 - `GET /weekly-report/preview?end=YYYY-MM-DD` — dry run: rows, category totals, CSV, and HTML for any window, without sending.

@@ -17,6 +17,7 @@ import {
   Eye,
   FolderInput,
   Send,
+  Lock,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -43,10 +44,12 @@ import {
   downloadPdf,
   formatUsd,
   formatHours,
+  formatDateSpan,
   buildClientColorMap,
   type Invoice,
   type TimesheetStore,
 } from './types';
+import { summarizeInvoiceSelection, invoiceWorkPeriod } from './billing';
 
 type SortKey = 'number' | 'issueDate' | 'total';
 
@@ -112,32 +115,12 @@ export function InvoicesTab({
     return agg;
   }, [store, projectById]);
 
-  // What the current create-modal selection would bill.
-  const selection = useMemo(() => {
-    if (!clientId) return null;
-    const entries = store.entries.filter((e) => {
-      if (e.invoiced || !e.billable) return false;
-      if (projectById.get(e.projectId)?.clientId !== clientId) return false;
-      if (projectId && e.projectId !== projectId) return false;
-      if (from && e.date < from) return false;
-      if (to && e.date > to) return false;
-      return true;
-    });
-    // Per-project retainer floors: deficit = how much the top-up lines add.
-    let deficit = 0;
-    for (const pid of new Set(entries.map((e) => e.projectId))) {
-      const min = projectById.get(pid)?.minimumInvoice;
-      if (!min) continue;
-      const projSum = entries.filter((e) => e.projectId === pid).reduce((s, e) => s + e.amount, 0);
-      if (projSum < min) deficit += min - projSum;
-    }
-    return {
-      count: entries.length,
-      minutes: entries.reduce((s, e) => s + e.durationMinutes, 0),
-      amount: entries.reduce((s, e) => s + e.amount, 0),
-      deficit,
-    };
-  }, [store, clientId, projectId, from, to, projectById]);
+  // What the current create-modal selection would bill — and which work in
+  // the same period an earlier invoice already billed (shown, never re-billed).
+  const selection = useMemo(
+    () => (clientId ? summarizeInvoiceSelection(store, { clientId, projectId, from, to }) : null),
+    [store, clientId, projectId, from, to]
+  );
 
   const createBody = () => ({
     clientId,
@@ -168,9 +151,14 @@ export function InvoicesTab({
 
   const handleCreate = async () => {
     if (!selection || selection.count === 0) return;
+    const alreadyBilled = selection.billed.reduce((s, g) => s + g.count, 0);
     const ok = await confirm({
       title: 'Create invoice?',
-      description: `${selection.count} open entries (${formatHours(selection.minutes)}) will be invoiced and marked. Deleting the invoice later releases them.`,
+      description:
+        `${selection.count} open entries (${formatHours(selection.minutes)}) will be billed and locked to this invoice — deleting the invoice later releases them.` +
+        (alreadyBilled > 0
+          ? ` ${alreadyBilled} already-billed ${alreadyBilled === 1 ? 'entry' : 'entries'} in this period stay excluded.`
+          : ''),
       confirmLabel: 'Create invoice',
     });
     if (!ok) return;
@@ -643,25 +631,73 @@ export function InvoicesTab({
               />
             </div>
           </div>
-          <div className="text-[13px] text-surface-600 tabular-nums">
+          <div className="text-[13px] text-surface-600 tabular-nums space-y-2">
             {selection ? (
-              selection.count > 0 ? (
-                <>
-                  {selection.count} open entries · {formatHours(selection.minutes)} ·{' '}
-                  <Money>{formatUsd(selection.amount)}</Money>
-                  {selection.deficit > 0 && (
-                    <span className="text-amber-400">
-                      {' '}
-                      → tops up to <Money>
-                        {formatUsd(selection.amount + selection.deficit)}
-                      </Money>{' '}
-                      (minimum)
-                    </span>
-                  )}
-                </>
-              ) : (
-                'No open entries in this window'
-              )
+              <>
+                {selection.count > 0 ? (
+                  <div>
+                    {selection.count} open entries · {formatHours(selection.minutes)} ·{' '}
+                    <Money>{formatUsd(selection.amount)}</Money>
+                    {selection.deficit > 0 && (
+                      <span className="text-amber-400">
+                        {' '}
+                        → tops up to{' '}
+                        <Money>{formatUsd(selection.amount + selection.deficit)}</Money> (minimum)
+                      </span>
+                    )}
+                    {selection.firstDate && selection.lastDate && (
+                      <span className="block text-[12px] text-surface-500">
+                        Work dated {formatDateSpan(selection.firstDate, selection.lastDate)}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div>No open entries in this window</div>
+                )}
+                {/* Earlier invoices covering the same period — the proof that
+                    an early/partial invoice's hours stay off this one. */}
+                {selection.period &&
+                  (selection.billed.length > 0 ? (
+                    <div className="rounded-lg border border-border bg-surface-100/60 px-3 py-2 text-[12px]">
+                      <p className="flex items-center gap-1.5 text-surface-700">
+                        <Lock className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                        Already billed in{' '}
+                        {formatDateSpan(selection.period.from, selection.period.to)} — excluded from
+                        this invoice
+                      </p>
+                      <ul className="mt-1.5 space-y-1 pl-5">
+                        {selection.billed.slice(0, 3).map((g) => (
+                          <li
+                            key={g.invoiceId ?? 'unlinked'}
+                            className="flex flex-wrap items-baseline gap-x-2"
+                          >
+                            <span className="font-mono text-surface-900">
+                              {g.number ?? 'Marked invoiced'}
+                            </span>
+                            <span className="text-surface-600">
+                              {formatDateSpan(g.firstDate, g.lastDate)}
+                            </span>
+                            <span className="text-surface-500">
+                              {g.count} {g.count === 1 ? 'entry' : 'entries'} ·{' '}
+                              {formatHours(g.minutes)}
+                            </span>
+                            {g.status && <span className="text-surface-500">{g.status}</span>}
+                          </li>
+                        ))}
+                        {selection.billed.length > 3 && (
+                          <li className="text-surface-500">
+                            + {selection.billed.length - 3} earlier
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+                  ) : (
+                    <p className="text-[12px] text-surface-500">
+                      Nothing dated {formatDateSpan(selection.period.from, selection.period.to)} has
+                      been billed yet.
+                    </p>
+                  ))}
+              </>
             ) : (
               'Pick a customer to see open entries'
             )}
@@ -701,6 +737,7 @@ export function InvoicesTab({
               <th className="px-2 py-2.5 font-semibold hidden sm:table-cell">
                 <SortHeader label="Date" k="issueDate" />
               </th>
+              <th className="px-2 py-2.5 font-semibold hidden lg:table-cell">Work period</th>
               <th className="px-2 py-2.5 font-semibold">Customer</th>
               <th className="px-2 py-2.5 font-semibold text-right hidden md:table-cell">Hours</th>
               <th className="px-2 py-2.5 font-semibold text-right">
@@ -713,125 +750,133 @@ export function InvoicesTab({
           <tbody className="divide-y divide-border/50">
             {filteredInvoices.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-surface-500">
+                <td colSpan={8} className="px-4 py-8 text-center text-surface-500">
                   No invoices match the current filter.
                 </td>
               </tr>
             ) : (
-              filteredInvoices.map((inv) => (
-                <tr
-                  key={inv.id}
-                  className="group hover:bg-surface-100/50 cursor-pointer"
-                  onClick={() => openPreview(inv)}
-                >
-                  <td className="px-3 sm:px-4 py-2 font-mono tabular-nums whitespace-nowrap text-surface-900">
-                    {inv.number}
-                  </td>
-                  <td className="px-2 py-2 text-surface-700 tabular-nums whitespace-nowrap hidden sm:table-cell">
-                    {inv.issueDate}
-                  </td>
-                  <td className="px-2 py-2 text-surface-800 whitespace-nowrap">
-                    <span
-                      className="inline-block w-2 h-2 rounded-full mr-1.5 align-middle"
-                      style={{ backgroundColor: clientColors.get(inv.clientId) ?? '#5b6070' }}
-                    />
-                    {clientById.get(inv.clientId)?.name ?? inv.clientName}
-                    <span className="block text-[11px] text-surface-500 sm:hidden pl-3.5">
-                      {inv.issueDate} · {inv.status}
-                    </span>
-                  </td>
-                  <td className="px-2 py-2 text-right text-surface-600 tabular-nums whitespace-nowrap hidden md:table-cell">
-                    {inv.totalMinutes > 0 ? formatHours(inv.totalMinutes) : '—'}
-                  </td>
-                  <td className="px-2 py-2 text-right font-mono tabular-nums text-surface-900 whitespace-nowrap">
-                    <Money>{formatUsd(inv.total)}</Money>
-                  </td>
-                  <td className="px-2 py-2 whitespace-nowrap hidden sm:table-cell">
-                    {statusBadge(inv)}
-                  </td>
-                  <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-0.5">
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        title="Preview"
-                        aria-label={`Preview ${inv.number}`}
-                        onClick={() => openPreview(inv)}
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        title={
-                          inv.sentAt ? `Sent ${inv.sentAt.slice(0, 10)} — send again` : 'Send email'
-                        }
-                        aria-label={`Send ${inv.number} by email`}
-                        onClick={() => openCompose(inv)}
-                      >
-                        <Send className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        title="Download PDF"
-                        aria-label={`Download ${inv.number} PDF`}
-                        onClick={() => void downloadPdf(`/invoices/${inv.id}/pdf`)}
-                      >
-                        <FileDown className="w-3.5 h-3.5" />
-                      </Button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon-xs" aria-label="Invoice actions">
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openPreview(inv)}>
-                            <Eye className="w-3.5 h-3.5" />
-                            Preview
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => void downloadPdf(`/invoices/${inv.id}/pdf`)}
-                          >
-                            <FileDown className="w-3.5 h-3.5" />
-                            Download PDF
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openCompose(inv)}>
-                            <Send className="w-3.5 h-3.5" />
-                            {inv.sentAt
-                              ? `Resend email (sent ${inv.sentAt.slice(0, 10)})`
-                              : 'Send email…'}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openFileToEntity(inv)}>
-                            <FolderInput className="w-3.5 h-3.5" />
-                            File to entity…
-                          </DropdownMenuItem>
-                          {inv.status === 'new' ? (
-                            <DropdownMenuItem onClick={() => void handleMarkStatus(inv, 'paid')}>
-                              <CircleCheck className="w-3.5 h-3.5" />
-                              Mark paid
+              filteredInvoices.map((inv) => {
+                const period = invoiceWorkPeriod(inv);
+                return (
+                  <tr
+                    key={inv.id}
+                    className="group hover:bg-surface-100/50 cursor-pointer"
+                    onClick={() => openPreview(inv)}
+                  >
+                    <td className="px-3 sm:px-4 py-2 font-mono tabular-nums whitespace-nowrap text-surface-900">
+                      {inv.number}
+                    </td>
+                    <td className="px-2 py-2 text-surface-700 tabular-nums whitespace-nowrap hidden sm:table-cell">
+                      {inv.issueDate}
+                    </td>
+                    <td className="px-2 py-2 text-surface-600 tabular-nums whitespace-nowrap hidden lg:table-cell">
+                      {period ? formatDateSpan(period.from, period.to) : '—'}
+                    </td>
+                    <td className="px-2 py-2 text-surface-800 whitespace-nowrap">
+                      <span
+                        className="inline-block w-2 h-2 rounded-full mr-1.5 align-middle"
+                        style={{ backgroundColor: clientColors.get(inv.clientId) ?? '#5b6070' }}
+                      />
+                      {clientById.get(inv.clientId)?.name ?? inv.clientName}
+                      <span className="block text-[11px] text-surface-500 sm:hidden pl-3.5">
+                        {inv.issueDate} · {inv.status}
+                      </span>
+                    </td>
+                    <td className="px-2 py-2 text-right text-surface-600 tabular-nums whitespace-nowrap hidden md:table-cell">
+                      {inv.totalMinutes > 0 ? formatHours(inv.totalMinutes) : '—'}
+                    </td>
+                    <td className="px-2 py-2 text-right font-mono tabular-nums text-surface-900 whitespace-nowrap">
+                      <Money>{formatUsd(inv.total)}</Money>
+                    </td>
+                    <td className="px-2 py-2 whitespace-nowrap hidden sm:table-cell">
+                      {statusBadge(inv)}
+                    </td>
+                    <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-0.5">
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          title="Preview"
+                          aria-label={`Preview ${inv.number}`}
+                          onClick={() => openPreview(inv)}
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          title={
+                            inv.sentAt
+                              ? `Sent ${inv.sentAt.slice(0, 10)} — send again`
+                              : 'Send email'
+                          }
+                          aria-label={`Send ${inv.number} by email`}
+                          onClick={() => openCompose(inv)}
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          title="Download PDF"
+                          aria-label={`Download ${inv.number} PDF`}
+                          onClick={() => void downloadPdf(`/invoices/${inv.id}/pdf`)}
+                        >
+                          <FileDown className="w-3.5 h-3.5" />
+                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon-xs" aria-label="Invoice actions">
+                              <MoreHorizontal className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openPreview(inv)}>
+                              <Eye className="w-3.5 h-3.5" />
+                              Preview
                             </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem onClick={() => void handleMarkStatus(inv, 'new')}>
-                              <RotateCcw className="w-3.5 h-3.5" />
-                              Reopen
+                            <DropdownMenuItem
+                              onClick={() => void downloadPdf(`/invoices/${inv.id}/pdf`)}
+                            >
+                              <FileDown className="w-3.5 h-3.5" />
+                              Download PDF
                             </DropdownMenuItem>
-                          )}
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={() => void handleDelete(inv)}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </td>
-                </tr>
-              ))
+                            <DropdownMenuItem onClick={() => openCompose(inv)}>
+                              <Send className="w-3.5 h-3.5" />
+                              {inv.sentAt
+                                ? `Resend email (sent ${inv.sentAt.slice(0, 10)})`
+                                : 'Send email…'}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openFileToEntity(inv)}>
+                              <FolderInput className="w-3.5 h-3.5" />
+                              File to entity…
+                            </DropdownMenuItem>
+                            {inv.status === 'new' ? (
+                              <DropdownMenuItem onClick={() => void handleMarkStatus(inv, 'paid')}>
+                                <CircleCheck className="w-3.5 h-3.5" />
+                                Mark paid
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem onClick={() => void handleMarkStatus(inv, 'new')}>
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                Reopen
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => void handleDelete(inv)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
