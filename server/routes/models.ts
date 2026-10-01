@@ -3,7 +3,9 @@
 // fallback). This is what keeps the model pickers fresh without code changes.
 //
 //   GET /api/models?provider=anthropic|openai[&refresh=1]
-//        → { models: string[], source: 'live' | 'cache' | 'fallback' }
+//        → { models: string[], imageModels: string[], source: 'live' | 'cache' | 'fallback' }
+//   `models` are chat-capable; `imageModels` are image-generation models
+//   (OpenAI only — the Daily News headline-image picker), from the same call.
 
 import { jsonResponse } from '../data.js';
 import { listModels } from '../llm/models.js';

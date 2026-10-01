@@ -21,9 +21,25 @@ const FALLBACKS: Record<ModelProvider, string[]> = {
   anthropic: ['claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
   openai: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-4o', 'gpt-4o-mini'],
 };
+// Image-generation fallbacks, verified against OpenAI's /v1/models on
+// 2026-10-01. Anthropic has no image model.
+const IMAGE_FALLBACKS: Record<ModelProvider, string[]> = {
+  anthropic: [],
+  openai: [
+    'gpt-image-2.5-sunburst',
+    'gpt-image-2.5-flare',
+    'gpt-image-2',
+    'gpt-image-1.5',
+    'gpt-image-1-mini',
+    'gpt-image-1',
+  ],
+};
 
 interface CacheEntry {
   models: string[];
+  /** Image-generation models. Absent from entries cached before image listing
+   *  existed — those count as stale, so the next request refetches. */
+  imageModels?: string[];
   fetchedAt: number;
 }
 type Cache = Record<string, CacheEntry>;
@@ -39,12 +55,18 @@ async function saveCache(c: Cache): Promise<void> {
   await fs.writeFile(CACHE_PATH, JSON.stringify(c, null, 2));
 }
 
+/** Image-generation models. Matches any id mentioning image/dall-e, so a future
+ *  name (gpt-image-3, gpt-6-image) lists with no code change; the image
+ *  generator falls back if a pick can't draw. Video models (sora-*) stay out. */
+function looksLikeImageModel(id: string): boolean {
+  return /image|dall-?e/i.test(id);
+}
+
 /** Keep chat/vision-capable OpenAI models; drop embeddings, audio, image, etc. */
 function looksLikeChatModel(id: string): boolean {
   if (
-    /embedding|whisper|tts|audio|dall-e|image-|realtime|transcribe|moderation|babbage|davinci|sora/i.test(
-      id
-    )
+    looksLikeImageModel(id) ||
+    /embedding|whisper|tts|audio|realtime|transcribe|moderation|babbage|davinci|sora/i.test(id)
   ) {
     return false;
   }
@@ -53,6 +75,8 @@ function looksLikeChatModel(id: string): boolean {
 
 export interface ModelList {
   models: string[];
+  /** Image-generation models (OpenAI only) — the Daily News headline-image picker. */
+  imageModels: string[];
   source: 'live' | 'cache' | 'fallback';
 }
 
@@ -68,12 +92,14 @@ export async function listModels(
 
   const cache = await loadCache();
   const cached = cache[cacheKey];
-  if (!opts.refresh && cached && Date.now() - cached.fetchedAt < TTL_MS) {
-    return { models: cached.models, source: 'cache' };
+  if (!opts.refresh && cached?.imageModels && Date.now() - cached.fetchedAt < TTL_MS) {
+    return { models: cached.models, imageModels: cached.imageModels, source: 'cache' };
   }
 
+  const startedAt = Date.now();
   try {
     let models: string[];
+    let imageModels: string[] = [];
     if (provider === 'anthropic') {
       const client = await getClient();
       const res = await client.models.list({ limit: 100 });
@@ -83,18 +109,36 @@ export async function listModels(
       const client = new OpenAI({ apiKey, baseURL: baseUrl || undefined });
       const res = await client.models.list();
       const isLocal = !!baseUrl;
-      models = res.data.map((m) => m.id).filter((id) => isLocal || looksLikeChatModel(id));
+      const ids = res.data.map((m) => m.id);
+      models = ids.filter((id) => isLocal || looksLikeChatModel(id));
+      imageModels = ids.filter((id) => isLocal || looksLikeImageModel(id));
     }
-    // Descending so the newest-named models (gpt-5.5, o4, opus-4-8) surface at
-    // the top of the picker and legacy families (gpt-3.5, opus-4-1) sink down.
+    // Descending so the newest-named models (gpt-5.5, o4, opus-4-8,
+    // gpt-image-2.5) surface at the top of the picker and legacy families
+    // (gpt-3.5, opus-4-1, gpt-image-1) sink down.
     models.sort((a, b) => b.localeCompare(a));
-    cache[cacheKey] = { models, fetchedAt: Date.now() };
+    imageModels.sort((a, b) => b.localeCompare(a));
+    cache[cacheKey] = { models, imageModels, fetchedAt: Date.now() };
     await saveCache(cache);
-    log.info(`Fetched ${models.length} ${provider} models (live)`);
-    return { models, source: 'live' };
+    log.info(
+      `Fetched ${models.length} ${provider} models + ${imageModels.length} image models (live) in ${Date.now() - startedAt}ms`
+    );
+    return { models, imageModels, source: 'live' };
   } catch (err) {
-    log.warn(`Model list for ${provider} failed: ${(err as Error).message}`);
-    if (cached) return { models: cached.models, source: 'cache' };
-    return { models: FALLBACKS[provider], source: 'fallback' };
+    log.warn(
+      `Model list for ${provider} failed in ${Date.now() - startedAt}ms: ${(err as Error).message}`
+    );
+    if (cached) {
+      return {
+        models: cached.models,
+        imageModels: cached.imageModels ?? IMAGE_FALLBACKS[provider],
+        source: 'cache',
+      };
+    }
+    return {
+      models: FALLBACKS[provider],
+      imageModels: IMAGE_FALLBACKS[provider],
+      source: 'fallback',
+    };
   }
 }

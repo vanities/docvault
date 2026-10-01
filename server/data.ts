@@ -336,7 +336,7 @@ export interface Settings {
     theme?: string;
     /** Generate an AI headline image per edition (OpenAI; opt-in, costs per image). */
     headlineImage?: boolean;
-    /** OpenAI image model id (from /v1/models); defaults to gpt-image-1. */
+    /** OpenAI image model id (from /v1/models); defaults to gpt-image-2.5-flare. */
     imageModel?: string;
     /**
      * Edition narration: which person's cloned voice reads the paper
@@ -626,7 +626,7 @@ export async function getDailyNewsConfig(): Promise<{
     model: resolveModel(settings.dailyNews?.model),
     theme: settings.dailyNews?.theme || 'brew', // default house style: Morning Brew
     headlineImage: settings.dailyNews?.headlineImage ?? false,
-    imageModel: settings.dailyNews?.imageModel || 'gpt-image-2',
+    imageModel: settings.dailyNews?.imageModel || 'gpt-image-2.5-flare',
   };
 }
 

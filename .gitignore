@@ -181,6 +181,9 @@ scripts/*
 # Exception: etherscan error-classification tests use verbatim API error strings, no credentials
 !server/etherscan-permanent-errors.test.ts
 
+# Exception: model-list tests use synthetic model ids and a tmpdir cache, no personal data
+!server/llm/models.test.ts
+
 # Internal design docs
 docs/PRD-shadcn-migration.md
 

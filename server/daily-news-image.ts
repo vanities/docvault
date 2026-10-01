@@ -3,11 +3,11 @@
 //
 // Anthropic has no image model, so this always uses OpenAI via the configured
 // OpenAI key. The model is user-selectable (Settings → Models → Daily News,
-// populated from OpenAI's /v1/models), defaulting to gpt-image-2 (OpenAI's
-// newest, released 2026-04-21); if the chosen model fails it falls back to
-// gpt-image-2. Best-effort throughout: returns null when disabled, when no
-// OpenAI key is set, or on any error — it never blocks an edition. Images are
-// saved under DATA_DIR (gitignored).
+// populated from the image models in OpenAI's /v1/models — gpt-image-2.5-*,
+// gpt-image-2, gpt-image-1.5, …), defaulting to gpt-image-2.5-flare; if the
+// chosen model fails it falls back to gpt-image-2. Best-effort throughout: returns
+// null when disabled, when no OpenAI key is set, or on any error — it never
+// blocks an edition. Images are saved under DATA_DIR (gitignored).
 
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -18,7 +18,7 @@ import { createLogger } from './logger.js';
 
 const log = createLogger('DailyNewsImage');
 const IMAGE_DIR = path.join(DATA_DIR, 'daily-news-images');
-const FALLBACK_MODEL = 'gpt-image-2'; // OpenAI's newest image model (released 2026-04-21)
+const FALLBACK_MODEL = 'gpt-image-2'; // GA since 2026-04-21 — the safety net for any picked model
 
 const msg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
@@ -51,7 +51,7 @@ async function generateOne(client: OpenAI, model: string, prompt: string): Promi
   return res.data?.[0]?.b64_json ?? null;
 }
 
-/** Try the configured model, then dall-e-3 as a no-verification fallback. */
+/** Try the configured model, then gpt-image-2 as the fallback. */
 async function generateB64(
   client: OpenAI,
   prompt: string,
