@@ -40,6 +40,8 @@ import {
   nextInvoiceNumber,
   saveTimesheetStore,
   spanMinutes,
+  billingInvoiceOf,
+  billedFieldChanges,
   type Invoice,
   type TimesheetStore,
 } from './timesheet-store.js';
@@ -186,6 +188,54 @@ describe('nextInvoiceNumber', () => {
 
   test('ignores non-matching formats', () => {
     expect(nextInvoiceNumber([makeInvoice('CUSTOM-9')], 2026)).toBe('2026/001');
+  });
+});
+
+describe('billing lock helpers', () => {
+  test('billingInvoiceOf resolves only a link to an invoice that still exists', () => {
+    const invoice = makeInvoice('2026/005');
+    const store = { invoices: [invoice] };
+    expect(billingInvoiceOf(store, { invoiceId: invoice.id })).toBe(invoice);
+    expect(billingInvoiceOf(store, { invoiceId: 'inv-deleted' })).toBeUndefined();
+    expect(billingInvoiceOf(store, {})).toBeUndefined();
+  });
+
+  test('notes-only edits change no billed field', () => {
+    const before = makeStore().entries[0];
+    const after = { ...before, description: 'rewrote the notes', subClientId: 'north' };
+    expect(billedFieldChanges(before, after)).toEqual([]);
+  });
+
+  test('an identical re-send (the edit modal posts every field) changes nothing', () => {
+    const before = makeStore().entries[0];
+    expect(billedFieldChanges(before, { ...before })).toEqual([]);
+  });
+
+  test('names every billed field that moved', () => {
+    const before = makeStore().entries[0];
+    const after = {
+      ...before,
+      end: '12:00',
+      durationMinutes: 180,
+      hourlyRate: 150,
+      projectId: 'gadgets',
+      invoiced: true,
+    };
+    expect(billedFieldChanges(before, after)).toEqual([
+      'project',
+      'end time',
+      'hours',
+      'rate',
+      'invoiced status',
+    ]);
+  });
+
+  test('clearing the span of a timed entry counts as a change', () => {
+    const before = makeStore().entries[0];
+    const after = { ...before };
+    delete after.start;
+    delete after.end;
+    expect(billedFieldChanges(before, after)).toEqual(['start time', 'end time']);
   });
 });
 

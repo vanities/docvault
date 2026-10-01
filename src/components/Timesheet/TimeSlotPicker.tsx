@@ -26,11 +26,13 @@ export function TimeSlotPicker({
   onChange,
   ariaLabel,
   hour24 = true,
+  disabled = false,
 }: {
   value: string;
   onChange: (time: string) => void;
   ariaLabel: string;
   hour24?: boolean;
+  disabled?: boolean;
 }) {
   const options = useMemo(() => {
     if (!value || SLOTS.includes(value)) return SLOTS;
@@ -40,7 +42,7 @@ export function TimeSlotPicker({
   }, [value]);
 
   return (
-    <Select value={value} onValueChange={onChange}>
+    <Select value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger className="h-9 w-full rounded-lg text-sm" aria-label={ariaLabel}>
         <SelectValue placeholder="Time" />
       </SelectTrigger>

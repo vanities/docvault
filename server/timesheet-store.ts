@@ -375,3 +375,44 @@ export function nextInvoiceNumber(invoices: Invoice[], year: number): string {
   }
   return `${year}/${String(max + 1).padStart(3, '0')}`;
 }
+
+// ============================================================================
+// Billing lock
+// ============================================================================
+
+/** The stored invoice that billed this entry, when that invoice still exists.
+ * Such an entry is LOCKED: the invoice froze its date/hours/rate/amount into a
+ * line, so changing them here would make the timesheet disagree with what the
+ * client was charged, and un-invoicing it would put the same hours back in the
+ * billing queue to be charged again on the next invoice. Deleting the invoice
+ * is the one release — that route un-links every entry it billed. Entries
+ * marked invoiced with no invoice record (Kimai-era, mark-invoiced) have no
+ * snapshot to disagree with, so they stay editable. */
+export function billingInvoiceOf(
+  store: Pick<TimesheetStore, 'invoices'>,
+  entry: Pick<TimesheetEntry, 'invoiceId'>
+): Invoice | undefined {
+  if (!entry.invoiceId) return undefined;
+  return store.invoices.find((i) => i.id === entry.invoiceId);
+}
+
+// What an invoice line depends on, labeled for the 409 message. Description
+// and sub-client are deliberately absent: they're notes/reporting tags, and
+// the invoice keeps its own copy of the description.
+const BILLED_FIELDS = [
+  ['projectId', 'project'],
+  ['date', 'date'],
+  ['start', 'start time'],
+  ['end', 'end time'],
+  ['durationMinutes', 'hours'],
+  ['hourlyRate', 'rate'],
+  ['billable', 'billable'],
+  ['invoiced', 'invoiced status'],
+] as const satisfies readonly (readonly [keyof TimesheetEntry, string])[];
+
+/** Labels of the billed fields that differ between an entry before and after
+ * an edit. Compares resulting VALUES, not which keys a request carried — the
+ * edit modal re-sends every field, so a description-only edit must pass. */
+export function billedFieldChanges(before: TimesheetEntry, after: TimesheetEntry): string[] {
+  return BILLED_FIELDS.filter(([key]) => before[key] !== after[key]).map(([, label]) => label);
+}

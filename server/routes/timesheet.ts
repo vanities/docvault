@@ -1,6 +1,11 @@
 // Timesheet route handlers — clients / projects / entries CRUD, rollup
 // summary, and the mark-invoiced action. Invoice PDF generation lives in
 // server/timesheet-invoice.ts (POST /api/timesheet/invoice).
+//
+// Billing lock: creating an invoice links each billed entry to it, and a
+// linked entry can't be un-invoiced, re-timed, re-rated, moved, or deleted
+// (409) — so an early/partial invoice's hours can never reappear on the next
+// one. Deleting the invoice releases its entries (see billingInvoiceOf).
 
 import path from 'path';
 import { promises as fs } from 'fs';
@@ -25,6 +30,8 @@ import {
   entryAmount,
   nextInvoiceNumber,
   entryTimeKey,
+  billingInvoiceOf,
+  billedFieldChanges,
   type SubClient,
   type Invoice,
   type InvoiceTemplate,
@@ -171,8 +178,13 @@ export async function handleTimesheetRoutes(
       invoiced?: boolean;
     }>(req);
     const store = await loadTimesheetStore();
-    const entry = store.entries.find((e) => e.id === entryMatch[1]);
-    if (!entry) return jsonResponse({ error: 'Entry not found' }, 404);
+    const index = store.entries.findIndex((e) => e.id === entryMatch[1]);
+    if (index === -1) return jsonResponse({ error: 'Entry not found' }, 404);
+    const original = store.entries[index];
+    // Edit a copy (every field is a primitive, so a spread is a full copy):
+    // nothing reaches the store until the billing lock below has compared
+    // the result against what the entry's invoice already charged.
+    const entry: TimesheetEntry = { ...original };
 
     if (body.projectId !== undefined) {
       if (!store.projects.some((p) => p.id === body.projectId)) {
@@ -212,10 +224,17 @@ export async function handleTimesheetRoutes(
     if (body.description !== undefined) entry.description = body.description.trim();
     if (body.hourlyRate !== undefined) entry.hourlyRate = Number(body.hourlyRate);
     if (body.billable !== undefined) entry.billable = body.billable;
-    if (body.invoiced !== undefined) {
+    // Only a real flip touches the timestamps — re-sending `invoiced: true`
+    // must not rewrite when the entry was actually billed.
+    if (body.invoiced !== undefined && body.invoiced !== entry.invoiced) {
       entry.invoiced = body.invoiced;
       if (body.invoiced) entry.invoicedAt = new Date().toISOString();
-      else delete entry.invoicedAt;
+      else {
+        delete entry.invoicedAt;
+        // An open entry must never keep an invoice link: that half-state is
+        // exactly what lets the same hours land on a second invoice.
+        delete entry.invoiceId;
+      }
     }
     // Re-derive: duration from the span when timed, else take it verbatim.
     if (entry.start !== undefined && entry.end !== undefined) {
@@ -229,17 +248,59 @@ export async function handleTimesheetRoutes(
     }
     if (entry.durationMinutes === 0) return jsonResponse({ error: 'Zero-length entry' }, 400);
     entry.amount = entryAmount(entry.durationMinutes, entry.hourlyRate, entry.billable);
+
+    // Billing lock: an entry on a stored invoice keeps the values that invoice
+    // charged. Notes (description, sub-client) may still change.
+    const billedOn = billingInvoiceOf(store, original);
+    if (billedOn) {
+      const changed = billedFieldChanges(original, entry);
+      if (changed.length > 0) {
+        log.warn(
+          `[entry] refused edit of billed entry ${original.id.slice(0, 8)} on invoice ${billedOn.number}: ${changed.join(', ')}`
+        );
+        return jsonResponse(
+          {
+            error: `Billed on invoice ${billedOn.number} — ${changed.join(', ')} can't change. Delete that invoice to release its entries first.`,
+            invoiceId: billedOn.id,
+            invoiceNumber: billedOn.number,
+          },
+          409
+        );
+      }
+    }
+
+    store.entries[index] = entry;
     await saveTimesheetStore(store);
+    log.debug(
+      `[entry] updated ${entry.id.slice(0, 8)} project=${entry.projectId} date=${entry.date} ${entry.durationMinutes}min${billedOn ? ` (billed on ${billedOn.number}; notes only)` : ''}`
+    );
     return jsonResponse({ ok: true, entry });
   }
 
-  // DELETE /api/timesheet/entries/:id
+  // DELETE /api/timesheet/entries/:id — refused while a stored invoice bills it
   if (entryMatch && req.method === 'DELETE') {
     const store = await loadTimesheetStore();
-    const before = store.entries.length;
-    store.entries = store.entries.filter((e) => e.id !== entryMatch[1]);
-    if (store.entries.length === before) return jsonResponse({ error: 'Entry not found' }, 404);
+    const entry = store.entries.find((e) => e.id === entryMatch[1]);
+    if (!entry) return jsonResponse({ error: 'Entry not found' }, 404);
+    const billedOn = billingInvoiceOf(store, entry);
+    if (billedOn) {
+      log.warn(
+        `[entry] refused delete of billed entry ${entry.id.slice(0, 8)} on invoice ${billedOn.number}`
+      );
+      return jsonResponse(
+        {
+          error: `Billed on invoice ${billedOn.number} — delete that invoice first to release this entry.`,
+          invoiceId: billedOn.id,
+          invoiceNumber: billedOn.number,
+        },
+        409
+      );
+    }
+    store.entries = store.entries.filter((e) => e.id !== entry.id);
     await saveTimesheetStore(store);
+    log.info(
+      `[entry] deleted ${entry.id.slice(0, 8)} (${entry.durationMinutes}min on ${entry.date})`
+    );
     return jsonResponse({ ok: true });
   }
 
