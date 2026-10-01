@@ -58,6 +58,8 @@ const EFFORTS: Record<Provider, ModelEffort[]> = {
 };
 const CUSTOM = '__custom__';
 const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-4-6';
+// Mirrors getDailyNewsConfig() in server/data.ts.
+const DEFAULT_IMAGE_MODEL = 'gpt-image-2.5-flare';
 const selectClass =
   'w-full text-[13px] bg-surface-100/60 border border-border/40 rounded-lg px-2 py-1.5';
 
@@ -95,7 +97,7 @@ export function ModelsSettingsSection() {
   const [dnTitle, setDnTitle] = useState('');
   const [dnTheme, setDnTheme] = useState('brew');
   const [dnHeadlineImage, setDnHeadlineImage] = useState(false);
-  const [dnImageModel, setDnImageModel] = useState('gpt-image-2');
+  const [dnImageModel, setDnImageModel] = useState(DEFAULT_IMAGE_MODEL);
   const [dnNarrator, setDnNarrator] = useState(''); // personId; '' = narration off
   const [dnSpeed, setDnSpeed] = useState(1);
   const [people, setPeople] = useState<Array<{ id: string; name: string }>>([]);
@@ -105,6 +107,8 @@ export function ModelsSettingsSection() {
     anthropic: [],
     openai: [],
   });
+  // OpenAI image-generation models (gpt-image-*), listed by the same /api/models call.
+  const [openaiImageModels, setOpenaiImageModels] = useState<string[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
@@ -132,7 +136,7 @@ export function ModelsSettingsSection() {
       setDnTitle(d.dailyNews?.title ?? '');
       setDnTheme(d.dailyNews?.theme ?? 'brew');
       setDnHeadlineImage(d.dailyNews?.headlineImage ?? false);
-      setDnImageModel(d.dailyNews?.imageModel ?? 'gpt-image-2');
+      setDnImageModel(d.dailyNews?.imageModel ?? DEFAULT_IMAGE_MODEL);
       setDnNarrator(d.dailyNews?.narration?.personId ?? '');
       setDnSpeed(d.dailyNews?.narration?.defaultSpeed ?? 1);
     } catch {
@@ -153,9 +157,15 @@ export function ModelsSettingsSection() {
               .then((d) => ({
                 p,
                 models: (d.models as string[]) ?? [],
+                imageModels: (d.imageModels as string[]) ?? [],
                 source: (d.source as string) ?? 'error',
               }))
-              .catch(() => ({ p, models: [] as string[], source: 'error' }))
+              .catch(() => ({
+                p,
+                models: [] as string[],
+                imageModels: [] as string[],
+                source: 'error',
+              }))
           )
         );
         const byProvider: Record<Provider, string[]> = { anthropic: [], openai: [] };
@@ -163,6 +173,7 @@ export function ModelsSettingsSection() {
           byProvider[p] = models;
         }
         setModelsByProvider(byProvider);
+        setOpenaiImageModels(results.find((r) => r.p === 'openai')?.imageModels ?? []);
         if (refresh) {
           const live = results.filter((r) => r.source === 'live').length;
           addToast(
@@ -638,11 +649,12 @@ export function ModelsSettingsSection() {
               <ModelSelect
                 value={dnImageModel}
                 onChange={setDnImageModel}
-                models={modelsByProvider.openai.filter((m) => /image|dall-?e/i.test(m))}
+                models={openaiImageModels}
               />
               <p className="text-[11px] text-surface-500 mt-1">
-                Pulled from your OpenAI models. Defaults to gpt-image-2 (OpenAI's newest); falls
-                back to it if the chosen model isn't available to your account.
+                Every image model your OpenAI account can use, listed live. Defaults to{' '}
+                {DEFAULT_IMAGE_MODEL}; if the chosen model fails, the edition falls back to
+                gpt-image-2.
               </p>
             </div>
           )}
