@@ -1,7 +1,7 @@
 // Synthetic model ids and an isolated tmpdir cache; never touches NAS data,
 // the logs dir, or the network.
 import { afterAll, beforeEach, expect, test, vi } from 'vite-plus/test';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -118,6 +118,29 @@ test('Anthropic lists no image models', async () => {
     imageModels: [],
     source: 'live',
   });
+});
+
+test('parallel provider fetches keep each other’s cache entries', async () => {
+  // The Settings page lists both providers at once. Hold OpenAI's request open
+  // until Anthropic has fetched and saved, so OpenAI saves last — from a
+  // snapshot read before Anthropic's entry existed.
+  let openaiListing!: () => void;
+  const openaiReadCache = new Promise<void>((resolve) => (openaiListing = resolve));
+  let releaseOpenai!: (res: unknown) => void;
+  mocks.openaiList.mockImplementation(() => {
+    openaiListing();
+    return new Promise((resolve) => (releaseOpenai = resolve));
+  });
+  mocks.anthropicList.mockResolvedValue({ data: [{ id: 'claude-test-1' }] });
+
+  const openai = listModels('openai');
+  await openaiReadCache;
+  await listModels('anthropic');
+  releaseOpenai({ data: OPENAI_IDS.map((id) => ({ id })) });
+  await openai;
+
+  const onDisk = JSON.parse(await readFile(cacheFile, 'utf-8')) as Record<string, unknown>;
+  expect(Object.keys(onDisk).sort()).toEqual(['anthropic', 'openai']);
 });
 
 test('a local OpenAI-compatible server lists every model in both pickers', async () => {

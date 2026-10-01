@@ -10,6 +10,7 @@ import path from 'path';
 import { getClient } from '../parsers/base.js';
 import { DATA_DIR, getOpenAIConfig, type ModelProvider } from '../data.js';
 import { createLogger } from '../logger.js';
+import { createWriteLock, writeJsonAtomic } from '../write-lock.js';
 
 const log = createLogger('Models');
 const CACHE_PATH = path.join(DATA_DIR, '.docvault-model-cache.json');
@@ -51,8 +52,16 @@ async function loadCache(): Promise<Cache> {
     return {};
   }
 }
-async function saveCache(c: Cache): Promise<void> {
-  await fs.writeFile(CACHE_PATH, JSON.stringify(c, null, 2));
+// The Settings page lists both providers in parallel. Saving the whole snapshot
+// each call read before its network round-trip let the slower call clobber the
+// faster one's fresh entry, so a save re-reads and merges its one key under a lock.
+const withCacheLock = createWriteLock();
+async function saveCacheEntry(key: string, entry: CacheEntry): Promise<void> {
+  await withCacheLock(async () => {
+    const cache = await loadCache();
+    cache[key] = entry;
+    await writeJsonAtomic(CACHE_PATH, cache);
+  });
 }
 
 /** Image-generation models. Matches any id mentioning image/dall-e, so a future
@@ -118,8 +127,7 @@ export async function listModels(
     // (gpt-3.5, opus-4-1, gpt-image-1) sink down.
     models.sort((a, b) => b.localeCompare(a));
     imageModels.sort((a, b) => b.localeCompare(a));
-    cache[cacheKey] = { models, imageModels, fetchedAt: Date.now() };
-    await saveCache(cache);
+    await saveCacheEntry(cacheKey, { models, imageModels, fetchedAt: Date.now() });
     log.info(
       `Fetched ${models.length} ${provider} models + ${imageModels.length} image models (live) in ${Date.now() - startedAt}ms`
     );
