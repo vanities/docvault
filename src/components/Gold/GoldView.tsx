@@ -32,7 +32,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Money } from '../common/Money';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  DialogBody,
+  DialogFooter,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 const API = '/api/gold';
 
@@ -812,210 +819,234 @@ export function GoldView() {
           if (!open) resetForm();
         }}
       >
-        <DialogContent
-          aria-describedby={undefined}
-          className="sm:max-w-2xl max-h-[90vh] overflow-y-auto"
-        >
+        <DialogContent aria-describedby={undefined} className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingId ? 'Edit Entry' : 'Add New Entry'}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Product Dropdown */}
-              <div>
-                <label className="block text-xs font-medium text-surface-600 mb-1">Product</label>
-                <Select value={productId} onValueChange={handleProductChange}>
-                  <SelectTrigger className="w-full text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectLabel>Gold Coins</SelectLabel>
-                      {GOLD_PRODUCTS.filter(
-                        (p) => p.metal === 'gold' && p.id !== 'gold-bar' && p.id !== 'custom'
-                      ).map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                    <SelectGroup>
-                      <SelectLabel>Gold Bars</SelectLabel>
-                      {GOLD_PRODUCTS.filter((p) => p.id === 'gold-bar').map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                    <SelectGroup>
-                      <SelectLabel>Silver</SelectLabel>
-                      {GOLD_PRODUCTS.filter((p) => p.metal === 'silver').map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                    <SelectGroup>
-                      <SelectLabel>Platinum</SelectLabel>
-                      {GOLD_PRODUCTS.filter((p) => p.metal === 'platinum').map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                    <SelectGroup>
-                      <SelectLabel>Other</SelectLabel>
-                      <SelectItem value="custom">Custom / Other</SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Custom description (only if custom) */}
-              {productId === 'custom' && (
+          <form onSubmit={handleSubmit} className="min-h-0 flex-1 flex flex-col gap-4">
+            <DialogBody className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Product Dropdown */}
                 <div>
-                  <label className="block text-xs font-medium text-surface-600 mb-1">
-                    Description
+                  <label className="block text-xs font-medium text-surface-600 mb-1">Product</label>
+                  <Select value={productId} onValueChange={handleProductChange}>
+                    <SelectTrigger className="w-full text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectLabel>Gold Coins</SelectLabel>
+                        {GOLD_PRODUCTS.filter(
+                          (p) => p.metal === 'gold' && p.id !== 'gold-bar' && p.id !== 'custom'
+                        ).map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>Gold Bars</SelectLabel>
+                        {GOLD_PRODUCTS.filter((p) => p.id === 'gold-bar').map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>Silver</SelectLabel>
+                        {GOLD_PRODUCTS.filter((p) => p.metal === 'silver').map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>Platinum</SelectLabel>
+                        {GOLD_PRODUCTS.filter((p) => p.metal === 'platinum').map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>Other</SelectLabel>
+                        <SelectItem value="custom">Custom / Other</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Custom description (only if custom) */}
+                {productId === 'custom' && (
+                  <div>
+                    <label
+                      htmlFor="goldview-field-1"
+                      className="block text-xs font-medium text-surface-600 mb-1"
+                    >
+                      Description
+                    </label>
+                    <Input
+                      id="goldview-field-1"
+                      type="text"
+                      value={customDescription}
+                      onChange={(e) => setCustomDescription(e.target.value)}
+                      placeholder="e.g., 1 oz Generic Gold Round"
+                      className="h-9 rounded-lg text-sm"
+                    />
+                  </div>
+                )}
+
+                {/* Size Dropdown */}
+                <div>
+                  <label className="block text-xs font-medium text-surface-600 mb-1">Size</label>
+                  <Select value={size} onValueChange={(val) => setSize(val as CoinSize)}>
+                    <SelectTrigger className="w-full text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {selectedProduct.availableSizes.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {SIZE_LABELS[s]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Coin Year */}
+                <div>
+                  <label
+                    htmlFor="goldview-field-2"
+                    className="block text-xs font-medium text-surface-600 mb-1"
+                  >
+                    Coin Year <span className="text-surface-500">(optional)</span>
                   </label>
                   <Input
-                    type="text"
-                    value={customDescription}
-                    onChange={(e) => setCustomDescription(e.target.value)}
-                    placeholder="e.g., 1 oz Generic Gold Round"
+                    id="goldview-field-2"
+                    type="number"
+                    value={coinYear}
+                    onChange={(e) => setCoinYear(e.target.value)}
+                    placeholder={`${new Date().getFullYear()}`}
+                    min={1800}
+                    max={new Date().getFullYear() + 1}
                     className="h-9 rounded-lg text-sm"
                   />
                 </div>
-              )}
 
-              {/* Size Dropdown */}
-              <div>
-                <label className="block text-xs font-medium text-surface-600 mb-1">Size</label>
-                <Select value={size} onValueChange={(val) => setSize(val as CoinSize)}>
-                  <SelectTrigger className="w-full text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {selectedProduct.availableSizes.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {SIZE_LABELS[s]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Coin Year */}
-              <div>
-                <label className="block text-xs font-medium text-surface-600 mb-1">
-                  Coin Year <span className="text-surface-500">(optional)</span>
-                </label>
-                <Input
-                  type="number"
-                  value={coinYear}
-                  onChange={(e) => setCoinYear(e.target.value)}
-                  placeholder={`${new Date().getFullYear()}`}
-                  min={1800}
-                  max={new Date().getFullYear() + 1}
-                  className="h-9 rounded-lg text-sm"
-                />
-              </div>
-
-              {/* Quantity */}
-              <div>
-                <label className="block text-xs font-medium text-surface-600 mb-1">Quantity</label>
-                <Input
-                  type="number"
-                  value={quantity}
-                  onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
-                  min={1}
-                  className="h-9 rounded-lg text-sm"
-                />
-              </div>
-
-              {/* Purchase Price (per piece) */}
-              <div>
-                <label className="block text-xs font-medium text-surface-600 mb-1">
-                  Price Paid (per piece)
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-500 z-10">
-                    $
-                  </span>
+                {/* Quantity */}
+                <div>
+                  <label
+                    htmlFor="goldview-field-3"
+                    className="block text-xs font-medium text-surface-600 mb-1"
+                  >
+                    Quantity
+                  </label>
                   <Input
+                    id="goldview-field-3"
                     type="number"
-                    value={purchasePrice}
-                    onChange={(e) => setPurchasePrice(e.target.value)}
-                    placeholder="0.00"
-                    step="0.01"
-                    min="0"
-                    required
-                    className="pl-7 h-9 rounded-lg text-sm"
+                    value={quantity}
+                    onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
+                    min={1}
+                    className="h-9 rounded-lg text-sm"
                   />
+                </div>
+
+                {/* Purchase Price (per piece) */}
+                <div>
+                  <label className="block text-xs font-medium text-surface-600 mb-1">
+                    Price Paid (per piece)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-500 z-10">
+                      $
+                    </span>
+                    <Input
+                      type="number"
+                      value={purchasePrice}
+                      onChange={(e) => setPurchasePrice(e.target.value)}
+                      placeholder="0.00"
+                      step="0.01"
+                      min="0"
+                      required
+                      className="pl-7 h-9 rounded-lg text-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* Purchase Date */}
+                <div>
+                  <label
+                    htmlFor="goldview-field-4"
+                    className="block text-xs font-medium text-surface-600 mb-1"
+                  >
+                    Date Bought
+                  </label>
+                  <Input
+                    id="goldview-field-4"
+                    type="date"
+                    value={purchaseDate}
+                    onChange={(e) => setPurchaseDate(e.target.value)}
+                    required
+                    className="h-9 rounded-lg text-sm"
+                  />
+                </div>
+
+                {/* Dealer */}
+                <div>
+                  <label
+                    htmlFor="goldview-field-5"
+                    className="block text-xs font-medium text-surface-600 mb-1"
+                  >
+                    Dealer <span className="text-surface-500">(optional)</span>
+                  </label>
+                  <Input
+                    id="goldview-field-5"
+                    type="text"
+                    value={dealer}
+                    onChange={(e) => setDealer(e.target.value)}
+                    list="dealer-suggestions"
+                    placeholder="e.g., APMEX"
+                    className="h-9 rounded-lg text-sm"
+                  />
+                  <datalist id="dealer-suggestions">
+                    {KNOWN_DEALERS.map((d) => (
+                      <option key={d} value={d} />
+                    ))}
+                  </datalist>
                 </div>
               </div>
 
-              {/* Purchase Date */}
+              {/* Notes */}
               <div>
-                <label className="block text-xs font-medium text-surface-600 mb-1">
-                  Date Bought
+                <label
+                  htmlFor="goldview-field-6"
+                  className="block text-xs font-medium text-surface-600 mb-1"
+                >
+                  Notes <span className="text-surface-500">(optional)</span>
                 </label>
                 <Input
-                  type="date"
-                  value={purchaseDate}
-                  onChange={(e) => setPurchaseDate(e.target.value)}
-                  required
-                  className="h-9 rounded-lg text-sm"
-                />
-              </div>
-
-              {/* Dealer */}
-              <div>
-                <label className="block text-xs font-medium text-surface-600 mb-1">
-                  Dealer <span className="text-surface-500">(optional)</span>
-                </label>
-                <Input
+                  id="goldview-field-6"
                   type="text"
-                  value={dealer}
-                  onChange={(e) => setDealer(e.target.value)}
-                  list="dealer-suggestions"
-                  placeholder="e.g., APMEX"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Serial number, condition, etc."
                   className="h-9 rounded-lg text-sm"
                 />
-                <datalist id="dealer-suggestions">
-                  {KNOWN_DEALERS.map((d) => (
-                    <option key={d} value={d} />
-                  ))}
-                </datalist>
               </div>
-            </div>
 
-            {/* Notes */}
-            <div>
-              <label className="block text-xs font-medium text-surface-600 mb-1">
-                Notes <span className="text-surface-500">(optional)</span>
-              </label>
-              <Input
-                type="text"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Serial number, condition, etc."
-                className="h-9 rounded-lg text-sm"
-              />
-            </div>
-
-            {/* Purity info */}
-            <p className="text-xs text-surface-500">
-              Purity: {(selectedProduct.purity * 100).toFixed(2)}% · Size: {SIZE_LABELS[size]} pure{' '}
-              {selectedProduct.metal}
-              {quantity > 1 && (
-                <>
-                  {' '}
-                  · Total: <Money>{formatUsd(Number(purchasePrice || 0) * quantity)}</Money>
-                </>
-              )}
-            </p>
-
-            <div className="flex justify-end gap-2">
+              {/* Purity info */}
+              <p className="text-xs text-surface-500">
+                Purity: {(selectedProduct.purity * 100).toFixed(2)}% · Size: {SIZE_LABELS[size]}{' '}
+                pure {selectedProduct.metal}
+                {quantity > 1 && (
+                  <>
+                    {' '}
+                    · Total: <Money>{formatUsd(Number(purchasePrice || 0) * quantity)}</Money>
+                  </>
+                )}
+              </p>
+            </DialogBody>
+            <DialogFooter className="flex justify-end gap-2">
               <Button
                 type="button"
                 variant="ghost"
@@ -1035,7 +1066,7 @@ export function GoldView() {
               >
                 {submitting ? 'Saving...' : editingId ? 'Update Entry' : 'Add Entry'}
               </Button>
-            </div>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>

@@ -52,6 +52,15 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import { SafeMarkdown } from '../common/SafeMarkdown';
@@ -257,6 +266,7 @@ export function HealthNutritionView() {
         const msg = err instanceof Error ? err.message : String(err);
         setError(msg);
         addToast(`Save failed: ${msg}`, 'error');
+        throw err;
       }
     },
     [api, selectedHealthPersonId, load, addToast]
@@ -945,7 +955,7 @@ function DetailModal({
     dose?: NutritionDose | null;
     notes?: string | null;
     parsed?: ParsedNutritionLabel | null;
-  }) => void;
+  }) => Promise<void>;
 }) {
   // Editable title fields — productName is the headline, brandName the
   // subtitle on cards and in the snapshot table. We keep all other parsed
@@ -960,6 +970,8 @@ function DetailModal({
   const [timeOfDay, setTimeOfDay] = useState<NutritionDose['timeOfDay']>(entry.dose?.timeOfDay);
   const [notes, setNotes] = useState<string>(entry.notes ?? '');
   const [reparsing, setReparsing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Saves dose + notes + title in a single PATCH. The server replaces
   // entry.parsed wholesale (see server/routes/nutrition.ts handler), so
@@ -968,7 +980,8 @@ function DetailModal({
   // was never parsed (parseError) and the user added a title, we
   // synthesise a minimal stub so the card and snapshot stop showing
   // "(unparsed)".
-  const saveDose = useCallback(() => {
+  const saveDose = useCallback(async () => {
+    if (saving) return;
     const dose: NutritionDose = {};
     if (doseAmount.trim()) {
       const n = parseFloat(doseAmount);
@@ -1001,11 +1014,19 @@ function DetailModal({
       parsedUpdate = undefined;
     }
 
-    onSave({
-      dose: hasAnyDose ? dose : null,
-      notes: notes.trim() || null,
-      ...(parsedUpdate !== undefined && { parsed: parsedUpdate }),
-    });
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await onSave({
+        dose: hasAnyDose ? dose : null,
+        notes: notes.trim() || null,
+        ...(parsedUpdate !== undefined && { parsed: parsedUpdate }),
+      });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save this entry. Try again.');
+    } finally {
+      setSaving(false);
+    }
   }, [
     doseAmount,
     doseUnit,
@@ -1017,22 +1038,20 @@ function DetailModal({
     brandName,
     entry.parsed,
     onSave,
+    saving,
   ]);
 
   const p = entry.parsed;
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-surface-950/70 backdrop-blur-sm flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-surface-0 rounded-2xl max-w-5xl w-full max-h-[92vh] overflow-y-auto shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+    <Dialog open onOpenChange={(open) => !open && !saving && !reparsing && onClose()}>
+      <DialogContent
+        className="gap-0 p-0 sm:p-0 sm:max-w-5xl bg-surface-0"
+        closeDisabled={saving || reparsing}
       >
         {/* Passport header */}
-        <div className="relative px-8 pt-8 pb-6 border-b border-surface-200/50">
-          <div className="flex items-center gap-3 text-[10px] font-semibold text-surface-600 uppercase tracking-[0.22em] mb-3">
+        <DialogHeader className="px-4 sm:px-8 pt-4 pb-4 pr-14 sm:pr-16 border-b border-surface-200/50">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-semibold text-surface-600 uppercase tracking-[0.22em] mb-1">
             <span>Entry</span>
             <span className="font-mono text-surface-800">{entry.id.slice(0, 6)}</span>
             <span>·</span>
@@ -1048,324 +1067,337 @@ function DetailModal({
           </div>
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
-              <h2 className="font-display italic text-3xl md:text-4xl text-surface-950 leading-tight">
+              <DialogTitle className="font-display italic text-xl sm:text-3xl text-surface-950 leading-tight">
                 {p?.productName ?? '(unparsed label)'}
-              </h2>
-              <p className="mt-1 text-xs text-surface-700 uppercase tracking-[0.2em]">
+              </DialogTitle>
+              <DialogDescription className="mt-1 text-xs text-surface-700 uppercase tracking-[0.2em] break-words">
                 {p?.brandName ?? entry.filename ?? 'Unknown source'}
                 {p?.category && (
                   <span className="ml-2 text-surface-500 tracking-normal normal-case">
                     · {p.category}
                   </span>
                 )}
-              </p>
+              </DialogDescription>
               {entry.parseError && (
                 <p className="text-xs text-rose-400 mt-3 font-mono bg-rose-500/5 px-2 py-1 rounded border border-rose-500/20 w-fit">
                   Parse error: {entry.parseError}
                 </p>
               )}
             </div>
-            <button
-              onClick={onClose}
-              className="text-surface-600 hover:text-surface-950 p-1 rounded-lg hover:bg-surface-100/50"
-              aria-label="Close"
-            >
-              <X className="w-5 h-5" />
-            </button>
           </div>
-        </div>
+        </DialogHeader>
 
         {/* Body */}
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_1.2fr] gap-0">
-          {/* Left: image slots — front-of-bottle on top (the card thumbnail),
+        <DialogBody className="m-0 p-0">
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_1.2fr] gap-0">
+            {/* Left: image slots — front-of-bottle on top (the card thumbnail),
               Supplement Facts close-up below (what the re-parser feeds on).
               Each slot is independently attach/replaceable, and the absence
               of either renders as a dashed dropzone instead of a broken img.
               The sticky wrapper keeps both visible while the right column
               scrolls through the parsed-facts panels. */}
-          <div className="p-6 md:p-8 border-r-0 lg:border-r border-surface-200/40 bg-surface-100/30">
-            <div className="sticky top-8 space-y-5">
-              <ImageSlot
-                slot="primary"
-                url={imageUrl}
-                alt={p?.productName ?? 'front of bottle'}
-                emptyLabel="Front of bottle"
-                emptyHint="Used for the card thumbnail."
-                onReplace={(file) => onReplaceImage(file, 'primary')}
-              />
-              <ImageSlot
-                slot="facts"
-                url={factsImageUrl}
-                alt={`${p?.productName ?? 'label'} — Supplement Facts panel`}
-                emptyLabel="Supplement Facts panel"
-                emptyHint="Used by Re-parse when present (better OCR than the front shot)."
-                onReplace={(file) => onReplaceImage(file, 'facts')}
-              />
+            <div className="order-2 lg:order-1 p-4 sm:p-6 md:p-8 border-r-0 lg:border-r border-surface-200/40 bg-surface-100/30">
+              <div className="sticky top-8 space-y-5">
+                <ImageSlot
+                  slot="primary"
+                  url={imageUrl}
+                  alt={p?.productName ?? 'front of bottle'}
+                  emptyLabel="Front of bottle"
+                  emptyHint="Used for the card thumbnail."
+                  onReplace={(file) => onReplaceImage(file, 'primary')}
+                />
+                <ImageSlot
+                  slot="facts"
+                  url={factsImageUrl}
+                  alt={`${p?.productName ?? 'label'} — Supplement Facts panel`}
+                  emptyLabel="Supplement Facts panel"
+                  emptyHint="Used by Re-parse when present (better OCR than the front shot)."
+                  onReplace={(file) => onReplaceImage(file, 'facts')}
+                />
+              </div>
             </div>
-          </div>
 
-          {/* Right: editable + parsed */}
-          <div className="p-6 md:p-8 space-y-8">
-            {/* Identity — editable title (productName) + brand. Persists on
+            {/* Right: editable + parsed */}
+            <div className="order-1 lg:order-2 p-4 sm:p-6 md:p-8 space-y-6">
+              {/* Identity — editable title (productName) + brand. Persists on
                 "Save entry" along with dose/notes via a single PATCH. */}
-            <FieldGroup number="01" label="Identity">
-              <input
-                type="text"
-                placeholder="Product name"
-                value={productName}
-                onChange={(e) => setProductName(e.target.value)}
-                className="w-full mb-2 px-3 py-1.5 text-sm bg-surface-100/50 border border-surface-200/50 rounded-lg focus:outline-none focus:border-accent-400/50"
-              />
-              <input
-                type="text"
-                placeholder="Brand"
-                value={brandName}
-                onChange={(e) => setBrandName(e.target.value)}
-                className="w-full px-3 py-1.5 text-sm bg-surface-100/50 border border-surface-200/50 rounded-lg focus:outline-none focus:border-accent-400/50"
-              />
-              <p className="text-[11px] text-surface-600 mt-2 italic">
-                Edits the title shown on the card, in the snapshot table, and across the regimen.
-                Re-parsing the label will overwrite these.
-              </p>
-            </FieldGroup>
-
-            {/* Status */}
-            <FieldGroup number="02" label="Standing">
-              <div className="flex gap-1.5 flex-wrap">
-                {STATUS_ORDER.map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => onStatusChange(s)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-all ${
-                      entry.status === s
-                        ? STATUS_ACCENT[s]
-                        : 'border-surface-200/50 text-surface-700 hover:bg-surface-100/50'
-                    }`}
-                  >
-                    {STATUS_COPY[s].label}
-                  </button>
-                ))}
-              </div>
-              <p className="text-[11px] text-surface-600 mt-2 italic">
-                {STATUS_COPY[entry.status].hint}
-              </p>
-            </FieldGroup>
-
-            {/* Dose */}
-            <FieldGroup number="03" label="Dose">
-              <div className="flex gap-2 mb-2">
+              <FieldGroup number="01" label="Identity">
                 <input
-                  type="number"
-                  placeholder="Amount"
-                  value={doseAmount}
-                  onChange={(e) => setDoseAmount(e.target.value)}
-                  className="w-28 px-3 py-1.5 text-sm bg-surface-100/50 border border-surface-200/50 rounded-lg focus:outline-none focus:border-accent-400/50"
+                  type="text"
+                  aria-label="Product name"
+                  placeholder="Product name"
+                  value={productName}
+                  onChange={(e) => setProductName(e.target.value)}
+                  className="w-full mb-2 px-3 py-1.5 text-base sm:text-sm bg-surface-100/50 border border-surface-200/50 rounded-lg focus:outline-none focus:border-accent-400/50"
                 />
                 <input
                   type="text"
-                  placeholder="Unit (caps, tbsp…)"
-                  value={doseUnit}
-                  onChange={(e) => setDoseUnit(e.target.value)}
-                  className="flex-1 px-3 py-1.5 text-sm bg-surface-100/50 border border-surface-200/50 rounded-lg focus:outline-none focus:border-accent-400/50"
+                  aria-label="Brand"
+                  placeholder="Brand"
+                  value={brandName}
+                  onChange={(e) => setBrandName(e.target.value)}
+                  className="w-full px-3 py-1.5 text-base sm:text-sm bg-surface-100/50 border border-surface-200/50 rounded-lg focus:outline-none focus:border-accent-400/50"
                 />
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                <select
-                  value={frequency ?? ''}
-                  onChange={(e) =>
-                    setFrequency((e.target.value || undefined) as NutritionDose['frequency'])
-                  }
-                  className="px-3 py-1.5 text-sm bg-surface-100/50 border border-surface-200/50 rounded-lg focus:outline-none focus:border-accent-400/50"
-                >
-                  <option value="">— Frequency —</option>
-                  <option value="daily">Daily</option>
-                  <option value="twice-daily">Twice daily</option>
-                  <option value="as-needed">As needed</option>
-                  <option value="weekly">Weekly</option>
-                  <option value="custom">Custom</option>
-                </select>
-                <select
-                  value={timeOfDay ?? ''}
-                  onChange={(e) =>
-                    setTimeOfDay((e.target.value || undefined) as NutritionDose['timeOfDay'])
-                  }
-                  className="px-3 py-1.5 text-sm bg-surface-100/50 border border-surface-200/50 rounded-lg focus:outline-none focus:border-accent-400/50"
-                >
-                  <option value="">— Time of day —</option>
-                  <option value="morning">Morning</option>
-                  <option value="midday">Midday</option>
-                  <option value="evening">Evening</option>
-                  <option value="bedtime">Bedtime</option>
-                  <option value="pre-workout">Pre-workout</option>
-                  <option value="post-workout">Post-workout</option>
-                </select>
-              </div>
-              {frequency === 'custom' && (
-                <input
-                  type="text"
-                  placeholder="e.g. 3× per week post-ruck"
-                  value={frequencyCustom}
-                  onChange={(e) => setFrequencyCustom(e.target.value)}
-                  className="w-full mt-2 px-3 py-1.5 text-sm bg-surface-100/50 border border-surface-200/50 rounded-lg focus:outline-none focus:border-accent-400/50"
-                />
-              )}
-            </FieldGroup>
+                <p className="text-[11px] text-surface-600 mt-2 italic">
+                  Edits the title shown on the card, in the snapshot table, and across the regimen.
+                  Re-parsing the label will overwrite these.
+                </p>
+              </FieldGroup>
 
-            {/* Notes */}
-            <FieldGroup number="04" label="Personal notes">
-              <textarea
-                rows={3}
-                placeholder="Why you're taking this, interactions to watch, a hunch to track later…"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-surface-100/50 border border-surface-200/50 rounded-lg resize-y focus:outline-none focus:border-accent-400/50"
-              />
-            </FieldGroup>
+              {/* Status */}
+              <FieldGroup number="02" label="Standing">
+                <div className="flex gap-1.5 flex-wrap">
+                  {STATUS_ORDER.map((s) => (
+                    <button
+                      key={s}
+                      aria-pressed={entry.status === s}
+                      disabled={saving || reparsing}
+                      onClick={() => onStatusChange(s)}
+                      className={`min-h-11 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all ${
+                        entry.status === s
+                          ? STATUS_ACCENT[s]
+                          : 'border-surface-200/50 text-surface-700 hover:bg-surface-100/50'
+                      }`}
+                    >
+                      {STATUS_COPY[s].label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-surface-600 mt-2 italic">
+                  {STATUS_COPY[entry.status].hint}
+                </p>
+              </FieldGroup>
 
-            {/* Save + actions */}
-            <div className="flex items-center justify-between gap-2 pt-2 border-t border-surface-200/40">
-              <Button onClick={saveDose} size="sm">
-                Save entry
-              </Button>
-              <div className="flex gap-2">
-                <button
-                  onClick={async () => {
-                    setReparsing(true);
-                    try {
-                      await onReparse();
-                    } finally {
-                      setReparsing(false);
+              {/* Dose */}
+              <FieldGroup number="03" label="Dose">
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="number"
+                    aria-label="Dose amount"
+                    placeholder="Amount"
+                    value={doseAmount}
+                    onChange={(e) => setDoseAmount(e.target.value)}
+                    className="w-24 min-w-0 px-3 py-1.5 text-base sm:text-sm bg-surface-100/50 border border-surface-200/50 rounded-lg focus:outline-none focus:border-accent-400/50"
+                  />
+                  <input
+                    type="text"
+                    aria-label="Dose unit"
+                    placeholder="Unit (caps, tbsp…)"
+                    value={doseUnit}
+                    onChange={(e) => setDoseUnit(e.target.value)}
+                    className="min-w-0 flex-1 px-3 py-1.5 text-base sm:text-sm bg-surface-100/50 border border-surface-200/50 rounded-lg focus:outline-none focus:border-accent-400/50"
+                  />
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <select
+                    aria-label="Dose frequency"
+                    value={frequency ?? ''}
+                    onChange={(e) =>
+                      setFrequency((e.target.value || undefined) as NutritionDose['frequency'])
                     }
-                  }}
-                  disabled={reparsing}
-                  className="px-3 py-1.5 text-xs text-surface-700 hover:text-surface-950 border border-surface-200/50 rounded-lg flex items-center gap-1.5 disabled:opacity-50 transition-colors"
-                >
-                  {reparsing ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-3 h-3" />
-                  )}
-                  Re-parse
-                </button>
-                <button
-                  onClick={onDelete}
-                  className="px-3 py-1.5 text-xs text-rose-400 hover:bg-rose-500/10 border border-rose-500/30 rounded-lg flex items-center gap-1.5 transition-colors"
-                >
-                  <Trash2 className="w-3 h-3" />
-                  Tear out
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Research panel — evidence + structured citations (populated via PATCH) */}
-        <div className="px-6 md:px-8 pb-2">
-          <ResearchPanel entry={entry} />
-        </div>
-
-        {/* Parsed facts panel */}
-        {p && (
-          <div className="px-6 md:px-8 pb-8 space-y-6">
-            <PassportDivider label="Parsed facts" />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <FactsBlock title="Serving">
-                {p.servingSize && (
-                  <FactsRow
-                    label="Serving size"
-                    value={`${p.servingSize.amount} ${p.servingSize.unit}${p.servingSize.description ? ` (${p.servingSize.description})` : ''}`}
+                    className="px-3 py-1.5 text-base sm:text-sm bg-surface-100/50 border border-surface-200/50 rounded-lg focus:outline-none focus:border-accent-400/50"
+                  >
+                    <option value="">— Frequency —</option>
+                    <option value="daily">Daily</option>
+                    <option value="twice-daily">Twice daily</option>
+                    <option value="as-needed">As needed</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                  <select
+                    aria-label="Time of day"
+                    value={timeOfDay ?? ''}
+                    onChange={(e) =>
+                      setTimeOfDay((e.target.value || undefined) as NutritionDose['timeOfDay'])
+                    }
+                    className="px-3 py-1.5 text-base sm:text-sm bg-surface-100/50 border border-surface-200/50 rounded-lg focus:outline-none focus:border-accent-400/50"
+                  >
+                    <option value="">— Time of day —</option>
+                    <option value="morning">Morning</option>
+                    <option value="midday">Midday</option>
+                    <option value="evening">Evening</option>
+                    <option value="bedtime">Bedtime</option>
+                    <option value="pre-workout">Pre-workout</option>
+                    <option value="post-workout">Post-workout</option>
+                  </select>
+                </div>
+                {frequency === 'custom' && (
+                  <input
+                    type="text"
+                    placeholder="e.g. 3× per week post-ruck"
+                    value={frequencyCustom}
+                    onChange={(e) => setFrequencyCustom(e.target.value)}
+                    className="w-full mt-2 px-3 py-1.5 text-base sm:text-sm bg-surface-100/50 border border-surface-200/50 rounded-lg focus:outline-none focus:border-accent-400/50"
                   />
                 )}
-                {p.servingsPerContainer != null && (
-                  <FactsRow label="Servings / container" value={String(p.servingsPerContainer)} />
+              </FieldGroup>
+
+              {/* Notes */}
+              <FieldGroup number="04" label="Personal notes">
+                <textarea
+                  aria-label="Personal notes"
+                  rows={3}
+                  placeholder="Why you're taking this, interactions to watch, a hunch to track later…"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full px-3 py-2 text-base sm:text-sm bg-surface-100/50 border border-surface-200/50 rounded-lg resize-y focus:outline-none focus:border-accent-400/50"
+                />
+              </FieldGroup>
+            </div>
+          </div>
+
+          {/* Research panel — evidence + structured citations (populated via PATCH) */}
+          <div className="px-4 sm:px-6 md:px-8 pb-2">
+            <ResearchPanel entry={entry} />
+          </div>
+
+          {/* Parsed facts panel */}
+          {p && (
+            <div className="px-4 sm:px-6 md:px-8 pb-8 space-y-6">
+              <PassportDivider label="Parsed facts" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <FactsBlock title="Serving">
+                  {p.servingSize && (
+                    <FactsRow
+                      label="Serving size"
+                      value={`${p.servingSize.amount} ${p.servingSize.unit}${p.servingSize.description ? ` (${p.servingSize.description})` : ''}`}
+                    />
+                  )}
+                  {p.servingsPerContainer != null && (
+                    <FactsRow label="Servings / container" value={String(p.servingsPerContainer)} />
+                  )}
+                  {p.macros?.calories != null && (
+                    <FactsRow label="Calories" value={String(p.macros.calories)} />
+                  )}
+                  {p.directions && <FactsRow label="Directions" value={p.directions} />}
+                </FactsBlock>
+
+                {p.vitamins && p.vitamins.length > 0 && (
+                  <FactsBlock title={`Vitamins (${p.vitamins.length})`}>
+                    {p.vitamins.map((v) => (
+                      <NutrientRow key={v.name} entry={v} />
+                    ))}
+                  </FactsBlock>
                 )}
-                {p.macros?.calories != null && (
-                  <FactsRow label="Calories" value={String(p.macros.calories)} />
+
+                {p.minerals && p.minerals.length > 0 && (
+                  <FactsBlock title={`Minerals (${p.minerals.length})`}>
+                    {p.minerals.map((m) => (
+                      <NutrientRow key={m.name} entry={m} />
+                    ))}
+                  </FactsBlock>
                 )}
-                {p.directions && <FactsRow label="Directions" value={p.directions} />}
-              </FactsBlock>
 
-              {p.vitamins && p.vitamins.length > 0 && (
-                <FactsBlock title={`Vitamins (${p.vitamins.length})`}>
-                  {p.vitamins.map((v) => (
-                    <NutrientRow key={v.name} entry={v} />
-                  ))}
-                </FactsBlock>
-              )}
+                {p.otherActive && p.otherActive.length > 0 && (
+                  <FactsBlock title={`Other actives (${p.otherActive.length})`}>
+                    {p.otherActive.map((a) => (
+                      <NutrientRow key={a.name} entry={a} />
+                    ))}
+                  </FactsBlock>
+                )}
 
-              {p.minerals && p.minerals.length > 0 && (
-                <FactsBlock title={`Minerals (${p.minerals.length})`}>
-                  {p.minerals.map((m) => (
-                    <NutrientRow key={m.name} entry={m} />
-                  ))}
-                </FactsBlock>
-              )}
-
-              {p.otherActive && p.otherActive.length > 0 && (
-                <FactsBlock title={`Other actives (${p.otherActive.length})`}>
-                  {p.otherActive.map((a) => (
-                    <NutrientRow key={a.name} entry={a} />
-                  ))}
-                </FactsBlock>
-              )}
-
-              {p.proprietaryBlends && p.proprietaryBlends.length > 0 && (
-                <FactsBlock title="Proprietary blends" className="md:col-span-2">
-                  {p.proprietaryBlends.map((b) => (
-                    <div key={b.name} className="text-xs text-surface-700">
-                      <div className="font-medium text-surface-950 flex items-baseline gap-2">
-                        <span>{b.name}</span>
-                        {b.totalAmount && (
-                          <span className="text-surface-600 font-normal">
-                            {b.totalAmount.amount} {b.totalAmount.unit}
-                          </span>
+                {p.proprietaryBlends && p.proprietaryBlends.length > 0 && (
+                  <FactsBlock title="Proprietary blends" className="md:col-span-2">
+                    {p.proprietaryBlends.map((b) => (
+                      <div key={b.name} className="text-xs text-surface-700">
+                        <div className="font-medium text-surface-950 flex items-baseline gap-2">
+                          <span>{b.name}</span>
+                          {b.totalAmount && (
+                            <span className="text-surface-600 font-normal">
+                              {b.totalAmount.amount} {b.totalAmount.unit}
+                            </span>
+                          )}
+                        </div>
+                        {b.ingredients && b.ingredients.length > 0 && (
+                          <div className="text-surface-600 mt-1 italic">
+                            {b.ingredients.join(', ')}
+                          </div>
                         )}
                       </div>
-                      {b.ingredients && b.ingredients.length > 0 && (
-                        <div className="text-surface-600 mt-1 italic">
-                          {b.ingredients.join(', ')}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </FactsBlock>
-              )}
-
-              {p.ingredients && p.ingredients.length > 0 && (
-                <FactsBlock title="Other ingredients" className="md:col-span-2">
-                  <p className="text-xs text-surface-700">{p.ingredients.join(', ')}</p>
-                </FactsBlock>
-              )}
-
-              {p.allergenInfo && p.allergenInfo.length > 0 && (
-                <FactsBlock title="Allergen info" className="md:col-span-2">
-                  <ul className="text-xs text-surface-700 space-y-1">
-                    {p.allergenInfo.map((a, i) => (
-                      <li key={i}>· {a}</li>
                     ))}
-                  </ul>
-                </FactsBlock>
-              )}
+                  </FactsBlock>
+                )}
 
-              {p.warnings && p.warnings.length > 0 && (
-                <FactsBlock title="Warnings" className="md:col-span-2">
-                  <ul className="text-xs text-surface-700 space-y-1">
-                    {p.warnings.map((w, i) => (
-                      <li key={i}>· {w}</li>
-                    ))}
-                  </ul>
-                </FactsBlock>
+                {p.ingredients && p.ingredients.length > 0 && (
+                  <FactsBlock title="Other ingredients" className="md:col-span-2">
+                    <p className="text-xs text-surface-700">{p.ingredients.join(', ')}</p>
+                  </FactsBlock>
+                )}
+
+                {p.allergenInfo && p.allergenInfo.length > 0 && (
+                  <FactsBlock title="Allergen info" className="md:col-span-2">
+                    <ul className="text-xs text-surface-700 space-y-1">
+                      {p.allergenInfo.map((a, i) => (
+                        <li key={i}>· {a}</li>
+                      ))}
+                    </ul>
+                  </FactsBlock>
+                )}
+
+                {p.warnings && p.warnings.length > 0 && (
+                  <FactsBlock title="Warnings" className="md:col-span-2">
+                    <ul className="text-xs text-surface-700 space-y-1">
+                      {p.warnings.map((w, i) => (
+                        <li key={i}>· {w}</li>
+                      ))}
+                    </ul>
+                  </FactsBlock>
+                )}
+              </div>
+              {p.parserNotes && (
+                <p className="text-xs text-surface-600 italic text-center pt-4 border-t border-surface-200/40">
+                  Parser note: {p.parserNotes}
+                </p>
               )}
             </div>
-            {p.parserNotes && (
-              <p className="text-xs text-surface-600 italic text-center pt-4 border-t border-surface-200/40">
-                Parser note: {p.parserNotes}
-              </p>
+          )}
+        </DialogBody>
+        <DialogFooter className="grid grid-cols-2 gap-2 px-4 sm:px-8 pb-[max(1rem,env(safe-area-inset-bottom))] sm:flex sm:items-center">
+          {saveError && (
+            <p role="alert" className="col-span-2 text-sm text-rose-400 sm:mr-auto">
+              {saveError}
+            </p>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={saving || reparsing}
+            onClick={async () => {
+              setReparsing(true);
+              try {
+                await onReparse();
+              } finally {
+                setReparsing(false);
+              }
+            }}
+          >
+            {reparsing ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4" />
             )}
-          </div>
-        )}
-      </div>
-    </div>
+            Re-parse
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={saving || reparsing}
+            onClick={onDelete}
+            className="text-rose-400"
+          >
+            <Trash2 className="w-4 h-4" /> Tear out
+          </Button>
+          <Button
+            onClick={() => void saveDose()}
+            disabled={saving || reparsing}
+            className="col-span-2 sm:ml-auto"
+          >
+            {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+            {saving ? 'Saving…' : 'Save entry'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1576,30 +1608,10 @@ function ResearchPanel({ entry }: { entry: NutritionEntry }) {
               )}
             </>
           ) : (
-            <div className="text-xs text-surface-700 space-y-2 italic">
-              <p>
-                No research attached yet. Ask an AI assistant with web-search tools (e.g. Claude
-                Code or another chat assistant) to research this product — have it cite real PubMed
-                IDs and write up the evidence, then PATCH the entry with a{' '}
-                <code className="not-italic">research</code> markdown string plus a{' '}
-                <code className="not-italic">citations</code> array.
-              </p>
-              <pre className="not-italic bg-surface-950/5 border border-surface-200/40 rounded-md px-2 py-1.5 text-[11px] font-mono text-surface-700 overflow-x-auto">
-                {`PATCH /api/health/${entry.personId}/nutrition/${entry.id}
-{
-  "research": "**Why:** ...\\n**Evidence:** ...",
-  "citations": [
-    { "id": "author-year", "pmid": "...", "authors": "...",
-      "year": 2024, "title": "...", "journal": "...",
-      "findings": "..." }
-  ]
-}`}
-              </pre>
-              <p className="not-italic text-[11px] text-surface-600">
-                Research persists on the entry and surfaces in the health-snapshot markdown with{' '}
-                <code>?includeResearch=true</code>.
-              </p>
-            </div>
+            <p className="text-sm text-surface-700">
+              No research attached yet. Evidence notes and references will appear here when added to
+              this entry.
+            </p>
           )}
         </div>
       )}

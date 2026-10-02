@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
+  DialogBody,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -188,7 +189,7 @@ export function EventModal({ state, entities, onClose, onSave, onDelete }: Event
   return (
     <>
       <Dialog open={isOpen} onOpenChange={(open) => !open && !submitting && onClose()}>
-        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md">
+        <DialogContent closeDisabled={submitting} className="max-w-[calc(100%-2rem)] sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit Event' : 'New Event'}</DialogTitle>
             <DialogDescription>
@@ -196,236 +197,238 @@ export function EventModal({ state, entities, onClose, onSave, onDelete }: Event
               each completion. Trips and anything else lasting several days get an end date.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            {!editing && (
+          <DialogBody>
+            <div className="space-y-4 py-2">
+              {!editing && (
+                <div>
+                  <div className={`${FIELD_LABEL} mb-1.5`}>Type</div>
+                  <Select value={kind} onValueChange={(v) => setKind(v as CalendarEventKind)}>
+                    <SelectTrigger aria-label="Event type" className="text-[13px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="task">Task — completable, can recur</SelectItem>
+                      <SelectItem value="birthday">Birthday — yearly, shows age</SelectItem>
+                      <SelectItem value="event">Event — a date to remember</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
               <div>
-                <div className={`${FIELD_LABEL} mb-1.5`}>Type</div>
-                <Select value={kind} onValueChange={(v) => setKind(v as CalendarEventKind)}>
-                  <SelectTrigger className="text-[13px]">
+                <label htmlFor="calendar-event-title" className={FIELD_LABEL}>
+                  Title
+                </label>
+                <Input
+                  id="calendar-event-title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder={kind === 'birthday' ? 'e.g. Alex' : 'e.g. Replace HVAC filter'}
+                  autoFocus
+                  className="mt-1.5"
+                  disabled={submitting}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void handleSave();
+                  }}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="calendar-event-date" className={FIELD_LABEL}>
+                    {kind === 'birthday'
+                      ? 'Birth date'
+                      : spanning
+                        ? 'Starts'
+                        : kind === 'task'
+                          ? 'First due'
+                          : 'Date'}
+                  </label>
+                  <Input
+                    id="calendar-event-date"
+                    type="date"
+                    value={date}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      // Moving the start of a span drags the end along, keeping
+                      // the trip the same length instead of inverting it.
+                      if (multiDay && date && endDate && /^\d{4}-\d{2}-\d{2}$/.test(next)) {
+                        setEndDate(addDays(endDate, daysBetween(date, next)));
+                      }
+                      setDate(next);
+                    }}
+                    className="mt-1.5"
+                    disabled={submitting}
+                  />
+                </div>
+                {spanning && (
+                  <div>
+                    <label htmlFor="calendar-event-end-date" className={FIELD_LABEL}>
+                      Ends
+                    </label>
+                    <Input
+                      id="calendar-event-end-date"
+                      type="date"
+                      value={endDate}
+                      min={date || undefined}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="mt-1.5"
+                      disabled={submitting}
+                    />
+                  </div>
+                )}
+                {kind === 'birthday' && (
+                  <div>
+                    <label htmlFor="calendar-event-birthyear" className={FIELD_LABEL}>
+                      Birth year
+                    </label>
+                    <Input
+                      id="calendar-event-birthyear"
+                      type="number"
+                      value={birthYearInput}
+                      onChange={(e) => setBirthYearInput(e.target.value)}
+                      placeholder="for “turns N”"
+                      className="mt-1.5"
+                      disabled={submitting}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {kind !== 'birthday' && (
+                <div className="space-y-1">
+                  <label className="flex items-center gap-2 text-[13px] text-surface-900">
+                    <input
+                      type="checkbox"
+                      checked={multiDay}
+                      onChange={(e) => {
+                        setMultiDay(e.target.checked);
+                        // Seed the end a day out so the field opens on a valid
+                        // two-day span instead of an empty, unsaveable one.
+                        if (e.target.checked && !endDate && date) setEndDate(addDays(date, 1));
+                      }}
+                      disabled={submitting}
+                      className="accent-emerald-500"
+                    />
+                    Spans multiple days
+                  </label>
+                  {spanning && (
+                    <p className="text-[11px] text-surface-600 pl-6">
+                      {spanDays > 1
+                        ? `${spanDays} days, end included. Shows as one band across the calendar.`
+                        : 'Pick an end date after the start date.'}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {kind !== 'birthday' && (
+                <div className="rounded-lg border border-border-subtle p-3 space-y-3">
+                  <label className="flex items-center gap-2 text-[13px] text-surface-900">
+                    <input
+                      type="checkbox"
+                      checked={repeats}
+                      onChange={(e) => setRepeats(e.target.checked)}
+                      disabled={submitting}
+                      className="accent-emerald-500"
+                    />
+                    Repeats
+                  </label>
+                  {repeats && (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[12px] text-surface-600">every</span>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={interval}
+                          onChange={(e) => setInterval(e.target.value)}
+                          className="w-16 text-center"
+                          disabled={submitting}
+                          aria-label="Repeat interval"
+                        />
+                        <Select value={unit} onValueChange={(v) => setUnit(v as RecurrenceUnit)}>
+                          <SelectTrigger aria-label="Repeat unit" className="text-[13px] flex-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="day">day(s)</SelectItem>
+                            <SelectItem value="week">week(s)</SelectItem>
+                            <SelectItem value="month">month(s)</SelectItem>
+                            <SelectItem value="year">year(s)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {kind === 'task' && (
+                        <div>
+                          <Select
+                            value={anchor}
+                            onValueChange={(v) => setAnchor(v as RecurrenceAnchor)}
+                          >
+                            <SelectTrigger aria-label="Recurrence schedule" className="text-[13px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="fixed">On a fixed schedule</SelectItem>
+                              <SelectItem value="afterCompletion">After each completion</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-[11px] text-surface-600 mt-1.5 leading-relaxed">
+                            {anchor === 'afterCompletion'
+                              ? 'The next due date counts from the day you check it off — right for maintenance chores.'
+                              : 'Occurrences stay on schedule no matter when you complete them — right for deadlines.'}
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              <div>
+                <div className={`${FIELD_LABEL} mb-1.5`}>Entity tag (optional)</div>
+                <Select
+                  value={entityId || 'none'}
+                  onValueChange={(v) => setEntityId(v === 'none' ? '' : v)}
+                >
+                  <SelectTrigger aria-label="Entity tag" className="text-[13px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="task">Task — completable, can recur</SelectItem>
-                    <SelectItem value="birthday">Birthday — yearly, shows age</SelectItem>
-                    <SelectItem value="event">Event — a date to remember</SelectItem>
+                    <SelectItem value="none">None</SelectItem>
+                    {entities.map((entity) => (
+                      <SelectItem key={entity.id} value={entity.id}>
+                        <span className="flex items-center gap-2">
+                          <span
+                            className={`w-2 h-2 rounded-full ${
+                              SETTINGS_COLOR_MAP[entity.color]?.bg ?? 'bg-surface-500/40'
+                            } ${SETTINGS_COLOR_MAP[entity.color]?.border ?? ''} border`}
+                          />
+                          {entity.name}
+                        </span>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
-            )}
 
-            <div>
-              <label htmlFor="calendar-event-title" className={FIELD_LABEL}>
-                Title
-              </label>
-              <Input
-                id="calendar-event-title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder={kind === 'birthday' ? 'e.g. Alex' : 'e.g. Replace HVAC filter'}
-                autoFocus
-                className="mt-1.5"
-                disabled={submitting}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void handleSave();
-                }}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label htmlFor="calendar-event-date" className={FIELD_LABEL}>
-                  {kind === 'birthday'
-                    ? 'Birth date'
-                    : spanning
-                      ? 'Starts'
-                      : kind === 'task'
-                        ? 'First due'
-                        : 'Date'}
+                <label htmlFor="calendar-event-notes" className={FIELD_LABEL}>
+                  Notes (optional)
                 </label>
-                <Input
-                  id="calendar-event-date"
-                  type="date"
-                  value={date}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    // Moving the start of a span drags the end along, keeping
-                    // the trip the same length instead of inverting it.
-                    if (multiDay && date && endDate && /^\d{4}-\d{2}-\d{2}$/.test(next)) {
-                      setEndDate(addDays(endDate, daysBetween(date, next)));
-                    }
-                    setDate(next);
-                  }}
+                <Textarea
+                  id="calendar-event-notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
                   className="mt-1.5"
                   disabled={submitting}
                 />
               </div>
-              {spanning && (
-                <div>
-                  <label htmlFor="calendar-event-end-date" className={FIELD_LABEL}>
-                    Ends
-                  </label>
-                  <Input
-                    id="calendar-event-end-date"
-                    type="date"
-                    value={endDate}
-                    min={date || undefined}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="mt-1.5"
-                    disabled={submitting}
-                  />
-                </div>
-              )}
-              {kind === 'birthday' && (
-                <div>
-                  <label htmlFor="calendar-event-birthyear" className={FIELD_LABEL}>
-                    Birth year
-                  </label>
-                  <Input
-                    id="calendar-event-birthyear"
-                    type="number"
-                    value={birthYearInput}
-                    onChange={(e) => setBirthYearInput(e.target.value)}
-                    placeholder="for “turns N”"
-                    className="mt-1.5"
-                    disabled={submitting}
-                  />
-                </div>
-              )}
+
+              {error && <p className="text-[12px] text-red-400">{error}</p>}
             </div>
-
-            {kind !== 'birthday' && (
-              <div className="space-y-1">
-                <label className="flex items-center gap-2 text-[13px] text-surface-900">
-                  <input
-                    type="checkbox"
-                    checked={multiDay}
-                    onChange={(e) => {
-                      setMultiDay(e.target.checked);
-                      // Seed the end a day out so the field opens on a valid
-                      // two-day span instead of an empty, unsaveable one.
-                      if (e.target.checked && !endDate && date) setEndDate(addDays(date, 1));
-                    }}
-                    disabled={submitting}
-                    className="accent-emerald-500"
-                  />
-                  Spans multiple days
-                </label>
-                {spanning && (
-                  <p className="text-[11px] text-surface-600 pl-6">
-                    {spanDays > 1
-                      ? `${spanDays} days, end included. Shows as one band across the calendar.`
-                      : 'Pick an end date after the start date.'}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {kind !== 'birthday' && (
-              <div className="rounded-lg border border-border-subtle p-3 space-y-3">
-                <label className="flex items-center gap-2 text-[13px] text-surface-900">
-                  <input
-                    type="checkbox"
-                    checked={repeats}
-                    onChange={(e) => setRepeats(e.target.checked)}
-                    disabled={submitting}
-                    className="accent-emerald-500"
-                  />
-                  Repeats
-                </label>
-                {repeats && (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[12px] text-surface-600">every</span>
-                      <Input
-                        type="number"
-                        min={1}
-                        value={interval}
-                        onChange={(e) => setInterval(e.target.value)}
-                        className="w-16 text-center"
-                        disabled={submitting}
-                        aria-label="Repeat interval"
-                      />
-                      <Select value={unit} onValueChange={(v) => setUnit(v as RecurrenceUnit)}>
-                        <SelectTrigger className="text-[13px] flex-1">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="day">day(s)</SelectItem>
-                          <SelectItem value="week">week(s)</SelectItem>
-                          <SelectItem value="month">month(s)</SelectItem>
-                          <SelectItem value="year">year(s)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {kind === 'task' && (
-                      <div>
-                        <Select
-                          value={anchor}
-                          onValueChange={(v) => setAnchor(v as RecurrenceAnchor)}
-                        >
-                          <SelectTrigger className="text-[13px]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="fixed">On a fixed schedule</SelectItem>
-                            <SelectItem value="afterCompletion">After each completion</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <p className="text-[11px] text-surface-600 mt-1.5 leading-relaxed">
-                          {anchor === 'afterCompletion'
-                            ? 'The next due date counts from the day you check it off — right for maintenance chores.'
-                            : 'Occurrences stay on schedule no matter when you complete them — right for deadlines.'}
-                        </p>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-
-            <div>
-              <div className={`${FIELD_LABEL} mb-1.5`}>Entity tag (optional)</div>
-              <Select
-                value={entityId || 'none'}
-                onValueChange={(v) => setEntityId(v === 'none' ? '' : v)}
-              >
-                <SelectTrigger className="text-[13px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {entities.map((entity) => (
-                    <SelectItem key={entity.id} value={entity.id}>
-                      <span className="flex items-center gap-2">
-                        <span
-                          className={`w-2 h-2 rounded-full ${
-                            SETTINGS_COLOR_MAP[entity.color]?.bg ?? 'bg-surface-500/40'
-                          } ${SETTINGS_COLOR_MAP[entity.color]?.border ?? ''} border`}
-                        />
-                        {entity.name}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <label htmlFor="calendar-event-notes" className={FIELD_LABEL}>
-                Notes (optional)
-              </label>
-              <Textarea
-                id="calendar-event-notes"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={2}
-                className="mt-1.5"
-                disabled={submitting}
-              />
-            </div>
-
-            {error && <p className="text-[12px] text-red-400">{error}</p>}
-          </div>
+          </DialogBody>
           <DialogFooter className="gap-2 sm:gap-2">
             {editing && (
               <Button

@@ -132,6 +132,10 @@ scripts/*
 !server/email-log.test.ts
 # Exception: blur-coverage test scans component source for unblurred money renders, no personal data
 !src/components/blur-coverage.test.ts
+# Exception: search controls tests use fabricated document metadata only, no personal data
+!src/components/Search/searchResults.test.ts
+# Exception: document destination tests use fabricated paths and years only, no personal data
+!src/utils/documentDestination.test.ts
 # Exception: calendar recurrence tests are pure date math with fabricated event fixtures, no personal data
 !server/calendar-recurrence.test.ts
 # Exception: calendar store tests use fabricated reminder/event fixtures in a tmpdir, no personal data
@@ -214,3 +218,16 @@ demo-data/.docvault-estimated-taxes.json
 
 # OCR debugging scratch (PDF renders, PGM crops) — never committed
 .ocr-scratch/
+
+# Exception: source-browser navigation and Markdown link tests use fabricated paths and text only
+!src/components/ExternalSources/fileBrowser.test.ts
+!src/components/common/SafeMarkdown.test.tsx
+# Exception: Brain concurrency tests use isolated temporary files and fabricated notes
+!server/brain.test.ts
+# Exception: document metadata patch tests use generic flags and empty values only
+!src/utils/documentMetadataPatch.test.ts
+# Exception: research and crypto-yield route tests use fabricated records in isolated temp directories
+!server/routes/research-concurrency.test.ts
+!server/routes/crypto-yields.test.ts
+# Exception: rebuilt media-detection coverage uses fabricated headers and filenames only
+!server/routes/research.test.ts

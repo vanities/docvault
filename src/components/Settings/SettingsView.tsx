@@ -21,7 +21,6 @@ import {
   Check,
   MapPin,
 } from 'lucide-react';
-import { Tabs } from '@/components/ui/tabs';
 import type { SyncStatus, CryptoExchangeId, CryptoChain } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
@@ -36,7 +35,9 @@ import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { ChatSettingsSection } from './ChatSettingsSection';
 import { ModelsSettingsSection } from './ModelsSettingsSection';
 import { DropboxConnectionSection } from './DropboxConnectionSection';
-import { SettingsTabsList } from './SettingsTabsList';
+import { SettingsLayout } from './SettingsNavigation';
+import { useNavigationGuard } from '../../contexts/NavigationGuardContext';
+import { validSettingsSection } from './settingsSections';
 import { FredApiKeySection } from './FredApiKeySection';
 import { PoliticsDataSection } from './PoliticsDataSection';
 import { AiLabsKeysSection } from './AiLabsKeysSection';
@@ -111,18 +112,23 @@ export function SettingsView() {
     blurNumbers,
     setBlurNumbers,
   } = useAppContext();
-  const { confirm, ConfirmDialog } = useConfirmDialog();
+  const { confirm, confirmDialog } = useConfirmDialog();
   const { addToast } = useToast();
 
   // Active settings tab (persisted in localStorage)
   const [activeTab, setActiveTab] = useState<string>(() => {
-    if (typeof window === 'undefined') return 'all';
-    return localStorage.getItem('docvault.settings.activeTab') || 'all';
+    if (typeof window === 'undefined') return 'general';
+    return validSettingsSection(localStorage.getItem('docvault.settings.activeTab'));
   });
   useEffect(() => {
     if (typeof window === 'undefined') return;
     localStorage.setItem('docvault.settings.activeTab', activeTab);
   }, [activeTab]);
+
+  const { requestNavigation } = useNavigationGuard();
+  async function changeSection(tab: string) {
+    if (tab !== activeTab && (await requestNavigation())) setActiveTab(tab);
+  }
 
   // Returns true when the current tab should show content tagged with one of `tabs`.
   // The "all" tab always shows everything. Decorative section headers pass `['all']`
@@ -1267,12 +1273,10 @@ export function SettingsView() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 md:px-6 py-8">
+    <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8">
       <h2 className="text-2xl font-bold text-surface-950 mb-6">Settings</h2>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="gap-6">
-        <SettingsTabsList />
-
+      <SettingsLayout value={activeTab} onChange={(tab) => void changeSection(tab)}>
         {showIn(['general']) && (
           <>
             {/* ── Display ────────────────────────────────────── */}
@@ -1395,7 +1399,7 @@ export function SettingsView() {
 
         {showIn(['brain']) && <BrainSection />}
 
-        {showIn(['brain']) && <SkillsSection />}
+        {showIn(['skills']) && <SkillsSection />}
 
         {showIn(['all']) && (
           <>
@@ -3325,9 +3329,9 @@ export function SettingsView() {
             onSaveSchedules={handleSaveSchedules}
           />
         )}
-      </Tabs>
+      </SettingsLayout>
 
-      <ConfirmDialog />
+      {confirmDialog}
     </div>
   );
 }

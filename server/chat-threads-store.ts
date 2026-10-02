@@ -22,6 +22,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { DATA_DIR } from './data.js';
 import { createLogger } from './logger.js';
+import { createWriteLock, writeJsonAtomic as publishJsonAtomic } from './write-lock.js';
 
 const log = createLogger('ChatThreads');
 
@@ -171,22 +172,14 @@ function normalizeThread(id: string, value: unknown): ChatThread {
 }
 
 async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> {
-  // Write-then-rename so a crash mid-write can't truncate a live file.
-  const tmpPath = `${filePath}.tmp`;
   await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(tmpPath, JSON.stringify(value, null, 2));
-  await fs.rename(tmpPath, filePath);
+  await publishJsonAtomic(filePath, value);
 }
 
 // Index reads/writes are serialized: saveThread and deleteThread both
 // read-modify-write the same file, and two chats saving at once would otherwise
 // interleave and drop one of the updates.
-let indexQueue: Promise<unknown> = Promise.resolve();
-function withIndexLock<T>(fn: () => Promise<T>): Promise<T> {
-  const run = indexQueue.then(fn, fn);
-  indexQueue = run.catch(() => {});
-  return run;
-}
+const withIndexLock = createWriteLock();
 
 /** Always a FRESH object: callers mutate the result before writing it back. */
 function emptyIndex(): ChatThreadsIndex {
@@ -258,9 +251,11 @@ export async function saveThread(id: string, value: unknown): Promise<ChatThread
   if (!isValidThreadId(id)) return null;
   const t0 = performance.now();
   const thread = normalizeThread(id, value);
-  await writeJsonAtomic(threadPath(id), thread);
   await withIndexLock(async () => {
     const index = await readIndexFile();
+    // Finish legacy migration before replacing a transcript, then publish its
+    // index summary under the same lock as other saves and deletions.
+    await writeJsonAtomic(threadPath(id), thread);
     index.threads[id] = summarize(thread);
     await writeJsonAtomic(CHAT_THREADS_PATH, index);
   });
@@ -272,9 +267,9 @@ export async function saveThread(id: string, value: unknown): Promise<ChatThread
 
 export async function deleteThread(id: string): Promise<boolean> {
   if (!isValidThreadId(id)) return false;
-  await fs.rm(threadPath(id), { force: true });
   return withIndexLock(async () => {
     const index = await readIndexFile();
+    await fs.rm(threadPath(id), { force: true });
     const existed = id in index.threads;
     delete index.threads[id];
     if (index.activeThreadId === id) index.activeThreadId = null;

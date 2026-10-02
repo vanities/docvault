@@ -29,7 +29,7 @@ import {
 
 interface DocumentListProps {
   documents: TaxDocument[];
-  onUpdate: (id: string, updates: Partial<TaxDocument>) => void;
+  onUpdate: (id: string, updates: Partial<TaxDocument>) => Promise<boolean>;
   onDelete: (id: string) => void;
   onParse?: (doc: TaxDocument) => Promise<TaxDocument | null>;
   onMove?: (

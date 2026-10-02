@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEntityDocuments } from '../../hooks/useEntityDocuments';
+import { documentMetadataPatch } from '../../utils/documentMetadataPatch';
 import { FolderOpen, RefreshCw } from 'lucide-react';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
@@ -17,7 +18,7 @@ const BUSINESS_DOC_TYPE_IDS = DOCUMENT_TYPES.filter((dt) => dt.category === 'bus
 );
 
 export function BusinessDocsView() {
-  const { confirm, ConfirmDialog } = useConfirmDialog();
+  const { confirm, confirmDialog } = useConfirmDialog();
   const {
     selectedEntity,
     scanBusinessDocs,
@@ -26,6 +27,7 @@ export function BusinessDocsView() {
     parseFile,
     isProcessing,
     entities,
+    availableYears,
     setIsParsing,
     relocateFile,
     updateDocMetadata,
@@ -34,20 +36,13 @@ export function BusinessDocsView() {
 
   const { addToast } = useToast();
 
-  const [businessDocs, setBusinessDocs] = useState<TaxDocument[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-
-  // Load business docs when entity changes
-  const loadBusinessDocs = useCallback(async () => {
-    setIsLoading(true);
-    const docs = await scanBusinessDocs(selectedEntity);
-    setBusinessDocs(docs);
-    setIsLoading(false);
-  }, [selectedEntity, scanBusinessDocs]);
-
-  useEffect(() => {
-    void loadBusinessDocs();
-  }, [loadBusinessDocs]);
+  const {
+    documents: businessDocs,
+    setDocuments: setBusinessDocs,
+    isLoading,
+    error: loadError,
+    reload: loadBusinessDocs,
+  } = useEntityDocuments(selectedEntity, scanBusinessDocs);
 
   const handleUploadFile = async (
     file: File,
@@ -79,18 +74,18 @@ export function BusinessDocsView() {
     }
   };
 
-  const handleUpdateDoc = (id: string, updates: Partial<TaxDocument>) => {
-    setBusinessDocs((prev) => prev.map((doc) => (doc.id === id ? { ...doc, ...updates } : doc)));
-    if ('tags' in updates || 'notes' in updates) {
-      const doc = businessDocs.find((d) => d.id === id);
-      if (doc?.filePath) {
-        const merged = { ...doc, ...updates };
-        void updateDocMetadata(doc.entity, doc.filePath, {
-          tags: merged.tags,
-          notes: merged.notes || '',
-        });
-      }
+  const handleUpdateDoc = async (id: string, updates: Partial<TaxDocument>) => {
+    const doc = businessDocs.find((document) => document.id === id);
+    if (!doc) return false;
+    const patch = documentMetadataPatch(updates);
+    if (patch && doc.filePath && !(await updateDocMetadata(doc.entity, doc.filePath, patch))) {
+      addToast('Document changes could not be saved. Please try again.', 'error');
+      return false;
     }
+    setBusinessDocs((previous) =>
+      previous.map((document) => (document.id === id ? { ...document, ...updates } : document))
+    );
+    return true;
   };
 
   const handleDeleteDoc = async (id: string) => {
@@ -226,6 +221,16 @@ export function BusinessDocsView() {
           <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2 text-accent-400" />
           Loading documents...
         </div>
+      ) : loadError ? (
+        <div
+          role="alert"
+          className="rounded-xl border border-danger-500/30 p-5 text-sm text-surface-800"
+        >
+          <p className="mb-3">Documents could not be loaded. Your files have not been changed.</p>
+          <Button variant="outline" onClick={() => void loadBusinessDocs()}>
+            Try again
+          </Button>
+        </div>
       ) : businessDocs.length === 0 ? (
         <div className="text-center py-16 border-2 border-dashed border-surface-500 rounded-xl">
           <FolderOpen className="w-12 h-12 text-surface-500 mx-auto mb-4" />
@@ -244,9 +249,10 @@ export function BusinessDocsView() {
           onParse={handleParseDoc}
           onRelocate={handleRelocateDocument}
           entities={entities}
+          availableYears={availableYears}
         />
       )}
-      <ConfirmDialog />
+      {confirmDialog}
     </div>
   );
 }

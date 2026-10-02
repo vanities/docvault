@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,6 +25,8 @@ export function useConfirmDialog() {
   const resolveRef = useRef<((value: boolean) => void) | null>(null);
 
   const confirm = useCallback((opts: string | ConfirmOptions): Promise<boolean> => {
+    // A second request must not overwrite the resolver of the open dialog.
+    if (resolveRef.current) return Promise.resolve(false);
     const parsed = typeof opts === 'string' ? { description: opts } : opts;
     setOptions(parsed);
     setOpen(true);
@@ -33,39 +35,42 @@ export function useConfirmDialog() {
     });
   }, []);
 
-  const handleConfirm = useCallback(() => {
-    setOpen(false);
-    resolveRef.current?.(true);
+  const settle = useCallback((accepted: boolean) => {
+    const resolve = resolveRef.current;
     resolveRef.current = null;
+    setOpen(false);
+    resolve?.(accepted);
+  }, []);
+  const handleConfirm = useCallback(() => settle(true), [settle]);
+  const handleCancel = useCallback(() => settle(false), [settle]);
+
+  useEffect(() => {
+    const pending = resolveRef;
+    return () => {
+      pending.current?.(false);
+      pending.current = null;
+    };
   }, []);
 
-  const handleCancel = useCallback(() => {
-    setOpen(false);
-    resolveRef.current?.(false);
-    resolveRef.current = null;
-  }, []);
+  const confirmDialog = (
+    <AlertDialog open={open} onOpenChange={(v) => !v && handleCancel()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{options.title || 'Confirm'}</AlertDialogTitle>
+          <AlertDialogDescription>{options.description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={handleCancel}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            variant={options.destructive ? 'destructive' : 'default'}
+            onClick={handleConfirm}
+          >
+            {options.confirmLabel || 'Confirm'}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
 
-  function ConfirmDialog() {
-    return (
-      <AlertDialog open={open} onOpenChange={(v) => !v && handleCancel()}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{options.title || 'Confirm'}</AlertDialogTitle>
-            <AlertDialogDescription>{options.description}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleCancel}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant={options.destructive ? 'destructive' : 'default'}
-              onClick={handleConfirm}
-            >
-              {options.confirmLabel || 'Confirm'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    );
-  }
-
-  return { confirm, ConfirmDialog };
+  return { confirm, confirmDialog };
 }

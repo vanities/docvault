@@ -14,7 +14,13 @@ import {
   EyeOff,
 } from 'lucide-react';
 import type { TaxDocument, DocumentType, Entity, ExpenseCategory } from '../../types';
-import { DOCUMENT_TYPES, EXPENSE_CATEGORIES, getDocumentTypeColor } from '../../config';
+import {
+  DOCUMENT_TYPES,
+  EXPENSE_CATEGORIES,
+  getDocumentTypeColor,
+  isBusinessDocumentType,
+} from '../../config';
+import { getDocumentYear } from '../../utils/documentDestination';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import {
   DropdownMenu,
@@ -26,6 +32,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import {
   Select,
   SelectContent,
@@ -36,7 +43,7 @@ import {
 
 interface DocumentCardProps {
   document: TaxDocument;
-  onUpdate: (id: string, updates: Partial<TaxDocument>) => void;
+  onUpdate: (id: string, updates: Partial<TaxDocument>) => Promise<boolean>;
   onDelete: (id: string) => void;
   onRelocate?: (
     fromEntity: Entity,
@@ -94,12 +101,23 @@ export function DocumentCard({
   const [editedType, setEditedType] = useState(doc.type);
   const [editedNotes, setEditedNotes] = useState(doc.notes || '');
   const [editedEntity, setEditedEntity] = useState(doc.entity);
-  const [editedYear, setEditedYear] = useState(doc.taxYear);
+  const sourceYear = getDocumentYear(doc, availableYears);
+  const [editedYear, setEditedYear] = useState(sourceYear);
   const [editedCategory, setEditedCategory] = useState<ExpenseCategory | undefined>(
     initialCategory
   );
   const [isSaving, setIsSaving] = useState(false);
   const [newTag, setNewTag] = useState('');
+  useUnsavedChanges(
+    Boolean(newTag.trim()) ||
+      (isEditing &&
+        (editedType !== doc.type ||
+          editedNotes !== (doc.notes || '') ||
+          editedEntity !== doc.entity ||
+          (!isBusinessDocumentType(editedType) && editedYear !== sourceYear) ||
+          (editedType === 'receipt' && editedCategory !== initialCategory))),
+    isSaving
+  );
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -107,7 +125,7 @@ export function DocumentCard({
     try {
       const typeChanged = editedType !== doc.type;
       const entityChanged = editedEntity !== doc.entity;
-      const yearChanged = editedYear !== doc.taxYear;
+      const yearChanged = !isBusinessDocumentType(editedType) && editedYear !== sourceYear;
       const categoryChanged = editedType === 'receipt' && editedCategory !== initialCategory;
 
       // If type, entity, year, or expense category changed, relocate the file
@@ -116,6 +134,9 @@ export function DocumentCard({
         onRelocate &&
         doc.filePath
       ) {
+        // Save notes while the original path still exists. Relocation reloads
+        // the list and may unmount this editor under a new document id.
+        if (!(await onUpdate(doc.id, { notes: editedNotes }))) return;
         const success = await onRelocate(
           doc.entity,
           doc.filePath,
@@ -125,9 +146,10 @@ export function DocumentCard({
           editedType === 'receipt' ? editedCategory : undefined
         );
         if (!success) {
-          setIsSaving(false);
           return;
         }
+        setIsEditing(false);
+        return;
       }
 
       // Update metadata (and parsed category if it changed)
@@ -141,24 +163,22 @@ export function DocumentCard({
           category: editedCategory,
         } as TaxDocument['parsedData'];
       }
-      onUpdate(doc.id, updates);
+      if (await onUpdate(doc.id, updates)) setIsEditing(false);
     } catch (err) {
       console.error('Save error:', err);
     } finally {
-      setIsEditing(false);
       setIsSaving(false);
     }
   };
 
-  const handleAddTag = () => {
+  const handleAddTag = async () => {
     if (newTag.trim() && !doc.tags.includes(newTag.trim())) {
-      onUpdate(doc.id, { tags: [...doc.tags, newTag.trim()] });
-      setNewTag('');
+      if (await onUpdate(doc.id, { tags: [...doc.tags, newTag.trim()] })) setNewTag('');
     }
   };
 
   const handleRemoveTag = (tag: string) => {
-    onUpdate(doc.id, { tags: doc.tags.filter((t) => t !== tag) });
+    void onUpdate(doc.id, { tags: doc.tags.filter((t) => t !== tag) });
   };
 
   // Get expense category if this is a receipt
@@ -218,7 +238,14 @@ export function DocumentCard({
     <div
       className={`glass-card rounded-xl p-4 hover:border-border-strong transition-all duration-200 cursor-pointer group ${!isTracked ? 'opacity-50' : ''} ${isSelected ? 'ring-2 ring-accent-400 border-accent-400/50' : ''}`}
       onClick={(e) => {
-        if ((e.target as HTMLElement).closest('button, input, select, textarea')) return;
+        // Portalled menus still bubble through this card in React.
+        if (
+          isEditing ||
+          (e.target as HTMLElement).closest(
+            'button, input, select, textarea, [role="menu"], [role="listbox"]'
+          )
+        )
+          return;
         onClick?.();
       }}
     >
@@ -286,6 +313,7 @@ export function DocumentCard({
                   <Button
                     variant="ghost"
                     size="icon-xs"
+                    aria-label={isTracked ? 'Exclude from totals' : 'Include in totals'}
                     onClick={() => onUpdate(doc.id, { tracked: !isTracked })}
                     className={`${
                       !isTracked
@@ -305,6 +333,7 @@ export function DocumentCard({
                   <Button
                     variant="ghost"
                     size="icon-xs"
+                    aria-label={`Document actions for ${doc.fileName}`}
                     className="text-surface-600 hover:text-surface-900 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
                   >
                     <MoreVertical className="w-4 h-4" />
@@ -390,7 +419,11 @@ export function DocumentCard({
                   value={editedType}
                   onValueChange={(val) => setEditedType(val as DocumentType)}
                 >
-                  <SelectTrigger className="w-full text-[13px]">
+                  <SelectTrigger
+                    aria-label="Document type"
+                    disabled={isSaving}
+                    className="w-full max-sm:min-h-11 text-base sm:text-[13px]"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -411,7 +444,11 @@ export function DocumentCard({
                     value={editedCategory ?? ''}
                     onValueChange={(val) => setEditedCategory(val as ExpenseCategory)}
                   >
-                    <SelectTrigger className="w-full text-[13px]">
+                    <SelectTrigger
+                      aria-label="Expense category"
+                      disabled={isSaving}
+                      className="w-full max-sm:min-h-11 text-base sm:text-[13px]"
+                    >
                       <SelectValue placeholder="Pick a category…" />
                     </SelectTrigger>
                     <SelectContent>
@@ -430,7 +467,11 @@ export function DocumentCard({
                     Entity
                   </label>
                   <Select value={editedEntity} onValueChange={setEditedEntity}>
-                    <SelectTrigger className="w-full text-[13px]">
+                    <SelectTrigger
+                      aria-label="Document entity"
+                      disabled={isSaving}
+                      className="w-full max-sm:min-h-11 text-base sm:text-[13px]"
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -443,52 +484,69 @@ export function DocumentCard({
                   </Select>
                 </div>
               )}
-              {availableYears && availableYears.length > 0 && doc.taxYear > 0 && (
-                <div>
-                  <label className="block text-[11px] font-medium text-surface-700 mb-1">
-                    Tax Year
-                  </label>
-                  <Select
-                    value={String(editedYear)}
-                    onValueChange={(val) => setEditedYear(parseInt(val, 10))}
-                  >
-                    <SelectTrigger className="w-full text-[13px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableYears.map((yr) => (
-                        <SelectItem key={yr} value={String(yr)}>
-                          {yr}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              {availableYears &&
+                availableYears.length > 0 &&
+                !isBusinessDocumentType(editedType) && (
+                  <div>
+                    <label className="block text-[11px] font-medium text-surface-700 mb-1">
+                      Tax Year
+                    </label>
+                    <Select
+                      value={String(editedYear)}
+                      onValueChange={(val) => setEditedYear(parseInt(val, 10))}
+                    >
+                      <SelectTrigger
+                        aria-label="Document tax year"
+                        disabled={isSaving}
+                        className="w-full max-sm:min-h-11 text-base sm:text-[13px]"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[...new Set([...availableYears, sourceYear])]
+                          .sort((a, b) => b - a)
+                          .map((yr) => (
+                            <SelectItem key={yr} value={String(yr)}>
+                              {yr}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               <div>
                 <label className="block text-[11px] font-medium text-surface-700 mb-1">Notes</label>
                 <Textarea
+                  aria-label="Document notes"
+                  disabled={isSaving}
                   value={editedNotes}
                   onChange={(e) => setEditedNotes(e.target.value)}
                   rows={2}
-                  className="text-[13px]"
+                  className="text-base sm:text-[13px]"
                   placeholder="Add notes..."
                 />
               </div>
               <div className="flex gap-2">
-                <Button size="xs" onClick={handleSave} disabled={isSaving}>
+                <Button
+                  size="xs"
+                  className="max-sm:min-h-11"
+                  onClick={handleSave}
+                  disabled={isSaving}
+                >
                   <Check className="w-3 h-3" />
                   {isSaving ? 'Saving...' : 'Save'}
                 </Button>
                 <Button
                   variant="ghost"
                   size="xs"
+                  className="max-sm:min-h-11"
+                  disabled={isSaving}
                   onClick={() => {
                     setIsEditing(false);
                     setEditedType(doc.type);
                     setEditedNotes(doc.notes || '');
                     setEditedEntity(doc.entity);
-                    setEditedYear(doc.taxYear);
+                    setEditedYear(sourceYear);
                     setEditedCategory(initialCategory);
                   }}
                 >

@@ -70,6 +70,45 @@ function thread(id: string, text: string, updatedAt = '2026-03-01T00:00:00.000Z'
 }
 
 describe('chat-threads-store', () => {
+  test('overlapping saves of one transcript keep its file and index consistent', async () => {
+    const results = await Promise.allSettled(
+      Array.from({ length: 12 }, (_, i) =>
+        saveThread('shared', thread('shared', `Synthetic version ${i}`))
+      )
+    );
+    expect(results.every((result) => result.status === 'fulfilled')).toBe(true);
+    const saved = await loadThread('shared');
+    const summary = (await loadIndex()).threads.shared;
+    expect(summary.preview).toBe(saved?.preview);
+    expect(summary.messageCount).toBe(saved?.messageCount);
+    expect((await fs.readdir(CHAT_THREADS_DIR)).some((name) => name.endsWith('.tmp'))).toBe(false);
+  });
+
+  test('saving a migrated thread keeps the newer transcript', async () => {
+    await fs.writeFile(
+      CHAT_THREADS_PATH,
+      JSON.stringify({
+        threads: { legacy: thread('legacy', 'Synthetic old message') },
+        activeThreadId: 'legacy',
+      })
+    );
+    await saveThread('legacy', thread('legacy', 'Synthetic new message'));
+    expect((await loadThread('legacy'))?.preview).toContain('Synthetic new message');
+    expect((await loadIndex()).threads.legacy.preview).toContain('Synthetic new message');
+  });
+
+  test('deleting a legacy thread does not leave its migrated transcript behind', async () => {
+    await fs.writeFile(
+      CHAT_THREADS_PATH,
+      JSON.stringify({
+        threads: { legacy: thread('legacy', 'Synthetic legacy message') },
+        activeThreadId: 'legacy',
+      })
+    );
+    expect(await deleteThread('legacy')).toBe(true);
+    expect(await loadThread('legacy')).toBeNull();
+  });
+
   test('load returns empty index when no file exists', async () => {
     expect(await loadIndex()).toEqual({ threads: {}, activeThreadId: null });
   });

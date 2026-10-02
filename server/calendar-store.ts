@@ -15,6 +15,7 @@ import { DATA_DIR, REMINDERS_FILE, loadSettings, type Reminder, type Settings } 
 import { addInterval, projectOccurrences } from './calendar-recurrence.js';
 import { createLogger } from './logger.js';
 import { getConfiguredTimezone, zonedYMD } from './tz.js';
+import { createWriteLock, writeJsonAtomic } from './write-lock.js';
 
 /** Today's date in the configured timezone. loadSettings can throw (e.g. no
  * master key in a test env) — the calendar must keep working on the container
@@ -32,6 +33,8 @@ export async function calendarToday(): Promise<string> {
 const log = createLogger('Calendar');
 
 export const CALENDAR_PATH = path.join(DATA_DIR, '.docvault-calendar.json');
+export const withCalendarMutation = createWriteLock();
+const withLegacyMigration = createWriteLock();
 // Post-migration resting place for the legacy reminders file. Still matches
 // the `.docvault-*.json` backup glob, so it rides in encrypted backups.
 export const REMINDERS_BACKUP_PATH = path.join(DATA_DIR, '.docvault-reminders.backup.json');
@@ -137,10 +140,7 @@ export async function loadCalendarStore(): Promise<CalendarStore> {
 
 export async function saveCalendarStore(store: CalendarStore): Promise<void> {
   const t0 = performance.now();
-  // Write-then-rename so a crash mid-write can't truncate the store.
-  const tmpPath = `${CALENDAR_PATH}.tmp`;
-  await fs.writeFile(tmpPath, JSON.stringify(store, null, 2));
-  await fs.rename(tmpPath, CALENDAR_PATH);
+  await writeJsonAtomic(CALENDAR_PATH, store);
   log.debug(`[save] events=${store.events.length} in ${(performance.now() - t0).toFixed(1)}ms`);
 }
 
@@ -302,6 +302,10 @@ export function migrateReminders(reminders: Reminder[], nowISO: string): Calenda
  * renamed (not deleted) so the raw history survives in backups.
  */
 async function migrateLegacyReminders(): Promise<void> {
+  return withLegacyMigration(migrateLegacyRemindersUnlocked);
+}
+
+async function migrateLegacyRemindersUnlocked(): Promise<void> {
   try {
     await fs.access(CALENDAR_PATH);
     return; // Calendar store already exists — never re-migrate.

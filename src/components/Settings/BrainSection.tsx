@@ -1,20 +1,13 @@
-// Brain — DocVault's user-owned long-term memory for the chat assistant.
-//
-// A single markdown document that is included in EVERY chat, so the assistant
-// remembers durable facts, preferences, and decisions across conversations.
-// Unlike External Sources (read-only git clones), the brain is DocVault's own
-// store: it lives in the data dir, ships with every install, and the chat can
-// append to it with the `remember` tool. Edit it freely here.
-
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Brain, Save, Trash2, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '../../hooks/useToast';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { API_BASE } from '../../constants';
 import { requestJson } from '../../api/client';
+import { MarkdownEditor } from './MarkdownEditor';
 
 interface BrainState {
   content: string;
@@ -23,155 +16,149 @@ interface BrainState {
   exists: boolean;
 }
 
-function formatWhen(iso: string | null): string {
-  if (!iso) return 'never';
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? 'never' : d.toLocaleString();
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  return `${(n / 1024).toFixed(1)} KB`;
-}
-
 export function BrainSection() {
   const { addToast } = useToast();
-  const { confirm, ConfirmDialog } = useConfirmDialog();
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [content, setContent] = useState('');
   const [saved, setSaved] = useState('');
   const [meta, setMeta] = useState<BrainState | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(false);
+  const dirty = content !== saved;
+  useUnsavedChanges(dirty, saving);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
+    setError(false);
     try {
       const data = await requestJson<BrainState>(`${API_BASE}/brain`);
       setContent(data.content);
       setSaved(data.content);
       setMeta(data);
     } catch {
-      addToast('Failed to load brain', 'error');
+      setError(true);
     } finally {
       setLoading(false);
     }
-  }
-
+  }, []);
   useEffect(() => {
     void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [load]);
 
-  const dirty = content !== saved;
-
-  async function save() {
+  async function persist(clear = false) {
     setSaving(true);
     try {
-      const data = await requestJson<BrainState>(`${API_BASE}/brain`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
-      });
+      const data = await requestJson<BrainState>(
+        `${API_BASE}/brain`,
+        clear
+          ? { method: 'DELETE' }
+          : {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ content }),
+            }
+      );
       setContent(data.content);
       setSaved(data.content);
       setMeta(data);
-      addToast('Brain saved', 'success');
+      addToast(clear ? 'Brain cleared' : 'Brain saved', 'success');
     } catch {
-      addToast('Failed to save brain', 'error');
+      addToast(
+        clear
+          ? 'Could not clear Brain. Your text has been kept.'
+          : 'Could not save Brain. Your edits have been kept.',
+        'error'
+      );
     } finally {
       setSaving(false);
     }
   }
 
   async function clearBrain() {
-    const ok = await confirm({
-      title: 'Clear the brain?',
-      description:
-        'This erases everything in your long-term memory. The chat will no longer recall any of it. This cannot be undone.',
-      confirmLabel: 'Clear brain',
-      destructive: true,
-    });
-    if (!ok) return;
-    setContent('');
-    // Persist immediately so an accidental navigate-away doesn't leave a stale brain.
-    try {
-      const data = await requestJson<BrainState>(`${API_BASE}/brain`, { method: 'DELETE' });
-      setSaved(data.content);
-      setMeta(data);
-      addToast('Brain cleared', 'success');
-    } catch {
-      addToast('Failed to clear brain', 'error');
-    }
-  }
-
-  if (loading) {
-    return (
-      <Card variant="glass" className="p-6 mb-8">
-        <div className="text-center py-4 text-surface-600">Loading…</div>
-      </Card>
-    );
+    if (
+      await confirm({
+        title: 'Clear the brain?',
+        description:
+          'This permanently removes the memory used in every chat. This cannot be undone.',
+        confirmLabel: 'Clear brain',
+        destructive: true,
+      })
+    )
+      await persist(true);
   }
 
   return (
-    <Card variant="glass" className="p-6 mb-8">
-      <h3 className="text-lg font-semibold text-surface-950 mb-1 flex items-center gap-2">
-        <Brain className="w-5 h-5" />
+    <Card variant="glass" className="mb-6 min-w-0 p-4 sm:p-6">
+      <h3 className="flex items-center gap-2 text-lg font-semibold text-surface-950">
+        <Brain className="size-5" />
         Brain
       </h3>
-      <p className="text-[12px] text-surface-600 mb-4">
-        Long-term memory for the chat assistant — a single markdown note included in{' '}
-        <span className="font-medium">every</span> conversation. Add durable facts, preferences, and
-        decisions you want remembered. The chat can also append to it with the{' '}
-        <code className="px-1 py-0.5 rounded bg-surface-200 text-[11px]">remember</code> tool. Skip
-        anything the app already stores (balances, document contents, lab values).
+      <p className="mt-2 mb-5 text-sm leading-relaxed text-surface-800">
+        The memory your assistant uses in every conversation. Keep durable facts, preferences and
+        decisions here.
       </p>
-
-      <Textarea
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-        rows={16}
-        spellCheck={false}
-        placeholder={
-          '# DocVault Brain\n\n## Notes\n\n- (2026-06-04, preference) I prefer concise answers with sources.'
-        }
-        className="font-mono text-[12px] leading-relaxed"
-      />
-
-      <div className="flex items-center justify-between mt-3">
-        <p className="text-[11px] text-surface-500">
-          {formatBytes(meta?.bytes ?? new Blob([content]).size)} · updated{' '}
-          {formatWhen(meta?.updatedAt ?? null)}
-          {dirty && <span className="ml-2 text-accent-600">• unsaved changes</span>}
+      {loading ? (
+        <p role="status" className="py-8 text-center text-sm text-surface-800">
+          Loading memory…
         </p>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setContent(saved);
-            }}
-            disabled={!dirty || saving}
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Revert
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={clearBrain}
-            disabled={saving || (!content && !saved)}
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Clear
-          </Button>
-          <Button size="sm" onClick={save} disabled={!dirty || saving}>
-            <Save className="w-3.5 h-3.5" />
-            {saving ? 'Saving…' : 'Save'}
+      ) : error ? (
+        <div role="alert" className="rounded-lg border border-danger-500/30 p-4">
+          <p className="mb-3 text-sm">Memory could not be loaded.</p>
+          <Button variant="outline" onClick={() => void load()}>
+            Try again
           </Button>
         </div>
-      </div>
-
-      <ConfirmDialog />
+      ) : (
+        <>
+          <MarkdownEditor
+            label="Memory"
+            value={content}
+            onChange={setContent}
+            disabled={saving}
+            placeholder="# Assistant memory\n\nAdd your preferences and decisions…"
+          />
+          <div
+            className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-surface-800"
+            role="status"
+          >
+            <span>{new Blob([content]).size.toLocaleString()} bytes</span>
+            <span>
+              {meta?.updatedAt
+                ? `Updated ${new Date(meta.updatedAt).toLocaleString()}`
+                : 'Not saved yet'}
+            </span>
+            {dirty && <span className="font-medium text-accent-400">Unsaved changes</span>}
+          </div>
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-4">
+            <Button
+              variant="ghost-danger"
+              className="h-11"
+              onClick={() => void clearBrain()}
+              disabled={saving || (!content && !saved)}
+            >
+              <Trash2 className="size-4" />
+              Clear
+            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                className="h-11"
+                onClick={() => setContent(saved)}
+                disabled={!dirty || saving}
+              >
+                <RotateCcw className="size-4" />
+                Revert
+              </Button>
+              <Button className="h-11" onClick={() => void persist()} disabled={!dirty || saving}>
+                <Save className="size-4" />
+                {saving ? 'Saving…' : 'Save memory'}
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
+      {confirmDialog}
     </Card>
   );
 }

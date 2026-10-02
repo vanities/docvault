@@ -86,7 +86,7 @@ function monthlyPI(principal: number, annualRate: number, termMonths: number): n
 }
 
 export function DebtsView() {
-  const { confirm, ConfirmDialog } = useConfirmDialog();
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [entries, setEntries] = useState<Liability[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -732,7 +732,7 @@ export function DebtsView() {
         </TabsContent>
       </Tabs>
 
-      <ConfirmDialog />
+      {confirmDialog}
     </div>
   );
 }

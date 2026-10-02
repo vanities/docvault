@@ -1,5 +1,16 @@
 import { EXPENSE_FOLDER_MAP, getBusinessSubfolder, isBusinessDocumentType } from '../config';
-import type { DocumentType, ExpenseCategory } from '../types';
+import type { DocumentType, ExpenseCategory, TaxDocument } from '../types';
+
+/** Flat views use taxYear=0; relocation must always resolve a real year. */
+export function getDocumentYear(
+  document: Pick<TaxDocument, 'taxYear' | 'filePath'>,
+  availableYears: readonly number[] = [],
+  currentYear = new Date().getFullYear()
+): number {
+  if (document.taxYear > 0) return document.taxYear;
+  const folderYear = Number(document.filePath?.match(/^(\d{4})[^/]*\//)?.[1]);
+  return folderYear || availableYears.find((year) => year > 0) || currentYear;
+}
 
 export function getDocumentDirectory(
   docType: DocumentType,

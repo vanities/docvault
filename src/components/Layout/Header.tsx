@@ -15,7 +15,6 @@ import { FillFormModal } from '../Forms/FillFormModal';
 
 export function Header() {
   const {
-    dataDir,
     setSidebarOpen,
     activeView,
     selectedEntity,
@@ -88,6 +87,11 @@ export function Header() {
 
   // Only show tax year controls when in tax-year view and not searching
   const showTaxYearControls = activeView === 'tax-year' && !searchActive;
+  const showContextYear = ['tax-year', 'tn-tax', 'federal-tax'].includes(activeView);
+  const entityName =
+    selectedEntity === 'all'
+      ? 'All Entities'
+      : (entities.find((entity) => entity.id === selectedEntity)?.name ?? selectedEntity);
 
   return (
     <header className="glass-strong h-14 flex items-center px-4 md:px-6 gap-3 border-b border-border relative z-20">
@@ -95,8 +99,9 @@ export function Header() {
       <Button
         variant="ghost"
         size="icon-sm"
+        aria-label="Open navigation"
         onClick={() => setSidebarOpen(true)}
-        className="md:hidden -ml-1"
+        className="size-11 md:hidden -ml-1"
       >
         <Menu className="w-5 h-5" />
       </Button>
@@ -104,18 +109,21 @@ export function Header() {
       {/* Entity + Year — mobile only */}
       {!searchActive && (
         <div className="md:hidden flex items-center gap-1.5 min-w-0">
-          <span className="text-[13px] font-semibold text-surface-950 truncate">
-            {selectedEntity === 'all'
-              ? 'All Entities'
-              : (entities.find((e) => e.id === selectedEntity)?.name ?? selectedEntity)}
-          </span>
-          <span className="text-[12px] text-surface-600 shrink-0">{selectedYear}</span>
+          <span className="text-[13px] font-semibold text-surface-950 truncate">{entityName}</span>
+          {showContextYear && (
+            <span className="text-[12px] text-surface-600 shrink-0">{selectedYear}</span>
+          )}
         </div>
       )}
 
-      {/* Data dir — desktop only */}
+      {/* Current document context — desktop only */}
       <div className="hidden md:flex items-center gap-3 flex-1">
-        <p className="text-xs text-surface-600 truncate max-w-[300px] font-mono">{dataDir}</p>
+        <p className="text-sm text-surface-800 truncate">
+          {searchActive ? 'Search across all entities' : entityName}
+          {!searchActive && showContextYear && (
+            <span className="text-surface-600 ml-2">{selectedYear}</span>
+          )}
+        </p>
       </div>
 
       {/* Search Bar */}
@@ -123,17 +131,19 @@ export function Header() {
         <Search className="absolute left-2.5 w-3.5 h-3.5 text-surface-600 pointer-events-none" />
         <Input
           type="text"
+          aria-label="Search files"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search all files..."
-          className="w-full md:w-56 h-8 pl-8 pr-7 text-[13px] rounded-lg"
+          className="w-full md:w-56 h-11 md:h-8 pl-8 pr-11 md:pr-7 text-base md:text-[13px] rounded-lg"
         />
         {searchQuery && (
           <Button
             variant="ghost"
             size="icon-xs"
             onClick={clearSearch}
-            className="absolute right-1 top-1/2 -translate-y-1/2"
+            aria-label="Clear file search"
+            className="absolute right-0 md:right-1 top-1/2 -translate-y-1/2 size-11 md:size-6"
           >
             <X className="w-3 h-3" />
           </Button>
@@ -143,7 +153,13 @@ export function Header() {
       {/* Fill a form — global + unobtrusive (most PDFs aren't fillable forms) */}
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon-sm" onClick={() => setShowFillForm(true)}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Fill a PDF form"
+            className="max-sm:size-11"
+            onClick={() => setShowFillForm(true)}
+          >
             <FileText className="w-4 h-4" />
           </Button>
         </TooltipTrigger>

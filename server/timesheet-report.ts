@@ -18,7 +18,12 @@ import type {
   WeeklyReportConfig,
   WeeklyReportRule,
 } from './timesheet-store.js';
-import { entryTimeKey, loadTimesheetStore, saveTimesheetStore } from './timesheet-store.js';
+import {
+  entryTimeKey,
+  loadTimesheetStore,
+  saveTimesheetStore,
+  withTimesheetMutation,
+} from './timesheet-store.js';
 import { sendEmail } from './email.js';
 import { zonedParts } from './tz.js';
 import { createLogger } from './logger.js';
@@ -420,13 +425,15 @@ export async function sendWeeklyReport(weekEnd: string): Promise<WeeklyReportRes
 
   // Persist the watermark on a FRESH load — the send awaited network I/O and
   // another request may have written the store meanwhile.
-  const fresh = await loadTimesheetStore();
-  fresh.weeklyReport = {
-    ...normalizeWeeklyReportConfig(fresh.weeklyReport),
-    lastSentWeek: weekEnd,
-    lastSentAt: new Date().toISOString(),
-  };
-  await saveTimesheetStore(fresh);
+  await withTimesheetMutation(async () => {
+    const fresh = await loadTimesheetStore();
+    fresh.weeklyReport = {
+      ...normalizeWeeklyReportConfig(fresh.weeklyReport),
+      lastSentWeek: weekEnd,
+      lastSentAt: new Date().toISOString(),
+    };
+    await saveTimesheetStore(fresh);
+  });
 
   log.info(
     `[weekly-report] sent ${weekEnd}: ${rows.length} entries, ${fmtHours(totalMinutes)}h ` +

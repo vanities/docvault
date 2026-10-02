@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useFileSystemServer, type EntityConfig } from '../hooks/useFileSystemServer';
+import { useNavigationGuard } from './NavigationGuardContext';
 import { requestJson } from '../api/client';
 import type { Entity, TaxDocument, DocumentType, ExpenseCategory, Todo } from '../types';
 import { uuidV4 } from '../utils/uuid';
@@ -249,6 +250,11 @@ interface AppContextValue {
   // View state
   activeView: NavView;
   setActiveView: (view: NavView) => void;
+  requestScopeChange: (scope: {
+    entity?: Entity;
+    year?: number;
+    view?: NavView;
+  }) => Promise<boolean>;
 
   // Health: currently-selected person for segment views (Activity, Heart,
   // Sleep, Workouts, Body). Null means "no person chosen yet" — segment
@@ -281,6 +287,8 @@ interface AppContextValue {
   setSearchQuery: (query: string) => void;
   searchResults: SearchResult[];
   isSearching: boolean;
+  searchError: string | null;
+  retrySearch: () => void;
   searchActive: boolean;
   clearSearch: () => void;
 
@@ -400,6 +408,7 @@ interface AppProviderProps {
 
 export function AppProvider({ children }: AppProviderProps) {
   const currentYear = new Date().getFullYear();
+  const { requestNavigation } = useNavigationGuard();
 
   // Valid views for hash routing. Must stay in sync with the `NavView` union
   // above — a missing entry here silently falls back to 'tax-year' on both
@@ -725,38 +734,145 @@ export function AppProvider({ children }: AppProviderProps) {
     });
   }, []);
 
-  const openChatThread = useCallback(
-    (id: string) => {
-      switchChatThread(id);
-      setActiveViewState('chat');
-      localStorage.setItem('docvault-view', 'chat');
-      window.location.hash = 'chat';
+  // Search state
+  const [searchQuery, setSearchQueryState] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const searchActive = searchQuery.length >= 2;
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const searchSequenceRef = useRef(0);
+
+  const setSearchQuery = useCallback(
+    (query: string) => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      searchAbortRef.current?.abort();
+      const sequence = ++searchSequenceRef.current;
+
+      if (query.length < 2) {
+        setSearchQueryState(query);
+        setSearchResults([]);
+        setSearchError(null);
+        setIsSearching(false);
+        return;
+      }
+
+      const start = async () => {
+        if (!searchActive && !(await requestNavigation())) return;
+        if (searchSequenceRef.current !== sequence) return;
+        setSearchQueryState(query);
+        setSearchResults([]);
+        setSearchError(null);
+        setIsSearching(true);
+        debounceRef.current = setTimeout(async () => {
+          const controller = new AbortController();
+          searchAbortRef.current = controller;
+          try {
+            const data = await requestJson<{ files?: SearchResult[] }>(
+              `/api/search?q=${encodeURIComponent(query)}`,
+              { signal: controller.signal }
+            );
+            if (searchSequenceRef.current === sequence) setSearchResults(data.files ?? []);
+          } catch (err) {
+            if (err instanceof DOMException && err.name === 'AbortError') return;
+            if (searchSequenceRef.current === sequence) {
+              setSearchResults([]);
+              setSearchError(err instanceof Error ? err.message : 'Search failed');
+            }
+          } finally {
+            if (searchSequenceRef.current === sequence) setIsSearching(false);
+            if (searchAbortRef.current === controller) searchAbortRef.current = null;
+          }
+        }, 250);
+      };
+      void start();
     },
-    [switchChatThread]
+    [requestNavigation, searchActive]
   );
 
-  const setActiveView = useCallback((view: NavView) => {
-    setActiveViewState(view);
-    localStorage.setItem('docvault-view', view);
-    window.location.hash = view === 'tax-year' ? '' : view;
-    setSidebarOpen(false);
+  const clearSearch = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    searchAbortRef.current?.abort();
+    searchSequenceRef.current++;
+    setSearchQueryState('');
+    setSearchResults([]);
+    setSearchError(null);
+    setIsSearching(false);
   }, []);
 
-  // Listen for browser back/forward navigation
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      searchAbortRef.current?.abort();
+    };
+  }, []);
+
+  const activeViewRef = useRef(activeView);
+  const navigationSequence = useRef(0);
+  const commitViewChange = useCallback(
+    (view: NavView, updateHash = true) => {
+      clearSearch();
+      activeViewRef.current = view;
+      setActiveViewState(view);
+      localStorage.setItem('docvault-view', view);
+      if (updateHash) window.location.hash = view === 'tax-year' ? '' : view;
+      setSidebarOpen(false);
+    },
+    [clearSearch]
+  );
+  const requestViewChange = useCallback(
+    async (view: NavView, updateHash = true) => {
+      if (view === activeViewRef.current) {
+        clearSearch();
+        setSidebarOpen(false);
+        return true;
+      }
+      const sequence = ++navigationSequence.current;
+      const accepted = await requestNavigation();
+      if (sequence !== navigationSequence.current) return false;
+      if (!accepted) {
+        if (!updateHash) {
+          const hash = activeViewRef.current === 'tax-year' ? '' : `#${activeViewRef.current}`;
+          window.history.replaceState(
+            null,
+            '',
+            `${window.location.pathname}${window.location.search}${hash}`
+          );
+        }
+        return false;
+      }
+      commitViewChange(view, updateHash);
+      return true;
+    },
+    [requestNavigation, clearSearch, commitViewChange]
+  );
+
+  const setActiveView = useCallback(
+    (view: NavView) => {
+      void requestViewChange(view);
+    },
+    [requestViewChange]
+  );
+
+  const openChatThread = useCallback(
+    (id: string) => {
+      void requestViewChange('chat').then((accepted) => {
+        if (accepted) switchChatThread(id);
+      });
+    },
+    [requestViewChange, switchChatThread]
+  );
+
+  // A hash has already changed when this event runs. Keep the editor mounted
+  // while asking, and restore its URL if the user cancels.
   useEffect(() => {
     const onHashChange = () => {
-      const view = viewFromHash();
-      if (view) {
-        setActiveViewState(view);
-        localStorage.setItem('docvault-view', view);
-      } else {
-        setActiveViewState('tax-year');
-        localStorage.setItem('docvault-view', 'tax-year');
-      }
+      void requestViewChange(viewFromHash() ?? 'tax-year', false);
     };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
-  }, [viewFromHash]);
+  }, [requestViewChange, viewFromHash]);
 
   // Listen for cross-component navigation requests
   useEffect(() => {
@@ -806,63 +922,6 @@ export function AppProvider({ children }: AppProviderProps) {
   const [scannedDocuments, setScannedDocuments] = useState<TaxDocument[]>([]);
   const [entityYears, setEntityYears] = useState<number[]>([]);
   const [isParsing, setIsParsing] = useState(false);
-
-  // Search state
-  const [searchQuery, setSearchQueryState] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const searchActive = searchQuery.length >= 2;
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const searchAbortRef = useRef<AbortController | null>(null);
-  const searchSequenceRef = useRef(0);
-
-  const setSearchQuery = useCallback((query: string) => {
-    setSearchQueryState(query);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    searchAbortRef.current?.abort();
-    const sequence = ++searchSequenceRef.current;
-
-    if (query.length < 2) {
-      setSearchResults([]);
-      setIsSearching(false);
-      return;
-    }
-
-    debounceRef.current = setTimeout(async () => {
-      const controller = new AbortController();
-      searchAbortRef.current = controller;
-      setIsSearching(true);
-      try {
-        const data = await requestJson<{ files?: SearchResult[] }>(
-          `/api/search?q=${encodeURIComponent(query)}`,
-          { signal: controller.signal }
-        );
-        if (searchSequenceRef.current === sequence) setSearchResults(data.files ?? []);
-      } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        if (searchSequenceRef.current === sequence) setSearchResults([]);
-      } finally {
-        if (searchSequenceRef.current === sequence) setIsSearching(false);
-        if (searchAbortRef.current === controller) searchAbortRef.current = null;
-      }
-    }, 250);
-  }, []);
-
-  const clearSearch = useCallback(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    searchAbortRef.current?.abort();
-    searchSequenceRef.current++;
-    setSearchQueryState('');
-    setSearchResults([]);
-    setIsSearching(false);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      searchAbortRef.current?.abort();
-    };
-  }, []);
 
   // File system hook
   const {
@@ -928,18 +987,60 @@ export function AppProvider({ children }: AppProviderProps) {
     [currentYear]
   );
 
+  // Entity, year and view changes form one navigation decision. Applying them
+  // separately can change the entity before a user cancels the draft warning.
+  const requestScopeChange = useCallback(
+    async (scope: { entity?: Entity; year?: number; view?: NavView }) => {
+      const entity = scope.entity ?? selectedEntity;
+      const year = scope.year ?? selectedYear;
+      const view = scope.view ?? activeViewRef.current;
+      if (entity === selectedEntity && year === selectedYear && view === activeViewRef.current) {
+        commitViewChange(view);
+        return true;
+      }
+      const sequence = ++navigationSequence.current;
+      if (!(await requestNavigation()) || sequence !== navigationSequence.current) return false;
+      if (entity !== selectedEntity || year !== selectedYear) setScannedDocuments([]);
+      if (entity !== selectedEntity) setEntityYears([]);
+      setSelectedEntity(entity);
+      setSelectedYear(year);
+      commitViewChange(view);
+      return true;
+    },
+    [
+      selectedEntity,
+      selectedYear,
+      requestNavigation,
+      setSelectedEntity,
+      setSelectedYear,
+      commitViewChange,
+    ]
+  );
+
   // Fetch available years when entity changes
   useEffect(() => {
+    let cancelled = false;
     if (isConnected) {
-      void getYearsForEntity(selectedEntity).then(setEntityYears);
+      void getYearsForEntity(selectedEntity).then((years) => {
+        if (!cancelled) setEntityYears(years);
+      });
     }
+    return () => {
+      cancelled = true;
+    };
   }, [isConnected, selectedEntity, getYearsForEntity]);
 
   // Scan files when entity or year changes (only for tax-year view)
   useEffect(() => {
+    let cancelled = false;
     if (isConnected && (activeView === 'tax-year' || activeView === 'tn-tax')) {
-      void scanTaxYear(selectedEntity, selectedYear).then(setScannedDocuments);
+      void scanTaxYear(selectedEntity, selectedYear).then((documents) => {
+        if (!cancelled) setScannedDocuments(documents);
+      });
     }
+    return () => {
+      cancelled = true;
+    };
   }, [isConnected, selectedEntity, selectedYear, scanTaxYear, activeView]);
 
   // Available years (from server or default, always include current year)
@@ -971,6 +1072,7 @@ export function AppProvider({ children }: AppProviderProps) {
     // View
     activeView,
     setActiveView,
+    requestScopeChange,
 
     // Health person selection
     selectedHealthPersonId,
@@ -1009,6 +1111,8 @@ export function AppProvider({ children }: AppProviderProps) {
     setSearchQuery,
     searchResults,
     isSearching,
+    searchError,
+    retrySearch: () => setSearchQuery(searchQuery),
     searchActive,
     clearSearch,
 

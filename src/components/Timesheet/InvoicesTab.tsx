@@ -23,6 +23,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
+  DialogBody,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -60,7 +61,7 @@ export function InvoicesTab({
   store: TimesheetStore;
   refresh: () => Promise<void>;
 }) {
-  const { confirm, ConfirmDialog } = useConfirmDialog();
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   // Create modal
   const [createOpen, setCreateOpen] = useState(false);
@@ -451,7 +452,7 @@ export function InvoicesTab({
 
   return (
     <div>
-      <ConfirmDialog />
+      {confirmDialog}
 
       {/* Toolbar: filters + create button */}
       <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -538,171 +539,209 @@ export function InvoicesTab({
 
       {/* Create modal */}
       <Dialog open={createOpen} onOpenChange={(open) => !open && setCreateOpen(false)}>
-        <DialogContent className="sm:max-w-xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>New Invoice</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-[12px] text-surface-600 block mb-1">Customer</label>
-              <select
-                value={clientId}
-                onChange={(e) => {
-                  setClientId(e.target.value);
-                  setProjectId('');
-                  // Preselect the customer's default template (still overridable)
-                  setTemplateId(clientById.get(e.target.value)?.defaultTemplateId ?? '');
-                }}
-                className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
-              >
-                <option value="">Select…</option>
-                {store.clients
-                  .filter((c) => !c.archived)
-                  .map((c) => {
-                    const open = openByClient.get(c.id);
-                    return (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                        {open ? ` (${open} open)` : ''}
+          <DialogBody>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label
+                  htmlFor="invoicestab-field-1"
+                  className="text-[12px] text-surface-600 block mb-1"
+                >
+                  Customer
+                </label>
+                <select
+                  id="invoicestab-field-1"
+                  value={clientId}
+                  onChange={(e) => {
+                    setClientId(e.target.value);
+                    setProjectId('');
+                    // Preselect the customer's default template (still overridable)
+                    setTemplateId(clientById.get(e.target.value)?.defaultTemplateId ?? '');
+                  }}
+                  className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+                >
+                  <option value="">Select…</option>
+                  {store.clients
+                    .filter((c) => !c.archived)
+                    .map((c) => {
+                      const open = openByClient.get(c.id);
+                      return (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                          {open ? ` (${open} open)` : ''}
+                        </option>
+                      );
+                    })}
+                </select>
+              </div>
+              <div>
+                <label
+                  htmlFor="invoicestab-field-2"
+                  className="text-[12px] text-surface-600 block mb-1"
+                >
+                  Project (optional)
+                </label>
+                <select
+                  id="invoicestab-field-2"
+                  value={projectId}
+                  onChange={(e) => setProjectId(e.target.value)}
+                  className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+                >
+                  <option value="">All projects</option>
+                  {store.projects
+                    .filter((p) => p.clientId === clientId)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
                       </option>
-                    );
-                  })}
-              </select>
+                    ))}
+                </select>
+              </div>
+              <div>
+                <label
+                  htmlFor="invoicestab-field-3"
+                  className="text-[12px] text-surface-600 block mb-1"
+                >
+                  From (optional)
+                </label>
+                <Input
+                  id="invoicestab-field-3"
+                  type="date"
+                  value={from}
+                  onChange={(e) => setFrom(e.target.value)}
+                  className="h-9 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="invoicestab-field-4"
+                  className="text-[12px] text-surface-600 block mb-1"
+                >
+                  To (optional)
+                </label>
+                <Input
+                  id="invoicestab-field-4"
+                  type="date"
+                  value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                  className="h-9 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="invoicestab-field-5"
+                  className="text-[12px] text-surface-600 block mb-1"
+                >
+                  Template
+                </label>
+                <select
+                  id="invoicestab-field-5"
+                  value={templateId}
+                  onChange={(e) => setTemplateId(e.target.value)}
+                  className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+                >
+                  <option value="">Default</option>
+                  {store.templates
+                    .filter((t) => !t.archived)
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div>
+                <label
+                  htmlFor="invoicestab-field-6"
+                  className="text-[12px] text-surface-600 block mb-1"
+                >
+                  Comment (optional)
+                </label>
+                <Input
+                  id="invoicestab-field-6"
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  placeholder="Shown on the PDF"
+                  className="h-9 rounded-lg text-sm"
+                />
+              </div>
             </div>
-            <div>
-              <label className="text-[12px] text-surface-600 block mb-1">Project (optional)</label>
-              <select
-                value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-                className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
-              >
-                <option value="">All projects</option>
-                {store.projects
-                  .filter((p) => p.clientId === clientId)
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-[12px] text-surface-600 block mb-1">From (optional)</label>
-              <Input
-                type="date"
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-                className="h-9 rounded-lg text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-[12px] text-surface-600 block mb-1">To (optional)</label>
-              <Input
-                type="date"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-                className="h-9 rounded-lg text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-[12px] text-surface-600 block mb-1">Template</label>
-              <select
-                value={templateId}
-                onChange={(e) => setTemplateId(e.target.value)}
-                className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
-              >
-                <option value="">Default</option>
-                {store.templates
-                  .filter((t) => !t.archived)
-                  .map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-[12px] text-surface-600 block mb-1">Comment (optional)</label>
-              <Input
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                placeholder="Shown on the PDF"
-                className="h-9 rounded-lg text-sm"
-              />
-            </div>
-          </div>
-          <div className="text-[13px] text-surface-600 tabular-nums space-y-2">
-            {selection ? (
-              <>
-                {selection.count > 0 ? (
-                  <div>
-                    {selection.count} open entries · {formatHours(selection.minutes)} ·{' '}
-                    <Money>{formatUsd(selection.amount)}</Money>
-                    {selection.deficit > 0 && (
-                      <span className="text-amber-400">
-                        {' '}
-                        → tops up to{' '}
-                        <Money>{formatUsd(selection.amount + selection.deficit)}</Money> (minimum)
-                      </span>
-                    )}
-                    {selection.firstDate && selection.lastDate && (
-                      <span className="block text-[12px] text-surface-500">
-                        Work dated {formatDateSpan(selection.firstDate, selection.lastDate)}
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <div>No open entries in this window</div>
-                )}
-                {/* Earlier invoices covering the same period — the proof that
-                    an early/partial invoice's hours stay off this one. */}
-                {selection.period &&
-                  (selection.billed.length > 0 ? (
-                    <div className="rounded-lg border border-border bg-surface-100/60 px-3 py-2 text-[12px]">
-                      <p className="flex items-center gap-1.5 text-surface-700">
-                        <Lock className="w-3.5 h-3.5 shrink-0" aria-hidden />
-                        Already billed in{' '}
-                        {formatDateSpan(selection.period.from, selection.period.to)} — excluded from
-                        this invoice
-                      </p>
-                      <ul className="mt-1.5 space-y-1 pl-5">
-                        {selection.billed.slice(0, 3).map((g) => (
-                          <li
-                            key={g.invoiceId ?? 'unlinked'}
-                            className="flex flex-wrap items-baseline gap-x-2"
-                          >
-                            <span className="font-mono text-surface-900">
-                              {g.number ?? 'Marked invoiced'}
-                            </span>
-                            <span className="text-surface-600">
-                              {formatDateSpan(g.firstDate, g.lastDate)}
-                            </span>
-                            <span className="text-surface-500">
-                              {g.count} {g.count === 1 ? 'entry' : 'entries'} ·{' '}
-                              {formatHours(g.minutes)}
-                            </span>
-                            {g.status && <span className="text-surface-500">{g.status}</span>}
-                          </li>
-                        ))}
-                        {selection.billed.length > 3 && (
-                          <li className="text-surface-500">
-                            + {selection.billed.length - 3} earlier
-                          </li>
-                        )}
-                      </ul>
+            <div className="text-[13px] text-surface-600 tabular-nums space-y-2">
+              {selection ? (
+                <>
+                  {selection.count > 0 ? (
+                    <div>
+                      {selection.count} open entries · {formatHours(selection.minutes)} ·{' '}
+                      <Money>{formatUsd(selection.amount)}</Money>
+                      {selection.deficit > 0 && (
+                        <span className="text-amber-400">
+                          {' '}
+                          → tops up to{' '}
+                          <Money>{formatUsd(selection.amount + selection.deficit)}</Money> (minimum)
+                        </span>
+                      )}
+                      {selection.firstDate && selection.lastDate && (
+                        <span className="block text-[12px] text-surface-500">
+                          Work dated {formatDateSpan(selection.firstDate, selection.lastDate)}
+                        </span>
+                      )}
                     </div>
                   ) : (
-                    <p className="text-[12px] text-surface-500">
-                      Nothing dated {formatDateSpan(selection.period.from, selection.period.to)} has
-                      been billed yet.
-                    </p>
-                  ))}
-              </>
-            ) : (
-              'Pick a customer to see open entries'
-            )}
-            {error && <span className="block text-danger-400 mt-1">{error}</span>}
-          </div>
+                    <div>No open entries in this window</div>
+                  )}
+                  {/* Earlier invoices covering the same period — the proof that
+                    an early/partial invoice's hours stay off this one. */}
+                  {selection.period &&
+                    (selection.billed.length > 0 ? (
+                      <div className="rounded-lg border border-border bg-surface-100/60 px-3 py-2 text-[12px]">
+                        <p className="flex items-center gap-1.5 text-surface-700">
+                          <Lock className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                          Already billed in{' '}
+                          {formatDateSpan(selection.period.from, selection.period.to)} — excluded
+                          from this invoice
+                        </p>
+                        <ul className="mt-1.5 space-y-1 pl-5">
+                          {selection.billed.slice(0, 3).map((g) => (
+                            <li
+                              key={g.invoiceId ?? 'unlinked'}
+                              className="flex flex-wrap items-baseline gap-x-2"
+                            >
+                              <span className="font-mono text-surface-900">
+                                {g.number ?? 'Marked invoiced'}
+                              </span>
+                              <span className="text-surface-600">
+                                {formatDateSpan(g.firstDate, g.lastDate)}
+                              </span>
+                              <span className="text-surface-500">
+                                {g.count} {g.count === 1 ? 'entry' : 'entries'} ·{' '}
+                                {formatHours(g.minutes)}
+                              </span>
+                              {g.status && <span className="text-surface-500">{g.status}</span>}
+                            </li>
+                          ))}
+                          {selection.billed.length > 3 && (
+                            <li className="text-surface-500">
+                              + {selection.billed.length - 3} earlier
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+                    ) : (
+                      <p className="text-[12px] text-surface-500">
+                        Nothing dated {formatDateSpan(selection.period.from, selection.period.to)}{' '}
+                        has been billed yet.
+                      </p>
+                    ))}
+                </>
+              ) : (
+                'Pick a customer to see open entries'
+              )}
+              {error && <span className="block text-danger-400 mt-1">{error}</span>}
+            </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setCreateOpen(false)}>
               Cancel
@@ -888,46 +927,60 @@ export function InvoicesTab({
           <DialogHeader>
             <DialogTitle>File Invoice {fileInvoice?.number} to Entity</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-[12px] text-surface-600 block mb-1">Entity</label>
-              <select
-                value={fileEntity}
-                onChange={(e) => setFileEntity(e.target.value)}
-                className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
-              >
-                {entities.length === 0 && <option value="">Loading…</option>}
-                {entities.map((en) => (
-                  <option key={en.id} value={en.id}>
-                    {en.name}
-                  </option>
-                ))}
-              </select>
+          <DialogBody>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label
+                  htmlFor="invoicestab-field-7"
+                  className="text-[12px] text-surface-600 block mb-1"
+                >
+                  Entity
+                </label>
+                <select
+                  id="invoicestab-field-7"
+                  value={fileEntity}
+                  onChange={(e) => setFileEntity(e.target.value)}
+                  className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+                >
+                  {entities.length === 0 && <option value="">Loading…</option>}
+                  {entities.map((en) => (
+                    <option key={en.id} value={en.id}>
+                      {en.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label
+                  htmlFor="invoicestab-field-8"
+                  className="text-[12px] text-surface-600 block mb-1"
+                >
+                  Folder (year)
+                </label>
+                <Input
+                  id="invoicestab-field-8"
+                  value={fileYear}
+                  onChange={(e) => setFileYear(e.target.value)}
+                  className="h-9 rounded-lg text-sm"
+                />
+              </div>
+              <label className="col-span-2 flex items-center gap-2 text-[13px] text-surface-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={fileParse}
+                  onChange={(e) => setFileParse(e.target.checked)}
+                />
+                Run AI parse after filing
+              </label>
+              {fileResult && (
+                <p
+                  className={`col-span-2 text-[12px] ${fileResult.startsWith('Filed') ? 'text-emerald-400' : 'text-danger-400'}`}
+                >
+                  {fileResult}
+                </p>
+              )}
             </div>
-            <div>
-              <label className="text-[12px] text-surface-600 block mb-1">Folder (year)</label>
-              <Input
-                value={fileYear}
-                onChange={(e) => setFileYear(e.target.value)}
-                className="h-9 rounded-lg text-sm"
-              />
-            </div>
-            <label className="col-span-2 flex items-center gap-2 text-[13px] text-surface-700 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={fileParse}
-                onChange={(e) => setFileParse(e.target.checked)}
-              />
-              Run AI parse after filing
-            </label>
-            {fileResult && (
-              <p
-                className={`col-span-2 text-[12px] ${fileResult.startsWith('Filed') ? 'text-emerald-400' : 'text-danger-400'}`}
-              >
-                {fileResult}
-              </p>
-            )}
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setFileInvoice(null)}>
               {fileResult.startsWith('Filed') ? 'Close' : 'Cancel'}
@@ -948,83 +1001,115 @@ export function InvoicesTab({
         open={composeInvoice !== null}
         onOpenChange={(open) => !open && setComposeInvoice(null)}
       >
-        <DialogContent className="sm:max-w-xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>Send Invoice {composeInvoice?.number}</DialogTitle>
           </DialogHeader>
-          {composeLoading ? (
-            <div className="flex items-center justify-center py-10">
-              <Loader2 className="w-5 h-5 animate-spin text-surface-500" />
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-3">
-              <div>
-                <label className="text-[12px] text-surface-600 block mb-1">To</label>
-                <textarea
-                  value={draft.to}
-                  onChange={(e) => setDraft({ ...draft, to: e.target.value })}
-                  placeholder="a@client.com, b@client.com"
-                  rows={2}
-                  className="w-full rounded-lg text-sm bg-surface-100 border border-border px-3 py-2"
-                />
+          <DialogBody>
+            {composeLoading ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 className="w-5 h-5 animate-spin text-surface-500" />
               </div>
-              <div>
-                <label className="text-[12px] text-surface-600 block mb-1">From</label>
-                <Input
-                  value={draft.from}
-                  onChange={(e) => setDraft({ ...draft, from: e.target.value })}
-                  placeholder="default sender"
-                  className="h-9 rounded-lg text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-[12px] text-surface-600 block mb-1">CC</label>
-                <Input
-                  value={draft.cc}
-                  onChange={(e) => setDraft({ ...draft, cc: e.target.value })}
-                  placeholder="nobody"
-                  className="h-9 rounded-lg text-sm"
-                />
-                <p className="text-[10px] text-surface-500 mt-1">
-                  Pre-filled from Settings → Email → CC on client emails. Clear it to send this one
-                  without a copy.
+            ) : (
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  <label
+                    htmlFor="invoicestab-field-9"
+                    className="text-[12px] text-surface-600 block mb-1"
+                  >
+                    To
+                  </label>
+                  <textarea
+                    id="invoicestab-field-9"
+                    value={draft.to}
+                    onChange={(e) => setDraft({ ...draft, to: e.target.value })}
+                    placeholder="a@client.com, b@client.com"
+                    rows={2}
+                    className="w-full rounded-lg text-sm bg-surface-100 border border-border px-3 py-2"
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="invoicestab-field-10"
+                    className="text-[12px] text-surface-600 block mb-1"
+                  >
+                    From
+                  </label>
+                  <Input
+                    id="invoicestab-field-10"
+                    value={draft.from}
+                    onChange={(e) => setDraft({ ...draft, from: e.target.value })}
+                    placeholder="default sender"
+                    className="h-9 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="invoicestab-field-11"
+                    className="text-[12px] text-surface-600 block mb-1"
+                  >
+                    CC
+                  </label>
+                  <Input
+                    id="invoicestab-field-11"
+                    value={draft.cc}
+                    onChange={(e) => setDraft({ ...draft, cc: e.target.value })}
+                    placeholder="nobody"
+                    className="h-9 rounded-lg text-sm"
+                  />
+                  <p className="text-[10px] text-surface-500 mt-1">
+                    Pre-filled from Settings → Email → CC on client emails. Clear it to send this
+                    one without a copy.
+                  </p>
+                </div>
+                <div>
+                  <label
+                    htmlFor="invoicestab-field-12"
+                    className="text-[12px] text-surface-600 block mb-1"
+                  >
+                    Subject
+                  </label>
+                  <Input
+                    id="invoicestab-field-12"
+                    value={draft.subject}
+                    onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
+                    className="h-9 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="invoicestab-field-13"
+                    className="text-[12px] text-surface-600 block mb-1"
+                  >
+                    Body
+                  </label>
+                  <textarea
+                    id="invoicestab-field-13"
+                    value={draft.body}
+                    onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+                    rows={7}
+                    className="w-full rounded-lg text-sm bg-surface-100 border border-border px-3 py-2"
+                  />
+                </div>
+                <p className="text-[12px] text-surface-500">
+                  📎 {draft.attachment}
+                  {composeInvoice?.sentAt && (
+                    <span className="ml-2 text-amber-400">
+                      already sent {composeInvoice.sentAt.slice(0, 10)}
+                      {composeInvoice.sentTo ? ` to ${composeInvoice.sentTo}` : ''}
+                    </span>
+                  )}
                 </p>
-              </div>
-              <div>
-                <label className="text-[12px] text-surface-600 block mb-1">Subject</label>
-                <Input
-                  value={draft.subject}
-                  onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
-                  className="h-9 rounded-lg text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-[12px] text-surface-600 block mb-1">Body</label>
-                <textarea
-                  value={draft.body}
-                  onChange={(e) => setDraft({ ...draft, body: e.target.value })}
-                  rows={7}
-                  className="w-full rounded-lg text-sm bg-surface-100 border border-border px-3 py-2"
-                />
-              </div>
-              <p className="text-[12px] text-surface-500">
-                📎 {draft.attachment}
-                {composeInvoice?.sentAt && (
-                  <span className="ml-2 text-amber-400">
-                    already sent {composeInvoice.sentAt.slice(0, 10)}
-                    {composeInvoice.sentTo ? ` to ${composeInvoice.sentTo}` : ''}
-                  </span>
+                {composeResult && (
+                  <p
+                    className={`text-[12px] ${composeResult.startsWith('Sent') ? 'text-emerald-400' : 'text-danger-400'}`}
+                  >
+                    {composeResult}
+                  </p>
                 )}
-              </p>
-              {composeResult && (
-                <p
-                  className={`text-[12px] ${composeResult.startsWith('Sent') ? 'text-emerald-400' : 'text-danger-400'}`}
-                >
-                  {composeResult}
-                </p>
-              )}
-            </div>
-          )}
+              </div>
+            )}
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setComposeInvoice(null)}>
               {composeResult.startsWith('Sent') ? 'Close' : 'Cancel'}
@@ -1057,7 +1142,7 @@ export function InvoicesTab({
         open={previewInvoice !== null}
         onOpenChange={(open) => !open && setPreviewInvoice(null)}
       >
-        <DialogContent className="sm:max-w-4xl w-[calc(100%-1.5rem)] h-[85vh] flex flex-col gap-3">
+        <DialogContent className="sm:max-w-4xl w-[calc(100%-1.5rem)] h-[85dvh] flex flex-col gap-3">
           <DialogHeader>
             <DialogTitle>
               Invoice {previewInvoice?.number}
@@ -1066,23 +1151,25 @@ export function InvoicesTab({
               </span>
             </DialogTitle>
           </DialogHeader>
-          <div className="flex-1 min-h-0 rounded-lg overflow-hidden bg-white/95">
-            {previewLoading ? (
-              <div className="flex items-center justify-center h-full">
-                <Loader2 className="w-6 h-6 animate-spin text-surface-500" />
-              </div>
-            ) : previewUrl ? (
-              <iframe
-                src={`${previewUrl}#toolbar=0&navpanes=0`}
-                title={`Invoice ${previewInvoice?.number} preview`}
-                className="w-full h-full border-0"
-              />
-            ) : (
-              <div className="flex items-center justify-center h-full text-[13px] text-surface-700">
-                Preview failed to load.
-              </div>
-            )}
-          </div>
+          <DialogBody className="flex flex-col overflow-hidden">
+            <div className="flex-1 min-h-0 rounded-lg overflow-hidden bg-white/95">
+              {previewLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="w-6 h-6 animate-spin text-surface-500" />
+                </div>
+              ) : previewUrl ? (
+                <iframe
+                  src={`${previewUrl}#toolbar=0&navpanes=0`}
+                  title={`Invoice ${previewInvoice?.number} preview`}
+                  className="w-full h-full border-0"
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-[13px] text-surface-700">
+                  Preview failed to load.
+                </div>
+              )}
+            </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setPreviewInvoice(null)}>
               Close

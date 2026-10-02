@@ -53,7 +53,7 @@ function toMonthly(amount: number, frequency: string): number {
 }
 
 export function IncomeView() {
-  const { confirm, ConfirmDialog } = useConfirmDialog();
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [sources, setSources] = useState<IncomeSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -412,7 +412,7 @@ export function IncomeView() {
         </div>
       )}
 
-      <ConfirmDialog />
+      {confirmDialog}
     </div>
   );
 }

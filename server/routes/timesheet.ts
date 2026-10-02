@@ -24,6 +24,7 @@ import { readJsonBody } from '../http.js';
 import {
   loadTimesheetStore,
   saveTimesheetStore,
+  withTimesheetMutation,
   spanMinutes,
   isValidTime,
   isValidDate,
@@ -84,7 +85,22 @@ export async function handleTimesheetRoutes(
   pathname: string
 ): Promise<Response | null> {
   if (!pathname.startsWith('/api/timesheet')) return null;
+  const handle = () => handleTimesheetRoutesUnlocked(req, url, pathname);
+  // Sending awaits email delivery. Those handlers merge their result into a
+  // fresh store under the same lock, without blocking edits during the send.
+  const sendsEmail =
+    pathname === '/api/timesheet/weekly-report/send' ||
+    /^\/api\/timesheet\/invoices\/[^/]+\/send$/.test(pathname);
+  return ['POST', 'PUT', 'DELETE'].includes(req.method) && !sendsEmail
+    ? withTimesheetMutation(handle)
+    : handle();
+}
 
+async function handleTimesheetRoutesUnlocked(
+  req: Request,
+  url: URL,
+  pathname: string
+): Promise<Response | null> {
   // GET /api/timesheet - full store (clients + projects + entries)
   if (pathname === '/api/timesheet' && req.method === 'GET') {
     return jsonResponse(await loadTimesheetStore());
@@ -949,6 +965,9 @@ async function handleInvoiceRoutes(req: Request, pathname: string): Promise<Resp
     const subject = body.subject?.trim() || `Invoice ${invoice.number}`;
     const text = body.body ?? '';
     const html = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
       .split(/\n{2,}/)
       .map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`)
       .join('\n');
@@ -995,7 +1014,18 @@ async function handleInvoiceRoutes(req: Request, pathname: string): Promise<Resp
         );
       }
     }
-    await saveTimesheetStore(store);
+    await withTimesheetMutation(async () => {
+      const fresh = await loadTimesheetStore();
+      const current = fresh.invoices.find((i) => i.id === invoice.id);
+      if (!current) {
+        log.warn(`[invoice] ${invoice.number} was removed during delivery; not restoring it`);
+        return;
+      }
+      current.sentAt = invoice.sentAt;
+      current.sentTo = invoice.sentTo;
+      current.filedPath ??= invoice.filedPath;
+      await saveTimesheetStore(fresh);
+    });
     log.info(`[invoice] sent ${invoice.number} (id=${result.id ?? 'n/a'})`);
     return jsonResponse({ ok: true, sentTo: to, sentAt: invoice.sentAt });
   }

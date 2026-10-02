@@ -123,7 +123,7 @@ interface EntityMetadataBannerProps {
 export function EntityMetadataBanner({ entityConfig, onEntityUpdated }: EntityMetadataBannerProps) {
   const storageKey = entityConfig ? `docvault-metadata-expanded-${entityConfig.id}` : '';
   const { addToast } = useToast();
-  const { confirm, ConfirmDialog } = useConfirmDialog();
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [isExpanded, setIsExpanded] = useState(() => {
     if (!storageKey) return false;
     return localStorage.getItem(storageKey) === 'true';
@@ -257,7 +257,7 @@ export function EntityMetadataBanner({ entityConfig, onEntityUpdated }: EntityMe
             </span>
           </Button>
         </Card>
-        <ConfirmDialog />
+        {confirmDialog}
       </>
     );
   }
@@ -382,7 +382,7 @@ export function EntityMetadataBanner({ entityConfig, onEntityUpdated }: EntityMe
           </div>
         )}
       </Card>
-      <ConfirmDialog />
+      {confirmDialog}
     </>
   );
 }

@@ -32,7 +32,7 @@ function fmtHours(minutes: number): string {
 }
 
 export function WeeklyReportTab({ store }: { store: TimesheetStore }) {
-  const { confirm, ConfirmDialog } = useConfirmDialog();
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -186,7 +186,7 @@ export function WeeklyReportTab({ store }: { store: TimesheetStore }) {
 
   return (
     <div className="space-y-4">
-      <ConfirmDialog />
+      {confirmDialog}
 
       <Card className="p-4 space-y-3">
         <h3 className="text-[13px] font-semibold">Schedule &amp; Delivery</h3>

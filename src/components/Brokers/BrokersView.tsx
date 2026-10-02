@@ -24,6 +24,8 @@ import { API_BASE } from '../../constants';
 import { HistoryChart } from '../common/HistoryChart';
 import { Card } from '@/components/ui/card';
 import {
+  DialogBody,
+  DialogFooter,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -146,12 +148,16 @@ function AddHoldingModal({
             Add a holding with ticker, shares, and optional cost basis.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
+        <DialogBody className="space-y-3">
           <div>
-            <label className="text-[12px] font-medium text-surface-700 mb-1 block">
+            <label
+              htmlFor="brokersview-field-1"
+              className="text-[12px] font-medium text-surface-700 mb-1 block"
+            >
               Ticker Symbol
             </label>
             <Input
+              id="brokersview-field-1"
               value={ticker}
               onChange={(e) => setTicker(e.target.value)}
               placeholder="e.g. VTI, AAPL, FXAIX"
@@ -160,8 +166,14 @@ function AddHoldingModal({
             />
           </div>
           <div>
-            <label className="text-[12px] font-medium text-surface-700 mb-1 block">Shares</label>
+            <label
+              htmlFor="brokersview-field-2"
+              className="text-[12px] font-medium text-surface-700 mb-1 block"
+            >
+              Shares
+            </label>
             <Input
+              id="brokersview-field-2"
               type="number"
               step="any"
               value={shares}
@@ -171,10 +183,14 @@ function AddHoldingModal({
             />
           </div>
           <div>
-            <label className="text-[12px] font-medium text-surface-700 mb-1 block">
+            <label
+              htmlFor="brokersview-field-3"
+              className="text-[12px] font-medium text-surface-700 mb-1 block"
+            >
               Cost Basis (total, optional)
             </label>
             <Input
+              id="brokersview-field-3"
               type="number"
               step="any"
               value={costBasis}
@@ -184,25 +200,29 @@ function AddHoldingModal({
             />
           </div>
           <div>
-            <label className="text-[12px] font-medium text-surface-700 mb-1 block">
+            <label
+              htmlFor="brokersview-field-4"
+              className="text-[12px] font-medium text-surface-700 mb-1 block"
+            >
               Purchase Date (optional, for gain type)
             </label>
             <Input
+              id="brokersview-field-4"
               type="date"
               value={purchaseDate}
               onChange={(e) => setPurchaseDate(e.target.value)}
               className="text-[13px]"
             />
           </div>
-        </div>
-        <div className="flex gap-2 mt-1">
+        </DialogBody>
+        <DialogFooter className="flex gap-2 mt-1">
           <Button variant="ghost" onClick={() => onOpenChange(false)} className="flex-1">
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={!ticker || !shares} className="flex-1">
             Add
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -232,7 +252,7 @@ function AddAccountModal({
             Add a brokerage account to track holdings and balances.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
+        <DialogBody className="space-y-3">
           <div>
             <label className="text-[12px] font-medium text-surface-700 mb-1 block">
               Institution
@@ -253,10 +273,14 @@ function AddAccountModal({
             </Select>
           </div>
           <div>
-            <label className="text-[12px] font-medium text-surface-700 mb-1 block">
+            <label
+              htmlFor="brokersview-field-5"
+              className="text-[12px] font-medium text-surface-700 mb-1 block"
+            >
               Account Name
             </label>
             <Input
+              id="brokersview-field-5"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Roth IRA, Brokerage, 401k"
@@ -265,10 +289,14 @@ function AddAccountModal({
             />
           </div>
           <div>
-            <label className="text-[12px] font-medium text-surface-700 mb-1 block">
+            <label
+              htmlFor="brokersview-field-6"
+              className="text-[12px] font-medium text-surface-700 mb-1 block"
+            >
               Website URL (optional)
             </label>
             <Input
+              id="brokersview-field-6"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="e.g. https://app.altoira.com"
@@ -295,8 +323,8 @@ function AddAccountModal({
               Set a fixed balance instead of tracking individual holdings
             </p>
           </div>
-        </div>
-        <div className="flex gap-2 mt-1">
+        </DialogBody>
+        <DialogFooter className="flex gap-2 mt-1">
           <Button variant="ghost" onClick={() => onOpenChange(false)} className="flex-1">
             Cancel
           </Button>
@@ -312,7 +340,7 @@ function AddAccountModal({
           >
             Add Account
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -337,7 +365,7 @@ function AccountCard({
 }) {
   const [expanded, setExpanded] = useState(true);
   const [showAddHolding, setShowAddHolding] = useState(false);
-  const { confirm, ConfirmDialog } = useConfirmDialog();
+  const { confirm, confirmDialog } = useConfirmDialog();
   const brokerColor = BROKER_COLORS[account.broker] || 'text-surface-600 bg-surface-200/50';
   const sortedHoldings = [...account.holdings].sort(
     (a, b) => (b.marketValue || 0) - (a.marketValue || 0)
@@ -555,7 +583,7 @@ function AccountCard({
         }}
         onOpenChange={setShowAddHolding}
       />
-      <ConfirmDialog />
+      {confirmDialog}
     </Card>
   );
 }
@@ -663,7 +691,7 @@ export function BrokersView() {
     portfolio?.lastUpdated
   );
   const [isLoading, setIsLoading] = useState(!cachedPortfolio);
-  const { confirm, ConfirmDialog: BrokersConfirmDialog } = useConfirmDialog();
+  const { confirm, confirmDialog: brokersConfirmDialog } = useConfirmDialog();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>([]);
@@ -953,12 +981,23 @@ export function BrokersView() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setShowAddAccount(true)}>
+          <Button
+            variant="outline"
+            onClick={() => setShowAddAccount(true)}
+            aria-label="Add Manual Account"
+            className="max-sm:min-h-11"
+          >
             <Plus className="w-4 h-4" />
             <span className="hidden sm:inline">Add Manual Account</span>
+            <span className="sm:hidden">Add account</span>
           </Button>
           {hasAccounts && (
-            <Button onClick={() => loadPortfolio(true)} disabled={isRefreshing}>
+            <Button
+              onClick={() => loadPortfolio(true)}
+              disabled={isRefreshing}
+              aria-label={isRefreshing ? 'Refreshing portfolio' : 'Refresh portfolio'}
+              className="max-sm:min-h-11"
+            >
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">
                 {isRefreshing ? 'Refreshing...' : 'Refresh Prices'}
@@ -1087,7 +1126,7 @@ export function BrokersView() {
         onAdd={handleAddAccount}
         onOpenChange={setShowAddAccount}
       />
-      <BrokersConfirmDialog />
+      {brokersConfirmDialog}
     </div>
   );
 }

@@ -83,13 +83,26 @@ input[type='date']::-webkit-calendar-picker-indicator {
   --color-secondary: #1c1f26;
   --color-secondary-foreground: #b4bccf;
   --color-muted: #1c1f26;
-  --color-muted-foreground: #626a7c;
+  --color-muted-foreground: #8891a5;
   --color-accent: #1c1f26;
   --color-accent-foreground: #b4bccf;
   --color-destructive: #ef4444;
   --color-destructive-foreground: #0c0e12;
   --color-input: #1c1f26;
   --color-ring: #34d399;
+}
+
+/* Surface shades are panel colors. Existing muted text utilities need a
+   readable foreground without changing the backgrounds that share the scale. */
+@layer utilities {
+  .text-surface-500,
+  .placeholder\:text-surface-500::placeholder {
+    color: #7e899f;
+  }
+  .text-surface-600,
+  .text-surface-700 {
+    color: var(--color-surface-800);
+  }
 }
 
 :root {
@@ -113,7 +126,7 @@ input[type='date']::-webkit-calendar-picker-indicator {
   --secondary: var(--color-surface-200);
   --secondary-foreground: var(--color-surface-900);
   --muted: var(--color-surface-200);
-  --muted-foreground: var(--color-surface-700);
+  --muted-foreground: var(--color-surface-800);
   --accent: var(--color-surface-200);
   --accent-foreground: var(--color-surface-900);
   --destructive: var(--color-danger-500);

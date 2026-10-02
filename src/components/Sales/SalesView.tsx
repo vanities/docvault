@@ -20,6 +20,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  DialogBody,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -531,7 +532,7 @@ export function SalesView() {
 
       {/* Products Dialog */}
       <Dialog open={productsDialogOpen} onOpenChange={setProductsDialogOpen}>
-        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Package className="w-4 h-4 text-surface-600" />
@@ -540,7 +541,7 @@ export function SalesView() {
             <DialogDescription>Manage your product catalog</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <DialogBody className="space-y-3">
             <div className="flex justify-end">
               {showProductForm ? (
                 <Button
@@ -674,7 +675,7 @@ export function SalesView() {
                 );
               })}
             </Card>
-          </div>
+          </DialogBody>
         </DialogContent>
       </Dialog>
     </div>

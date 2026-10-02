@@ -1,3 +1,4 @@
+import { documentMetadataPatch } from '../../utils/documentMetadataPatch';
 import { useMemo } from 'react';
 import { RefreshCw, Download, Briefcase } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -94,22 +95,18 @@ export function TaxYearView() {
   const { addToast } = useToast();
 
   // Update document in the scanned documents list and persist metadata
-  const handleUpdateDoc = (id: string, updates: Partial<TaxDocument>) => {
-    setScannedDocuments((prev) =>
-      prev.map((doc) => (doc.id === id ? { ...doc, ...updates } : doc))
-    );
-    // Persist tags, notes, and tracked to server
-    if ('tags' in updates || 'notes' in updates || 'tracked' in updates) {
-      const doc = scannedDocuments.find((d) => d.id === id);
-      if (doc?.filePath) {
-        const merged = { ...doc, ...updates };
-        void updateDocMetadata(doc.entity, doc.filePath, {
-          tags: merged.tags,
-          notes: merged.notes || '',
-          ...('tracked' in updates ? { tracked: updates.tracked } : {}),
-        });
-      }
+  const handleUpdateDoc = async (id: string, updates: Partial<TaxDocument>) => {
+    const doc = scannedDocuments.find((document) => document.id === id);
+    if (!doc) return false;
+    const patch = documentMetadataPatch(updates);
+    if (patch && doc.filePath && !(await updateDocMetadata(doc.entity, doc.filePath, patch))) {
+      addToast('Document changes could not be saved. Please try again.', 'error');
+      return false;
     }
+    setScannedDocuments((previous) =>
+      previous.map((document) => (document.id === id ? { ...document, ...updates } : document))
+    );
+    return true;
   };
 
   // Delete a document via server API
@@ -376,6 +373,7 @@ export function TaxYearView() {
       {/* Tab Content */}
       {activeTab === 'documents' && (
         <DocumentList
+          key={`${selectedEntity}:${selectedYear}`}
           documents={filteredDocuments}
           onUpdate={handleUpdateDoc}
           onDelete={handleDeleteDoc}
