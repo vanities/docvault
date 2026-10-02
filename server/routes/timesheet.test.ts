@@ -31,8 +31,11 @@ vi.mock('../logger.js', () => ({
 // routes only need its re-arm hook. Email must never actually send.
 vi.mock('../scheduler.js', () => ({ armWeeklyReportTimer: () => {} }));
 vi.mock('../email.js', () => ({
-  sendEmail: async () => ({ ok: false, error: 'email disabled in tests' }),
+  sendEmail: vi.fn(async () => ({ ok: false, error: 'email disabled in tests' })),
 }));
+
+import { sendEmail, type SendEmailResult } from '../email.js';
+import { sendWeeklyReport } from '../timesheet-report.js';
 
 // eslint-disable-next-line import/first
 import { handleTimesheetRoutes } from './timesheet.js';
@@ -122,6 +125,9 @@ async function storedEntry(id: string): Promise<TimesheetEntry> {
 }
 
 beforeEach(async () => {
+  vi.mocked(sendEmail)
+    .mockReset()
+    .mockResolvedValue({ ok: false, error: 'email disabled in tests' });
   await fs.mkdir(tmpDataDir, { recursive: true });
 });
 
@@ -282,5 +288,155 @@ describe('invoiced entries with no invoice record', () => {
     expect(after.invoiced).toBe(false);
     expect(after.invoiceId).toBeUndefined();
     expect(after.invoicedAt).toBeUndefined();
+  });
+});
+
+describe('overlapping timesheet mutations', () => {
+  test('concurrent entries are all retained', async () => {
+    await seed();
+    const results = await Promise.allSettled(
+      Array.from({ length: 12 }, (_, i) =>
+        call('POST', '/api/timesheet/entries', {
+          projectId: 'widgets',
+          date: '2026-09-30',
+          durationMinutes: 15,
+          description: `Synthetic parallel entry ${i}`,
+        })
+      )
+    );
+    expect(
+      results.every((result) => result.status === 'fulfilled' && result.value.status === 200)
+    ).toBe(true);
+    const store = await loadTimesheetStore();
+    expect(
+      store.entries.filter((entry) => entry.description.startsWith('Synthetic parallel entry'))
+    ).toHaveLength(12);
+  });
+  test('overlapping invoices cannot bill the same entries twice', async () => {
+    await seed();
+    const results = await Promise.allSettled([
+      call('POST', '/api/timesheet/invoices', { clientId: 'acme' }),
+      call('POST', '/api/timesheet/invoices', { clientId: 'acme' }),
+    ]);
+    expect(results.every((result) => result.status === 'fulfilled')).toBe(true);
+    expect(
+      results.filter((result) => result.status === 'fulfilled' && result.value.status === 200)
+    ).toHaveLength(1);
+    expect((await loadTimesheetStore()).invoices).toHaveLength(1);
+  });
+});
+
+/** Pause the fake email response while another route updates the store. */
+function holdEmail() {
+  let release!: (result: SendEmailResult) => void;
+  let started!: () => void;
+  const pending = new Promise<SendEmailResult>((resolve) => {
+    release = resolve;
+  });
+  const ready = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  vi.mocked(sendEmail).mockImplementationOnce(() => {
+    started();
+    return pending;
+  });
+  return { ready, release: () => release({ ok: true, id: 'synthetic-delivery' }) };
+}
+
+describe('updates during email delivery', () => {
+  test('invoice delivery preserves newer entries and invoice edits, and escapes composed text', async () => {
+    await seed();
+    const invoice = await invoiceEarly();
+    const email = holdEmail();
+    const sending = call('POST', `/api/timesheet/invoices/${invoice.id}/send`, {
+      to: 'billing@example.com',
+      body: 'Hi <Team> & partners\nPlease review.\n\nThanks!',
+    });
+    await email.ready;
+    expect(
+      (
+        await call('PUT', `/api/timesheet/invoices/${invoice.id}`, {
+          status: 'paid',
+          comment: 'Synthetic payment',
+        })
+      ).status
+    ).toBe(200);
+    expect(
+      (
+        await call('POST', '/api/timesheet/entries', {
+          projectId: 'widgets',
+          date: '2026-09-30',
+          durationMinutes: 15,
+          description: 'Synthetic entry during send',
+        })
+      ).status
+    ).toBe(200);
+    email.release();
+    expect((await sending).status).toBe(200);
+    const store = await loadTimesheetStore();
+    expect(store.entries).toHaveLength(5);
+    expect(store.invoices[0]).toMatchObject({
+      status: 'paid',
+      comment: 'Synthetic payment',
+      sentTo: 'billing@example.com',
+    });
+    expect(store.invoices[0].sentAt).toBeTruthy();
+    expect(vi.mocked(sendEmail).mock.calls[0][0].html).toBe(
+      '<p>Hi &lt;Team&gt; &amp; partners<br>Please review.</p>\n<p>Thanks!</p>'
+    );
+  });
+
+  test('finishing delivery cannot restore a deleted invoice or its billing locks', async () => {
+    await seed();
+    const invoice = await invoiceEarly();
+    const email = holdEmail();
+    const sending = call('POST', `/api/timesheet/invoices/${invoice.id}/send`, {
+      to: 'billing@example.com',
+    });
+    await email.ready;
+    expect((await call('DELETE', `/api/timesheet/invoices/${invoice.id}`)).status).toBe(200);
+    email.release();
+    expect((await sending).status).toBe(200);
+    const store = await loadTimesheetStore();
+    expect(store.invoices).toHaveLength(0);
+    expect(store.entries.every((entry) => !entry.invoiced && !entry.invoiceId)).toBe(true);
+  });
+
+  test('weekly report delivery preserves updated report scope and newer entries', async () => {
+    await seed();
+    await call('PUT', '/api/timesheet/weekly-report/config', {
+      to: 'billing@example.com',
+      clientIds: ['acme'],
+    });
+    const email = holdEmail();
+    const sending = sendWeeklyReport('2026-09-30');
+    await email.ready;
+    expect(
+      (
+        await call('PUT', '/api/timesheet/weekly-report/config', {
+          to: 'billing@example.com',
+          projectIds: ['gadgets'],
+        })
+      ).status
+    ).toBe(200);
+    expect(
+      (
+        await call('POST', '/api/timesheet/entries', {
+          projectId: 'widgets',
+          date: '2026-09-30',
+          durationMinutes: 15,
+          description: 'Synthetic entry during report',
+        })
+      ).status
+    ).toBe(200);
+    email.release();
+    expect((await sending).ok).toBe(true);
+    const store = await loadTimesheetStore();
+    expect(store.entries).toHaveLength(5);
+    expect(store.weeklyReport).toMatchObject({
+      projectIds: ['gadgets'],
+      lastSentWeek: '2026-09-30',
+    });
+    expect(store.weeklyReport?.lastSentAt).toBeTruthy();
   });
 });

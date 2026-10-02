@@ -504,7 +504,7 @@ function SimplefinBanner({
 // Main Component
 
 export function BanksView() {
-  const { confirm, ConfirmDialog } = useConfirmDialog();
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [data, setData] = useState<SimplefinBalanceCache | null>(cachedData);
   const [isLoading, setIsLoading] = useState(!cachedData);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -840,7 +840,7 @@ export function BanksView() {
           </div>
         </>
       )}
-      <ConfirmDialog />
+      {confirmDialog}
     </div>
   );
 }

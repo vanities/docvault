@@ -4,8 +4,9 @@
 // download the filled PDF. Deliberately unobtrusive — most PDFs are records,
 // not forms, so this lives behind one Header icon, not in the file views.
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import {
+  DialogBody,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -182,7 +183,7 @@ export function FillFormModal({
         if (!o) close();
       }}
     >
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+      <DialogContent className="max-w-2xl flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="w-5 h-5" />
@@ -193,88 +194,92 @@ export function FillFormModal({
             from an entity's data — you review, then download.
           </DialogDescription>
         </DialogHeader>
-
-        <div className="flex-1 overflow-y-auto min-h-0 space-y-4 px-0.5">
-          {!pdf ? (
-            <label className="flex flex-col items-center justify-center gap-2 p-8 border-2 border-dashed border-border/50 rounded-xl cursor-pointer hover:bg-surface-100/40 text-surface-600">
-              <Upload className="w-6 h-6" />
-              <span className="text-[13px]">Choose a fillable PDF</span>
-              <input
-                type="file"
-                accept="application/pdf,.pdf"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void onFile(f);
-                }}
-              />
-            </label>
-          ) : (
-            <div className="flex items-center gap-2 text-[12px] text-surface-600">
-              <FileText className="w-4 h-4 flex-shrink-0" />
-              <span className="truncate">{fileName}</span>
-              <Button variant="ghost" size="xs" onClick={reset} className="ml-auto">
-                Change
-              </Button>
-            </div>
-          )}
-
-          {decoding && (
-            <div className="flex items-center justify-center gap-2 py-6 text-surface-500 text-[13px]">
-              <Loader2 className="w-4 h-4 animate-spin" /> Reading the form…
-            </div>
-          )}
-
-          {decoded && !fillable && !decoding && (
-            <p className="text-[13px] text-surface-600 p-4 text-center bg-surface-50/40 rounded-xl">
-              This PDF has no fillable form fields — nothing to fill.
-            </p>
-          )}
-
-          {fillable && (
-            <>
-              {decoded.formName && (
-                <div className="text-[13px] font-medium text-surface-900">{decoded.formName}</div>
-              )}
-
-              <div className="flex items-end gap-2 p-3 bg-accent-500/5 border border-accent-500/15 rounded-xl">
-                <div className="flex-1">
-                  <label className="block text-[11px] font-medium text-surface-700 mb-1">
-                    Auto-fill from entity
-                  </label>
-                  <select
-                    value={entityId}
-                    onChange={(e) => setEntityId(e.target.value)}
-                    className="w-full text-[13px] bg-surface-100/60 border border-border/40 rounded-lg px-2 py-1.5"
-                  >
-                    <option value="">— choose —</option>
-                    {entities.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <Button size="sm" onClick={autofill} disabled={!entityId || autofilling}>
-                  <Sparkles className={`w-4 h-4 ${autofilling ? 'animate-pulse' : ''}`} />
-                  {autofilling ? 'Filling…' : 'Auto-fill'}
+        <DialogBody>
+          <div className="space-y-4 px-0.5">
+            {!pdf ? (
+              <label className="flex flex-col items-center justify-center gap-2 p-8 border-2 border-dashed border-border/50 rounded-xl cursor-pointer hover:bg-surface-100/40 text-surface-600">
+                <Upload className="w-6 h-6" />
+                <span className="text-[13px]">Choose a fillable PDF</span>
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void onFile(f);
+                  }}
+                />
+              </label>
+            ) : (
+              <div className="flex items-center gap-2 text-[12px] text-surface-600">
+                <FileText className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">{fileName}</span>
+                <Button variant="ghost" size="xs" onClick={reset} className="ml-auto">
+                  Change
                 </Button>
               </div>
+            )}
 
-              <div className="space-y-2">
-                {fields.map((f) => (
-                  <FieldRow
-                    key={f.name}
-                    field={f}
-                    value={values[f.name]}
-                    onChange={(v) => setValues((prev) => ({ ...prev, [f.name]: v }))}
-                  />
-                ))}
+            {decoding && (
+              <div className="flex items-center justify-center gap-2 py-6 text-surface-500 text-[13px]">
+                <Loader2 className="w-4 h-4 animate-spin" /> Reading the form…
               </div>
-            </>
-          )}
-        </div>
+            )}
 
+            {decoded && !fillable && !decoding && (
+              <p className="text-[13px] text-surface-600 p-4 text-center bg-surface-50/40 rounded-xl">
+                This PDF has no fillable form fields — nothing to fill.
+              </p>
+            )}
+
+            {fillable && (
+              <>
+                {decoded.formName && (
+                  <div className="text-[13px] font-medium text-surface-900">{decoded.formName}</div>
+                )}
+
+                <div className="flex items-end gap-2 p-3 bg-accent-500/5 border border-accent-500/15 rounded-xl">
+                  <div className="flex-1">
+                    <label
+                      htmlFor="fillformmodal-field-1"
+                      className="block text-[11px] font-medium text-surface-700 mb-1"
+                    >
+                      Auto-fill from entity
+                    </label>
+                    <select
+                      id="fillformmodal-field-1"
+                      value={entityId}
+                      onChange={(e) => setEntityId(e.target.value)}
+                      className="w-full text-[13px] bg-surface-100/60 border border-border/40 rounded-lg px-2 py-1.5"
+                    >
+                      <option value="">— choose —</option>
+                      {entities.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <Button size="sm" onClick={autofill} disabled={!entityId || autofilling}>
+                    <Sparkles className={`w-4 h-4 ${autofilling ? 'animate-pulse' : ''}`} />
+                    {autofilling ? 'Filling…' : 'Auto-fill'}
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  {fields.map((f) => (
+                    <FieldRow
+                      key={f.name}
+                      field={f}
+                      value={values[f.name]}
+                      onChange={(v) => setValues((prev) => ({ ...prev, [f.name]: v }))}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </DialogBody>
         <DialogFooter>
           <Button variant="ghost" onClick={close}>
             Cancel
@@ -303,6 +308,7 @@ function FieldRow({
   onChange: (v: string | boolean) => void;
 }) {
   const label = field.label ?? field.name;
+  const id = useId();
 
   if (field.type === 'checkbox') {
     return (
@@ -321,8 +327,11 @@ function FieldRow({
   if ((field.type === 'dropdown' || field.type === 'radio') && field.options?.length) {
     return (
       <div>
-        <label className="block text-[12px] text-surface-700 mb-1">{label}</label>
+        <label htmlFor={id} className="block text-[12px] text-surface-700 mb-1">
+          {label}
+        </label>
         <select
+          id={id}
           value={typeof value === 'string' ? value : ''}
           onChange={(e) => onChange(e.target.value)}
           className="w-full text-[13px] bg-surface-100/60 border border-border/40 rounded-lg px-2 py-1.5"
@@ -340,8 +349,11 @@ function FieldRow({
 
   return (
     <div>
-      <label className="block text-[12px] text-surface-700 mb-1">{label}</label>
+      <label htmlFor={id} className="block text-[12px] text-surface-700 mb-1">
+        {label}
+      </label>
       <Input
+        id={id}
         type="text"
         value={typeof value === 'string' ? value : ''}
         onChange={(e) => onChange(e.target.value)}

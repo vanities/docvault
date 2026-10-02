@@ -1,4 +1,5 @@
 import { Toaster } from 'sonner';
+import { NavigationGuardProvider } from './contexts/NavigationGuardContext';
 import { Layout } from './components/Layout';
 import { LoginScreen } from './components/Auth/LoginScreen';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -17,9 +18,11 @@ function AppContent() {
 function App() {
   return (
     <TooltipProvider>
-      <AppProvider>
-        <AppContent />
-      </AppProvider>
+      <NavigationGuardProvider>
+        <AppProvider>
+          <AppContent />
+        </AppProvider>
+      </NavigationGuardProvider>
       <Toaster
         theme="dark"
         position="bottom-right"

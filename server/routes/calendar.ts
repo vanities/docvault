@@ -23,6 +23,7 @@ import {
   calendarToday,
   loadCalendarStore,
   saveCalendarStore,
+  withCalendarMutation,
   type CalendarEvent,
   type CalendarEventKind,
   type CalendarRecurrence,
@@ -124,7 +125,15 @@ export async function handleCalendarRoutes(
   pathname: string
 ): Promise<Response | null> {
   if (!pathname.startsWith('/api/calendar/')) return null;
+  const handle = () => handleCalendarRoutesUnlocked(req, url, pathname);
+  return ['POST', 'PUT', 'DELETE'].includes(req.method) ? withCalendarMutation(handle) : handle();
+}
 
+async function handleCalendarRoutesUnlocked(
+  req: Request,
+  url: URL,
+  pathname: string
+): Promise<Response | null> {
   // GET /api/calendar/events
   if (pathname === '/api/calendar/events' && req.method === 'GET') {
     const entity = url.searchParams.get('entity');

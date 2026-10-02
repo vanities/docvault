@@ -1,4 +1,4 @@
-// Shared primitives for safely writing a JSON file that several callers touch.
+// Shared primitives for safely writing a file that several callers touch.
 //
 // Two distinct hazards, and both need covering:
 //
@@ -36,17 +36,21 @@ export function createWriteLock(): <T>(fn: () => Promise<T>) => Promise<T> {
 }
 
 /**
- * Write JSON via a unique temp file + rename. The rename is atomic, so a reader
+ * Write text via a unique temp file + rename. The rename is atomic, so a reader
  * never observes a partial file; the unique name keeps concurrent writers from
  * publishing each other's bytes. Cleans up the temp file if anything fails.
  */
-export async function writeJsonAtomic(targetPath: string, data: unknown): Promise<void> {
+export async function writeTextAtomic(targetPath: string, content: string): Promise<void> {
   const tmp = `${targetPath}.${process.pid}.${randomUUID()}.tmp`;
   try {
-    await fs.writeFile(tmp, JSON.stringify(data, null, 2));
+    await fs.writeFile(tmp, content, 'utf8');
     await fs.rename(tmp, targetPath);
   } catch (err) {
     await fs.unlink(tmp).catch(() => {});
     throw err;
   }
+}
+
+export function writeJsonAtomic(targetPath: string, data: unknown): Promise<void> {
+  return writeTextAtomic(targetPath, JSON.stringify(data, null, 2));
 }

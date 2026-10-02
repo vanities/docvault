@@ -20,8 +20,10 @@ import path from 'node:path';
 import os from 'node:os';
 import { DATA_DIR } from './data.js';
 import { createLogger } from './logger.js';
+import { createWriteLock, writeTextAtomic } from './write-lock.js';
 
 const log = createLogger('Skills');
+const withSkillsWrite = createWriteLock();
 
 export const SKILLS_DIR = path.join(DATA_DIR, 'skills');
 
@@ -132,29 +134,28 @@ export async function writeSkill(
   if (!description.trim()) throw new Error('Skill description is required');
   if (!instructions.trim()) throw new Error('Skill instructions are required');
 
-  const dir = path.join(SKILLS_DIR, name);
-  await fs.mkdir(dir, { recursive: true });
-  const file = skillFile(name);
-  const tmp = `${file}.tmp`;
-  await fs.writeFile(tmp, composeSkillMd(name, description, instructions), 'utf8');
-  await fs.rename(tmp, file);
-  log.info(`[write] skill=${name} bytes=${Buffer.byteLength(instructions, 'utf8')}`);
-  const record = await readSkill(name);
-  if (!record) throw new Error(`Skill ${name} vanished after write`);
-  return record;
+  return withSkillsWrite(async () => {
+    await fs.mkdir(path.join(SKILLS_DIR, name), { recursive: true });
+    await writeTextAtomic(skillFile(name), composeSkillMd(name, description, instructions));
+    log.info(`[write] skill=${name} bytes=${Buffer.byteLength(instructions, 'utf8')}`);
+    const record = await readSkill(name);
+    if (!record) throw new Error(`Skill ${name} vanished after write`);
+    return record;
+  });
 }
 
 export async function deleteSkill(name: string): Promise<boolean> {
   if (!isValidSkillName(name)) return false;
-  const dir = path.join(SKILLS_DIR, name);
-  try {
-    await fs.rm(dir, { recursive: true });
-    log.info(`[delete] skill=${name}`);
-    return true;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false;
-    throw err;
-  }
+  return withSkillsWrite(async () => {
+    try {
+      await fs.rm(path.join(SKILLS_DIR, name), { recursive: true });
+      log.info(`[delete] skill=${name}`);
+      return true;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw err;
+    }
+  });
 }
 
 // ── Mention extraction + prompt inlining (Codex / non-Agent-SDK backends) ───

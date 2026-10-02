@@ -18,6 +18,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  DialogBody,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -892,7 +893,7 @@ export function MileageView() {
 
       {/* Settings Modal — Vehicles & Addresses */}
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md max-h-[80vh] flex flex-col">
+        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md flex flex-col">
           <DialogHeader>
             <DialogTitle>Vehicles & Addresses</DialogTitle>
             <DialogDescription>Manage your vehicles and saved addresses.</DialogDescription>
@@ -927,7 +928,7 @@ export function MileageView() {
           </div>
 
           {/* Scrollable content */}
-          <div className="overflow-y-auto -mx-6 px-6 flex-1 min-h-0">
+          <DialogBody className="overflow-y-auto -mx-6 px-6 flex-1 min-h-0">
             {/* ── Vehicles Tab ── */}
             {settingsTab === 'vehicles' && (
               <div className="space-y-3">
@@ -1244,7 +1245,7 @@ export function MileageView() {
                 </div>
               </div>
             )}
-          </div>
+          </DialogBody>
         </DialogContent>
       </Dialog>
     </div>

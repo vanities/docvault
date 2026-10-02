@@ -177,6 +177,7 @@ function HealthNavButton({
     <button
       onClick={() => !isDisabled && onClick(view)}
       disabled={isDisabled}
+      aria-current={isActive ? 'page' : undefined}
       title={title}
       className={`
         w-full flex items-center gap-2.5 px-2.5 py-3 md:py-2 rounded-lg transition-all duration-150 text-left

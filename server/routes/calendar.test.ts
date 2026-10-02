@@ -389,3 +389,22 @@ describe('dispatch', () => {
     expect(await handleCalendarRoutes(req, url, url.pathname)).toBeNull();
   });
 });
+
+describe('overlapping calendar mutations', () => {
+  test('concurrent new tasks are all retained', async () => {
+    const results = await Promise.allSettled(
+      Array.from({ length: 12 }, (_, i) =>
+        call('POST', '/api/calendar/events', {
+          kind: 'task',
+          title: `Synthetic task ${i}`,
+          date: '2026-01-01',
+        })
+      )
+    );
+    expect(
+      results.every((result) => result.status === 'fulfilled' && result.value.status === 200)
+    ).toBe(true);
+    const listed = await call('GET', '/api/calendar/events');
+    expect(listed.data.events).toHaveLength(12);
+  });
+});

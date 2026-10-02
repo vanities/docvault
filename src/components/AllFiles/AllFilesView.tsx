@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEntityDocuments } from '../../hooks/useEntityDocuments';
+import { documentMetadataPatch } from '../../utils/documentMetadataPatch';
 import { FolderOpen, RefreshCw } from 'lucide-react';
 import { TodoList } from '../Todos/TodoList';
 import { EntityMetadataBanner } from '../EntityMetadata/EntityMetadataBanner';
@@ -11,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 
 export function AllFilesView() {
-  const { confirm, ConfirmDialog } = useConfirmDialog();
+  const { confirm, confirmDialog } = useConfirmDialog();
   const {
     selectedEntity,
     scanAllFiles,
@@ -20,6 +21,7 @@ export function AllFilesView() {
     parseFile,
     isProcessing,
     entities,
+    availableYears,
     setIsParsing,
     relocateFile,
     updateDocMetadata,
@@ -28,20 +30,13 @@ export function AllFilesView() {
 
   const { addToast } = useToast();
 
-  const [allFiles, setAllFiles] = useState<TaxDocument[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-
-  // Load all files when entity changes
-  const loadAllFiles = useCallback(async () => {
-    setIsLoading(true);
-    const docs = await scanAllFiles(selectedEntity);
-    setAllFiles(docs);
-    setIsLoading(false);
-  }, [selectedEntity, scanAllFiles]);
-
-  useEffect(() => {
-    void loadAllFiles();
-  }, [loadAllFiles]);
+  const {
+    documents: allFiles,
+    setDocuments: setAllFiles,
+    isLoading,
+    error: loadError,
+    reload: loadAllFiles,
+  } = useEntityDocuments(selectedEntity, scanAllFiles);
 
   const handleUploadFile = async (
     file: File,
@@ -87,18 +82,18 @@ export function AllFilesView() {
     }
   };
 
-  const handleUpdateDoc = (id: string, updates: Partial<TaxDocument>) => {
-    setAllFiles((prev) => prev.map((doc) => (doc.id === id ? { ...doc, ...updates } : doc)));
-    if ('tags' in updates || 'notes' in updates) {
-      const doc = allFiles.find((d) => d.id === id);
-      if (doc?.filePath) {
-        const merged = { ...doc, ...updates };
-        void updateDocMetadata(doc.entity, doc.filePath, {
-          tags: merged.tags,
-          notes: merged.notes || '',
-        });
-      }
+  const handleUpdateDoc = async (id: string, updates: Partial<TaxDocument>) => {
+    const doc = allFiles.find((document) => document.id === id);
+    if (!doc) return false;
+    const patch = documentMetadataPatch(updates);
+    if (patch && doc.filePath && !(await updateDocMetadata(doc.entity, doc.filePath, patch))) {
+      addToast('Document changes could not be saved. Please try again.', 'error');
+      return false;
     }
+    setAllFiles((previous) =>
+      previous.map((document) => (document.id === id ? { ...document, ...updates } : document))
+    );
+    return true;
   };
 
   const handleDeleteDoc = async (id: string) => {
@@ -227,6 +222,16 @@ export function AllFilesView() {
           <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2 text-accent-400" />
           Loading files...
         </div>
+      ) : loadError ? (
+        <div
+          role="alert"
+          className="rounded-xl border border-danger-500/30 p-5 text-sm text-surface-800"
+        >
+          <p className="mb-3">Documents could not be loaded. Your files have not been changed.</p>
+          <Button variant="outline" onClick={() => void loadAllFiles()}>
+            Try again
+          </Button>
+        </div>
       ) : allFiles.length === 0 ? (
         <div className="text-center py-16 border-2 border-dashed border-surface-500 rounded-xl">
           <FolderOpen className="w-12 h-12 text-surface-500 mx-auto mb-4" />
@@ -245,9 +250,10 @@ export function AllFilesView() {
           onParse={handleParseDoc}
           onRelocate={handleRelocateDocument}
           entities={entities}
+          availableYears={availableYears}
         />
       )}
-      <ConfirmDialog />
+      {confirmDialog}
     </div>
   );
 }

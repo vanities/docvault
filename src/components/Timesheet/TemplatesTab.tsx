@@ -24,6 +24,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
+  DialogBody,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -90,7 +91,7 @@ export function TemplatesTab({
   store: TimesheetStore;
   refresh: () => Promise<void>;
 }) {
-  const { confirm, ConfirmDialog } = useConfirmDialog();
+  const { confirm, confirmDialog } = useConfirmDialog();
   // editingId: null = closed, 'new' = creating, otherwise the template id
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -155,8 +156,14 @@ export function TemplatesTab({
 
   const field = (key: keyof FormState, label: string, props: Record<string, unknown> = {}) => (
     <div>
-      <label className="text-[12px] text-surface-600 block mb-1">{label}</label>
+      <label
+        htmlFor={`invoice-template-${key}`}
+        className="text-[12px] text-surface-600 block mb-1"
+      >
+        {label}
+      </label>
       <Input
+        id={`invoice-template-${key}`}
         value={form[key]}
         onChange={(e) => setForm({ ...form, [key]: e.target.value })}
         className="h-9 rounded-lg text-sm"
@@ -167,8 +174,14 @@ export function TemplatesTab({
 
   const area = (key: keyof FormState, label: string, placeholder: string) => (
     <div>
-      <label className="text-[12px] text-surface-600 block mb-1">{label}</label>
+      <label
+        htmlFor={`invoice-template-${key}`}
+        className="text-[12px] text-surface-600 block mb-1"
+      >
+        {label}
+      </label>
       <textarea
+        id={`invoice-template-${key}`}
         value={form[key]}
         onChange={(e) => setForm({ ...form, [key]: e.target.value })}
         placeholder={placeholder}
@@ -180,7 +193,7 @@ export function TemplatesTab({
 
   return (
     <div>
-      <ConfirmDialog />
+      {confirmDialog}
 
       <div className="flex items-center justify-between mb-4">
         <p className="text-[13px] text-surface-600">
@@ -195,37 +208,53 @@ export function TemplatesTab({
       {error && <p className="text-[12px] text-danger-400 mb-3">{error}</p>}
 
       {/* Editor modal */}
-      <Dialog open={editingId !== null} onOpenChange={(open) => !open && setEditingId(null)}>
-        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+      <Dialog
+        open={editingId !== null}
+        onOpenChange={(open) => !open && !saving && setEditingId(null)}
+      >
+        <DialogContent closeDisabled={saving} className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingId === 'new' ? 'New Template' : 'Edit Template'}</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {field('name', 'Name', { placeholder: 'e.g. Row Work' })}
-            {field('title', 'PDF title')}
-            {field('company', 'Company', { placeholder: 'Sender company name' })}
-            <div className="grid grid-cols-2 gap-3">
-              {field('dueDays', 'Due days', { type: 'number' })}
-              {field('vat', 'VAT %', { type: 'number' })}
+          <DialogBody>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {field('name', 'Name', { placeholder: 'e.g. Row Work' })}
+              {field('title', 'PDF title')}
+              {field('company', 'Company', { placeholder: 'Sender company name' })}
+              <div className="grid grid-cols-2 gap-3">
+                {field('dueDays', 'Due days', { type: 'number' })}
+                {field('vat', 'VAT %', { type: 'number' })}
+              </div>
+              {area('address', 'Address (one line each)', 'Street\nCity, State ZIP')}
+              {area('contact', 'Contact (one line each)', 'Name\nemail@example.com')}
+              {field('paymentTerms', 'Payment terms', { placeholder: 'e.g. Net 14' })}
+              {area('paymentDetails', 'Payment details (one line each)', 'Bank routing / account')}
+              <div>
+                <label
+                  htmlFor="templatestab-field-1"
+                  className="text-[12px] text-surface-600 block mb-1"
+                >
+                  Long descriptions
+                </label>
+                <select
+                  id="templatestab-field-1"
+                  value={form.descriptionStyle}
+                  onChange={(e) => setForm({ ...form, descriptionStyle: e.target.value })}
+                  className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+                >
+                  <option value="wrap">Wrap onto extra lines</option>
+                  <option value="truncate">Truncate with …</option>
+                </select>
+              </div>
             </div>
-            {area('address', 'Address (one line each)', 'Street\nCity, State ZIP')}
-            {area('contact', 'Contact (one line each)', 'Name\nemail@example.com')}
-            {field('paymentTerms', 'Payment terms', { placeholder: 'e.g. Net 14' })}
-            {area('paymentDetails', 'Payment details (one line each)', 'Bank routing / account')}
-            <div>
-              <label className="text-[12px] text-surface-600 block mb-1">Long descriptions</label>
-              <select
-                value={form.descriptionStyle}
-                onChange={(e) => setForm({ ...form, descriptionStyle: e.target.value })}
-                className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
-              >
-                <option value="wrap">Wrap onto extra lines</option>
-                <option value="truncate">Truncate with …</option>
-              </select>
-            </div>
-          </div>
+          </DialogBody>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setEditingId(null)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={saving}
+              onClick={() => setEditingId(null)}
+            >
               Cancel
             </Button>
             <Button

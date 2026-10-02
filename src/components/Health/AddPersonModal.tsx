@@ -8,6 +8,7 @@ import { FileArchive, Upload, X, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
+  DialogBody,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -74,7 +75,7 @@ export function AddPersonModal({ isOpen, onClose, onCreate }: AddPersonModalProp
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !submitting && onClose()}>
-      <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md">
+      <DialogContent closeDisabled={submitting} className="max-w-[calc(100%-2rem)] sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Add Person</DialogTitle>
           <DialogDescription>
@@ -82,99 +83,102 @@ export function AddPersonModal({ isOpen, onClose, onCreate }: AddPersonModalProp
             their Apple Health export now — we&apos;ll unarchive and parse it automatically.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div>
-            <label
-              htmlFor="health-person-name"
-              className="text-xs font-medium text-surface-700 uppercase tracking-wide"
-            >
-              Display Name
-            </label>
-            <Input
-              id="health-person-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Alex"
-              autoFocus
-              className="mt-1.5"
-              disabled={submitting}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && name.trim() && !submitting) {
-                  void handleSubmit();
-                }
-              }}
-            />
-          </div>
-          <div>
-            <div className="text-xs font-medium text-surface-700 uppercase tracking-wide mb-2">
-              Color
+        <DialogBody>
+          <div className="space-y-4 py-2">
+            <div>
+              <label
+                htmlFor="health-person-name"
+                className="text-xs font-medium text-surface-700 uppercase tracking-wide"
+              >
+                Display Name
+              </label>
+              <Input
+                id="health-person-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Alex"
+                autoFocus
+                className="mt-1.5"
+                disabled={submitting}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && name.trim() && !submitting) {
+                    void handleSubmit();
+                  }
+                }}
+              />
             </div>
-            <div className="flex gap-2">
-              {COLOR_OPTIONS.map((opt) => (
-                <button
-                  key={opt}
-                  type="button"
-                  disabled={submitting}
-                  onClick={() => setColor(opt)}
-                  aria-label={opt}
-                  className={`
-                    w-8 h-8 rounded-full transition-all disabled:cursor-not-allowed
+            <div>
+              <div className="text-xs font-medium text-surface-700 uppercase tracking-wide mb-2">
+                Color
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {COLOR_OPTIONS.map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => setColor(opt)}
+                    aria-label={opt}
+                    aria-pressed={color === opt}
+                    className={`
+                    w-11 h-11 rounded-full transition-all disabled:cursor-not-allowed
                     ${COLOR_CLASSES[opt]}
                     ${color === opt ? 'ring-2 ring-offset-2 ring-offset-surface-0 ring-accent-400' : 'opacity-60 hover:opacity-100'}
                   `}
-                />
-              ))}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-          <div>
-            <div className="text-xs font-medium text-surface-700 uppercase tracking-wide mb-1.5">
-              Apple Health Export <span className="text-surface-500 normal-case">(optional)</span>
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".zip,application/zip"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0] ?? null;
-                setFile(f);
-                if (e.target) e.target.value = '';
-              }}
-            />
-            {file ? (
-              <div className="flex items-center gap-2 p-2 rounded-lg border border-accent-500/30 bg-accent-500/5">
-                <FileArchive className="w-4 h-4 text-accent-400 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-mono truncate text-surface-950">{file.name}</div>
-                  <div className="text-[11px] text-surface-600">{formatBytes(file.size)}</div>
+            <div>
+              <div className="text-xs font-medium text-surface-700 uppercase tracking-wide mb-1.5">
+                Apple Health Export <span className="text-surface-500 normal-case">(optional)</span>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".zip,application/zip"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  setFile(f);
+                  if (e.target) e.target.value = '';
+                }}
+              />
+              {file ? (
+                <div className="flex items-center gap-2 p-2 rounded-lg border border-accent-500/30 bg-accent-500/5">
+                  <FileArchive className="w-4 h-4 text-accent-400 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-mono truncate text-surface-950">{file.name}</div>
+                    <div className="text-[11px] text-surface-600">{formatBytes(file.size)}</div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => setFile(null)}
+                    aria-label="Remove file"
+                    className="p-1 text-surface-600 hover:text-surface-900 disabled:opacity-40"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 </div>
+              ) : (
                 <button
                   type="button"
                   disabled={submitting}
-                  onClick={() => setFile(null)}
-                  aria-label="Remove file"
-                  className="p-1 text-surface-600 hover:text-surface-900 disabled:opacity-40"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full flex items-center justify-center gap-2 p-3 rounded-lg border border-dashed border-border hover:border-accent-500/40 text-sm text-surface-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <Upload className="w-4 h-4" />
+                  Choose export.zip
                 </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full flex items-center justify-center gap-2 p-3 rounded-lg border border-dashed border-border hover:border-accent-500/40 text-sm text-surface-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Upload className="w-4 h-4" />
-                Choose export.zip
-              </button>
-            )}
-            <p className="text-[11px] text-surface-600 mt-1.5 leading-relaxed">
-              On iPhone: Health → profile picture → <strong>Export All Health Data</strong>. Share
-              the zip to this machine, then select it above.
-            </p>
+              )}
+              <p className="text-[11px] text-surface-600 mt-1.5 leading-relaxed">
+                On iPhone: Health → profile picture → <strong>Export All Health Data</strong>. Share
+                the zip to this machine, then select it above.
+              </p>
+            </div>
           </div>
-        </div>
+        </DialogBody>
         <DialogFooter className="gap-2 sm:gap-2">
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
             Cancel

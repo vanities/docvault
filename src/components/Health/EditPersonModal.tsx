@@ -7,6 +7,7 @@ import type { HealthPerson } from '../../hooks/useFileSystemServer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
+  DialogBody,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -67,7 +68,7 @@ export function EditPersonModal({ isOpen, person, onClose, onSave }: EditPersonM
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !submitting && onClose()}>
-      <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md">
+      <DialogContent closeDisabled={submitting} className="max-w-[calc(100%-2rem)] sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Edit Person</DialogTitle>
           <DialogDescription>
@@ -75,50 +76,53 @@ export function EditPersonModal({ isOpen, person, onClose, onSave }: EditPersonM
             are not affected.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div>
-            <label
-              htmlFor="health-edit-person-name"
-              className="text-xs font-medium text-surface-700 uppercase tracking-wide"
-            >
-              Display Name
-            </label>
-            <Input
-              id="health-edit-person-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoFocus
-              className="mt-1.5"
-              disabled={submitting}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && trimmed && !submitting && !unchanged) {
-                  void handleSubmit();
-                }
-              }}
-            />
-          </div>
-          <div>
-            <div className="text-xs font-medium text-surface-700 uppercase tracking-wide mb-2">
-              Color
+        <DialogBody>
+          <div className="space-y-4 py-2">
+            <div>
+              <label
+                htmlFor="health-edit-person-name"
+                className="text-xs font-medium text-surface-700 uppercase tracking-wide"
+              >
+                Display Name
+              </label>
+              <Input
+                id="health-edit-person-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                autoFocus
+                className="mt-1.5"
+                disabled={submitting}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && trimmed && !submitting && !unchanged) {
+                    void handleSubmit();
+                  }
+                }}
+              />
             </div>
-            <div className="flex gap-2">
-              {COLOR_OPTIONS.map((opt) => (
-                <button
-                  key={opt}
-                  type="button"
-                  disabled={submitting}
-                  onClick={() => setColor(opt)}
-                  aria-label={opt}
-                  className={`
-                    w-8 h-8 rounded-full transition-all disabled:cursor-not-allowed
+            <div>
+              <div className="text-xs font-medium text-surface-700 uppercase tracking-wide mb-2">
+                Color
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {COLOR_OPTIONS.map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => setColor(opt)}
+                    aria-label={opt}
+                    aria-pressed={color === opt}
+                    className={`
+                    w-11 h-11 rounded-full transition-all disabled:cursor-not-allowed
                     ${COLOR_CLASSES[opt]}
                     ${color === opt ? 'ring-2 ring-offset-2 ring-offset-surface-0 ring-accent-400' : 'opacity-60 hover:opacity-100'}
                   `}
-                />
-              ))}
+                  />
+                ))}
+              </div>
             </div>
           </div>
-        </div>
+        </DialogBody>
         <DialogFooter className="gap-2 sm:gap-2">
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
             Cancel

@@ -21,8 +21,10 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { DATA_DIR } from './data.js';
+import { createWriteLock, writeTextAtomic } from './write-lock.js';
 
 export const BRAIN_FILE = path.join(DATA_DIR, '.docvault-brain.md');
+const withBrainWrite = createWriteLock();
 
 // Seeded only when the very first entry is appended, so a brand-new brain reads
 // as a real document rather than a loose bullet. Manual PUTs are left untouched.
@@ -70,17 +72,15 @@ export async function readBrainContent(): Promise<string> {
   return (await readBrain()).content;
 }
 
-async function atomicWrite(content: string): Promise<void> {
+async function writeBrainUnlocked(content: string): Promise<BrainState> {
   await fs.mkdir(path.dirname(BRAIN_FILE), { recursive: true });
-  const tmp = `${BRAIN_FILE}.tmp`;
-  await fs.writeFile(tmp, content, 'utf8');
-  await fs.rename(tmp, BRAIN_FILE);
+  await writeTextAtomic(BRAIN_FILE, content);
+  return readBrain();
 }
 
 /** Replace the entire brain (the Settings editor's Save, and Clear via ''). */
 export async function writeBrain(content: string): Promise<BrainState> {
-  await atomicWrite(content);
-  return readBrain();
+  return withBrainWrite(() => writeBrainUnlocked(content));
 }
 
 export interface AppendResult extends BrainState {
@@ -100,19 +100,20 @@ export async function appendBrainEntry(
   const clean = text.trim();
   if (!clean) throw new Error('Cannot append an empty brain entry');
 
-  const existing = await readBrain();
   const date = opts.date ?? new Date().toISOString().slice(0, 10);
   const tag = opts.tag?.trim();
   const bullet = `- (${date}${tag ? `, ${tag}` : ''}) ${clean}`;
 
-  let next: string;
-  if (!existing.content.trim()) {
-    next = `${BRAIN_HEADER}\n## Notes\n\n${bullet}\n`;
-  } else {
-    const sep = existing.content.endsWith('\n') ? '' : '\n';
-    next = `${existing.content}${sep}${bullet}\n`;
-  }
-
-  const state = await writeBrain(next);
-  return { ...state, appended: bullet };
+  return withBrainWrite(async () => {
+    const existing = await readBrain();
+    let next: string;
+    if (!existing.content.trim()) {
+      next = `${BRAIN_HEADER}\n## Notes\n\n${bullet}\n`;
+    } else {
+      const sep = existing.content.endsWith('\n') ? '' : '\n';
+      next = `${existing.content}${sep}${bullet}\n`;
+    }
+    const state = await writeBrainUnlocked(next);
+    return { ...state, appended: bullet };
+  });
 }

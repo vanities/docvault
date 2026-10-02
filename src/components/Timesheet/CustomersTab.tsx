@@ -18,6 +18,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
+  DialogBody,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -173,7 +174,7 @@ export function CustomersTab({
   store: TimesheetStore;
   refresh: () => Promise<void>;
 }) {
-  const { confirm, ConfirmDialog } = useConfirmDialog();
+  const { confirm, confirmDialog } = useConfirmDialog();
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -428,7 +429,7 @@ export function CustomersTab({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <ConfirmDialog />
+      {confirmDialog}
       {error && !clientModal && !projectModal && (
         <p className="lg:col-span-2 text-[12px] text-danger-400">{error}</p>
       )}
@@ -542,111 +543,155 @@ export function CustomersTab({
       </Card>
 
       {/* Customer add/edit modal */}
-      <Dialog open={clientModal !== null} onOpenChange={(open) => !open && setClientModal(null)}>
-        <DialogContent>
+      <Dialog
+        open={clientModal !== null}
+        onOpenChange={(open) => !open && !saving && setClientModal(null)}
+      >
+        <DialogContent closeDisabled={saving}>
           <DialogHeader>
             <DialogTitle>{clientModal === 'new' ? 'Add Customer' : 'Edit Customer'}</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-1 gap-4">
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2">
-                <label className="text-[12px] text-surface-600 block mb-1">Name</label>
-                <Input
-                  value={clientForm.name}
-                  onChange={(e) => setClientForm({ ...clientForm, name: e.target.value })}
-                  placeholder="Customer name"
-                  className="h-9 rounded-lg text-sm"
-                  autoFocus
-                />
+          <DialogBody>
+            <div className="grid grid-cols-1 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label
+                    htmlFor="customerstab-field-1"
+                    className="text-[12px] text-surface-600 block mb-1"
+                  >
+                    Name
+                  </label>
+                  <Input
+                    id="customerstab-field-1"
+                    value={clientForm.name}
+                    onChange={(e) => setClientForm({ ...clientForm, name: e.target.value })}
+                    placeholder="Customer name"
+                    className="h-9 rounded-lg text-sm"
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="customerstab-field-2"
+                    className="text-[12px] text-surface-600 block mb-1"
+                  >
+                    Currency
+                  </label>
+                  <Input
+                    id="customerstab-field-2"
+                    value={clientForm.currency}
+                    onChange={(e) => setClientForm({ ...clientForm, currency: e.target.value })}
+                    placeholder="USD"
+                    className="h-9 rounded-lg text-sm"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="text-[12px] text-surface-600 block mb-1">Currency</label>
-                <Input
-                  value={clientForm.currency}
-                  onChange={(e) => setClientForm({ ...clientForm, currency: e.target.value })}
-                  placeholder="USD"
-                  className="h-9 rounded-lg text-sm"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label
+                    htmlFor="customerstab-field-3"
+                    className="text-[12px] text-surface-600 block mb-1"
+                  >
+                    Default template
+                  </label>
+                  <select
+                    id="customerstab-field-3"
+                    value={clientForm.defaultTemplateId}
+                    onChange={(e) =>
+                      setClientForm({ ...clientForm, defaultTemplateId: e.target.value })
+                    }
+                    className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+                  >
+                    <option value="">First active</option>
+                    {store.templates
+                      .filter((t) => !t.archived)
+                      .map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                <div>
+                  <label
+                    htmlFor="customerstab-field-4"
+                    className="text-[12px] text-surface-600 block mb-1"
+                  >
+                    Due days
+                  </label>
+                  <Input
+                    id="customerstab-field-4"
+                    type="number"
+                    value={clientForm.dueDays}
+                    onChange={(e) => setClientForm({ ...clientForm, dueDays: e.target.value })}
+                    placeholder="template"
+                    className="h-9 rounded-lg text-sm"
+                  />
+                </div>
               </div>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2">
-                <label className="text-[12px] text-surface-600 block mb-1">Default template</label>
-                <select
-                  value={clientForm.defaultTemplateId}
-                  onChange={(e) =>
-                    setClientForm({ ...clientForm, defaultTemplateId: e.target.value })
-                  }
-                  className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
-                >
-                  <option value="">First active</option>
-                  {store.templates
-                    .filter((t) => !t.archived)
-                    .map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label
+                    htmlFor="customerstab-field-5"
+                    className="text-[12px] text-surface-600 block mb-1"
+                  >
+                    Email
+                  </label>
+                  <Input
+                    id="customerstab-field-5"
+                    type="email"
+                    multiple
+                    value={clientForm.email}
+                    onChange={(e) => setClientForm({ ...clientForm, email: e.target.value })}
+                    placeholder="billing@client.com, cc@client.com"
+                    className="h-9 rounded-lg text-sm"
+                  />
+                  <p className="text-[11px] text-surface-500 mt-1">
+                    Where Send Invoice delivers. Comma-separate multiple recipients.
+                  </p>
+                </div>
+                <div>
+                  <label
+                    htmlFor="customerstab-field-6"
+                    className="text-[12px] text-surface-600 block mb-1"
+                  >
+                    Auto-file invoices to
+                  </label>
+                  <select
+                    id="customerstab-field-6"
+                    value={clientForm.autoFileEntityId}
+                    onChange={(e) =>
+                      setClientForm({ ...clientForm, autoFileEntityId: e.target.value })
+                    }
+                    className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+                  >
+                    <option value="">Off</option>
+                    {entities.map((en) => (
+                      <option key={en.id} value={en.id}>
+                        {en.name}
                       </option>
                     ))}
-                </select>
+                  </select>
+                  <p className="text-[11px] text-surface-500 mt-1">
+                    New invoice PDFs save into this entity&apos;s year folder.
+                  </p>
+                </div>
               </div>
-              <div>
-                <label className="text-[12px] text-surface-600 block mb-1">Due days</label>
-                <Input
-                  type="number"
-                  value={clientForm.dueDays}
-                  onChange={(e) => setClientForm({ ...clientForm, dueDays: e.target.value })}
-                  placeholder="template"
-                  className="h-9 rounded-lg text-sm"
-                />
-              </div>
+              <ColorField
+                value={clientForm.color}
+                fallback={editingClientFallback}
+                onChange={(hex) => setClientForm({ ...clientForm, color: hex })}
+              />
+              {error && <p className="text-[12px] text-danger-400">{error}</p>}
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[12px] text-surface-600 block mb-1">Email</label>
-                <Input
-                  type="email"
-                  multiple
-                  value={clientForm.email}
-                  onChange={(e) => setClientForm({ ...clientForm, email: e.target.value })}
-                  placeholder="billing@client.com, cc@client.com"
-                  className="h-9 rounded-lg text-sm"
-                />
-                <p className="text-[11px] text-surface-500 mt-1">
-                  Where Send Invoice delivers. Comma-separate multiple recipients.
-                </p>
-              </div>
-              <div>
-                <label className="text-[12px] text-surface-600 block mb-1">
-                  Auto-file invoices to
-                </label>
-                <select
-                  value={clientForm.autoFileEntityId}
-                  onChange={(e) =>
-                    setClientForm({ ...clientForm, autoFileEntityId: e.target.value })
-                  }
-                  className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
-                >
-                  <option value="">Off</option>
-                  {entities.map((en) => (
-                    <option key={en.id} value={en.id}>
-                      {en.name}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[11px] text-surface-500 mt-1">
-                  New invoice PDFs save into this entity&apos;s year folder.
-                </p>
-              </div>
-            </div>
-            <ColorField
-              value={clientForm.color}
-              fallback={editingClientFallback}
-              onChange={(hex) => setClientForm({ ...clientForm, color: hex })}
-            />
-            {error && <p className="text-[12px] text-danger-400">{error}</p>}
-          </div>
+          </DialogBody>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setClientModal(null)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={saving}
+              onClick={() => setClientModal(null)}
+            >
               Cancel
             </Button>
             <Button
@@ -667,266 +712,334 @@ export function CustomersTab({
       </Dialog>
 
       {/* Project add/edit modal */}
-      <Dialog open={projectModal !== null} onOpenChange={(open) => !open && setProjectModal(null)}>
-        <DialogContent className="sm:max-w-xl max-h-[85vh] overflow-y-auto">
+      <Dialog
+        open={projectModal !== null}
+        onOpenChange={(open) => !open && !saving && setProjectModal(null)}
+      >
+        <DialogContent closeDisabled={saving} className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>{projectModal === 'new' ? 'Add Project' : 'Edit Project'}</DialogTitle>
           </DialogHeader>
-          {/* Tab bar keeps the modal short — details vs email template */}
-          <div className="flex items-center gap-1 border-b border-border -mt-1">
-            {(['details', 'subclients', 'email'] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setProjectTab(t)}
-                className={`px-3 py-1.5 text-[13px] font-medium border-b-2 -mb-px transition-colors ${
-                  projectTab === t
-                    ? 'border-lime-400 text-surface-950'
-                    : 'border-transparent text-surface-600 hover:text-surface-900'
-                }`}
-              >
-                {t === 'details' ? 'Details' : t === 'subclients' ? 'Sub-clients' : 'Email'}
-              </button>
-            ))}
-          </div>
-          <div className={`grid grid-cols-1 gap-4 ${projectTab === 'details' ? '' : 'hidden'}`}>
-            <div>
-              <label className="text-[12px] text-surface-600 block mb-1">Customer</label>
-              <select
-                value={projectForm.clientId}
-                onChange={(e) => setProjectForm({ ...projectForm, clientId: e.target.value })}
-                className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
-              >
-                <option value="">Select…</option>
-                {store.clients
-                  .filter((c) => !c.archived || c.id === projectForm.clientId)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-              </select>
+          <DialogBody>
+            {/* Tab bar keeps the modal short — details vs email template */}
+            <div className="flex items-center gap-1 border-b border-border -mt-1">
+              {(['details', 'subclients', 'email'] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setProjectTab(t)}
+                  className={`px-3 py-1.5 text-[13px] font-medium border-b-2 -mb-px transition-colors ${
+                    projectTab === t
+                      ? 'border-lime-400 text-surface-950'
+                      : 'border-transparent text-surface-600 hover:text-surface-900'
+                  }`}
+                >
+                  {t === 'details' ? 'Details' : t === 'subclients' ? 'Sub-clients' : 'Email'}
+                </button>
+              ))}
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2">
-                <label className="text-[12px] text-surface-600 block mb-1">Project name</label>
-                <Input
-                  value={projectForm.name}
-                  onChange={(e) => setProjectForm({ ...projectForm, name: e.target.value })}
-                  placeholder="Project name"
-                  className="h-9 rounded-lg text-sm"
-                />
+            <div className={`grid grid-cols-1 gap-4 ${projectTab === 'details' ? '' : 'hidden'}`}>
+              <div>
+                <label
+                  htmlFor="customerstab-field-7"
+                  className="text-[12px] text-surface-600 block mb-1"
+                >
+                  Customer
+                </label>
+                <select
+                  id="customerstab-field-7"
+                  value={projectForm.clientId}
+                  onChange={(e) => setProjectForm({ ...projectForm, clientId: e.target.value })}
+                  className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+                >
+                  <option value="">Select…</option>
+                  {store.clients
+                    .filter((c) => !c.archived || c.id === projectForm.clientId)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label
+                    htmlFor="customerstab-field-8"
+                    className="text-[12px] text-surface-600 block mb-1"
+                  >
+                    Project name
+                  </label>
+                  <Input
+                    id="customerstab-field-8"
+                    value={projectForm.name}
+                    onChange={(e) => setProjectForm({ ...projectForm, name: e.target.value })}
+                    placeholder="Project name"
+                    className="h-9 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="customerstab-field-9"
+                    className="text-[12px] text-surface-600 block mb-1"
+                  >
+                    Rate ($/h)
+                  </label>
+                  <Input
+                    id="customerstab-field-9"
+                    type="number"
+                    value={projectForm.hourlyRate}
+                    onChange={(e) => setProjectForm({ ...projectForm, hourlyRate: e.target.value })}
+                    placeholder="0"
+                    className="h-9 rounded-lg text-sm"
+                  />
+                </div>
               </div>
               <div>
-                <label className="text-[12px] text-surface-600 block mb-1">Rate ($/h)</label>
+                <label
+                  htmlFor="customerstab-field-10"
+                  className="text-[12px] text-surface-600 block mb-1"
+                >
+                  Invoice minimum ($)
+                </label>
                 <Input
+                  id="customerstab-field-10"
                   type="number"
-                  value={projectForm.hourlyRate}
-                  onChange={(e) => setProjectForm({ ...projectForm, hourlyRate: e.target.value })}
-                  placeholder="0"
+                  value={projectForm.minimumInvoice}
+                  onChange={(e) =>
+                    setProjectForm({ ...projectForm, minimumInvoice: e.target.value })
+                  }
+                  placeholder="none"
                   className="h-9 rounded-lg text-sm"
                 />
+                <p className="text-[11px] text-surface-500 mt-1">
+                  Retainer floor — invoices billing this project under it get a labeled top-up line.
+                </p>
               </div>
-            </div>
-            <div>
-              <label className="text-[12px] text-surface-600 block mb-1">Invoice minimum ($)</label>
-              <Input
-                type="number"
-                value={projectForm.minimumInvoice}
-                onChange={(e) => setProjectForm({ ...projectForm, minimumInvoice: e.target.value })}
-                placeholder="none"
-                className="h-9 rounded-lg text-sm"
+              <ColorField
+                value={projectForm.color}
+                fallback={editingProjectFallback}
+                onChange={(hex) => setProjectForm({ ...projectForm, color: hex })}
               />
-              <p className="text-[11px] text-surface-500 mt-1">
-                Retainer floor — invoices billing this project under it get a labeled top-up line.
+              <p className="text-[11px] text-surface-500 -mt-2">
+                Default inherits the customer&apos;s color.
               </p>
             </div>
-            <ColorField
-              value={projectForm.color}
-              fallback={editingProjectFallback}
-              onChange={(hex) => setProjectForm({ ...projectForm, color: hex })}
-            />
-            <p className="text-[11px] text-surface-500 -mt-2">
-              Default inherits the customer&apos;s color.
-            </p>
-          </div>
 
-          {/* Email tab — defaults that prefill the invoice compose modal.
+            {/* Email tab — defaults that prefill the invoice compose modal.
               Both tabs stay mounted (hidden, not unmounted) so switching
               never loses unsaved edits; Save submits every field. */}
-          <div className={`grid grid-cols-1 gap-4 ${projectTab === 'subclients' ? '' : 'hidden'}`}>
-            <div>
-              <p className="text-[12px] font-semibold text-surface-800 mb-1">
-                Sub-clients on this project
-              </p>
-              <p className="text-[11px] text-surface-500 mb-3">
-                Optional sub-divisions you can tag a time entry with — an end client, matter,
-                workstream, or cost code. Timesheet reports group by sub-client when set, which
-                beats guessing a category from the description text. Archive one to retire it
-                without touching the entries that already reference it.
-              </p>
-              {projectForm.subClients.length === 0 && (
-                <p className="text-[12px] text-surface-500 mb-3">
-                  None yet — this project&apos;s hours report under the project name.
+            <div
+              className={`grid grid-cols-1 gap-4 ${projectTab === 'subclients' ? '' : 'hidden'}`}
+            >
+              <div>
+                <p className="text-[12px] font-semibold text-surface-800 mb-1">
+                  Sub-clients on this project
                 </p>
-              )}
-              {projectForm.subClients.map((sub, i) => (
-                <div key={i} className="flex items-center gap-2 mb-2">
-                  <Input
-                    value={sub.name}
-                    onChange={(e) =>
-                      setProjectForm({
-                        ...projectForm,
-                        subClients: projectForm.subClients.map((s, j) =>
-                          j === i ? { ...s, name: e.target.value } : s
-                        ),
-                      })
-                    }
-                    placeholder="Sub-client name"
-                    className="h-9 rounded-lg text-sm flex-1"
-                  />
-                  <label className="flex items-center gap-1.5 text-[12px] text-surface-600 cursor-pointer whitespace-nowrap">
-                    <input
-                      type="checkbox"
-                      checked={sub.archived}
+                <p className="text-[11px] text-surface-500 mb-3">
+                  Optional sub-divisions you can tag a time entry with — an end client, matter,
+                  workstream, or cost code. Timesheet reports group by sub-client when set, which
+                  beats guessing a category from the description text. Archive one to retire it
+                  without touching the entries that already reference it.
+                </p>
+                {projectForm.subClients.length === 0 && (
+                  <p className="text-[12px] text-surface-500 mb-3">
+                    None yet — this project&apos;s hours report under the project name.
+                  </p>
+                )}
+                {projectForm.subClients.map((sub, i) => (
+                  <div key={i} className="flex items-center gap-2 mb-2">
+                    <Input
+                      id="customerstab-field-11"
+                      value={sub.name}
                       onChange={(e) =>
                         setProjectForm({
                           ...projectForm,
                           subClients: projectForm.subClients.map((s, j) =>
-                            j === i ? { ...s, archived: e.target.checked } : s
+                            j === i ? { ...s, name: e.target.value } : s
                           ),
                         })
                       }
+                      placeholder="Sub-client name"
+                      className="h-9 rounded-lg text-sm flex-1"
                     />
-                    Archived
-                  </label>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() =>
-                      setProjectForm({
-                        ...projectForm,
-                        subClients: projectForm.subClients.filter((_, j) => j !== i),
-                      })
-                    }
-                    aria-label="Remove sub-client"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              ))}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  setProjectForm({
-                    ...projectForm,
-                    subClients: [...projectForm.subClients, { name: '', archived: false }],
-                  })
-                }
-              >
-                <Plus className="w-4 h-4 mr-1" /> Add sub-client
-              </Button>
-            </div>
-          </div>
-          <div className={`grid grid-cols-1 gap-4 ${projectTab === 'email' ? '' : 'hidden'}`}>
-            <div>
-              <p className="text-[12px] font-semibold text-surface-800 mb-1">
-                Invoice email defaults
-              </p>
-              <p className="text-[11px] text-surface-500 mb-3">
-                Pre-fills the Send Invoice compose window for invoices billing this project — you
-                always review and can edit everything before sending.
-                {' Use {{placeholder}} variables anywhere; they fill in from the actual invoice.'}
-              </p>
-              <div className="mb-3">
-                <label className="text-[12px] text-surface-600 block mb-1">To</label>
-                <textarea
-                  value={projectForm.emailTo}
-                  onChange={(e) => setProjectForm({ ...projectForm, emailTo: e.target.value })}
-                  placeholder="billing@client.com, cc@client.com"
-                  rows={2}
-                  className="w-full rounded-lg text-sm bg-surface-100 border border-border px-3 py-2"
-                />
-                <p className="text-[11px] text-surface-500 mt-1">
-                  Blank = the customer&apos;s email from their profile. Comma-separate multiple
-                  recipients.
-                </p>
-              </div>
-              <div className="mb-3">
-                <label className="text-[12px] text-surface-600 block mb-1">From</label>
-                <Input
-                  value={projectForm.emailFrom}
-                  onChange={(e) => setProjectForm({ ...projectForm, emailFrom: e.target.value })}
-                  placeholder="Name <you@yourdomain.com>"
-                  className="h-9 rounded-lg text-sm"
-                />
-                <p className="text-[11px] text-surface-500 mt-1">
-                  Blank = your configured sender. Custom senders must use a domain verified with
-                  your email provider.
-                </p>
-              </div>
-              <div className="mb-3">
-                <label className="text-[12px] text-surface-600 block mb-1">Subject</label>
-                <Input
-                  value={projectForm.emailSubject}
-                  onChange={(e) => setProjectForm({ ...projectForm, emailSubject: e.target.value })}
-                  placeholder="Invoice {{number}} — {{month}}"
-                  className="h-9 rounded-lg text-sm"
-                />
-              </div>
-              <div className="mb-3">
-                <label className="text-[12px] text-surface-600 block mb-1">Body</label>
-                <textarea
-                  value={projectForm.emailBody}
-                  onChange={(e) => setProjectForm({ ...projectForm, emailBody: e.target.value })}
-                  placeholder={
-                    'Hi,\n\nAttached is invoice {{number}} for {{month}} — {{total}} ({{hours}} hours), due {{dueDate}}.\n\nThank you!'
+                    <label
+                      htmlFor="customerstab-field-11"
+                      className="flex items-center gap-1.5 text-[12px] text-surface-600 cursor-pointer whitespace-nowrap"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={sub.archived}
+                        onChange={(e) =>
+                          setProjectForm({
+                            ...projectForm,
+                            subClients: projectForm.subClients.map((s, j) =>
+                              j === i ? { ...s, archived: e.target.checked } : s
+                            ),
+                          })
+                        }
+                      />
+                      Archived
+                    </label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        setProjectForm({
+                          ...projectForm,
+                          subClients: projectForm.subClients.filter((_, j) => j !== i),
+                        })
+                      }
+                      aria-label="Remove sub-client"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setProjectForm({
+                      ...projectForm,
+                      subClients: [...projectForm.subClients, { name: '', archived: false }],
+                    })
                   }
-                  rows={4}
-                  className="w-full rounded-lg text-sm bg-surface-100 border border-border px-3 py-2"
-                />
-                <p className="text-[11px] text-surface-500 mt-1">
-                  Plain text; blank lines become paragraphs. The invoice PDF is always attached.
-                </p>
+                >
+                  <Plus className="w-4 h-4 mr-1" /> Add sub-client
+                </Button>
               </div>
-              <div className="rounded-lg bg-surface-100/60 border border-border/50 px-3 py-2">
-                <p className="text-[11px] font-semibold text-surface-700 mb-1">Placeholders</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] text-surface-600">
-                  <span>
-                    <code>{'{{number}}'}</code> — invoice number (2026/027)
-                  </span>
-                  <span>
-                    <code>{'{{month}}'}</code> — billing month (July 2026)
-                  </span>
-                  <span>
-                    <code>{'{{total}}'}</code> — total billed ($12,000.00)
-                  </span>
-                  <span>
-                    <code>{'{{hours}}'}</code> — hours on the invoice
-                  </span>
-                  <span>
-                    <code>{'{{dueDate}}'}</code> — payment due date
-                  </span>
-                  <span>
-                    <code>{'{{issueDate}}'}</code> — date issued
-                  </span>
-                  <span>
-                    <code>{'{{client}}'}</code> — customer name
-                  </span>
-                  <span>
-                    <code>{'{{project}}'}</code> — this project&apos;s name
-                  </span>
-                  <span>
-                    <code>{'{{company}}'}</code> — your company (from the PDF template)
-                  </span>
+            </div>
+            <div className={`grid grid-cols-1 gap-4 ${projectTab === 'email' ? '' : 'hidden'}`}>
+              <div>
+                <p className="text-[12px] font-semibold text-surface-800 mb-1">
+                  Invoice email defaults
+                </p>
+                <p className="text-[11px] text-surface-500 mb-3">
+                  Pre-fills the Send Invoice compose window for invoices billing this project — you
+                  always review and can edit everything before sending.
+                  {' Use {{placeholder}} variables anywhere; they fill in from the actual invoice.'}
+                </p>
+                <div className="mb-3">
+                  <label
+                    htmlFor="customerstab-field-12"
+                    className="text-[12px] text-surface-600 block mb-1"
+                  >
+                    To
+                  </label>
+                  <textarea
+                    id="customerstab-field-12"
+                    value={projectForm.emailTo}
+                    onChange={(e) => setProjectForm({ ...projectForm, emailTo: e.target.value })}
+                    placeholder="billing@client.com, cc@client.com"
+                    rows={2}
+                    className="w-full rounded-lg text-sm bg-surface-100 border border-border px-3 py-2"
+                  />
+                  <p className="text-[11px] text-surface-500 mt-1">
+                    Blank = the customer&apos;s email from their profile. Comma-separate multiple
+                    recipients.
+                  </p>
+                </div>
+                <div className="mb-3">
+                  <label
+                    htmlFor="customerstab-field-13"
+                    className="text-[12px] text-surface-600 block mb-1"
+                  >
+                    From
+                  </label>
+                  <Input
+                    id="customerstab-field-13"
+                    value={projectForm.emailFrom}
+                    onChange={(e) => setProjectForm({ ...projectForm, emailFrom: e.target.value })}
+                    placeholder="Name <you@yourdomain.com>"
+                    className="h-9 rounded-lg text-sm"
+                  />
+                  <p className="text-[11px] text-surface-500 mt-1">
+                    Blank = your configured sender. Custom senders must use a domain verified with
+                    your email provider.
+                  </p>
+                </div>
+                <div className="mb-3">
+                  <label
+                    htmlFor="customerstab-field-14"
+                    className="text-[12px] text-surface-600 block mb-1"
+                  >
+                    Subject
+                  </label>
+                  <Input
+                    id="customerstab-field-14"
+                    value={projectForm.emailSubject}
+                    onChange={(e) =>
+                      setProjectForm({ ...projectForm, emailSubject: e.target.value })
+                    }
+                    placeholder="Invoice {{number}} — {{month}}"
+                    className="h-9 rounded-lg text-sm"
+                  />
+                </div>
+                <div className="mb-3">
+                  <label
+                    htmlFor="customerstab-field-15"
+                    className="text-[12px] text-surface-600 block mb-1"
+                  >
+                    Body
+                  </label>
+                  <textarea
+                    id="customerstab-field-15"
+                    value={projectForm.emailBody}
+                    onChange={(e) => setProjectForm({ ...projectForm, emailBody: e.target.value })}
+                    placeholder={
+                      'Hi,\n\nAttached is invoice {{number}} for {{month}} — {{total}} ({{hours}} hours), due {{dueDate}}.\n\nThank you!'
+                    }
+                    rows={4}
+                    className="w-full rounded-lg text-sm bg-surface-100 border border-border px-3 py-2"
+                  />
+                  <p className="text-[11px] text-surface-500 mt-1">
+                    Plain text; blank lines become paragraphs. The invoice PDF is always attached.
+                  </p>
+                </div>
+                <div className="rounded-lg bg-surface-100/60 border border-border/50 px-3 py-2">
+                  <p className="text-[11px] font-semibold text-surface-700 mb-1">Placeholders</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] text-surface-600">
+                    <span>
+                      <code>{'{{number}}'}</code> — invoice number (2026/027)
+                    </span>
+                    <span>
+                      <code>{'{{month}}'}</code> — billing month (July 2026)
+                    </span>
+                    <span>
+                      <code>{'{{total}}'}</code> — total billed ($12,000.00)
+                    </span>
+                    <span>
+                      <code>{'{{hours}}'}</code> — hours on the invoice
+                    </span>
+                    <span>
+                      <code>{'{{dueDate}}'}</code> — payment due date
+                    </span>
+                    <span>
+                      <code>{'{{issueDate}}'}</code> — date issued
+                    </span>
+                    <span>
+                      <code>{'{{client}}'}</code> — customer name
+                    </span>
+                    <span>
+                      <code>{'{{project}}'}</code> — this project&apos;s name
+                    </span>
+                    <span>
+                      <code>{'{{company}}'}</code> — your company (from the PDF template)
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-          {error && <p className="text-[12px] text-danger-400">{error}</p>}
+            {error && <p className="text-[12px] text-danger-400">{error}</p>}
+          </DialogBody>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setProjectModal(null)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={saving}
+              onClick={() => setProjectModal(null)}
+            >
               Cancel
             </Button>
             <Button

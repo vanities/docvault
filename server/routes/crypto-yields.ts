@@ -18,10 +18,13 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { jsonResponse, ensureDir, DATA_DIR } from '../data.js';
 import { createLogger } from '../logger.js';
+import { createWriteLock, writeJsonAtomic } from '../write-lock.js';
+import { readJsonBody } from '../http.js';
 
 const log = createLogger('CryptoYields');
 
 const STORE_FILE = path.join(DATA_DIR, '.docvault-crypto-yields.json');
+const withYieldMutation = createWriteLock();
 
 export interface CryptoYieldEntry {
   sourceId: string;
@@ -54,14 +57,22 @@ async function loadStore(): Promise<YieldStore> {
 
 async function saveStore(store: YieldStore): Promise<void> {
   await ensureDir(DATA_DIR);
-  const tmp = `${STORE_FILE}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(store, null, 2));
-  await fs.rename(tmp, STORE_FILE);
+  await writeJsonAtomic(STORE_FILE, store);
 }
 
 export async function handleCryptoYieldsRoutes(
   req: Request,
   _url: URL,
+  pathname: string
+): Promise<Response | null> {
+  const handle = () => handleCryptoYieldsRoutesUnlocked(req, pathname);
+  return pathname.startsWith('/api/crypto/yields/') && ['PUT', 'DELETE'].includes(req.method)
+    ? withYieldMutation(handle)
+    : handle();
+}
+
+async function handleCryptoYieldsRoutesUnlocked(
+  req: Request,
   pathname: string
 ): Promise<Response | null> {
   // GET /api/crypto/yields
@@ -86,20 +97,24 @@ export async function handleCryptoYieldsRoutes(
     }
 
     // PUT
-    const body = (await req.json().catch(() => ({}))) as {
-      yieldApy?: number | null;
-      note?: string | null;
-    };
+    const body = await readJsonBody<unknown>(req).catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body) || !('yieldApy' in body)) {
+      return jsonResponse({ error: 'A yieldApy number or explicit null is required' }, 400);
+    }
+    const note = 'note' in body ? body.note : undefined;
+    if (note !== undefined && note !== null && typeof note !== 'string') {
+      return jsonResponse({ error: 'note must be a string or null' }, 400);
+    }
 
     // Allow null yieldApy to clear the override (same as DELETE).
-    if (body.yieldApy === null || body.yieldApy === undefined) {
+    if (body.yieldApy === null) {
       delete store.entries[key];
       await saveStore(store);
       return jsonResponse({ ok: true });
     }
 
-    const apy = Number(body.yieldApy);
-    if (!Number.isFinite(apy) || apy < 0 || apy > 1000) {
+    const apy = body.yieldApy;
+    if (typeof apy !== 'number' || !Number.isFinite(apy) || apy < 0 || apy > 1000) {
       return jsonResponse({ error: 'yieldApy must be a finite number between 0 and 1000' }, 400);
     }
 
@@ -107,7 +122,7 @@ export async function handleCryptoYieldsRoutes(
       sourceId,
       asset,
       yieldApy: apy,
-      note: body.note ?? store.entries[key]?.note,
+      note: note === null ? undefined : (note ?? store.entries[key]?.note),
       updatedAt: new Date().toISOString(),
     };
     store.entries[key] = entry;

@@ -1,6 +1,6 @@
 /* oxlint-disable react-refresh/only-export-components */
 import { createElement, type ElementType } from 'react';
-import ReactMarkdown, { type Components } from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 type AnchorProps = React.AnchorHTMLAttributes<HTMLAnchorElement> & {
@@ -66,6 +66,12 @@ export function SafeMarkdown({
     <div className={className}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        urlTransform={(url) => {
+          // Preserve react-markdown's handling of relative image paths while
+          // letting explicitly allowed protocols reach our custom link handler.
+          const sanitized = safeMarkdownHref(url, allowedProtocols);
+          return sanitized ?? defaultUrlTransform(url);
+        }}
         components={{
           ...components,
           a: ({ href, children: linkChildren, className: linkClassName, ...props }) => {

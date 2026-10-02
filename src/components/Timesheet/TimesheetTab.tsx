@@ -1,8 +1,7 @@
 // Timesheet tab — Kimai-style entry table: date-range presets + custom
 // window, client/project/status filters, description search, sortable
 // columns, totals for the current filter. Log/edit happens in a modal.
-// Mobile: row actions stay visible (no hover on touch), secondary columns
-// collapse, and the table scrolls horizontally inside its card.
+// Phones use readable entry cards; larger screens keep the sortable table.
 
 import { useState, useMemo } from 'react';
 import {
@@ -15,11 +14,13 @@ import {
   ArrowDown,
   MoreHorizontal,
   Lock,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
+  DialogBody,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -55,6 +56,8 @@ import {
 import { billedOn } from './billing';
 
 const PAGE_SIZE = 50;
+const FILTER_CLASS =
+  'min-h-11 sm:min-h-9 w-full min-w-0 rounded-lg text-base sm:text-sm text-surface-900 bg-surface-100 border border-border px-2';
 
 type SortKey = 'date' | 'duration' | 'rate' | 'amount';
 
@@ -62,12 +65,14 @@ export function TimesheetTab({
   store,
   refresh,
   hour24,
+  onManageProjects,
 }: {
   store: TimesheetStore;
   refresh: () => Promise<void>;
   hour24: boolean;
+  onManageProjects: () => void;
 }) {
-  const { confirm, ConfirmDialog } = useConfirmDialog();
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   // Filters
   const [preset, setPreset] = useState<RangePreset>('this-month');
@@ -80,6 +85,7 @@ export function TimesheetTab({
     'all'
   );
   const [search, setSearch] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   // Sorting
@@ -234,6 +240,10 @@ export function TimesheetTab({
 
   // ----- Entry modal -----
   const openNew = () => {
+    if (projectGroups.length === 0) {
+      onManageProjects();
+      return;
+    }
     setEditingId(null);
     setFormDate(todayYMD());
     // Default to right now; picking a start auto-advances end to +30min.
@@ -352,303 +362,459 @@ export function TimesheetTab({
   };
 
   const resetPage = () => setVisibleCount(PAGE_SIZE);
+  const filterCount = [
+    preset !== 'all',
+    filterClient !== 'all',
+    filterProject !== 'all',
+    activeSubClient !== 'all',
+    filterStatus !== 'all',
+    search.trim() !== '',
+  ].filter(Boolean).length;
+  const clearFilters = () => {
+    setPreset('all');
+    setCustomFrom('');
+    setCustomTo('');
+    setFilterClient('all');
+    setFilterProject('all');
+    setFilterSubClient('all');
+    setFilterStatus('all');
+    setSearch('');
+    resetPage();
+  };
+  const entryActions = (entry: TimesheetEntry, lock: ReturnType<typeof billedOn>) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="size-11 sm:size-7 shrink-0"
+          aria-label="Entry actions"
+          title={`Actions for ${entry.date}: ${entry.description || 'No description'}`}
+        >
+          <MoreHorizontal className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => openEdit(entry)} className="min-h-11 sm:min-h-8">
+          <Edit3 className="size-4" />
+          Edit
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          variant="destructive"
+          disabled={!!lock}
+          onClick={() => void handleDelete(entry)}
+          className="min-h-11 sm:min-h-8"
+        >
+          <Trash2 className="size-4" />
+          {lock ? `Delete — locked by ${lock.number}` : 'Delete'}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 
   return (
     <div>
-      <ConfirmDialog />
+      {confirmDialog}
 
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <select
-          value={preset}
-          onChange={(e) => {
-            setPreset(e.target.value as RangePreset);
-            resetPage();
-          }}
-          className="h-8 rounded-lg text-[12px] bg-surface-100 border border-border px-2"
-        >
-          {RANGE_PRESETS.map((p) => (
-            <option key={p.value} value={p.value}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-        {preset === 'custom' && (
-          <>
-            <Input
-              type="date"
-              value={customFrom}
+      <div className="space-y-3 mb-4">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[11rem_minmax(0,1fr)_auto] items-end gap-3">
+          <label className="min-w-0 text-xs text-surface-600 space-y-1">
+            <span>Date range</span>
+            <select
+              aria-label="Date range"
+              value={preset}
               onChange={(e) => {
-                setCustomFrom(e.target.value);
+                setPreset(e.target.value as RangePreset);
                 resetPage();
               }}
-              className="h-8 rounded-lg text-[12px] w-36"
-            />
-            <span className="text-[12px] text-surface-500">to</span>
-            <Input
-              type="date"
-              value={customTo}
-              onChange={(e) => {
-                setCustomTo(e.target.value);
-                resetPage();
-              }}
-              className="h-8 rounded-lg text-[12px] w-36"
-            />
-          </>
-        )}
-        <select
-          value={filterClient}
-          onChange={(e) => {
-            setFilterClient(e.target.value);
-            setFilterProject('all');
-            resetPage();
-          }}
-          className="h-8 rounded-lg text-[12px] bg-surface-100 border border-border px-2"
-        >
-          <option value="all">All customers</option>
-          {store.clients.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-        <select
-          value={filterProject}
-          onChange={(e) => {
-            setFilterProject(e.target.value);
-            resetPage();
-          }}
-          className="h-8 rounded-lg text-[12px] bg-surface-100 border border-border px-2"
-        >
-          <option value="all">All projects</option>
-          {store.projects
-            .filter((p) => filterClient === 'all' || p.clientId === filterClient)
-            .map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-        </select>
-        {/* Sub-client filter appears only once the visible projects define any,
-            so installs that don't subdivide never see a dead dropdown. */}
-        {subClientOptions.length > 0 && (
-          <select
-            value={activeSubClient}
-            onChange={(e) => {
-              setFilterSubClient(e.target.value);
-              resetPage();
-            }}
-            className="h-8 rounded-lg text-[12px] bg-surface-100 border border-border px-2"
+              className={FILTER_CLASS}
+            >
+              {RANGE_PRESETS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button
+            onClick={openNew}
+            className="min-h-11 sm:min-h-9 col-start-2 sm:col-start-3 row-start-1"
           >
-            <option value="all">All sub-clients</option>
-            <option value="none">Untagged</option>
-            {subClientOptions.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        )}
-        <select
-          value={filterStatus}
-          onChange={(e) => {
-            setFilterStatus(e.target.value as typeof filterStatus);
-            resetPage();
-          }}
-          className="h-8 rounded-lg text-[12px] bg-surface-100 border border-border px-2"
-        >
-          <option value="all">All statuses</option>
-          <option value="open">Open (uninvoiced)</option>
-          <option value="invoiced">Invoiced</option>
-          <option value="non-billable">Non-billable</option>
-        </select>
-        <Input
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            resetPage();
-          }}
-          placeholder="Search descriptions…"
-          className="h-8 rounded-lg text-[12px] w-full sm:w-48"
-        />
-        <div className="ml-auto">
-          <Button size="sm" onClick={openNew}>
             <Plus className="w-4 h-4" />
-            Log Time
+            {projectGroups.length === 0 ? 'Set up project' : 'Log Time'}
           </Button>
-        </div>
-      </div>
-
-      {/* Log / edit modal */}
-      <Dialog open={formOpen} onOpenChange={(open) => !open && setFormOpen(false)}>
-        <DialogContent className="sm:max-w-xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingId ? 'Edit Entry' : 'Log Time'}</DialogTitle>
-          </DialogHeader>
-          {editLock && (
-            <div className="flex gap-2 rounded-lg border border-border bg-surface-100/60 px-3 py-2 text-[12px] text-surface-700">
-              <Lock className="w-3.5 h-3.5 mt-0.5 shrink-0 text-surface-500" aria-hidden />
-              <p>
-                Billed on invoice <span className="font-mono">{editLock.number}</span> (
-                {editLock.status}, issued {editLock.issueDate}). Hours, times, date, project, rate
-                and billable are locked to what that invoice charged, so this work can't be billed
-                twice. The description and sub-client can still change. To change billed values,
-                delete the invoice (it releases its entries) and invoice again.
-              </p>
-            </div>
-          )}
-          <div className="flex items-center gap-1 mb-1">
-            {[
-              { quick: false, label: 'Start / end' },
-              { quick: true, label: 'Just hours' },
-            ].map((mode) => (
-              <button
-                key={mode.label}
-                type="button"
-                disabled={!!editLock}
-                onClick={() => {
-                  // Carry the duration across so switching modes never loses it.
-                  if (mode.quick && !formQuick) setFormHours((formMinutes / 60).toFixed(2));
-                  setFormQuick(mode.quick);
-                }}
-                className={`h-7 px-3 rounded-lg text-[12px] border disabled:opacity-50 disabled:cursor-not-allowed ${
-                  formQuick === mode.quick
-                    ? 'bg-surface-200 border-border text-surface-900'
-                    : 'bg-transparent border-transparent text-surface-500 hover:text-surface-700'
-                }`}
-              >
-                {mode.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-2 col-span-2 sm:col-span-1 sm:col-start-2 sm:row-start-1">
+            <Input
+              aria-label="Search time entry descriptions"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                resetPage();
+              }}
+              placeholder="Search descriptions…"
+              className="flex-1 min-w-0 h-11 sm:h-9 text-base sm:text-sm"
+            />
+            <Button
+              variant="outline"
+              onClick={() => setFiltersOpen(!filtersOpen)}
+              aria-expanded={filtersOpen}
+              aria-controls="timesheet-filters"
+              className="min-h-11 sm:hidden"
+            >
+              <SlidersHorizontal className="size-4" />
+              Filters{filterCount > 0 ? ` (${filterCount})` : ''}
+            </Button>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
-              <label className="text-[12px] text-surface-600 block mb-1">Project</label>
-              <select
-                value={formProjectId}
-                disabled={!!editLock}
-                onChange={(e) => {
-                  setFormProjectId(e.target.value);
-                  setFormRate('');
-                }}
-                className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3 disabled:opacity-60"
-              >
-                <option value="">Select project…</option>
-                {projectGroups.map((g) => (
-                  <optgroup key={g.client.id} label={g.client.name}>
-                    {g.projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </div>
-            <div className="col-span-2 sm:col-span-1">
-              <label className="text-[12px] text-surface-600 block mb-1">Date</label>
+        </div>
+        {preset === 'custom' && (
+          <div className="grid grid-cols-2 gap-3">
+            <label className="min-w-0 text-xs text-surface-600 space-y-1">
+              <span>From date</span>
               <Input
                 type="date"
-                value={formDate}
-                disabled={!!editLock}
-                onChange={(e) => setFormDate(e.target.value)}
-                className="h-9 rounded-lg text-sm"
+                value={customFrom}
+                onChange={(e) => {
+                  setCustomFrom(e.target.value);
+                  resetPage();
+                }}
+                className="min-w-0 h-11 sm:h-9 text-base sm:text-sm"
               />
-            </div>
-            {formQuick ? (
-              <div className="col-span-2 sm:col-span-1">
-                <label className="text-[12px] text-surface-600 block mb-1">Hours</label>
-                <Input
-                  type="number"
-                  step="0.25"
-                  min="0"
-                  inputMode="decimal"
-                  disabled={!!editLock}
-                  value={formHours}
-                  onChange={(e) => setFormHours(e.target.value)}
-                  placeholder="e.g. 2.5"
-                  className="h-9 rounded-lg text-sm"
-                  aria-label="Hours worked"
-                />
-              </div>
-            ) : (
-              <div className="col-span-2 sm:col-span-1 flex gap-2">
-                <div className="flex-1 min-w-0">
-                  <label className="text-[12px] text-surface-600 block mb-1">Start</label>
-                  <TimeSlotPicker
-                    value={formStart}
-                    onChange={handleStartChange}
-                    ariaLabel="Start time"
-                    hour24={hour24}
-                    disabled={!!editLock}
-                  />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <label className="text-[12px] text-surface-600 block mb-1">End</label>
-                  <TimeSlotPicker
-                    value={formEnd}
-                    onChange={setFormEnd}
-                    ariaLabel="End time"
-                    hour24={hour24}
-                    disabled={!!editLock}
-                  />
-                </div>
-              </div>
+            </label>
+            <label className="min-w-0 text-xs text-surface-600 space-y-1">
+              <span>To date</span>
+              <Input
+                type="date"
+                value={customTo}
+                onChange={(e) => {
+                  setCustomTo(e.target.value);
+                  resetPage();
+                }}
+                className="min-w-0 h-11 sm:h-9 text-base sm:text-sm"
+              />
+            </label>
+            {customFrom && customTo && customTo < customFrom && (
+              <p role="alert" className="col-span-2 text-xs text-danger-400">
+                The end date must be on or after the start date.
+              </p>
             )}
-            {formSubClients.length > 0 && (
-              <div className="col-span-2">
-                <label className="text-[12px] text-surface-600 block mb-1">
-                  Sub-client <span className="text-surface-500">(optional)</span>
-                </label>
+          </div>
+        )}
+        <div id="timesheet-filters" className={filtersOpen ? 'block' : 'hidden sm:block'}>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <label className="min-w-0 text-xs text-surface-600 space-y-1">
+              <span>Customer</span>
+              <select
+                aria-label="Customer"
+                value={filterClient}
+                onChange={(e) => {
+                  setFilterClient(e.target.value);
+                  setFilterProject('all');
+                  resetPage();
+                }}
+                className={FILTER_CLASS}
+              >
+                <option value="all">All customers</option>
+                {store.clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="min-w-0 text-xs text-surface-600 space-y-1">
+              <span>Project</span>
+              <select
+                aria-label="Project"
+                value={filterProject}
+                onChange={(e) => {
+                  setFilterProject(e.target.value);
+                  resetPage();
+                }}
+                className={FILTER_CLASS}
+              >
+                <option value="all">All projects</option>
+                {store.projects
+                  .filter((p) => filterClient === 'all' || p.clientId === filterClient)
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            {subClientOptions.length > 0 && (
+              <label className="min-w-0 text-xs text-surface-600 space-y-1">
+                <span>Sub-client</span>
                 <select
-                  value={formSubClientId}
-                  onChange={(e) => setFormSubClientId(e.target.value)}
-                  className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+                  aria-label="Sub-client"
+                  value={activeSubClient}
+                  onChange={(e) => {
+                    setFilterSubClient(e.target.value);
+                    resetPage();
+                  }}
+                  className={FILTER_CLASS}
                 >
-                  <option value="">None</option>
-                  {formSubClients.map((s) => (
+                  <option value="all">All sub-clients</option>
+                  <option value="none">Untagged</option>
+                  {subClientOptions.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
                     </option>
                   ))}
                 </select>
+              </label>
+            )}
+            <label className="min-w-0 text-xs text-surface-600 space-y-1">
+              <span>Status</span>
+              <select
+                aria-label="Status"
+                value={filterStatus}
+                onChange={(e) => {
+                  setFilterStatus(e.target.value as typeof filterStatus);
+                  resetPage();
+                }}
+                className={FILTER_CLASS}
+              >
+                <option value="all">All statuses</option>
+                <option value="open">Open (uninvoiced)</option>
+                <option value="invoiced">Invoiced</option>
+                <option value="non-billable">Non-billable</option>
+              </select>
+            </label>
+          </div>
+          <div className="mt-3 sm:hidden">
+            <label className="flex-1 min-w-0 text-xs text-surface-600 space-y-1">
+              <span>Sort entries</span>
+              <select
+                aria-label="Sort entries"
+                value={`${sortKey}:${sortDesc ? 'desc' : 'asc'}`}
+                onChange={(e) => {
+                  const [key, direction] = e.target.value.split(':');
+                  setSortKey(key as SortKey);
+                  setSortDesc(direction === 'desc');
+                  resetPage();
+                }}
+                className={FILTER_CLASS}
+              >
+                <option value="date:desc">Newest first</option>
+                <option value="date:asc">Oldest first</option>
+                <option value="duration:desc">Most hours first</option>
+                <option value="duration:asc">Fewest hours first</option>
+                <option value="amount:desc">Highest amount first</option>
+                <option value="amount:asc">Lowest amount first</option>
+                <option value="rate:desc">Highest rate first</option>
+                <option value="rate:asc">Lowest rate first</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        {filterCount > 0 && (
+          <Button
+            variant="ghost"
+            onClick={clearFilters}
+            className={`min-h-11 sm:min-h-8 -ml-2 ${filtersOpen ? '' : 'hidden sm:inline-flex'}`}
+          >
+            Clear filters · show all time
+          </Button>
+        )}
+      </div>
+
+      {/* Log / edit modal */}
+      <Dialog open={formOpen} onOpenChange={(open) => !open && !submitting && setFormOpen(false)}>
+        <DialogContent closeDisabled={submitting} className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{editingId ? 'Edit Entry' : 'Log Time'}</DialogTitle>
+          </DialogHeader>
+          <DialogBody>
+            {editLock && (
+              <div className="flex gap-2 rounded-lg border border-border bg-surface-100/60 px-3 py-2 text-[12px] text-surface-700">
+                <Lock className="w-3.5 h-3.5 mt-0.5 shrink-0 text-surface-500" aria-hidden />
+                <p>
+                  Billed on invoice <span className="font-mono">{editLock.number}</span> (
+                  {editLock.status}, issued {editLock.issueDate}). Hours, times, date, project, rate
+                  and billable are locked to what that invoice charged, so this work can't be billed
+                  twice. The description and sub-client can still change. To change billed values,
+                  delete the invoice (it releases its entries) and invoice again.
+                </p>
               </div>
             )}
-            <div className="col-span-2">
-              <label className="text-[12px] text-surface-600 block mb-1">Description</label>
-              <textarea
-                value={formDescription}
-                onChange={(e) => setFormDescription(e.target.value)}
-                placeholder="What did you work on?"
-                rows={3}
-                className="w-full rounded-lg text-sm bg-surface-100 border border-border px-3 py-2"
-              />
-            </div>
-            <div>
-              <label className="text-[12px] text-surface-600 block mb-1">
-                Rate ($/h{formProject && formRate === '' ? ' · project default' : ''})
-              </label>
-              <Input
-                type="number"
-                value={formRate}
-                disabled={!!editLock}
-                onChange={(e) => setFormRate(e.target.value)}
-                placeholder={formProject ? String(formProject.hourlyRate) : '0'}
-                className="h-9 rounded-lg text-sm"
-              />
-            </div>
-            <div className="flex items-end pb-1.5">
-              <label className="flex items-center gap-2 text-[13px] text-surface-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formBillable}
+            <div className="flex items-center gap-1 mb-1">
+              {[
+                { quick: false, label: 'Start / end' },
+                { quick: true, label: 'Just hours' },
+              ].map((mode) => (
+                <button
+                  key={mode.label}
+                  type="button"
                   disabled={!!editLock}
-                  onChange={(e) => setFormBillable(e.target.checked)}
-                />
-                Billable
-              </label>
+                  onClick={() => {
+                    // Carry the duration across so switching modes never loses it.
+                    if (mode.quick && !formQuick) setFormHours((formMinutes / 60).toFixed(2));
+                    setFormQuick(mode.quick);
+                  }}
+                  aria-pressed={formQuick === mode.quick}
+                  className={`min-h-11 px-3 rounded-lg text-[12px] border disabled:opacity-50 disabled:cursor-not-allowed ${
+                    formQuick === mode.quick
+                      ? 'bg-surface-200 border-border text-surface-900'
+                      : 'bg-transparent border-transparent text-surface-500 hover:text-surface-700'
+                  }`}
+                >
+                  {mode.label}
+                </button>
+              ))}
             </div>
-          </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <label
+                  htmlFor="timesheettab-field-1"
+                  className="text-[12px] text-surface-600 block mb-1"
+                >
+                  Project
+                </label>
+                <select
+                  id="timesheettab-field-1"
+                  value={formProjectId}
+                  disabled={!!editLock}
+                  onChange={(e) => {
+                    setFormProjectId(e.target.value);
+                    setFormRate('');
+                  }}
+                  className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3 disabled:opacity-60"
+                >
+                  <option value="">Select project…</option>
+                  {projectGroups.map((g) => (
+                    <optgroup key={g.client.id} label={g.client.name}>
+                      {g.projects.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+              <div className="col-span-2 sm:col-span-1">
+                <label
+                  htmlFor="timesheettab-field-2"
+                  className="text-[12px] text-surface-600 block mb-1"
+                >
+                  Date
+                </label>
+                <Input
+                  id="timesheettab-field-2"
+                  type="date"
+                  value={formDate}
+                  disabled={!!editLock}
+                  onChange={(e) => setFormDate(e.target.value)}
+                  className="h-9 rounded-lg text-sm"
+                />
+              </div>
+              {formQuick ? (
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="text-[12px] text-surface-600 block mb-1">Hours</label>
+                  <Input
+                    type="number"
+                    step="0.25"
+                    min="0"
+                    inputMode="decimal"
+                    disabled={!!editLock}
+                    value={formHours}
+                    onChange={(e) => setFormHours(e.target.value)}
+                    placeholder="e.g. 2.5"
+                    className="h-9 rounded-lg text-sm"
+                    aria-label="Hours worked"
+                  />
+                </div>
+              ) : (
+                <div className="col-span-2 sm:col-span-1 flex gap-2">
+                  <div className="flex-1 min-w-0">
+                    <label className="text-[12px] text-surface-600 block mb-1">Start</label>
+                    <TimeSlotPicker
+                      value={formStart}
+                      onChange={handleStartChange}
+                      ariaLabel="Start time"
+                      hour24={hour24}
+                      disabled={!!editLock}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <label className="text-[12px] text-surface-600 block mb-1">End</label>
+                    <TimeSlotPicker
+                      value={formEnd}
+                      onChange={setFormEnd}
+                      ariaLabel="End time"
+                      hour24={hour24}
+                      disabled={!!editLock}
+                    />
+                  </div>
+                </div>
+              )}
+              {formSubClients.length > 0 && (
+                <div className="col-span-2">
+                  <label
+                    htmlFor="timesheettab-field-3"
+                    className="text-[12px] text-surface-600 block mb-1"
+                  >
+                    Sub-client <span className="text-surface-500">(optional)</span>
+                  </label>
+                  <select
+                    id="timesheettab-field-3"
+                    value={formSubClientId}
+                    onChange={(e) => setFormSubClientId(e.target.value)}
+                    className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3"
+                  >
+                    <option value="">None</option>
+                    {formSubClients.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="col-span-2">
+                <label
+                  htmlFor="timesheettab-field-4"
+                  className="text-[12px] text-surface-600 block mb-1"
+                >
+                  Description
+                </label>
+                <textarea
+                  id="timesheettab-field-4"
+                  value={formDescription}
+                  onChange={(e) => setFormDescription(e.target.value)}
+                  placeholder="What did you work on?"
+                  rows={3}
+                  className="w-full rounded-lg text-sm bg-surface-100 border border-border px-3 py-2"
+                />
+              </div>
+              <div>
+                <label className="text-[12px] text-surface-600 block mb-1">
+                  Rate ($/h{formProject && formRate === '' ? ' · project default' : ''})
+                </label>
+                <Input
+                  type="number"
+                  aria-label="Hourly rate"
+                  value={formRate}
+                  disabled={!!editLock}
+                  onChange={(e) => setFormRate(e.target.value)}
+                  placeholder={formProject ? String(formProject.hourlyRate) : '0'}
+                  className="h-9 rounded-lg text-sm"
+                />
+              </div>
+              <div className="flex items-end pb-1.5">
+                <label className="flex items-center gap-2 text-[13px] text-surface-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formBillable}
+                    disabled={!!editLock}
+                    onChange={(e) => setFormBillable(e.target.checked)}
+                  />
+                  Billable
+                </label>
+              </div>
+            </div>
+          </DialogBody>
           <DialogFooter className="items-center gap-3 sm:justify-between">
             <span className="text-[13px] text-surface-600 tabular-nums">
               {formatHours(formMinutes)}
@@ -661,7 +827,12 @@ export function TimesheetTab({
               {formError && <span className="block text-[12px] text-danger-400">{formError}</span>}
             </span>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setFormOpen(false)}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={submitting}
+                onClick={() => setFormOpen(false)}
+              >
                 Cancel
               </Button>
               <Button
@@ -695,11 +866,105 @@ export function TimesheetTab({
             {totals.billed} billed · <span className="text-lime-400">{totals.open} open</span>
           </span>
         )}
-        {actionError && <span className="text-danger-400">{actionError}</span>}
+        {actionError && (
+          <span role="alert" className="text-danger-400">
+            {actionError}
+          </span>
+        )}
       </div>
 
-      {/* Entry table */}
-      <Card variant="glass" className="overflow-x-auto">
+      {filtered.length === 0 && (
+        <Card className="p-6 text-center space-y-3">
+          <p className="text-sm font-medium text-surface-900">
+            {store.entries.length === 0
+              ? projectGroups.length === 0
+                ? 'Set up your first project'
+                : 'No time logged yet'
+              : 'No entries match these filters'}
+          </p>
+          <p className="text-sm text-surface-600">
+            {store.entries.length === 0
+              ? projectGroups.length === 0
+                ? 'Add a customer and project before logging time. Set the hourly rate on the project.'
+                : 'Log a start/end time or just the hours worked.'
+              : 'Change the date range or clear filters to see your other entries.'}
+          </p>
+          <Button
+            variant="outline"
+            onClick={store.entries.length === 0 ? openNew : clearFilters}
+            className="min-h-11"
+          >
+            {store.entries.length === 0
+              ? projectGroups.length === 0
+                ? 'Create your first project'
+                : 'Log your first entry'
+              : 'Show all entries'}
+          </Button>
+        </Card>
+      )}
+      <div className="space-y-3 sm:hidden" aria-label="Time entries">
+        {filtered.slice(0, visibleCount).map((entry) => {
+          const project = projectById.get(entry.projectId);
+          const client = project ? clientById.get(project.clientId) : undefined;
+          const subClient = project?.subClients?.find((sub) => sub.id === entry.subClientId);
+          const lock = billedOn(invoiceById, entry);
+          return (
+            <Card key={entry.id} variant="glass" className="p-3" data-entry-id={entry.id}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-surface-900 tabular-nums">{entry.date}</p>
+                  <p className="text-xs text-surface-600 tabular-nums">
+                    {entry.start && entry.end
+                      ? `${formatClock(entry.start, hour24)}–${formatClock(entry.end, hour24)}`
+                      : 'Hours only'}
+                  </p>
+                </div>
+                {entryActions(entry, lock)}
+              </div>
+              <p className="text-xs text-surface-600 mt-2 break-words">
+                <span
+                  className="inline-block size-2 rounded-full mr-1.5"
+                  style={{ backgroundColor: projectDisplayColor(project, clientColors) }}
+                />
+                {client?.name ?? 'Unknown customer'} / {project?.name ?? 'Unknown project'}
+                {subClient && <span className="block mt-1">{subClient.name}</span>}
+              </p>
+              <p className="text-sm text-surface-950 mt-3 whitespace-pre-wrap break-words">
+                {entry.description || <i className="text-surface-500">No description</i>}
+              </p>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 pt-3 border-t border-border text-sm tabular-nums">
+                <span className="font-medium">{formatHours(entry.durationMinutes)}</span>
+                {entry.billable && (
+                  <span className="font-mono text-surface-900">
+                    <Money>{formatUsd(entry.amount)}</Money>
+                  </span>
+                )}
+                <span
+                  className={`text-xs ${!lock && entry.billable && !entry.invoiced ? 'text-lime-400' : 'text-surface-600'}`}
+                >
+                  {lock ? (
+                    <span className="inline-flex gap-1 items-center">
+                      <Lock className="size-3" aria-hidden />
+                      Billed · {lock.number}
+                    </span>
+                  ) : !entry.billable ? (
+                    'Non-billable'
+                  ) : entry.invoiced ? (
+                    'Invoiced'
+                  ) : (
+                    'Open'
+                  )}
+                </span>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+      {/* Larger screens retain the sortable table. */}
+      <Card
+        variant="glass"
+        className={filtered.length === 0 ? 'hidden' : 'hidden sm:block overflow-x-auto'}
+      >
         <table className="w-full text-[13px]">
           <thead>
             <tr className="text-left text-[11px] uppercase tracking-wider text-surface-500 border-b border-border">
@@ -741,9 +1006,7 @@ export function TimesheetTab({
                 return (
                   <tr key={e.id} className="group hover:bg-surface-100/50">
                     <td className="px-3 sm:px-4 py-2 text-surface-700 tabular-nums whitespace-nowrap">
-                      {/* full date from sm up; MM-DD on phones to keep Amount on-screen */}
-                      <span className="hidden sm:inline">{e.date}</span>
-                      <span className="sm:hidden">{e.date.slice(5)}</span>
+                      {e.date}
                     </td>
                     <td className="px-2 py-2 text-surface-500 tabular-nums text-[12px] whitespace-nowrap hidden md:table-cell">
                       {e.start && e.end ? (
@@ -767,21 +1030,6 @@ export function TimesheetTab({
                     <td className="px-2 py-2 text-surface-900 max-w-[9rem] sm:max-w-[26rem]">
                       <span className="line-clamp-2">
                         {e.description || <i className="text-surface-500">no description</i>}
-                      </span>
-                      <span className="block text-[11px] text-surface-500 sm:hidden">
-                        <span
-                          className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle"
-                          style={{ backgroundColor: dotColor }}
-                        />
-                        {client?.name} / {project?.name}
-                        {subClientName ? ` ↳ ${subClientName}` : ''}
-                        {lock
-                          ? ` · billed ${lock.number}`
-                          : !e.billable
-                            ? ' · non-billable'
-                            : e.invoiced
-                              ? ' · invoiced'
-                              : ' · open'}
                       </span>
                     </td>
                     <td className="px-2 py-2 text-right text-surface-700 tabular-nums whitespace-nowrap">
@@ -810,45 +1058,23 @@ export function TimesheetTab({
                         <span className="text-[11px] text-lime-400">open</span>
                       )}
                     </td>
-                    <td className="px-2 py-2">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon-xs" aria-label="Entry actions">
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openEdit(e)}>
-                            <Edit3 className="w-3.5 h-3.5" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            variant="destructive"
-                            disabled={!!lock}
-                            onClick={() => void handleDelete(e)}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            {lock ? `Delete — locked by ${lock.number}` : 'Delete'}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </td>
+                    <td className="px-2 py-2">{entryActions(e, lock)}</td>
                   </tr>
                 );
               })
             )}
           </tbody>
         </table>
-        {filtered.length > visibleCount && (
-          <button
-            className="w-full py-2.5 text-[12px] text-surface-600 hover:text-surface-900 flex items-center justify-center gap-1 border-t border-border/50"
-            onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
-          >
-            <ChevronDown className="w-3.5 h-3.5" />
-            Show more ({filtered.length - visibleCount} remaining)
-          </button>
-        )}
       </Card>
+      {filtered.length > visibleCount && (
+        <button
+          className="w-full min-h-11 mt-3 py-2.5 text-[12px] text-surface-600 hover:text-surface-900 flex items-center justify-center gap-1 border-t border-border/50"
+          onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+        >
+          <ChevronDown className="w-3.5 h-3.5" />
+          Show more ({filtered.length - visibleCount} remaining)
+        </button>
+      )}
     </div>
   );
 }

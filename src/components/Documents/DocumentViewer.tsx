@@ -16,16 +16,24 @@ import {
   Wand2,
 } from 'lucide-react';
 import type { TaxDocument, Entity, ExpenseCategory, DocumentType } from '../../types';
-import { DOCUMENT_TYPES, EXPENSE_CATEGORIES, getDocumentTypeColor } from '../../config';
+import {
+  DOCUMENT_TYPES,
+  EXPENSE_CATEGORIES,
+  getDocumentTypeColor,
+  isBusinessDocumentType,
+} from '../../config';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import { useToast } from '../../hooks/useToast';
 import { Money } from '../common/Money';
 import { useAppContext } from '../../contexts/AppContext';
 import { generateStandardFilename, getExtension } from '../../utils/filenaming';
+import { getDocumentPath, getDocumentYear } from '../../utils/documentDestination';
 import { API_BASE } from '../../constants';
 import { copyToClipboard } from '../../lib/utils';
 import { FileIcon } from '../common/FileIcon';
 import {
+  DialogBody,
+  DialogFooter,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -121,12 +129,29 @@ export function DocumentViewer({
   const [isParsing, setIsParsing] = useState(false);
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [moveToEntity, setMoveToEntity] = useState<Entity>(document.entity);
-  const [moveToYear, setMoveToYear] = useState<number>(document.taxYear);
+  // All Files and Business Docs map taxYear to 0. Recover a year from the
+  // folder, or choose a real default before exposing relocation from those views.
+  const sourceYear = getDocumentYear(document, availableYears);
+  const [moveToYear, setMoveToYear] = useState<number>(sourceYear);
   const [moveToType, setMoveToType] = useState<DocumentType>(document.type);
   const [moveToCategory, setMoveToCategory] = useState<ExpenseCategory | undefined>(
     initialMoveCategory
   );
   const [isMoving, setIsMoving] = useState(false);
+  const [moveError, setMoveError] = useState('');
+  const moveUsesYear = !isBusinessDocumentType(moveToType);
+  const moveChanged =
+    moveToEntity !== document.entity ||
+    (moveUsesYear && moveToYear !== sourceYear) ||
+    moveToType !== document.type ||
+    (moveToType === 'receipt' && moveToCategory !== initialMoveCategory);
+  const moveYears = [...new Set([...(availableYears ?? []), sourceYear])].sort((a, b) => b - a);
+  const moveDestination = getDocumentPath(
+    moveToType,
+    moveToYear,
+    document.filePath?.split('/').pop() ?? document.fileName,
+    moveToType === 'receipt' ? moveToCategory : undefined
+  );
   const [copied, setCopied] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
@@ -338,7 +363,7 @@ export function DocumentViewer({
   const handleMove = async () => {
     if (!document.filePath) return;
     const entityChanged = moveToEntity !== document.entity;
-    const yearChanged = moveToYear !== document.taxYear;
+    const yearChanged = moveUsesYear && moveToYear !== sourceYear;
     const typeChanged = moveToType !== document.type;
     const categoryChanged = moveToType === 'receipt' && moveToCategory !== initialMoveCategory;
 
@@ -348,6 +373,7 @@ export function DocumentViewer({
     }
 
     setIsMoving(true);
+    setMoveError('');
     try {
       // Prefer onRelocate (handles type + category); fall back to onMove for entity/year only.
       let success = false;
@@ -366,7 +392,11 @@ export function DocumentViewer({
       if (success) {
         setShowMoveModal(false);
         onClose();
+      } else {
+        setMoveError('Could not move the document. Check the destination and try again.');
       }
+    } catch (error) {
+      setMoveError(error instanceof Error ? error.message : 'Could not move the document');
     } finally {
       setIsMoving(false);
     }
@@ -389,7 +419,7 @@ export function DocumentViewer({
           <SheetDescription className="sr-only">Document details and preview</SheetDescription>
 
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-border">
+          <div className="shrink-0 flex items-center justify-between p-4 border-b border-border">
             <div className="flex items-center gap-3 min-w-0">
               <FileIcon
                 fileType={document.fileType}
@@ -450,223 +480,239 @@ export function DocumentViewer({
               </div>
             </div>
             <SheetClose asChild>
-              <Button variant="ghost" size="icon">
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Close document"
+                className="size-11 shrink-0"
+              >
                 <X className="w-5 h-5" />
               </Button>
             </SheetClose>
           </div>
 
-          {/* Preview */}
-          <div className="flex-1 overflow-hidden bg-surface-200/30">
-            {canPreview ? (
-              <div className="w-full h-full flex items-center justify-center p-4">
-                {isImage ? (
-                  <img
-                    src={fileUrl}
-                    alt={document.fileName}
-                    className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-                  />
-                ) : isPdf ? (
-                  <iframe
-                    src={fileUrl}
-                    title={`Preview of ${document.fileName}`}
-                    // Browsers' built-in PDF viewers are script-driven: without
-                    // allow-scripts the toolbar renders but the page stays blank.
-                    sandbox="allow-scripts allow-downloads allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin"
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full rounded-lg bg-white"
-                  />
-                ) : null}
-              </div>
-            ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center text-surface-600">
-                <File className="w-16 h-16 mb-4" />
-                <p>Preview not available</p>
-                <Button variant="link" onClick={handleOpenExternal} className="mt-4">
-                  <ExternalLink className="w-4 h-4" />
-                  Open in new tab
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* Details */}
-          <div
-            ref={sheetContainerRef}
-            className="border-t border-border p-4 space-y-4 max-h-80 overflow-y-auto"
-          >
-            {/* File Info */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[13px]">
-              <div className="flex items-center gap-2 text-surface-700">
-                <HardDrive className="w-4 h-4 text-surface-600" />
-                <span>{formatFileSize(document.fileSize)}</span>
-              </div>
-              <div className="flex items-center gap-2 text-surface-700">
-                <Calendar className="w-4 h-4 text-surface-600" />
-                <span>{formatDate(document.createdAt)}</span>
-              </div>
-              <div className="flex items-center gap-2 text-surface-700 col-span-2">
-                <FolderOpen className="w-4 h-4 text-surface-600" />
-                <button
-                  onClick={() => {
-                    const entityConfig = entities?.find((e) => e.id === document.entity);
-                    const fullPath = entityConfig
-                      ? `${entityConfig.path}/${document.filePath ?? ''}`
-                      : (document.filePath ?? '');
-                    void handleCopyPath(fullPath);
-                  }}
-                  className="truncate hover:text-accent-400 cursor-pointer text-left font-mono text-[12px]"
-                  title="Click to copy full path"
-                >
-                  {copied ? 'Copied!' : document.filePath}
-                </button>
-              </div>
+          <div data-slot="sheet-body" className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            {/* Preview */}
+            <div className="h-[calc(var(--overlay-height,100dvh)*0.4)] min-h-40 max-h-[28rem] overflow-hidden bg-surface-200/30">
+              {canPreview ? (
+                <div className="w-full h-full flex items-center justify-center p-4">
+                  {isImage ? (
+                    <img
+                      src={fileUrl}
+                      alt={document.fileName}
+                      className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+                    />
+                  ) : isPdf ? (
+                    <iframe
+                      src={fileUrl}
+                      title={`Preview of ${document.fileName}`}
+                      // Browsers' built-in PDF viewers are script-driven: without
+                      // allow-scripts the toolbar renders but the page stays blank.
+                      sandbox="allow-scripts allow-downloads allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin"
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full rounded-lg bg-white"
+                    />
+                  ) : null}
+                </div>
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center text-surface-600">
+                  <File className="w-16 h-16 mb-4" />
+                  <p>Preview not available</p>
+                  <Button variant="link" onClick={handleOpenExternal} className="mt-4">
+                    <ExternalLink className="w-4 h-4" />
+                    Open in new tab
+                  </Button>
+                </div>
+              )}
             </div>
 
-            {/* Tags */}
-            <div className="flex flex-wrap gap-1.5">
-              <span
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] ${getDocumentTypeColor(document.type)}`}
-              >
-                <Tag className="w-3 h-3" />
-                {docTypeInfo?.label || document.type}
-              </span>
-              {expenseInfo && (
+            {/* Details */}
+            <div ref={sheetContainerRef} className="border-t border-border p-4 space-y-4">
+              {/* File Info */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[13px]">
+                <div className="flex items-center gap-2 text-surface-700">
+                  <HardDrive className="w-4 h-4 text-surface-600" />
+                  <span>{formatFileSize(document.fileSize)}</span>
+                </div>
+                <div className="flex items-center gap-2 text-surface-700">
+                  <Calendar className="w-4 h-4 text-surface-600" />
+                  <span>{formatDate(document.createdAt)}</span>
+                </div>
+                <div className="flex items-center gap-2 text-surface-700 col-span-2">
+                  <FolderOpen className="w-4 h-4 text-surface-600" />
+                  <button
+                    onClick={() => {
+                      const entityConfig = entities?.find((e) => e.id === document.entity);
+                      const fullPath = entityConfig
+                        ? `${entityConfig.path}/${document.filePath ?? ''}`
+                        : (document.filePath ?? '');
+                      void handleCopyPath(fullPath);
+                    }}
+                    className="truncate hover:text-accent-400 cursor-pointer text-left font-mono text-[12px]"
+                    title="Click to copy full path"
+                  >
+                    {copied ? 'Copied!' : document.filePath}
+                  </button>
+                </div>
+              </div>
+
+              {/* Tags */}
+              <div className="flex flex-wrap gap-1.5">
                 <span
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] ${expenseInfo.color}`}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] ${getDocumentTypeColor(document.type)}`}
                 >
-                  {expenseInfo.label}
+                  <Tag className="w-3 h-3" />
+                  {docTypeInfo?.label || document.type}
                 </span>
+                {expenseInfo && (
+                  <span
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] ${expenseInfo.color}`}
+                  >
+                    {expenseInfo.label}
+                  </span>
+                )}
+                {document.taxYear > 0 && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-surface-400/15 text-surface-800 rounded-md text-[12px]">
+                    {document.taxYear}
+                  </span>
+                )}
+              </div>
+
+              {/* Parsed Data */}
+              {document.parsedData && (
+                <div className="bg-surface-200/40 rounded-xl p-4">
+                  <h3 className="font-medium text-surface-950 mb-3 text-[13px]">Parsed Data</h3>
+                  <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[13px]">
+                    {Object.entries(document.parsedData)
+                      .filter(
+                        ([key]) => key !== 'parsed' && key !== 'parsedAt' && key !== 'documentType'
+                      )
+                      .map(([key, value]) => {
+                        // Format the key nicely
+                        const label = key
+                          .replace(/([A-Z])/g, ' $1')
+                          .replace(/_/g, ' ')
+                          .trim();
+
+                        // Format the value
+                        let displayValue: string;
+                        // Track money fields so the rendered value can be blurred
+                        // under the global privacy toggle (parsed tax-doc amounts
+                        // are personal financial data).
+                        let valueIsMoney = false;
+                        if (value === null || value === undefined || value === '') {
+                          return null; // Skip empty values
+                        } else if (typeof value === 'number') {
+                          // Fields that should be displayed as plain numbers (no formatting)
+                          const plainNumberFields = [
+                            'year',
+                            'quantity',
+                            'zip',
+                            'phone',
+                            'ssn',
+                            'tin',
+                            'ein',
+                          ];
+                          const isPlainNumber = plainNumberFields.some((f) =>
+                            key.toLowerCase().includes(f)
+                          );
+
+                          if (isPlainNumber) {
+                            displayValue = String(value);
+                          } else {
+                            // Format as currency if it looks like a money field
+                            const moneyFields = [
+                              'wages',
+                              'withheld',
+                              'tax',
+                              'compensation',
+                              'amount',
+                              'income',
+                              'dividends',
+                              'gains',
+                              'interest',
+                              'rents',
+                              'royalties',
+                              'proceeds',
+                              'payments',
+                              'premium',
+                              'discount',
+                              'expenses',
+                              'penalty',
+                              'distributions',
+                              'subtotal',
+                              'price',
+                            ];
+                            const isMoney = moneyFields.some((f) => key.toLowerCase().includes(f));
+                            valueIsMoney = isMoney;
+
+                            displayValue = isMoney
+                              ? `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              : value.toLocaleString();
+                          }
+                        } else if (typeof value === 'boolean') {
+                          displayValue = value ? 'Yes' : 'No';
+                        } else if (Array.isArray(value)) {
+                          // Handle arrays (like box12 or items)
+                          displayValue = value
+                            .map((item) =>
+                              typeof item === 'object' ? JSON.stringify(item) : String(item)
+                            )
+                            .join(', ');
+                        } else if (typeof value === 'object') {
+                          displayValue = JSON.stringify(value);
+                        } else {
+                          displayValue = String(value);
+                        }
+
+                        return (
+                          <div key={key}>
+                            <dt className="text-surface-600 capitalize text-[11px]">{label}</dt>
+                            <dd className="text-surface-950 font-medium">
+                              {valueIsMoney ? <Money>{displayValue}</Money> : displayValue}
+                            </dd>
+                          </div>
+                        );
+                      })}
+                  </dl>
+                </div>
               )}
-              {document.taxYear > 0 && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-surface-400/15 text-surface-800 rounded-md text-[12px]">
-                  {document.taxYear}
-                </span>
+
+              {!document.parsedData && (
+                <div className="bg-warn-500/10 border border-warn-500/20 rounded-xl p-3 text-[13px] text-warn-400">
+                  This document hasn't been parsed yet. Click "Parse Document" to extract data.
+                </div>
               )}
             </div>
-
-            {/* Parsed Data */}
-            {document.parsedData && (
-              <div className="bg-surface-200/40 rounded-xl p-4">
-                <h3 className="font-medium text-surface-950 mb-3 text-[13px]">Parsed Data</h3>
-                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[13px]">
-                  {Object.entries(document.parsedData)
-                    .filter(
-                      ([key]) => key !== 'parsed' && key !== 'parsedAt' && key !== 'documentType'
-                    )
-                    .map(([key, value]) => {
-                      // Format the key nicely
-                      const label = key
-                        .replace(/([A-Z])/g, ' $1')
-                        .replace(/_/g, ' ')
-                        .trim();
-
-                      // Format the value
-                      let displayValue: string;
-                      // Track money fields so the rendered value can be blurred
-                      // under the global privacy toggle (parsed tax-doc amounts
-                      // are personal financial data).
-                      let valueIsMoney = false;
-                      if (value === null || value === undefined || value === '') {
-                        return null; // Skip empty values
-                      } else if (typeof value === 'number') {
-                        // Fields that should be displayed as plain numbers (no formatting)
-                        const plainNumberFields = [
-                          'year',
-                          'quantity',
-                          'zip',
-                          'phone',
-                          'ssn',
-                          'tin',
-                          'ein',
-                        ];
-                        const isPlainNumber = plainNumberFields.some((f) =>
-                          key.toLowerCase().includes(f)
-                        );
-
-                        if (isPlainNumber) {
-                          displayValue = String(value);
-                        } else {
-                          // Format as currency if it looks like a money field
-                          const moneyFields = [
-                            'wages',
-                            'withheld',
-                            'tax',
-                            'compensation',
-                            'amount',
-                            'income',
-                            'dividends',
-                            'gains',
-                            'interest',
-                            'rents',
-                            'royalties',
-                            'proceeds',
-                            'payments',
-                            'premium',
-                            'discount',
-                            'expenses',
-                            'penalty',
-                            'distributions',
-                            'subtotal',
-                            'price',
-                          ];
-                          const isMoney = moneyFields.some((f) => key.toLowerCase().includes(f));
-                          valueIsMoney = isMoney;
-
-                          displayValue = isMoney
-                            ? `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                            : value.toLocaleString();
-                        }
-                      } else if (typeof value === 'boolean') {
-                        displayValue = value ? 'Yes' : 'No';
-                      } else if (Array.isArray(value)) {
-                        // Handle arrays (like box12 or items)
-                        displayValue = value
-                          .map((item) =>
-                            typeof item === 'object' ? JSON.stringify(item) : String(item)
-                          )
-                          .join(', ');
-                      } else if (typeof value === 'object') {
-                        displayValue = JSON.stringify(value);
-                      } else {
-                        displayValue = String(value);
-                      }
-
-                      return (
-                        <div key={key}>
-                          <dt className="text-surface-600 capitalize text-[11px]">{label}</dt>
-                          <dd className="text-surface-950 font-medium">
-                            {valueIsMoney ? <Money>{displayValue}</Money> : displayValue}
-                          </dd>
-                        </div>
-                      );
-                    })}
-                </dl>
-              </div>
-            )}
-
-            {!document.parsedData && (
-              <div className="bg-warn-500/10 border border-warn-500/20 rounded-xl p-3 text-[13px] text-warn-400">
-                This document hasn't been parsed yet. Click "Parse Document" to extract data.
-              </div>
-            )}
           </div>
 
           {/* Actions */}
-          <div className="border-t border-border p-4 flex flex-col sm:flex-row gap-2">
-            <Button variant="secondary" onClick={handleDownload} className="flex-1">
+          <div className="shrink-0 border-t border-border p-4 pb-[max(1rem,env(safe-area-inset-bottom))] grid grid-cols-2 sm:flex sm:flex-row gap-2 max-sm:[&_button]:min-h-11">
+            <Button
+              variant="secondary"
+              onClick={handleDownload}
+              className="flex-1 min-w-0 max-sm:px-2"
+            >
               <Download className="w-4 h-4" />
               Download
             </Button>
-            <Button onClick={handleReparse} disabled={isParsing} className="flex-1">
+            <Button
+              onClick={handleReparse}
+              disabled={isParsing}
+              className="flex-1 min-w-0 max-sm:px-2"
+              aria-label={isParsing ? 'Parsing document' : 'Parse Document'}
+            >
               <RefreshCw className={`w-4 h-4 ${isParsing ? 'animate-spin' : ''}`} />
-              {isParsing ? 'Parsing...' : 'Parse Document'}
+              <span className="sm:hidden">{isParsing ? 'Parsing…' : 'Parse'}</span>
+              <span className="hidden sm:inline">
+                {isParsing ? 'Parsing...' : 'Parse Document'}
+              </span>
             </Button>
             <Button
               variant="outline"
               onClick={handleAiRename}
               disabled={isAiRenaming}
-              className="flex-1 text-violet-400 bg-violet-500/15 hover:bg-violet-500/25 border-violet-500/20"
+              className="col-span-2 flex-1 text-violet-400 bg-violet-500/15 hover:bg-violet-500/25 border-violet-500/20"
               title="Auto rename from parsed data"
             >
               <Wand2 className={`w-4 h-4 ${isAiRenaming ? 'animate-pulse' : ''}`} />
@@ -676,11 +722,20 @@ export function DocumentViewer({
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setShowMoveModal(true)}
-                className="text-warn-400 hover:bg-warn-500/10"
+                onClick={() => {
+                  setMoveToEntity(document.entity);
+                  setMoveToYear(sourceYear);
+                  setMoveToType(document.type);
+                  setMoveToCategory(initialMoveCategory);
+                  setMoveError('');
+                  setShowMoveModal(true);
+                }}
+                className="w-full sm:w-11 text-warn-400 hover:bg-warn-500/10"
+                aria-label="Move document"
                 title="Move to different entity, year, or change document type"
               >
                 <MoveRight className="w-4 h-4" />
+                <span className="sm:hidden">Move</span>
               </Button>
             )}
             {onDelete && (
@@ -689,8 +744,11 @@ export function DocumentViewer({
                 size="icon"
                 onClick={handleDelete}
                 disabled={isDeleting}
+                className={`w-full sm:w-11 text-danger-400 ${!((onMove || onRelocate) && entities && availableYears) ? 'col-span-2' : ''}`}
+                aria-label="Delete document"
               >
                 <Trash2 className="w-4 h-4" />
+                <span className="sm:hidden">Delete</span>
               </Button>
             )}
           </div>
@@ -699,8 +757,8 @@ export function DocumentViewer({
 
       {/* Move Modal */}
       {entities && availableYears && (
-        <Dialog open={showMoveModal} onOpenChange={setShowMoveModal}>
-          <DialogContent className="sm:max-w-sm">
+        <Dialog open={showMoveModal} onOpenChange={(open) => !isMoving && setShowMoveModal(open)}>
+          <DialogContent closeDisabled={isMoving} className="sm:max-w-sm">
             <DialogHeader>
               <DialogTitle>Move Document</DialogTitle>
               <DialogDescription>
@@ -709,7 +767,7 @@ export function DocumentViewer({
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4">
+            <DialogBody className="space-y-4">
               {onRelocate && (
                 <div>
                   <label className="block text-[13px] font-medium text-surface-800 mb-2">
@@ -719,7 +777,11 @@ export function DocumentViewer({
                     value={moveToType}
                     onValueChange={(val) => setMoveToType(val as DocumentType)}
                   >
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger
+                      aria-label="Document Type"
+                      disabled={isMoving}
+                      className="w-full"
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -742,7 +804,11 @@ export function DocumentViewer({
                     value={moveToCategory ?? ''}
                     onValueChange={(val) => setMoveToCategory(val as ExpenseCategory)}
                   >
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger
+                      aria-label="Expense Category"
+                      disabled={isMoving}
+                      className="w-full"
+                    >
                       <SelectValue placeholder="Pick a category…" />
                     </SelectTrigger>
                     <SelectContent>
@@ -764,7 +830,7 @@ export function DocumentViewer({
                   value={moveToEntity}
                   onValueChange={(val) => setMoveToEntity(val as Entity)}
                 >
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger aria-label="Entity" disabled={isMoving} className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -777,47 +843,62 @@ export function DocumentViewer({
                 </Select>
               </div>
 
-              <div>
-                <label className="block text-[13px] font-medium text-surface-800 mb-2">
-                  Tax Year
-                </label>
-                <Select
-                  value={String(moveToYear)}
-                  onValueChange={(val) => setMoveToYear(parseInt(val, 10))}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableYears.map((year) => (
-                      <SelectItem key={year} value={String(year)}>
-                        {year}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {moveUsesYear && (
+                <div>
+                  <label className="block text-[13px] font-medium text-surface-800 mb-2">
+                    Tax Year
+                  </label>
+                  <Select
+                    value={String(moveToYear)}
+                    onValueChange={(val) => setMoveToYear(parseInt(val, 10))}
+                  >
+                    <SelectTrigger aria-label="Tax Year" disabled={isMoving} className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {moveYears.map((year) => (
+                        <SelectItem key={year} value={String(year)}>
+                          {year}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div className="rounded-lg border border-border bg-surface-100 p-3 min-w-0">
+                <p className="text-xs font-medium text-surface-600 mb-1">Destination</p>
+                <p className="text-sm text-surface-900 break-words">
+                  {entities.find((entity) => entity.id === moveToEntity)?.name}
+                </p>
+                <p className="text-xs font-mono text-surface-600 break-all mt-1">
+                  {moveDestination}
+                </p>
               </div>
-            </div>
+              {moveError && (
+                <p role="alert" className="text-sm text-danger-400">
+                  {moveError}
+                </p>
+              )}
+            </DialogBody>
 
-            <div className="flex gap-3 mt-2">
-              <Button variant="ghost" onClick={() => setShowMoveModal(false)} className="flex-1">
+            <DialogFooter className="flex gap-3 mt-2">
+              <Button
+                variant="ghost"
+                disabled={isMoving}
+                onClick={() => setShowMoveModal(false)}
+                className="flex-1"
+              >
                 Cancel
               </Button>
               <Button
                 onClick={handleMove}
-                disabled={
-                  isMoving ||
-                  (moveToEntity === document.entity &&
-                    moveToYear === document.taxYear &&
-                    moveToType === document.type &&
-                    (moveToType !== 'receipt' || moveToCategory === initialMoveCategory))
-                }
+                disabled={isMoving || !moveChanged}
                 className="flex-1 bg-warn-500 hover:bg-warn-400 text-surface-0"
               >
                 <MoveRight className="w-4 h-4" />
                 {isMoving ? 'Moving...' : 'Move'}
               </Button>
-            </div>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       )}

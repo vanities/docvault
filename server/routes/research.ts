@@ -46,11 +46,14 @@ import {
   buildResearchPoliticsLinks,
 } from '../research-politics-links.js';
 import { loadPoliticsFeedPayload } from '../politics/feed-store.js';
+import { createWriteLock, writeJsonAtomic } from '../write-lock.js';
+import { readJsonBody } from '../http.js';
 
 const log = createLogger('Research');
 
 const RESEARCH_STORE_FILE = path.join(DATA_DIR, '.docvault-research.json');
 const RESEARCH_DATA_DIR = path.join(DATA_DIR, 'research');
+const withResearchMutation = createWriteLock();
 
 // ---------------------------------------------------------------------------
 // Types
@@ -231,9 +234,25 @@ function parseTags(raw: unknown): string[] | undefined {
 
 async function saveStore(store: ResearchStore): Promise<void> {
   await ensureDir(DATA_DIR);
-  const tmp = `${RESEARCH_STORE_FILE}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(store, null, 2));
-  await fs.rename(tmp, RESEARCH_STORE_FILE);
+  await writeJsonAtomic(RESEARCH_STORE_FILE, store);
+}
+
+/** Merge only this operation's fields into a fresh record after slow extraction. */
+async function updateResearchEntry(
+  id: string,
+  update: (entry: ResearchEntry) => void
+): Promise<ResearchEntry | undefined> {
+  return withResearchMutation(async () => {
+    const store = await loadStore();
+    const entry = store.entries[id];
+    if (!entry) return undefined;
+    const previousText = entry.text;
+    update(entry);
+    if (entry.text !== previousText) entry.intelligence = undefined;
+    entry.lastUpdated = new Date().toISOString();
+    await saveStore(store);
+    return entry;
+  });
 }
 
 function newEntryId(): string {
@@ -422,9 +441,11 @@ async function createResearchEntry(params: {
     lastUpdated: now,
   };
 
-  const store = await loadStore();
-  store.entries[id] = entry;
-  await saveStore(store);
+  await withResearchMutation(async () => {
+    const store = await loadStore();
+    store.entries[id] = entry;
+    await saveStore(store);
+  });
   return entry;
 }
 
@@ -447,11 +468,9 @@ export function isTranscribeBusy(): boolean {
 /** Merge a patch onto an entry + bump lastUpdated, atomically. No-op if the
  *  entry was deleted while a job was running. */
 async function setTranscribeStatus(id: string, patch: Partial<ResearchEntry>): Promise<void> {
-  const store = await loadStore();
-  const entry = store.entries[id];
-  if (!entry) return;
-  Object.assign(entry, patch, { lastUpdated: new Date().toISOString() });
-  await saveStore(store);
+  await updateResearchEntry(id, (entry) => {
+    Object.assign(entry, patch);
+  });
 }
 
 /** Run extraction + transcription for one entry in the background. Never throws
@@ -498,6 +517,10 @@ async function runTranscriptionJob(id: string): Promise<void> {
  * server boot block.
  */
 export async function recoverStaleTranscriptions(): Promise<void> {
+  return withResearchMutation(recoverStaleTranscriptionsUnlocked);
+}
+
+async function recoverStaleTranscriptionsUnlocked(): Promise<void> {
   const store = await loadStore();
   let changed = 0;
   const now = new Date().toISOString();
@@ -802,8 +825,7 @@ export async function handleResearchRoutes(
     const id = idMatch[1];
     const action = idMatch[2];
 
-    const store = await loadStore();
-    const entry = store.entries[id];
+    const entry = (await loadStore()).entries[id];
     if (!entry) {
       return jsonResponse({ error: `No research entry "${id}"` }, 404);
     }
@@ -863,14 +885,18 @@ export async function handleResearchRoutes(
       }
 
       const now = new Date().toISOString();
-      entry.text = text;
-      entry.pageCount = pageCount;
-      entry.extractError = extractError;
-      entry.extractedAt = text !== null ? now : entry.extractedAt;
-      entry.extractorVersion = text !== null ? RESEARCH_EXTRACTOR_VERSION : entry.extractorVersion;
-      entry.lastUpdated = now;
-      await saveStore(store);
-      return jsonResponse({ entry });
+      const updated = await updateResearchEntry(id, (current) => {
+        current.text = text;
+        current.pageCount = pageCount;
+        current.extractError = extractError;
+        if (text !== null) {
+          current.extractedAt = now;
+          current.extractorVersion = RESEARCH_EXTRACTOR_VERSION;
+        }
+      });
+      return updated
+        ? jsonResponse({ entry: updated })
+        : jsonResponse({ error: 'Research entry was deleted' }, 404);
     }
 
     // POST /api/research/:id/re-transcribe — retry background transcription for
@@ -920,10 +946,12 @@ export async function handleResearchRoutes(
     // item carries line/char offsets plus an exact quote, so later politics
     // linking can trace back to the original transcript/PDF line.
     if (action === 'intelligence' && req.method === 'POST') {
-      entry.intelligence = buildResearchIntelligence(entry);
-      entry.lastUpdated = new Date().toISOString();
-      await saveStore(store);
-      return jsonResponse({ entry });
+      const updated = await updateResearchEntry(id, (current) => {
+        current.intelligence = buildResearchIntelligence(current);
+      });
+      return updated
+        ? jsonResponse({ entry: updated })
+        : jsonResponse({ error: 'Research entry was deleted' }, 404);
     }
 
     // GET /api/research/:id
@@ -933,49 +961,58 @@ export async function handleResearchRoutes(
 
     // PATCH /api/research/:id — user edits for metadata + notes
     if (!action && req.method === 'PATCH') {
-      const body = (await req.json().catch(() => ({}))) as Partial<{
-        title: string | null;
-        author: string | null;
-        publisher: string | null;
-        reportDate: string | null;
-        sourceUrl: string | null;
-        notes: string | null;
-        tags: string[] | null;
-        tickers: string[] | null;
-        linkedPersonIds: string[] | null;
-      }>;
+      const body = await readJsonBody<
+        Partial<{
+          title: string | null;
+          author: string | null;
+          publisher: string | null;
+          reportDate: string | null;
+          sourceUrl: string | null;
+          notes: string | null;
+          tags: string[] | null;
+          tickers: string[] | null;
+          linkedPersonIds: string[] | null;
+        }>
+      >(req);
 
-      if (body.title !== undefined) entry.title = body.title ?? undefined;
-      if (body.author !== undefined) entry.author = body.author ?? undefined;
-      if (body.publisher !== undefined) entry.publisher = body.publisher ?? undefined;
-      if (body.reportDate !== undefined) entry.reportDate = body.reportDate ?? undefined;
-      if (body.sourceUrl !== undefined) entry.sourceUrl = body.sourceUrl ?? undefined;
-      if (body.notes !== undefined) entry.notes = body.notes ?? undefined;
-      if (body.tags !== undefined) entry.tags = body.tags ?? undefined;
-      if (body.tickers !== undefined) {
-        const normalized = normalizeTickers(body.tickers);
-        entry.tickers = normalized.length > 0 ? normalized : undefined;
-      }
-      if (body.linkedPersonIds !== undefined) {
-        entry.linkedPersonIds = parsePersonIds(body.linkedPersonIds);
-      }
-      entry.lastUpdated = new Date().toISOString();
-      await saveStore(store);
-      return jsonResponse({ entry });
+      const updated = await updateResearchEntry(id, (entry) => {
+        if (body.title !== undefined) entry.title = body.title ?? undefined;
+        if (body.author !== undefined) entry.author = body.author ?? undefined;
+        if (body.publisher !== undefined) entry.publisher = body.publisher ?? undefined;
+        if (body.reportDate !== undefined) entry.reportDate = body.reportDate ?? undefined;
+        if (body.sourceUrl !== undefined) entry.sourceUrl = body.sourceUrl ?? undefined;
+        if (body.notes !== undefined) entry.notes = body.notes ?? undefined;
+        if (body.tags !== undefined) entry.tags = body.tags ?? undefined;
+        if (body.tickers !== undefined) {
+          const normalized = normalizeTickers(body.tickers);
+          entry.tickers = normalized.length > 0 ? normalized : undefined;
+        }
+        if (body.linkedPersonIds !== undefined) {
+          entry.linkedPersonIds = parsePersonIds(body.linkedPersonIds);
+        }
+      });
+      return updated
+        ? jsonResponse({ entry: updated })
+        : jsonResponse({ error: 'Research entry was deleted' }, 404);
     }
 
     // DELETE /api/research/:id — removes the PDF file AND the store entry
     if (!action && req.method === 'DELETE') {
-      const abs = path.join(DATA_DIR, entry.filePath);
-      try {
-        await fs.unlink(abs);
-      } catch {
-        /* already gone — fine */
-      }
-      delete store.entries[id];
-      await saveStore(store);
-      log.info(`Research entry ${id} deleted`);
-      return jsonResponse({ ok: true });
+      return withResearchMutation(async () => {
+        const store = await loadStore();
+        const current = store.entries[id];
+        if (!current) return jsonResponse({ error: 'Research entry was deleted' }, 404);
+        const abs = path.join(DATA_DIR, current.filePath);
+        try {
+          await fs.unlink(abs);
+        } catch {
+          /* already gone — fine */
+        }
+        delete store.entries[id];
+        await saveStore(store);
+        log.info(`Research entry ${id} deleted`);
+        return jsonResponse({ ok: true });
+      });
     }
   }
 

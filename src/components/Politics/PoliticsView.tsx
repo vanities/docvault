@@ -178,10 +178,11 @@ function MetricCard({
   const toneClass =
     tone === 'warn' ? 'text-amber-300' : tone === 'ok' ? 'text-emerald-400' : 'text-surface-950';
   return (
-    <Card
-      variant="glass"
+    <button
+      type="button"
       onClick={onClick}
-      className={`p-4 border-border/50 ${onClick ? 'cursor-pointer hover:border-accent-500/60 transition-colors' : ''}`}
+      aria-label={`Browse ${label.toLowerCase()}`}
+      className={`glass-card w-full rounded-xl p-4 text-left border-border/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${onClick ? 'cursor-pointer hover:border-accent-500/60 transition-colors' : ''}`}
     >
       <div className="flex items-center justify-between gap-3">
         <div>
@@ -193,7 +194,7 @@ function MetricCard({
         </div>
         <Icon className="w-5 h-5 text-surface-600" />
       </div>
-    </Card>
+    </button>
   );
 }
 

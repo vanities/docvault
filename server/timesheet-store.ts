@@ -17,10 +17,13 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { DATA_DIR } from './data.js';
 import { createLogger } from './logger.js';
+import { createWriteLock, writeJsonAtomic } from './write-lock.js';
 
 const log = createLogger('Timesheet');
 
 export const TIMESHEET_PATH = path.join(DATA_DIR, '.docvault-timesheet.json');
+// Hold this across load -> mutate -> save, including invoice billing checks.
+export const withTimesheetMutation = createWriteLock();
 
 export interface TimesheetClient {
   id: string;
@@ -312,10 +315,7 @@ export async function loadTimesheetStore(): Promise<TimesheetStore> {
 
 export async function saveTimesheetStore(store: TimesheetStore): Promise<void> {
   const t0 = performance.now();
-  // Write-then-rename so a crash mid-write can't truncate the store.
-  const tmpPath = `${TIMESHEET_PATH}.tmp`;
-  await fs.writeFile(tmpPath, JSON.stringify(store, null, 2));
-  await fs.rename(tmpPath, TIMESHEET_PATH);
+  await writeJsonAtomic(TIMESHEET_PATH, store);
   log.debug(
     `[save] clients=${store.clients.length} projects=${store.projects.length} entries=${store.entries.length} in ${(performance.now() - t0).toFixed(1)}ms`
   );

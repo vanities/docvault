@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Plus,
   Calendar,
@@ -41,6 +41,14 @@ import type { SyncStatus } from '../../types';
 import { SIDEBAR_COLOR_MAP as COLOR_MAP, renderEntityIcon } from '../../utils/entityDisplay';
 import { Button } from '@/components/ui/button';
 import { HealthSidebarSection } from './HealthSidebarSection';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 // ---------------------------------------------------------------------------
 // Entity Dropdown Switcher
@@ -59,154 +67,109 @@ function EntitySwitcher({
   onAddEntity?: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  // "All" pseudo-entity
   const allEntity: EntityConfig = { id: 'all', name: 'All Entities', color: 'gray', path: '' };
-  const allEntities = [allEntity, ...entities];
-  const current = allEntities.find((e) => e.id === selectedEntity) ?? allEntity;
+  const current =
+    [allEntity, ...entities].find((entity) => entity.id === selectedEntity) ?? allEntity;
   const colors = COLOR_MAP[current.color] || COLOR_MAP.gray;
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
 
   // Group entities
   const taxEntities = entities.filter((e) => e.type === 'tax' || !e.type);
   const docEntities = entities.filter((e) => e.type === 'docs');
 
+  const select = (entity: EntityConfig) => {
+    onSelect(entity);
+    setOpen(false);
+  };
   return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        disabled={isProcessing}
-        className={`
-          w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-all duration-150
-          border border-border/60 hover:border-border
-          ${colors.accent} disabled:opacity-40 disabled:cursor-not-allowed
-        `}
-      >
-        {renderEntityIcon(current, `w-4 h-4 flex-shrink-0 ${colors.text}`)}
-        <span className={`font-semibold text-[13px] truncate flex-1 text-left ${colors.text}`}>
-          {current.name}
-        </span>
-        <ChevronDownIcon
-          className={`w-3.5 h-3.5 ${colors.text} opacity-60 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
-        />
-      </button>
-
-      {open && (
-        <div className="absolute left-0 right-0 top-full mt-1.5 bg-surface-50 border border-border rounded-xl shadow-xl z-50 py-1.5 max-h-64 overflow-y-auto">
-          {/* All */}
-          <DropdownItem
-            entity={allEntity}
-            isSelected={selectedEntity === 'all'}
-            onClick={() => {
-              onSelect(allEntity);
-              setOpen(false);
-            }}
+    <DropdownMenu modal={false} open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <button
+          disabled={isProcessing}
+          aria-label={`Switch entity: ${current.name}`}
+          className={`w-full min-h-11 flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-colors border border-border/60 hover:border-border ${colors.accent} disabled:opacity-40 disabled:cursor-not-allowed`}
+        >
+          {renderEntityIcon(current, `w-4 h-4 shrink-0 ${colors.text}`)}
+          <span className={`font-semibold text-[13px] truncate flex-1 text-left ${colors.text}`}>
+            {current.name}
+          </span>
+          <ChevronDownIcon
+            className={`w-3.5 h-3.5 ${colors.text} opacity-60 transition-transform ${open ? 'rotate-180' : ''}`}
           />
-
-          {/* Tax entities */}
-          {taxEntities.length > 0 && (
-            <>
-              <div className="px-3 pt-2.5 pb-1">
-                <span className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em]">
-                  Tax
-                </span>
-              </div>
-              {taxEntities.map((e) => (
-                <DropdownItem
-                  key={e.id}
-                  entity={e}
-                  isSelected={selectedEntity === e.id}
-                  onClick={() => {
-                    onSelect(e);
-                    setOpen(false);
-                  }}
-                />
-              ))}
-            </>
-          )}
-
-          {/* Doc entities */}
-          {docEntities.length > 0 && (
-            <>
-              <div className="px-3 pt-2.5 pb-1">
-                <span className="text-[10px] font-semibold text-surface-500 uppercase tracking-[0.15em]">
-                  Documents
-                </span>
-              </div>
-              {docEntities.map((e) => (
-                <DropdownItem
-                  key={e.id}
-                  entity={e}
-                  isSelected={selectedEntity === e.id}
-                  onClick={() => {
-                    onSelect(e);
-                    setOpen(false);
-                  }}
-                />
-              ))}
-            </>
-          )}
-
-          {/* Add entity */}
-          {onAddEntity && (
-            <>
-              <div className="border-t border-border/50 mt-1.5 pt-1.5">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    onAddEntity();
-                    setOpen(false);
-                  }}
-                  className="w-full justify-start gap-2.5 px-3 text-surface-600 hover:text-surface-800"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span className="text-[12px] font-medium">Add Entity</span>
-                </Button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-    </div>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="w-(--radix-dropdown-menu-trigger-width) max-h-80"
+      >
+        <EntityMenuItem
+          entity={allEntity}
+          isSelected={selectedEntity === 'all'}
+          onSelect={() => select(allEntity)}
+        />
+        {taxEntities.length > 0 && (
+          <>
+            <DropdownMenuLabel className="text-[10px] text-surface-500 uppercase tracking-wider">
+              Tax
+            </DropdownMenuLabel>
+            {taxEntities.map((entity) => (
+              <EntityMenuItem
+                key={entity.id}
+                entity={entity}
+                isSelected={selectedEntity === entity.id}
+                onSelect={() => select(entity)}
+              />
+            ))}
+          </>
+        )}
+        {docEntities.length > 0 && (
+          <>
+            <DropdownMenuLabel className="text-[10px] text-surface-500 uppercase tracking-wider">
+              Documents
+            </DropdownMenuLabel>
+            {docEntities.map((entity) => (
+              <EntityMenuItem
+                key={entity.id}
+                entity={entity}
+                isSelected={selectedEntity === entity.id}
+                onSelect={() => select(entity)}
+              />
+            ))}
+          </>
+        )}
+        {onAddEntity && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={onAddEntity} className="min-h-11 gap-2.5">
+              <Plus className="size-4" />
+              Add Entity
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
-function DropdownItem({
+function EntityMenuItem({
   entity,
   isSelected,
-  onClick,
+  onSelect,
 }: {
   entity: EntityConfig;
   isSelected: boolean;
-  onClick: () => void;
+  onSelect: () => void;
 }) {
   const colors = COLOR_MAP[entity.color] || COLOR_MAP.gray;
   return (
-    <button
-      onClick={onClick}
-      className={`
-        w-full flex items-center gap-2.5 px-3 py-2 transition-colors text-left
-        ${isSelected ? `${colors.accent} ${colors.text}` : 'text-surface-800 hover:bg-surface-200/50'}
-      `}
+    <DropdownMenuItem
+      onSelect={onSelect}
+      aria-current={isSelected ? 'true' : undefined}
+      className={`min-h-11 gap-2.5 ${isSelected ? `${colors.accent} ${colors.text}` : 'text-surface-800'}`}
     >
-      {renderEntityIcon(
-        entity,
-        `w-3.5 h-3.5 flex-shrink-0 ${isSelected ? colors.text : 'text-surface-600'}`
-      )}
-      <span className="font-medium text-[12px] truncate flex-1">{entity.name}</span>
-      {isSelected && <Check className="w-3 h-3 flex-shrink-0 opacity-60" />}
-    </button>
+      {renderEntityIcon(entity, `size-4 shrink-0 ${isSelected ? colors.text : 'text-surface-600'}`)}
+      <span className="font-medium text-[13px] break-words flex-1">{entity.name}</span>
+      {isSelected && <Check className="size-4 shrink-0 opacity-60" aria-hidden />}
+    </DropdownMenuItem>
   );
 }
 
@@ -238,6 +201,7 @@ function NavButton({
   return (
     <button
       onClick={() => onClick(view)}
+      aria-current={isActive ? 'page' : undefined}
       disabled={isProcessing}
       className={`
         w-full flex items-center gap-2.5 px-2.5 py-3 md:py-2 rounded-lg transition-all duration-150 text-left
@@ -276,6 +240,7 @@ function YearPicker({
       <Button
         variant="ghost"
         size="icon-xs"
+        aria-label="Previous tax year"
         onClick={() => canGoBack && onYearChange(availableYears[idx + 1])}
         disabled={isProcessing || !canGoBack}
         className="text-surface-600"
@@ -288,6 +253,7 @@ function YearPicker({
       <Button
         variant="ghost"
         size="icon-xs"
+        aria-label="Next tax year"
         onClick={() => canGoForward && onYearChange(availableYears[idx - 1])}
         disabled={isProcessing || !canGoForward}
         className="text-surface-600"
@@ -499,13 +465,11 @@ interface SidebarProps {
 export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
   const {
     selectedEntity,
-    setSelectedEntity,
+    requestScopeChange,
     entities,
     activeView,
-    setActiveView,
     isProcessing,
     selectedYear,
-    setSelectedYear,
     availableYears,
   } = useAppContext();
 
@@ -517,48 +481,39 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
   const showSolo401k = selectedEntity === 'all';
 
   const handleEntitySelect = (entity: EntityConfig) => {
-    setSelectedEntity(entity.id);
-    // Smart view defaulting
-    if (
-      activeView === 'sales' ||
-      activeView === 'mileage' ||
-      activeView === 'timesheet' ||
-      activeView === 'income' ||
-      activeView === 'chat' ||
-      activeView === 'calendar' // global view — never bounce off it on entity switch
-    ) {
-      onClose?.();
-      return;
+    let view = activeView;
+    const globalViews: NavView[] = ['sales', 'mileage', 'timesheet', 'income', 'chat', 'calendar'];
+    if (!globalViews.includes(activeView)) {
+      if (
+        (activeView === 'estimated-tax' && entity.id !== 'all') ||
+        (activeView === 'tn-tax' && entity.id === 'personal')
+      )
+        view = 'tax-year';
+      else if (activeView === 'settings' || activeView.startsWith('health'))
+        view = entity.type === 'docs' ? 'all-files' : 'tax-year';
+      else if (entity.type === 'docs' && activeView !== 'all-files') view = 'all-files';
+      else if (
+        (entity.type === 'tax' || !entity.type) &&
+        entity.id !== 'all' &&
+        activeView === 'all-files'
+      )
+        view = 'tax-year';
     }
-    if (activeView === 'estimated-tax' && entity.id !== 'all') {
-      setActiveView('tax-year');
-    } else if (activeView === 'tn-tax' && entity.id === 'personal') {
-      setActiveView('tax-year');
-    } else if (activeView === 'settings') {
-      setActiveView(entity.type === 'docs' ? 'all-files' : 'tax-year');
-    } else if (activeView.startsWith('health')) {
-      // Coming from any Health view to a non-health entity — pick a sensible default
-      setActiveView(entity.type === 'docs' ? 'all-files' : 'tax-year');
-    } else if (entity.type === 'docs' && activeView !== 'all-files') {
-      setActiveView('all-files');
-    } else if (
-      (entity.type === 'tax' || !entity.type) &&
-      entity.id !== 'all' &&
-      activeView === 'all-files'
-    ) {
-      setActiveView('tax-year');
-    }
-    onClose?.();
+    void requestScopeChange({ entity: entity.id, view }).then((accepted) => {
+      if (accepted) onClose?.();
+    });
   };
 
   const handleViewClick = (view: NavView) => {
-    setActiveView(view);
-    onClose?.();
+    void requestScopeChange({ view }).then((accepted) => {
+      if (accepted) onClose?.();
+    });
   };
 
   const handleYearChange = (year: number) => {
-    setSelectedYear(year);
-    if (activeView !== 'tax-year') setActiveView('tax-year');
+    void requestScopeChange({ year, view: 'tax-year' }).then((accepted) => {
+      if (accepted) onClose?.();
+    });
   };
 
   return (

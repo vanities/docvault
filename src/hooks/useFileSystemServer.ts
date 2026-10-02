@@ -187,43 +187,36 @@ export function useFileSystemServer() {
         return [];
       }
 
-      try {
-        if (entity === 'all') {
-          // Scan all entities in parallel
-          const results = await Promise.all(
-            entities.map(async (ent) => {
-              const data = await requestJson<FileListResponse>(
-                `${API_BASE}/business-docs/${ent.id}`
+      if (entity === 'all') {
+        // Scan all entities in parallel
+        const results = await Promise.all(
+          entities.map(async (ent) => {
+            const data = await requestJson<FileListResponse>(`${API_BASE}/business-docs/${ent.id}`);
+            if (!data.files) return [];
+
+            return data.files
+              .filter((f: FileInfo) => !f.name.startsWith('.'))
+              .map((file: FileInfo & { parsedData?: Record<string, unknown> }) =>
+                mapFileToDocument(file, ent.id, 0)
               );
-              if (!data.files) return [];
+          })
+        );
+        return results.flat();
+      }
 
-              return data.files
-                .filter((f: FileInfo) => !f.name.startsWith('.'))
-                .map((file: FileInfo & { parsedData?: Record<string, unknown> }) =>
-                  mapFileToDocument(file, ent.id, 0)
-                );
-            })
-          );
-          return results.flat();
-        }
+      const data = await requestJson<FileListResponse>(`${API_BASE}/business-docs/${entity}`);
 
-        const data = await requestJson<FileListResponse>(`${API_BASE}/business-docs/${entity}`);
-
-        if (!data.files) {
-          return [];
-        }
-
-        const documents: TaxDocument[] = data.files
-          .filter((f: FileInfo) => !f.name.startsWith('.'))
-          .map((file: FileInfo & { parsedData?: Record<string, unknown> }) =>
-            mapFileToDocument(file, entity, 0)
-          );
-
-        return documents;
-      } catch (err) {
-        console.error(`Business docs scan error for ${entity}:`, err);
+      if (!data.files) {
         return [];
       }
+
+      const documents: TaxDocument[] = data.files
+        .filter((f: FileInfo) => !f.name.startsWith('.'))
+        .map((file: FileInfo & { parsedData?: Record<string, unknown> }) =>
+          mapFileToDocument(file, entity, 0)
+        );
+
+      return documents;
     },
     [isConnected, entities]
   );
@@ -235,41 +228,36 @@ export function useFileSystemServer() {
         return [];
       }
 
-      try {
-        if (entity === 'all') {
-          // Scan all entities in parallel
-          const results = await Promise.all(
-            entities.map(async (ent) => {
-              const data = await requestJson<FileListResponse>(`${API_BASE}/files-all/${ent.id}`);
-              if (!data.files) return [];
+      if (entity === 'all') {
+        // Scan all entities in parallel
+        const results = await Promise.all(
+          entities.map(async (ent) => {
+            const data = await requestJson<FileListResponse>(`${API_BASE}/files-all/${ent.id}`);
+            if (!data.files) return [];
 
-              return data.files
-                .filter((f: FileInfo) => !f.name.startsWith('.'))
-                .map((file: FileInfo & { parsedData?: Record<string, unknown> }) =>
-                  mapFileToDocument(file, ent.id, 0)
-                );
-            })
-          );
-          return results.flat();
-        }
+            return data.files
+              .filter((f: FileInfo) => !f.name.startsWith('.'))
+              .map((file: FileInfo & { parsedData?: Record<string, unknown> }) =>
+                mapFileToDocument(file, ent.id, 0)
+              );
+          })
+        );
+        return results.flat();
+      }
 
-        const data = await requestJson<FileListResponse>(`${API_BASE}/files-all/${entity}`);
+      const data = await requestJson<FileListResponse>(`${API_BASE}/files-all/${entity}`);
 
-        if (!data.files) {
-          return [];
-        }
-
-        const documents: TaxDocument[] = data.files
-          .filter((f: FileInfo) => !f.name.startsWith('.'))
-          .map((file: FileInfo & { parsedData?: Record<string, unknown> }) =>
-            mapFileToDocument(file, entity, 0)
-          );
-
-        return documents;
-      } catch (err) {
-        console.error(`All files scan error for ${entity}:`, err);
+      if (!data.files) {
         return [];
       }
+
+      const documents: TaxDocument[] = data.files
+        .filter((f: FileInfo) => !f.name.startsWith('.'))
+        .map((file: FileInfo & { parsedData?: Record<string, unknown> }) =>
+          mapFileToDocument(file, entity, 0)
+        );
+
+      return documents;
     },
     [isConnected, entities]
   );

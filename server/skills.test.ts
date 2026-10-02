@@ -187,3 +187,28 @@ describe('mention extraction + prompt block (codex path)', () => {
     await deleteSkill('doc-review');
   });
 });
+
+describe('concurrent skill saves', () => {
+  test('every save resolves with its own content without leaving temporary files', async () => {
+    const writes = Array.from({ length: 24 }, (_, i) => ({
+      description: `Synthetic revision ${i}`,
+      instructions: `# Revision ${i}\n\n${'Step. '.repeat(i + 1)}`,
+    }));
+    const results = await Promise.allSettled(
+      writes.map((write) => writeSkill('concurrency-check', write.description, write.instructions))
+    );
+    for (const [index, result] of results.entries()) {
+      expect(result.status).toBe('fulfilled');
+      if (result.status === 'fulfilled') {
+        expect(result.value.description).toBe(writes[index].description);
+        expect(result.value.instructions).toBe(writes[index].instructions.trim());
+      }
+    }
+    expect(
+      (await fs.readdir(path.join(SKILLS_DIR, 'concurrency-check'))).filter((name) =>
+        name.endsWith('.tmp')
+      )
+    ).toEqual([]);
+    await deleteSkill('concurrency-check');
+  });
+});

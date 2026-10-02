@@ -257,6 +257,18 @@ describe('migrateReminders (pure mapping)', () => {
 });
 
 describe('lazy migration on load', () => {
+  test('overlapping first loads share a single migration', async () => {
+    await fs.writeFile(
+      LEGACY_PATH,
+      JSON.stringify([makeReminder({ title: 'Synthetic legacy task' })])
+    );
+    const stores = await Promise.all(Array.from({ length: 12 }, () => loadCalendarStore()));
+    expect(stores.every((store) => store.events.length === 1)).toBe(true);
+    expect(new Set(stores.map((store) => store.events[0].id)).size).toBe(1);
+    await expect(fs.access(REMINDERS_BACKUP_PATH)).resolves.toBeUndefined();
+    expect((await fs.readdir(tmpDataDir)).some((name) => name.endsWith('.tmp'))).toBe(false);
+  });
+
   test('migrates the legacy file, renames it, and never re-migrates', async () => {
     await fs.writeFile(
       LEGACY_PATH,
