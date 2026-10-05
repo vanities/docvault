@@ -4,6 +4,7 @@ import {
   listBuiltInJobRecords,
   listCustomJobManifests,
   prepareCustomJobScript,
+  type WeeklyReportSchedule,
 } from '../jobs.js';
 import {
   loadCustomJobStatus,
@@ -12,11 +13,14 @@ import {
 } from '../custom-job-runner.js';
 import type { Settings } from '../data.js';
 import type { ScheduleStatusMap } from '../scheduler.js';
+import { listAutomationRuns } from '../automation-runs.js';
+import { loadTimesheetStore } from '../timesheet-store.js';
 
 export type JobRouteDeps = {
   dataDir?: string;
   loadScheduleStatus?: () => Promise<ScheduleStatusMap>;
   loadSettings?: () => Promise<Settings>;
+  loadWeeklyReportConfig?: () => Promise<WeeklyReportSchedule | undefined>;
   restartCustomJobScheduler?: (dataDir: string) => Promise<void>;
 };
 
@@ -31,12 +35,34 @@ export async function handleJobRoutes(
   pathname: string,
   deps: JobRouteDeps = {}
 ): Promise<Response | null> {
-  if (pathname !== '/api/jobs' && !/^\/api\/jobs\/[^/]+\/run$/.test(pathname)) return null;
+  if (pathname !== '/api/jobs' && !/^\/api\/jobs\/[^/]+\/(?:run|runs)$/.test(pathname)) return null;
 
   const dataDir = deps.dataDir ?? DATA_DIR;
   const readScheduleStatus = deps.loadScheduleStatus ?? defaultLoadScheduleStatus;
   const readSettings = deps.loadSettings ?? loadSettings;
+  const readWeeklyReport =
+    deps.loadWeeklyReportConfig ?? (async () => (await loadTimesheetStore()).weeklyReport);
   const restartScheduler = deps.restartCustomJobScheduler ?? startCustomJobScheduler;
+
+  const historyMatch = /^\/api\/jobs\/([^/]+)\/runs$/.exec(pathname);
+  if (historyMatch) {
+    if (req.method !== 'GET') return jsonResponse({ error: 'Method not allowed' }, 405);
+    try {
+      const id = decodeURIComponent(historyMatch[1]);
+      const builtIn = url.searchParams.get('kind') === 'built-in';
+      const records = builtIn
+        ? listBuiltInJobRecords(await readScheduleStatus(), (await readSettings()).schedules).map(
+            (job) => job.id
+          )
+        : (await listCustomJobManifests(dataDir)).flatMap((job) =>
+            job.status === 'valid' ? [job.manifest.id] : []
+          );
+      if (!records.includes(id)) return jsonResponse({ error: 'Job not found' }, 404);
+      return jsonResponse({ runs: await listAutomationRuns(dataDir, id, builtIn) });
+    } catch (err) {
+      return jsonResponse({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  }
 
   const runMatch = /^\/api\/jobs\/([^/]+)\/run$/.exec(pathname);
   if (runMatch) {
@@ -55,14 +81,16 @@ export async function handleJobRoutes(
   }
 
   if (req.method === 'GET') {
-    const [customJobs, customJobStatuses, scheduleStatus, settings] = await Promise.all([
-      listCustomJobManifests(dataDir),
-      loadCustomJobStatus(dataDir),
-      readScheduleStatus(),
-      readSettings(),
-    ]);
+    const [customJobs, customJobStatuses, scheduleStatus, settings, weeklyReport] =
+      await Promise.all([
+        listCustomJobManifests(dataDir),
+        loadCustomJobStatus(dataDir),
+        readScheduleStatus(),
+        readSettings(),
+        readWeeklyReport(),
+      ]);
     return jsonResponse({
-      builtInJobs: listBuiltInJobRecords(scheduleStatus, settings.schedules),
+      builtInJobs: listBuiltInJobRecords(scheduleStatus, settings.schedules, weeklyReport),
       customJobs,
       customJobStatuses,
     });

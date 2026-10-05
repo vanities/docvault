@@ -1,8 +1,9 @@
 import { access, mkdtemp, readFile, rm, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
+import { createHash } from 'crypto';
 import { describe, expect, test } from 'vite-plus/test';
-import { seedExampleJobs } from './seed-example-jobs';
+import { seedExampleJobs, upgradeExampleScript } from './seed-example-jobs';
 import { customJobScriptPath, ensureJobsLayout, jobsManifestsDir, jobsRoot } from './jobs';
 
 // The bundled examples actually shipped in examples/jobs/manifests.
@@ -53,6 +54,28 @@ async function exists(p: string): Promise<boolean> {
 }
 
 describe('seedExampleJobs', () => {
+  test('updates only the exact prior default script and keeps custom edits', async () => {
+    await withTempDataDir(async (dataDir) => {
+      await seedExampleJobs(dataDir);
+      const manifest = await readManifest(dataDir, 'george-gammon-youtube-daily');
+      const script = customJobScriptPath(dataDir, manifest.script);
+      const oldBody = 'printf "synthetic old collector\\n"\n';
+      const newBody = 'printf "synthetic new collector\\n"\n';
+      const hashes = { [manifest.script]: createHash('sha256').update(oldBody).digest('hex') };
+      await writeFile(script, oldBody);
+      expect(
+        await upgradeExampleScript(dataDir, { ...manifest, kind: 'local-script' }, newBody, hashes)
+      ).toBe(true);
+      expect(await readFile(script, 'utf8')).toBe(newBody);
+      expect(await readManifest(dataDir, manifest.id)).toEqual(manifest);
+      const edited = oldBody + '# customized by the operator\n';
+      await writeFile(script, edited);
+      expect(
+        await upgradeExampleScript(dataDir, { ...manifest, kind: 'local-script' }, newBody, hashes)
+      ).toBe(false);
+      expect(await readFile(script, 'utf8')).toBe(edited);
+    });
+  });
   test('seeds every bundled example disabled, with its script and a marker', async () => {
     await withTempDataDir(async (dataDir) => {
       await seedExampleJobs(dataDir);

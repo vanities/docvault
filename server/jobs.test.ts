@@ -172,6 +172,27 @@ describe('custom job manifests', () => {
 });
 
 describe('listBuiltInJobRecords', () => {
+  test('shows the separately configured timesheet automation and its failures', () => {
+    const jobs = listBuiltInJobRecords(
+      {
+        weeklyTimesheetReport: {
+          lastRanAt: '2026-06-01T12:00:00Z',
+          lastSuccessAt: null,
+          lastError: 'Example email service unavailable',
+          running: false,
+          lastDurationMs: 1000,
+          lastOutcome: 'error',
+        },
+      },
+      {},
+      { enabled: true, cadence: 'biweekly', day: 5, hour: 15 }
+    );
+    expect(jobs.find((job) => job.id === 'weekly-timesheet-report')).toMatchObject({
+      enabled: true,
+      schedule: 'biweekly on Friday at 15:00',
+      status: { lastError: 'Example email service unavailable' },
+    });
+  });
   test('projects built-in scheduled jobs into the same jobs surface', () => {
     const jobs = listBuiltInJobRecords(statusMap(), {
       snapshotEnabled: true,
@@ -189,6 +210,7 @@ describe('listBuiltInJobRecords', () => {
       'quant-refresh',
       'politics-refresh',
       'daily-news',
+      'weekly-timesheet-report',
     ]);
     expect(jobs[0]).toMatchObject({
       kind: 'built-in',

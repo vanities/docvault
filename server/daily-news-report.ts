@@ -501,7 +501,7 @@ function renderSourceNotes(edition: Edition): string {
   const pulled = edition.digestMeta?.pulled ?? [];
   if (!warnings.length && !pulled.length) return '';
   const warningBlock = warnings.length
-    ? `<p>Some sources could not be read while this edition was composed:</p><ul>${warnings
+    ? `<p>Collection warnings for this edition:</p><ul>${warnings
         .map((w) => `<li><strong>${escapeHtml(w.source)}</strong>: ${escapeHtml(w.message)}</li>`)
         .join('')}</ul>`
     : '';
@@ -523,7 +523,7 @@ function renderSourceNotesEmail(edition: Edition, s: ReturnType<typeof themeStyl
   const pulled = edition.digestMeta?.pulled ?? [];
   if (!warnings.length && !pulled.length) return '';
   const warningBlock = warnings.length
-    ? `<p style="margin:0 0 8px;">Some sources could not be read while this edition was composed:</p><ul style="margin:.2em 0 10px;padding-left:1.2em;">${warnings
+    ? `<p style="margin:0 0 8px;">Collection warnings for this edition:</p><ul style="margin:.2em 0 10px;padding-left:1.2em;">${warnings
         .map((w) => `<li><strong>${escapeHtml(w.source)}</strong>: ${escapeHtml(w.message)}</li>`)
         .join('')}</ul>`
     : '';

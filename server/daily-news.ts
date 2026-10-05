@@ -48,6 +48,7 @@ import {
   BROKER_ACTIVITIES_FILE,
   BROKER_CACHE_FILE,
   CRYPTO_CACHE_FILE,
+  SCHEDULE_STATUS_FILE,
   DEFAULT_MODEL,
   toAnthropicApiEffort,
   toClaudeAgentEffort,
@@ -72,6 +73,8 @@ import { renderNarrationAtSpeed } from './daily-news-narration.js';
 import { handleHealthRoutes } from './routes/health.js';
 import { loadHealthStore } from './health-store.js';
 import { listRuns } from './deep-research-store.js';
+import { loadCustomJobStatus, customJobSourceWarnings } from './custom-job-runner.js';
+import { listCustomJobManifests } from './jobs.js';
 import { loadQuantCache } from './routes/quant.js';
 import { fetchTickerPrices } from './ticker-prices.js';
 import { loadPoliticsFeedPayload } from './politics/feed-store.js';
@@ -1629,6 +1632,34 @@ export async function gatherDigest(
     log.warn(`[digest] ${source} failed: ${message}`);
   };
   const t0 = Date.now();
+
+  try {
+    const [records, statuses] = await Promise.all([
+      listCustomJobManifests(DATA_DIR),
+      loadCustomJobStatus(),
+    ]);
+    sourceWarnings.push(
+      ...customJobSourceWarnings(
+        records.flatMap((record) => (record.status === 'valid' ? [record.manifest] : [])),
+        statuses
+      )
+    );
+    const status = JSON.parse(await fs.readFile(SCHEDULE_STATUS_FILE, 'utf8')) as Record<
+      string,
+      { lastError?: string | null; lastWarning?: string | null }
+    >;
+    for (const name of ['snapshot', 'quantRefresh', 'politicsRefresh']) {
+      const message = status[name]?.lastError ?? status[name]?.lastWarning;
+      if (message)
+        sourceWarnings.push({
+          source: `collection/${name}`,
+          message: message.replace(/\s+/g, ' ').slice(0, 240),
+        });
+    }
+  } catch (err) {
+    // A fresh install has no status file yet; do not invent a collection failure.
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') warn('collection/status', err);
+  }
 
   const [markets, politics, finance, health, docsResult, researchDeep, calendar, weather, sun] =
     await Promise.all([

@@ -91,9 +91,9 @@ export const SETTINGS_SECTIONS = [
   {
     id: 'jobs',
     label: 'Jobs',
-    description: 'Scheduled and custom tasks',
+    description: 'Automation status, retries, and run history',
     icon: Activity,
-    keywords: 'automation scripts run',
+    keywords: 'automation scripts run failure warnings last success retry history',
   },
   {
     id: 'banking',

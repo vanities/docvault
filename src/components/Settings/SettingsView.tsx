@@ -48,6 +48,9 @@ import { ExternalSourcesSection } from './ExternalSourcesSection';
 import { BrainSection } from './BrainSection';
 import { SkillsSection } from './SkillsSection';
 import { BackupSection } from './BackupSection';
+import { AutomationStatusDetails } from './AutomationStatus';
+import { automationNeedsAttention, type AutomationStatus } from '../../utils/automation-status';
+import { JobRunHistoryDialog, type SelectedJob } from './JobRunHistoryDialog';
 import {
   AVAILABLE_ICONS,
   DEFAULT_ENTITY_ICONS,
@@ -241,15 +244,7 @@ export function SettingsView() {
   const [scheduleSaved, setScheduleSaved] = useState(false);
 
   // System status — per-task last-ran tracking + log ring buffer
-  interface TaskStatus {
-    lastRanAt: string | null;
-    lastSuccessAt: string | null;
-    lastError: string | null;
-    lastDurationMs: number | null;
-    running: boolean;
-    lastRunPath?: string | null;
-    lastSummary?: string | null;
-  }
+  type TaskStatus = AutomationStatus;
   const [scheduleStatus, setScheduleStatus] = useState<Record<string, TaskStatus>>({});
 
   interface BuiltInJobRecord {
@@ -277,6 +272,9 @@ export function SettingsView() {
   const [builtInJobs, setBuiltInJobs] = useState<BuiltInJobRecord[]>([]);
   const [customJobs, setCustomJobs] = useState<CustomJobRecord[]>([]);
   const [customJobStatuses, setCustomJobStatuses] = useState<Record<string, TaskStatus>>({});
+  const [jobsLoadError, setJobsLoadError] = useState('');
+  const [selectedJob, setSelectedJob] = useState<SelectedJob | null>(null);
+  const [onlyJobIssues, setOnlyJobIssues] = useState(false);
   const [runningJobIds, setRunningJobIds] = useState<Set<string>>(new Set());
   const [newJobId, setNewJobId] = useState('');
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
@@ -287,6 +285,40 @@ export function SettingsView() {
   const [newJobTags, setNewJobTags] = useState('');
   const [newJobEnabled, setNewJobEnabled] = useState(false);
   const [isJobSaving, setIsJobSaving] = useState(false);
+
+  const enabledJobStatuses = [
+    ...builtInJobs.filter((job) => job.enabled).map((job) => job.status),
+    ...customJobs.flatMap((job) =>
+      job.status === 'valid' && job.manifest.enabled ? [customJobStatuses[job.manifest.id]] : []
+    ),
+  ];
+  const jobHealth = [
+    {
+      label: 'Failed or incomplete',
+      color: 'text-red-400',
+      count: enabledJobStatuses.filter(
+        (status) =>
+          status?.lastError || status?.lastOutcome === 'partial' || status?.lastOutcome === 'error'
+      ).length,
+    },
+    {
+      label: 'With warnings',
+      color: 'text-amber-400',
+      count: enabledJobStatuses.filter(
+        (status) => !status?.lastError && (status?.lastOutcome === 'warning' || status?.lastWarning)
+      ).length,
+    },
+    {
+      label: 'Running',
+      color: 'text-blue-400',
+      count: [
+        ...builtInJobs.map((job) => job.status),
+        ...customJobs.flatMap((job) =>
+          job.status === 'valid' ? [customJobStatuses[job.manifest.id]] : []
+        ),
+      ].filter((status) => status?.running).length,
+    },
+  ];
 
   interface LogLine {
     ts: string;
@@ -348,8 +380,9 @@ export function SettingsView() {
       setBuiltInJobs(data.builtInJobs ?? []);
       setCustomJobs(data.customJobs ?? []);
       setCustomJobStatuses(data.customJobStatuses ?? {});
-    } catch {
-      /* ignore */
+      setJobsLoadError('');
+    } catch (err) {
+      setJobsLoadError(err instanceof Error ? err.message : 'Could not load automation status');
     }
   };
 
@@ -358,7 +391,11 @@ export function SettingsView() {
     try {
       const data = await requestJson<{
         ok?: boolean;
-        result?: { exitCode?: number };
+        result?: {
+          exitCode?: number;
+          outcome?: string;
+          collection?: { collected: number; failed: number };
+        };
         error?: string;
       }>(`${API_BASE}/jobs/${encodeURIComponent(id)}/run`, {
         method: 'POST',
@@ -367,9 +404,13 @@ export function SettingsView() {
         addToast(data.error || `Failed to run ${id}`, 'error');
         return;
       }
+      const outcome = data.result?.outcome;
+      const counts = data.result?.collection;
       addToast(
-        `Custom job ${id} finished with exit ${data.result?.exitCode ?? 'unknown'}`,
-        'success'
+        counts
+          ? `${counts.collected} collected, ${counts.failed} failed`
+          : `Job ${outcome ?? 'completed'}`,
+        outcome === 'partial' || outcome === 'error' || outcome === 'warning' ? 'error' : 'success'
       );
       void loadJobs();
     } catch {
@@ -1863,8 +1904,8 @@ export function SettingsView() {
                     Built-in and Custom Jobs
                   </h3>
                   <p className="text-[12px] text-surface-600 mt-1">
-                    Built-ins are committed DocVault jobs. Custom local-script jobs live under{' '}
-                    <code>DATA_DIR/jobs</code> and are safe for private scrapers/importers.
+                    Monitor collection, retries, and the last successful run. Warnings remain in run
+                    history even after an automation recovers.
                   </p>
                 </div>
                 <Button
@@ -1876,51 +1917,85 @@ export function SettingsView() {
                 </Button>
               </div>
 
+              {jobsLoadError && (
+                <p role="alert" className="text-sm text-red-400 mb-4">
+                  Automation status could not be refreshed: {jobsLoadError}. Use Refresh to try
+                  again.
+                </p>
+              )}
+              <div
+                className="grid grid-cols-3 gap-2 mb-4 text-center text-xs"
+                aria-label="Automation health"
+              >
+                {jobHealth.map(({ label, color, count }) => (
+                  <div key={label} className="rounded-xl border border-border p-3">
+                    <p className={`text-xl font-semibold ${color}`}>{count}</p>
+                    <p className="text-surface-600 mt-1">{label}</p>
+                  </div>
+                ))}
+              </div>
+              <label className="flex items-center gap-2 mb-5 text-sm text-surface-700">
+                <input
+                  type="checkbox"
+                  checked={onlyJobIssues}
+                  onChange={(e) => setOnlyJobIssues(e.target.checked)}
+                />
+                Only show warnings and failures
+              </label>
               <div className="mb-6">
                 <p className="text-[13px] font-semibold text-surface-900 mb-3">Built-in jobs</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {builtInJobs.map((job) => {
-                    const hasError = !!job.status.lastError;
-                    const dotColor = job.status.running
-                      ? 'bg-blue-400 animate-pulse'
-                      : hasError
-                        ? 'bg-red-400'
-                        : job.status.lastSuccessAt
-                          ? 'bg-emerald-400'
-                          : job.enabled
+                  {builtInJobs
+                    .filter((job) => !onlyJobIssues || automationNeedsAttention(job.status))
+                    .map((job) => {
+                      const hasError = !!job.status.lastError;
+                      const dotColor = job.status.running
+                        ? 'bg-blue-400 animate-pulse'
+                        : hasError
+                          ? 'bg-red-400'
+                          : automationNeedsAttention(job.status)
                             ? 'bg-amber-400'
-                            : 'bg-surface-500';
-                    return (
-                      <div
-                        key={job.id}
-                        className="p-3 bg-surface-200/20 rounded-xl border border-border/30"
-                      >
-                        <div className="flex items-center justify-between gap-2 mb-1">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
-                            <p className="text-[13px] font-medium text-surface-900 truncate">
-                              {job.label}
-                            </p>
+                            : job.status.lastSuccessAt
+                              ? 'bg-emerald-400'
+                              : job.enabled
+                                ? 'bg-amber-400'
+                                : 'bg-surface-500';
+                      return (
+                        <div
+                          key={job.id}
+                          className="p-3 bg-surface-200/20 rounded-xl border border-border/30"
+                        >
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
+                              <p className="text-[13px] font-medium text-surface-900 truncate">
+                                {job.label}
+                              </p>
+                            </div>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-surface-200/40 text-surface-600">
+                              {job.enabled ? 'enabled' : 'disabled'}
+                            </span>
                           </div>
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-surface-200/40 text-surface-600">
-                            {job.enabled ? 'enabled' : 'disabled'}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-surface-600">{job.description}</p>
-                        <p className="text-[11px] text-surface-500 mt-1">
-                          {job.schedule}
-                          {job.status.lastRanAt
-                            ? ` • last ran ${formatRelativeTime(job.status.lastRanAt)}`
-                            : ' • never ran'}
-                        </p>
-                        {hasError && (
-                          <p className="text-[11px] text-red-400 mt-1 break-words">
-                            Error: {job.status.lastError}
+                          <p className="text-[11px] text-surface-600">{job.description}</p>
+                          <p className="text-[11px] text-surface-500 mt-1">
+                            {job.schedule}
+                            {job.status.lastRanAt
+                              ? ` • last ran ${formatRelativeTime(job.status.lastRanAt)}`
+                              : ' • never ran'}
                           </p>
-                        )}
-                      </div>
-                    );
-                  })}
+                          <AutomationStatusDetails status={job.status} />
+                          <Button
+                            variant="outline"
+                            className="mt-3 min-h-9 text-xs"
+                            onClick={() =>
+                              setSelectedJob({ id: job.id, label: job.label, builtIn: true })
+                            }
+                          >
+                            View run details
+                          </Button>
+                        </div>
+                      );
+                    })}
                   {builtInJobs.length === 0 && (
                     <p className="text-[12px] text-surface-500">No built-in jobs loaded yet.</p>
                   )}
@@ -1930,105 +2005,121 @@ export function SettingsView() {
               <div className="border-t border-border/50 pt-5">
                 <p className="text-[13px] font-semibold text-surface-900 mb-3">Custom local jobs</p>
                 <div className="space-y-2 mb-5">
-                  {customJobs.map((job) => {
-                    if (job.status !== 'valid') {
+                  {customJobs
+                    .filter(
+                      (job) =>
+                        !onlyJobIssues ||
+                        job.status !== 'valid' ||
+                        automationNeedsAttention(customJobStatuses[job.manifest.id])
+                    )
+                    .map((job) => {
+                      if (job.status !== 'valid') {
+                        return (
+                          <div
+                            key={job.path}
+                            className="p-3 bg-red-500/10 rounded-xl border border-red-500/20"
+                          >
+                            <p className="text-[13px] font-medium text-red-300">Invalid manifest</p>
+                            <p className="text-[11px] text-red-200/80 break-words">
+                              {job.path}: {job.error}
+                            </p>
+                          </div>
+                        );
+                      }
+
+                      const status = customJobStatuses[job.manifest.id];
+                      const isRunning = runningJobIds.has(job.manifest.id) || !!status?.running;
+                      const hasError = !!status?.lastError;
+                      const dotColor = isRunning
+                        ? 'bg-blue-400 animate-pulse'
+                        : hasError
+                          ? 'bg-red-400'
+                          : automationNeedsAttention(status)
+                            ? 'bg-amber-400'
+                            : status?.lastSuccessAt
+                              ? 'bg-emerald-400'
+                              : job.manifest.enabled
+                                ? 'bg-amber-400'
+                                : 'bg-surface-500';
                       return (
                         <div
                           key={job.path}
-                          className="p-3 bg-red-500/10 rounded-xl border border-red-500/20"
+                          className="p-3 bg-surface-200/20 rounded-xl border border-border/30"
                         >
-                          <p className="text-[13px] font-medium text-red-300">Invalid manifest</p>
-                          <p className="text-[11px] text-red-200/80 break-words">
-                            {job.path}: {job.error}
-                          </p>
-                        </div>
-                      );
-                    }
-
-                    const status = customJobStatuses[job.manifest.id];
-                    const isRunning = runningJobIds.has(job.manifest.id) || !!status?.running;
-                    const hasError = !!status?.lastError;
-                    const dotColor = isRunning
-                      ? 'bg-blue-400 animate-pulse'
-                      : hasError
-                        ? 'bg-red-400'
-                        : status?.lastSuccessAt
-                          ? 'bg-emerald-400'
-                          : job.manifest.enabled
-                            ? 'bg-amber-400'
-                            : 'bg-surface-500';
-                    return (
-                      <div
-                        key={job.path}
-                        className="p-3 bg-surface-200/20 rounded-xl border border-border/30"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
-                              <p className="text-[13px] font-medium text-surface-900 truncate">
-                                {job.manifest.label}
+                          <div className="flex flex-col sm:flex-row items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
+                                <p className="text-[13px] font-medium text-surface-900 truncate">
+                                  {job.manifest.label}
+                                </p>
+                              </div>
+                              <p className="text-[11px] text-surface-600 mt-1">
+                                {job.manifest.id} • {job.manifest.schedule} •{' '}
+                                <code>{job.manifest.script}</code>
                               </p>
                             </div>
-                            <p className="text-[11px] text-surface-600 mt-1">
-                              {job.manifest.id} • {job.manifest.schedule} •{' '}
-                              <code>{job.manifest.script}</code>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-surface-200/40 text-surface-600">
+                                {job.manifest.enabled ? 'enabled' : 'disabled'}
+                              </span>
+                              <Button
+                                onClick={() => void handleToggleCustomJob(job.manifest)}
+                                className={
+                                  job.manifest.enabled
+                                    ? 'bg-surface-200/50 hover:bg-surface-200 text-surface-700 text-[11px] px-2 py-1'
+                                    : 'bg-emerald-500 hover:bg-emerald-400 text-[11px] px-2 py-1'
+                                }
+                              >
+                                {job.manifest.enabled ? 'Disable' : 'Enable'}
+                              </Button>
+                              <Button
+                                onClick={() => handleEditCustomJob(job.manifest)}
+                                className="bg-surface-200/50 hover:bg-surface-200 text-surface-700 text-[11px] px-2 py-1"
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                onClick={() => void handleRunCustomJob(job.manifest.id)}
+                                disabled={isRunning}
+                                className="bg-violet-500 hover:bg-violet-400 text-[11px] px-2 py-1"
+                              >
+                                <RefreshCw
+                                  className={`w-3 h-3 ${isRunning ? 'animate-spin' : ''}`}
+                                />
+                                {isRunning ? 'Running' : 'Run now'}
+                              </Button>
+                            </div>
+                          </div>
+                          <AutomationStatusDetails
+                            status={status ? { ...status, running: isRunning } : undefined}
+                          />
+                          <Button
+                            variant="outline"
+                            className="mt-3 min-h-9 text-xs"
+                            onClick={() =>
+                              setSelectedJob({
+                                id: job.manifest.id,
+                                label: job.manifest.label,
+                                builtIn: false,
+                              })
+                            }
+                          >
+                            View run details
+                          </Button>
+                          {!hasError && status?.lastSummary && (
+                            <p className="text-[11px] text-emerald-300/80 mt-1 break-words font-mono">
+                              {status.lastSummary}
                             </p>
-                          </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-surface-200/40 text-surface-600">
-                              {job.manifest.enabled ? 'enabled' : 'disabled'}
-                            </span>
-                            <Button
-                              onClick={() => void handleToggleCustomJob(job.manifest)}
-                              className={
-                                job.manifest.enabled
-                                  ? 'bg-surface-200/50 hover:bg-surface-200 text-surface-700 text-[11px] px-2 py-1'
-                                  : 'bg-emerald-500 hover:bg-emerald-400 text-[11px] px-2 py-1'
-                              }
-                            >
-                              {job.manifest.enabled ? 'Disable' : 'Enable'}
-                            </Button>
-                            <Button
-                              onClick={() => handleEditCustomJob(job.manifest)}
-                              className="bg-surface-200/50 hover:bg-surface-200 text-surface-700 text-[11px] px-2 py-1"
-                            >
-                              Edit
-                            </Button>
-                            <Button
-                              onClick={() => void handleRunCustomJob(job.manifest.id)}
-                              disabled={isRunning}
-                              className="bg-violet-500 hover:bg-violet-400 text-[11px] px-2 py-1"
-                            >
-                              <RefreshCw className={`w-3 h-3 ${isRunning ? 'animate-spin' : ''}`} />
-                              {isRunning ? 'Running' : 'Run now'}
-                            </Button>
-                          </div>
+                          )}
+                          {job.manifest.tags.length > 0 && (
+                            <p className="text-[11px] text-surface-500 mt-1">
+                              {job.manifest.tags.join(', ')}
+                            </p>
+                          )}
                         </div>
-                        <p className="text-[11px] text-surface-500 mt-1">
-                          {status?.lastRanAt
-                            ? `Last ran ${formatRelativeTime(status.lastRanAt)}`
-                            : 'Never ran'}
-                          {status?.lastDurationMs ? ` • ${status.lastDurationMs}ms` : ''}
-                        </p>
-                        {hasError && (
-                          <p className="text-[11px] text-red-400 mt-1 break-words">
-                            Error: {status.lastError}
-                          </p>
-                        )}
-                        {!hasError && status?.lastSummary && (
-                          <p className="text-[11px] text-emerald-300/80 mt-1 break-words font-mono">
-                            {status.lastSummary}
-                          </p>
-                        )}
-                        {job.manifest.tags.length > 0 && (
-                          <p className="text-[11px] text-surface-500 mt-1">
-                            {job.manifest.tags.join(', ')}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
                   {customJobs.length === 0 && (
                     <p className="text-[12px] text-surface-500">
                       No custom jobs yet. Create a manifest below, then put the matching script
@@ -3331,6 +3422,7 @@ export function SettingsView() {
         )}
       </SettingsLayout>
 
+      <JobRunHistoryDialog job={selectedJob} onClose={() => setSelectedJob(null)} />
       {confirmDialog}
     </div>
   );

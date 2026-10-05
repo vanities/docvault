@@ -5,6 +5,7 @@ import { describe, expect, test } from 'vite-plus/test';
 import { handleJobRoutes } from './routes/jobs';
 import { customJobScriptPath } from './jobs';
 import type { ScheduleStatusMap } from './scheduler';
+import { saveAutomationRun } from './automation-runs';
 
 async function withTempDataDir<T>(fn: (dataDir: string) => Promise<T>): Promise<T> {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), 'docvault-job-routes-'));
@@ -47,6 +48,45 @@ const scheduleStatus: ScheduleStatusMap = {
 };
 
 describe('handleJobRoutes', () => {
+  test('GET run history exposes saved diagnostics for a known built-in job only', async () => {
+    await withTempDataDir(async (dataDir) => {
+      const run = {
+        id: 'snapshot',
+        runId: 'snapshot-2026-06-01T12-00-00-000Z',
+        startedAt: '2026-06-01T12:00:00.000Z',
+        finishedAt: '2026-06-01T12:01:00.000Z',
+        durationMs: 60_000,
+        outcome: 'warning' as const,
+        warningCount: 1,
+        diagnostics: [
+          {
+            ts: '2026-06-01T12:00:01.000Z',
+            level: 'warn' as const,
+            namespace: 'Snapshots',
+            message: 'Example source timed out, then recovered',
+          },
+        ],
+      };
+      await saveAutomationRun(dataDir, run);
+      const deps = {
+        dataDir,
+        loadScheduleStatus: async () => scheduleStatus,
+        loadSettings: async () => ({ schedules: { snapshotEnabled: true } }),
+      };
+      const url = new URL('https://example.test/api/jobs/snapshot/runs?kind=built-in');
+      const response = await handleJobRoutes(new Request(url), url, url.pathname, deps);
+      expect(response?.status).toBe(200);
+      expect((await response!.json()).runs).toEqual([run]);
+      const unknown = new URL('https://example.test/api/jobs/unknown/runs?kind=built-in');
+      expect(
+        (await handleJobRoutes(new Request(unknown), unknown, unknown.pathname, deps))?.status
+      ).toBe(404);
+      expect(
+        (await handleJobRoutes(new Request(url, { method: 'POST' }), url, url.pathname, deps))
+          ?.status
+      ).toBe(405);
+    });
+  });
   test('GET /api/jobs returns built-in and custom job records', async () => {
     await withTempDataDir(async (dataDir) => {
       const createResponse = await handleJobRoutes(

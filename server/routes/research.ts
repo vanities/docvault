@@ -33,6 +33,7 @@ import {
   YOUTUBE_EXTRACTOR_VERSION,
   extractVideoId,
   fetchYouTubeTranscript,
+  YouTubeTranscriptError,
 } from '../parsers/youtube-transcript.js';
 import {
   MEDIA_TRANSCRIBE_EXTRACTOR_VERSION,
@@ -399,6 +400,7 @@ async function createResearchEntry(params: {
   publisher?: string;
   reportDate?: string;
   sourceUrl?: string;
+  deduplicateSource?: boolean;
   /** Already normalized — callers normalize at the API boundary. */
   tickers?: string[];
   /** Already trimmed/deduped — callers parse at the API boundary. */
@@ -441,12 +443,21 @@ async function createResearchEntry(params: {
     lastUpdated: now,
   };
 
-  await withResearchMutation(async () => {
+  return withResearchMutation(async () => {
     const store = await loadStore();
+    if (params.deduplicateSource && params.sourceUrl) {
+      const existing = Object.values(store.entries).find(
+        (e) => e.domain === params.domain && e.sourceUrl === params.sourceUrl && e.text?.trim()
+      );
+      if (existing) {
+        await fs.unlink(absPath);
+        return existing;
+      }
+    }
     store.entries[id] = entry;
     await saveStore(store);
+    return entry;
   });
-  return entry;
 }
 
 // ---------------------------------------------------------------------------
@@ -690,14 +701,31 @@ export async function handleResearchRoutes(
       result = await fetchYouTubeTranscript(url);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      log.error(`YouTube ingest failed for ${url}: ${msg}`);
-      return jsonResponse({ error: msg }, 502);
+      const failure = err instanceof YouTubeTranscriptError ? err : null;
+      log.error(
+        `YouTube ingest failed for ${url}: code=${failure?.code ?? 'unknown'} attempts=${failure?.attempts ?? 1} retryable=${failure?.retryable ?? false} reason=${msg}`
+      );
+      const response = jsonResponse(
+        {
+          error: msg,
+          code: failure?.code,
+          retryable: failure?.retryable,
+          retryAt: failure?.retryAt,
+        },
+        failure?.code === 'rate-limited' ? 429 : 502
+      );
+      if (failure?.retryAt)
+        response.headers.set(
+          'Retry-After',
+          String(Math.max(1, Math.ceil((Date.parse(failure.retryAt) - Date.now()) / 1000)))
+        );
+      return response;
     }
 
     // Provenance header keeps the stored text self-documenting — mirrors
     // what the manual yt-dlp pipeline produced when we filed Cowen Part 1.
     const header =
-      `[YouTube auto-captions via yt-dlp, cleaned — channel: ${result.channel}` +
+      `[YouTube ${result.captionSource === 'manual' ? 'uploaded captions' : 'auto-captions'} via yt-dlp, cleaned — channel: ${result.channel}` +
       (result.uploadDate ? `, published ${result.uploadDate}` : '') +
       `]\n\n`;
     const text = header + result.text;
@@ -717,6 +745,7 @@ export async function handleResearchRoutes(
       publisher: result.channel,
       reportDate: result.uploadDate ?? undefined,
       sourceUrl: result.url,
+      deduplicateSource: true,
       tickers: normalizeTickers(body?.tickers),
       tags: parseTags(body?.tags),
       linkedPersonIds: parsePersonIds(body?.linkedPersonIds),
