@@ -2,7 +2,7 @@
 //
 // Shells out to `yt-dlp` (installed in the Dockerfile, self-updated by
 // the container entrypoint) to fetch a video's captions and metadata in
-// one round-trip. The library route (`youtubei.js`) is broken on
+// paced metadata + single-caption requests. The library route (`youtubei.js`) is broken on
 // `get_transcript` as of writing — yt-dlp is the only thing that
 // reliably extracts captions, even though it's a binary subprocess.
 //
@@ -14,14 +14,14 @@
 //     keep every line with at least one letter.
 // Auto-detected per file via the presence of any `<c>` tag.
 
-import { mkdtemp, readdir, readFile, rm, stat } from 'fs/promises';
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import path from 'path';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('YouTubeTranscript');
 
-export const YOUTUBE_EXTRACTOR_VERSION = '1.0.0';
+export const YOUTUBE_EXTRACTOR_VERSION = '1.1.0';
 
 /** Time budget for the yt-dlp subprocess — kills it if it stalls. */
 const YT_DLP_TIMEOUT_MS = 60_000;
@@ -40,6 +40,7 @@ export interface YouTubeTranscriptResult {
   text: string;
   /** Number of caption lines after dedup. */
   segmentCount: number;
+  captionSource: 'manual' | 'automatic';
 }
 
 // ---------------------------------------------------------------------------
@@ -149,7 +150,7 @@ export function cleanVtt(vtt: string): { text: string; segmentCount: number } {
 // yt-dlp subprocess
 // ---------------------------------------------------------------------------
 
-interface YtDlpMetadata {
+export interface YtDlpMetadata {
   id: string;
   title?: string;
   channel?: string;
@@ -157,6 +158,8 @@ interface YtDlpMetadata {
   upload_date?: string; // YYYYMMDD
   duration?: number;
   webpage_url?: string;
+  subtitles?: Record<string, unknown[]>;
+  automatic_captions?: Record<string, unknown[]>;
 }
 
 /** Parse YYYYMMDD into YYYY-MM-DD, or null. */
@@ -186,100 +189,327 @@ async function pickPreferredVtt(tempDir: string, videoId: string): Promise<strin
   return chosen;
 }
 
-/**
- * Fetch a YouTube video's captions + metadata via yt-dlp and return a
- * cleaned, structured result. Throws with a user-facing message on
- * failure (private video, no captions, network down, yt-dlp missing).
- */
-export async function fetchYouTubeTranscript(url: string): Promise<YouTubeTranscriptResult> {
-  const videoId = extractVideoId(url);
-  if (!videoId) throw new Error('Not a recognized YouTube URL');
+export type YouTubeFailureCode =
+  | 'rate-limited'
+  | 'timeout'
+  | 'network'
+  | 'unavailable'
+  | 'no-captions'
+  | 'extractor';
 
-  const tempDir = await mkdtemp(path.join(tmpdir(), 'dv-yt-'));
+export class YouTubeTranscriptError extends Error {
+  readonly code: YouTubeFailureCode;
+  readonly retryable: boolean;
+  readonly attempts: number;
+  readonly retryAt?: string;
+  constructor(
+    message: string,
+    code: YouTubeFailureCode,
+    retryable: boolean,
+    attempts: number,
+    retryAt?: string
+  ) {
+    super(message);
+    this.name = 'YouTubeTranscriptError';
+    this.code = code;
+    this.retryable = retryable;
+    this.attempts = attempts;
+    this.retryAt = retryAt;
+  }
+}
+
+export interface YtDlpProcessResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  timedOut?: boolean;
+}
+
+type ProcessRunner = (cmd: string[]) => Promise<YtDlpProcessResult>;
+
+async function runYtDlp(cmd: string[]): Promise<YtDlpProcessResult> {
+  const proc = Bun.spawn({ cmd, stdout: 'pipe', stderr: 'pipe' });
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    proc.kill();
+  }, YT_DLP_TIMEOUT_MS);
   try {
-    const proc = Bun.spawn({
-      cmd: [
-        'yt-dlp',
-        '--no-simulate',
-        '--skip-download',
-        '--write-auto-subs',
-        '--write-subs',
-        '--sub-langs',
-        'en.*',
-        '--sub-format',
-        'vtt',
-        '--dump-json',
-        '-o',
-        path.join(tempDir, '%(id)s.%(ext)s'),
-        url,
-      ],
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-
-    // Watchdog: kill the subprocess if it stalls past the budget.
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      try {
-        proc.kill();
-      } catch {
-        /* already exited */
-      }
-    }, YT_DLP_TIMEOUT_MS);
-
-    const [stdoutText, stderrText, exitCode] = await Promise.all([
+    const [stdout, stderr, exitCode] = await Promise.all([
       new Response(proc.stdout).text(),
       new Response(proc.stderr).text(),
       proc.exited,
     ]);
-    clearTimeout(timer);
-
-    if (timedOut) {
-      throw new Error(`yt-dlp timed out after ${YT_DLP_TIMEOUT_MS / 1000}s`);
-    }
-    if (exitCode !== 0) {
-      // Surface just the last few lines of stderr — yt-dlp's last word is
-      // usually the most useful (e.g. "Video unavailable", "Private video").
-      const tail = stderrText.trim().split('\n').slice(-3).join(' | ');
-      throw new Error(`yt-dlp exited ${exitCode}: ${tail || '(no stderr)'}`);
-    }
-
-    let meta: YtDlpMetadata;
-    try {
-      meta = JSON.parse(stdoutText) as YtDlpMetadata;
-    } catch {
-      throw new Error('yt-dlp metadata JSON parse failed');
-    }
-    if (meta.id !== videoId) {
-      log.warn(`yt-dlp returned id=${meta.id} for url=${url} (expected ${videoId})`);
-    }
-
-    const chosen = await pickPreferredVtt(tempDir, meta.id);
-    if (!chosen) {
-      throw new Error('Video has no English captions available');
-    }
-    const vtt = await readFile(path.join(tempDir, chosen), 'utf-8');
-    const { text, segmentCount } = cleanVtt(vtt);
-
-    if (segmentCount === 0) {
-      throw new Error('Caption file present but no readable text after cleaning');
-    }
-
-    return {
-      videoId: meta.id,
-      url: meta.webpage_url ?? url,
-      title: meta.title ?? `Untitled (${meta.id})`,
-      channel: meta.channel ?? meta.uploader ?? 'Unknown',
-      uploadDate: parseUploadDate(meta.upload_date),
-      durationSec: typeof meta.duration === 'number' ? Math.floor(meta.duration) : null,
-      text,
-      segmentCount,
-    };
+    return { stdout, stderr, exitCode, timedOut };
   } finally {
-    // Cleanup temp dir even on error.
-    await rm(tempDir, { recursive: true, force: true }).catch(() => {
-      /* best effort */
-    });
+    clearTimeout(timer);
   }
 }
+
+/** Download one English track, preferring uploaded captions and then the
+ * original auto-caption track. en.* also downloads translated variants. */
+export function selectEnglishCaption(meta: YtDlpMetadata): {
+  language: string;
+  automatic: boolean;
+} | null {
+  for (const [tracks, automatic] of [
+    [meta.subtitles, false],
+    [meta.automatic_captions, true],
+  ] as const) {
+    const languages = Object.keys(tracks ?? {}).filter(
+      (lang) => /^en(?:-[A-Za-z0-9]+)*$/.test(lang) && (tracks?.[lang]?.length ?? 0) > 0
+    );
+    const preferred = automatic ? ['en-orig', 'en', 'en-US', 'en-GB'] : ['en', 'en-US', 'en-GB'];
+    const language = preferred.find((lang) => languages.includes(lang)) ?? languages.sort()[0];
+    if (language) return { language, automatic };
+  }
+  return null;
+}
+
+function processFailure(result: YtDlpProcessResult, attempts: number): YouTubeTranscriptError {
+  const reason =
+    result.stderr.trim().split('\n').filter(Boolean).at(-1)?.slice(0, 500) ||
+    `yt-dlp exited ${result.exitCode}`;
+  if (/429|too many requests/i.test(result.stderr)) {
+    return new YouTubeTranscriptError(
+      'YouTube rate limited caption requests (HTTP 429)',
+      'rate-limited',
+      true,
+      attempts
+    );
+  }
+  if (result.timedOut || /timed? out|timeout/i.test(result.stderr)) {
+    return new YouTubeTranscriptError(
+      `yt-dlp timed out after ${YT_DLP_TIMEOUT_MS / 1000}s`,
+      'timeout',
+      true,
+      attempts
+    );
+  }
+  if (
+    /private video|members.only|available to this channel|video unavailable|removed by the uploader|age.restricted|sign in to confirm/i.test(
+      result.stderr
+    )
+  ) {
+    return new YouTubeTranscriptError(reason, 'unavailable', false, attempts);
+  }
+  const retryable =
+    /HTTP (?:Error )?5\d\d|connection|network|temporary|remote end closed|unable to download/i.test(
+      result.stderr
+    );
+  return new YouTubeTranscriptError(
+    reason,
+    retryable ? 'network' : 'extractor',
+    retryable,
+    attempts
+  );
+}
+
+/** One queue across all channel jobs and manual imports. A 429 opens a shared
+ * 15-minute cooldown: queued videos fail fast with a retry time, instead of
+ * making every channel hit the same throttled endpoint. Other transient
+ * failures get up to three attempts, with exponential backoff and jitter. */
+export function createYouTubeTranscriptFetcher(
+  deps: {
+    run?: ProcessRunner;
+    now?: () => number;
+    sleep?: (ms: number) => Promise<void>;
+    random?: () => number;
+  } = {}
+): (url: string) => Promise<YouTubeTranscriptResult> {
+  const run = deps.run ?? runYtDlp;
+  const now = deps.now ?? Date.now;
+  const sleep =
+    deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const random = deps.random ?? Math.random;
+  let queue = Promise.resolve();
+  let nextRequestAt = 0;
+  let cooldownUntil = 0;
+  const pending = new Map<string, Promise<YouTubeTranscriptResult>>();
+
+  async function request(cmd: string[], videoId: string, stage: string): Promise<string> {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      if (now() < cooldownUntil) {
+        const retryAt = new Date(cooldownUntil).toISOString();
+        log.warn(`[cooldown] videoId=${videoId} stage=${stage} retryAt=${retryAt}`);
+        throw new YouTubeTranscriptError(
+          `YouTube requests paused until ${retryAt} after a rate limit`,
+          'rate-limited',
+          true,
+          0,
+          retryAt
+        );
+      }
+      if (now() < nextRequestAt) await sleep(nextRequestAt - now());
+      log.info(`[attempt] videoId=${videoId} stage=${stage} attempt=${attempt}/3`);
+      const t0 = now();
+      let result: YtDlpProcessResult;
+      try {
+        result = await run(cmd);
+      } catch (err) {
+        result = {
+          stdout: '',
+          stderr: err instanceof Error ? err.message : String(err),
+          exitCode: null,
+        };
+      }
+      nextRequestAt = now() + 3_000;
+      if (result.exitCode === 0 && !result.timedOut) {
+        if (result.stderr.trim()) {
+          log.warn(
+            `[extractor-warning] videoId=${videoId} stage=${stage} ${result.stderr.trim().split('\n').at(-1)?.slice(0, 400)}`
+          );
+        }
+        log.info(
+          `[success] videoId=${videoId} stage=${stage} attempt=${attempt} durationMs=${now() - t0}`
+        );
+        return result.stdout;
+      }
+      const error = processFailure(result, attempt);
+      if (error.code === 'rate-limited') {
+        cooldownUntil = now() + 15 * 60 * 1000;
+        const retryAt = new Date(cooldownUntil).toISOString();
+        log.warn(
+          `[rate-limit] videoId=${videoId} stage=${stage} attempt=${attempt} retryAt=${retryAt}`
+        );
+        throw new YouTubeTranscriptError(error.message, error.code, true, attempt, retryAt);
+      }
+      if (!error.retryable || attempt === 3) {
+        log.error(
+          `[failed] videoId=${videoId} stage=${stage} attempts=${attempt} code=${error.code} reason=${error.message}`
+        );
+        throw error;
+      }
+      const delay = Math.round(5_000 * 2 ** (attempt - 1) * (0.8 + random() * 0.4));
+      log.warn(
+        `[retry] videoId=${videoId} stage=${stage} attempt=${attempt}/3 code=${error.code} delayMs=${delay} reason=${error.message}`
+      );
+      await sleep(delay);
+    }
+    throw new Error('Unreachable retry state');
+  }
+
+  async function fetchOne(videoId: string): Promise<YouTubeTranscriptResult> {
+    const url = `https://www.youtube.com/watch?v=${videoId}`;
+    const tempDir = await mkdtemp(path.join(tmpdir(), 'dv-yt-'));
+    const common = [
+      'yt-dlp',
+      '--ignore-config',
+      '--no-playlist',
+      '--js-runtimes',
+      'deno',
+      '--socket-timeout',
+      '15',
+      '--retries',
+      '0',
+      '--extractor-retries',
+      '0',
+    ];
+    try {
+      const raw = await request(
+        [...common, '--skip-download', '--dump-single-json', url],
+        videoId,
+        'metadata'
+      );
+      let meta: YtDlpMetadata;
+      try {
+        meta = JSON.parse(raw) as YtDlpMetadata;
+      } catch {
+        throw new YouTubeTranscriptError(
+          'yt-dlp metadata JSON parse failed',
+          'extractor',
+          false,
+          1
+        );
+      }
+      if (meta.id !== videoId) {
+        throw new YouTubeTranscriptError(
+          'yt-dlp returned metadata for a different video',
+          'extractor',
+          false,
+          1
+        );
+      }
+      const caption = selectEnglishCaption(meta);
+      if (!caption) {
+        throw new YouTubeTranscriptError(
+          'Video has no English captions available',
+          'no-captions',
+          false,
+          1
+        );
+      }
+      const infoPath = path.join(tempDir, 'video.info.json');
+      await writeFile(infoPath, raw, { mode: 0o600 });
+      await request(
+        [
+          ...common,
+          '--load-info-json',
+          infoPath,
+          '--no-simulate',
+          '--skip-download',
+          caption.automatic ? '--write-auto-subs' : '--write-subs',
+          '--sub-langs',
+          `^${caption.language}$`,
+          '--sub-format',
+          'vtt',
+          '-o',
+          path.join(tempDir, '%(id)s.%(ext)s'),
+        ],
+        videoId,
+        'captions'
+      );
+      const chosen = await pickPreferredVtt(tempDir, videoId);
+      if (!chosen) {
+        throw new YouTubeTranscriptError(
+          'Caption download completed without a caption file',
+          'extractor',
+          true,
+          1
+        );
+      }
+      const { text, segmentCount } = cleanVtt(await readFile(path.join(tempDir, chosen), 'utf-8'));
+      if (!segmentCount) {
+        throw new YouTubeTranscriptError(
+          'Caption file has no readable text',
+          'extractor',
+          false,
+          1
+        );
+      }
+      return {
+        videoId,
+        url: meta.webpage_url ?? url,
+        title: meta.title ?? `Untitled (${videoId})`,
+        channel: meta.channel ?? meta.uploader ?? 'Unknown',
+        uploadDate: parseUploadDate(meta.upload_date),
+        durationSec: typeof meta.duration === 'number' ? Math.floor(meta.duration) : null,
+        text,
+        segmentCount,
+        captionSource: caption.automatic ? 'automatic' : 'manual',
+      };
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  }
+
+  return (url) => {
+    const videoId = extractVideoId(url);
+    if (!videoId)
+      return Promise.reject(
+        new YouTubeTranscriptError('Not a recognized YouTube URL', 'unavailable', false, 0)
+      );
+    const existing = pending.get(videoId);
+    if (existing) return existing;
+    const work = queue.then(() => fetchOne(videoId));
+    queue = work.then(
+      () => undefined,
+      () => undefined
+    );
+    const result = work.finally(() => pending.delete(videoId));
+    pending.set(videoId, result);
+    return result;
+  };
+}
+
+export const fetchYouTubeTranscript = createYouTubeTranscriptFetcher();

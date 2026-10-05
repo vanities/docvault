@@ -23,12 +23,17 @@ mkdir -p "$OUT_DIR" "$(dirname "$LATEST_DIR")" "$STATE_DIR"
 touch "$PROCESSED_URLS"
 
 command -v yt-dlp >/dev/null 2>&1 || { printf '[%s] ERROR: yt-dlp not found\n' "$JOB_ID" >&2; exit 127; }
+SOURCE_FAIL_COUNT=0
 CHANNEL_FILES=()
 idx=0
 for url in "${SOURCE_URLS[@]}"; do
   cf="$OUT_DIR/youtube-channel-$idx.json"
   printf '[%s] Fetching Fireship YouTube metadata from %s\n' "$JOB_ID" "$url"
-  yt-dlp --ignore-errors --no-warnings --flat-playlist --playlist-end "$PLAYLIST_END" --dump-single-json "$url" > "$cf" || printf '{}' > "$cf"
+  if ! yt-dlp --js-runtimes deno --socket-timeout 15 --retries 2 --extractor-retries 2 --retry-sleep 'http:exp=5:30' --flat-playlist --playlist-end "$PLAYLIST_END" --dump-single-json "$url" > "$cf"; then
+    printf '[%s] ERROR: channel discovery failed for %s\n' "$JOB_ID" "$url" >&2
+    printf '{}' > "$cf"
+    SOURCE_FAIL_COUNT=$((SOURCE_FAIL_COUNT + 1))
+  fi
   CHANNEL_FILES+=("$cf")
   idx=$((idx + 1))
 done
@@ -66,7 +71,7 @@ console.log(rows.length);
 ' "$CHANNELS_CSV" "$DATA_DIR/.docvault-research.json" "$PROCESSED_URLS" "$OUT_DIR/new-videos.tsv" "$LIMIT" > "$OUT_DIR/new-count.txt"
 
 SUCCESS_COUNT=0
-FAIL_COUNT=0
+FAIL_COUNT="$SOURCE_FAIL_COUNT"
 SKIPPED_COUNT=0
 while IFS=$'\t' read -r VIDEO_URL TITLE; do
   [ -n "${VIDEO_URL:-}" ] || continue
@@ -74,21 +79,21 @@ while IFS=$'\t' read -r VIDEO_URL TITLE; do
   RESPONSE="$OUT_DIR/response-$SUCCESS_COUNT-$FAIL_COUNT-$SKIPPED_COUNT.json"
   VIDEO_URL="$VIDEO_URL" DOMAIN="$DOMAIN" TAGS_JSON="$TAGS_JSON" bun -e 'process.stdout.write(JSON.stringify({ url: process.env.VIDEO_URL, domain: process.env.DOMAIN, tags: JSON.parse(process.env.TAGS_JSON || "[]") }))' > "$PAYLOAD"
   printf '[%s] Ingesting unseen YouTube video: %s\n' "$JOB_ID" "$VIDEO_URL"
-  # Deliberately no -f: we need the error body, which carries yt-dlp's reason.
-  HTTP_CODE="$(curl -sS -o "$RESPONSE" -w '%{http_code}' -X POST "$BASE_URL/api/research/youtube" -H 'Content-Type: application/json' --data-binary "@$PAYLOAD" || printf '000')"
+  # Keep the response body: it explains rate limits/timeouts and retry timing.
+  # Caption retries are handled by the server; POSTs are not blindly retried.
+  HTTP_CODE="$(curl -sS --connect-timeout 10 --max-time 900 -o "$RESPONSE" -w '%{http_code}' -X POST "$BASE_URL/api/research/youtube" -H 'Content-Type: application/json' --data-binary "@$PAYLOAD" || true)"
   if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ]; then
     printf '%s\n' "$VIDEO_URL" >> "$PROCESSED_URLS"
     SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
   elif grep -qiE "members.only|available to this channel|private video|video unavailable|age.restricted|removed by the uploader" "$RESPONSE" 2>/dev/null; then
-    # Permanently inaccessible, not a blip. The candidate window is only the
-    # newest few videos — left unseen, a members-only or removed upload would
-    # occupy a slot and re-fail every single day. Record it as seen instead.
     printf '%s\n' "$VIDEO_URL" >> "$PROCESSED_URLS"
     printf '%s\t%s\n' "$VIDEO_URL" "$TITLE" >> "$OUT_DIR/skipped-inaccessible.tsv"
+    printf '[%s] WARNING: unavailable video skipped: %s\n' "$JOB_ID" "$VIDEO_URL" >&2
     SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
   else
-    # Transient (network, 5xx, transcode hiccup) — leave unseen so it retries.
-    printf '%s\t%s\n' "$VIDEO_URL" "$TITLE" >> "$OUT_DIR/failed-videos.tsv"
+    REASON="$(bun -e 'const fs=require("fs"); try { const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); console.log(String(r.error || "unknown ingest failure").replace(/\s+/g," ").slice(0,500) + (r.retryAt ? " retryAt="+r.retryAt : "")); } catch { console.log("network failure or invalid response body"); }' "$RESPONSE")"
+    printf '[%s] ERROR: video=%s http=%s reason=%s\n' "$JOB_ID" "$VIDEO_URL" "$HTTP_CODE" "$REASON" >&2
+    printf '%s\t%s\t%s\n' "$VIDEO_URL" "$TITLE" "$REASON" >> "$OUT_DIR/failed-videos.tsv"
     FAIL_COUNT=$((FAIL_COUNT + 1))
   fi
 done < "$OUT_DIR/new-videos.tsv"

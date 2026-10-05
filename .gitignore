@@ -93,6 +93,12 @@ scripts/*
 !server/crypto-manual-holdings.test.ts
 # Exception: example-job seeding test uses synthetic tmpdir fixtures, no personal data
 !server/seed-example-jobs.test.ts
+# Exception: automation collection/retry tests use synthetic shell output, video ids, and temporary directories
+!server/custom-job-runner.test.ts
+!server/automation-runs.test.ts
+!server/parsers/youtube-transcript.test.ts
+# Exception: admin automation status tests render synthetic counts, errors, and timestamps
+!src/components/Settings/AutomationStatus.test.tsx
 # Exception: external-sources tests are generic git/url/sync logic with fabricated fixtures, no personal data
 !server/external-sources.test.ts
 # Exception: pdf-forms tests build fabricated fillable PDFs in-memory, no personal data
@@ -122,6 +128,8 @@ scripts/*
 !server/daily-news-schedule.test.ts
 !server/daily-news-report.test.ts
 !server/daily-news.test.ts
+# Exception: edition completion tests use synthetic reports and an isolated temporary store
+!server/daily-news-store.test.ts
 # Exception: narration script tests are pure text transforms over fabricated editions, no personal data
 !server/daily-news-narration.test.ts
 # Exception: research-domain wiring test parses repo source files only, no personal data

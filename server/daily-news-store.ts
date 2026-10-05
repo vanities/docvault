@@ -101,6 +101,14 @@ export type Generator = (
 
 /** A `running` edition older than this is treated as crashed (retry allowed). */
 const STALE_RUNNING_MS = 30 * 60 * 1000;
+const editionCompletions = new Map<string, Promise<void>>();
+
+/** The scheduled task must track actual generation/delivery, not just the
+ * instant at which the background edition was queued. */
+export async function waitForEdition(id: string): Promise<Edition | null> {
+  await editionCompletions.get(id);
+  return getEdition(id);
+}
 
 async function loadEditions(): Promise<Record<string, Edition>> {
   try {
@@ -189,8 +197,11 @@ export async function startEdition(
   );
 
   // Background — the caller does not await this; the client polls getEdition(id).
-  void generator(editionType, editionDate, sinceISO, previous)
+  const completion = generator(editionType, editionDate, sinceISO, previous)
     .then(async (result) => {
+      for (const warning of result.digestMeta.sourceWarnings ?? []) {
+        log.warn(`[source-warning] id=${id} source=${warning.source} reason=${warning.message}`);
+      }
       await patchEdition(id, {
         status: 'done',
         title: result.title,
@@ -236,6 +247,12 @@ export async function startEdition(
         completedAt: new Date().toISOString(),
       });
     });
+
+  editionCompletions.set(id, completion);
+  void completion.then(
+    () => editionCompletions.delete(id),
+    () => editionCompletions.delete(id)
+  );
 
   return id;
 }

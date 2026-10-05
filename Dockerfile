@@ -31,6 +31,11 @@ RUN ./node_modules/vite-plus/bin/vp build
 # Stage 3: Production runtime
 FROM oven/bun:1-slim
 
+# yt-dlp's YouTube challenge solver needs a supported JavaScript runtime.
+# Deno is enabled by default and ships a binary for both image architectures.
+COPY --from=denoland/deno:bin-2.9.7 /deno /usr/local/bin/deno
+RUN deno --version
+
 # Install git (clone/pull External Sources repos), rclone (Dropbox sync), curl
 # (used by the entrypoint script to fall back to a fresh yt-dlp binary download
 # when self-update fails), poppler-utils (pdftotext + pdftoppm, for parsing and

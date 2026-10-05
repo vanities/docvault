@@ -297,8 +297,15 @@ type BuiltInDefinition = {
   description: string;
   taskName: ScheduleTaskName;
   tags: string[];
-  enabled: (schedules: Settings['schedules']) => boolean;
-  schedule: (schedules: Settings['schedules']) => string;
+  enabled: (schedules: Settings['schedules'], report?: WeeklyReportSchedule) => boolean;
+  schedule: (schedules: Settings['schedules'], report?: WeeklyReportSchedule) => string;
+};
+
+export type WeeklyReportSchedule = {
+  enabled?: boolean;
+  cadence?: 'weekly' | 'biweekly' | 'monthly';
+  day?: number;
+  hour?: number;
 };
 
 const BUILT_IN_JOBS: BuiltInDefinition[] = [
@@ -359,19 +366,36 @@ const BUILT_IN_JOBS: BuiltInDefinition[] = [
     schedule: (schedules) =>
       `daily at ${String(schedules?.dailyNewsHour ?? 7).padStart(2, '0')}:00`,
   },
+  {
+    id: 'weekly-timesheet-report',
+    label: 'Timesheet Report',
+    description: 'Sends the scoped timesheet report on its configured schedule.',
+    taskName: 'weeklyTimesheetReport',
+    tags: ['built-in', 'timesheet', 'email'],
+    enabled: (_schedules, report) => report?.enabled === true,
+    schedule: (_schedules, report) =>
+      report
+        ? `${report.cadence ?? 'weekly'} on ${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][report.day ?? 5]} at ${String(report.hour ?? 15).padStart(2, '0')}:00`
+        : 'configured in Timesheet reports',
+  },
 ];
+
+export function builtInJobId(name: ScheduleTaskName): string {
+  return BUILT_IN_JOBS.find((job) => job.taskName === name)?.id ?? 'weekly-timesheet-report';
+}
 
 export function listBuiltInJobRecords(
   scheduleStatus: Partial<ScheduleStatusMap> = {},
-  schedules: Settings['schedules'] = {}
+  schedules: Settings['schedules'] = {},
+  weeklyReport?: WeeklyReportSchedule
 ): BuiltInJobRecord[] {
   return BUILT_IN_JOBS.map((job) => ({
     id: job.id,
     label: job.label,
     kind: 'built-in',
     description: job.description,
-    enabled: job.enabled(schedules),
-    schedule: job.schedule(schedules),
+    enabled: job.enabled(schedules, weeklyReport),
+    schedule: job.schedule(schedules, weeklyReport),
     tags: job.tags,
     status: scheduleStatus[job.taskName] ?? emptyStatus(),
   }));

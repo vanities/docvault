@@ -34,6 +34,7 @@ import { refreshAllQuantData } from './routes/quant.js';
 import { refreshPolitics } from './politics/refresh.js';
 import {
   startEdition,
+  waitForEdition,
   editionExistsForDate,
   weeklyEditionExistsForWeek,
   type EditionType,
@@ -46,7 +47,13 @@ import {
   sendWeeklyReport,
 } from './timesheet-report.js';
 import { getConfiguredTimezone, zonedYMD } from './tz.js';
-import { createLogger } from './logger.js';
+import { captureLogs, createLogger } from './logger.js';
+import {
+  saveAutomationRun,
+  selectRunDiagnostics,
+  type AutomationOutcome,
+} from './automation-runs.js';
+import { builtInJobId } from './jobs.js';
 
 // Scheduler — built-in cron-like recurring tasks
 // ============================================================================
@@ -95,9 +102,14 @@ export interface ScheduleTaskStatus {
   lastError: string | null;
   lastDurationMs: number | null;
   running: boolean;
+  lastOutcome?: AutomationOutcome;
+  lastWarning?: string | null;
+  warningCount?: number;
+  lastCleanSuccessAt?: string | null;
 }
 
 export type ScheduleStatusMap = Record<ScheduleTaskName, ScheduleTaskStatus>;
+const activeTaskRuns = new Map<ScheduleTaskName, Promise<void>>();
 
 function emptyStatus(): ScheduleTaskStatus {
   return {
@@ -166,36 +178,113 @@ async function updateScheduleStatus(
 export async function clearStaleRunningFlags(): Promise<void> {
   await withStatusLock(async () => {
     const status = await loadScheduleStatus();
-    const stale = (Object.keys(status) as ScheduleTaskName[]).filter((k) => status[k]?.running);
+    const stale = (Object.keys(status) as ScheduleTaskName[]).filter(
+      (k) => status[k]?.running && !activeTaskRuns.has(k)
+    );
     if (stale.length === 0) return;
-    for (const k of stale) status[k] = { ...status[k], running: false };
+    for (const k of stale)
+      status[k] = {
+        ...status[k],
+        running: false,
+        lastOutcome: 'error',
+        lastError: 'Interrupted by a server restart before completion',
+      };
     await writeScheduleStatus(status);
     logScheduler.info(`Cleared stale running flag(s) from a previous process: ${stale.join(', ')}`);
   });
 }
 
 /** Wraps a scheduled task, recording run timestamps + any thrown error. */
-async function trackRun(name: ScheduleTaskName, fn: () => Promise<void>): Promise<void> {
+const TASK_LOG_NAMESPACES: Record<ScheduleTaskName, RegExp> = {
+  snapshot: /^(Snapshots|SimpleFIN|SnapTrade|Gold|Crypto|CoinGecko|Chain |Broker|Kraken|Coinbase)/,
+  dropboxSync: /^Dropbox/,
+  encryptedBackup: /^Scheduler$/,
+  quantRefresh: /^(Quant|Ticker|FRED|Yahoo)/,
+  politicsRefresh: /^Politics/,
+  dailyNewsRefresh: /^(DailyNews|Narration|Weather)/,
+  weeklyTimesheetReport: /^(Timesheet|Email)/,
+};
+
+function trackRun(
+  name: ScheduleTaskName,
+  fn: () => Promise<void | { partial: string }>
+): Promise<void> {
+  const existing = activeTaskRuns.get(name);
+  if (existing) return existing;
+  const run = executeTrackedRun(name, fn).finally(() => activeTaskRuns.delete(name));
+  activeTaskRuns.set(name, run);
+  return run;
+}
+
+async function executeTrackedRun(
+  name: ScheduleTaskName,
+  fn: () => Promise<void | { partial: string }>
+): Promise<void> {
   const startedAt = new Date().toISOString();
   const t0 = Date.now();
   await updateScheduleStatus(name, { lastRanAt: startedAt, running: true });
+  logScheduler.info(`[run] job=${builtInJobId(name)} startedAt=${startedAt}`);
+  const stopCapture = captureLogs(TASK_LOG_NAMESPACES[name]);
+  let failed = false;
+  let failure: unknown;
+  let partial: string | undefined;
   try {
-    await fn();
-    await updateScheduleStatus(name, {
-      lastSuccessAt: new Date().toISOString(),
-      lastError: null,
-      lastDurationMs: Date.now() - t0,
-      running: false,
+    partial = (await fn())?.partial;
+  } catch (err) {
+    failed = true;
+    failure = err;
+  }
+  const finishedAt = new Date().toISOString();
+  const diagnostics = selectRunDiagnostics(
+    stopCapture(),
+    { startedAt, finishedAt },
+    TASK_LOG_NAMESPACES[name]
+  );
+  const warnings = diagnostics.filter((entry) => entry.level === 'warn' || entry.level === 'error');
+  const error = failed
+    ? failure instanceof Error
+      ? failure.message
+      : String(failure)
+    : (partial ?? null);
+  const outcome: AutomationOutcome = failed
+    ? 'error'
+    : partial
+      ? 'partial'
+      : warnings.length
+        ? 'warning'
+        : 'success';
+  await updateScheduleStatus(name, {
+    ...(!error ? { lastSuccessAt: finishedAt } : {}),
+    ...(outcome === 'success' ? { lastCleanSuccessAt: finishedAt } : {}),
+    lastError: error,
+    lastOutcome: outcome,
+    lastWarning: warnings.at(-1)?.message.slice(0, 500) ?? null,
+    warningCount: warnings.length,
+    lastDurationMs: Date.now() - t0,
+    running: false,
+  });
+  try {
+    const id = builtInJobId(name);
+    await saveAutomationRun(DATA_DIR, {
+      id,
+      runId: `${id}-${startedAt.replace(/[:.]/g, '-')}`,
+      startedAt,
+      finishedAt,
+      durationMs: Date.now() - t0,
+      outcome,
+      diagnostics,
+      warningCount: warnings.length,
+      error,
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    await updateScheduleStatus(name, {
-      lastError: msg,
-      lastDurationMs: Date.now() - t0,
-      running: false,
-    });
-    throw err;
+    logScheduler.warn(
+      `Could not save ${name} run history: ${err instanceof Error ? err.message : String(err)}`
+    );
   }
+  const message = `[run] job=${builtInJobId(name)} outcome=${outcome} durationMs=${Date.now() - t0} warnings=${warnings.length}`;
+  if (outcome === 'success') logScheduler.info(message);
+  else logScheduler.warn(`${message}${error ? ` reason=${error}` : ''}`);
+  if (failed) throw failure;
 }
 
 export async function takePortfolioSnapshot(): Promise<void> {
@@ -465,46 +554,26 @@ async function takePortfolioSnapshotInner(): Promise<void> {
 }
 
 async function createEncryptedConfigBackup(password: string): Promise<string | null> {
-  const startedAt = new Date().toISOString();
-  const t0 = Date.now();
-  await updateScheduleStatus('encryptedBackup', { lastRanAt: startedAt, running: true });
+  let backupPath: string | null = null;
   try {
-    const { createBackupBundle, collectBackupFiles } = await import('./backup.js');
-
-    // Refuse to overwrite the existing backup with an empty one — a missing
-    // data dir should surface as an error, not silently clobber the prior
-    // good backup.
-    const files = await collectBackupFiles();
-    if (Object.keys(files).length === 0) {
-      await updateScheduleStatus('encryptedBackup', {
-        lastError: 'No .docvault-*.json files found',
-        lastDurationMs: Date.now() - t0,
-        running: false,
-      });
-      return null;
-    }
-
-    const packed = await createBackupBundle(password);
-    const backupPath = path.join(DATA_DIR, '.docvault-config-backup.enc');
-    await fs.writeFile(backupPath, packed);
-    logScheduler.info(
-      `Encrypted config backup written (${Object.keys(files).length} files, ${packed.length} bytes)`
-    );
-    await updateScheduleStatus('encryptedBackup', {
-      lastSuccessAt: new Date().toISOString(),
-      lastError: null,
-      lastDurationMs: Date.now() - t0,
-      running: false,
+    await trackRun('encryptedBackup', async () => {
+      const { createBackupBundle, collectBackupFiles } = await import('./backup.js');
+      const files = await collectBackupFiles();
+      if (!Object.keys(files).length) throw new Error('No .docvault-*.json files found');
+      const packed = await createBackupBundle(password);
+      const destination = path.join(DATA_DIR, '.docvault-config-backup.enc');
+      await fs.writeFile(destination, packed);
+      backupPath = destination;
+      logScheduler.info(
+        `Encrypted config backup written (${Object.keys(files).length} files, ${packed.length} bytes)`
+      );
     });
     return backupPath;
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logScheduler.error('Encrypted config backup failed:', msg);
-    await updateScheduleStatus('encryptedBackup', {
-      lastError: msg,
-      lastDurationMs: Date.now() - t0,
-      running: false,
-    });
+    logScheduler.error(
+      'Encrypted config backup failed:',
+      err instanceof Error ? err.message : String(err)
+    );
     return null;
   }
 }
@@ -539,7 +608,9 @@ export async function runPoliticsRefresh(): Promise<void> {
     if (result.errors.length > 0) {
       const anyOk = result.results.some((r) => r.ok);
       if (!anyOk) throw new Error(result.errors.join('; '));
-      logPolitics.warn(`Politics refresh had soft errors: ${result.errors.join('; ')}`);
+      const partial = result.errors.join('; ');
+      logPolitics.warn(`Politics refresh collection incomplete: ${partial}`);
+      return { partial };
     }
     logPolitics.info(
       `Politics refresh complete (bills=${result.counts.bills} exec=${result.counts.executiveActions} trades=${result.counts.trades})`
@@ -568,7 +639,10 @@ export async function runDailyNewsTick(): Promise<void> {
 
     await trackRun('dailyNewsRefresh', async () => {
       logScheduler.info(`Daily News due — generating ${editionType} edition for ${plan.today}`);
-      await startEdition(editionType, plan.today);
+      const id = await startEdition(editionType, plan.today);
+      const edition = await waitForEdition(id);
+      if (edition?.status !== 'done')
+        throw new Error(edition?.error ?? 'News generation did not complete');
     });
   } catch (err) {
     logScheduler.error('Daily News tick failed:', String(err));

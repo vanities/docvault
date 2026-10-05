@@ -11,6 +11,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createHash, randomUUID } from 'crypto';
 import { DATA_DIR } from './data.js';
 import {
   customJobScriptPath,
@@ -28,6 +29,60 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Bundled examples sit at <app>/examples/jobs, a sibling of server/. Shipped
 // into the Docker image via `COPY examples/` (see Dockerfile).
 const EXAMPLES_DIR = path.join(__dirname, '..', 'examples', 'jobs');
+
+// Exact hashes of the previously shipped collectors. Upgrade only untouched
+// defaults; a custom script, manifest path, or deleted job is always preserved.
+const PREVIOUS_SCRIPT_HASHES: Record<string, string> = {
+  'scripts/benjamin-cowen-youtube.local.sh':
+    '1884c83d92f95a8748d3288afa62c0555c8a3babe9aa3e27353c1d1dfee103f5',
+  'scripts/casually-finance-youtube.local.sh':
+    'e24b2ca43c8192bec0d4cdf479619bcdb25a8338d7181f818c1feed6e9f62ea0',
+  'scripts/cto-larsson-youtube.local.sh':
+    'cfda9cd5fea6d0254c0e9beec9fbb9a23f7fb59ed68ab955f0ac81ca9907d84a',
+  'scripts/eurodollar-university-youtube.local.sh':
+    '605585ad7d2a9be65212d6ad1c046b3c05265d36e0cf70df6fba02a7b4868e67',
+  'scripts/fireship-youtube.local.sh':
+    '603000a09f634ab3b44852fbc12c044845020b4e29ed6d758111b3f725ae04fa',
+  'scripts/gamers-nexus-youtube.local.sh':
+    '25a0eea924adfa581aa98d41b6653c08f8faa94a190a5ce42c9a9083e6c9886d',
+  'scripts/george-gammon-youtube.local.sh':
+    'b2f05a427ee6ef3d61d7348ec54b1a03d9fa771f8cb471e826a239f193ad5c1b',
+  'scripts/huberman-lab-youtube.local.sh':
+    '01a8950de083fee061608a95e6f9e7d017092e1866d382d0db3f9966eadae023',
+  'scripts/theo-youtube.local.sh':
+    '977e6436e72b130a16f372b97fc2753e7bfdcb2d0ba68073917ca068aa3ee77a',
+};
+
+export async function upgradeExampleScript(
+  dataDir: string,
+  manifest: CustomJobManifest,
+  newBody: string,
+  previousHashes = PREVIOUS_SCRIPT_HASHES
+): Promise<boolean> {
+  const previousHash = previousHashes[manifest.script];
+  if (!previousHash) return false;
+  const dest = customJobScriptPath(dataDir, manifest.script);
+  let oldBody: string;
+  try {
+    if (!(await fs.lstat(dest)).isFile()) return false;
+    oldBody = await fs.readFile(dest, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw err;
+  }
+  if (createHash('sha256').update(oldBody).digest('hex') !== previousHash) return false;
+  const temp = `${dest}.${randomUUID()}.tmp`;
+  try {
+    await fs.writeFile(temp, newBody.replace(/\r\n?/g, '\n'), { mode: 0o700 });
+    // Recheck immediately before publication so an intervening edit is kept.
+    if ((await fs.readFile(dest, 'utf8')) !== oldBody) return false;
+    await fs.rename(temp, dest);
+  } finally {
+    await fs.unlink(temp).catch(() => {});
+  }
+  log.info(`Updated untouched default collector '${manifest.id}' with retry diagnostics`);
+  return true;
+}
 
 function seededMarkerPath(dataDir: string): string {
   return path.join(jobsRoot(dataDir), '.seeded-examples.json');
@@ -78,10 +133,11 @@ async function listExampleManifestFiles(): Promise<string[]> {
  *
  * A marker file (DATA_DIR/jobs/.seeded-examples.json) records every example id
  * we've already handled, which makes the behavior:
- *  - an id in the marker is never touched again — a job the user deleted is not
- *    resurrected, and a job the user edited/enabled is never reverted;
+ *  - a job the user deleted is not resurrected, and an edited/enabled manifest
+ *    is never reverted;
  *  - an example whose manifest already exists (e.g. the maintainer's own copy)
- *    is adopted into the marker and left exactly as-is;
+ *    is adopted into the marker and left as-is; untouched scripts from a known
+ *    previous bundled version receive the new collector implementation;
  *  - otherwise the script is copied and the manifest written with enabled:false.
  */
 export async function seedExampleJobs(dataDir: string = DATA_DIR): Promise<void> {
@@ -98,15 +154,23 @@ export async function seedExampleJobs(dataDir: string = DATA_DIR): Promise<void>
       const manifest: CustomJobManifest = parseCustomJobManifest(
         JSON.parse(await fs.readFile(file, 'utf8'))
       );
-      if (seeded.has(manifest.id)) continue;
-
       const destManifest = path.join(jobsManifestsDir(dataDir), `${manifest.id}.json`);
       if (await fileExists(destManifest)) {
-        // The user already has this job — adopt it so we never reseed it, and
-        // leave their copy (and its enabled state) untouched.
+        const existing = parseCustomJobManifest(
+          JSON.parse(await fs.readFile(destManifest, 'utf8'))
+        );
+        if (existing.script === manifest.script) {
+          await upgradeExampleScript(
+            dataDir,
+            existing,
+            await fs.readFile(path.join(EXAMPLES_DIR, manifest.script), 'utf8')
+          );
+        }
+        // Manifest, enabled state, schedule, and custom script edits stay intact.
         seeded.add(manifest.id);
         continue;
       }
+      if (seeded.has(manifest.id)) continue;
 
       // Write the script before the manifest so the scheduler never observes a
       // manifest pointing at a missing script.

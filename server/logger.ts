@@ -47,9 +47,26 @@ export interface LogEntry {
 
 const LOG_BUFFER_SIZE = 1000;
 const logBuffer: LogEntry[] = [];
+const logCaptures = new Set<(entry: LogEntry) => void>();
+
+/** Capture a run's logs independently of the live buffer, so a long-running
+ * automation retains early warnings even after 1,000 other log events. Call
+ * the returned function on completion (including failure) to release it. */
+export function captureLogs(namespacePattern: RegExp): () => LogEntry[] {
+  const entries: LogEntry[] = [];
+  const capture = (entry: LogEntry) => {
+    if (namespacePattern.test(entry.namespace)) entries.push(entry);
+  };
+  logCaptures.add(capture);
+  return () => {
+    logCaptures.delete(capture);
+    return entries;
+  };
+}
 
 function pushLog(entry: LogEntry): void {
   logBuffer.push(entry);
+  for (const capture of logCaptures) capture(entry);
   if (logBuffer.length > LOG_BUFFER_SIZE) {
     logBuffer.splice(0, logBuffer.length - LOG_BUFFER_SIZE);
   }
