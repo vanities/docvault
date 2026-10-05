@@ -35,6 +35,7 @@ import { HistoryChart } from '../common/HistoryChart';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Money } from '../common/Money';
+import { SimplefinConnectionWarnings } from './SimplefinConnectionWarnings';
 
 // Types
 
@@ -52,6 +53,7 @@ interface SimplefinAccount {
 interface SimplefinBalanceCache {
   accounts: SimplefinAccount[];
   lastUpdated: string;
+  connectionErrors?: string[];
 }
 
 // Institution colors
@@ -706,6 +708,7 @@ export function BanksView() {
         onDisconnect={handleDisconnect}
         isRefreshing={isRefreshing}
       />
+      <SimplefinConnectionWarnings errors={data?.connectionErrors} />
 
       {/* Error */}
       {error && (

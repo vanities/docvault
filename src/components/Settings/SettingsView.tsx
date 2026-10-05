@@ -48,6 +48,7 @@ import { ExternalSourcesSection } from './ExternalSourcesSection';
 import { BrainSection } from './BrainSection';
 import { SkillsSection } from './SkillsSection';
 import { BackupSection } from './BackupSection';
+import { SimplefinConnectionWarnings } from '../Banks/SimplefinConnectionWarnings';
 import { AutomationStatusDetails } from './AutomationStatus';
 import { automationNeedsAttention, type AutomationStatus } from '../../utils/automation-status';
 import { JobRunHistoryDialog, type SelectedJob } from './JobRunHistoryDialog';
@@ -211,6 +212,7 @@ export function SettingsView() {
   // SimpleFIN settings state
   const [simplefinToken, setSimplefinToken] = useState('');
   const [simplefinConfigured, setSimplefinConfigured] = useState(false);
+  const [simplefinErrors, setSimplefinErrors] = useState<string[]>([]);
   const [isSimplefinSaving, setIsSimplefinSaving] = useState(false);
 
   // SnapTrade settings state
@@ -1088,8 +1090,11 @@ export function SettingsView() {
   // SimpleFIN functions
   const loadSimplefinStatus = async () => {
     try {
-      const data = await requestJson<{ configured?: boolean }>(`${API_BASE}/simplefin/status`);
+      const data = await requestJson<{ configured?: boolean; connectionErrors?: string[] }>(
+        `${API_BASE}/simplefin/status`
+      );
       setSimplefinConfigured(data.configured === true);
+      setSimplefinErrors(data.connectionErrors ?? []);
     } catch {
       // Silently fail
     }
@@ -2489,6 +2494,7 @@ export function SettingsView() {
 
               {simplefinConfigured ? (
                 <div className="space-y-3">
+                  <SimplefinConnectionWarnings errors={simplefinErrors} />
                   <div className="flex items-center gap-3 p-4 bg-emerald-500/8 border border-emerald-500/20 rounded-xl">
                     <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
                     <div className="flex-1">

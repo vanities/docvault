@@ -31,6 +31,7 @@ export interface SimplefinAccount {
 export interface SimplefinBalanceCache {
   accounts: SimplefinAccount[];
   lastUpdated: string;
+  connectionErrors?: string[];
 }
 
 // Raw API response types
@@ -49,10 +50,14 @@ interface SimplefinRawAccount {
   'available-balance'?: string;
   'balance-date'?: number;
   org?: SimplefinRawOrg;
+  conn_id?: string;
+  conn_name?: string;
 }
 
 interface SimplefinResponse {
   errors?: string[];
+  errlist?: Array<{ code: string; msg: string; conn_id?: string }>;
+  connections?: Array<{ conn_id: string; name: string }>;
   accounts: SimplefinRawAccount[];
 }
 
@@ -92,6 +97,14 @@ export async function claimSetupToken(setupToken: string): Promise<string> {
 // -----------------------------------------------------------------------------
 
 export async function fetchBalances(config: SimplefinConfig): Promise<SimplefinAccount[]> {
+  return (await fetchBalanceSnapshot(config)).accounts;
+}
+
+/** Keep provider warnings alongside the balances so cached views still show
+ * which connections need attention, even when other accounts fetched fine. */
+export async function fetchBalanceSnapshot(
+  config: SimplefinConfig
+): Promise<SimplefinBalanceCache> {
   const baseUrl = config.accessUrl.replace(/\/+$/, '');
   const url = `${baseUrl}/accounts`;
 
@@ -103,11 +116,26 @@ export async function fetchBalances(config: SimplefinConfig): Promise<SimplefinA
   parsed.username = '';
   parsed.password = '';
 
-  const res = await fetch(parsed.toString(), {
-    headers: {
-      Authorization: `Basic ${auth}`,
-    },
-  });
+  let res: Response;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      res = await fetch(parsed.toString(), {
+        headers: { Authorization: `Basic ${auth}` },
+        signal: AbortSignal.timeout(30_000),
+      });
+      // Quota failures need time to replenish; immediate retries spend more
+      // of the Bridge's daily allowance without repairing the connection.
+      if (attempt === 3 || res.status < 500) break;
+      await res.body?.cancel();
+      log.warn(`[balances] HTTP ${res.status}; attempt=${attempt}/3 retryInMs=${1000 * attempt}`);
+    } catch (error) {
+      if (attempt === 3) throw error;
+      log.warn(
+        `[balances] request failed: ${error instanceof Error ? error.message : String(error)}; attempt=${attempt}/3 retryInMs=${1000 * attempt}`
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+  }
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -119,10 +147,19 @@ export async function fetchBalances(config: SimplefinConfig): Promise<SimplefinA
     if (res.status === 402) {
       throw new Error('SimpleFIN subscription required. Renew at beta-bridge.simplefin.org');
     }
+    if (res.status === 429) throw new Error('SimpleFIN request quota reached. Try again later.');
     throw new Error(`SimpleFIN error (${res.status}): ${body || res.statusText}`);
   }
 
   const data = (await res.json()) as SimplefinResponse;
+  const errors = data.errlist?.length
+    ? data.errlist.map((error) => {
+        const name = data.connections?.find(
+          (connection) => connection.conn_id === error.conn_id
+        )?.name;
+        return name && !error.msg.includes(name) ? `${name}: ${error.msg}` : error.msg;
+      })
+    : (data.errors ?? []);
 
   // SimpleFIN signals a broken connection IN THE BODY, with HTTP 200: the
   // `errors` array carries things like "Connection to <bank> needs attention"
@@ -131,29 +168,33 @@ export async function fetchBalances(config: SimplefinConfig): Promise<SimplefinA
   // day's bank balance, and overwrites the fallback cache with the empty list —
   // destroying the only data that could have covered the outage.
   const accounts = data.accounts ?? [];
-  if (data.errors?.length) {
-    log.warn(
-      `SimpleFIN reported ${data.errors.length} connection error(s):`,
-      JSON.stringify(data.errors)
-    );
+  if (errors.length) {
+    log.warn(`SimpleFIN reported ${errors.length} connection error(s):`, JSON.stringify(errors));
   }
   if (accounts.length === 0) {
     // A configured connection never legitimately returns zero accounts.
-    const detail = data.errors?.length ? `: ${data.errors.join('; ')}` : ' (no errors reported)';
+    const detail = errors.length ? `: ${errors.join('; ')}` : ' (no errors reported)';
     throw new Error(`SimpleFIN returned no accounts${detail}`);
   }
-  log.info(
-    `[balances] fetched ${accounts.length} accounts, ${data.errors?.length ?? 0} connection error(s)`
-  );
+  log.info(`[balances] fetched ${accounts.length} accounts, ${errors.length} connection error(s)`);
 
-  return accounts.map((acct) => ({
+  const mapped = accounts.map((acct) => ({
     id: acct.id,
     name: acct.name,
-    connId: acct.org?.id || '',
+    connId: acct.conn_id || acct.org?.id || '',
     currency: acct.currency,
     balance: parseFloat(acct.balance) || 0,
     availableBalance: acct['available-balance'] ? parseFloat(acct['available-balance']) : null,
     balanceDate: acct['balance-date'] || null,
-    connectionName: acct.org?.name || undefined,
+    connectionName:
+      acct.conn_name ||
+      data.connections?.find((connection) => connection.conn_id === acct.conn_id)?.name ||
+      acct.org?.name ||
+      undefined,
   }));
+  return {
+    accounts: mapped,
+    lastUpdated: new Date().toISOString(),
+    connectionErrors: errors,
+  };
 }

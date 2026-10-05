@@ -39,6 +39,16 @@ export function AutomationStatusDetails({ status }: { status?: AutomationStatus 
       {!status?.lastError && status?.lastWarning && (
         <p className="text-amber-400">{status.lastWarning}</p>
       )}
+      {/SimpleFIN/i.test(status?.lastError || status?.lastWarning || '') && (
+        <a
+          href="https://beta-bridge.simplefin.org"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-block text-accent-500 hover:underline"
+        >
+          Check bank connections in SimpleFIN Bridge
+        </a>
+      )}
       {status?.nextRetryAt && (
         <p className="text-amber-400">
           Next retry: {timestamp(status.nextRetryAt)}
