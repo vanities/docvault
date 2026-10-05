@@ -22,10 +22,11 @@ import {
   MapPin,
 } from 'lucide-react';
 import type { SyncStatus, CryptoExchangeId, CryptoChain } from '../../types';
+import type { SimplefinHealth } from '../../../server/simplefin-health';
 import { useAppContext } from '../../contexts/AppContext';
 import { useToast } from '../../hooks/useToast';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
-import { API_BASE } from '../../constants';
+import { API_BASE, SIMPLEFIN_STATUS_EVENT } from '../../constants';
 import { requestJson } from '../../api/client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -213,6 +214,7 @@ export function SettingsView() {
   const [simplefinToken, setSimplefinToken] = useState('');
   const [simplefinConfigured, setSimplefinConfigured] = useState(false);
   const [simplefinErrors, setSimplefinErrors] = useState<string[]>([]);
+  const [simplefinHealth, setSimplefinHealth] = useState<SimplefinHealth>();
   const [isSimplefinSaving, setIsSimplefinSaving] = useState(false);
 
   // SnapTrade settings state
@@ -1090,11 +1092,15 @@ export function SettingsView() {
   // SimpleFIN functions
   const loadSimplefinStatus = async () => {
     try {
-      const data = await requestJson<{ configured?: boolean; connectionErrors?: string[] }>(
-        `${API_BASE}/simplefin/status`
-      );
+      const data = await requestJson<
+        SimplefinHealth & {
+          configured?: boolean;
+          connectionErrors?: string[];
+        }
+      >(`${API_BASE}/simplefin/status`);
       setSimplefinConfigured(data.configured === true);
       setSimplefinErrors(data.connectionErrors ?? []);
+      setSimplefinHealth(data);
     } catch {
       // Silently fail
     }
@@ -1116,6 +1122,9 @@ export function SettingsView() {
         addToast('SimpleFIN connected', 'success');
         setSimplefinConfigured(true);
         setSimplefinToken('');
+        setSimplefinErrors([]);
+        setSimplefinHealth(undefined);
+        window.dispatchEvent(new Event(SIMPLEFIN_STATUS_EVENT));
       } else {
         addToast(data.error || 'Failed to connect', 'error');
       }
@@ -1142,6 +1151,9 @@ export function SettingsView() {
       if (data.ok) {
         addToast('SimpleFIN removed', 'success');
         setSimplefinConfigured(false);
+        setSimplefinErrors([]);
+        setSimplefinHealth(undefined);
+        window.dispatchEvent(new Event(SIMPLEFIN_STATUS_EVENT));
       }
     } catch {
       addToast('Failed to remove SimpleFIN', 'error');
@@ -2494,7 +2506,11 @@ export function SettingsView() {
 
               {simplefinConfigured ? (
                 <div className="space-y-3">
-                  <SimplefinConnectionWarnings errors={simplefinErrors} />
+                  <SimplefinConnectionWarnings
+                    errors={simplefinErrors}
+                    issues={simplefinHealth?.issues}
+                    history={simplefinHealth?.history}
+                  />
                   <div className="flex items-center gap-3 p-4 bg-emerald-500/8 border border-emerald-500/20 rounded-xl">
                     <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
                     <div className="flex-1">

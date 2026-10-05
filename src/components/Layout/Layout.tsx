@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { BankConnectionBanner } from './BankConnectionBanner';
 import { useAppContext } from '../../contexts/AppContext';
 import { AddEntityModal } from '../Settings/AddEntityModal';
 
@@ -290,6 +291,7 @@ export function Layout() {
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header />
+        <BankConnectionBanner />
         <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden pb-[env(safe-area-inset-bottom)]">
           <Suspense fallback={<div className="p-6 text-sm text-surface-600">Loading view…</div>}>
             {renderContent()}

@@ -118,6 +118,40 @@ describe('fetchBalances', () => {
     expect(snapshot.accounts[0].connectionName).toBe('Acme Bank');
   });
 
+  test('provider error IDs that differ from connection rows still map an unambiguous bank name', async () => {
+    stub({
+      errlist: [
+        {
+          code: 'con.auth',
+          msg: 'Connection to Acme Bank may need attention. Auth required',
+          conn_id: 'provider-error-id',
+        },
+      ],
+      connections: [{ conn_id: 'synthetic-bank', name: 'Acme Bank' }],
+      accounts: [
+        {
+          id: 'a1',
+          name: 'Checking',
+          currency: 'USD',
+          balance: '1234.56',
+          conn_id: 'synthetic-bank',
+          'balance-date': 1767225600,
+        },
+      ],
+    });
+    const snapshot = await fetchBalanceSnapshot(CONFIG);
+    expect(snapshot.connectionIssues?.[0]).toMatchObject({
+      kind: 'reauth',
+      code: 'con.auth',
+      connectionName: 'Acme Bank',
+      connectionId: 'synthetic-bank',
+      lastBankDataAt: '2026-01-01T00:00:00.000Z',
+    });
+    const requested = new URL(String(vi.mocked(globalThis.fetch).mock.calls[0][0]));
+    expect(requested.searchParams.get('version')).toBe('2');
+    expect(requested.searchParams.get('balances-only')).toBe('1');
+  });
+
   test('quota failures do not trigger more requests', async () => {
     stub({}, 429);
     await expect(fetchBalanceSnapshot(CONFIG)).rejects.toThrow(/quota reached/);

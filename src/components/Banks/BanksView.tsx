@@ -30,12 +30,14 @@ import {
   isAccountAnnotationType,
   type AccountAnnotation,
 } from '../../../server/account-classify';
-import { API_BASE } from '../../constants';
+import { API_BASE, SIMPLEFIN_STATUS_EVENT } from '../../constants';
+import { requestJson } from '../../api/client';
 import { HistoryChart } from '../common/HistoryChart';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Money } from '../common/Money';
 import { SimplefinConnectionWarnings } from './SimplefinConnectionWarnings';
+import type { SimplefinHealth, SimplefinIssue } from '../../../server/simplefin-health';
 
 // Types
 
@@ -54,6 +56,7 @@ interface SimplefinBalanceCache {
   accounts: SimplefinAccount[];
   lastUpdated: string;
   connectionErrors?: string[];
+  connectionIssues?: SimplefinIssue[];
 }
 
 // Institution colors
@@ -512,50 +515,62 @@ export function BanksView() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [configured, setConfigured] = useState<boolean | null>(null);
+  const [health, setHealth] = useState<SimplefinHealth>();
   const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>([]);
   const [annotations, setAnnotations] = useState<Record<string, AccountAnnotation>>({});
 
   const loadStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/simplefin/status`);
-      const status = await res.json();
+      const status = await requestJson<SimplefinHealth & { configured: boolean }>(
+        `${API_BASE}/simplefin/status`
+      );
       setConfigured(status.configured);
+      setHealth(status);
     } catch {
-      setConfigured(false);
+      // A temporary status failure does not mean the bank was disconnected.
     }
   }, []);
 
-  const loadBalances = useCallback(async (live = false) => {
-    if (live) setIsRefreshing(true);
-    else setIsLoading(true);
-    setError(null);
+  const loadBalances = useCallback(
+    async (live = false) => {
+      let fetchedLive = live;
+      if (live) setIsRefreshing(true);
+      else setIsLoading(true);
+      setError(null);
 
-    try {
-      const url = live
-        ? `${API_BASE}/simplefin/balances`
-        : `${API_BASE}/simplefin/balances?cached=1`;
-      const res = await fetch(url);
-      const result = (await res.json()) as SimplefinBalanceCache & { error?: string };
-      if (result.error) throw new Error(result.error);
+      try {
+        const url = live
+          ? `${API_BASE}/simplefin/balances`
+          : `${API_BASE}/simplefin/balances?cached=1`;
+        const res = await fetch(url);
+        const result = (await res.json()) as SimplefinBalanceCache & { error?: string };
+        if (result.error) throw new Error(result.error);
 
-      // If cached returned empty, try live
-      if (!live && (!result.accounts || result.accounts.length === 0) && !result.lastUpdated) {
-        const liveRes = await fetch(`${API_BASE}/simplefin/balances`);
-        const liveResult = (await liveRes.json()) as SimplefinBalanceCache & { error?: string };
-        if (liveResult.error) throw new Error(liveResult.error);
-        cachedData = liveResult;
-        setData(liveResult);
-      } else {
-        cachedData = result;
-        setData(result);
+        // If cached returned empty, try live
+        if (!live && (!result.accounts || result.accounts.length === 0) && !result.lastUpdated) {
+          fetchedLive = true;
+          const liveRes = await fetch(`${API_BASE}/simplefin/balances`);
+          const liveResult = (await liveRes.json()) as SimplefinBalanceCache & { error?: string };
+          if (liveResult.error) throw new Error(liveResult.error);
+          cachedData = liveResult;
+          setData(liveResult);
+        } else {
+          cachedData = result;
+          setData(result);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load balances');
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
+        if (fetchedLive) {
+          window.dispatchEvent(new Event(SIMPLEFIN_STATUS_EVENT));
+          void loadStatus();
+        }
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load balances');
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, []);
+    },
+    [loadStatus]
+  );
 
   const handleDisconnect = async () => {
     if (
@@ -571,6 +586,8 @@ export function BanksView() {
       setConfigured(false);
       setData(null);
       cachedData = null;
+      setHealth(undefined);
+      window.dispatchEvent(new Event(SIMPLEFIN_STATUS_EVENT));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to disconnect');
     }
@@ -694,6 +711,7 @@ export function BanksView() {
             variant="outline"
             onClick={() => loadBalances(true)}
             disabled={isRefreshing}
+            aria-label="Refresh bank balances"
           >
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
@@ -708,7 +726,11 @@ export function BanksView() {
         onDisconnect={handleDisconnect}
         isRefreshing={isRefreshing}
       />
-      <SimplefinConnectionWarnings errors={data?.connectionErrors} />
+      <SimplefinConnectionWarnings
+        errors={data?.connectionErrors}
+        issues={health?.issues ?? data?.connectionIssues}
+        history={health?.history}
+      />
 
       {/* Error */}
       {error && (
