@@ -15,7 +15,21 @@ import { tmpdir } from 'os';
 import path from 'path';
 import { randomBytes, createDecipheriv, scryptSync } from 'crypto';
 import { unzipSync } from 'fflate';
-import { collectBackupFiles, createBackupBundle } from './backup.js';
+import { collectBackupFiles, createBackupBundle, zipBackupFiles } from './backup.js';
+
+test('large backup compression leaves the server event loop available for status checks', async () => {
+  let finished = false;
+  const pending = zipBackupFiles({ 'synthetic.bin': randomBytes(4 * 1024 * 1024) }).then(
+    (bytes) => {
+      finished = true;
+      return bytes;
+    }
+  );
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const completedBeforeStatusCheck = finished;
+  await pending;
+  expect(completedBeforeStatusCheck).toBe(false);
+});
 
 let scratchDir = '';
 
