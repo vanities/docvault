@@ -26,10 +26,7 @@ import type { Settings } from './data.js';
 import { createWriteLock, writeJsonAtomic } from './write-lock.js';
 import { assertCryptoValued, fetchAllBalances } from './crypto.js';
 import { buildPortfolio, fetchAllSnapTradeHoldings, type BrokerAccount } from './brokers.js';
-import {
-  fetchBalances as fetchSimplefinBalances,
-  type SimplefinBalanceCache,
-} from './simplefin.js';
+import { fetchBalanceSnapshot, type SimplefinBalanceCache } from './simplefin.js';
 import { refreshAllQuantData } from './routes/quant.js';
 import { refreshPolitics } from './politics/refresh.js';
 import {
@@ -399,14 +396,11 @@ async function takePortfolioSnapshotInner(): Promise<void> {
   if (settings.simplefin?.accessUrl) {
     const t0 = Date.now();
     try {
-      const bankAccounts = await fetchSimplefinBalances(settings.simplefin);
+      const cache = await fetchBalanceSnapshot(settings.simplefin);
+      const bankAccounts = cache.accounts;
       // fetchBalances throws on an empty list, so reaching here means real data.
       bankValue = sumAccounts(bankAccounts);
-      const cache: SimplefinBalanceCache = {
-        accounts: bankAccounts,
-        lastUpdated: new Date().toISOString(),
-      };
-      await fs.writeFile(SIMPLEFIN_CACHE_FILE, JSON.stringify(cache, null, 2));
+      await writeJsonAtomic(SIMPLEFIN_CACHE_FILE, cache);
       logSimpleFIN.info(
         `SimpleFIN bank cache updated (${bankAccounts.length} accounts in ${Date.now() - t0}ms)`
       );

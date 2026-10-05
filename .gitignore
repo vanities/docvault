@@ -54,6 +54,10 @@ scripts/*
 **/*.test.tsx
 **/*.spec.ts
 **/*.spec.tsx
+# Exception: OGE/RPC recovery and bank warning tests use fabricated responses and addresses
+!server/politics/oge-278t.test.ts
+!server/evm-balances.test.ts
+!src/components/Banks/SimplefinConnectionWarnings.test.tsx
 # Exception: historical change math/render tests use only fabricated balances and quotes
 !src/utils/portfolioChanges.test.ts
 !src/utils/marketChanges.test.ts

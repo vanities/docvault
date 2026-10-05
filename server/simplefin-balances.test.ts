@@ -8,13 +8,14 @@
 //
 // All figures and institution names below are fabricated.
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test';
-import { fetchBalances } from './simplefin.js';
+import { fetchBalances, fetchBalanceSnapshot } from './simplefin.js';
 
 const CONFIG = { accessUrl: 'https://user:pass@example.invalid/simplefin' };
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = realFetch;
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -81,5 +82,61 @@ describe('fetchBalances', () => {
   test('an expired access URL (403) still throws its own message', async () => {
     stub('nope', 403);
     await expect(fetchBalances(CONFIG)).rejects.toThrow(/authentication failed/i);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('a successful partial response retains connection errors for cached admin views', async () => {
+    stub({
+      errors: ['Connection to Acme Bank needs attention. Auth required'],
+      accounts: [{ id: 'a1', name: 'Checking', currency: 'USD', balance: '1234.56' }],
+    });
+    const snapshot = await fetchBalanceSnapshot(CONFIG);
+    expect(snapshot.accounts).toHaveLength(1);
+    expect(snapshot.connectionErrors).toEqual([
+      'Connection to Acme Bank needs attention. Auth required',
+    ]);
+  });
+
+  test('structured provider errors identify the affected connection too', async () => {
+    stub({
+      errlist: [
+        { code: 'con.auth', msg: 'Authentication required', conn_id: 'example-connection' },
+      ],
+      connections: [{ conn_id: 'example-connection', name: 'Acme Bank' }],
+      accounts: [
+        {
+          id: 'a1',
+          name: 'Checking',
+          currency: 'USD',
+          balance: '1234.56',
+          conn_id: 'example-connection',
+        },
+      ],
+    });
+    const snapshot = await fetchBalanceSnapshot(CONFIG);
+    expect(snapshot.connectionErrors).toEqual(['Acme Bank: Authentication required']);
+    expect(snapshot.accounts[0].connectionName).toBe('Acme Bank');
+  });
+
+  test('quota failures do not trigger more requests', async () => {
+    stub({}, 429);
+    await expect(fetchBalanceSnapshot(CONFIG)).rejects.toThrow(/quota reached/);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('an upstream 503 retries and records a healthy snapshot after recovery', async () => {
+    vi.useFakeTimers();
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('busy', { status: 503 }))
+      .mockResolvedValueOnce(
+        Response.json({
+          accounts: [{ id: 'a1', name: 'Checking', currency: 'USD', balance: '1234.56' }],
+        })
+      );
+    const pending = fetchBalanceSnapshot(CONFIG);
+    await vi.runAllTimersAsync();
+    expect((await pending).connectionErrors).toEqual([]);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
   });
 });

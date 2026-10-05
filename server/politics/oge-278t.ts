@@ -30,7 +30,9 @@ import type { FilingRecord, PoliticsCache, TradeRecord } from './types.js';
 const log = createLogger('PoliticsOGE');
 
 const OGE_ORIGIN = 'https://extapps2.oge.gov';
-const OGE_API = `${OGE_ORIGIN}/201/Presiden.nsf/API.xsp/v2/rest`;
+// Matches the service used by OGE's current public disclosure table. Retired
+// versions can return the XPages HTML shell with HTTP 200 rather than an error.
+const OGE_API = `${OGE_ORIGIN}/201/Presiden.nsf/API.xsp/v3/rest`;
 const COLUMNS = ['docDate', 'title', 'type', 'name', 'agency', 'level'] as const;
 
 const TRUMP_NAME = 'Donald J. Trump';
@@ -95,6 +97,34 @@ function extractDocId(url: string): string | null {
   return url.match(/\/PAS\+Index\/([^/]+)\//)?.[1] ?? null;
 }
 
+async function fetchOge(url: string, init: RequestInit, fetchFn: typeof fetch): Promise<Response> {
+  const endpoint = new URL(url).pathname;
+  for (let attempt = 1; ; attempt++) {
+    const started = Date.now();
+    try {
+      const response = await fetchFn(url, init);
+      if (response.ok) {
+        log.info(
+          `[fetch] endpoint=${endpoint} attempt=${attempt} HTTP ${response.status} durationMs=${Date.now() - started}`
+        );
+        return response;
+      }
+      const retryable = response.status === 429 || response.status >= 500;
+      const error = new Error(`OGE HTTP ${response.status} at ${endpoint}`);
+      await response.body?.cancel();
+      if (!retryable || attempt === 3) throw error;
+      log.warn(`[fetch] ${error.message}; attempt=${attempt}/3 retryInMs=${1000 * attempt}`);
+    } catch (error) {
+      if (attempt === 3 || (error instanceof Error && error.message.startsWith('OGE HTTP ')))
+        throw error;
+      log.warn(
+        `[fetch] endpoint=${endpoint} attempt=${attempt}/3 failed: ${msg(error)}; retryInMs=${1000 * attempt}`
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+  }
+}
+
 /** Query the OGE presidential-disclosure API for Trump's 278-T (transaction) PDFs. */
 export async function fetchTrumpOgePdfs(fetchFn: typeof fetch = timeoutFetch()): Promise<OgePdf[]> {
   const params = new URLSearchParams({
@@ -115,15 +145,36 @@ export async function fetchTrumpOgePdfs(fetchFn: typeof fetch = timeoutFetch()):
     params.set(`columns[${index}][search][regex]`, 'false');
   });
 
-  const response = await fetchFn(`${OGE_API}?${params.toString()}`, {
-    headers: { 'user-agent': 'docvault-politics/1.0', accept: 'application/json' },
-  });
-  if (!response.ok) throw new Error(`OGE API returned ${response.status}`);
-  const data = (await response.json()) as { data?: OgeApiRow[] };
+  const response = await fetchOge(
+    `${OGE_API}?${params.toString()}`,
+    {
+      headers: { 'user-agent': 'docvault-politics/1.0', accept: 'application/json' },
+    },
+    fetchFn
+  );
+  let data: { data?: OgeApiRow[] };
+  try {
+    data = (await response.json()) as { data?: OgeApiRow[] };
+  } catch {
+    throw new Error(
+      `OGE API returned non-JSON (HTTP ${response.status}; content-type=${response.headers.get('content-type') ?? 'missing'}; endpoint=${OGE_API})`
+    );
+  }
+  if (!data || !Array.isArray(data.data)) {
+    throw new Error(`OGE API response missing data array at ${OGE_API}`);
+  }
 
   const pdfs: OgePdf[] = [];
   const seen = new Set<string>();
-  for (const row of data.data ?? []) {
+  for (const row of data.data) {
+    if (
+      !row ||
+      typeof row.type !== 'string' ||
+      typeof row.name !== 'string' ||
+      typeof row.docDate !== 'string'
+    ) {
+      throw new Error(`OGE API returned an invalid disclosure row at ${OGE_API}`);
+    }
     if (!/278\s+Transaction/i.test(row.type)) continue;
     const href = extractDirectHref(row.type);
     if (!href) continue;
@@ -132,6 +183,7 @@ export async function fetchTrumpOgePdfs(fetchFn: typeof fetch = timeoutFetch()):
     seen.add(docId);
     pdfs.push({ docId, url: resolveOgeUrl(href), docDate: row.docDate, name: row.name });
   }
+  log.info(`[discovery] version=v3 rows=${data.data.length} transactionPdfs=${pdfs.length}`);
   return pdfs;
 }
 
@@ -142,9 +194,13 @@ async function parseOgePdf(
   fetchFn: typeof fetch,
   extractText: PdfTextExtractor
 ): Promise<{ transactions: OgeTransaction[]; pdfBytes: ArrayBuffer; text: string }> {
-  const response = await fetchFn(pdf.url, { headers: { Accept: 'application/pdf' } });
-  if (!response.ok) throw new Error(`OGE 278-T PDF fetch failed: ${response.status}`);
+  const response = await fetchOge(pdf.url, { headers: { Accept: 'application/pdf' } }, fetchFn);
   const pdfBytes = await response.arrayBuffer();
+  if (new TextDecoder().decode(pdfBytes.slice(0, 5)) !== '%PDF-') {
+    throw new Error(
+      `OGE 278-T returned a non-PDF (HTTP ${response.status}; content-type=${response.headers.get('content-type') ?? 'missing'}; docId=${pdf.docId})`
+    );
+  }
 
   const layoutText = await extractText(pdfBytes, ['-layout']);
   const layout = parseOge278Transactions(layoutText, filingYear);
@@ -238,6 +294,7 @@ export async function ingestOge278t(
   try {
     pdfs = (await fetchTrumpOgePdfs(fetchFn)).filter((p) => !seen.has(p.docId)).slice(0, maxPdfs);
   } catch (err) {
+    log.warn(`[discovery] failed: ${msg(err)}`);
     return { added: 0, filings: 0, error: msg(err) };
   }
 
@@ -302,7 +359,9 @@ export async function ingestOge278t(
   return {
     added: trades.length,
     filings: filings.length,
-    error: errors.length ? `${errors.length} transient error(s)` : undefined,
+    error: errors.length
+      ? `${errors.length} filing error(s): ${errors.slice(0, 3).join('; ')}`
+      : undefined,
   };
 }
 

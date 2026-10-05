@@ -14,6 +14,7 @@ import { createLogger, type Logger } from './logger.js';
 import { DATA_DIR, CRYPTO_CACHE_FILE } from './data.js';
 import { fetchTickerPrices } from './ticker-prices.js';
 import { writeJsonAtomic } from './write-lock.js';
+import { fetchRpcBalances } from './evm-balances.js';
 
 // -----------------------------------------------------------------------------
 // Types
@@ -907,6 +908,8 @@ function noteEtherscanPermanentFailure(
 /** Test seam: reset the once-per-process report memo. */
 export function resetEtherscanFailureReports(): void {
   reportedEtherscanFailures.clear();
+  etherscanRequestTail = Promise.resolve();
+  etherscanLastRequestAt = null;
 }
 
 /**
@@ -918,17 +921,43 @@ export function resetEtherscanFailureReports(): void {
  *
  * Unkeyed access is 1 call per 5s, hence the much larger floor.
  */
-export const ETHERSCAN_KEYED_RATE_DELAY_MS = 360; // ~2.8 req/s, under the 3/s cap
+export const ETHERSCAN_KEYED_RATE_DELAY_MS = 450; // ~2.2 req/s, with headroom for bucket boundaries
 export const ETHERSCAN_UNKEYED_RATE_DELAY_MS = 5100;
 
 export function etherscanRateDelayMs(hasKey: boolean): number {
   return hasKey ? ETHERSCAN_KEYED_RATE_DELAY_MS : ETHERSCAN_UNKEYED_RATE_DELAY_MS;
 }
 
+// One queue for every chain, wallet, native lookup and retry. Per-token sleeps
+// alone let concurrent syncs and the first request of each chain exceed the cap.
+let etherscanRequestTail: Promise<void> = Promise.resolve();
+let etherscanLastRequestAt: number | null = null;
+
+async function pacedEtherscanRequest(url: string, timeoutMs: number): Promise<Response> {
+  const request = etherscanRequestTail.then(async () => {
+    const wait =
+      etherscanLastRequestAt === null
+        ? 0
+        : Math.max(
+            0,
+            etherscanRateDelayMs(!!etherscanApiKey) - (Date.now() - etherscanLastRequestAt)
+          );
+    if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+    etherscanLastRequestAt = Date.now();
+    return fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+  });
+  etherscanRequestTail = request.then(
+    () => {},
+    () => {}
+  );
+  return request;
+}
+
 async function etherscanFetch(
   url: string,
   label: string,
-  log: Logger
+  log: Logger,
+  handlePermanent?: (kind: EtherscanPermanentKind) => boolean
 ): Promise<{ status: string; message?: string; result?: unknown } | null> {
   const MAX_ATTEMPTS = 6;
   const PER_ATTEMPT_TIMEOUT_MS = 15_000;
@@ -936,9 +965,7 @@ async function etherscanFetch(
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      const res = await fetch(url, {
-        signal: AbortSignal.timeout(PER_ATTEMPT_TIMEOUT_MS),
-      });
+      const res = await pacedEtherscanRequest(url, PER_ATTEMPT_TIMEOUT_MS);
       if (!res.ok) {
         // 4xx (other than 429) won't recover — fail fast by returning null.
         if (res.status >= 400 && res.status < 500 && res.status !== 429) {
@@ -972,12 +999,14 @@ async function etherscanFetch(
           // job while silently reporting no on-chain balances.
           const permanent = classifyPermanentEtherscanError(text);
           if (permanent) {
-            noteEtherscanPermanentFailure(permanent, label, text, log);
+            if (!handlePermanent?.(permanent))
+              noteEtherscanPermanentFailure(permanent, label, text, log);
             return null;
           }
 
           lastErr = new Error(`status=0: ${text || 'NOTOK'}`);
         } else {
+          if (attempt > 1) log.info(`${label} recovered on attempt ${attempt}/${MAX_ATTEMPTS}`);
           return data;
         }
       }
@@ -1044,12 +1073,9 @@ const GET_STAKER_PRINCIPAL_ABI = [
 
 async function fetchChainlinkStakedBalance(address: string): Promise<number> {
   const apiKeyParam = etherscanApiKey ? `&apikey=${etherscanApiKey}` : '';
-  const rateDelay = etherscanRateDelayMs(!!etherscanApiKey);
   let total = 0;
 
   for (const pool of CHAINLINK_STAKING_POOLS) {
-    // Respect Etherscan's 5 req/s limit — chain scanning ends just before this
-    await new Promise((r) => setTimeout(r, rateDelay));
     try {
       const data = encodeFunctionData({
         abi: GET_STAKER_PRINCIPAL_ABI,
@@ -1144,6 +1170,15 @@ export async function fetchChainBalances(
   const rateDelay = etherscanRateDelayMs(!!etherscanApiKey);
 
   const log = createLogger(`Chain ${chainId}`);
+  const rpcEndpoint = chainId === 10 ? 'https://mainnet.optimism.io' : null;
+  let useRpc = false;
+  const handlePermanent = (kind: EtherscanPermanentKind): boolean => {
+    if (kind !== 'chain-not-entitled' || !rpcEndpoint) return false;
+    useRpc = true;
+    log.info('[balance] explorer plan excludes this chain; switching to public RPC');
+    return true;
+  };
+  const rpcBalances = () => fetchRpcBalances(rpcEndpoint!, address, chainId, nativeSymbol, tokens);
   log.info(
     `Scanning ${address.slice(0, 8)}... — ${nativeSymbol} + ${tokens.length} tokens (${etherscanApiKey ? 'keyed' : 'unkeyed'}, ${rateDelay}ms delay)`
   );
@@ -1154,7 +1189,8 @@ export async function fetchChainBalances(
     const data = await etherscanFetch(
       `${base}&module=account&action=balance&address=${address}&tag=latest${apiKeyParam}`,
       `Native ${nativeSymbol}`,
-      log
+      log,
+      handlePermanent
     );
     if (data && data.status === '1' && typeof data.result === 'string') {
       const amount = parseInt(data.result, 10) / 1e18;
@@ -1166,17 +1202,19 @@ export async function fetchChainBalances(
   } catch (err) {
     log.error(`Native balance error: ${err}`);
   }
+  if (useRpc) return rpcBalances();
 
   // ERC-20 balances
   let tokenHits = 0;
   for (const token of tokens) {
     try {
-      await new Promise((r) => setTimeout(r, rateDelay));
       const data = await etherscanFetch(
         `${base}&module=account&action=tokenbalance&contractaddress=${token.contract}&address=${address}&tag=latest${apiKeyParam}`,
         token.symbol,
-        log
+        log,
+        handlePermanent
       );
+      if (useRpc) return rpcBalances();
       if (data && data.status === '1' && typeof data.result === 'string' && data.result !== '0') {
         const amount = parseInt(data.result, 10) / Math.pow(10, token.decimals);
         if (amount > 0.001) {
@@ -1197,7 +1235,7 @@ export async function fetchChainBalances(
 }
 
 async function fetchEthBalance(address: string): Promise<Balance[]> {
-  // Scan chains sequentially to stay within Etherscan's 5 req/s rate limit.
+  // Scan chains sequentially; all explorer requests also share a paced queue.
   // Parallel scanning caused silent rate-limit failures (status:"0" skipped as empty).
   logEth.info(`Starting full scan for ${address}`);
   const elapsed = logEth.timer();

@@ -6,7 +6,7 @@ import {
   getSnapTradeConnectUrl,
   registerSnapTradeUser,
 } from '../brokers.js';
-import { claimSetupToken, fetchBalances as fetchSimplefinBalances } from '../simplefin.js';
+import { claimSetupToken, fetchBalanceSnapshot } from '../simplefin.js';
 import { readJsonBody } from '../http.js';
 import { createLogger } from '../logger.js';
 import {
@@ -19,6 +19,7 @@ import {
 } from '../data.js';
 import type { SimplefinBalanceCache } from '../simplefin.js';
 import { takePortfolioSnapshot } from '../scheduler.js';
+import { writeJsonAtomic } from '../write-lock.js';
 
 const logSnaptrade = createLogger('SnapTrade');
 const logSimplefin = createLogger('SimpleFIN');
@@ -163,8 +164,18 @@ export async function handleBrokerIntegrationRoutes(
   // GET /api/simplefin/status — check if SimpleFIN is configured
   if (pathname === '/api/simplefin/status' && req.method === 'GET') {
     const settings = await loadSettings();
+    let connectionErrors: string[] = [];
+    try {
+      const cache: SimplefinBalanceCache = JSON.parse(
+        await fs.readFile(SIMPLEFIN_CACHE_FILE, 'utf8')
+      );
+      connectionErrors = cache.connectionErrors ?? [];
+    } catch {
+      /* No cached provider status yet. */
+    }
     return jsonResponse({
       configured: !!settings.simplefin?.accessUrl,
+      connectionErrors,
     });
   }
 
@@ -205,12 +216,8 @@ export async function handleBrokerIntegrationRoutes(
     }
 
     try {
-      const accounts = await fetchSimplefinBalances(settings.simplefin);
-      const cache: SimplefinBalanceCache = {
-        accounts,
-        lastUpdated: new Date().toISOString(),
-      };
-      await fs.writeFile(SIMPLEFIN_CACHE_FILE, JSON.stringify(cache, null, 2)).catch(() => {});
+      const cache = await fetchBalanceSnapshot(settings.simplefin);
+      await writeJsonAtomic(SIMPLEFIN_CACHE_FILE, cache);
       return jsonResponse(cache);
     } catch (err) {
       logSimplefin.error(`Balances fetch failed: ${err instanceof Error ? err.message : err}`);

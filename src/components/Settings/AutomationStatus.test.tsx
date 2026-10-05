@@ -18,6 +18,15 @@ const status: AutomationStatus = {
 };
 
 describe('admin automation status', () => {
+  test('bank authentication warnings provide a connection repair action', () => {
+    const html = renderToStaticMarkup(
+      <AutomationStatusDetails
+        status={{ ...status, lastError: null, lastWarning: 'SimpleFIN: authentication required' }}
+      />
+    );
+    expect(html).toContain('Check bank connections in SimpleFIN Bridge');
+    expect(html).toContain('https://beta-bridge.simplefin.org');
+  });
   test('shows incomplete collection, earlier success, reason, and retry timing', () => {
     const html = renderToStaticMarkup(<AutomationStatusDetails status={status} />);
     for (const text of [

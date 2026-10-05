@@ -12,6 +12,7 @@ import {
   etherscanRateDelayMs,
   fetchChainBalances,
   resetEtherscanFailureReports,
+  setEtherscanApiKey,
 } from './crypto.js';
 
 describe('classifyPermanentEtherscanError', () => {
@@ -58,6 +59,8 @@ describe('fetchChainBalances — fail fast on permanent errors', () => {
   afterEach(() => {
     globalThis.fetch = realFetch;
     resetEtherscanFailureReports();
+    setEtherscanApiKey(undefined);
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -67,15 +70,25 @@ describe('fetchChainBalances — fail fast on permanent errors', () => {
     return spy;
   }
 
-  test('an unentitled chain costs ONE request per lookup, not six', async () => {
-    const spy = stubAll({
-      status: '0',
-      message: 'NOTOK',
-      result: 'Free API access is not supported for this chain. Please upgrade your api plan.',
-    });
-    // One native lookup, no tokens — the old loop burned 6 attempts on it.
-    await fetchChainBalances('0xabc', 10, 'ETH', []);
-    expect(spy).toHaveBeenCalledTimes(1);
+  test('an unentitled Optimism chain makes one explorer request, then recovers via RPC', async () => {
+    const spy = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) =>
+      Response.json(
+        init?.method === 'POST'
+          ? { jsonrpc: '2.0', id: 1, result: '0xde0b6b3a7640000' }
+          : {
+              status: '0',
+              message: 'NOTOK',
+              result:
+                'Free API access is not supported for this chain. Please upgrade your api plan.',
+            }
+      )
+    );
+    globalThis.fetch = spy as typeof fetch;
+    expect(
+      await fetchChainBalances('0x0000000000000000000000000000000000000001', 10, 'ETH', [])
+    ).toEqual([{ asset: 'ETH', amount: 1 }]);
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(spy.mock.calls[1][0]).toBe('https://mainnet.optimism.io');
   });
 
   test('a rejected key also costs ONE request', async () => {
@@ -89,6 +102,22 @@ describe('fetchChainBalances — fail fast on permanent errors', () => {
     const out = await fetchChainBalances('0xabc', 1, 'ETH', []);
     // Missing data must not be reported as a real zero balance.
     expect(out).toEqual([]);
+  });
+
+  test('concurrent native balance lookups share pacing instead of bursting', async () => {
+    vi.useFakeTimers();
+    setEtherscanApiKey('example-key');
+    const times: number[] = [];
+    globalThis.fetch = vi.fn(async () => {
+      times.push(Date.now());
+      return Response.json({ status: '1', result: '0' });
+    }) as typeof fetch;
+    const pending = Promise.all([1, 2, 3].map(() => fetchChainBalances('0xabc', 1, 'ETH', [])));
+    await vi.runAllTimersAsync();
+    await pending;
+    expect(times).toHaveLength(3);
+    expect(times[1] - times[0]).toBeGreaterThanOrEqual(ETHERSCAN_KEYED_RATE_DELAY_MS);
+    expect(times[2] - times[1]).toBeGreaterThanOrEqual(ETHERSCAN_KEYED_RATE_DELAY_MS);
   });
 }, 20_000);
 
