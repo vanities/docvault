@@ -49,7 +49,7 @@ export interface CodexClientOptions {
   env?: Record<string, string>;
   /** CODEX_HOME — dir holding auth.json (from `codex login`) and config.toml. */
   codexHome?: string;
-  /** Extra args after `app-server` (e.g. `-c tools.web_search=true` for research). */
+  /** Extra args after `app-server` (e.g. `-c web_search="live"` for research). */
   extraArgs?: string[];
   /** Streaming events (item/agentMessage/delta, turn/completed, …). */
   onNotification?: (n: CodexNotification) => void;
