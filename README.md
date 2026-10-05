@@ -110,6 +110,9 @@ In-house ingest of congressional and executive-branch disclosures — no externa
 Heavily inspired by [t3.chat](https://t3.chat) — a multi-thread Claude chat that can read across your entire vault. The sidebar lists every thread; the active conversation streams in the main panel with markdown rendering, image/PDF attachments, and tool calls shown as collapsible cards.
 
 - **Claude OAuth subscription token** — paste the token from `claude setup-token` and chats are billed to your Claude.ai subscription instead of the API. Falls back to an API key if you'd rather pay per-token.
+- **Web research in Claude and Codex chat** — search the internet, read public pages, and render JavaScript content with Chromium. Browser reading uses a fresh session and blocks private networks, form submissions, and downloads. Docker includes Chromium; local installs detect Chrome/Chromium or use `DOCVAULT_BROWSER_EXECUTABLE`.
+- **Calculations and charts** — run JavaScript against supplied JSON in an isolated interpreter without filesystem or network access, bounded to 1 second and 32 MB. Line and bar charts appear in the conversation and download as SVG.
+- **Research actions** — start a cited Deep Research report, check its progress, and save source text with metadata into the Research library. Persistent writes require confirmation. Reports continue after the chat turn ends; the configured research account handles inference. The search-count cap applies to the API research engine; agent engines use their own search loop.
 - **Voice input via Parakeet (or any OpenAI-compatible transcription service)** — point Settings → Chat & Voice at a `/audio/transcriptions` endpoint such as [parakeet-mlx](https://github.com/senstella/parakeet-mlx), faster-whisper-server, or lightning-whisper-mlx running on your LAN. Push-to-talk in the composer; audio never leaves your network.
 - **Multi-thread sidebar** — threads persist locally; switch, rename-by-derivation, delete, or start fresh without losing context.
 - **Tool-using agent** — Claude can list entities, read files, search documents, compute tax summaries, and tag/note files. Each tool call renders as an expandable card in the response.
@@ -245,14 +248,15 @@ services:
 
 ## Environment Variables
 
-| Variable                         | Required       | Description                                                               |
-| -------------------------------- | -------------- | ------------------------------------------------------------------------- |
-| `ANTHROPIC_API_KEY`              | For AI parsing | Claude Vision API key                                                     |
-| `DOCVAULT_USERNAME`              | No             | Login username (default: `admin`)                                         |
-| `DOCVAULT_PASSWORD`              | Yes            | Login password; server startup fails closed without this unless opted out |
-| `DOCVAULT_ALLOW_UNAUTHENTICATED` | No             | Explicit local/demo-only opt-out (`true`, `1`, or `yes`)                  |
-| `DOCVAULT_DATA_DIR`              | No             | Data directory path (default: `./data`)                                   |
-| `DOCVAULT_PORT`                  | No             | Backend port (default: `3005`)                                            |
+| Variable                         | Required       | Description                                                                 |
+| -------------------------------- | -------------- | --------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`              | For AI parsing | Claude Vision API key                                                       |
+| `DOCVAULT_USERNAME`              | No             | Login username (default: `admin`)                                           |
+| `DOCVAULT_PASSWORD`              | Yes            | Login password; server startup fails closed without this unless opted out   |
+| `DOCVAULT_ALLOW_UNAUTHENTICATED` | No             | Explicit local/demo-only opt-out (`true`, `1`, or `yes`)                    |
+| `DOCVAULT_DATA_DIR`              | No             | Data directory path (default: `./data`)                                     |
+| `DOCVAULT_PORT`                  | No             | Backend port (default: `3005`)                                              |
+| `DOCVAULT_BROWSER_EXECUTABLE`    | No             | Chromium/Chrome path for chat browser reading (Docker: `/usr/bin/chromium`) |
 
 All integrations (SimpleFIN, SnapTrade, Etherscan, Kraken, Coinbase, Gemini, Dropbox) are configured through Settings and stored in `data/.docvault-settings.json`.
 
