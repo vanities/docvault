@@ -41,8 +41,9 @@ RUN deno --version
 # when self-update fails), poppler-utils (pdftotext + pdftoppm, for parsing and
 # rasterizing House/Senate PTR and OGE-278-T disclosure PDFs), tesseract-ocr
 # (OCR fallback for scanned/paper filings), ffmpeg (extract audio from uploaded
-# research video/audio for background transcription), and ca-certificates (TLS).
-RUN apt-get update && apt-get install -y --no-install-recommends git rclone curl poppler-utils tesseract-ocr ffmpeg ca-certificates && rm -rf /var/lib/apt/lists/*
+# research video/audio for background transcription), Chromium (JavaScript
+# webpage reading in chat), and ca-certificates (TLS).
+RUN apt-get update && apt-get install -y --no-install-recommends git rclone curl poppler-utils tesseract-ocr ffmpeg ca-certificates chromium && rm -rf /var/lib/apt/lists/*
 
 # Install yt-dlp standalone binary, arch-specific. Used by the YouTube
 # research-ingest endpoint to fetch captions + metadata. The entrypoint
@@ -103,6 +104,7 @@ ENV RCLONE_CONFIG=/data/.rclone.conf
 # volume so they persist across container restarts. The Codex chat backend
 # reads CODEX_HOME via getCodexChatConfig().
 ENV CODEX_HOME=/data/.codex
+ENV DOCVAULT_BROWSER_EXECUTABLE=/usr/bin/chromium
 
 EXPOSE 3005
 

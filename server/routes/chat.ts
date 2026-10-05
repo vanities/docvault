@@ -81,6 +81,7 @@ import {
   type ParsedData,
 } from '../data.js';
 import { runCodexChat } from '../llm/codex-chat.js';
+import { researchChatTools, buildResearchMcpTools } from '../chat-research-tools.js';
 import { ensureSkillsPluginDir, buildSkillsPromptBlock } from '../skills.js';
 import { loadHealthStore } from '../health-store.js';
 import { searchMarkdown, readSourceFile, listSourceFiles } from '../external-sources.js';
@@ -262,6 +263,7 @@ const ALLOWED_BUILTIN_TOOLS = [
 ] as const;
 const ALLOWED_TOOLS: string[] = [
   ...TOOL_NAMES.map((n) => `mcp__${MCP_SERVER_NAME}__${n}`),
+  ...researchChatTools.map((t) => `mcp__${MCP_SERVER_NAME}__${t.name}`),
   ...ALLOWED_BUILTIN_TOOLS,
 ];
 
@@ -301,6 +303,7 @@ const CLAUDE_BINARY_PATH: string | undefined = (() => {
 
 interface ToolContext {
   config: { entities: EntityConfig[] };
+  signal?: AbortSignal;
 }
 
 async function toolListEntities(): Promise<unknown> {
@@ -1423,6 +1426,7 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
     name: MCP_SERVER_NAME,
     version: '1.0.0',
     tools: [
+      ...buildResearchMcpTools(ctx.signal),
       tool(
         'list_entities',
         'List every configured entity (id, display name, type). Use first if you do not know which entity the user is asking about.',
@@ -2030,6 +2034,8 @@ function buildSystemPrompt(
     'get_prediction_markets returns live Kalshi + Polymarket odds on finance and political questions (Fed, recession, crypto, elections, control of Congress, geopolitics). Use it when the user asks what the markets/odds imply about an event or current market sentiment — quote the probability, source, and link, and frame them as real-money-weighted forecasts, not certainties. READ-ONLY, free to chain.',
     'The user maintains a Research library — saved PDFs, pasted articles/transcripts, and YouTube videos (some auto-filed from feeds like ZeroHedge), each tagged finance/health/politics and often carrying extracted claims. For questions about what an article/analyst/video said, or what the user has been reading on a topic or ticker: use search_research (substring over metadata AND full text), list_research to browse, and read_research for the full text + extracted claims. Cite the entry title and id. READ-ONLY, free to chain.',
     'Deep Research runs are async, cited web-research reports the user commissioned: list_deep_research to find them, read_deep_research to read a completed report. When a question matches an existing report, ground your answer in it and pass through its citations.',
+    'browser_read renders public pages in a fresh Chromium session when static web fetching misses JavaScript content. It cannot log in, submit forms, download files, or access private networks. run_calculation executes synchronous JavaScript using supplied JSON data in an isolated interpreter; return JSON, optionally a line/bar chart, for calculations and analysis. No filesystem or network is available in calculations.',
+    'start_deep_research launches an async cited report and returns its id; get_research_run checks its status later. A running report is not finished. save_research saves supplied text and source metadata into the Research library; preserve citations and verify sources before saving. These two writes require user confirmation, including the question/search budget or title/domain/content to be saved.',
     "get_financial_snapshot is the user's FULL money picture for a year (net worth, crypto, brokerage, real estate, liabilities, retirement, bank). Use it for balance-sheet / net-worth / holdings questions — get_tax_summary only covers income and expenses by category, so reach for the snapshot when the question is about wealth or balances rather than taxable income.",
     'get_quant_signals returns the consolidated daily market/macro snapshot (BTC risk & drawdown, Fear & Greed, dominance, yield-curve regime, business-cycle/recession signals, inflation). Use it for "what do the signals say" / overall market-condition questions; use get_prediction_markets for odds on a specific named event.',
     'get_daily_news lists/returns the synthesized Newsstand editions (markets+politics+finance+tax+health+research woven into one narrative with Action Items). No id lists recent editions; an id returns that edition\'s full body. Use it for "what\'s the latest" or to ground analysis in the already-synthesized macro picture.',
@@ -2041,7 +2047,7 @@ function buildSystemPrompt(
     'Be concise. Use markdown tables for structured data. When citing a specific document, include its path so the user can find it.',
     [
       "WRITE TOOLS — these make persistent changes to the user's data:",
-      '  remember, set_metadata, add_calendar_event, update_calendar_event, delete_calendar_event, complete_calendar_occurrence, create_supplement, update_supplement, delete_supplement, log_sickness, log_time, create_invoice',
+      '  remember, set_metadata, add_calendar_event, update_calendar_event, delete_calendar_event, complete_calendar_occurrence, create_supplement, update_supplement, delete_supplement, log_sickness, log_time, create_invoice, start_deep_research, save_research',
       'ALWAYS state what you are about to write (which entry, which fields, what values) and wait for explicit user confirmation BEFORE invoking any of them. Read tools can be chained freely without asking.',
       "remember saves ONE durable note to the user's Brain (long-term memory, shown above). Use it sparingly — only for stable preferences, decisions, or context worth recalling in every future chat, never for one-off task details or anything the app already stores. Show the exact text and confirm before saving.",
       'delete_supplement is destructive — prefer update_supplement with status:"past" if the user might want the history back.',
@@ -2414,7 +2420,7 @@ export async function handleChatRoutes(
   // omitted entirely and chat behaves exactly as before.
   const skillsPlugin = await ensureSkillsPluginDir();
   const config = await loadConfig();
-  const ctx: ToolContext = { config };
+  const ctx: ToolContext = { config, signal: req.signal };
   // When resuming, the SDK already has the full conversation in its session
   // JSONL — no need to fold prior turns into the system prompt. For brand-new
   // sessions, history is empty anyway (this is the first turn), so dropping
@@ -2650,9 +2656,9 @@ export async function handleChatRoutes(
 }
 
 // Codex backend path — a fully separate SSE stream from the Claude one. No
-// Anthropic creds, no in-process MCP: codex uses its native tools over a
-// read-only, secrets-excluded view of the data dir (server/llm/codex-chat.ts).
-// Attachments aren't wired for codex yet (text-only first cut).
+// Anthropic credentials are not needed. Codex uses native read tools over a
+// secrets-excluded data view plus the shared research MCP bridge. Images are
+// sent inline; PDF attachments remain on the Claude path.
 function streamCodexChat(opts: {
   userText: string;
   entity?: string;
@@ -2708,6 +2714,7 @@ function streamCodexChat(opts: {
             .filter((a) => a.mimeType.startsWith('image/'))
             .map((a) => ({ url: a.dataUrl })),
           signal: opts.signal,
+          tools: researchChatTools,
           send,
         });
       } catch (err) {

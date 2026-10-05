@@ -2,12 +2,15 @@
 // one chat turn and translates its streamed notifications into DocVault's chat
 // SSE events (the same {type:'text'|'tool_call'|'done'|…} shapes the Claude path
 // emits). Codex uses its NATIVE file/grep tools against a read-only,
-// secrets-excluded view of DATA_DIR — no MCP server, matching how t3code drives
-// agents (its session calls pass mcpServers: []).
+// secrets-excluded view of DATA_DIR. A private MCP bridge exposes browser,
+// calculation, and research actions; those execute in the main DocVault process.
 
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
+import { fileURLToPath } from 'node:url';
+import { openChatToolBridge } from './chat-tool-bridge.js';
+import type { ExecutableChatTool } from '../chat-tool-definitions.js';
 import {
   CodexAppServerClient,
   type CodexNotification,
@@ -22,7 +25,7 @@ const log = createLogger('CodexChat');
 // Files in DATA_DIR that codex must NOT see (secrets — exchange + provider API
 // keys). Everything else (documents, parsed data, metadata, external sources)
 // is fair game for the agent to read.
-const SECRET_FILES = new Set(['.docvault-settings.json']);
+const SECRET_FILES = new Set(['.docvault-settings.json', '.codex', '.rclone.conf']);
 
 // Codex item types that are NOT tool activity — don't surface them as tool
 // calls. `userMessage` is the echo of the user's own message; the assistant
@@ -35,12 +38,15 @@ const NON_TOOL_ITEMS = new Set(['agentMessage', 'reasoning', 'userMessage']);
  * added entities/documents show up. Codex's cwd points here.
  */
 async function buildDataView(): Promise<string> {
-  const viewDir = path.join(os.tmpdir(), 'docvault-codex-view');
-  await fs.rm(viewDir, { recursive: true, force: true });
-  await fs.mkdir(viewDir, { recursive: true });
-  for (const entry of await fs.readdir(DATA_DIR)) {
-    if (SECRET_FILES.has(entry)) continue;
-    await fs.symlink(path.join(DATA_DIR, entry), path.join(viewDir, entry));
+  const viewDir = await fs.mkdtemp(path.join(os.tmpdir(), 'docvault-codex-view-'));
+  try {
+    for (const entry of await fs.readdir(DATA_DIR)) {
+      if (SECRET_FILES.has(entry)) continue;
+      await fs.symlink(path.join(DATA_DIR, entry), path.join(viewDir, entry));
+    }
+  } catch (error) {
+    await fs.rm(viewDir, { recursive: true, force: true });
+    throw error;
   }
   return viewDir;
 }
@@ -69,6 +75,8 @@ export interface CodexChatOptions {
   /** Image attachments for this turn (data: URLs or file URLs). */
   images?: { url: string }[];
   signal?: AbortSignal;
+  /** Shared app tools; execution remains in the main process via a private socket. */
+  tools?: ExecutableChatTool[];
   /** Emit an SSE event — same shapes as the Claude path's `send`. */
   send: (event: object) => void;
 }
@@ -83,6 +91,13 @@ export async function runCodexChat(opts: CodexChatOptions): Promise<void> {
     `[ai-billing] codex-chat → ChatGPT SUBSCRIPTION (CODEX_HOME auth.json) · model=${opts.model ?? 'default'}`
   );
   const cwd = await buildDataView();
+  let bridge: Awaited<ReturnType<typeof openChatToolBridge>> | undefined;
+  try {
+    if (opts.tools?.length) bridge = await openChatToolBridge(opts.tools, opts.signal);
+  } catch (error) {
+    await fs.rm(cwd, { recursive: true, force: true });
+    throw error;
+  }
 
   let done = false;
   let resolveDone!: () => void;
@@ -101,7 +116,20 @@ export async function runCodexChat(opts: CodexChatOptions): Promise<void> {
     cwd,
     codexHome: opts.codexHome,
     // Override cached/disabled defaults for this subprocess, including resumes.
-    extraArgs: ['-c', 'web_search="live"'],
+    extraArgs: [
+      '-c',
+      'web_search="live"',
+      ...(bridge
+        ? [
+            '-c',
+            `mcp_servers.docvault_research.command=${JSON.stringify(process.execPath)}`,
+            '-c',
+            `mcp_servers.docvault_research.args=${JSON.stringify(['run', fileURLToPath(new URL('./codex-research-mcp.ts', import.meta.url))])}`,
+            '-c',
+            `mcp_servers.docvault_research.env.DOCVAULT_TOOL_SOCKET=${JSON.stringify(bridge.socketPath)}`,
+          ]
+        : []),
+    ],
     onNotification: (n) => translateNotification(n, send, finish),
     onServerRequest: (r) => handleCodexServerRequest(r, opts.codexHome),
     onExit: (code) => {
@@ -113,9 +141,14 @@ export async function runCodexChat(opts: CodexChatOptions): Promise<void> {
   });
 
   // Client abort (Stop button / disconnect) → kill the codex subprocess.
-  opts.signal?.addEventListener('abort', () => client.kill());
+  const abort = () => {
+    client.kill();
+    finish({ isError: true, stopReason: 'interrupted' });
+  };
+  opts.signal?.addEventListener('abort', abort, { once: true });
 
   try {
+    opts.signal?.throwIfAborted();
     await client.initialize({ name: 'docvault', title: 'DocVault', version: '1.0.0' });
 
     const threadParams = {
@@ -144,7 +177,10 @@ export async function runCodexChat(opts: CodexChatOptions): Promise<void> {
     send({ type: 'error', message: err instanceof Error ? err.message : 'codex error' });
     finish({ isError: true });
   } finally {
+    opts.signal?.removeEventListener('abort', abort);
     client.kill();
+    await bridge?.close();
+    await fs.rm(cwd, { recursive: true, force: true });
   }
 }
 
@@ -167,7 +203,12 @@ function translateNotification(
       const item = obj(p.item);
       const type = str(item.type);
       if (type && !NON_TOOL_ITEMS.has(type)) {
-        send({ type: 'tool_call', id: str(item.id) ?? '', toolName: type, input: item });
+        send({
+          type: 'tool_call',
+          id: str(item.id) ?? '',
+          toolName: type === 'mcpToolCall' ? (str(item.tool) ?? type) : type,
+          input: type === 'mcpToolCall' ? item.arguments : item,
+        });
       }
       break;
     }
@@ -175,12 +216,30 @@ function translateNotification(
       const item = obj(p.item);
       const type = str(item.type);
       if (type && !NON_TOOL_ITEMS.has(type)) {
-        send({ type: 'tool_result', toolUseId: str(item.id) ?? '', result: item, isError: false });
+        let result: unknown = item;
+        const mcpResult = obj(item.result);
+        if (type === 'mcpToolCall' && Array.isArray(mcpResult.content)) {
+          const text = mcpResult.content.map((c) => str(obj(c).text) ?? '').join('\n');
+          try {
+            result = JSON.parse(text);
+          } catch {
+            result = text || item;
+          }
+        }
+        send({
+          type: 'tool_result',
+          toolUseId: str(item.id) ?? '',
+          result,
+          isError: item.status === 'failed' || !!mcpResult.isError || !!item.error,
+        });
       }
       break;
     }
     case 'turn/completed':
-      finish();
+      finish({
+        isError: ['failed', 'interrupted'].includes(str(obj(p.turn).status) ?? ''),
+        ...(str(obj(p.turn).status) === 'interrupted' ? { stopReason: 'interrupted' } : {}),
+      });
       break;
     case 'error':
       send({ type: 'error', message: str(p.message) ?? 'codex error' });
