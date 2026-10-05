@@ -6,6 +6,7 @@
 // API docs: https://beta-bridge.simplefin.org/info/developers
 
 import { createLogger } from './logger.js';
+import { deriveConnectionIssues, type SimplefinIssue } from './simplefin-health.js';
 
 const log = createLogger('SimpleFIN');
 
@@ -32,6 +33,16 @@ export interface SimplefinBalanceCache {
   accounts: SimplefinAccount[];
   lastUpdated: string;
   connectionErrors?: string[];
+  connectionIssues?: SimplefinIssue[];
+}
+
+export class SimplefinFetchError extends Error {
+  issues: SimplefinIssue[];
+  constructor(message: string, issues: SimplefinIssue[]) {
+    super(message);
+    this.name = 'SimplefinFetchError';
+    this.issues = issues;
+  }
 }
 
 // Raw API response types
@@ -56,7 +67,7 @@ interface SimplefinRawAccount {
 
 interface SimplefinResponse {
   errors?: string[];
-  errlist?: Array<{ code: string; msg: string; conn_id?: string }>;
+  errlist?: Array<{ code: string; msg?: string; message?: string; conn_id?: string }>;
   connections?: Array<{ conn_id: string; name: string }>;
   accounts: SimplefinRawAccount[];
 }
@@ -115,6 +126,8 @@ export async function fetchBalanceSnapshot(
   // Remove credentials from URL for fetch
   parsed.username = '';
   parsed.password = '';
+  parsed.searchParams.set('version', '2');
+  parsed.searchParams.set('balances-only', '1');
 
   let res: Response;
   for (let attempt = 1; ; attempt++) {
@@ -140,26 +153,52 @@ export async function fetchBalanceSnapshot(
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     if (res.status === 403) {
-      throw new Error(
-        'SimpleFIN authentication failed. Your access URL may be invalid or expired.'
-      );
+      const message = 'SimpleFIN authentication failed. Check the app access token in Settings.';
+      throw new SimplefinFetchError(message, [{ id: 'access', kind: 'access', message }]);
     }
     if (res.status === 402) {
-      throw new Error('SimpleFIN subscription required. Renew at beta-bridge.simplefin.org');
+      const message = 'SimpleFIN subscription required. Renew at beta-bridge.simplefin.org';
+      throw new SimplefinFetchError(message, [
+        { id: 'subscription', kind: 'subscription', message },
+      ]);
     }
-    if (res.status === 429) throw new Error('SimpleFIN request quota reached. Try again later.');
+    if (res.status === 429) {
+      const message = 'SimpleFIN request quota reached. Try again later.';
+      throw new SimplefinFetchError(message, [{ id: 'quota', kind: 'quota', message }]);
+    }
     throw new Error(`SimpleFIN error (${res.status}): ${body || res.statusText}`);
   }
 
   const data = (await res.json()) as SimplefinResponse;
-  const errors = data.errlist?.length
-    ? data.errlist.map((error) => {
-        const name = data.connections?.find(
-          (connection) => connection.conn_id === error.conn_id
-        )?.name;
-        return name && !error.msg.includes(name) ? `${name}: ${error.msg}` : error.msg;
-      })
-    : (data.errors ?? []);
+  const connectionIssues = deriveConnectionIssues(
+    data.errlist?.length
+      ? data.errlist.map((error) => {
+          const message = error.msg || error.message || 'Bank connection needs attention';
+          let connection = data.connections?.find(
+            (connection) => connection.conn_id === error.conn_id
+          );
+          // Bridge occasionally returns an error ID different from its connection
+          // rows. An unambiguous bank name still identifies the affected data.
+          if (!connection) {
+            const matches = data.connections?.filter((entry) => message.includes(entry.name)) ?? [];
+            if (matches.length === 1) connection = matches[0];
+          }
+          const name = connection?.name;
+          const dates = (data.accounts ?? [])
+            .filter((account) => connection && account.conn_id === connection.conn_id)
+            .map((account) => account['balance-date'] ?? 0);
+          const latest = Math.max(0, ...dates);
+          return {
+            message: name && !message.includes(name) ? `${name}: ${message}` : message,
+            code: error.code,
+            connectionId: connection?.conn_id ?? error.conn_id,
+            connectionName: name,
+            lastBankDataAt: latest > 0 ? new Date(latest * 1000).toISOString() : undefined,
+          };
+        })
+      : (data.errors ?? []).map((message) => ({ message }))
+  );
+  const errors = connectionIssues.map((issue) => issue.message);
 
   // SimpleFIN signals a broken connection IN THE BODY, with HTTP 200: the
   // `errors` array carries things like "Connection to <bank> needs attention"
@@ -174,7 +213,11 @@ export async function fetchBalanceSnapshot(
   if (accounts.length === 0) {
     // A configured connection never legitimately returns zero accounts.
     const detail = errors.length ? `: ${errors.join('; ')}` : ' (no errors reported)';
-    throw new Error(`SimpleFIN returned no accounts${detail}`);
+    const message = `SimpleFIN returned no accounts${detail}`;
+    throw new SimplefinFetchError(
+      message,
+      connectionIssues.length ? connectionIssues : [{ id: 'sync', kind: 'sync', message }]
+    );
   }
   log.info(`[balances] fetched ${accounts.length} accounts, ${errors.length} connection error(s)`);
 
@@ -196,5 +239,6 @@ export async function fetchBalanceSnapshot(
     accounts: mapped,
     lastUpdated: new Date().toISOString(),
     connectionErrors: errors,
+    connectionIssues,
   };
 }

@@ -183,6 +183,9 @@ scripts/*
 
 # Exception: SimpleFIN balance tests stub the HTTP response with fabricated institutions/amounts, no personal data
 !server/simplefin-balances.test.ts
+# Exception: bank warning lifecycle and sync tests use synthetic accounts in tmpdirs
+!server/simplefin-health.test.ts
+!server/simplefin-sync.test.ts
 # Exception: history-series tests are pure missing-vs-zero logic over fabricated figures, no personal data
 !src/components/common/historySeries.test.ts
 

@@ -15,3 +15,12 @@ test('partial bank connections expose the provider reason and a reconnect action
 test('healthy bank syncs do not show a reconnect warning', () => {
   expect(renderToStaticMarkup(<SimplefinConnectionWarnings errors={[]} />)).toBe('');
 });
+
+test('temporary outages never instruct the user to reauthenticate', () => {
+  const html = renderToStaticMarkup(
+    <SimplefinConnectionWarnings errors={['Acme Bank: Temporarily unavailable']} />
+  );
+  expect(html).not.toContain('Reconnect bank accounts');
+  expect(html).not.toContain('Reconnect the affected banks');
+  expect(html).toContain('Temporarily unavailable');
+});
