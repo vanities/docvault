@@ -886,24 +886,27 @@ function noteEtherscanPermanentFailure(
   kind: EtherscanPermanentKind,
   label: string,
   text: string,
-  log: Logger
+  log: Logger,
+  chainId: string
 ): void {
   // Key problems are global; entitlement problems are per-chain.
-  const scope = kind === 'invalid-key' ? 'invalid-key' : `${kind}:${label.split(' ')[0]}`;
+  const scope = kind === 'invalid-key' ? 'invalid-key' : `${kind}:${chainId}`;
   if (reportedEtherscanFailures.has(scope)) return;
   reportedEtherscanFailures.add(scope);
   if (kind === 'invalid-key') {
     log.error(
-      `Etherscan API key rejected (${text}). On-chain wallet balances will be MISSING ` +
-        `from the portfolio until the key in Settings is corrected.`
+      `Etherscan API key rejected (${text}). Fresh on-chain balances are unavailable ` +
+        `until the key in Settings is corrected; existing cached balances are preserved.`
     );
   } else {
     log.warn(
       `${label}: chain not available on the current Etherscan plan (${text}). ` +
-        `Skipping it — balances on this chain are excluded from the portfolio.`
+        `Fresh balances are unavailable; existing cached balances are preserved.`
     );
   }
 }
+
+class EtherscanLookupError extends Error {}
 
 /** Test seam: reset the once-per-process report memo. */
 export function resetEtherscanFailureReports(): void {
@@ -967,10 +970,11 @@ async function etherscanFetch(
     try {
       const res = await pacedEtherscanRequest(url, PER_ATTEMPT_TIMEOUT_MS);
       if (!res.ok) {
-        // 4xx (other than 429) won't recover — fail fast by returning null.
+        // 4xx (other than 429) won't recover — fail without replacing cached balances.
         if (res.status >= 400 && res.status < 500 && res.status !== 429) {
-          log.warn(`${label} HTTP ${res.status} (non-retryable)`);
-          return null;
+          throw new EtherscanLookupError(
+            `${label} balance unavailable: HTTP ${res.status} (non-retryable)`
+          );
         }
         lastErr = new Error(`HTTP ${res.status}`);
       } else {
@@ -999,9 +1003,15 @@ async function etherscanFetch(
           // job while silently reporting no on-chain balances.
           const permanent = classifyPermanentEtherscanError(text);
           if (permanent) {
-            if (!handlePermanent?.(permanent))
-              noteEtherscanPermanentFailure(permanent, label, text, log);
-            return null;
+            if (handlePermanent?.(permanent)) return null;
+            noteEtherscanPermanentFailure(
+              permanent,
+              label,
+              text,
+              log,
+              new URL(url).searchParams.get('chainid') ?? 'unknown'
+            );
+            throw new EtherscanLookupError(`${label} balance unavailable: ${text}`);
           }
 
           lastErr = new Error(`status=0: ${text || 'NOTOK'}`);
@@ -1011,6 +1021,7 @@ async function etherscanFetch(
         }
       }
     } catch (err) {
+      if (err instanceof EtherscanLookupError) throw err;
       lastErr = err instanceof Error ? err : new Error(String(err));
     }
     if (attempt < MAX_ATTEMPTS) {
@@ -1025,7 +1036,9 @@ async function etherscanFetch(
     }
   }
   log.warn(`${label} gave up after ${MAX_ATTEMPTS} attempts: ${lastErr?.message ?? 'unknown'}`);
-  return null;
+  throw new EtherscanLookupError(
+    `${label} balance unavailable after ${MAX_ATTEMPTS} attempts: ${lastErr?.message ?? 'unknown'}`
+  );
 }
 
 // L2 token lists — native tokens on their home chains
@@ -1103,6 +1116,7 @@ async function fetchChainlinkStakedBalance(address: string): Promise<number> {
       total += Number(principal) / 1e18;
     } catch (err) {
       logChainlink.warn(`${pool.label} error: ${err}`);
+      throw err;
     }
   }
 
@@ -1170,7 +1184,12 @@ export async function fetchChainBalances(
   const rateDelay = etherscanRateDelayMs(!!etherscanApiKey);
 
   const log = createLogger(`Chain ${chainId}`);
-  const rpcEndpoint = chainId === 10 ? 'https://mainnet.optimism.io' : null;
+  const rpcEndpoint =
+    chainId === 10
+      ? 'https://mainnet.optimism.io'
+      : chainId === 43114
+        ? 'https://api.avax.network/ext/bc/C/rpc'
+        : null;
   let useRpc = false;
   const handlePermanent = (kind: EtherscanPermanentKind): boolean => {
     if (kind !== 'chain-not-entitled' || !rpcEndpoint) return false;
@@ -1201,6 +1220,7 @@ export async function fetchChainBalances(
     }
   } catch (err) {
     log.error(`Native balance error: ${err}`);
+    throw err;
   }
   if (useRpc) return rpcBalances();
 
@@ -1225,6 +1245,7 @@ export async function fetchChainBalances(
       }
     } catch (err) {
       log.warn(`${token.symbol} error: ${err}`);
+      throw err;
     }
   }
 

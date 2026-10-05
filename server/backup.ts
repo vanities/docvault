@@ -23,8 +23,37 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import { zipSync } from 'fflate';
+import { Worker } from 'worker_threads';
 import { DATA_DIR } from './data.js';
+
+/** Transfers ownership of the collected buffers to a compression worker. A
+ * large health archive must not block login, polling, or automation timers. */
+export function zipBackupFiles(files: Record<string, Uint8Array>): Promise<Uint8Array> {
+  const transferList = [...new Set(Object.values(files).map((file) => file.buffer))].filter(
+    (buffer): buffer is ArrayBuffer => buffer instanceof ArrayBuffer
+  );
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(
+      `
+      const { parentPort, workerData } = require('worker_threads');
+      const { zipSync } = require('fflate');
+      const zipped = zipSync(workerData);
+      parentPort.postMessage(zipped, [zipped.buffer]);
+    `,
+      { eval: true, workerData: files, transferList }
+    );
+    let received = false;
+    worker.once('message', (zipped: Uint8Array) => {
+      received = true;
+      resolve(zipped);
+    });
+    worker.once('error', reject);
+    worker.once('exit', (code) => {
+      if (!received)
+        reject(new Error(`Backup compression worker exited without a result (code ${code})`));
+    });
+  });
+}
 
 // Recursively collect files under `absDir` into `out`, keyed by their path
 // relative to `relDir` (so `health/person-x/exports/file.zip` stays the key).
@@ -111,21 +140,22 @@ export async function collectBackupFiles(
 /**
  * Build the full encrypted backup bundle.
  *
- * Flow: collectBackupFiles → zipSync → AES-256-GCM encrypt with a
+ * Flow: collectBackupFiles → worker compression → AES-256-GCM encrypt with a
  * scrypt-derived key → pack as salt||iv||authTag||ciphertext.
  *
  * The restore handler in server/index.ts understands this exact format;
  * don't change the pack layout without updating restore too.
  *
  * `dataDir` defaults to DATA_DIR. Exposed for tests; production callers
- * should omit it.
+ * should omit it unless reusing `collectedFiles`, whose buffers are consumed.
  */
 export async function createBackupBundle(
   password: string,
-  dataDir: string = DATA_DIR
+  dataDir: string = DATA_DIR,
+  collectedFiles?: Record<string, Uint8Array>
 ): Promise<Buffer> {
-  const files = await collectBackupFiles(dataDir);
-  const zipped = zipSync(files);
+  const files = collectedFiles ?? (await collectBackupFiles(dataDir));
+  const zipped = await zipBackupFiles(files);
 
   const { createCipheriv, randomBytes, scryptSync } = await import('crypto');
   const salt = randomBytes(16);

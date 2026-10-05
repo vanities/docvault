@@ -91,17 +91,56 @@ describe('fetchChainBalances — fail fast on permanent errors', () => {
     expect(spy.mock.calls[1][0]).toBe('https://mainnet.optimism.io');
   });
 
+  test('Avalanche also recovers instead of silently dropping excluded balances', async () => {
+    const spy = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) =>
+      Response.json(
+        init?.method === 'POST'
+          ? { result: '0xde0b6b3a7640000' }
+          : {
+              status: '0',
+              message: 'NOTOK',
+              result:
+                'Free API access is not supported for this chain. Please upgrade your api plan.',
+            }
+      )
+    );
+    globalThis.fetch = spy as typeof fetch;
+    expect(
+      await fetchChainBalances('0x0000000000000000000000000000000000000001', 43114, 'AVAX', [])
+    ).toEqual([{ asset: 'AVAX', amount: 1 }]);
+    expect(spy.mock.calls[1][0]).toBe('https://api.avax.network/ext/bc/C/rpc');
+  });
+
   test('a rejected key also costs ONE request', async () => {
     const spy = stubAll({ status: '0', message: 'NOTOK', result: 'Invalid API Key (#err2)' });
-    await fetchChainBalances('0xabc', 1, 'ETH', []);
+    await expect(fetchChainBalances('0xabc', 1, 'ETH', [])).rejects.toThrow(/Invalid API Key/);
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
-  test('a permanent failure yields no balances rather than bogus zeros', async () => {
+  test('a permanent failure rejects so portfolio caches cannot save it as a zero balance', async () => {
     stubAll({ status: '0', message: 'NOTOK', result: 'Invalid API Key (#err2)' });
-    const out = await fetchChainBalances('0xabc', 1, 'ETH', []);
-    // Missing data must not be reported as a real zero balance.
-    expect(out).toEqual([]);
+    await expect(fetchChainBalances('0xabc', 1, 'ETH', [])).rejects.toThrow(/balance unavailable/);
+  });
+
+  test('exhausted rate-limit retries reject instead of saving an empty wallet', async () => {
+    vi.useFakeTimers();
+    setEtherscanApiKey('synthetic-key');
+    const spy = stubAll({ status: '0', message: 'NOTOK', result: 'Max rate limit reached' });
+    const rejected = expect(
+      fetchChainBalances('0x0000000000000000000000000000000000000001', 1, 'ETH', [])
+    ).rejects.toThrow(/balance unavailable after 6 attempts.*Max rate limit reached/);
+    await vi.runAllTimersAsync();
+    await rejected;
+    expect(spy).toHaveBeenCalledTimes(6);
+  });
+
+  test('non-retryable HTTP errors reject after one request', async () => {
+    const spy = vi.fn(async () => new Response('Forbidden', { status: 403 }));
+    globalThis.fetch = spy as typeof fetch;
+    await expect(
+      fetchChainBalances('0x0000000000000000000000000000000000000001', 1, 'ETH', [])
+    ).rejects.toThrow(/HTTP 403.*non-retryable/);
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 
   test('concurrent native balance lookups share pacing instead of bursting', async () => {

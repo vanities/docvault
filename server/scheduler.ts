@@ -554,7 +554,7 @@ async function createEncryptedConfigBackup(password: string): Promise<string | n
       const { createBackupBundle, collectBackupFiles } = await import('./backup.js');
       const files = await collectBackupFiles();
       if (!Object.keys(files).length) throw new Error('No .docvault-*.json files found');
-      const packed = await createBackupBundle(password);
+      const packed = await createBackupBundle(password, DATA_DIR, files);
       const destination = path.join(DATA_DIR, '.docvault-config-backup.enc');
       await fs.writeFile(destination, packed);
       backupPath = destination;
