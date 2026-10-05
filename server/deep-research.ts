@@ -358,7 +358,7 @@ async function runDeepResearchCodexAgent(question: string): Promise<ResearchResu
     cwd,
     codexHome,
     // Enable the native Responses web_search tool (equivalent to `codex --search`).
-    extraArgs: ['-c', 'tools.web_search=true'],
+    extraArgs: ['-c', 'web_search="live"'],
     onNotification,
     // Relay codex's ChatGPT auth-token refresh from auth.json (deny approvals).
     // Returning null here makes codex fail fast with an empty turn.

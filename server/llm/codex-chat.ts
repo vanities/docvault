@@ -100,6 +100,8 @@ export async function runCodexChat(opts: CodexChatOptions): Promise<void> {
     binaryPath: opts.binaryPath,
     cwd,
     codexHome: opts.codexHome,
+    // Override cached/disabled defaults for this subprocess, including resumes.
+    extraArgs: ['-c', 'web_search="live"'],
     onNotification: (n) => translateNotification(n, send, finish),
     onServerRequest: (r) => handleCodexServerRequest(r, opts.codexHome),
     onExit: (code) => {
