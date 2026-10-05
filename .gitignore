@@ -246,3 +246,11 @@ demo-data/.docvault-estimated-taxes.json
 !server/routes/crypto-yields.test.ts
 # Exception: rebuilt media-detection coverage uses fabricated headers and filenames only
 !server/routes/research.test.ts
+# Synthetic browser pages, sandbox calculations, MCP messages, and temp research stores only.
+!server/chat-calculation.test.ts
+!server/public-web.test.ts
+!server/public-web-transport.test.ts
+!server/chat-browser.test.ts
+!server/chat-research-tools.test.ts
+!server/llm/codex-chat.test.ts
+!src/components/Chat/CalculationChartPreview.test.tsx

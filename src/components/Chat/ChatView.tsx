@@ -41,6 +41,7 @@ import {
   type SkillTrigger,
 } from '../../utils/skillTrigger';
 import { SafeMarkdown } from '../common/SafeMarkdown';
+import { CalculationChartPreview } from './CalculationChartPreview';
 
 /** Installed chat skill (from GET /api/skills) — drives $mention suggestions. */
 interface ChatSkill {
@@ -187,6 +188,11 @@ const TOOL_LABELS: Record<string, string> = {
   search_external_sources: 'Searched external sources',
   read_external_file: 'Read external file',
   list_external_source_files: 'Listed external files',
+  browser_read: 'Read webpage in browser',
+  run_calculation: 'Calculated',
+  start_deep_research: 'Started Deep Research',
+  get_research_run: 'Checked research report',
+  save_research: 'Saved to Research',
 };
 
 function ToolCallCard({ block }: { block: AssistantToolCallBlock }) {
@@ -217,6 +223,9 @@ function ToolCallCard({ block }: { block: AssistantToolCallBlock }) {
         </span>
         {summary && <span className="text-surface-500 truncate">{summary}</span>}
       </button>
+      {block.ok && block.toolName === 'run_calculation' && (
+        <CalculationChartPreview result={block.result} />
+      )}
       {open && (
         <div className="px-3 pb-3 space-y-2">
           <div>

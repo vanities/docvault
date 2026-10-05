@@ -31,6 +31,8 @@ jobs:
 
       - name: Test
         run: bun run test
+        env:
+          DOCVAULT_BROWSER_EXECUTABLE: /usr/bin/google-chrome
 
   auto-release:
     needs: quality

@@ -14,9 +14,11 @@ import path from 'path';
 import { DATA_DIR } from './data.js';
 import { createLogger } from './logger.js';
 import { runDeepResearch, type ResearchSource, type ResearchAttachment } from './deep-research.js';
+import { createWriteLock, writeJsonAtomic } from './write-lock.js';
 
 const log = createLogger('DeepResearchStore');
 const STORE_PATH = path.join(DATA_DIR, '.docvault-deep-research.json');
+const withRunMutation = createWriteLock();
 
 export interface ResearchRun {
   id: string;
@@ -55,21 +57,25 @@ export type Runner = typeof runDeepResearch;
 async function loadRuns(): Promise<Record<string, ResearchRun>> {
   try {
     return JSON.parse(await fs.readFile(STORE_PATH, 'utf-8')) as Record<string, ResearchRun>;
-  } catch {
-    return {};
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {};
+    throw error;
   }
 }
 
 async function saveRuns(runs: Record<string, ResearchRun>): Promise<void> {
-  await fs.writeFile(STORE_PATH, JSON.stringify(runs, null, 2));
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  await writeJsonAtomic(STORE_PATH, runs);
 }
 
 async function patchRun(id: string, patch: Partial<ResearchRun>): Promise<void> {
-  const runs = await loadRuns();
-  if (runs[id]) {
-    runs[id] = { ...runs[id], ...patch };
-    await saveRuns(runs);
-  }
+  await withRunMutation(async () => {
+    const runs = await loadRuns();
+    if (runs[id]) {
+      runs[id] = { ...runs[id], ...patch };
+      await saveRuns(runs);
+    }
+  });
 }
 
 /** Persist a `running` record, fire the research in the background, return its id. */
@@ -80,19 +86,22 @@ export async function startResearchRun(
   runner: Runner = runDeepResearch
 ): Promise<string> {
   const id = crypto.randomUUID();
-  const runs = await loadRuns();
-  runs[id] = {
-    id,
-    question,
-    status: 'running',
-    maxSearches,
-    ...(attachments.length > 0 ? { attachments } : {}),
-    createdAt: new Date().toISOString(),
-  };
-  await saveRuns(runs);
+  await withRunMutation(async () => {
+    const runs = await loadRuns();
+    runs[id] = {
+      id,
+      question,
+      status: 'running',
+      maxSearches,
+      ...(attachments.length > 0 ? { attachments } : {}),
+      createdAt: new Date().toISOString(),
+    };
+    await saveRuns(runs);
+  });
 
   // Background — the caller does not await this; the client polls getRun(id).
-  void runner(question, { maxSearches, attachments })
+  void Promise.resolve()
+    .then(() => runner(question, { maxSearches, attachments }))
     .then((result) =>
       patchRun(id, {
         status: 'done',
@@ -112,7 +121,10 @@ export async function startResearchRun(
         error: message,
         completedAt: new Date().toISOString(),
       });
-    });
+    })
+    .catch((error: unknown) =>
+      log.error(`Could not persist research completion: ${String(error)}`)
+    );
 
   return id;
 }
@@ -139,7 +151,9 @@ export async function listRuns(): Promise<ResearchRunSummary[]> {
 }
 
 export async function deleteRun(id: string): Promise<void> {
-  const runs = await loadRuns();
-  delete runs[id];
-  await saveRuns(runs);
+  await withRunMutation(async () => {
+    const runs = await loadRuns();
+    delete runs[id];
+    await saveRuns(runs);
+  });
 }
