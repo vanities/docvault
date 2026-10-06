@@ -17,6 +17,11 @@ const fixture = vi.hoisted(() => ({
     killed: boolean;
   }[],
   failed: false,
+  notificationError: null as {
+    error?: { message?: string };
+    message?: string;
+    willRetry?: boolean;
+  } | null,
 }));
 vi.mock('../data.js', () => ({ DATA_DIR: fixture.dataDir }));
 vi.mock('../logger.js', () => ({
@@ -45,6 +50,10 @@ vi.mock('./codex-app-server.js', () => ({
       return input.threadId;
     }
     async startTurn() {
+      if (fixture.notificationError) {
+        this.state.options.onNotification?.({ method: 'error', params: fixture.notificationError });
+        if (!fixture.notificationError.willRetry) return;
+      }
       const item = {
         type: 'mcpToolCall',
         id: 'synthetic-tool',
@@ -88,6 +97,7 @@ import { runCodexChat, handleCodexServerRequest } from './codex-chat.js';
 beforeEach(async () => {
   fixture.clients.length = 0;
   fixture.failed = false;
+  fixture.notificationError = null;
   await fs.mkdir(fixture.dataDir, { recursive: true });
   for (const filename of ['.docvault-settings.json', '.rclone.conf', '.codex', 'synthetic.txt'])
     await fs.writeFile(`${fixture.dataDir}/${filename}`, 'synthetic');
@@ -153,4 +163,45 @@ test('surfaces MCP and turn failures and continues to deny filesystem approvals'
   expect(
     await handleCodexServerRequest({ id: 1, method: 'item/commandExecution/requestApproval' })
   ).toEqual({ decision: 'deny' });
+});
+
+test('preserves nested Codex error messages so sign-in failures are actionable', async () => {
+  fixture.notificationError = {
+    error: { message: 'Synthetic account needs a fresh sign-in.' },
+    willRetry: false,
+  };
+  const events: Record<string, unknown>[] = [];
+  await runCodexChat({
+    userText: 'Synthetic',
+    systemPrompt: 'Synthetic',
+    send: (event) => events.push(event as Record<string, unknown>),
+  });
+  expect(events).toContainEqual({
+    type: 'error',
+    message: 'Synthetic account needs a fresh sign-in.',
+  });
+  expect(events.at(-1)?.isError).toBe(true);
+});
+
+test('lets Codex recover from retryable errors before completing the turn', async () => {
+  fixture.notificationError = {
+    error: { message: 'Synthetic temporary connection failure.' },
+    willRetry: true,
+  };
+  const events: Record<string, unknown>[] = [];
+  await runCodexChat({
+    userText: 'Synthetic',
+    systemPrompt: 'Synthetic',
+    send: (event) => events.push(event as Record<string, unknown>),
+  });
+  expect(events.filter((event) => event.type === 'error')).toEqual([]);
+  expect(events.filter((event) => event.type === 'done')).toEqual([
+    { type: 'done', stopReason: 'end_turn', isError: false },
+  ]);
+  expect(events).toContainEqual({
+    type: 'tool_result',
+    toolUseId: 'synthetic-tool',
+    result: { result: 42, logs: [] },
+    isError: false,
+  });
 });

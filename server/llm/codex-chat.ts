@@ -241,10 +241,16 @@ function translateNotification(
         ...(str(obj(p.turn).status) === 'interrupted' ? { stopReason: 'interrupted' } : {}),
       });
       break;
-    case 'error':
-      send({ type: 'error', message: str(p.message) ?? 'codex error' });
+    case 'error': {
+      const message = str(obj(p.error).message) ?? str(p.message) ?? 'codex error';
+      if (p.willRetry === true) {
+        log.warn(`codex will retry: ${message}`);
+        break;
+      }
+      send({ type: 'error', message });
       finish({ isError: true });
       break;
+    }
     default:
       // thread/started, item/reasoning/*, thread/tokenUsage/updated, … — ignored
       // for now (no UI surface). Token usage could feed `done` later.
