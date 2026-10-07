@@ -33,12 +33,13 @@ PATTERNS_FILE = SKILL_DIR / "personal-patterns.txt"
 # Scan these text-bearing paths that are NOT gitignored (so they'd be committed).
 # Screenshots are binary — we check filenames/paths only, not pixels.
 SCAN_TEXT_GLOBS = [
-    "demo-data/**/*.json",
-    "demo-data/**/*.md",
+    "web/demo-data/**/*.json",
+    "web/demo-data/**/*.md",
     "README.md",
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "server/**/*.ts",
+    "web/src/**/*.ts",
+    "web/src/**/*.tsx",
+    "web/server/**/*.ts",
+    "ios/**/*.swift",
 ]
 
 GENERIC_PATTERNS: list[tuple[str, re.Pattern[str]]] = [

@@ -1,0 +1,77 @@
+name: DocVault
+options:
+  bundleIdPrefix: com.vanities
+  deploymentTarget:
+    iOS: '26.0'
+  xcodeVersion: '27.0'
+  createIntermediateGroups: true
+  developmentLanguage: en
+settings:
+  base:
+    SWIFT_VERSION: '6.0'
+    SWIFT_STRICT_CONCURRENCY: complete
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+packages:
+  Textual:
+    url: https://github.com/gonzalezreal/textual
+    version: 0.5.0
+targets:
+  DocVault:
+    type: application
+    platform: iOS
+    sources:
+      - path: DocVault
+        excludes: [Resources/Info.plist]
+      - path: ../web/src/data/macro-release-calendar.json
+        buildPhase: resources
+    configFiles:
+      Debug: Config/Debug.xcconfig
+      Release: Config/Release.xcconfig
+    dependencies:
+      - package: Textual
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vanities.docvault
+        INFOPLIST_FILE: DocVault/Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: '1,2'
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        MARKETING_VERSION: '1.0'
+        CURRENT_PROJECT_VERSION: '1'
+        ENABLE_PREVIEWS: YES
+  DocVaultTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [DocVaultTests]
+    dependencies:
+      - target: DocVault
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+  DocVaultUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [DocVaultUITests]
+    dependencies:
+      - target: DocVault
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  DocVault:
+    build:
+      targets:
+        DocVault: all
+        DocVaultTests: [test]
+        DocVaultUITests: [test]
+    test:
+      config: Debug
+      gatherCoverageData: true
+      targets: [DocVaultTests, DocVaultUITests]
+    archive:
+      config: Release

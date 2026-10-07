@@ -1,0 +1,290 @@
+{
+  "verifiedAt": "2026-10-06",
+  "coverage": {
+    "fomc": "2027-12-08",
+    "cpi": "2026-12-10",
+    "nfp": "2026-12-04"
+  },
+  "events": [
+    {
+      "date": "2026-01-09",
+      "label": "Employment (Dec)",
+      "type": "nfp",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-01-13",
+      "label": "CPI (Dec)",
+      "type": "cpi",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-01-28",
+      "label": "FOMC decision",
+      "type": "fomc",
+      "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+      "time": null
+    },
+    {
+      "date": "2026-02-11",
+      "label": "Employment (Jan)",
+      "type": "nfp",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-02-13",
+      "label": "CPI (Jan)",
+      "type": "cpi",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-03-06",
+      "label": "Employment (Feb)",
+      "type": "nfp",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-03-11",
+      "label": "CPI (Feb)",
+      "type": "cpi",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-03-18",
+      "label": "FOMC decision",
+      "type": "fomc",
+      "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+      "time": null
+    },
+    {
+      "date": "2026-04-03",
+      "label": "Employment (Mar)",
+      "type": "nfp",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-04-10",
+      "label": "CPI (Mar)",
+      "type": "cpi",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-04-29",
+      "label": "FOMC decision",
+      "type": "fomc",
+      "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+      "time": null
+    },
+    {
+      "date": "2026-05-08",
+      "label": "Employment (Apr)",
+      "type": "nfp",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-05-12",
+      "label": "CPI (Apr)",
+      "type": "cpi",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-06-05",
+      "label": "Employment (May)",
+      "type": "nfp",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-06-10",
+      "label": "CPI (May)",
+      "type": "cpi",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-06-17",
+      "label": "FOMC decision",
+      "type": "fomc",
+      "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+      "time": null
+    },
+    {
+      "date": "2026-07-02",
+      "label": "Employment (Jun)",
+      "type": "nfp",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-07-14",
+      "label": "CPI (Jun)",
+      "type": "cpi",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-07-29",
+      "label": "FOMC decision",
+      "type": "fomc",
+      "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+      "time": null
+    },
+    {
+      "date": "2026-08-07",
+      "label": "Employment (Jul)",
+      "type": "nfp",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-08-12",
+      "label": "CPI (Jul)",
+      "type": "cpi",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-09-04",
+      "label": "Employment (Aug)",
+      "type": "nfp",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-09-11",
+      "label": "CPI (Aug)",
+      "type": "cpi",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-09-16",
+      "label": "FOMC decision",
+      "type": "fomc",
+      "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+      "time": null
+    },
+    {
+      "date": "2026-10-02",
+      "label": "Employment (Sep)",
+      "type": "nfp",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-10-14",
+      "label": "CPI (Sep)",
+      "type": "cpi",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-10-28",
+      "label": "FOMC decision",
+      "type": "fomc",
+      "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+      "time": null
+    },
+    {
+      "date": "2026-11-06",
+      "label": "Employment (Oct)",
+      "type": "nfp",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-11-10",
+      "label": "CPI (Oct)",
+      "type": "cpi",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-12-04",
+      "label": "Employment (Nov)",
+      "type": "nfp",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2026-12-09",
+      "label": "FOMC decision",
+      "type": "fomc",
+      "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+      "time": null
+    },
+    {
+      "date": "2026-12-10",
+      "label": "CPI (Nov)",
+      "type": "cpi",
+      "url": "https://www.bls.gov/schedule/2026/home.htm",
+      "time": "8:30 AM Eastern"
+    },
+    {
+      "date": "2027-01-27",
+      "label": "FOMC decision",
+      "type": "fomc",
+      "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+      "time": null
+    },
+    {
+      "date": "2027-03-17",
+      "label": "FOMC decision",
+      "type": "fomc",
+      "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+      "time": null
+    },
+    {
+      "date": "2027-04-28",
+      "label": "FOMC decision",
+      "type": "fomc",
+      "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+      "time": null
+    },
+    {
+      "date": "2027-06-09",
+      "label": "FOMC decision",
+      "type": "fomc",
+      "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+      "time": null
+    },
+    {
+      "date": "2027-07-28",
+      "label": "FOMC decision",
+      "type": "fomc",
+      "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+      "time": null
+    },
+    {
+      "date": "2027-09-15",
+      "label": "FOMC decision",
+      "type": "fomc",
+      "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+      "time": null
+    },
+    {
+      "date": "2027-10-27",
+      "label": "FOMC decision",
+      "type": "fomc",
+      "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+      "time": null
+    },
+    {
+      "date": "2027-12-08",
+      "label": "FOMC decision",
+      "type": "fomc",
+      "url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+      "time": null
+    }
+  ]
+}

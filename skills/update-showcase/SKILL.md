@@ -53,11 +53,11 @@ For each `not_in_readme` entry:
 2. Draft a one-line feature bullet and a caption that matches the existing tone (concise, no marketing fluff — look at nearby bullets for voice).
 3. Decide placement: standalone `![caption](./docs/screenshots/x.png)` vs. adding a `<td>` to an existing 2-col table.
 
-For each `in_readme_not_captured` entry: confirm the view was actually removed from the app (cross-check `NavView` in `src/contexts/AppContext.tsx`). If yes, propose removing the README reference. If the view still exists, add it to `views.json` instead.
+For each `in_readme_not_captured` entry: confirm the view was actually removed from the app (cross-check `NavView` in `web/src/contexts/AppContext.tsx`). If yes, propose removing the README reference. If the view still exists, add it to `views.json` instead.
 
 Show the full set of proposed README diffs in one message. Wait for the user to say go before running `Edit`.
 
-Cross-check `views.json` against `validViews` in `src/contexts/AppContext.tsx` — if the app has a `NavView` that isn't in `views.json`, flag it as a skill-side gap and propose the entry to add.
+Cross-check `views.json` against `validViews` in `web/src/contexts/AppContext.tsx` — if the app has a `NavView` that isn't in `views.json`, flag it as a skill-side gap and propose the entry to add.
 
 ## Step 3 — GitHub metadata (if asked)
 

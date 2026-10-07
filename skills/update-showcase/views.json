@@ -1,7 +1,7 @@
 {
   "_doc": {
     "fields": {
-      "slug": "URL hash after # — must match NavView in src/contexts/AppContext.tsx",
+      "slug": "URL hash after # — must match NavView in web/src/contexts/AppContext.tsx",
       "file": "output filename in docs/screenshots/",
       "section": "README section hint: 'Documents & Taxes' | 'Net Worth & Portfolio' | 'Quant Dashboards & Strategy' | 'Health' | 'Privacy' | 'Other'",
       "pre_actions": "optional array of actions run after navigation, before screenshot",

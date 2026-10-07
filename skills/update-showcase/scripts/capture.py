@@ -38,13 +38,14 @@ DEMO_MASTER_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 
 def find_repo_root(start: Path) -> Path:
     for p in (start, *start.parents):
-        if (p / "package.json").is_file() and (p / "server" / "index.ts").is_file():
+        if (p / "package.json").is_file() and (p / "web" / "server" / "index.ts").is_file():
             return p
     raise SystemExit("Could not locate DocVault repo root from skill path.")
 
 
 REPO_ROOT = find_repo_root(SKILL_DIR)
-DEMO_DATA = REPO_ROOT / "demo-data"
+WEB_ROOT = REPO_ROOT / "web"
+DEMO_DATA = WEB_ROOT / "demo-data"
 SCREENSHOTS = REPO_ROOT / "docs" / "screenshots"
 README = REPO_ROOT / "README.md"
 
@@ -100,7 +101,7 @@ def spawn_servers():
 
     backend = subprocess.Popen(
         ["bun", "run", "server/index.ts"],
-        cwd=REPO_ROOT,
+        cwd=WEB_ROOT,
         env=env,
         stdout=backend_fp,
         stderr=subprocess.STDOUT,
@@ -108,7 +109,7 @@ def spawn_servers():
     )
     frontend = subprocess.Popen(
         ["vp", "dev", "--config", "vite.demo.config.ts", "--port", str(FRONTEND_PORT)],
-        cwd=REPO_ROOT,
+        cwd=WEB_ROOT,
         env=env,
         stdout=frontend_fp,
         stderr=subprocess.STDOUT,
