@@ -31,20 +31,25 @@ dist-ssr
 # Data symlinks and parsed data (local paths)
 data/
 data-backup*
+# Shared release calendar contains only public agency dates and source URLs.
+!web/src/data/
+web/src/data/*
+!web/src/data/macro-release-calendar.json
 
 # Apple Health export fixtures — contain personal medical data, never commit
-server/parsers/fixtures/
+web/server/parsers/fixtures/
 **/apple-health-fixture*.zip
 **/export.zip
 **/apple_health_export/
 
 # Scripts that reference NAS/personal data
 scripts/*
+web/scripts/*
 # Exceptions: scripts shipped in the Docker image. Using `scripts/*` (not
 # `scripts/`) because gitignore can't re-include files inside an excluded
 # directory — matching contents lets the !-rules below take effect.
-!scripts/sync-to-dropbox.sh
-!scripts/docker-entrypoint.sh
+!web/scripts/sync-to-dropbox.sh
+!web/scripts/docker-entrypoint.sh
 # Exception: skill helper scripts are sanitized and meant to be public
 !skills/*/scripts/
 !skills/*/scripts/**
@@ -54,154 +59,160 @@ scripts/*
 **/*.test.tsx
 **/*.spec.ts
 **/*.spec.tsx
+# Exception: NIIT regression uses fabricated employers, accounts and amounts only
+!web/server/analytics/tax-calc-nonnegative.test.ts
+# Exception: mileage route priority tests use fabricated mock stores only
+!web/server/routes/mileage-settings.test.ts
+# Exception: release countdown tests contain public agency dates and synthetic clock instants only
+!web/src/components/Quant/macro-calendar.test.ts
 # Exception: OGE/RPC recovery and bank warning tests use fabricated responses and addresses
-!server/politics/oge-278t.test.ts
-!server/evm-balances.test.ts
-!src/components/Banks/SimplefinConnectionWarnings.test.tsx
+!web/server/politics/oge-278t.test.ts
+!web/server/evm-balances.test.ts
+!web/src/components/Banks/SimplefinConnectionWarnings.test.tsx
 # Exception: historical change math/render tests use only fabricated balances and quotes
-!src/utils/portfolioChanges.test.ts
-!src/utils/marketChanges.test.ts
-!src/components/common/PortfolioChanges.test.tsx
-!server/ticker-prices.test.ts
+!web/src/utils/portfolioChanges.test.ts
+!web/src/utils/marketChanges.test.ts
+!web/src/components/common/PortfolioChanges.test.tsx
+!web/server/ticker-prices.test.ts
 # Exception: crypto pricing outage tests use fabricated holdings and isolated temporary caches
-!server/crypto-pricing.test.ts
+!web/server/crypto-pricing.test.ts
 # Exception: Politics dashboard tests use synthetic congressional payloads, no personal data
-!src/components/Politics/politicsData.test.ts
+!web/src/components/Politics/politicsData.test.ts
 # Exception: 401k contributions API tests use fabricated entities/amounts (consulting-llc, farm-llc), no personal data
-!server/routes/contributions.test.ts
+!web/server/routes/contributions.test.ts
 # Exception: entity-selection guard tests use fabricated entity ids (Acme LLC), no personal data
-!src/contexts/entity-selection.test.ts
+!web/src/contexts/entity-selection.test.ts
 # Exception: navigation-wiring contract test regex-parses source files, no personal data
-!src/contexts/navigation-wiring.test.ts
+!web/src/contexts/navigation-wiring.test.ts
 # Exception: chat-thread merge tests use fabricated thread ids/messages, no personal data
-!src/contexts/chatPersistence.test.ts
+!web/src/contexts/chatPersistence.test.ts
 # Exception: skill-trigger tests are pure string logic with fabricated skill names, no personal data
-!src/utils/skillTrigger.test.ts
+!web/src/utils/skillTrigger.test.ts
 # Exception: quant math tests are pure computation, no personal data
-!server/routes/quant.test.ts
+!web/server/routes/quant.test.ts
 # Exception: voice route tests use a tmpdir + fabricated audio bytes, no personal data
-!server/routes/voice.test.ts
+!web/server/routes/voice.test.ts
 # Exception: crypto-keys tests are pure crypto primitives, no personal data
-!server/crypto-keys.test.ts
+!web/server/crypto-keys.test.ts
 # Exception: backup tests use synthetic tmpdir fixtures, no personal data
-!server/backup.test.ts
+!web/server/backup.test.ts
 # Exception: dna-traits tests use synthetic SNP fixtures, no personal genomic data
-!server/parsers/dna-traits.test.ts
+!web/server/parsers/dna-traits.test.ts
 # Exception: gold-receipt tests mock the Claude call + use fabricated line-items, no personal data
-!server/parsers/gold-receipt.test.ts
+!web/server/parsers/gold-receipt.test.ts
 # Exception: apple-health clinical parser tests use fabricated FHIR fixtures, no personal data
-!server/parsers/apple-health-clinical.test.ts
+!web/server/parsers/apple-health-clinical.test.ts
 # Exception: kraken reconcile tests are pure merge logic with fabricated figures, no personal data
-!server/crypto-kraken-reconcile.test.ts
+!web/server/crypto-kraken-reconcile.test.ts
 # Exception: manual-holdings tests are pure pricing/shaping logic with fabricated figures, no personal data
-!server/crypto-manual-holdings.test.ts
+!web/server/crypto-manual-holdings.test.ts
 # Exception: example-job seeding test uses synthetic tmpdir fixtures, no personal data
-!server/seed-example-jobs.test.ts
+!web/server/seed-example-jobs.test.ts
 # Exception: automation collection/retry tests use synthetic shell output, video ids, and temporary directories
-!server/custom-job-runner.test.ts
-!server/automation-runs.test.ts
-!server/parsers/youtube-transcript.test.ts
+!web/server/custom-job-runner.test.ts
+!web/server/automation-runs.test.ts
+!web/server/parsers/youtube-transcript.test.ts
 # Exception: admin automation status tests render synthetic counts, errors, and timestamps
-!src/components/Settings/AutomationStatus.test.tsx
+!web/src/components/Settings/AutomationStatus.test.tsx
 # Exception: external-sources tests are generic git/url/sync logic with fabricated fixtures, no personal data
-!server/external-sources.test.ts
+!web/server/external-sources.test.ts
 # Exception: pdf-forms tests build fabricated fillable PDFs in-memory, no personal data
-!server/pdf-forms.test.ts
+!web/server/pdf-forms.test.ts
 # Exception: prediction-market normalization tests use synthetic Kalshi/Polymarket payloads, no personal data
-!server/prediction-markets.test.ts
+!web/server/prediction-markets.test.ts
 # Exception: chat-threads store tests use fabricated thread fixtures in a tmpdir, no personal data
-!server/chat-threads-store.test.ts
+!web/server/chat-threads-store.test.ts
 # Exception: skills store tests use fabricated SKILL.md fixtures in a tmpdir, no personal data
-!server/skills.test.ts
+!web/server/skills.test.ts
 # Exception: index security tests use synthetic entity fixtures in a tmpdir, no personal data
-!server/index.security.test.ts
+!web/server/index.security.test.ts
 # Exception: health ingest security tests use synthetic person fixtures in a tmpdir, no personal data
-!server/routes/health.security.test.ts
+!web/server/routes/health.security.test.ts
 # Exception: politics ingest tests use synthetic/public congressional payloads, no personal data
-!server/politics/feed.test.ts
-!server/politics/scanned-house-ptr.test.ts
-!server/politics/clusters.test.ts
-!server/politics/option-description.test.ts
-!server/politics/filing-archive.test.ts
-!server/politics/backtest.test.ts
-!server/politics/news-digest.test.ts
-!server/politics/identity.test.ts
+!web/server/politics/feed.test.ts
+!web/server/politics/scanned-house-ptr.test.ts
+!web/server/politics/clusters.test.ts
+!web/server/politics/option-description.test.ts
+!web/server/politics/filing-archive.test.ts
+!web/server/politics/backtest.test.ts
+!web/server/politics/news-digest.test.ts
+!web/server/politics/identity.test.ts
 # Exception: amortization math tests are pure computation, no personal data
-!src/utils/amortization.test.ts
+!web/src/utils/amortization.test.ts
 # Exception: daily-news schedule/report/digest tests use pure date math and fabricated edition HTML/data, no personal data
-!server/daily-news-schedule.test.ts
-!server/daily-news-report.test.ts
-!server/daily-news.test.ts
+!web/server/daily-news-schedule.test.ts
+!web/server/daily-news-report.test.ts
+!web/server/daily-news.test.ts
 # Exception: edition completion tests use synthetic reports and an isolated temporary store
-!server/daily-news-store.test.ts
+!web/server/daily-news-store.test.ts
 # Exception: narration script tests are pure text transforms over fabricated editions, no personal data
-!server/daily-news-narration.test.ts
+!web/server/daily-news-narration.test.ts
 # Exception: research-domain wiring test parses repo source files only, no personal data
-!server/research-domain-wiring.test.ts
+!web/server/research-domain-wiring.test.ts
 # CC-on-outbound-email rules; fabricated addresses only
-!server/email-cc.test.ts
+!web/server/email-cc.test.ts
 # Exception: sent-mail log store tests use fabricated addresses in a tmpdir, no personal data
-!server/email-log.test.ts
+!web/server/email-log.test.ts
 # Exception: blur-coverage test scans component source for unblurred money renders, no personal data
-!src/components/blur-coverage.test.ts
+!web/src/components/blur-coverage.test.ts
 # Exception: search controls tests use fabricated document metadata only, no personal data
-!src/components/Search/searchResults.test.ts
+!web/src/components/Search/searchResults.test.ts
 # Exception: document destination tests use fabricated paths and years only, no personal data
-!src/utils/documentDestination.test.ts
+!web/src/utils/documentDestination.test.ts
 # Exception: calendar recurrence tests are pure date math with fabricated event fixtures, no personal data
-!server/calendar-recurrence.test.ts
+!web/server/calendar-recurrence.test.ts
 # Exception: calendar store tests use fabricated reminder/event fixtures in a tmpdir, no personal data
-!server/calendar-store.test.ts
+!web/server/calendar-store.test.ts
 # Exception: calendar route tests use fabricated event fixtures in a tmpdir, no personal data
-!server/routes/calendar.test.ts
+!web/server/routes/calendar.test.ts
 # Exception: calendar view math tests are pure date/grid computation with fabricated fixtures, no personal data
-!src/components/Calendar/calendarMath.test.ts
+!web/src/components/Calendar/calendarMath.test.ts
 # Exception: astronomy tests are pure celestial math with published almanac anchors, no personal data
-!server/astronomy.test.ts
+!web/server/astronomy.test.ts
 # Exception: almanac tests are rule-based holiday/meteor/DST math with synthetic offsets, no personal data
-!server/almanac.test.ts
+!web/server/almanac.test.ts
 # Exception: no-src-imports guard scans repo source only, no personal data
-!server/no-src-imports.test.ts
+!web/server/no-src-imports.test.ts
 # Exception: calendar-sky tests are pure toggle-gating over shared celestial math, no personal data
-!server/calendar-sky.test.ts
+!web/server/calendar-sky.test.ts
 # Exception: timesheet store tests use fabricated client/entry fixtures in a tmpdir, no personal data
-!server/timesheet-store.test.ts
+!web/server/timesheet-store.test.ts
 # Exception: invoice PDF tests use a fully synthetic Acme/Globex invoice fixture, no personal data
-!server/timesheet-invoice.test.ts
+!web/server/timesheet-invoice.test.ts
 # Exception: weekly report tests are pure window/gate/categorize/CSV logic over synthetic Globex fixtures, no personal data
-!server/timesheet-report.test.ts
+!web/server/timesheet-report.test.ts
 # Exception: timesheet route tests (invoice billing lock) use fabricated Acme/Widgets fixtures in a tmpdir, no personal data
-!server/routes/timesheet.test.ts
+!web/server/routes/timesheet.test.ts
 # Exception: timesheet billing-state tests are pure derivations over fabricated Acme/Globex fixtures, no personal data
-!src/components/Timesheet/billing.test.ts
+!web/src/components/Timesheet/billing.test.ts
 
 # Exception: metal spot-price tests stub the Yahoo response with fabricated round-number quotes, no personal data
-!server/metal-spot-prices.test.ts
+!web/server/metal-spot-prices.test.ts
 
 # Exception: account-classification tests use fabricated names, masks, and balances, no personal data
-!server/account-classify.test.ts
+!web/server/account-classify.test.ts
 
 # Exception: SimpleFIN balance tests stub the HTTP response with fabricated institutions/amounts, no personal data
-!server/simplefin-balances.test.ts
+!web/server/simplefin-balances.test.ts
 # Exception: bank warning lifecycle and sync tests use synthetic accounts in tmpdirs
-!server/simplefin-health.test.ts
-!server/simplefin-sync.test.ts
+!web/server/simplefin-health.test.ts
+!web/server/simplefin-sync.test.ts
 # Exception: history-series tests are pure missing-vs-zero logic over fabricated figures, no personal data
-!src/components/common/historySeries.test.ts
+!web/src/components/common/historySeries.test.ts
 
 # Exception: health-store concurrency tests use synthetic person ids in a tmpdir, no personal data
-!server/health-store-concurrency.test.ts
+!web/server/health-store-concurrency.test.ts
 # Exception: logger-mock contract test only reads test sources for stub completeness, no personal data
-!server/logger-mock-contract.test.ts
+!web/server/logger-mock-contract.test.ts
 
 # Exception: write-lock tests are pure concurrency/atomicity logic in a tmpdir, no personal data
-!server/write-lock.test.ts
+!web/server/write-lock.test.ts
 
 # Exception: etherscan error-classification tests use verbatim API error strings, no credentials
-!server/etherscan-permanent-errors.test.ts
+!web/server/etherscan-permanent-errors.test.ts
 
 # Exception: model-list tests use synthetic model ids and a tmpdir cache, no personal data
-!server/llm/models.test.ts
+!web/server/llm/models.test.ts
 
 # Internal design docs
 docs/PRD-shadcn-migration.md
@@ -220,6 +231,8 @@ skills-lock.json
 
 # Local deploy helper
 Makefile
+# Exception: native build targets contain no private deployment configuration.
+!ios/Makefile
 
 # ITC HTML scrapes used for descriptions — not part of the app
 outer.html
@@ -230,27 +243,73 @@ inner2.html
 demo-data/.docvault-quant-cache.json
 demo-data/.docvault-schedule-status.json
 demo-data/.docvault-estimated-taxes.json
+web/demo-data/.docvault-quant-cache.json
+web/demo-data/.docvault-schedule-status.json
+web/demo-data/.docvault-estimated-taxes.json
+
+# Generated native screenshot archive stays local. Only reviewed invented-data
+# preview images are published; never add real-vault captures here.
+docs/ios/*.png
+!docs/ios/iphone-documents.png
+!docs/ios/iphone-financial-overview.png
+!docs/ios/ipad-financial-overview.png
+!docs/ios/iphone-quant-overview.png
+!docs/ios/iphone-health-activity.png
+!docs/ios/ipad-health-overview.png
+!docs/ios/ipad-research-news-weather.png
+!docs/ios/iphone-calendar.png
 
 # OCR debugging scratch (PDF renders, PGM crops) — never committed
 .ocr-scratch/
 
 # Exception: source-browser navigation and Markdown link tests use fabricated paths and text only
-!src/components/ExternalSources/fileBrowser.test.ts
-!src/components/common/SafeMarkdown.test.tsx
+!web/src/components/ExternalSources/fileBrowser.test.ts
+!web/src/components/common/SafeMarkdown.test.tsx
 # Exception: Brain concurrency tests use isolated temporary files and fabricated notes
-!server/brain.test.ts
+!web/server/brain.test.ts
 # Exception: document metadata patch tests use generic flags and empty values only
-!src/utils/documentMetadataPatch.test.ts
+!web/src/utils/documentMetadataPatch.test.ts
 # Exception: research and crypto-yield route tests use fabricated records in isolated temp directories
-!server/routes/research-concurrency.test.ts
-!server/routes/crypto-yields.test.ts
+!web/server/routes/research-concurrency.test.ts
+!web/server/routes/crypto-yields.test.ts
 # Exception: rebuilt media-detection coverage uses fabricated headers and filenames only
-!server/routes/research.test.ts
+!web/server/routes/research.test.ts
 # Synthetic browser pages, sandbox calculations, MCP messages, and temp research stores only.
-!server/chat-calculation.test.ts
-!server/public-web.test.ts
-!server/public-web-transport.test.ts
-!server/chat-browser.test.ts
-!server/chat-research-tools.test.ts
-!server/llm/codex-chat.test.ts
-!src/components/Chat/CalculationChartPreview.test.tsx
+!web/server/chat-calculation.test.ts
+!web/server/public-web.test.ts
+!web/server/public-web-transport.test.ts
+!web/server/chat-browser.test.ts
+!web/server/chat-research-tools.test.ts
+!web/server/llm/codex-chat.test.ts
+!web/src/components/Chat/CalculationChartPreview.test.tsx
+# Existing tracked data/job/research tests use synthetic fixtures and temporary stores.
+!web/server/data.test.ts
+!web/server/deep-research-report.test.ts
+# Fabricated in-memory PDFs verify that extraction preserves uploaded source bytes.
+!web/server/parsers/research-report.test.ts
+!web/server/jobs-routes.test.ts
+!web/server/jobs.test.ts
+!web/server/political-jobs.test.ts
+!web/server/research-intelligence.test.ts
+!web/server/research-politics-links.test.ts
+!web/server/routes/research.domain.test.ts
+!web/server/routes/research.intelligence.test.ts
+
+# Native app builds and private signing configuration
+# Selected archive tests use only fabricated documents and a temporary vault.
+!web/server/routes/downloads-selection.test.ts
+ios/build/
+ios/DerivedData/
+ios/*.xcresult
+**/xcuserdata/
+ios/Config/Signing.xcconfig
+*.p8
+*.p12
+*.mobileprovision
+# Private runtime copies and local configuration in either working directory
+web/data/
+web/data-backup*
+web/tax-plan/
+web/.env*
+!web/.env.example
+!web/.env.deploy.example

@@ -353,8 +353,8 @@ def main() -> None:
         # scripts/generate_demo_health.py → <repo>/demo-data/.docvault-health.json
         here = Path(__file__).resolve().parent
         for up in (here, *here.parents):
-            if (up / "demo-data" / ".docvault-health.json").exists() or (up / "package.json").is_file():
-                path = up / "demo-data" / ".docvault-health.json"
+            if (up / "web" / "demo-data" / ".docvault-health.json").exists() or (up / "package.json").is_file():
+                path = up / "web" / "demo-data" / ".docvault-health.json"
                 break
         else:
             raise SystemExit("Could not locate demo-data/.docvault-health.json — pass --output")

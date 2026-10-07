@@ -1,0 +1,36 @@
+name: iOS
+
+on:
+  push:
+    branches: [main]
+    paths: ['ios/**', '.github/workflows/ios.yml']
+  pull_request:
+    paths: ['ios/**', '.github/workflows/ios.yml']
+
+jobs:
+  test:
+    runs-on: macos-26
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Test on an available iPhone simulator
+        run: |
+          set -o pipefail
+          mkdir -p build
+          SIM_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(v["udid"] for k,vs in sorted(d["devices"].items(), reverse=True) if "iOS" in k for v in vs if "iPhone" in v["name"]))')
+          xcodebuild -project DocVault.xcodeproj -scheme DocVault \
+            -destination "platform=iOS Simulator,id=$SIM_ID" \
+            -derivedDataPath build/DerivedData -resultBundlePath build/Tests.xcresult \
+            -collect-test-diagnostics never test | tee build/test.log
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-test-results
+          path: ios/build/*.xcresult

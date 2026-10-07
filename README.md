@@ -6,14 +6,15 @@ Self-hosted personal finance and document workspace. One container holds your ta
 
 ![DocVault tax year overview](./docs/screenshots/tax-year.png)
 
-_Screenshots in this README are captured against the included `demo-data/` fixtures — the numbers, entities, and Strategy entry are fabricated._
+_Screenshots in this README are captured against the included `web/demo-data/` fixtures — the numbers, entities, and Strategy entry are fabricated._
 
 ## Try It Locally (Demo Mode)
 
-Want to poke around before connecting real data? The repo ships with a `demo-data/` directory and a second Vite config that points the dev server at it.
+Want to poke around before connecting real data? The repo ships with a `web/demo-data/` directory and a second Vite config that points the dev server at it.
 
 ```bash
-bun install
+cd web
+vp install
 # Terminal 1 — demo backend on port 3006, reading demo-data/
 DOCVAULT_DATA_DIR=./demo-data \
   DOCVAULT_PORT=3006 \
@@ -24,7 +25,7 @@ DOCVAULT_DATA_DIR=./demo-data \
 vp dev --config vite.demo.config.ts
 ```
 
-Open <http://localhost:5174> and sign in with `admin` / `demo` — full app, fake data. Your `./data/` stays untouched.
+Open <http://localhost:5174> and sign in with `admin` / `demo` — full app, fake data. Your repository-root `data/` stays untouched.
 
 ## Features
 
@@ -202,11 +203,38 @@ The report is **read-only over your entries**: it never marks anything invoiced 
 - Username/password auth with session cookies.
 - Docker-ready: single container, auto-published to GHCR (amd64 + arm64).
 
+## Repository layout
+
+`web/` contains the React frontend, Bun API server, dependencies, Docker build,
+and synthetic demo data. `ios/` contains the native SwiftUI iPhone/iPad app and
+its XcodeGen project. Shared documentation, agent skills, and CI live at the
+repository root. Private NAS-synced `data/` stays at the root; the default server
+path still resolves there when started from either directory.
+
+Root package scripts forward to the web app, so `vp run check`, `vp run build`,
+and `vp run test` also work from the repository root. To install dependencies,
+use `cd web && vp install`. The small root Vite config forwards to `web/` for
+CLI compatibility.
+
+For the iOS app, [open the setup guide](ios/README.md) or run:
+
+```sh
+cd ios
+make generate
+open DocVault.xcodeproj
+```
+
+The app provides native documents, finance, tax, timesheets, calendar, health,
+research, news, chat, sources, and settings. See the [feature parity audit](docs/ios/feature-parity.md)
+for implemented workflows, test evidence, and remaining gaps. The authenticated
+web interface remains available for specialized views.
+
 ## Quick Start
 
 ```bash
-bun install
-bun start
+cd web
+vp install
+vp run start
 ```
 
 Frontend: `http://localhost:5173` — Backend: `http://localhost:3005`
@@ -214,12 +242,15 @@ Frontend: `http://localhost:5173` — Backend: `http://localhost:3005`
 ### Storage Setup
 
 ```bash
-mkdir -p data/personal data/my-llc data/property
-# or symlink existing folders
-ln -s ~/Documents/taxes data/personal
+mkdir -p ../data/personal ../data/my-llc ../data/property
+# Entity directories must be real directories; symlinked entities are rejected.
 ```
 
 ## Docker
+
+Build locally with `docker build -t docvault ./web`, or run
+`docker compose -f web/docker-compose.yml up -d`. CI also uses `web/` as its build
+context. The container API, data-volume mount, and published image remain the same.
 
 ```bash
 docker run -p 3005:3005 \
@@ -254,7 +285,7 @@ services:
 | `DOCVAULT_USERNAME`              | No             | Login username (default: `admin`)                                           |
 | `DOCVAULT_PASSWORD`              | Yes            | Login password; server startup fails closed without this unless opted out   |
 | `DOCVAULT_ALLOW_UNAUTHENTICATED` | No             | Explicit local/demo-only opt-out (`true`, `1`, or `yes`)                    |
-| `DOCVAULT_DATA_DIR`              | No             | Data directory path (default: `./data`)                                     |
+| `DOCVAULT_DATA_DIR`              | No             | Data directory path (default: repository-root `data/`)                      |
 | `DOCVAULT_PORT`                  | No             | Backend port (default: `3005`)                                              |
 | `DOCVAULT_BROWSER_EXECUTABLE`    | No             | Chromium/Chrome path for chat browser reading (Docker: `/usr/bin/chromium`) |
 

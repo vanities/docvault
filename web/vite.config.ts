@@ -1,0 +1,166 @@
+import { defineConfig } from 'vite-plus';
+import tailwindcss from '@tailwindcss/vite';
+
+// https://vite.dev/config/
+export default defineConfig({
+  lint: {
+    plugins: ['oxc', 'typescript', 'unicorn', 'react'],
+    categories: {
+      correctness: 'warn',
+    },
+    env: {
+      builtin: true,
+    },
+    // Keep the existing shadcn scaffold exclusion when staged files are passed explicitly.
+    ignorePatterns: ['dist', 'scripts', 'server', 'src/components/ui/**'],
+    overrides: [
+      {
+        files: ['**/*.{ts,tsx}'],
+        rules: {
+          'constructor-super': 'error',
+          'for-direction': 'error',
+          'getter-return': 'error',
+          'no-async-promise-executor': 'error',
+          'no-case-declarations': 'error',
+          'no-class-assign': 'error',
+          'no-compare-neg-zero': 'error',
+          'no-cond-assign': 'error',
+          'no-const-assign': 'error',
+          'no-constant-binary-expression': 'error',
+          'no-constant-condition': 'error',
+          'no-control-regex': 'error',
+          'no-debugger': 'error',
+          'no-delete-var': 'error',
+          'no-dupe-class-members': 'error',
+          'no-dupe-else-if': 'error',
+          'no-dupe-keys': 'error',
+          'no-duplicate-case': 'error',
+          'no-empty': 'error',
+          'no-empty-character-class': 'error',
+          'no-empty-pattern': 'error',
+          'no-empty-static-block': 'error',
+          'no-ex-assign': 'error',
+          'no-extra-boolean-cast': 'error',
+          'no-fallthrough': 'error',
+          'no-func-assign': 'error',
+          'no-global-assign': 'error',
+          'no-import-assign': 'error',
+          'no-invalid-regexp': 'error',
+          'no-irregular-whitespace': 'error',
+          'no-loss-of-precision': 'error',
+          'no-misleading-character-class': 'error',
+          'no-new-native-nonconstructor': 'error',
+          'no-nonoctal-decimal-escape': 'error',
+          'no-obj-calls': 'error',
+          'no-prototype-builtins': 'error',
+          'no-redeclare': 'error',
+          'no-regex-spaces': 'error',
+          'no-self-assign': 'error',
+          'no-setter-return': 'error',
+          'no-shadow-restricted-names': 'error',
+          'no-sparse-arrays': 'error',
+          'no-this-before-super': 'error',
+          'no-undef': 'error',
+          'no-unexpected-multiline': 'error',
+          'no-unreachable': 'error',
+          'no-unsafe-finally': 'error',
+          'no-unsafe-negation': 'error',
+          'no-unsafe-optional-chaining': 'error',
+          'no-unused-labels': 'error',
+          'no-unused-private-class-members': 'error',
+          'no-unused-vars': 'error',
+          'no-useless-backreference': 'error',
+          'no-useless-catch': 'error',
+          'no-useless-escape': 'error',
+          'no-with': 'error',
+          'require-yield': 'error',
+          'use-isnan': 'error',
+          'valid-typeof': 'error',
+          '@typescript-eslint/ban-ts-comment': 'error',
+          'no-array-constructor': 'error',
+          '@typescript-eslint/no-duplicate-enum-values': 'error',
+          '@typescript-eslint/no-empty-object-type': 'error',
+          '@typescript-eslint/no-explicit-any': 'error',
+          '@typescript-eslint/no-extra-non-null-assertion': 'error',
+          '@typescript-eslint/no-misused-new': 'error',
+          '@typescript-eslint/no-namespace': 'error',
+          '@typescript-eslint/no-non-null-asserted-optional-chain': 'error',
+          '@typescript-eslint/no-require-imports': 'error',
+          '@typescript-eslint/no-this-alias': 'error',
+          '@typescript-eslint/no-unnecessary-type-constraint': 'error',
+          '@typescript-eslint/no-unsafe-declaration-merging': 'error',
+          '@typescript-eslint/no-unsafe-function-type': 'error',
+          'no-unused-expressions': 'error',
+          '@typescript-eslint/no-wrapper-object-types': 'error',
+          '@typescript-eslint/prefer-as-const': 'error',
+          '@typescript-eslint/prefer-namespace-keyword': 'error',
+          '@typescript-eslint/triple-slash-reference': 'error',
+          'react-hooks/rules-of-hooks': 'error',
+          'react-hooks/exhaustive-deps': 'warn',
+          'typescript-eslint/no-floating-promises': 'warn',
+          'typescript-eslint/await-thenable': 'warn',
+          'react/only-export-components': [
+            'error',
+            {
+              allowConstantExport: true,
+            },
+          ],
+        },
+        env: {
+          es2020: true,
+          browser: true,
+        },
+        globals: {
+          AudioWorkletGlobalScope: 'readonly',
+          AudioWorkletProcessor: 'readonly',
+          currentFrame: 'readonly',
+          currentTime: 'readonly',
+          registerProcessor: 'readonly',
+          sampleRate: 'readonly',
+          WorkletGlobalScope: 'readonly',
+        },
+      },
+    ],
+    options: {
+      typeAware: true,
+      typeCheck: true,
+    },
+  },
+  staged: {
+    '*.{ts,tsx}': ['vp lint --fix', 'vp fmt'],
+    // Filter demo-data — fmt.ignorePatterns drops it, so passing only demo-data
+    // files makes vp fmt error with "Expected at least one target file". The
+    // bundled lint-staged@16 supports a function value here, but Vite+'s
+    // StagedConfig type narrows to `string | string[]`, hence the cast.
+    '*.{json,md,css}': ((files: string[]) => {
+      const targets = files.filter((f) => !f.includes('demo-data/'));
+      return targets.length > 0 ? [`vp fmt ${targets.map((f) => `"${f}"`).join(' ')}`] : [];
+    }) as unknown as string[],
+  },
+  fmt: {
+    semi: true,
+    singleQuote: true,
+    trailingComma: 'es5',
+    tabWidth: 2,
+    printWidth: 100,
+    sortPackageJson: false,
+    ignorePatterns: ['dist', 'node_modules', 'bun.lockb', 'demo-data', 'scripts'],
+  },
+  test: {
+    // Only first-party trees. data/ holds NAS-synced runtime state (codex
+    // plugin caches, custom-job scripts) that ships its own test files —
+    // those must never run as part of the app suite.
+    include: ['src/**/*.test.{ts,tsx}', 'server/**/*.test.ts'],
+  },
+  resolve: {
+    alias: {
+      '@': `${import.meta.dirname}/src`,
+    },
+  },
+  plugins: [tailwindcss()],
+  server: {
+    proxy: {
+      '/api': 'http://localhost:3005',
+    },
+  },
+});

@@ -1,0 +1,3 @@
+// Copy to Signing.xcconfig and enter your Apple Developer team.
+// The real signing file is gitignored.
+DEVELOPMENT_TEAM = YOUR_TEAM_ID
