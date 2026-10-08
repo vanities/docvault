@@ -10,7 +10,7 @@ generate:
 build: generate
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -destination '$(DEST)' -derivedDataPath $(DERIVED) build
 test: generate
-	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -destination '$(DEST)' -derivedDataPath $(DERIVED) -collect-test-diagnostics never test
+	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -destination '$(DEST)' -derivedDataPath $(DERIVED) -parallel-testing-enabled NO -collect-test-diagnostics never test
 run: build
 	@test -n "$(SIMID)" || (echo 'Set SIMID to a booted simulator UDID.' && exit 1)
 	xcrun simctl install $(SIMID) $(DERIVED)/Build/Products/Debug-iphonesimulator/DocVault.app

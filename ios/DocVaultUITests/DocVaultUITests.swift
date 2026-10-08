@@ -2,8 +2,10 @@ import XCTest
 
 @MainActor final class DocVaultUITests: XCTestCase {
     private func launchDemo() -> XCUIApplication {
+        continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["--demo"]
+        app.launchEnvironment["DOCVAULT_DEMO_NOW"] = "2026-10-07T12:00:00Z"
         if ProcessInfo.processInfo.environment["DOCVAULT_UI_TEST_LARGE_TEXT"] == "1" {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         }
@@ -69,7 +71,7 @@ import XCTest
         let app = demoTimesheetReport()
         taxFrame(app, "reportMetrics"); capture("Native timesheet report overview")
         for id in ["reportCategoryChart", "reportDailyChart"] {
-            taxFrame(app, "reportCard-" + id); capture("Native timesheet " + id)
+            taxFrame(app, id); capture("Native timesheet " + id)
         }
         let category = app.buttons["reportCategory-Acme Studio"].firstMatch; taxReveal(app, category); category.tap()
         let entry = app.buttons["reportEntry-3"].firstMatch
@@ -89,23 +91,28 @@ import XCTest
         let app = demoTimesheetReport()
         let edit = app.buttons["editReportConfig"].firstMatch; taxReveal(app, edit); edit.tap()
         administrationInput(app, "reportConfigWindowDays", "0"); app.buttons["reportConfigSave"].firstMatch.tap()
-        let error = app.descendants(matching: .any)["reportConfigError"].firstMatch; taxReveal(app, error)
-        XCTAssertTrue(error.label.contains("1 to 90 days")); XCTAssertEqual(app.textFields["reportConfigWindowDays"].firstMatch.value as? String, "0")
+        let error = app.staticTexts["reportConfigError"].firstMatch; taxReveal(app, error)
+        XCTAssertTrue(error.label.contains("1 to 90 days"))
+        let windowDays = app.textFields["reportConfigWindowDays"].firstMatch
+        taxReveal(app, windowDays, scrollUp: true); XCTAssertEqual(windowDays.value as? String, "0")
         administrationInput(app, "reportConfigWindowDays", "7")
-        let client = app.switches["reportScope-clients-acme-client"].firstMatch; taxReveal(app, client); client.tap()
+        let client = app.switches["reportScope-clients-acme-client"].firstMatch; taxReveal(app, client); tapSwitch(client)
         capture("Native timesheet reviewed client scope"); app.buttons["reportConfigSave"].firstMatch.tap()
-        let scope = app.staticTexts["reportClientScope"].firstMatch; taxReveal(app, scope)
+        let scope = app.staticTexts["reportClientScope"].firstMatch; taxReveal(app, scope, scrollUp: true)
         XCTAssertEqual(scope.label, "Acme Client")
         edit.tap(); administrationInput(app, "reportConfigWindowDays", "90")
         app.buttons["reportConfigCancel"].firstMatch.tap(); app.buttons["Discard changes"].firstMatch.tap()
         edit.tap(); XCTAssertEqual(app.textFields["reportConfigWindowDays"].firstMatch.value as? String, "7")
-        let selected = app.switches["reportScope-clients-acme-client"].firstMatch; taxReveal(app, selected); selected.tap()
+        let selected = app.switches["reportScope-clients-acme-client"].firstMatch; taxReveal(app, selected); tapSwitch(selected)
         app.buttons["reportConfigSave"].firstMatch.tap()
         XCTAssertTrue(app.buttons["reportConfirmExpandedScope"].firstMatch.waitForExistence(timeout: 5)); capture("Native timesheet scope expansion review")
-        app.buttons["reportConfirmExpandedScope"].firstMatch.tap(); taxReveal(app, scope); XCTAssertEqual(scope.label, "All clients")
+        app.buttons["reportConfirmExpandedScope"].firstMatch.tap(); taxReveal(app, scope, scrollUp: true); XCTAssertEqual(scope.label, "All clients")
         let send = app.buttons["reportReviewSend"].firstMatch; taxReveal(app, send); send.tap()
-        XCTAssertTrue(app.descendants(matching: .any)["reportSendTo"].firstMatch.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["billing@example.com"].firstMatch.exists); capture("Native timesheet recipient and CC review")
+        let recipient = app.staticTexts["reportSendTo"].firstMatch
+        XCTAssertTrue(recipient.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "reportSendTo", "reader@example.com")).firstMatch.exists, app.debugDescription)
+        let cc = app.staticTexts["reportSendCC"].firstMatch; taxReveal(app, cc)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "reportSendCC", "billing@example.com")).firstMatch.exists, app.debugDescription); capture("Native timesheet recipient and CC review")
         let simulate = app.buttons["reportSend"].firstMatch; taxReveal(app, simulate); simulate.tap()
         app.buttons["reportConfirmSend"].firstMatch.tap()
         XCTAssertTrue(app.descendants(matching: .any)["reportSendResult"].firstMatch.waitForExistence(timeout: 10))
@@ -157,15 +164,16 @@ import XCTest
         let search = visibleSearchField(app); search.tap(); search.typeText("Equipment")
         let original = app.descendants(matching: .any)["Equipment_Receipt.pdf"].firstMatch
         XCTAssertTrue(original.waitForExistence(timeout: 10)); original.tap()
-        let tracked = app.switches["documentTracked"].firstMatch; taxReveal(app, tracked); tracked.tap()
+        let tracked = app.switches["documentTracked"].firstMatch; taxReveal(app, tracked)
+        tapSwitch(tracked)
         let excluded = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "0"), object: tracked)
         XCTAssertEqual(XCTWaiter.wait(for: [excluded], timeout: 10), .completed)
         app.buttons["Edit notes"].firstMatch.tap()
         let notes = app.textViews["documentNotes"].firstMatch; notes.tap(); notes.typeText("Invented preserved review")
         app.buttons["Save"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["Invented preserved review"].firstMatch.waitForExistence(timeout: 5))
+        taxReveal(app, app.staticTexts["Invented preserved review"].firstMatch)
         XCTAssertEqual(tracked.value as? String, "0"); capture("Native document excluded from totals")
-        app.buttons["Document actions"].firstMatch.tap(); app.buttons["Move"].firstMatch.tap()
+        documentAction(app, "Move")
         let entity = app.descendants(matching: .any)["documentOrganizationEntity"].firstMatch; taxReveal(app, entity); entity.tap(); app.buttons["Acme Studio"].firstMatch.tap()
         administrationInput(app, "documentOrganizationYear", "2025")
         let category = app.descendants(matching: .any)["documentOrganizationCategory"].firstMatch; taxReveal(app, category); category.tap(); app.buttons["Medical"].firstMatch.tap()
@@ -173,9 +181,11 @@ import XCTest
         XCTAssertEqual(path.label, "2025/expenses/medical/Equipment_Receipt.pdf"); capture("Native document reviewed canonical destination")
         app.buttons["saveDocumentOrganization"].firstMatch.tap()
         XCTAssertTrue(original.waitForExistence(timeout: 10)); original.tap()
-        XCTAssertTrue(app.staticTexts["2025/expenses/medical"].firstMatch.waitForExistence(timeout: 5))
+        // LabeledContent exposes its label and value as one accessibility element.
+        let folder = app.staticTexts["Folder, 2025/expenses/medical"].firstMatch
+        XCTAssertTrue(folder.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Acme Studio"].firstMatch.exists)
-        XCTAssertTrue(app.staticTexts["Invented preserved review"].firstMatch.exists)
+        taxReveal(app, app.staticTexts["Invented preserved review"].firstMatch)
         XCTAssertEqual(app.switches["documentTracked"].firstMatch.value as? String, "0")
         capture("Native moved document retains exclusion and notes")
     }
@@ -189,7 +199,7 @@ import XCTest
         let notes = app.textViews["documentNotes"].firstMatch; notes.tap(); notes.typeText("Unsaved invented note")
         app.buttons["Cancel"].firstMatch.tap(); app.buttons["Discard changes"].firstMatch.tap()
         XCTAssertFalse(app.staticTexts["Unsaved invented note"].firstMatch.exists)
-        app.buttons["Document actions"].firstMatch.tap(); app.buttons["Rename"].firstMatch.tap()
+        documentAction(app, "Rename")
         administrationInput(app, "field-newFilename", "Acme.txt")
         let invalid = app.staticTexts["documentOrganizationValidationError"].firstMatch; taxReveal(app, invalid)
         XCTAssertTrue(invalid.label.contains("original file extension")); XCTAssertFalse(app.buttons["saveDocumentOrganization"].firstMatch.isEnabled)
@@ -263,20 +273,20 @@ import XCTest
     func testUploadClassificationNamingExtractionAndOriginalPreview() {
         continueAfterFailure = false
         let app = launchDemo(); app.buttons["Add document"].tap(); app.buttons["Add sample document"].tap()
-        let parse = app.switches["uploadParse"].firstMatch; XCTAssertTrue(parse.waitForExistence(timeout: 5)); parse.tap()
-        let organize = app.switches["uploadOrganize"].firstMatch; organize.tap()
+        let parse = app.switches["uploadParse"].firstMatch; XCTAssertTrue(parse.waitForExistence(timeout: 5)); tapSwitch(parse)
+        let organize = app.switches["uploadOrganize"].firstMatch; tapSwitch(organize)
         let analyze = app.buttons["uploadAnalyze-0"].firstMatch; taxReveal(app, analyze)
         XCTAssertTrue(analyze.waitForExistence(timeout: 10)); capture("Native import analysis and destination")
         let original = app.buttons["uploadPreview-0"].firstMatch; for _ in 0 ..< 12 where !original.isHittable {
             app.swipeDown()
         }; original.tap()
         XCTAssertTrue(app.buttons["Done"].firstMatch.waitForExistence(timeout: 10)); capture("Native import original preview"); app.buttons["Done"].firstMatch.tap()
-        let classification = app.descendants(matching: .any)["uploadClassification-0"].firstMatch; taxReveal(app, classification); classification.tap()
+        let classification = app.buttons["Classification & naming"].firstMatch; taxReveal(app, classification); classification.tap()
         let type = app.descendants(matching: .any)["uploadType-0"].firstMatch; taxReveal(app, type); type.tap(); app.buttons["Receipt"].firstMatch.tap()
         app.descendants(matching: .any)["uploadCategory-0"].firstMatch.tap(); app.buttons["Medical"].firstMatch.tap()
         administrationInput(app, "uploadSource-0", "Acme Clinic"); administrationInput(app, "uploadDescription-0", "Invented visit")
         administrationInput(app, "uploadYear-0", "2024"); administrationInput(app, "uploadMonth-0", "2"); administrationInput(app, "uploadDay-0", "29")
-        let standard = app.switches["uploadStandardName-0"].firstMatch; taxReveal(app, standard); standard.tap()
+        let standard = app.switches["uploadStandardName-0"].firstMatch; taxReveal(app, standard); tapSwitch(standard)
         let expected = "Acme_Clinic_medical_Invented-visit_2024-02-29.pdf"
         let filename = app.textFields["uploadFilename"].firstMatch; for _ in 0 ..< 18 where !filename.isHittable {
             app.swipeDown()
@@ -285,7 +295,7 @@ import XCTest
         XCTAssertTrue(healthText(app, "Invented demo analysis").waitForExistence(timeout: 10)); capture("Native import complete extracted fields"); app.navigationBars.buttons.element(boundBy: 0).tap()
         app.buttons["uploadDocuments"].firstMatch.tap()
         XCTAssertTrue(app.staticTexts["uploadedPath"].firstMatch.waitForExistence(timeout: 10)); XCTAssertEqual(app.staticTexts["uploadedPath"].firstMatch.label, "2024/expenses/medical/" + expected)
-        XCTAssertEqual(app.descendants(matching: .any)["uploadParseStatus-0"].firstMatch.label, "Parsed data saved"); capture("Native import saved parsed document")
+        XCTAssertEqual(app.staticTexts["uploadParseStatus-0"].firstMatch.label, "Parsed data saved"); capture("Native import saved parsed document")
         XCTAssertEqual(app.webViews.count, 0)
     }
 
@@ -844,18 +854,35 @@ import XCTest
         picker.tap(); app.buttons[name].firstMatch.tap()
     }
 
-    private func taxReveal(_ app: XCUIApplication, _ element: XCUIElement) {
-        for _ in 0 ..< 35 where !element.isHittable {
-            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
-                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.52)))
+    private func taxReveal(_ app: XCUIApplication, _ element: XCUIElement, scrollUp: Bool = false) {
+        for _ in 0 ..< 35 {
+            if element.exists && element.isHittable { break }
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: scrollUp ? 0.45 : 0.72))
+                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: scrollUp ? 0.65 : 0.52)))
         }
         XCTAssertTrue(element.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(element.isHittable, app.debugDescription)
     }
 
+    private func documentAction(_ app: XCUIApplication, _ name: String) {
+        let menu = app.buttons["Document actions"].firstMatch
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: menu)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed)
+        // The iOS 26 menu wrapper can report an invalid synthesized hit point
+        // after a sheet closes even though its visible frame is valid.
+        menu.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        let action = app.buttons[name].firstMatch
+        XCTAssertTrue(action.waitForExistence(timeout: 5)); action.tap()
+    }
+
+    private func tapSwitch(_ element: XCUIElement) {
+        // SwiftUI can expose the entire labelled row as a switch. Tap its control.
+        element.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+    }
+
     private func taxFrame(_ app: XCUIApplication, _ identifier: String) {
-        let isMetrics = ["taxYearOverviewMetrics", "financialMetrics", "businessMetrics", "businessCurrentMonthMetrics", "researchMetrics", "knowledgeMetrics", "operationsMetrics", "logsMetrics", "usageMetrics"].contains(identifier)
-        let prefix = ["operations", "logs", "usage"].contains(where: { identifier.hasPrefix($0) }) ? "operationsCard-" : identifier.hasPrefix("research") ? "researchCard-" : identifier.hasPrefix("knowledge") ? "knowledgeCard-" : identifier.hasPrefix("business") ? "businessCard-" : identifier.hasPrefix("financial") ? "financialCard-" : "taxCard-"
+        let isMetrics = ["taxYearOverviewMetrics", "financialMetrics", "businessMetrics", "businessCurrentMonthMetrics", "researchMetrics", "knowledgeMetrics", "operationsMetrics", "logsMetrics", "usageMetrics", "reportMetrics"].contains(identifier)
+        let prefix = identifier.hasPrefix("report") ? "reportCard-" : ["operations", "logs", "usage"].contains(where: { identifier.hasPrefix($0) }) ? "operationsCard-" : identifier.hasPrefix("research") ? "researchCard-" : identifier.hasPrefix("knowledge") ? "knowledgeCard-" : identifier.hasPrefix("business") ? "businessCard-" : identifier.hasPrefix("financial") ? "financialCard-" : "taxCard-"
         let card = app.descendants(matching: .any)[isMetrics ? identifier : prefix + identifier].firstMatch
         reveal(app, card, requireHittable: false)
         XCTAssertTrue(card.waitForExistence(timeout: 5))
@@ -1147,6 +1174,9 @@ import XCTest
         marketFeature(app, id: "settings", name: "Server Settings"); marketSection(app, "Email")
         XCTAssertTrue(app.descendants(matching: .any)["providerSettingsMetrics"].firstMatch.waitForExistence(timeout: 10)); capture("Native Email saved configuration")
         let edit = app.buttons["providerEdit-email"].firstMatch; taxReveal(app, edit); edit.tap()
+        let newsCC = app.textFields["providerField-email.cc.news"].firstMatch
+        taxReveal(app, newsCC)
+        XCTAssertEqual(newsCC.value as? String, "news@example.com")
         administrationInput(app, "providerField-email.cc.news", "revised-news@example.com")
         capture("Native Email focused CC editor")
         app.buttons["providerEditorSave"].firstMatch.tap()
@@ -1157,7 +1187,8 @@ import XCTest
         app.buttons["providerEditorCancel"].firstMatch.tap()
         XCTAssertTrue(app.buttons["providerEditorDiscard"].firstMatch.waitForExistence(timeout: 5)); capture("Native Provider discard protection"); app.buttons["providerEditorDiscard"].firstMatch.tap()
         XCTAssertTrue(app.buttons["providerEditorSave"].firstMatch.waitForNonExistence(timeout: 10))
-        let replace = app.buttons["providerReplace-email.resendApiKey"].firstMatch; taxReveal(app, replace); replace.tap()
+        let replace = app.buttons["providerReplace-email.resendApiKey"].firstMatch; taxReveal(app, replace, scrollUp: true); replace.tap()
+        XCTAssertFalse(app.buttons["providerConfirmRemove"].firstMatch.exists)
         let secret = app.secureTextFields["providerField-email.resendApiKey"].firstMatch
         XCTAssertTrue(secret.waitForExistence(timeout: 5)); XCTAssertTrue((secret.value as? String ?? "").isEmpty || secret.value as? String == secret.placeholderValue)
         XCTAssertFalse(app.buttons["providerEditorSave"].firstMatch.isEnabled)
@@ -1169,9 +1200,19 @@ import XCTest
         XCTAssertTrue(app.buttons["providerEditorSave"].firstMatch.waitForNonExistence(timeout: 10))
         let send = app.buttons["providerTestEmail"].firstMatch; taxReveal(app, send); send.tap()
         XCTAssertTrue(app.buttons["providerConfirmTestEmail"].firstMatch.waitForExistence(timeout: 5)); capture("Native Email explicit test confirmation")
+        XCTAssertTrue(healthText(app, "Recipient: reader@example.com. No CC is used.").exists)
         app.buttons["providerConfirmTestEmail"].firstMatch.tap()
-        XCTAssertTrue(healthText(app, "A demo attempt was recorded. No email was sent.").waitForExistence(timeout: 10))
+        let feedback = app.staticTexts["providerSettingsFeedback"].firstMatch
+        taxReveal(app, feedback, scrollUp: true)
+        XCTAssertEqual(feedback.label, "A demo attempt was recorded. No email was sent.")
         capture("Native Email simulated test result")
+        let remove = app.buttons["providerRemove-email.resendApiKey"].firstMatch
+        taxReveal(app, remove)
+        remove.tap(); app.buttons["providerConfirmRemove"].firstMatch.tap()
+        taxReveal(app, feedback, scrollUp: true)
+        XCTAssertTrue(feedback.label.hasPrefix("The server saved the removal request."))
+        taxReveal(app, remove)
+        XCTAssertFalse(remove.isEnabled)
         XCTAssertEqual(app.webViews.count, 0)
     }
 
@@ -1225,7 +1266,7 @@ import XCTest
         app.navigationBars.buttons.element(boundBy: 0).tap()
         let invoice = app.buttons["mailAttempt-demo-invoice"].firstMatch; taxReveal(app, invoice); invoice.tap()
         XCTAssertTrue(healthText(app, "Acme_Invoice_Demo.pdf").waitForExistence(timeout: 10)); capture("Native Mail attachment metadata")
-        XCTAssertTrue(app.buttons["mailShareAttempt"].firstMatch.exists)
+        taxReveal(app, app.buttons["mailShareAttempt"].firstMatch)
         app.navigationBars.buttons.element(boundBy: 0).tap()
         let search = visibleSearchField(app); search.tap(); search.typeText("invented provider\n")
         XCTAssertTrue(failed.waitForExistence(timeout: 10)); XCTAssertFalse(invoice.exists); capture("Native Mail searched failure")
@@ -1241,7 +1282,7 @@ import XCTest
         if options {
             app.buttons["closeFeatureScope"].firstMatch.tap()
         }
-        XCTAssertTrue(app.descendants(matching: .any)["filingTaskMetrics"].firstMatch.waitForExistence(timeout: 10)); capture("Native Tax filing task metrics")
+        taxReveal(app, app.descendants(matching: .any)["filingTaskMetrics"].firstMatch); capture("Native Tax filing task metrics")
         administrationFrame(app, "filingCard-filingUrgencyChart"); capture("Native Tax reminder urgency")
         let add = app.buttons["filingAddReminder"].firstMatch; taxReveal(app, add); add.tap()
         administrationInput(app, "filingEditorTitle", "Acme filing rehearsal")
@@ -1251,10 +1292,12 @@ import XCTest
         XCTAssertTrue(healthText(app, "Acme filing rehearsal").waitForExistence(timeout: 10))
         let dismiss = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "filingDismiss-demo-deadline:")).firstMatch; taxReveal(app, dismiss); dismiss.tap()
         XCTAssertTrue(app.buttons["filingConfirmResolution"].firstMatch.waitForExistence(timeout: 5)); capture("Native Tax dismiss occurrence review"); app.buttons["filingConfirmResolution"].firstMatch.tap()
-        XCTAssertTrue(healthText(app, "Occurrence dismissed. Recurring tasks keep their next date.").waitForExistence(timeout: 10))
+        let feedback = app.staticTexts["filingTaskFeedback"].firstMatch
+        taxReveal(app, feedback, scrollUp: true)
+        XCTAssertEqual(feedback.label, "Occurrence dismissed. Recurring tasks keep their next date.")
         let shared = app.buttons["filingToggleTodo-demo-review"].firstMatch; taxReveal(app, shared); shared.tap()
-        let completed = app.switches["filingShowCompleted"].firstMatch; taxReveal(app, completed); completed.tap()
-        XCTAssertTrue(shared.waitForExistence(timeout: 10)); capture("Native Tax shared completed to-dos"); shared.tap()
+        let completed = app.switches["filingShowCompleted"].firstMatch; taxReveal(app, completed); tapSwitch(completed)
+        taxReveal(app, shared, scrollUp: true); capture("Native Tax shared completed to-dos"); shared.tap()
         let addTodo = app.buttons["filingAddTodo"].firstMatch; taxReveal(app, addTodo); addTodo.tap()
         administrationInput(app, "filingEditorTitle", "Unsaved Acme task")
         app.buttons["filingEditorCancel"].firstMatch.tap()
@@ -2941,9 +2984,9 @@ import XCTest
         marketFeature(app, id: "quant", name: "Quant"); marketSection(app, "Btc · Log Regression")
         assertQuantChart(app, contains: "2 shaded bands")
         let shading = app.switches["quantOverlays"].firstMatch
-        reveal(app, shading); shading.tap()
+        reveal(app, shading); tapSwitch(shading)
         assertQuantChart(app, contains: "0 shaded bands")
-        shading.tap(); assertQuantChart(app, contains: "2 shaded bands")
+        tapSwitch(shading); assertQuantChart(app, contains: "2 shaded bands")
         let picker = app.descendants(matching: .any)["quantChartPicker"].firstMatch
         for _ in 0 ..< 8 where !picker.isHittable {
             app.swipeDown()

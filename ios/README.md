@@ -220,14 +220,15 @@ tests. No listener or provider request was used. All 136 repository Swift source
 pass syntax parsing. These are model/contract checks, not iOS framework tests.
 
 There are 233 Swift test definitions, including the opt-in live audit, 72 synthetic
-UI cases and nine opt-in live UI cases. Pre-commit validation on 2026-10-07 compiled
-the app and both test targets for the iPhone Air simulator. Swift Testing reported
-a successful run of 233 tests in 23 suites, with 39 opt-in integration/live tests
-skipped. Two focused calendar UI regressions passed after updating the helper for
-collapsed search fields. The full UI run was interrupted after those selector
-failures; comprehensive latest UI, integration, live-vault and device checks
-remain pending. Nine UI-dependent/integration cases remain outside the standalone
-checks. The installed
+UI cases and nine opt-in live UI cases. Continuation validation on 2026-10-07 compiled
+the app and both test targets for the iPhone Air simulator and passed all 232
+non-live Swift tests, including the real-handler integrations. The separate live
+audit was skipped. Swift Testing reports these as 233 tests in 23 suites, including
+that skip. All fifteen latest synthetic UI workflows and both focused calendar
+regressions pass in focused iPhone Air runs. The full 72-case synthetic UI suite,
+latest tablet coverage, live-vault and physical-device checks remain pending.
+Selected report, invoice and import captures were visually reviewed; the local
+result bundles retain the synthetic screenshots. The installed
 real-NAS preview predates all seven latest source batches. Real NAS remains the
 primary read-only UI target; synthetic records isolate write/failure tests and
 public screenshots.
@@ -276,6 +277,10 @@ TEST_RUNNER_DOCVAULT_UI_TEST_SERVER=http://127.0.0.1:31305 make test
 ```
 
 The fixture blocks outbound provider requests and never starts the scheduler.
+The iOS CI workflow builds its web assets and starts this fixture automatically,
+including when server contracts or fixture files change. Xcode test targets and
+the integration suite run serially to avoid competing for the fixture's shared
+state; the workflow retains test and fixture logs.
 Stop it with Ctrl-C to remove its temporary data. Never point this test at a real
 DocVault server. Camera scanning, microphone behavior, biometric unlock, and
 live provider connections require separate verification on a physical device or

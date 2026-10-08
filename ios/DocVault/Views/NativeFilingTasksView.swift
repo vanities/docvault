@@ -17,9 +17,10 @@ private struct NativeReminderReview: Identifiable {
     }
 }
 
-struct NativeFilingTasksSection: View {
+struct NativeFilingTasksHost<Content: View>: View {
     @Environment(VaultModel.self) private var model
     let entity: String
+    let content: (AnyView) -> Content
     @State private var calendar: VaultValue = .null
     @State private var todos: [VaultValue] = []
     @State private var loading = false
@@ -42,7 +43,7 @@ struct NativeFilingTasksSection: View {
         todos.filter { $0["status"].string == "pending" }
     }
 
-    var body: some View {
+    private var tasks: some View {
         Section("Filing tasks & deadlines") {
             if loading {
                 ProgressView("Loading reminders and to-dos…")
@@ -77,7 +78,7 @@ struct NativeFilingTasksSection: View {
                         Button("Complete", systemImage: "checkmark.circle") { Task { await prepare(row, skipped: false) } }.accessibilityIdentifier("filingComplete-" + NativeFilingTasks.id(row))
                         Button("Dismiss…", systemImage: "xmark.circle") { Task { await prepare(row, skipped: true) } }.accessibilityIdentifier("filingDismiss-" + NativeFilingTasks.id(row))
                     }.buttonStyle(.borderless).disabled(busy || loading)
-                }.padding(.vertical, 5).accessibilityIdentifier("filingReminder-" + NativeFilingTasks.id(row))
+                }.padding(.vertical, 5).accessibilityElement(children: .contain).accessibilityIdentifier("filingReminder-" + NativeFilingTasks.id(row))
             }
             if !loading, !calendar.isEmpty, reminders.isEmpty {
                 Text("No pending reminders for this scope in the next 60 days or overdue.").foregroundStyle(.secondary)
@@ -93,7 +94,7 @@ struct NativeFilingTasksSection: View {
                         Button(row["status"].string == "completed" ? "Reopen" : "Complete", systemImage: row["status"].string == "completed" ? "arrow.uturn.backward.circle" : "checkmark.circle") { Task { await toggle(row) } }.accessibilityIdentifier("filingToggleTodo-" + row["id"].string)
                         Button("Delete…", role: .destructive) { deleting = row; confirmDelete = true }.accessibilityIdentifier("filingDeleteTodo-" + row["id"].string)
                     }.buttonStyle(.borderless).disabled(busy || loading)
-                }.padding(.vertical, 4).accessibilityIdentifier("filingTodo-" + row["id"].string)
+                }.padding(.vertical, 4).accessibilityElement(children: .contain).accessibilityIdentifier("filingTodo-" + row["id"].string)
             }
             if todos.contains(where: { $0["status"].string == "completed" }) {
                 Toggle("Show completed to-dos", isOn: $showCompleted).accessibilityIdentifier("filingShowCompleted")
@@ -105,30 +106,31 @@ struct NativeFilingTasksSection: View {
             if let feature = NativeCatalog.features.first(where: { $0.id == "calendar" }) {
                 NavigationLink("Open Calendar & task definitions") { NativeFeatureView(feature: feature, initialScope: .init(entity: entity)) }
             }
-        }.accessibilityIdentifier("nativeFilingTasks")
+        }
+    }
+
+    var body: some View {
+        // Present once from the screen container, not once per lazy Section row.
+        content(AnyView(tasks))
             .task(id: model.revision) { await load() }
             .sheet(item: $composer) { item in NativeFilingTaskEditor(reminder: item.reminder, entity: entity, today: item.today).privacyProtected() }
-            .confirmationDialog(review?.skipped == true ? "Dismiss this occurrence?" : "Complete this reminder?", isPresented: $confirmResolution, titleVisibility: .visible) {
-                if let review {
-                    if !review.skipped, review.payment != nil {
-                        Button("Complete & record reviewed payment") { Task { await resolve(review, recordPayment: true) } }.accessibilityIdentifier("filingConfirmPayment")
-                    }
-                    Button(review.skipped ? "Dismiss occurrence" : "Complete reminder only") { Task { await resolve(review, recordPayment: false) } }.accessibilityIdentifier("filingConfirmResolution")
+            .confirmationDialog(review?.skipped == true ? "Dismiss this occurrence?" : "Complete this reminder?", isPresented: $confirmResolution, titleVisibility: .visible, presenting: review) { review in
+                if !review.skipped, review.payment != nil {
+                    Button("Complete & record reviewed payment") { Task { await resolve(review, recordPayment: true) } }.accessibilityIdentifier("filingConfirmPayment")
                 }
-                Button("Keep pending", role: .cancel) { review = nil }
-            } message: {
-                if let review, let payment = review.payment, !review.skipped {
+                Button(review.skipped ? "Dismiss occurrence" : "Complete reminder only") { Task { await resolve(review, recordPayment: false) } }.accessibilityIdentifier("filingConfirmResolution")
+                Button("Keep pending", role: .cancel) { self.review = nil }
+            } message: { review in
+                if let payment = review.payment, !review.skipped {
                     Text("\(review.occurrence["title"].string)\nOptionally record \(NativeFinance.money(payment.amount)) in personal estimated-tax payments: \(payment.year), quarter \(payment.quarter), date \(payment.date). This amount is one quarter of the saved annual target.")
                 } else {
-                    Text(review?.skipped == true ? "This records a skipped occurrence; a recurring task advances to its next date." : "This completes the dated occurrence; a recurring task advances to its next date.")
+                    Text(review.skipped ? "This records a skipped occurrence; a recurring task advances to its next date." : "This completes the dated occurrence; a recurring task advances to its next date.")
                 }
             }
-            .confirmationDialog("Delete this shared to-do?", isPresented: $confirmDelete, titleVisibility: .visible) {
-                if let deleting {
-                    Button("Delete to-do", role: .destructive) { Task { await deleteTodo(deleting) } }.accessibilityIdentifier("filingConfirmDeleteTodo")
-                }
-                Button("Keep to-do", role: .cancel) { deleting = nil }
-            } message: { Text(deleting?["title"].string ?? "") }
+            .confirmationDialog("Delete this shared to-do?", isPresented: $confirmDelete, titleVisibility: .visible, presenting: deleting) { deleting in
+                Button("Delete to-do", role: .destructive) { Task { await deleteTodo(deleting) } }.accessibilityIdentifier("filingConfirmDeleteTodo")
+                Button("Keep to-do", role: .cancel) { self.deleting = nil }
+            } message: { deleting in Text(deleting["title"].string) }
     }
 
     private func occurrences() async throws -> VaultValue {

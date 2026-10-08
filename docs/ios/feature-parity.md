@@ -30,24 +30,35 @@ Counts describe coverage, not proof that every workflow works with live data.
 
 ## Verification
 
-Pre-commit validation on 2026-10-07 compiled the app and both test targets for
-the iPhone Air simulator. Swift Testing reported a successful run of 233 tests
-in 23 suites, with 39 opt-in integration/live tests skipped. Both focused calendar
-UI regressions passed after the search helper was updated to reveal collapsed
-search fields. The full UI run was interrupted after those selector failures;
-the remaining latest UI workflows and live-vault/device/provider checks still
-need verification. Web checks, the production build, and 1,797 web tests passed
+Continuation validation on 2026-10-07 compiled the app and both test targets for
+the iPhone Air simulator. All 232 non-live Swift tests passed with the synthetic
+real-handler fixture enabled; only the separate live audit was skipped. Swift
+Testing reports 233 tests in 23 suites, including that skip. All fifteen latest
+synthetic UI workflows pass in focused iPhone runs, covering Provider/Mail,
+Tax Workspace, Document Import/Organization, Quant, Timesheet Reports and Invoicing.
+Both focused calendar regressions also pass. The full 72-case synthetic UI suite,
+latest tablet coverage and live-vault/device/provider checks remain pending.
+Web checks, the production build, and 1,797 web tests passed
 (two web tests skipped). Earlier batch notes below predate this validation.
+
+This continuation fixed provider-editor snapshots, independent credential actions,
+and filing-task presentations that were incorrectly attached to every list row.
+It also corrected inherited accessibility IDs and test scrolling, fixed the tax
+document closure's return type for the CI compiler, and enabled the isolated
+real-handler fixture in iOS CI. Synthetic screenshots are retained in the local
+test result bundles; selected report, invoice and import captures were visually
+reviewed. This does not establish live delivery or physical-device readiness.
 
 The synthetic fixture runs the actual Bun request handler against a temporary
 vault. It blocks external network access, has no household documents, and does not start
 scheduled jobs. Route and address checks simulate Geoapify transport responses
 while exercising the real server handler; they do not verify live provider results. Integration tests accept only its documented loopback address.
 
-- 232 non-live Swift test cases are now defined (233 including the opt-in live
-  audit). The latest full iOS run passed 142 before eleven Provider/Mail,
-  ten Tax Workspace, fifteen Document Import, twelve Quant Chart, fifteen Document Organization, fifteen Timesheet Report and twelve Invoicing cases were added; those 90 new cases still need
-  the iOS runner. Existing cases exercise catalogue coverage, API and form contracts, calculations,
+- All 232 non-live Swift test cases pass on the iOS runner (233 definitions including
+  the opt-in live audit). This includes the 90 Provider/Mail, Tax Workspace,
+  Document Import, Quant Chart, Document Organization, Timesheet Report and
+  Invoicing cases added after the earlier 142-test baseline.
+  Cases exercise catalogue coverage, API and form contracts, calculations,
   privacy/session behavior and selected backend workflows. One additional opt-in
   live audit is skipped in synthetic batches and run separately against the NAS.
   The Health adapters also preserve a fabricated 4,000-day history and its missing

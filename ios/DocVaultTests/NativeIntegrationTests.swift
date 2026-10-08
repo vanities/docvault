@@ -778,9 +778,12 @@ import Testing
 
     @Test func nativeInvoiceReviewCreatesRetainerWorkAndKeepsEmailDraftEditable() async throws {
         let api = try await client()
-        let client = try await call(api, "api/timesheet/clients", "POST", #"{"name":"Acme Billing Client","currency":"EUR","email":"billing@example.com","dueDays":7}"#)["client"]
-        let project = try await api.request(VaultRequest("api/timesheet/projects", scope: .init()), method: "POST", body: .object(["name": .string("Acme Billing Project"), "clientId": client["id"], "hourlyRate": .number(100), "minimumInvoice": .number(500), "emailSubject": .string("Invoice {{number}} for {{client}}"), "emailBody": .string("Literal message\n\n{{hours}} hours")]))
+        let client = try await call(api, "api/timesheet/clients", "POST", #"{"name":"Acme Billing Client","currency":"EUR"}"#)["client"]
+        // Match the editor: creation assigns an id; PUT applies billing settings.
+        _ = try await call(api, "api/timesheet/clients/\(client["id"].string)", "PUT", #"{"email":"billing@example.com","dueDays":7}"#)
+        let project = try await api.request(VaultRequest("api/timesheet/projects", scope: .init()), method: "POST", body: .object(["name": .string("Acme Billing Project"), "clientId": client["id"], "hourlyRate": .number(100)]))
         let projectId = project["project"]["id"].string
+        _ = try await api.request(VaultRequest("api/timesheet/projects/\(projectId)", scope: .init()), method: "PUT", body: .object(["minimumInvoice": .number(500), "emailSubject": .string("Invoice {{number}} for {{client}}"), "emailBody": .string("Literal message\n\n{{hours}} hours")]))
         let entry = try await call(api, "api/timesheet/entries", "POST", "{\"projectId\":\"\(projectId)\",\"date\":\"2026-10-06\",\"durationMinutes\":45,\"description\":\"Acme invented work\"}")["entry"]
         var draft = NativeInvoiceDraft(); draft.clientId = client["id"].string; draft.projectId = projectId
         let store = try await call(api, "api/timesheet"), selection = try NativeInvoiceSelection(store: store, draft: draft)

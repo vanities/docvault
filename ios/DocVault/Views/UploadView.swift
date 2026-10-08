@@ -224,7 +224,7 @@ struct UploadView: View {
             TextField("Month (optional)", text: field(item, \.month, key: "month")).keyboardType(.numberPad).accessibilityIdentifier("uploadMonth-\(index)")
             TextField("Day (optional)", text: field(item, \.day, key: "day")).keyboardType(.numberPad).accessibilityIdentifier("uploadDay-\(index)")
             Toggle("Use a standard filename", isOn: Binding(get: { value(item).standardName }, set: { var next = value(item); next.standardName = $0; next.edited.insert("filename"); metadata[item.id] = next })).accessibilityIdentifier("uploadStandardName-\(index)")
-        }.accessibilityIdentifier("uploadClassification-\(index)")
+        }
     }
 
     private func value(_ item: UploadDraft) -> NativeImportMetadata {

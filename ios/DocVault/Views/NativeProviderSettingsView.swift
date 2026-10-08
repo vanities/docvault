@@ -1,5 +1,16 @@
 import SwiftUI
 
+private struct ProviderEditorSnapshot: Identifiable {
+    let group: NativeSettingsGroup
+    let settings: VaultValue
+    var id: String { group.id }
+}
+
+private struct ProviderCredentialSnapshot {
+    let credential: NativeCredential
+    let settings: VaultValue
+}
+
 struct NativeProviderSettingsView: View {
     @Environment(VaultModel.self) private var model
     let resource: NativeResource
@@ -7,12 +18,10 @@ struct NativeProviderSettingsView: View {
     @State private var loading = true
     @State private var error: String?
     @State private var generation = UUID()
-    @State private var editor: NativeSettingsGroup?
-    @State private var editorSettings: VaultValue = .null
+    @State private var editor: ProviderEditorSnapshot?
     @State private var testSettings: VaultValue = .null
-    @State private var clearSettings: VaultValue = .null
     @State private var people: [VaultValue] = []
-    @State private var clearing: NativeCredential?
+    @State private var clearing: ProviderCredentialSnapshot?
     @State private var confirmClear = false
     @State private var confirmTest = false
     @State private var busy = false
@@ -61,8 +70,8 @@ struct NativeProviderSettingsView: View {
                             Button("Replace credential", systemImage: "square.and.pencil") {
                                 edit(.init(id: credential.id, title: credential.title, note: "Enter a new credential to replace the saved value. An empty field leaves it unchanged.", fields: resource.editFields.filter { $0.id == credential.id }))
                             }.accessibilityIdentifier("providerReplace-" + credential.id).disabled(loading || busy)
-                            Button("Remove saved credential…", role: .destructive) { clearSettings = data; clearing = credential; confirmClear = true }.disabled(loading || busy || credential.state(data) != "Configured").accessibilityIdentifier("providerRemove-" + credential.id)
-                        }.frame(maxWidth: .infinity, alignment: .leading).vaultCard(color: color).vaultStandaloneRow().accessibilityElement(children: .contain).accessibilityIdentifier("providerCredential-" + credential.id)
+                            Button("Remove saved credential…", role: .destructive) { clearing = .init(credential: credential, settings: data); confirmClear = true }.disabled(loading || busy || credential.state(data) != "Configured").accessibilityIdentifier("providerRemove-" + credential.id)
+                        }.buttonStyle(.borderless).frame(maxWidth: .infinity, alignment: .leading).vaultCard(color: color).vaultStandaloneRow().accessibilityElement(children: .contain).accessibilityIdentifier("providerCredential-" + credential.id)
                     }
                 }
                 ForEach(NativeProviderSettings.groups(resource)) { group in
@@ -91,17 +100,15 @@ struct NativeProviderSettingsView: View {
             }
         }.vaultDashboard(color: color).tint(color).accessibilityIdentifier("nativeProviderSettings")
             .task(id: model.revision) { await load() }.refreshable { await load() }
-            .sheet(item: $editor) { group in NativeProviderEditor(group: group, original: editorSettings) { model.revision += 1 }.privacyProtected() }
-            .confirmationDialog("Remove this saved credential?", isPresented: $confirmClear, titleVisibility: .visible) {
-                if let clearing {
-                    Button("Remove " + clearing.title, role: .destructive) { Task { await clear(clearing) } }.accessibilityIdentifier("providerConfirmRemove")
-                }
+            .sheet(item: $editor) { snapshot in NativeProviderEditor(group: snapshot.group, original: snapshot.settings) { model.revision += 1 }.privacyProtected() }
+            .confirmationDialog("Remove this saved credential?", isPresented: $confirmClear, titleVisibility: .visible, presenting: clearing) { snapshot in
+                Button("Remove " + snapshot.credential.title, role: .destructive) { Task { await clear(snapshot) } }.accessibilityIdentifier("providerConfirmRemove")
                 Button("Cancel", role: .cancel) { clearing = nil }
-            } message: { Text("This removes the value stored by DocVault. A credential supplied by the server environment may remain configured.") }
-            .confirmationDialog("Send a test email?", isPresented: $confirmTest, titleVisibility: .visible) {
-                Button("Send test message") { Task { await testEmail() } }.accessibilityIdentifier("providerConfirmTestEmail")
+            } message: { _ in Text("This removes the value stored by DocVault. A credential supplied by the server environment may remain configured.") }
+            .confirmationDialog("Send a test email?", isPresented: $confirmTest, titleVisibility: .visible, presenting: testSettings) { settings in
+                Button("Send test message") { Task { await testEmail(settings) } }.accessibilityIdentifier("providerConfirmTestEmail")
                 Button("Cancel", role: .cancel) {}
-            } message: { Text("Recipient: " + (testSettings["toEmail"].string.isEmpty ? "No default recipient is saved" : testSettings["toEmail"].string) + ". No CC is used.") }
+            } message: { settings in Text("Recipient: " + (settings["toEmail"].string.isEmpty ? "No default recipient is saved" : settings["toEmail"].string) + ". No CC is used.") }
     }
 
     private func display(_ field: NativeField) -> String {
@@ -116,7 +123,7 @@ struct NativeProviderSettingsView: View {
     }
 
     private func edit(_ group: NativeSettingsGroup) {
-        editorSettings = data; editor = group
+        editor = ProviderEditorSnapshot(group: group, settings: data)
     }
 
     private func load() async {
@@ -140,12 +147,13 @@ struct NativeProviderSettingsView: View {
         }
     }
 
-    private func clear(_ credential: NativeCredential) async {
+    private func clear(_ snapshot: ProviderCredentialSnapshot) async {
+        let credential = snapshot.credential
         busy = true; error = nil; feedback = nil
         defer { busy = false; clearing = nil }
         do {
             let fresh = try await model.nativeRequest("api/settings", scope: .init())
-            guard clearSettings.at(credential.flag) == fresh.at(credential.flag), clearSettings.at(credential.hint) == fresh.at(credential.hint) else { throw VaultError.server("The saved credential status changed. Reload before removing it.") }
+            guard snapshot.settings.at(credential.flag) == fresh.at(credential.flag), snapshot.settings.at(credential.hint) == fresh.at(credential.hint) else { throw VaultError.server("The saved credential status changed. Reload before removing it.") }
             let response = try await model.nativeRequest("api/settings", scope: .init(), method: "POST", body: credential.clearBody)
             try NativeProviderSettings.requireSaved(response)
             feedback = "The server saved the removal request. Review the refreshed configuration; environment credentials can remain available."
@@ -153,12 +161,12 @@ struct NativeProviderSettingsView: View {
         } catch { self.error = error.localizedDescription }
     }
 
-    private func testEmail() async {
+    private func testEmail(_ settings: VaultValue) async {
         busy = true; error = nil; feedback = nil
         defer { busy = false }
         do {
             let fresh = try await model.nativeRequest("api/settings", scope: .init())
-            guard fresh["email"] == testSettings else { throw VaultError.server("Sending settings changed. Reload and review the recipient before sending.") }
+            guard fresh["email"] == settings else { throw VaultError.server("Sending settings changed. Reload and review the recipient before sending.") }
             let result = try await model.nativeRequest("api/email/test", scope: .init(), method: "POST")
             guard result["ok"].boolean else { throw VaultError.server(result["error"].string.isEmpty ? "The test request did not succeed." : result["error"].string) }
             feedback = model.demo ? "A demo attempt was recorded. No email was sent." : "The provider accepted the test message. Check the recipient's inbox to verify delivery."
