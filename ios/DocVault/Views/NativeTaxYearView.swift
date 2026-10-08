@@ -33,6 +33,12 @@ struct NativeTaxYearView: View {
     }
 
     var body: some View {
+        NativeFilingTasksHost(entity: scope.entity) { filingTasks in
+            review(filingTasks: filingTasks)
+        }
+    }
+
+    private func review(filingTasks: AnyView) -> some View {
         ScrollViewReader { proxy in
             List {
                 VaultHero(title: "Your tax year", subtitle: "\(entityName) · \(scope.year)\nRecorded income, deductions and the documents behind them.", symbol: "doc.text.magnifyingglass", color: .orange, eyebrow: "WORK & TAXES / YEAR REVIEW").vaultStandaloneRow().id("taxReviewTop")
@@ -54,7 +60,7 @@ struct NativeTaxYearView: View {
                     case "Deposits": deposits
                     case "Retirement": retirement
                     case "Documents": documents
-                    default: overview
+                    default: overview(filingTasks: filingTasks)
                     }
                 } else if !summary.isEmpty {
                     documents
@@ -135,13 +141,13 @@ struct NativeTaxYearView: View {
     }
 
     @ViewBuilder
-    private var overview: some View {
+    private func overview(filingTasks: AnyView) -> some View {
         if scope.entity != "all", !scope.entity.isEmpty {
             Section("Entity & filing information") {
                 NavigationLink { NativeEntityDetailsView(entityID: scope.entity) } label: { Label("Review or edit " + entityName + " details", systemImage: "building.2.crop.circle") }.accessibilityIdentifier("taxEntityDetails")
             }
         }
-        NativeFilingTasksSection(entity: scope.entity).id(scope.entity)
+        filingTasks
         VaultMetricGrid(metrics: [
             metric("Recorded income", "income.totalIncome", "arrow.down.left.circle"),
             metric("Recorded deductions", "expenses.totalDeductible", "receipt"),

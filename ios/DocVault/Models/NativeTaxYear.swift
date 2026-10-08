@@ -58,7 +58,7 @@ struct NativeTaxYear {
     let entity: String
 
     var documents: [TaxYearDocument] {
-        summary["summary"].object.keys.sorted().filter { entity == "all" || $0 == entity }.flatMap { id in
+        summary["summary"].object.keys.sorted().filter { entity == "all" || $0 == entity }.flatMap { id -> [TaxYearDocument] in
             let row = summary["summary"][id]
             let name = row["entity"]["name"].string
             return row["documents"].array.map { TaxYearDocument(entity: id, entityName: name.isEmpty ? id : name, value: $0) }

@@ -154,6 +154,16 @@ extension VaultModel {
 @Observable @MainActor
 final class NativeDemoStore {
     private var records: [String: VaultValue] = [:]
+    private var now: Date {
+        #if DEBUG
+        // UI fixtures use a fixed clock so their saved report entries do not age out.
+        if let raw = ProcessInfo.processInfo.environment["DOCVAULT_DEMO_NOW"],
+           let date = ISO8601DateFormatter().date(from: raw) {
+            return date
+        }
+        #endif
+        return .now
+    }
     func invoiceForPDF(_ request: VaultRequest, method: String, body: VaultValue?) throws -> VaultValue? {
         try NativeInvoicesDemo.pdfInvoice(request, method: method, body: body, stores: records)
     }
@@ -182,10 +192,10 @@ final class NativeDemoStore {
         if let business = try NativeBusinessDemo.request(request, method: method, body: body, stores: &records) {
             return business
         }
-        if let report = try NativeTimesheetReportDemo.request(request, method: method, body: body, stores: &records) {
+        if let report = try NativeTimesheetReportDemo.request(request, method: method, body: body, stores: &records, now: now) {
             return report
         }
-        if let invoice = try NativeInvoicesDemo.request(request, method: method, body: body, stores: &records) {
+        if let invoice = try NativeInvoicesDemo.request(request, method: method, body: body, stores: &records, now: now) {
             return invoice
         }
         if request.path.count >= 4, request.path[1] == "health", request.path[3] == "nutrition" {

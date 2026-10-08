@@ -246,7 +246,7 @@ struct NativeQuantTimeChart: View {
                     Button { selection = event.date } label: { HStack { Text(event.title); Spacer(); Text(NativeQuant.day(event.date)).font(.caption).monospacedDigit() } }
                         .accessibilityIdentifier("quantEvent-\(NativeQuant.day(event.date))-\(event.title)")
                 }
-            }.accessibilityIdentifier("quantEvents")
+            }
         }
         if !snapshot.statistics.isEmpty {
             DisclosureGroup("Statistics for this window") {

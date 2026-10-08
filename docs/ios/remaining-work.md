@@ -152,14 +152,14 @@ agency dates; coverage is displayed and dates beyond it are not extrapolated.
 
 ## Verification and delivery
 
-- The 2026-10-07 simulator build and Swift suite now pass; 39 opt-in integration/live
-  cases were skipped. Rerun the full latest UI suite after the collapsed-search
-  helper correction (both focused calendar regressions pass), including the fifteen
-  new synthetic UI cases and six new read-only real-NAS UI cases. Rerun affected Tax
-  Year, document import/organization, tracking, entity management, weekly reports, invoicing and Quant workflows on phone and tablet;
-  their earlier passing runs predate the latest implementations. The installed
-  real-NAS preview predates all seven latest batches. New synthetic screenshot names
-  in the test source are planned captures, not gallery artifacts.
+- The 2026-10-07 simulator build and all 232 non-live Swift tests now pass with
+  the synthetic real-handler fixture enabled; only the live audit was skipped.
+  All fifteen latest synthetic UI cases and both focused calendar regressions
+  pass on iPhone Air. Complete the full 72-case synthetic UI run, repeat the latest
+  workflows on tablet, and run the six latest read-only real-NAS UI cases.
+  The installed real-NAS preview predates all seven latest batches. Synthetic
+  captures now exist in local test result bundles; the public gallery has not
+  been refreshed from those captures.
 - Rerun tablet repository/token setup after the empty-search keyboard harness
   correction and finish its five synthetic gallery captures. Brain/Skills and
   repository reader flows pass on both device sizes. Complete the stricter live
@@ -189,8 +189,9 @@ agency dates; coverage is displayed and dates beyond it are not extrapolated.
   almanac, selected-file ZIP downloads, corrected import limits and the
   nonnegative net-investment-income tax correction, mileage-settings route
   priority, research PDF source-byte preservation and strict timesheet calendar-day
-  validation currently
-  exist only in this checkout. The job route now also uses the bounded JSON body
+  validation are committed with the native app and web workspace reorganization.
+  Their deployment to the NAS has not been verified in this continuation.
+  The job route now also uses the bounded JSON body
   reader; the fixture-only dependency seam does not alter production scheduling.
 - Signing, installation/distribution and App Store review are separate from
   source implementation, simulator tests and the unsigned device-target build.
