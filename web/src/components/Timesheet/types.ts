@@ -366,14 +366,9 @@ export function presetRange(preset: RangePreset): { from: string; to: string } {
   }
 }
 
-/** Display a HH:MM wall time in the user's preferred clock format. */
-export function formatClock(value: string, hour24: boolean): string {
-  if (hour24) return value;
-  const [h, m] = value.split(':').map(Number);
-  const period = h < 12 ? 'AM' : 'PM';
-  const hour = h % 12 === 0 ? 12 : h % 12;
-  return `${hour}:${String(m).padStart(2, '0')} ${period}`;
-}
+// Display a HH:MM wall time in the user's preferred clock format. Shared with
+// the calendar and the server-rendered Daily News, so it lives server-side.
+export { formatWallClock as formatClock } from '../../../server/wall-clock';
 
 /** Now, rounded to the nearest 15 minutes, as HH:MM. */
 export function nowRounded15(): string {

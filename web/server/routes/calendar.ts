@@ -37,6 +37,7 @@ import {
   nextOccurrence,
   projectOccurrences,
 } from '../calendar-recurrence.js';
+import { isValidTime } from '../wall-clock.js';
 
 const log = createLogger('Calendar');
 
@@ -109,11 +110,53 @@ function normalizeEndDate(endDate: string | null | undefined, date: string): str
   return endDate && endDate > date ? endDate : undefined;
 }
 
+/** Validate optional clock times. `time` is an HH:MM wall-clock start;
+ * `endTime` needs a `time` and falls on the event's LAST day, so only a
+ * single-day event has to end after it starts. Returns an error string or
+ * null. */
+function timeError(
+  time: unknown,
+  endTime: unknown,
+  kind: CalendarEventKind,
+  multiDay: boolean
+): string | null {
+  const hasTime = time !== null && time !== undefined && time !== '';
+  const hasEnd = endTime !== null && endTime !== undefined && endTime !== '';
+  if (!hasTime && !hasEnd) return null;
+  if (kind === 'birthday') return 'Birthdays are all-day: omit time and endTime';
+  if (hasTime && (typeof time !== 'string' || !isValidTime(time))) {
+    return 'time must be HH:MM (24-hour)';
+  }
+  if (!hasEnd) return null;
+  if (typeof endTime !== 'string' || !isValidTime(endTime)) {
+    return 'endTime must be HH:MM (24-hour)';
+  }
+  if (!hasTime) return 'endTime requires time';
+  if (!multiDay && endTime < (time as string)) {
+    return 'endTime must not precede time on a single-day event';
+  }
+  return null;
+}
+
+/** Normalize validated times the way normalizeEndDate does spans: a
+ * single-day event that ends when it starts is a moment, not a range. */
+function normalizeTimes(
+  time: string | null | undefined,
+  endTime: string | null | undefined,
+  multiDay: boolean
+): { time?: string; endTime?: string } {
+  if (!time) return {};
+  if (!endTime || (!multiDay && endTime === time)) return { time };
+  return { time, endTime };
+}
+
 interface EventBody {
   kind?: CalendarEventKind;
   title?: string;
   date?: string;
   endDate?: string | null;
+  time?: string | null;
+  endTime?: string | null;
   recurrence?: CalendarRecurrence | null;
   birthYear?: number | null;
   entityId?: string | null;
@@ -177,6 +220,9 @@ async function handleCalendarRoutesUnlocked(
     if (recErr) return jsonResponse({ error: recErr }, 400);
     const spanErr = spanError(body.endDate, kind, date, body.recurrence);
     if (spanErr) return jsonResponse({ error: spanErr }, 400);
+    const multiDay = kind !== 'birthday' && normalizeEndDate(body.endDate, date) !== undefined;
+    const timeErr = timeError(body.time, body.endTime, kind, multiDay);
+    if (timeErr) return jsonResponse({ error: timeErr }, 400);
     if (body.birthYear !== undefined && body.birthYear !== null) {
       if (kind !== 'birthday') {
         return jsonResponse({ error: 'birthYear is only valid for birthdays' }, 400);
@@ -195,6 +241,7 @@ async function handleCalendarRoutesUnlocked(
       ...(kind !== 'birthday' && normalizeEndDate(body.endDate, date)
         ? { endDate: body.endDate as string }
         : {}),
+      ...normalizeTimes(body.time, body.endTime, multiDay),
       recurrence: kind === 'birthday' ? null : (body.recurrence ?? null),
       ...(body.birthYear !== undefined && body.birthYear !== null
         ? { birthYear: body.birthYear }
@@ -212,7 +259,7 @@ async function handleCalendarRoutesUnlocked(
     log.info(
       `[create] kind=${kind} id=${event.id} recurring=${event.recurrence !== null} span=${
         event.endDate ? `${diffDays(event.date, event.endDate) + 1}d` : '1d'
-      }`
+      } time=${event.time ?? 'all-day'}${event.endTime ? `-${event.endTime}` : ''}`
     );
     return jsonResponse({ ok: true, event });
   }
@@ -275,11 +322,24 @@ async function handleCalendarRoutesUnlocked(
     const nextEndDate = body.endDate === undefined ? event.endDate : body.endDate;
     const spanErr = spanError(nextEndDate, event.kind, nextDate, nextRecurrence);
     if (spanErr) return jsonResponse({ error: spanErr }, 400);
+    const normalizedEnd = normalizeEndDate(nextEndDate, nextDate);
+    // Times join the same unit: whether an end time may precede the start
+    // depends on the span. Clearing the start makes the event all-day, which
+    // takes a stored end time with it; an explicit endTime alone still 400s.
+    const nextTime = body.time === undefined ? event.time : body.time;
+    const nextEndTime =
+      body.endTime === undefined ? (nextTime ? event.endTime : undefined) : body.endTime;
+    const timeErr = timeError(nextTime, nextEndTime, event.kind, normalizedEnd !== undefined);
+    if (timeErr) return jsonResponse({ error: timeErr }, 400);
     event.date = nextDate;
     event.recurrence = nextRecurrence;
-    const normalizedEnd = normalizeEndDate(nextEndDate, nextDate);
     if (normalizedEnd) event.endDate = normalizedEnd;
     else delete event.endDate;
+    const times = normalizeTimes(nextTime, nextEndTime, normalizedEnd !== undefined);
+    if (times.time) event.time = times.time;
+    else delete event.time;
+    if (times.endTime) event.endTime = times.endTime;
+    else delete event.endTime;
     if (body.birthYear !== undefined) {
       if (body.birthYear === null) {
         delete event.birthYear;
@@ -310,6 +370,11 @@ async function handleCalendarRoutesUnlocked(
     }
     event.updatedAt = new Date().toISOString();
     await saveCalendarStore(store);
+    log.info(
+      `[update] id=${eventId} fields=${Object.keys(body).join(',') || 'none'} time=${
+        event.time ?? 'all-day'
+      }${event.endTime ? `-${event.endTime}` : ''}`
+    );
     return jsonResponse({ ok: true, event });
   }
 

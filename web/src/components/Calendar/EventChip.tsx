@@ -9,8 +9,9 @@
 // the title at week starts, where the band restarts on a new row.
 
 import { Cake, Check, Circle, Repeat } from 'lucide-react';
-import { formatDateRange, occurrenceEnd, type DaySegment } from './calendarMath';
+import { occurrenceWhen, type DaySegment } from './calendarMath';
 import { occurrenceLabel, occurrenceStyle } from './occurrenceStyle';
+import { formatWallClockShort } from '../../../server/wall-clock';
 import type { EntityConfig } from '../../hooks/useFileSystemServer';
 import type { Occurrence } from './types';
 
@@ -36,11 +37,14 @@ export function EventChip({
   const recurring = occ.recurrenceLabel !== 'one-off' && occ.kind !== 'birthday';
   const multiDay = dayCount > 1;
   const showTitle = isStart || repeatTitle;
-  const range = multiDay ? formatDateRange(occ.date, occurrenceEnd(occ)) : null;
+  const when = occurrenceWhen(occ);
   const label = occurrenceLabel(occ);
-  const tooltip = [label, range && `${range} · day ${dayIndex} of ${dayCount}`, occ.notes]
+  const tooltip = [label, multiDay ? `${when} · day ${dayIndex} of ${dayCount}` : when, occ.notes]
     .filter(Boolean)
     .join(' — ');
+  // Cells are narrow, so the start day leads with a compact "5pm"; the full
+  // range stays in the tooltip and the agenda.
+  const clock = occ.time && isStart ? formatWallClockShort(occ.time) : null;
 
   return (
     <div
@@ -82,13 +86,25 @@ export function EventChip({
         }}
         title={tooltip}
         aria-label={showTitle ? undefined : `${label} — day ${dayIndex} of ${dayCount}`}
-        className={`flex-1 min-w-0 truncate text-left hover:underline decoration-dotted underline-offset-2 ${
+        className={`@container flex-1 min-w-0 truncate text-left hover:underline decoration-dotted underline-offset-2 ${
           occ.completed ? 'line-through' : ''
         } ${showTitle ? '' : 'opacity-0'}`}
       >
         {/* The continuation days keep the button (and the band's height) but
-            hide the text, so the bar stays one unbroken run. */}
-        {showTitle ? label : '·'}
+            hide the text, so the bar stays one unbroken run. The clock only
+            shows when this text area has room for it AND some title: in a
+            month cell a task's checkbox and repeat icon leave too little, and
+            the title matters more. The wide day panel always fits it. */}
+        {showTitle ? (
+          <>
+            {clock && (
+              <span className="hidden @min-[3.75rem]:inline tabular-nums opacity-80">{`${clock} `}</span>
+            )}
+            {label}
+          </>
+        ) : (
+          '·'
+        )}
       </button>
     </div>
   );

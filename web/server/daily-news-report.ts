@@ -12,6 +12,7 @@
 
 import { marked } from 'marked';
 import type { Edition } from './daily-news-store.js';
+import { formatTimeRange, formatWallClock } from './wall-clock.js';
 
 function escapeHtml(s: string): string {
   return s
@@ -440,13 +441,18 @@ function weekAheadRowParts(item: NonNullable<Edition['weekAhead']>['items'][numb
   let title = item.title;
   if (item.endDate) {
     // Multi-day row: the day column holds the start, the title carries the
-    // run so a trip reads as a range instead of a lone first day.
+    // run so a trip reads as a range instead of a lone first day. A timed
+    // span's end time belongs to its last day, so it rides with `through`.
     const through = new Date(`${item.endDate}T12:00:00`).toLocaleDateString('en-US', {
       weekday: 'short',
       month: 'numeric',
       day: 'numeric',
     });
-    title = `${title} → ${through}`;
+    const startAt = item.time ? ` · ${formatWallClock(item.time)}` : '';
+    const endAt = item.endTime ? `, ${formatWallClock(item.endTime)}` : '';
+    title = `${title}${startAt} → ${through}${endAt}`;
+  } else if (item.time) {
+    title = `${title} · ${formatTimeRange(item.time, item.endTime)}`;
   }
   if (item.kind === 'birthday') {
     title = `🎂 ${title}${item.age !== undefined ? ` turns ${item.age}` : ''}`;

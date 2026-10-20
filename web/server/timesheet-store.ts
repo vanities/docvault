@@ -203,7 +203,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-const HHMM = /^\d{2}:\d{2}$/;
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
 function isClient(value: unknown): value is TimesheetClient {
@@ -346,11 +345,9 @@ export function spanMinutes(start: string, end: string): number {
   return span;
 }
 
-export function isValidTime(value: string): boolean {
-  if (!HHMM.test(value)) return false;
-  const [h, m] = value.split(':').map(Number);
-  return h >= 0 && h <= 23 && m >= 0 && m <= 59;
-}
+// Lives in the pure wall-clock module so calendar event times validate the
+// same way and the frontend can import it.
+export { isValidTime } from './wall-clock.js';
 
 export function isValidDate(value: string): boolean {
   if (typeof value !== 'string' || !YMD.test(value)) return false;

@@ -7,6 +7,10 @@
 // span is stored as an inclusive end date and recurs at the same length, so
 // the server rejects a span that would still be running when the next
 // occurrence starts.
+//
+// Anything but a birthday can also have a clock time: a wall time in the
+// household's timezone, a start plus an optional end that lands on the last
+// day of a span. Left unticked, the event stays all-day.
 
 import { useEffect, useMemo, useState } from 'react';
 import { Loader2, Trash2 } from 'lucide-react';
@@ -85,6 +89,9 @@ export function EventModal({ state, entities, onClose, onSave, onDelete }: Event
   const [date, setDate] = useState('');
   const [multiDay, setMultiDay] = useState(false);
   const [endDate, setEndDate] = useState('');
+  const [timed, setTimed] = useState(false);
+  const [time, setTime] = useState('');
+  const [endTime, setEndTime] = useState('');
   const [birthYearInput, setBirthYearInput] = useState('');
   const [repeats, setRepeats] = useState(false);
   const [interval, setInterval] = useState('1');
@@ -107,6 +114,9 @@ export function EventModal({ state, entities, onClose, onSave, onDelete }: Event
     setDate(ev?.date ?? state.defaultDate ?? '');
     setMultiDay(Boolean(ev?.endDate));
     setEndDate(ev?.endDate ?? '');
+    setTimed(Boolean(ev?.time));
+    setTime(ev?.time ?? '');
+    setEndTime(ev?.endTime ?? '');
     setBirthYearInput(ev?.birthYear !== undefined ? String(ev.birthYear) : '');
     setRepeats(Boolean(ev?.recurrence));
     setInterval(ev?.recurrence ? String(ev.recurrence.interval) : '1');
@@ -134,10 +144,17 @@ export function EventModal({ state, entities, onClose, onSave, onDelete }: Event
     return daysBetween(date, endDate) + 1;
   }, [spanning, date, endDate]);
 
+  const hasTime = kind !== 'birthday' && timed;
+  // A span's end time is on its last day, so only a single-day event has to
+  // end after it starts (zero-padded HH:MM compares correctly as a string).
+  const endTimeError =
+    hasTime && endTime && !spanning && endTime < time ? 'End time must be after the start.' : null;
+
   const canSave =
     title.trim().length > 0 &&
     /^\d{4}-\d{2}-\d{2}$/.test(date) &&
     (!spanning || spanDays > 1) &&
+    (!hasTime || (/^\d{2}:\d{2}$/.test(time) && !endTimeError)) &&
     !submitting;
 
   const handleSave = async () => {
@@ -151,6 +168,9 @@ export function EventModal({ state, entities, onClose, onSave, onDelete }: Event
       date,
       // null clears an existing span — that's how a trip becomes a single day.
       endDate: spanning && spanDays > 1 ? endDate : null,
+      // Likewise null makes a timed event all-day again.
+      time: hasTime ? time : null,
+      endTime: hasTime && endTime ? endTime : null,
       recurrence:
         kind !== 'birthday' && repeats
           ? {
@@ -194,7 +214,8 @@ export function EventModal({ state, entities, onClose, onSave, onDelete }: Event
             <DialogTitle>{editing ? 'Edit Event' : 'New Event'}</DialogTitle>
             <DialogDescription>
               Birthdays repeat yearly on their date. Tasks can repeat on a fixed schedule or from
-              each completion. Trips and anything else lasting several days get an end date.
+              each completion. Trips and anything else lasting several days get an end date, and
+              appointments can get a time.
             </DialogDescription>
           </DialogHeader>
           <DialogBody>
@@ -317,6 +338,63 @@ export function EventModal({ state, entities, onClose, onSave, onDelete }: Event
                       {spanDays > 1
                         ? `${spanDays} days, end included. Shows as one band across the calendar.`
                         : 'Pick an end date after the start date.'}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {kind !== 'birthday' && (
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-[13px] text-surface-900">
+                    <input
+                      type="checkbox"
+                      checked={timed}
+                      onChange={(e) => {
+                        setTimed(e.target.checked);
+                        // Seed a start so the fields open valid, the same way
+                        // "Spans multiple days" seeds its end date.
+                        if (e.target.checked && !time) setTime('09:00');
+                      }}
+                      disabled={submitting}
+                      className="accent-emerald-500"
+                    />
+                    At a set time
+                  </label>
+                  {hasTime && (
+                    <div className="grid grid-cols-2 gap-3 pl-6">
+                      <div>
+                        <label htmlFor="calendar-event-time" className={FIELD_LABEL}>
+                          Start time
+                        </label>
+                        <Input
+                          id="calendar-event-time"
+                          type="time"
+                          value={time}
+                          onChange={(e) => setTime(e.target.value)}
+                          className="mt-1.5"
+                          disabled={submitting}
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="calendar-event-end-time" className={FIELD_LABEL}>
+                          End (optional)
+                        </label>
+                        <Input
+                          id="calendar-event-end-time"
+                          type="time"
+                          value={endTime}
+                          onChange={(e) => setEndTime(e.target.value)}
+                          className="mt-1.5"
+                          disabled={submitting}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {hasTime && (endTimeError || (spanning && endTime)) && (
+                    <p
+                      className={`text-[11px] pl-6 ${endTimeError ? 'text-red-400' : 'text-surface-600'}`}
+                    >
+                      {endTimeError ?? 'The end time is on the last day of the span.'}
                     </p>
                   )}
                 </div>

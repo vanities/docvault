@@ -17,6 +17,8 @@ export interface CalendarEvent {
   title: string;
   date: string; // YYYY-MM-DD anchor (first day of a span)
   endDate?: string; // inclusive last day of a multi-day event; absent = single-day
+  time?: string; // HH:MM wall-clock start; absent = all-day
+  endTime?: string; // HH:MM, on endDate for a multi-day event
   recurrence?: CalendarRecurrence | null;
   birthYear?: number;
   entityId?: string;
@@ -39,6 +41,8 @@ export interface Occurrence {
   title: string;
   date: string; // YYYY-MM-DD (first day of a span)
   endDate?: string; // inclusive last day; set only on multi-day occurrences
+  time?: string; // HH:MM wall-clock start; absent = all-day
+  endTime?: string; // HH:MM, on the last day of a multi-day occurrence
   entityId?: string;
   notes?: string;
   completable: boolean;
@@ -55,6 +59,8 @@ export interface CalendarEventInput {
   title: string;
   date: string;
   endDate?: string | null;
+  time?: string | null;
+  endTime?: string | null;
   recurrence?: CalendarRecurrence | null;
   birthYear?: number | null;
   entityId?: string | null;

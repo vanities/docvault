@@ -13,6 +13,7 @@ import {
   monthGridDays,
   monthTitle,
   occurrenceTimingLabel,
+  occurrenceWhen,
   relativeLabel,
   spanLength,
 } from './calendarMath';
@@ -278,5 +279,25 @@ describe('span labels', () => {
     expect(formatDateRange('2026-10-03', '2026-10-09')).toBe('Oct 3 – 9');
     expect(formatDateRange('2026-10-30', '2026-11-02')).toBe('Oct 30 – Nov 2');
     expect(formatDateRange('2026-12-28', '2027-01-03')).toBe('Dec 28, 2026 – Jan 3, 2027');
+  });
+
+  test('occurrenceWhen names the time, the span, or both', () => {
+    expect(occurrenceWhen(occ({ date: '2026-08-05' }))).toBeNull();
+    expect(occurrenceWhen(occ({ date: '2026-08-05', time: '17:00' }))).toBe('5:00 PM');
+    expect(occurrenceWhen(occ({ date: '2026-08-05', time: '14:00', endTime: '15:30' }))).toBe(
+      '2:00 PM – 3:30 PM'
+    );
+    expect(occurrenceWhen(occ({ date: '2026-10-27', endDate: '2026-11-03' }))).toBe(
+      'Oct 27 – Nov 3'
+    );
+    // A timed span's end time is on its last day, so each end carries a date.
+    expect(
+      occurrenceWhen(
+        occ({ date: '2026-10-27', endDate: '2026-11-03', time: '18:00', endTime: '10:00' })
+      )
+    ).toBe('Oct 27, 6:00 PM – Nov 3, 10:00 AM');
+    expect(occurrenceWhen(occ({ date: '2026-10-27', endDate: '2026-11-03', time: '18:00' }))).toBe(
+      'Oct 27, 6:00 PM – Nov 3'
+    );
   });
 });

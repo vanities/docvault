@@ -4,6 +4,7 @@
 // date PARTS, never millisecond offsets, so DST transitions can't duplicate
 // or drop a day.
 
+import { formatTimeRange, formatWallClock } from '../../../server/wall-clock';
 import type { Occurrence } from './types';
 
 export interface MonthCursor {
@@ -223,6 +224,21 @@ export function formatDateRange(start: string, end: string): string {
     ...(sameYear ? {} : { year: 'numeric' }),
   });
   return `${left} – ${right}`;
+}
+
+/** The "when" detail shown after an occurrence's title: the date range of a
+ * multi-day span, the clock time of a timed one, or both. A timed span's end
+ * time belongs to its LAST day, so each end carries its own date:
+ * "Oct 27, 6:00 PM – Nov 3, 10:00 AM". Null for an all-day single day. */
+export function occurrenceWhen(occ: Occurrence): string | null {
+  if (!occ.endDate) return occ.time ? formatTimeRange(occ.time, occ.endTime) : null;
+  if (!occ.time) return formatDateRange(occ.date, occ.endDate);
+  const day = (iso: string) =>
+    parseISODate(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const end = occ.endTime
+    ? `${day(occ.endDate)}, ${formatWallClock(occ.endTime)}`
+    : day(occ.endDate);
+  return `${day(occ.date)}, ${formatWallClock(occ.time)} – ${end}`;
 }
 
 /** Right-hand agenda label for an occurrence: "day 3 of 7" while a span is

@@ -550,6 +550,8 @@ interface CalendarEventInput {
   title?: string;
   date?: string;
   endDate?: string | null;
+  time?: string | null;
+  endTime?: string | null;
   recurrence?: {
     interval: number;
     unit: 'day' | 'week' | 'month' | 'year';
@@ -1665,7 +1667,7 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
       // -- Calendar: reads --------------------------------------------------
       tool(
         'get_calendar',
-        'Projected calendar occurrences (birthdays with "turns N" ages, recurring task due dates with overdue flags, one-off events, multi-day events carrying an endDate) over a date window. Defaults to today through +60 days; overdue pending tasks surface even when their due date is past. Use for "what\'s coming up", "what\'s overdue", "when is X due".',
+        'Projected calendar occurrences (birthdays with "turns N" ages, recurring task due dates with overdue flags, one-off events, multi-day events carrying an endDate, timed events carrying time/endTime as HH:MM local wall-clock times; no time = all-day) over a date window. Defaults to today through +60 days; overdue pending tasks surface even when their due date is past. Use for "what\'s coming up", "what\'s overdue", "when is X due".',
         {
           start: z.string().optional().describe('YYYY-MM-DD (default today).'),
           end: z.string().optional().describe('YYYY-MM-DD (default today + 60 days).'),
@@ -1722,7 +1724,7 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
       // -- Calendar: writes -------------------------------------------------
       tool(
         'add_calendar_event',
-        "Create a calendar event. kind 'birthday' = yearly, optional birthYear for ages; 'task' = completable, optionally recurring (anchor 'fixed' keeps the schedule, 'afterCompletion' counts the next due date from when the user actually completes it — right for maintenance chores); 'event' = non-completable date. Set endDate for anything that runs across several days (a trip, a conference). WRITE TOOL — confirm before invoking.",
+        "Create a calendar event. kind 'birthday' = yearly, optional birthYear for ages; 'task' = completable, optionally recurring (anchor 'fixed' keeps the schedule, 'afterCompletion' counts the next due date from when the user actually completes it — right for maintenance chores); 'event' = non-completable date. Set endDate for anything that runs across several days (a trip, a conference). Set time when the event happens at a specific clock time; omit it for all-day. WRITE TOOL — confirm before invoking.",
         {
           kind: z.enum(['birthday', 'task', 'event']),
           title: z.string(),
@@ -1736,6 +1738,18 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
             .optional()
             .describe(
               'YYYY-MM-DD inclusive LAST day, for multi-day events like trips or conferences. Omit for single-day. Not allowed on birthdays; a recurring span must end before its next occurrence starts.'
+            ),
+          time: z
+            .string()
+            .optional()
+            .describe(
+              'HH:MM 24-hour start time as a wall-clock time in the household timezone (e.g. "17:00" for 5 PM; convert from other zones first). Omit for all-day. Not allowed on birthdays.'
+            ),
+          endTime: z
+            .string()
+            .optional()
+            .describe(
+              'HH:MM 24-hour end time; needs time. Falls on endDate for a multi-day event, otherwise the same day (must not be before time).'
             ),
           recurrence: z
             .object({
@@ -1754,7 +1768,7 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
       ),
       tool(
         'update_calendar_event',
-        "Update a calendar event's title, date, endDate (multi-day span), recurrence, birthYear, entity tag, notes, or status (archive with status 'archived'; kind is immutable). WRITE TOOL — confirm before invoking.",
+        "Update a calendar event's title, date, endDate (multi-day span), time/endTime (clock times), recurrence, birthYear, entity tag, notes, or status (archive with status 'archived'; kind is immutable). WRITE TOOL — confirm before invoking.",
         {
           id: z.string().describe('Event id from list_calendar_events/get_calendar.'),
           title: z.string().optional(),
@@ -1765,6 +1779,20 @@ function buildDocVaultMcpServer(ctx: ToolContext) {
             .optional()
             .describe(
               'YYYY-MM-DD inclusive last day of a multi-day span; null makes it single-day.'
+            ),
+          time: z
+            .string()
+            .nullable()
+            .optional()
+            .describe(
+              'HH:MM 24-hour wall-clock start in the household timezone; null makes the event all-day (and clears endTime).'
+            ),
+          endTime: z
+            .string()
+            .nullable()
+            .optional()
+            .describe(
+              'HH:MM 24-hour end time; null removes it. When changing time on a timed range, send endTime too.'
             ),
           recurrence: z
             .object({
