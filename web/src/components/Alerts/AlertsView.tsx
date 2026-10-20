@@ -8,6 +8,7 @@ import {
   Mail,
   MailX,
   PauseCircle,
+  Pencil,
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
@@ -38,10 +39,12 @@ import {
   sourceHealth,
   sourceStatus,
   sourceSummary,
+  type SettingChange,
   type SourceStatus,
   type SummaryTone,
 } from './alerts';
 import { AlertDashboardFrame } from './AlertDashboardFrame';
+import { AlertSettingsForm } from './AlertSettings';
 import { CheckChip, SectionTitle, Sparkline } from './AlertParts';
 
 const POLL_MS = 60_000;
@@ -271,9 +274,11 @@ export function AlertRow({
   checking,
   emailsOverride,
   emailsBusy,
+  savingSettings,
   onToggle,
   onCheck,
   onToggleEmails,
+  onSaveSettings,
 }: {
   source: AlertSourceView;
   now: number;
@@ -285,10 +290,14 @@ export function AlertRow({
   checking: boolean;
   emailsOverride: boolean | undefined;
   emailsBusy: boolean;
+  savingSettings: boolean;
   onToggle: () => void;
   onCheck: () => void;
   onToggleEmails: () => void;
+  onSaveSettings: (changes: SettingChange[]) => Promise<boolean>;
 }) {
+  const [editing, setEditing] = useState(false);
+  const specs = source.settings ?? [];
   const enabled = enabledOverride ?? source.job?.enabled ?? true;
   const emails = emailsOverride ?? source.emails !== false;
   const effective = { ...source, emails, job: source.job ? { ...source.job, enabled } : null };
@@ -368,12 +377,20 @@ export function AlertRow({
         <div id={panelId} className="space-y-3 px-4 pb-4 md:pl-11">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-[12px] text-surface-700">{source.description}</p>
-            {source.job && (
-              <Button variant="outline" size="sm" onClick={onCheck} disabled={checking}>
-                <RefreshCw className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} />
-                {checking ? 'Checking…' : 'Check now'}
-              </Button>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {specs.length > 0 && !editing && (
+                <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+                  <Pencil className="w-3.5 h-3.5" />
+                  Edit settings
+                </Button>
+              )}
+              {source.job && (
+                <Button variant="outline" size="sm" onClick={onCheck} disabled={checking}>
+                  <RefreshCw className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} />
+                  {checking ? 'Checking…' : 'Check now'}
+                </Button>
+              )}
+            </div>
           </div>
           <HealthNotice
             source={source}
@@ -382,43 +399,62 @@ export function AlertRow({
             emails={emails}
           />
 
-          <div className="rounded-xl border border-border/40 px-3 divide-y divide-border/40">
-            {checks.map((c) => (
-              <div key={c.id} className="flex items-start gap-3 py-2 min-w-0">
-                <div className="w-16 flex-shrink-0 pt-0.5">
-                  <CheckChip check={c} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  {c.scope && (
-                    <p className="text-[10px] uppercase tracking-[0.12em] text-surface-600">
-                      {c.scope}
-                    </p>
-                  )}
-                  <p className="text-[13px] text-surface-950">{c.label}</p>
-                </div>
-                <div className="text-right flex-shrink-0 max-w-[45%]">
-                  <p className="font-mono text-[13px] text-surface-950 break-words">{c.value}</p>
-                  <p className="text-[11px] text-surface-600">
-                    trips {c.threshold}
-                    {c.active && c.since
-                      ? ` · for ${formatDuration(Math.max(0, now - Date.parse(c.since)))}`
-                      : ''}
-                  </p>
-                </div>
+          {editing ? (
+            <AlertSettingsForm
+              sourceLabel={source.label}
+              specs={specs}
+              values={source.values}
+              saving={savingSettings}
+              onCancel={() => setEditing(false)}
+              onSave={async (changes) => {
+                const saved = await onSaveSettings(changes);
+                if (saved) setEditing(false);
+                return saved;
+              }}
+            />
+          ) : (
+            <>
+              <div className="rounded-xl border border-border/40 px-3 divide-y divide-border/40">
+                {checks.map((c) => (
+                  <div key={c.id} className="flex items-start gap-3 py-2 min-w-0">
+                    <div className="w-16 flex-shrink-0 pt-0.5">
+                      <CheckChip check={c} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      {c.scope && (
+                        <p className="text-[10px] uppercase tracking-[0.12em] text-surface-600">
+                          {c.scope}
+                        </p>
+                      )}
+                      <p className="text-[13px] text-surface-950">{c.label}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0 max-w-[45%]">
+                      <p className="font-mono text-[13px] text-surface-950 break-words">
+                        {c.value}
+                      </p>
+                      <p className="text-[11px] text-surface-600">
+                        trips {c.threshold}
+                        {c.active && c.since
+                          ? ` · for ${formatDuration(Math.max(0, now - Date.parse(c.since)))}`
+                          : ''}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {checks.length === 0 && (
+                  <p className="py-2 text-xs text-surface-600">This source reported no checks.</p>
+                )}
               </div>
-            ))}
-            {checks.length === 0 && (
-              <p className="py-2 text-xs text-surface-600">This source reported no checks.</p>
-            )}
-          </div>
 
-          {advice && (
-            <div
-              className={`rounded-lg p-3 text-sm ${status === 'act' ? 'bg-danger-500/10 text-danger-400' : 'bg-warn-500/10 text-warn-400'}`}
-            >
-              <p className="font-semibold">What to do</p>
-              <p className="text-surface-900 mt-0.5">{advice}</p>
-            </div>
+              {advice && (
+                <div
+                  className={`rounded-lg p-3 text-sm ${status === 'act' ? 'bg-danger-500/10 text-danger-400' : 'bg-warn-500/10 text-warn-400'}`}
+                >
+                  <p className="font-semibold">What to do</p>
+                  <p className="text-surface-900 mt-0.5">{advice}</p>
+                </div>
+              )}
+            </>
           )}
 
           {source.hasDashboard ? (
@@ -507,6 +543,7 @@ export function AlertsView() {
   const [checking, setChecking] = useState<Record<string, boolean>>({});
   const [emailsOverride, setEmailsOverride] = useState<Record<string, boolean>>({});
   const [emailsBusy, setEmailsBusy] = useState<Record<string, boolean>>({});
+  const [savingSettings, setSavingSettings] = useState<Record<string, boolean>>({});
   const [remembered, setRemembered] = useState<Record<string, boolean>>(loadRemembered);
   const { addToast } = useToast();
 
@@ -643,6 +680,32 @@ export function AlertsView() {
     [addToast, load]
   );
 
+  const saveSettings = useCallback(
+    async (source: AlertSourceView, changes: SettingChange[]): Promise<boolean> => {
+      setSavingSettings((s) => ({ ...s, [source.id]: true }));
+      try {
+        await requestJson(`${API_BASE}/alerts/sources/${encodeURIComponent(source.id)}/settings`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            values: Object.fromEntries(changes.map((c) => [c.key, c.value])),
+          }),
+        });
+        addToast(`${source.label}: saved, checking again with the new values`, 'success');
+        // The job reads the values at launch, so a fresh run makes the new lines show now.
+        if (source.job) void checkSource(source);
+        else await load();
+        return true;
+      } catch (err) {
+        addToast(err instanceof Error ? err.message : 'Could not save the settings', 'error');
+        return false;
+      } finally {
+        setSavingSettings((s) => omit(s, source.id));
+      }
+    },
+    [addToast, checkSource, load]
+  );
+
   const sources = useMemo(() => data?.sources ?? [], [data]);
   const effective = sources.map((s) =>
     s.job && enabledOverride[s.id] !== undefined
@@ -734,9 +797,11 @@ export function AlertsView() {
                     checking={!!checking[source.id]}
                     emailsOverride={emailsOverride[source.id]}
                     emailsBusy={!!emailsBusy[source.id]}
+                    savingSettings={!!savingSettings[source.id]}
                     onToggle={() => void toggleSource(source)}
                     onCheck={() => void checkSource(source)}
                     onToggleEmails={() => void toggleEmails(source)}
+                    onSaveSettings={(changes) => saveSettings(source, changes)}
                   />
                 );
               })}

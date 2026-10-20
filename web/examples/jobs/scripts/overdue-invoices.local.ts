@@ -1,6 +1,6 @@
 // Invoices: an alert add-on for DocVault's timesheet. It trips when an invoice is past due
-// (7+ days is a warning, 30+ is act now) and when billable time from an earlier month is still
-// on no invoice after the 5th, so both money owed and money never billed get noticed. Reports to
+// (by default 7+ days is a warning, 30+ is act now) and when billable time from an earlier month
+// is still on no invoice after the 5th, so both money owed and money never billed get noticed. Reports to
 // DocVault Alerts (POST /api/alerts/report); its page is DATA_DIR/alerts/overdue-invoices/dashboard.html.
 //
 // Env: DOCVAULT_DRY_RUN=1 prints the report instead of sending it.
@@ -11,12 +11,36 @@ const JOB_ID = process.env.DOCVAULT_JOB_ID || 'overdue-invoices';
 const SOURCE_ID = 'overdue-invoices';
 const API = process.env.DOCVAULT_API_BASE || 'http://127.0.0.1:3005';
 
-const OVERDUE_WARN_DAYS = 7;
-const OVERDUE_CRITICAL_DAYS = 30;
-const UNBILLED_AFTER_DAY = 5; // invoices for last month usually go out in the first few days
-const UNBILLED_LOOKBACK_DAYS = 120; // older leftovers are history, not a to-do
-const UNBILLED_MIN_HOURS = 0.5;
+// Adjustable on the Alerts page (Edit settings). The job runner passes the owner's values in
+// DOCVAULT_ALERT_SETTINGS; anything unset keeps the default here.
+const SETTINGS = [
+  { key: 'overdueWarnDays', label: 'Late after', unit: 'days', default: 7, min: 1, max: 365, step: 1, help: 'Days past the due date.' },
+  { key: 'overdueCriticalDays', label: 'Act now after', unit: 'days', default: 30, min: 1, max: 730, step: 1, help: 'Days past the due date.' },
+  { key: 'unbilledAfterDay', label: 'Flag unbilled time after day', default: 5, min: 1, max: 28, step: 1, help: 'Day of the month; invoices for last month usually go out in the first few days.' },
+  { key: 'unbilledLookbackDays', label: 'Look for unbilled time over the last', unit: 'days', default: 120, min: 30, max: 730, step: 1, help: 'Older leftovers are history, not a to-do.' },
+  { key: 'unbilledMinHours', label: 'Ignore unbilled time under', unit: 'hours', default: 0.5, min: 0, max: 40, step: 0.25 },
+];
+const owner: Record<string, unknown> = (() => {
+  try {
+    return JSON.parse(process.env.DOCVAULT_ALERT_SETTINGS || '{}')[SOURCE_ID] ?? {};
+  } catch {
+    console.log(`[${SOURCE_ID}] WARN DOCVAULT_ALERT_SETTINGS is not valid JSON; using defaults`);
+    return {};
+  }
+})();
+const setting = (key: string): number => {
+  const value = owner[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : SETTINGS.find((s) => s.key === key)!.default;
+};
+console.log(`[${SOURCE_ID}] settings changed by the owner: ${Object.keys(owner).join(',') || 'none'}`);
+
+const OVERDUE_WARN_DAYS = setting('overdueWarnDays');
+const OVERDUE_CRITICAL_DAYS = setting('overdueCriticalDays');
+const UNBILLED_AFTER_DAY = setting('unbilledAfterDay');
+const UNBILLED_LOOKBACK_DAYS = setting('unbilledLookbackDays');
+const UNBILLED_MIN_HOURS = setting('unbilledMinHours');
 const DAY_MS = 24 * 3600e3;
+const ordinal = (n: number) => `${n}${[11, 12, 13].includes(n % 100) ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th")}`;
 
 type Severity = 'critical' | 'warning';
 interface Check {
@@ -192,9 +216,9 @@ const checks: Check[] = [
     severity: 'warning',
     active: pastBillingDay && unbilledHours >= UNBILLED_MIN_HOURS,
     value: unbilledHours >= UNBILLED_MIN_HOURS
-      ? `${unbilledHours.toFixed(1)} h, about ${money(unbilledAmount, currency)}${pastBillingDay ? '' : ` (checked after the ${UNBILLED_AFTER_DAY}th)`}`
+      ? `${unbilledHours.toFixed(1)} h, about ${money(unbilledAmount, currency)}${pastBillingDay ? '' : ` (checked after the ${ordinal(UNBILLED_AFTER_DAY)})`}`
       : 'all earlier time is invoiced',
-    threshold: `time before this month still unbilled after the ${UNBILLED_AFTER_DAY}th`,
+    threshold: `time before this month still unbilled after the ${ordinal(UNBILLED_AFTER_DAY)}`,
   },
 ];
 for (const c of checks) log(`check ${c.id} ${c.active ? 'TRIPPED' : 'ok'}`);
@@ -204,10 +228,11 @@ const report = {
   label: 'Invoices',
   description: 'Past-due invoices and billable time that never made it onto an invoice',
   jobId: JOB_ID,
+  settings: SETTINGS,
   checks,
   advice: {
     critical:
-      'Follow up today on invoices more than 30 days past due: resend them from the Timesheet tab or contact the client, and mark them paid once the money lands.',
+      `Follow up today on invoices ${OVERDUE_CRITICAL_DAYS} or more days past due: resend them from the Timesheet tab or contact the client, and mark them paid once the money lands.`,
     warning:
       'Look at the past-due invoices and unbilled time in the Timesheet tab: send a reminder, or bill the leftover hours with this month\'s invoices.',
   },

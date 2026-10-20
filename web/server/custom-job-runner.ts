@@ -19,6 +19,8 @@ import {
 } from './automation-runs.js';
 import { collectionCounts, type CollectionCounts } from './collection-summary.js';
 export { collectionCounts } from './collection-summary.js';
+import { alertSettingsForJob } from './alerts.js';
+import type { AlertJobSettings } from './alerts-types.js';
 import { seedExampleAlertDashboards } from './seed-example-alerts.js';
 import { seedExampleJobs } from './seed-example-jobs.js';
 
@@ -366,6 +368,18 @@ async function executeCustomJob(
     const scriptPath = customJobScriptPath(dataDir, manifest.script);
     await prepareCustomJobScript({}, manifest, { dataDir, overwrite: true });
     await fs.access(scriptPath);
+    // An unreadable alerts store must not stop unrelated jobs; alert jobs fall back to defaults.
+    const alertSettings = await alertSettingsForJob(manifest.id, { dataDir }).catch(
+      (err): AlertJobSettings => {
+        logJobs.warn(
+          `[run] job=${id} alert settings unreadable, defaults apply: ${err instanceof Error ? err.message : String(err)}`
+        );
+        return {};
+      }
+    );
+    if (Object.keys(alertSettings).length > 0) {
+      logJobs.info(`[run] job=${id} alert settings for ${Object.keys(alertSettings).join(',')}`);
+    }
     const { cmd, args } = commandForScript(scriptPath);
     const child = spawn(cmd, args, {
       cwd: jobsRoot(dataDir),
@@ -377,6 +391,7 @@ async function executeCustomJob(
         DOCVAULT_JOB_ENABLED: String(manifest.enabled),
         DOCVAULT_JOB_DRY_RUN: dryRun ? '1' : '0',
         DOCVAULT_DRY_RUN: dryRun ? '1' : '0',
+        DOCVAULT_ALERT_SETTINGS: JSON.stringify(alertSettings),
       },
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: process.platform !== 'win32',

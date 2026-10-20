@@ -1,14 +1,23 @@
 // Pure helper tests over fabricated alert sources; no network, no personal data.
 import { describe, expect, test } from 'vite-plus/test';
-import type { AlertCheck, AlertJobInfo, AlertSourceView } from '../../../server/alerts-types';
+import type {
+  AlertCheck,
+  AlertJobInfo,
+  AlertSettingSpec,
+  AlertSourceView,
+} from '../../../server/alerts-types';
 import {
+  diffSettings,
   expansionKey,
   formatNumber,
+  formatSetting,
   isExpanded,
   overallStatus,
+  parseSettingInput,
   scheduleToMs,
   seriesKeys,
   seriesValues,
+  settingValue,
   sortChecks,
   sortSources,
   sourceHealth,
@@ -207,5 +216,57 @@ describe('charts and formatting', () => {
     expect(formatNumber(0.99971)).toBe('0.9997');
     expect(formatNumber(8.4)).toBe('8.4');
     expect(formatNumber(1234567.89)).toBe('1,234,567.9');
+  });
+});
+
+describe('settings helpers', () => {
+  const line: AlertSettingSpec = {
+    key: 'line',
+    label: 'Alert at or below',
+    unit: '%',
+    default: 6.75,
+    min: 2,
+    max: 15,
+  };
+  const target: AlertSettingSpec = { key: 'target', label: 'Target', unit: '$', default: 1234 };
+  const span: AlertSettingSpec = {
+    key: 'span',
+    label: 'Window',
+    unit: 'weeks',
+    default: 4,
+    min: 1,
+    max: 26,
+  };
+
+  test('the value in effect is the owner one, else the default', () => {
+    expect(settingValue(line, { line: 6.5 })).toBe(6.5);
+    expect(settingValue(line, {})).toBe(6.75);
+    expect(settingValue(line, undefined)).toBe(6.75);
+  });
+
+  test('values read with the unit the job named, without float noise', () => {
+    expect(formatSetting(line, 6.75)).toBe('6.75%');
+    expect(formatSetting(line, 0.1 + 0.2)).toBe('0.3%');
+    expect(formatSetting(target, 1234)).toBe('$1,234');
+    expect(formatSetting(span, 4)).toBe('4 weeks');
+    expect(formatSetting({}, 3)).toBe('3');
+  });
+
+  test('a blank field means the default; typed symbols are fine; ranges hold', () => {
+    expect(parseSettingInput(line, '')).toEqual({ value: 6.75 });
+    expect(parseSettingInput(line, ' 6.5% ')).toEqual({ value: 6.5 });
+    expect(parseSettingInput(target, '$2,500')).toEqual({ value: 2500 });
+    expect(parseSettingInput(line, 'abc')).toEqual({ error: 'Enter a number' });
+    expect(parseSettingInput(line, '1')).toEqual({ error: 'At least 2%' });
+    expect(parseSettingInput(span, '30')).toEqual({ error: 'At most 26 weeks' });
+  });
+
+  test('Done lists only real changes, old → new; going back to the default saves null', () => {
+    const specs = [line, span];
+    expect(diffSettings(specs, { line: 6.5 }, { line: 6.5, span: 4 })).toEqual([]);
+    expect(diffSettings(specs, { line: 6.5 }, { line: 6.75, span: 6 })).toEqual([
+      { key: 'line', label: 'Alert at or below', from: '6.5%', to: '6.75%', value: null },
+      { key: 'span', label: 'Window', from: '4 weeks', to: '6 weeks', value: 6 },
+    ]);
   });
 });
