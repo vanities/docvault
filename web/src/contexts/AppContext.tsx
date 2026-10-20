@@ -203,6 +203,7 @@ export type NavView =
   | 'tech'
   | 'local-news'
   | 'calendar'
+  | 'alerts'
   | 'health'
   | 'health-activity'
   | 'health-heart'
@@ -448,6 +449,7 @@ export function AppProvider({ children }: AppProviderProps) {
         'tech',
         'local-news',
         'calendar',
+        'alerts',
         'health',
         'health-activity',
         'health-heart',

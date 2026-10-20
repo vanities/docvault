@@ -24,6 +24,7 @@ import {
   MapPin,
   Receipt,
   Scale,
+  BellRing,
   TrendingUp,
   LineChart,
   Brain,
@@ -896,6 +897,16 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               icon={CalendarDays}
               activeColor="bg-orange-500/10"
               activeTextColor="text-orange-400"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+            />
+            <NavButton
+              view="alerts"
+              label="Alerts"
+              icon={BellRing}
+              activeColor="bg-rose-500/10"
+              activeTextColor="text-rose-400"
               activeView={activeView}
               isProcessing={isProcessing}
               onClick={handleViewClick}

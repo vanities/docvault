@@ -153,6 +153,11 @@ web/scripts/*
 !web/server/email-cc.test.ts
 # Exception: sent-mail log store tests use fabricated addresses in a tmpdir, no personal data
 !web/server/email-log.test.ts
+# Exception: alerts engine/route tests use synthetic sources and fabricated addresses in a tmpdir, email mocked
+!web/server/alerts.test.ts
+# Exception: alerts view helper tests are pure logic over fabricated checks, no personal data
+!web/src/components/Alerts/alerts.test.ts
+!web/src/components/Alerts/AlertsView.test.tsx
 # Exception: blur-coverage test scans component source for unblurred money renders, no personal data
 !web/src/components/blur-coverage.test.ts
 # Exception: search controls tests use fabricated document metadata only, no personal data
