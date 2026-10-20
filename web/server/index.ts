@@ -82,6 +82,8 @@ import { handlePoliticsRoutes } from './routes/politics.js';
 import { handleJobRoutes, type JobRouteDeps } from './routes/jobs.js';
 import { handlePoliticalJobRoutes } from './routes/political-jobs.js';
 import { handleCryptoYieldsRoutes } from './routes/crypto-yields.js';
+import { handleAlertsRoutes } from './routes/alerts.js';
+import { startAlertsWatchdog } from './alerts.js';
 import { handleChatRoutes } from './routes/chat.js';
 import { handleTranscribeRoutes } from './routes/transcribe.js';
 import { handleExternalSourcesRoutes } from './routes/external-sources.js';
@@ -1580,6 +1582,10 @@ export async function handleRequest(
   const cryptoYieldsResponse = await handleCryptoYieldsRoutes(req, url, pathname);
   if (cryptoYieldsResponse) return cryptoYieldsResponse;
 
+  // Alerts: sources report checks; bad-news-only email (see server/alerts.ts)
+  const alertsResponse = await handleAlertsRoutes(req, url, pathname);
+  if (alertsResponse) return alertsResponse;
+
   // ========================================================================
   // Geocode API (Geoapify proxy)
   // ========================================================================
@@ -2324,6 +2330,7 @@ if (import.meta.main) {
       `Custom job scheduler startup failed: ${err instanceof Error ? err.message : err}`
     );
   }
+  startAlertsWatchdog(DATA_DIR);
   try {
     // Any research video/audio transcription left mid-flight by a restart is
     // flipped from pending/running → error so it isn't stuck forever (retry via

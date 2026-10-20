@@ -7,7 +7,7 @@ import Testing
         let ids: Set = [
             "portfolio", "banks", "brokers", "crypto", "gold", "property", "income", "debts",
             "strategy", "quant", "tax-year", "business-docs", "all-files", "tn-tax", "solo-401k",
-            "estimated-tax", "federal-tax", "sales", "mileage", "timesheet", "calendar", "health",
+            "estimated-tax", "federal-tax", "sales", "mileage", "timesheet", "calendar", "alerts", "health",
             "health-activity", "health-heart", "health-sleep", "health-workouts", "health-body",
             "health-records", "health-dna", "health-nutrition", "health-sickness",
             "health-analysis", "health-research", "deep-research", "daily-news", "tech",

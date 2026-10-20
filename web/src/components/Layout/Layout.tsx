@@ -40,6 +40,9 @@ const TnTaxView = lazy(() => import('../TnTax/TnTaxView').then((m) => ({ default
 const CryptoView = lazy(() =>
   import('../Crypto/CryptoView').then((m) => ({ default: m.CryptoView }))
 );
+const AlertsView = lazy(() =>
+  import('../Alerts/AlertsView').then((m) => ({ default: m.AlertsView }))
+);
 const BrokersView = lazy(() =>
   import('../Brokers/BrokersView').then((m) => ({ default: m.BrokersView }))
 );
@@ -203,6 +206,8 @@ export function Layout() {
         return <FederalTaxView />;
       case 'crypto':
         return <CryptoView />;
+      case 'alerts':
+        return <AlertsView />;
       case 'brokers':
         return <BrokersView />;
       case 'banks':

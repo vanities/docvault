@@ -1,0 +1,134 @@
+// Pure helper tests over fabricated alert sources; no network, no personal data.
+import { describe, expect, test } from 'vite-plus/test';
+import type { AlertCheck, AlertJobInfo } from '../../../server/alerts-types';
+import {
+  formatNumber,
+  overallStatus,
+  scheduleToMs,
+  seriesKeys,
+  seriesValues,
+  sortChecks,
+  sourceHealth,
+  sourceStatus,
+  sparkGeometry,
+} from './alerts';
+
+function check(overrides: Partial<AlertCheck> = {}): AlertCheck {
+  return {
+    id: 'demo:check',
+    label: 'Demo check',
+    scope: 'Demo',
+    severity: 'warning',
+    active: false,
+    value: '1',
+    threshold: 'above 2',
+    since: null,
+    lastAlertAt: null,
+    ...overrides,
+  };
+}
+
+const job = (overrides: Partial<AlertJobInfo> = {}): AlertJobInfo => ({
+  id: 'demo-job',
+  label: 'Demo job',
+  schedule: 'every 15m',
+  script: 'scripts/demo.local.ts',
+  enabled: true,
+  tags: [],
+  ...overrides,
+});
+
+describe('status', () => {
+  test('a disabled job pauses its source even with tripped checks', () => {
+    const tripped = [check({ active: true, severity: 'critical' })];
+    expect(sourceStatus({ checks: tripped, job: job() })).toBe('act');
+    expect(sourceStatus({ checks: tripped, job: job({ enabled: false }) })).toBe('paused');
+    expect(sourceStatus({ checks: [check({ active: true })], job: null })).toBe('warning');
+    expect(sourceStatus({ checks: [check()], job: null })).toBe('clear');
+  });
+
+  test('overall status ignores paused sources and counts them', () => {
+    expect(
+      overallStatus([
+        { checks: [check({ active: true, severity: 'critical' })], job: job({ enabled: false }) },
+        { checks: [check({ active: true })], job: job() },
+        { checks: [], job: null },
+      ])
+    ).toEqual({ status: 'warning', paused: 1 });
+  });
+
+  test('tripped checks sort first, critical before warning', () => {
+    const sorted = sortChecks([
+      check({ id: 'ok', label: 'A' }),
+      check({ id: 'warn', label: 'B', active: true }),
+      check({ id: 'crit', label: 'C', active: true, severity: 'critical' }),
+    ]);
+    expect(sorted.map((c) => c.id)).toEqual(['crit', 'warn', 'ok']);
+  });
+});
+
+describe('source health', () => {
+  const now = Date.parse('2030-01-01T12:00:00.000Z');
+  const ago = (min: number) => new Date(now - min * 60_000).toISOString();
+
+  test('schedules convert like the server', () => {
+    expect(scheduleToMs('hourly')).toBe(3_600_000);
+    expect(scheduleToMs('every 2h')).toBe(7_200_000);
+    expect(scheduleToMs('every 15m')).toBe(900_000);
+    expect(scheduleToMs('weekly')).toBeNull();
+  });
+
+  test('stale after three missed intervals, only while the job is enabled', () => {
+    expect(sourceHealth({ reportedAt: ago(40), failures: 0, job: job() }, now).kind).toBe('ok');
+    expect(sourceHealth({ reportedAt: ago(46), failures: 0, job: job() }, now).kind).toBe('stale');
+    expect(
+      sourceHealth({ reportedAt: ago(600), failures: 0, job: job({ enabled: false }) }, now).kind
+    ).toBe('ok');
+    expect(sourceHealth({ reportedAt: ago(5), failures: 2, job: job() }, now).kind).toBe('failing');
+    expect(sourceHealth({ reportedAt: null, failures: 0, job: null }, now).kind).toBe('never');
+  });
+});
+
+describe('charts and formatting', () => {
+  test('the reference line stays inside the chart even far from the data', () => {
+    const g = sparkGeometry([99, 99.5, 98], 240, 56, 5);
+    expect(g.refY).not.toBeNull();
+    expect(g.refY!).toBeGreaterThanOrEqual(0);
+    expect(g.refY!).toBeLessThanOrEqual(56);
+    expect(g.line.startsWith('M')).toBe(true);
+  });
+
+  test('a flat series and gaps still draw', () => {
+    expect(sparkGeometry([1, 1, 1], 100, 20).line).not.toBe('');
+    expect(sparkGeometry([null, 2, null, 3], 100, 20).end).not.toBeNull();
+    expect(sparkGeometry([null, null], 100, 20).line).toBe('');
+  });
+
+  test('series values drop non-numbers', () => {
+    expect(
+      seriesValues(
+        [
+          { t: 'a', values: { 'demo.x': 1 } },
+          { t: 'b', values: { 'demo.x': null } },
+          { t: 'c', values: {} },
+        ],
+        'demo.x'
+      )
+    ).toEqual([1, null, null]);
+  });
+
+  test('series keys come out in first-seen order, once each', () => {
+    expect(
+      seriesKeys([
+        { t: 'a', values: { 'demo.b': 1, 'demo.a': 2 } },
+        { t: 'b', values: { 'demo.a': 3, 'demo.c': null } },
+      ])
+    ).toEqual(['demo.b', 'demo.a', 'demo.c']);
+  });
+
+  test('unitless numbers keep precision when small', () => {
+    expect(formatNumber(0.99971)).toBe('0.9997');
+    expect(formatNumber(8.4)).toBe('8.4');
+    expect(formatNumber(1234567.89)).toBe('1,234,567.9');
+  });
+});
