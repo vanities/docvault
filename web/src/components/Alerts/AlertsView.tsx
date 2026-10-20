@@ -3,6 +3,7 @@ import {
   AlertCircle,
   AlertTriangle,
   BellOff,
+  ChevronRight,
   Loader2,
   Mail,
   MailX,
@@ -24,22 +25,39 @@ import type {
   AlertsResponse,
 } from '../../../server/alerts-types';
 import {
+  expansionKey,
   formatAge,
   formatDuration,
   formatNumber,
+  isExpanded,
   overallStatus,
   seriesKeys,
   seriesValues,
   sortChecks,
+  sortSources,
   sourceHealth,
   sourceStatus,
+  sourceSummary,
   type SourceStatus,
+  type SummaryTone,
 } from './alerts';
 import { AlertDashboardFrame } from './AlertDashboardFrame';
 import { CheckChip, SectionTitle, Sparkline } from './AlertParts';
 
 const POLL_MS = 60_000;
 const MAX_GENERIC_CHARTS = 8;
+const EXPANDED_KEY = 'docvault.alerts.expanded';
+
+function loadRemembered(): Record<string, boolean> {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(EXPANDED_KEY) ?? '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, boolean>)
+      : {};
+  } catch {
+    return {};
+  }
+}
 
 function omit<T>(record: Record<string, T>, key: string): Record<string, T> {
   const next = { ...record };
@@ -227,9 +245,26 @@ function HealthNotice({
   );
 }
 
-export function SourceCard({
+const TONE_CLASS: Record<SummaryTone, string> = {
+  critical: 'text-danger-400',
+  warning: 'text-warn-400',
+  ok: 'text-surface-700',
+  muted: 'text-surface-600',
+};
+
+const DOT_CLASS: Record<SourceStatus, string> = {
+  act: 'bg-danger-400 ring-4 ring-danger-500/20',
+  warning: 'bg-warn-400 ring-4 ring-warn-500/20',
+  clear: 'bg-accent-400',
+  paused: 'bg-surface-500',
+};
+
+/** One alert in the list: a scannable row that expands into its checks and dashboard. */
+export function AlertRow({
   source,
   now,
+  expanded,
+  onExpand,
   enabledOverride,
   toggling,
   toggleError,
@@ -242,6 +277,8 @@ export function SourceCard({
 }: {
   source: AlertSourceView;
   now: number;
+  expanded: boolean;
+  onExpand: () => void;
   enabledOverride: boolean | undefined;
   toggling: boolean;
   toggleError: string | undefined;
@@ -254,10 +291,9 @@ export function SourceCard({
 }) {
   const enabled = enabledOverride ?? source.job?.enabled ?? true;
   const emails = emailsOverride ?? source.emails !== false;
-  const status = sourceStatus({
-    checks: source.checks,
-    job: source.job ? { ...source.job, enabled } : null,
-  });
+  const effective = { ...source, emails, job: source.job ? { ...source.job, enabled } : null };
+  const status = sourceStatus(effective);
+  const summary = sourceSummary(effective, now);
   const checks = useMemo(() => sortChecks(source.checks), [source.checks]);
   const activeChecks = source.checks.filter((c) => c.active);
   const advice = activeChecks.some((c) => c.severity === 'critical')
@@ -266,43 +302,72 @@ export function SourceCard({
       ? source.advice?.warning
       : undefined;
   const reportedAge = source.reportedAt ? Math.max(0, now - Date.parse(source.reportedAt)) : null;
+  const panelId = `alert-panel-${source.id}`;
 
   return (
-    <section className="space-y-3">
-      <Card variant="glass" className="p-4 space-y-3">
-        <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-semibold text-surface-950">{source.label}</h2>
-              <StatusPill status={status} size="sm" />
-            </div>
-            {source.description && (
-              <p className="text-[12px] text-surface-700 mt-0.5">{source.description}</p>
-            )}
-            <p className="text-[11px] text-surface-600 mt-1">
-              {reportedAge !== null ? `Reported ${formatAge(reportedAge)}` : 'Never reported'}
-              {source.job ? ` · ${source.job.schedule}` : ''}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            {source.job && (
-              <ToggleSwitch
-                label="Checks"
-                ariaLabel={`${source.label} checks`}
-                title={enabled ? 'Checks run on schedule' : 'Paused: no checks or emails'}
-                checked={enabled}
-                busy={toggling}
-                onToggle={onToggle}
-              />
-            )}
+    <section className="border-b border-border/40 last:border-b-0">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+        <button
+          type="button"
+          onClick={onExpand}
+          aria-expanded={expanded}
+          aria-controls={panelId}
+          className="flex min-w-0 flex-1 basis-64 items-center gap-3 rounded-lg text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400/60"
+        >
+          <ChevronRight
+            className={`w-4 h-4 flex-shrink-0 text-surface-600 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`}
+          />
+          <span
+            aria-hidden="true"
+            className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${DOT_CLASS[status]}`}
+          />
+          <span className="min-w-0">
+            <span className="flex items-center gap-2">
+              <span className="truncate text-[15px] font-semibold text-surface-950">
+                {source.label}
+              </span>
+              {status !== 'clear' && <StatusPill status={status} size="sm" />}
+            </span>
+            <span className={`block truncate text-[12px] ${TONE_CLASS[summary.tone]}`}>
+              {summary.text}
+            </span>
+          </span>
+        </button>
+        <span className="whitespace-nowrap text-[11px] text-surface-600">
+          {reportedAge !== null ? `Checked ${formatAge(reportedAge)}` : 'Never checked'}
+          {source.job ? ` · ${source.job.schedule}` : ''}
+        </span>
+        <div className="flex items-center gap-4">
+          {source.job && (
             <ToggleSwitch
-              label="Emails"
-              ariaLabel={`${source.label} emails`}
-              title={emails ? 'Emails you when a check trips' : 'Emails are off'}
-              checked={emails}
-              busy={emailsBusy}
-              onToggle={onToggleEmails}
+              label="Checks"
+              ariaLabel={`${source.label} checks`}
+              title={enabled ? 'Checks run on schedule' : 'Paused: no checks or emails'}
+              checked={enabled}
+              busy={toggling}
+              onToggle={onToggle}
             />
+          )}
+          <ToggleSwitch
+            label="Emails"
+            ariaLabel={`${source.label} emails`}
+            title={emails ? 'Emails you when a check trips' : 'Emails are off'}
+            checked={emails}
+            busy={emailsBusy}
+            onToggle={onToggleEmails}
+          />
+        </div>
+      </div>
+      {toggleError && (
+        <p className="px-4 pb-2 text-[12px] text-danger-400 flex items-center gap-1.5">
+          <AlertCircle className="w-3.5 h-3.5" /> {toggleError}
+        </p>
+      )}
+
+      {expanded && (
+        <div id={panelId} className="space-y-3 px-4 pb-4 md:pl-11">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[12px] text-surface-700">{source.description}</p>
             {source.job && (
               <Button variant="outline" size="sm" onClick={onCheck} disabled={checking}>
                 <RefreshCw className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} />
@@ -310,58 +375,58 @@ export function SourceCard({
               </Button>
             )}
           </div>
-        </div>
-        {toggleError && (
-          <p className="text-[12px] text-danger-400 flex items-center gap-1.5">
-            <AlertCircle className="w-3.5 h-3.5" /> {toggleError}
-          </p>
-        )}
-        <HealthNotice source={source} now={now} paused={!!source.job && !enabled} emails={emails} />
+          <HealthNotice
+            source={source}
+            now={now}
+            paused={!!source.job && !enabled}
+            emails={emails}
+          />
 
-        <div className="divide-y divide-border/40">
-          {checks.map((c) => (
-            <div key={c.id} className="flex items-start gap-3 py-2 min-w-0">
-              <div className="w-16 flex-shrink-0 pt-0.5">
-                <CheckChip check={c} />
-              </div>
-              <div className="min-w-0 flex-1">
-                {c.scope && (
-                  <p className="text-[10px] uppercase tracking-[0.12em] text-surface-600">
-                    {c.scope}
+          <div className="rounded-xl border border-border/40 px-3 divide-y divide-border/40">
+            {checks.map((c) => (
+              <div key={c.id} className="flex items-start gap-3 py-2 min-w-0">
+                <div className="w-16 flex-shrink-0 pt-0.5">
+                  <CheckChip check={c} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  {c.scope && (
+                    <p className="text-[10px] uppercase tracking-[0.12em] text-surface-600">
+                      {c.scope}
+                    </p>
+                  )}
+                  <p className="text-[13px] text-surface-950">{c.label}</p>
+                </div>
+                <div className="text-right flex-shrink-0 max-w-[45%]">
+                  <p className="font-mono text-[13px] text-surface-950 break-words">{c.value}</p>
+                  <p className="text-[11px] text-surface-600">
+                    trips {c.threshold}
+                    {c.active && c.since
+                      ? ` · for ${formatDuration(Math.max(0, now - Date.parse(c.since)))}`
+                      : ''}
                   </p>
-                )}
-                <p className="text-[13px] text-surface-950">{c.label}</p>
+                </div>
               </div>
-              <div className="text-right flex-shrink-0 max-w-[45%]">
-                <p className="font-mono text-[13px] text-surface-950 break-words">{c.value}</p>
-                <p className="text-[11px] text-surface-600">
-                  trips {c.threshold}
-                  {c.active && c.since
-                    ? ` · for ${formatDuration(Math.max(0, now - Date.parse(c.since)))}`
-                    : ''}
-                </p>
-              </div>
+            ))}
+            {checks.length === 0 && (
+              <p className="py-2 text-xs text-surface-600">This source reported no checks.</p>
+            )}
+          </div>
+
+          {advice && (
+            <div
+              className={`rounded-lg p-3 text-sm ${status === 'act' ? 'bg-danger-500/10 text-danger-400' : 'bg-warn-500/10 text-warn-400'}`}
+            >
+              <p className="font-semibold">What to do</p>
+              <p className="text-surface-900 mt-0.5">{advice}</p>
             </div>
-          ))}
-          {checks.length === 0 && (
-            <p className="py-2 text-xs text-surface-600">This source reported no checks.</p>
+          )}
+
+          {source.hasDashboard ? (
+            <AlertDashboardFrame source={source} />
+          ) : (
+            <SeriesHistory series={source.series} />
           )}
         </div>
-
-        {advice && (
-          <div
-            className={`rounded-lg p-3 text-sm ${status === 'act' ? 'bg-danger-500/10 text-danger-400' : 'bg-warn-500/10 text-warn-400'}`}
-          >
-            <p className="font-semibold">What to do</p>
-            <p className="text-surface-900 mt-0.5">{advice}</p>
-          </div>
-        )}
-      </Card>
-
-      {source.hasDashboard ? (
-        <AlertDashboardFrame source={source} />
-      ) : (
-        <SeriesHistory series={source.series} />
       )}
     </section>
   );
@@ -442,7 +507,20 @@ export function AlertsView() {
   const [checking, setChecking] = useState<Record<string, boolean>>({});
   const [emailsOverride, setEmailsOverride] = useState<Record<string, boolean>>({});
   const [emailsBusy, setEmailsBusy] = useState<Record<string, boolean>>({});
+  const [remembered, setRemembered] = useState<Record<string, boolean>>(loadRemembered);
   const { addToast } = useToast();
+
+  const remember = useCallback((updates: Record<string, boolean>) => {
+    setRemembered((prev) => {
+      const next = { ...prev, ...updates };
+      try {
+        localStorage.setItem(EXPANDED_KEY, JSON.stringify(next));
+      } catch {
+        // Remembering open rows is a convenience; private windows just start fresh.
+      }
+      return next;
+    });
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -573,6 +651,9 @@ export function AlertsView() {
   );
   const overall = overallStatus(effective);
   const labels = useMemo(() => new Map(sources.map((s) => [s.id, s.label])), [sources]);
+  const sorted = useMemo(() => sortSources(sources, now), [sources, now]);
+  const setAll = (open: boolean) =>
+    remember(Object.fromEntries(sources.map((s) => [expansionKey(s.id, s.checks), open])));
 
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6">
@@ -612,22 +693,55 @@ export function AlertsView() {
         <EmptyState />
       ) : (
         <div className="space-y-8">
-          {sources.map((source) => (
-            <SourceCard
-              key={source.id}
-              source={source}
-              now={now}
-              enabledOverride={enabledOverride[source.id]}
-              toggling={!!toggling[source.id]}
-              toggleError={toggleErrors[source.id]}
-              checking={!!checking[source.id]}
-              emailsOverride={emailsOverride[source.id]}
-              emailsBusy={!!emailsBusy[source.id]}
-              onToggle={() => void toggleSource(source)}
-              onCheck={() => void checkSource(source)}
-              onToggleEmails={() => void toggleEmails(source)}
-            />
-          ))}
+          <section>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+              <SectionTitle
+                aside={`${sources.length} ${sources.length === 1 ? 'alert' : 'alerts'}, problems first`}
+              >
+                Your alerts
+              </SectionTitle>
+              <div className="flex gap-3 text-[12px]">
+                <button
+                  type="button"
+                  className="text-surface-700 hover:text-surface-950"
+                  onClick={() => setAll(true)}
+                >
+                  Expand all
+                </button>
+                <button
+                  type="button"
+                  className="text-surface-700 hover:text-surface-950"
+                  onClick={() => setAll(false)}
+                >
+                  Collapse all
+                </button>
+              </div>
+            </div>
+            <Card variant="glass" className="p-0">
+              {sorted.map((source) => {
+                const key = expansionKey(source.id, source.checks);
+                const expanded = isExpanded(remembered, source.id, source.checks);
+                return (
+                  <AlertRow
+                    key={source.id}
+                    source={source}
+                    now={now}
+                    expanded={expanded}
+                    onExpand={() => remember({ [key]: !expanded })}
+                    enabledOverride={enabledOverride[source.id]}
+                    toggling={!!toggling[source.id]}
+                    toggleError={toggleErrors[source.id]}
+                    checking={!!checking[source.id]}
+                    emailsOverride={emailsOverride[source.id]}
+                    emailsBusy={!!emailsBusy[source.id]}
+                    onToggle={() => void toggleSource(source)}
+                    onCheck={() => void checkSource(source)}
+                    onToggleEmails={() => void toggleEmails(source)}
+                  />
+                );
+              })}
+            </Card>
+          </section>
           <section>
             <SectionTitle
               aside={data?.log.length ? `${data.log.length} sent or attempted` : undefined}
