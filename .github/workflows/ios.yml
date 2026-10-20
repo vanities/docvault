@@ -1,8 +1,11 @@
 name: iOS
 
+# iOS work happens on ios branches, not main. Because the integration tests run
+# against web/server, a main or PR trigger here rebuilt the app on every web
+# change. Push an `ios` or `ios/*` branch, or run it by hand.
 on:
   push:
-    branches: [main]
+    branches: [ios, 'ios/**']
     paths:
       [
         'ios/**',
@@ -13,17 +16,7 @@ on:
         'web/bun.lock',
         '.github/workflows/ios.yml',
       ]
-  pull_request:
-    paths:
-      [
-        'ios/**',
-        'web/server/**',
-        'web/tools/**',
-        'web/src/data/**',
-        'web/package.json',
-        'web/bun.lock',
-        '.github/workflows/ios.yml',
-      ]
+  workflow_dispatch:
 
 concurrency:
   group: ios-${{ github.ref }}
