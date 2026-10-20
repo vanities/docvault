@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DocVault health</title>
+    <style>
+      /* DocVault alert dashboard kit. Every add-on dashboard is this file plus one render(source) function. */
+      :root {
+        --bg: #111318;
+        --card: #16181e;
+        --raise: #1c1f26;
+        --line: #262a33;
+        --muted: #8891a5;
+        --dim: #626a7c;
+        --text: #d8dde9;
+        --ok: #34d399;
+        --warn: #fbbf24;
+        --bad: #f87171;
+        --s2: #60a5fa;
+        --s3: #c084fc;
+        --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 0 0 4px;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          14px/1.45 -apple-system,
+          'Segoe UI',
+          Helvetica,
+          Arial,
+          sans-serif;
+      }
+      .grid {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+        align-items: start;
+      }
+      .wide {
+        grid-column: 1 / -1;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 16px;
+        min-width: 0;
+      }
+      .card.critical {
+        box-shadow: inset 3px 0 0 var(--bad);
+      }
+      .card.warning {
+        box-shadow: inset 3px 0 0 var(--warn);
+      }
+      .eyebrow {
+        font-size: 10px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .headline {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 6px;
+      }
+      .big {
+        font: 600 30px/1.1 var(--mono);
+        font-variant-numeric: tabular-nums;
+      }
+      .big.bad {
+        color: var(--bad);
+      }
+      .big.warn {
+        color: var(--warn);
+      }
+      .muted {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .section {
+        margin-top: 14px;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+        gap: 12px;
+        margin-top: 14px;
+      }
+      .stat .v {
+        font: 600 15px var(--mono);
+        font-variant-numeric: tabular-nums;
+      }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 12px;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .chip::before {
+        content: '';
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--ok);
+      }
+      .chip.warning {
+        color: var(--warn);
+        border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+      }
+      .chip.warning::before {
+        background: var(--warn);
+      }
+      .chip.critical {
+        color: var(--bad);
+        border-color: color-mix(in srgb, var(--bad) 40%, transparent);
+      }
+      .chip.critical::before {
+        background: var(--bad);
+      }
+      .tag {
+        font-size: 11px;
+        font-weight: 600;
+        padding: 3px 8px;
+        border-radius: 6px;
+        background: color-mix(in srgb, var(--ok) 14%, transparent);
+        color: var(--ok);
+        white-space: nowrap;
+      }
+      .tag.warning {
+        background: color-mix(in srgb, var(--warn) 14%, transparent);
+        color: var(--warn);
+      }
+      .tag.critical {
+        background: color-mix(in srgb, var(--bad) 14%, transparent);
+        color: var(--bad);
+      }
+      .tag.muted {
+        background: var(--raise);
+        color: var(--muted);
+      }
+      .bar {
+        position: relative;
+        height: 8px;
+        margin-top: 10px;
+        border-radius: 4px;
+        background: var(--raise);
+      }
+      .bar > i {
+        position: absolute;
+        inset: 0 auto 0 0;
+        border-radius: 4px;
+        background: var(--ok);
+      }
+      .bar > b {
+        position: absolute;
+        top: -3px;
+        bottom: -3px;
+        width: 2px;
+        border-radius: 1px;
+        background: var(--bad);
+      }
+      .bar.thin {
+        height: 6px;
+        margin-top: 0;
+        width: 64px;
+        flex: none;
+      }
+      .bar.thin > b {
+        background: var(--muted);
+      }
+      .scroll {
+        overflow-x: auto;
+        margin-top: 14px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+      }
+      th {
+        text-align: left;
+        font-weight: 500;
+        color: var(--dim);
+        padding: 0 8px 6px 0;
+        white-space: nowrap;
+      }
+      td {
+        padding: 7px 8px 7px 0;
+        border-top: 1px solid var(--line);
+        white-space: nowrap;
+        vertical-align: top;
+      }
+      td.wrap {
+        white-space: normal;
+      }
+      .num {
+        text-align: right;
+        font-family: var(--mono);
+      }
+      .bad {
+        color: var(--bad);
+      }
+      .warn {
+        color: var(--warn);
+      }
+      .good {
+        color: var(--ok);
+      }
+      .hbar {
+        display: grid;
+        grid-template-columns: minmax(70px, 30%) 1fr auto;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        margin-top: 8px;
+      }
+      .hbar .track {
+        height: 10px;
+        border-radius: 5px;
+        background: var(--raise);
+        overflow: hidden;
+      }
+      .hbar .track > i {
+        display: block;
+        height: 100%;
+        border-radius: 5px;
+        background: var(--ok);
+      }
+      .chart-head,
+      .chart-foot {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+      .legend span::before {
+        content: '';
+        display: inline-block;
+        width: 10px;
+        height: 3px;
+        border-radius: 2px;
+        margin-right: 5px;
+        vertical-align: middle;
+        background: var(--c);
+      }
+      svg.chart {
+        display: block;
+        width: 100%;
+        height: var(--h, 72px);
+        margin-top: 4px;
+      }
+      .note {
+        color: var(--muted);
+        padding: 16px;
+      }
+      .empty {
+        color: var(--muted);
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        min-height: 48px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="grid" id="root"><div class="note">Waiting for data</div></div>
+
+    <script>
+      // ---------- kit: formatting ----------
+      const root = document.getElementById('root');
+      // Report text is whatever the job produced; escape everything that goes into innerHTML.
+      const esc = (s) =>
+        String(s ?? '').replace(
+          /[&<>"']/g,
+          (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
+        );
+      const num = (n) => typeof n === 'number' && Number.isFinite(n);
+      const usd = (n, digits) => {
+        if (!num(n)) return 'n/a';
+        const a = Math.abs(n);
+        const s = n < 0 ? '-' : '';
+        if (digits !== undefined)
+          return `${s}$${a.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+        if (a >= 1e9) return `${s}$${(a / 1e9).toFixed(2)}B`;
+        if (a >= 1e6) return `${s}$${(a / 1e6).toFixed(1)}M`;
+        if (a >= 1e4) return `${s}$${(a / 1e3).toFixed(1)}K`;
+        return `${s}$${a.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+      };
+      const pct = (n, d = 1) => (num(n) ? `${n.toFixed(d)}%` : 'n/a');
+      const price = (n, d = 4) => (num(n) ? `$${n.toFixed(d)}` : 'n/a');
+      const fmtNum = (n, d) =>
+        num(n)
+          ? n.toLocaleString('en-US', { maximumFractionDigits: d ?? (Math.abs(n) < 10 ? 4 : 1) })
+          : 'n/a';
+      const day = (iso) =>
+        iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'n/a';
+      const monthYear = (iso) =>
+        iso
+          ? new Date(iso).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+          : 'n/a';
+      /** "Oct 6 to Oct 20", or "Oct 2025 to Oct 2026" once a span crosses a year or runs ~10 months. */
+      const spanLabel = (first, last) => {
+        const a = new Date(first);
+        const b = new Date(last);
+        const long = a.getFullYear() !== b.getFullYear() || b - a > 300 * 86400e3;
+        return long ? `${monthYear(first)} to ${monthYear(last)}` : `${day(first)} to ${day(last)}`;
+      };
+      const ago = (iso) => {
+        if (!iso) return 'never';
+        const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+        if (m < 1) return 'just now';
+        if (m < 60) return `${m} min ago`;
+        const h = Math.round(m / 60);
+        return h < 48 ? `${h} h ago` : `${Math.round(h / 24)} d ago`;
+      };
+      /** First number in a trip line like "below 5%" or "below $0.995". */
+      const lineValue = (text) => {
+        const m = /-?\d+(?:\.\d+)?/.exec(String(text || '').replace(/,/g, ''));
+        return m ? Number(m[0]) : null;
+      };
+
+      // ---------- kit: theme + checks ----------
+      function applyTheme(theme) {
+        const colors = (theme && theme.colors) || {};
+        const map = {
+          '--bg': 'surface-50',
+          '--card': 'surface-100',
+          '--raise': 'surface-200',
+          '--line': 'surface-200',
+          '--muted': 'surface-800',
+          '--dim': 'surface-700',
+          '--text': 'surface-950',
+          '--ok': 'accent-400',
+          '--warn': 'warn-400',
+          '--bad': 'danger-400',
+        };
+        for (const [cssVar, token] of Object.entries(map)) {
+          if (colors[token]) document.documentElement.style.setProperty(cssVar, colors[token]);
+        }
+      }
+      /** Checks whose id starts with `<key>:` belong to that item's card. */
+      const checksFor = (checks, key) => checks.filter((c) => c.id.startsWith(`${key}:`));
+      const worst = (checks) =>
+        checks.some((c) => c.active && c.severity === 'critical')
+          ? 'critical'
+          : checks.some((c) => c.active)
+            ? 'warning'
+            : '';
+      const chips = (checks) =>
+        checks.length
+          ? `<div class="chips">${checks
+              .map(
+                (c) =>
+                  `<span class="chip ${c.active ? c.severity : ''}" title="${esc(c.value)} (trips ${esc(c.threshold)})">${esc(c.label)}</span>`
+              )
+              .join('')}</div>`
+          : '';
+      const seriesOf = (series, key) =>
+        series.map((p) => (num(p.values[key]) ? p.values[key] : null));
+
+      // ---------- kit: building blocks ----------
+      const stat = (label, value, cls = '') =>
+        `<div class="stat"><div class="eyebrow">${esc(label)}</div><div class="v ${cls}">${value}</div></div>`;
+      const stats = (...items) => `<div class="stats">${items.join('')}</div>`;
+      const tag = (text, tone = '') => `<span class="tag ${tone}">${esc(text)}</span>`;
+      /** A card; `tone` adds the severity stripe, `wide` spans the whole grid. */
+      const card = ({ eyebrow = '', tone = '', wide = false, body = '' }) =>
+        `<section class="card ${tone} ${wide ? 'wide' : ''}">${eyebrow ? `<div class="eyebrow">${esc(eyebrow)}</div>` : ''}${body}</section>`;
+      /** Big headline number with a caption and an optional tag on the right. */
+      const headline = (value, caption, right = '', cls = '') =>
+        `<div class="headline"><div><div class="big ${cls}">${value}</div><div class="muted">${caption}</div></div>${right}</div>`;
+      /** Horizontal progress bar: value/max, an optional red mark (a trip line), and a color. */
+      const progress = (value, max, { mark = null, color = 'var(--ok)' } = {}) => {
+        const w = max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : 0;
+        const m = num(mark) && max > 0 ? Math.min(100, Math.max(0, (mark / max) * 100)) : null;
+        return `<div class="bar"><i style="width:${w.toFixed(1)}%;background:${color}"></i>${m !== null ? `<b style="left:${m.toFixed(1)}%"></b>` : ''}</div>`;
+      };
+      /** Labeled horizontal bars: [{ label, value, display, color }]. */
+      const hbars = (items, max) => {
+        const top = max ?? Math.max(0, ...items.map((i) => i.value || 0));
+        return items
+          .map(
+            (i) =>
+              `<div class="hbar"><span class="muted">${esc(i.label)}</span><div class="track"><i style="width:${top > 0 ? Math.min(100, ((i.value || 0) / top) * 100).toFixed(1) : 0}%;background:${i.color || 'var(--ok)'}"></i></div><span class="num">${i.display ?? fmtNum(i.value)}</span></div>`
+          )
+          .join('');
+      };
+      /** A table: headers [{ label, num }], rows of cell HTML (already escaped by the caller). */
+      const table = (headers, rows, empty = 'Nothing to show.') =>
+        rows.length
+          ? `<div class="scroll"><table><thead><tr>${headers.map((h) => `<th class="${h.num ? 'num' : ''}">${esc(h.label)}</th>`).join('')}</tr></thead><tbody>${rows
+              .map(
+                (r) =>
+                  `<tr>${r.map((cell, i) => `<td class="${headers[i]?.num ? 'num' : ''}">${cell}</td>`).join('')}</tr>`
+              )
+              .join('')}</tbody></table></div>`
+          : `<div class="empty">${esc(empty)}</div>`;
+
+      const PALETTE = ['var(--ok)', 'var(--s2)', 'var(--s3)', 'var(--warn)'];
+      /**
+       * Line chart over report history. series: [{ label, values, color }], refs: [{ value, label, color }].
+       * `times` (ISO strings, same length as values) labels the first and last point; `points` names them.
+       */
+      function lineChart({
+        title = '',
+        series = [],
+        refs = [],
+        fmt = fmtNum,
+        current = '',
+        times = [],
+        points = 'reports',
+        height = 72,
+        empty = 'Charts fill in as reports come in',
+      }) {
+        const head = `<div class="chart-head"><span>${esc(title)}</span><span>${current}</span></div>`;
+        const plotted = series.map((s, i) => ({
+          ...s,
+          color: s.color || PALETTE[i % PALETTE.length],
+          pts: s.values.map((v, j) => [j, v]).filter(([, v]) => num(v)),
+        }));
+        const longest = Math.max(0, ...plotted.map((s) => s.pts.length));
+        if (longest < 2) return `<div>${head}<div class="empty">${esc(empty)}</div></div>`;
+        const ys = plotted
+          .flatMap((s) => s.pts.map(([, v]) => v))
+          .concat(refs.filter((r) => num(r.value)).map((r) => r.value));
+        let lo = Math.min(...ys);
+        let hi = Math.max(...ys);
+        const pad = (hi - lo || Math.abs(hi) * 0.001 || 1) * 0.12;
+        lo -= pad;
+        hi += pad;
+        const W = 300;
+        const H = 64;
+        const n = Math.max(1, ...plotted.map((s) => s.values.length - 1));
+        const x = (i) => 2 + (i / n) * (W - 4);
+        const y = (v) => 2 + (1 - (v - lo) / (hi - lo)) * (H - 4);
+        const paths = plotted
+          .map((s, k) => {
+            if (s.pts.length < 2) return '';
+            const d = s.pts
+              .map(([i, v], j) => `${j ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`)
+              .join(' ');
+            const [fi] = s.pts[0];
+            const [li, lv] = s.pts[s.pts.length - 1];
+            const area =
+              k === 0
+                ? `<path d="${d} L${x(li).toFixed(1)} ${H - 2} L${x(fi).toFixed(1)} ${H - 2} Z" fill="${s.color}" fill-opacity="0.08" />`
+                : '';
+            return `${area}<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.5" vector-effect="non-scaling-stroke" /><circle cx="${x(li).toFixed(1)}" cy="${y(lv).toFixed(1)}" r="2.5" fill="${s.color}" />`;
+          })
+          .join('');
+        const refLines = refs
+          .filter((r) => num(r.value))
+          .map(
+            (r) =>
+              `<line x1="0" x2="${W}" y1="${y(r.value).toFixed(1)}" y2="${y(r.value).toFixed(1)}" stroke="${r.color || 'var(--bad)'}" stroke-width="1" stroke-dasharray="4 3" vector-effect="non-scaling-stroke" />`
+          )
+          .join('');
+        const legend =
+          plotted.length > 1 || refs.length
+            ? `<div class="legend">${plotted.map((s) => `<span style="--c:${s.color}">${esc(s.label)}</span>`).join('')}${refs
+                .filter((r) => num(r.value))
+                .map(
+                  (r) =>
+                    `<span style="--c:${r.color || 'var(--bad)'}">${esc(r.label || 'trip')} ${fmt(r.value)}</span>`
+                )
+                .join('')}</div>`
+            : '';
+        const span = times.length > 1 ? spanLabel(times[0], times[times.length - 1]) : '';
+        return `<div>${head}<svg class="chart" style="--h:${height}px" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(title)}">${refLines}${paths}</svg>${legend}<div class="chart-foot"><span>${span}</span><span>${longest} ${esc(points)}</span></div></div>`;
+      }
+
+      // ---------- kit: DocVault protocol ----------
+      const postHeight = () =>
+        parent.postMessage(
+          { type: 'docvault:alert:height', height: document.documentElement.scrollHeight },
+          '*'
+        );
+      new ResizeObserver(postHeight).observe(document.body);
+      window.addEventListener('message', (event) => {
+        if (event.source !== parent || !event.data || event.data.type !== 'docvault:alert') return;
+        applyTheme(event.data.theme);
+        try {
+          root.innerHTML =
+            render(event.data.source) || '<div class="note">Nothing to show yet.</div>';
+        } catch (err) {
+          root.innerHTML = `<div class="note">This dashboard could not draw the last report: ${esc(err && err.message)}</div>`;
+        }
+        postHeight();
+      });
+      parent.postMessage({ type: 'docvault:alert:ready' }, '*');
+
+      // ---------- add-on: render(source) returns this dashboard's HTML ----------
+      // DocVault health dashboard. Assembled into dashboard.html by ../kit/assemble.ts; the kit
+      // supplies esc, card, headline, stats, chips, table, progress, lineChart and friends.
+      function render(source) {
+        const d =
+          source.detail && source.detail.kind === 'docvault-health' ? source.detail.data : null;
+        if (!d) return '<div class="note">No DocVault health detail in the last report.</div>';
+        const times = source.series.map((p) => p.t);
+        const hoursText = (h) =>
+          num(h) ? (h < 1 ? `${Math.round(h * 60)} min` : `${fmtNum(h, 1)} h`) : 'n/a';
+        /** Clock time today, date and time otherwise: syncs run every few minutes, so a date alone says nothing. */
+        const when = (iso) => {
+          if (!iso) return 'n/a';
+          const t = new Date(iso);
+          const time = t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+          return t.toDateString() === new Date().toDateString() ? time : `${day(iso)}, ${time}`;
+        };
+
+        // Backups (age is measured now, not at report time, so it never looks fresher than it is)
+        const b = d.backup;
+        const backupChecks = checksFor(source.checks, 'backup');
+        const backupTone = worst(backupChecks);
+        const liveAgeHours = b.lastSync
+          ? (Date.now() - Date.parse(b.lastSync)) / 3.6e6
+          : b.ageHours;
+        const backupBody = b.configured
+          ? headline(
+              hoursText(liveAgeHours),
+              'since the last Dropbox sync',
+              tag(
+                b.errors
+                  ? `${b.errors} errors`
+                  : b.status === 'ok'
+                    ? 'Syncing'
+                    : b.status || 'Unknown',
+                b.errors ? 'warning' : b.status === 'ok' ? '' : 'muted'
+              ),
+              backupTone === 'critical' ? 'bad' : backupTone === 'warning' ? 'warn' : ''
+            ) +
+            stats(
+              stat('Last sync', esc(when(b.lastSync))),
+              stat('Next sync', esc(when(b.nextSync))),
+              stat('Entities', fmtNum(b.entitiesSynced, 0)),
+              stat('Encrypted backup', esc(b.encryptedBackupAt ? ago(b.encryptedBackupAt) : 'off'))
+            ) +
+            chips(backupChecks) +
+            `<div class="section">${lineChart({
+              title: 'Hours since the last sync',
+              series: [
+                { label: 'hours', values: seriesOf(source.series, 'backup.hoursSinceSync') },
+              ],
+              refs: [{ value: 24, label: 'warns at' }],
+              times,
+              fmt: (n) => `${fmtNum(n, 0)} h`,
+              current: hoursText(liveAgeHours),
+            })}</div>`
+          : headline(
+              'Off',
+              'Dropbox sync is not set up, so there is no backup to watch.',
+              tag('Not set up', 'muted')
+            );
+
+        // Email
+        const e = d.email;
+        const emailChecks = checksFor(source.checks, 'email');
+        const emailRows = e.recent.map((x) => [
+          esc(
+            new Date(x.at).toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+            })
+          ),
+          esc(x.purpose),
+          x.ok ? '<span class="good">sent</span>' : '<span class="bad">failed</span>',
+        ]);
+        const emailBody =
+          headline(
+            `${e.failed24h}`,
+            `${e.failed24h === 1 ? 'send' : 'sends'} failed in the last 24 h, ${e.sent24h} went out`,
+            tag(e.failed24h ? 'Failing' : 'Working', e.failed24h ? 'warning' : ''),
+            e.failed24h ? 'warn' : ''
+          ) +
+          chips(emailChecks) +
+          table(
+            [{ label: 'When' }, { label: 'Purpose' }, { label: 'Result' }],
+            emailRows,
+            'No email sent yet.'
+          );
+
+        // Jobs, failing first
+        const jobChecks = checksFor(source.checks, 'jobs');
+        const order = { failing: 0, stale: 1, new: 2, ok: 3, off: 4 };
+        const jobs = [...d.jobs].sort(
+          (a, b2) => order[a.state] - order[b2.state] || a.label.localeCompare(b2.label)
+        );
+        const stateTag = {
+          failing: tag('Failing', 'critical'),
+          stale: tag('Stale', 'warning'),
+          new: tag('Not run yet', 'muted'),
+          ok: tag('OK'),
+          off: tag('Off', 'muted'),
+        };
+        const running = d.jobs.filter((j) => j.enabled).length;
+        const failingCount = d.jobs.filter((j) => j.state === 'failing').length;
+        const jobRows = jobs.map((j) => [
+          stateTag[j.state],
+          `${esc(j.label)}${j.lastError && j.state !== 'ok' ? `<div class="muted">${esc(j.lastError.slice(0, 120))}</div>` : ''}`,
+          esc(j.kind),
+          esc(j.schedule),
+          esc(ago(j.lastSuccessAt)),
+          j.failures
+            ? `<span class="${j.state === 'failing' ? 'bad' : 'warn'}">${j.failures}</span>`
+            : '0',
+        ]);
+        const jobsBody =
+          headline(
+            `${failingCount}`,
+            `of ${running} running ${running === 1 ? 'job is' : 'jobs are'} failing`,
+            '',
+            failingCount ? 'bad' : ''
+          ) +
+          chips(jobChecks) +
+          table(
+            [
+              { label: 'State' },
+              { label: 'Job' },
+              { label: 'Kind' },
+              { label: 'Schedule' },
+              { label: 'Last success' },
+              { label: 'Failures', num: true },
+            ],
+            jobRows,
+            'No scheduled jobs.'
+          ) +
+          `<div class="section">${lineChart({
+            title: 'Failing jobs',
+            series: [{ label: 'failing', values: seriesOf(source.series, 'jobs.failing') }],
+            times,
+            fmt: (n) => fmtNum(n, 0),
+            current: `${failingCount}`,
+          })}</div>`;
+
+        // Disk
+        const disk = d.disk;
+        const diskChecks = checksFor(source.checks, 'disk');
+        const diskTone = worst(diskChecks);
+        const diskBody =
+          headline(
+            pct(disk.usedPct),
+            `used, ${fmtNum(disk.freeGb, 0)} GB free of ${fmtNum(disk.totalGb, 0)} GB`,
+            '',
+            diskTone === 'critical' ? 'bad' : diskTone === 'warning' ? 'warn' : ''
+          ) +
+          progress(disk.usedPct, 100, {
+            mark: 90,
+            color: disk.usedPct >= 90 ? 'var(--bad)' : 'var(--ok)',
+          }) +
+          chips(diskChecks) +
+          `<div class="section">${lineChart({
+            title: 'Space used',
+            series: [{ label: 'used', values: seriesOf(source.series, 'disk.usedPct') }],
+            refs: [{ value: 90, label: 'warns at' }],
+            times,
+            fmt: (n) => `${fmtNum(n, 0)}%`,
+            current: pct(disk.usedPct),
+          })}</div>`;
+
+        return [
+          card({ eyebrow: 'Backups', tone: backupTone, body: backupBody }),
+          card({ eyebrow: 'Email', tone: worst(emailChecks), body: emailBody }),
+          card({ eyebrow: 'Scheduled jobs', tone: worst(jobChecks), wide: true, body: jobsBody }),
+          card({ eyebrow: 'Data drive', tone: diskTone, body: diskBody }),
+        ].join('');
+      }
+    </script>
+  </body>
+</html>

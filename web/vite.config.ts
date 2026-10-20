@@ -12,7 +12,9 @@ export default defineConfig({
       builtin: true,
     },
     // Keep the existing shadcn scaffold exclusion when staged files are passed explicitly.
-    ignorePatterns: ['dist', 'scripts', 'server', 'src/components/ui/**'],
+    // examples/alerts holds Bun dev tools (like scripts/) and render.js fragments that only make
+    // sense inlined into the dashboard kit; kit/check.ts parses each assembled dashboard instead.
+    ignorePatterns: ['dist', 'scripts', 'server', 'src/components/ui/**', 'examples/alerts'],
     overrides: [
       {
         files: ['**/*.{ts,tsx}'],

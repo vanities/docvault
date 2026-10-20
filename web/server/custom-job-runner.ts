@@ -19,6 +19,7 @@ import {
 } from './automation-runs.js';
 import { collectionCounts, type CollectionCounts } from './collection-summary.js';
 export { collectionCounts } from './collection-summary.js';
+import { seedExampleAlertDashboards } from './seed-example-alerts.js';
 import { seedExampleJobs } from './seed-example-jobs.js';
 
 const logJobs = createLogger('Jobs');
@@ -594,6 +595,14 @@ export async function startCustomJobScheduler(dataDir: string = DATA_DIR): Promi
     } catch (err) {
       logJobs.warn(
         `Example job seeding failed: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+    // Alert add-on jobs need their pages too; separate so one failure can't skip the other.
+    try {
+      await seedExampleAlertDashboards(dataDir);
+    } catch (err) {
+      logJobs.warn(
+        `Alert dashboard seeding failed: ${err instanceof Error ? err.message : String(err)}`
       );
     }
   }

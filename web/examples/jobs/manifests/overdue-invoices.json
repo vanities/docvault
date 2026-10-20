@@ -1,0 +1,9 @@
+{
+  "id": "overdue-invoices",
+  "label": "Invoices alert (past due and unbilled time)",
+  "kind": "local-script",
+  "schedule": "every 6h",
+  "script": "scripts/overdue-invoices.local.ts",
+  "enabled": false,
+  "tags": ["alerts", "timesheet", "invoices"]
+}

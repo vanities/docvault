@@ -108,6 +108,8 @@ web/scripts/*
 !web/server/crypto-manual-holdings.test.ts
 # Exception: example-job seeding test uses synthetic tmpdir fixtures, no personal data
 !web/server/seed-example-jobs.test.ts
+# Exception: alert-dashboard seeding test copies fabricated HTML between temporary directories, no personal data
+!web/server/seed-example-alerts.test.ts
 # Exception: automation collection/retry tests use synthetic shell output, video ids, and temporary directories
 !web/server/custom-job-runner.test.ts
 !web/server/automation-runs.test.ts
