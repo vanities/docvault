@@ -2169,6 +2169,8 @@ export function SettingsView() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="every 15m">every 15m</SelectItem>
+                      <SelectItem value="every 30m">every 30m</SelectItem>
                       <SelectItem value="hourly">hourly</SelectItem>
                       <SelectItem value="daily">daily</SelectItem>
                       <SelectItem value="every 2h">every 2h</SelectItem>

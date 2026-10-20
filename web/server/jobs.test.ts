@@ -90,6 +90,28 @@ describe('custom job scheduling helpers', () => {
     expect(customJobScheduleToMs('hourly')).toBe(60 * 60 * 1000);
     expect(customJobScheduleToMs('daily')).toBe(24 * 60 * 60 * 1000);
     expect(customJobScheduleToMs('every 6h')).toBe(6 * 60 * 60 * 1000);
+    expect(customJobScheduleToMs('every 15m')).toBe(15 * 60 * 1000);
+    expect(customJobScheduleToMs('every 30m')).toBe(30 * 60 * 1000);
+    expect(customJobScheduleToMs('every 10m')).toBe(10 * 60 * 1000);
+  });
+
+  test('accepts minute schedules down to the runner retry floor', () => {
+    for (const schedule of ['every 10m', 'every 15m', 'every 90m']) {
+      expect(parseCustomJobManifest({ ...exampleManifest, schedule }).schedule).toBe(schedule);
+    }
+  });
+
+  test('rejects minute schedules the runner could not honor', () => {
+    expect(() => parseCustomJobManifest({ ...exampleManifest, schedule: 'every 5m' })).toThrow(
+      /at least every 10m/
+    );
+    expect(() => parseCustomJobManifest({ ...exampleManifest, schedule: 'every 9m' })).toThrow(
+      /at least every 10m/
+    );
+    expect(() => customJobScheduleToMs('every 5m')).toThrow(/unsupported/);
+    for (const schedule of ['every 0m', 'every 15s', 'every m', 'every 15 m', '15m']) {
+      expect(() => parseCustomJobManifest({ ...exampleManifest, schedule })).toThrow(/schedule/);
+    }
   });
 
   test('resolves scripts under the generic jobs scripts directory', async () => {

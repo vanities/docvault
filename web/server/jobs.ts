@@ -6,7 +6,16 @@ import type { ScheduleStatusMap, ScheduleTaskName, ScheduleTaskStatus } from './
 const JOB_ID_RE = /^[a-z0-9][a-z0-9-]{1,80}$/;
 const SCRIPT_RE = /^scripts\/[a-zA-Z0-9._/-]+\.local\.(js|ts|sh)$/;
 
-export type CustomJobSchedule = 'hourly' | 'daily' | `every ${number}h`;
+export type CustomJobSchedule = 'hourly' | 'daily' | `every ${number}h` | `every ${number}m`;
+
+// The runner refuses to re-run a job within MIN_RETRY_MS (10 min) of its last
+// attempt, so a shorter schedule would silently run every 10 minutes anyway.
+export const MIN_CUSTOM_JOB_SCHEDULE_MINUTES = 10;
+
+function scheduleMinutes(schedule: string): number | null {
+  const match = /^every ([1-9][0-9]*)m$/.exec(schedule);
+  return match ? Number(match[1]) : null;
+}
 
 export type CustomJobManifest = {
   id: string;
@@ -81,7 +90,18 @@ function parseSchedule(value: unknown): CustomJobSchedule {
   const schedule = assertString(value, 'schedule');
   if (schedule === 'hourly' || schedule === 'daily') return schedule;
   if (/^every [1-9][0-9]*h$/.test(schedule)) return schedule as CustomJobSchedule;
-  throw new Error('schedule must be hourly, daily, or every Nh');
+  const minutes = scheduleMinutes(schedule);
+  if (minutes !== null) {
+    if (minutes < MIN_CUSTOM_JOB_SCHEDULE_MINUTES) {
+      throw new Error(
+        `schedule must be at least every ${MIN_CUSTOM_JOB_SCHEDULE_MINUTES}m; jobs never re-run sooner than that`
+      );
+    }
+    return schedule as CustomJobSchedule;
+  }
+  throw new Error(
+    `schedule must be hourly, daily, every Nh, or every Nm (N >= ${MIN_CUSTOM_JOB_SCHEDULE_MINUTES})`
+  );
 }
 
 function parseTags(value: unknown): string[] {
@@ -138,6 +158,12 @@ export function jobsManifestsDir(dataDir: string): string {
 export function customJobScheduleToMs(schedule: CustomJobSchedule): number {
   if (schedule === 'hourly') return 60 * 60 * 1000;
   if (schedule === 'daily') return 24 * 60 * 60 * 1000;
+  const minutes = scheduleMinutes(schedule);
+  if (minutes !== null) {
+    if (minutes < MIN_CUSTOM_JOB_SCHEDULE_MINUTES)
+      throw new Error('unsupported custom job schedule');
+    return minutes * 60 * 1000;
+  }
   const match = /^every ([1-9][0-9]*)h$/.exec(schedule);
   if (!match) throw new Error('unsupported custom job schedule');
   return Number(match[1]) * 60 * 60 * 1000;
