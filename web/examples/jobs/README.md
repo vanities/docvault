@@ -11,18 +11,20 @@ delete is not resurrected.
 Settings → **Jobs** → under "Custom local jobs" find the job → **Enable** (or edit it and flip
 the toggle). It then runs in-container on the same scheduler as the built-in jobs.
 
-| Job                            | Schedule | What it does                                                                                                                                                            |
-| ------------------------------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `benjamin-cowen-reports-daily` | daily    | Scrapes new PDF reports from benjamincowen.com → Finance research                                                                                                       |
-| `benjamin-cowen-youtube-daily` | daily    | Ingests new Benjamin Cowen YouTube videos (captions) → Finance research                                                                                                 |
-| `fireship-youtube-daily`       | daily    | Ingests new Fireship YouTube uploads (captions) → Tech research                                                                                                         |
-| `george-gammon-youtube-daily`  | daily    | Ingests new George Gammon YouTube videos → Finance research                                                                                                             |
-| `huberman-lab-youtube-daily`   | daily    | Ingests new Huberman Lab YouTube episodes (captions) → Health research                                                                                                  |
-| `local-news`                   | every 6h | Polls your configured city/county/regional RSS feeds → Local research (ships unconfigured — fill in `FEEDS` + `LOCAL_TERMS` at the top of the script)                   |
-| `lyn-alden-newsletter-daily`   | daily    | Scrapes Lyn Alden's free monthly newsletter archive → Finance research (forward-only; back-catalogue backfill opt-in via `DOCVAULT_JOB_BACKFILL=1`)                     |
-| `theo-youtube-daily`           | daily    | Ingests new Theo (t3.gg) YouTube uploads/streams → Tech research                                                                                                        |
-| `vitalik-blog-daily`           | daily    | Scrapes new posts from Vitalik Buterin's blog → Tech research (feed carries the full archive, so first run is forward-only; `DOCVAULT_JOB_BACKFILL=1` to ingest it all) |
-| `zerohedge-research`           | every 6h | Files matching ZeroHedge RSS articles → Finance / Politics / Health (headline watchlist, auto-routed by URL section)                                                    |
+| Job                            | Schedule  | What it does                                                                                                                                                            |
+| ------------------------------ | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `benjamin-cowen-reports-daily` | daily     | Scrapes new PDF reports from benjamincowen.com → Finance research                                                                                                       |
+| `benjamin-cowen-youtube-daily` | daily     | Ingests new Benjamin Cowen YouTube videos (captions) → Finance research                                                                                                 |
+| `docvault-health`              | every 30m | Alert add-on: watches backups, scheduled jobs, outbound email and disk space; reports to the Alerts page (see `examples/alerts/`)                                       |
+| `fireship-youtube-daily`       | daily     | Ingests new Fireship YouTube uploads (captions) → Tech research                                                                                                         |
+| `george-gammon-youtube-daily`  | daily     | Ingests new George Gammon YouTube videos → Finance research                                                                                                             |
+| `huberman-lab-youtube-daily`   | daily     | Ingests new Huberman Lab YouTube episodes (captions) → Health research                                                                                                  |
+| `local-news`                   | every 6h  | Polls your configured city/county/regional RSS feeds → Local research (ships unconfigured — fill in `FEEDS` + `LOCAL_TERMS` at the top of the script)                   |
+| `lyn-alden-newsletter-daily`   | daily     | Scrapes Lyn Alden's free monthly newsletter archive → Finance research (forward-only; back-catalogue backfill opt-in via `DOCVAULT_JOB_BACKFILL=1`)                     |
+| `overdue-invoices`             | every 6h  | Alert add-on: flags timesheet invoices past due and billable time never invoiced; reports to the Alerts page (see `examples/alerts/`)                                   |
+| `theo-youtube-daily`           | daily     | Ingests new Theo (t3.gg) YouTube uploads/streams → Tech research                                                                                                        |
+| `vitalik-blog-daily`           | daily     | Scrapes new posts from Vitalik Buterin's blog → Tech research (feed carries the full archive, so first run is forward-only; `DOCVAULT_JOB_BACKFILL=1` to ingest it all) |
+| `zerohedge-research`           | every 6h  | Files matching ZeroHedge RSS articles → Finance / Politics / Health (headline watchlist, auto-routed by URL section)                                                    |
 
 ## Make your own
 

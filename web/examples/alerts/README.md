@@ -2,7 +2,27 @@
 
 Any [custom job](../jobs/README.md) can become an alert source. DocVault remembers each check,
 emails you only when something goes wrong, and shows every source on the **Alerts** page with
-its own on/off switches and, optionally, its own dashboard.
+its own on/off switches and its own dashboard.
+
+## Alert add-ons
+
+An add-on is three pieces that travel together:
+
+1. **A check job**: a custom job that gathers data and reports its checks (below).
+2. **The alert**: what DocVault keeps from those reports, emails about, and lists on the page.
+3. **A dashboard**: `DATA_DIR/alerts/<sourceId>/dashboard.html`, the page shown when you open
+   the alert.
+
+These ship with DocVault. Their jobs are seeded **disabled** into Settings → Jobs and their
+dashboards into `DATA_DIR/alerts/` on first boot; turn a job on and its alert appears.
+
+| Add-on             | Schedule  | Checks                                                                                                 |
+| ------------------ | --------- | ------------------------------------------------------------------------------------------------------ |
+| `docvault-health`  | every 30m | Backup age and errors, failing or stalled scheduled jobs, failed outbound email, data-drive space      |
+| `overdue-invoices` | every 6h  | Timesheet invoices 7+ and 30+ days past due, billable time from earlier months that was never invoiced |
+
+Files: the job is `examples/jobs/{manifests,scripts}/<id>.*`; the dashboard is
+`examples/alerts/<id>/dashboard.html`, built from `render.js` next to it.
 
 ## Report checks
 
@@ -33,6 +53,9 @@ POST /api/alerts/report
 ```
 
 - A check missing from a report counts as cleared, so always send all of them.
+- Name checks `<item>:<check>` (for example `site:status`); dashboards group them by the prefix.
+- Give checks neutral names ("Disk space", "Backup age"): the same label shows next to an OK
+  state on the page and in the subject of a trip email.
 - `series` is one chart point per report (DocVault stamps the time) and is kept for 14 days.
 - `detail` is anything your dashboard needs (up to 256 KB); DocVault stores it as sent.
 - `jobId` links the source to its job: that turns on the Checks switch, Check now, and the
@@ -56,10 +79,27 @@ Alerts go only to the first address in Settings → Email, with no CC.
 Each source card has a **Checks** switch (turns its job on or off, same as Settings → Jobs), an
 **Emails** switch (checks keep running, nothing is sent), and **Check now**.
 
-## Give it a dashboard
+## Build a dashboard
 
-Put a `dashboard.html` at `DATA_DIR/alerts/<sourceId>/dashboard.html`. DocVault shows it under
-the source card in a sandboxed frame:
+A dashboard is one self-contained HTML file. The kit in [`kit/`](kit/) does the plumbing (theme,
+cards, charts, tables, and the messages below), so an add-on only writes what to show:
+
+1. Write `render.js` with `function render(source)` that returns HTML. The kit provides `card`,
+   `headline`, `stats`/`stat`, `tag`, `chips`, `progress`, `hbars`, `table`, `lineChart`,
+   `checksFor`, `worst`, `seriesOf`, and formatters (`usd`, `pct`, `fmtNum`, `day`, `ago`).
+   Pass every piece of report text through `esc()` before it goes into the page.
+2. Build it: `bun run examples/alerts/kit/assemble.ts <render.js> <dashboard.html> "<Title>"`.
+3. Preview it with a sample source:
+   `bun run examples/alerts/kit/harness.ts <dashboard.html> <source.json> <preview.html>`, then
+   open the preview in a browser. `bun run examples/alerts/kit/check.ts <dashboard.html>` catches
+   syntax errors.
+
+The two shipped add-ons are worked examples: see `docvault-health/render.js` and
+`overdue-invoices/render.js`.
+
+### What a dashboard can do
+
+DocVault shows the file under the source card in a sandboxed frame:
 
 - It receives `{ type: "docvault:alert", version: 1, source, theme }` when it loads and after
   every refresh. `source` is the source exactly as `GET /api/alerts` returns it (checks, series,
@@ -69,6 +109,3 @@ the source card in a sandboxed frame:
   `{ type: "docvault:alert:height", height }` to size its frame.
 - It can run scripts, but it has no network access, can't reach DocVault's API or session, and
   can load scripts only from cdn.jsdelivr.net or cdnjs.cloudflare.com (fonts from Google Fonts).
-
-[`dashboard.example.html`](dashboard.example.html) is a starting point: it draws every check and
-series it receives. Copy it, then add whatever your source's `detail` makes possible.

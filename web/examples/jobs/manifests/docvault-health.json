@@ -1,0 +1,9 @@
+{
+  "id": "docvault-health",
+  "label": "DocVault health alert (backups, jobs, email, disk)",
+  "kind": "local-script",
+  "schedule": "every 30m",
+  "script": "scripts/docvault-health.local.ts",
+  "enabled": false,
+  "tags": ["alerts", "health", "backup"]
+}
