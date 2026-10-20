@@ -9,10 +9,9 @@ import {
   addDays,
   agendaBuckets,
   comingMonthGroups,
-  formatDateRange,
   isOngoing,
-  occurrenceEnd,
   occurrenceTimingLabel,
+  occurrenceWhen,
   parseISODate,
   type DaySegment,
 } from './calendarMath';
@@ -251,7 +250,7 @@ function AgendaRow({
   onOpen: (occ: Occurrence) => void;
 }) {
   const style = occurrenceStyle(occ, entities);
-  const range = occ.endDate ? formatDateRange(occ.date, occurrenceEnd(occ)) : null;
+  const when = occurrenceWhen(occ);
   const ongoing = isOngoing(occ, today);
   return (
     <li className="flex items-center gap-2 min-h-[28px]">
@@ -264,7 +263,7 @@ function AgendaRow({
         />
       ) : (
         <span
-          className={`shrink-0 h-2 ml-1 mr-1 ${range ? 'w-4 rounded-sm' : 'w-2 rounded-full'} ${style.dot}`}
+          className={`shrink-0 h-2 ml-1 mr-1 ${occ.endDate ? 'w-4 rounded-sm' : 'w-2 rounded-full'} ${style.dot}`}
         />
       )}
       <button
@@ -274,7 +273,7 @@ function AgendaRow({
         title={occ.notes ? `${occurrenceLabel(occ)} — ${occ.notes}` : undefined}
       >
         {occurrenceLabel(occ)}
-        {range && <span className="text-surface-600"> · {range}</span>}
+        {when && <span className="text-surface-600"> · {when}</span>}
         {occ.recurrenceLabel !== 'one-off' && occ.kind !== 'birthday' && (
           <span className="text-surface-600"> · {occ.recurrenceLabel}</span>
         )}

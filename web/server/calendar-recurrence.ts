@@ -29,6 +29,10 @@ export interface Occurrence {
   // Inclusive last day, set only when this occurrence spans MULTIPLE days.
   // Single-day occurrences omit it — use occurrenceEnd() to read either.
   endDate?: string;
+  // Wall-clock HH:MM copied from the event; absent = all-day. endTime falls on
+  // the LAST day of a multi-day occurrence.
+  time?: string;
+  endTime?: string;
   entityId?: string;
   notes?: string;
   completable: boolean; // kind === 'task'
@@ -158,6 +162,8 @@ export function projectEvent(
     eventId: event.id,
     kind: event.kind,
     title: event.title,
+    time: event.time,
+    endTime: event.endTime,
     entityId: event.entityId,
     notes: event.notes,
     completable,
@@ -268,7 +274,8 @@ export function projectEvent(
   return out;
 }
 
-/** Project all active events over a window, sorted by date then title. */
+/** Project all active events over a window, sorted by date, then span, then
+ * clock time, then title. */
 export function projectOccurrences(
   events: CalendarEvent[],
   window: DateWindow,
@@ -282,6 +289,11 @@ export function projectOccurrences(
     const aEnd = occurrenceEnd(a);
     const bEnd = occurrenceEnd(b);
     if (aEnd !== bEnd) return aEnd > bEnd ? -1 : 1;
+    // All-day items lead the day, then timed ones in clock order. Zero-padded
+    // HH:MM compares correctly as a string, and '' (no time) sorts first.
+    const aTime = a.time ?? '';
+    const bTime = b.time ?? '';
+    if (aTime !== bTime) return aTime < bTime ? -1 : 1;
     return a.title.localeCompare(b.title);
   });
   return out;

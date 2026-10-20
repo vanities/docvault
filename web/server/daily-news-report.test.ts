@@ -244,4 +244,35 @@ describe('week-ahead calendar box', () => {
     const empty = { ...edition('Body'), weekAhead: { ...weekAhead, items: [] } };
     expect(renderEditionHtml(empty)).not.toContain('Week Ahead');
   });
+
+  test('timed rows show clock times in both variants; a span ends on its last day', () => {
+    const timed = {
+      start: '2026-07-31',
+      end: '2026-08-07',
+      items: [
+        { date: '2026-08-04', title: 'Game launch', kind: 'event' as const, time: '17:00' },
+        {
+          date: '2026-08-05',
+          title: 'Dentist',
+          kind: 'event' as const,
+          time: '14:00',
+          endTime: '15:00',
+        },
+        {
+          date: '2026-08-07',
+          title: 'Weekend trip',
+          kind: 'event' as const,
+          endDate: '2026-08-09',
+          time: '18:00',
+          endTime: '10:00',
+        },
+      ],
+    };
+    const withCal = { ...edition('Body'), weekAhead: timed };
+    for (const html of [renderEditionHtml(withCal), renderEditionEmailHtml(withCal)]) {
+      expect(html).toContain('Game launch · 5:00 PM');
+      expect(html).toContain('Dentist · 2:00 PM – 3:00 PM');
+      expect(html).toContain('Weekend trip · 6:00 PM → Sun, 8/9, 10:00 AM');
+    }
+  });
 });

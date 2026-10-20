@@ -64,6 +64,7 @@ import {
   type Occurrence,
 } from './calendar-recurrence.js';
 import { buildSkyWeekAheadItems, buildSunAlmanac, type SunAlmanac } from './calendar-sky.js';
+import { formatWallClock } from './wall-clock.js';
 import { fetchWeekForecast, forecastToLines, type WeatherForecast } from './weather.js';
 import { getConfiguredTimezone } from './tz.js';
 import { listResearchEntries, type ResearchEntry } from './routes/research.js';
@@ -219,6 +220,10 @@ export interface WeekAheadItem {
   age?: number; // birthdays: "turns N"
   /** Inclusive last day of a multi-day row (trips); absent when single-day. */
   endDate?: string;
+  /** Wall-clock HH:MM of a timed row; absent = all-day. A span's endTime
+   *  belongs to its endDate. */
+  time?: string;
+  endTime?: string;
   emoji?: string;
 }
 
@@ -1477,7 +1482,20 @@ export function buildCalendarDigest(
   // Multi-day rows state both ends plus the length, so the editor can write
   // "you're away Thursday through Sunday" without doing date math itself.
   const span = (o: Occurrence): string =>
-    o.endDate ? ` through ${o.endDate} (${diffDays(o.date, o.endDate) + 1} days)` : '';
+    o.endDate
+      ? ` through ${o.endDate}${o.endTime ? ` at ${formatWallClock(o.endTime)}` : ''} (${
+          diffDays(o.date, o.endDate) + 1
+        } days)`
+      : '';
+  // Clock times ride along too, so "the launch is at 5 PM" needs no guessing.
+  // A span's end time belongs to its last day, so span() carries it instead.
+  const at = (o: Occurrence): string => {
+    if (!o.time) return '';
+    if (o.endTime && !o.endDate) {
+      return ` from ${formatWallClock(o.time)} to ${formatWallClock(o.endTime)}`;
+    }
+    return ` at ${formatWallClock(o.time)}`;
+  };
   const items = pending.map((o) => {
     if (o.kind === 'birthday') {
       return `Birthday ${o.date}: ${o.title}${o.age !== undefined ? ` turns ${o.age}` : ''}.`;
@@ -1486,9 +1504,9 @@ export function buildCalendarDigest(
       const extras: string[] = [];
       if (o.recurrenceLabel !== 'one-off') extras.push(o.recurrenceLabel);
       if (o.overdue) extras.push(`overdue ${overdueDays(occurrenceEnd(o))} days`);
-      return `Due ${o.date}${span(o)}: ${o.title}${extras.length ? ` (${extras.join('; ')})` : ''}.`;
+      return `Due ${o.date}${at(o)}${span(o)}: ${o.title}${extras.length ? ` (${extras.join('; ')})` : ''}.`;
     }
-    return `Event ${o.date}${span(o)}: ${o.title}.`;
+    return `Event ${o.date}${at(o)}${span(o)}: ${o.title}.`;
   });
   const weekEnd = addInterval(today, 7, 'day');
   const weekAhead: WeekAheadCalendar = {
@@ -1504,6 +1522,8 @@ export function buildCalendarDigest(
         ...(o.overdue ? { overdue: true } : {}),
         ...(o.age !== undefined ? { age: o.age } : {}),
         ...(o.endDate ? { endDate: o.endDate } : {}),
+        ...(o.time ? { time: o.time } : {}),
+        ...(o.endTime ? { endTime: o.endTime } : {}),
       })),
   };
   return { items, weekAhead };

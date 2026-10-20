@@ -452,6 +452,42 @@ describe('projectOccurrences', () => {
     // cells it crosses; single-day chips settle underneath.
     expect(occs.map((o) => o.title)).toEqual(['Long trip', 'Short trip', 'Apple task']);
   });
+
+  test('within a day, all-day items lead and timed ones follow in clock order', () => {
+    const events = [
+      makeEvent({ kind: 'event', title: 'Afternoon call', date: '2026-08-05', time: '14:00' }),
+      makeEvent({ kind: 'event', title: 'Zoo day', date: '2026-08-05' }),
+      makeEvent({ kind: 'event', title: 'Breakfast', date: '2026-08-05', time: '08:30' }),
+      makeEvent({ kind: 'event', title: 'Alpha day', date: '2026-08-05' }),
+    ];
+    const occs = projectOccurrences(
+      events,
+      { start: '2026-08-01', end: '2026-08-31' },
+      '2026-08-01'
+    );
+    expect(occs.map((o) => o.title)).toEqual([
+      'Alpha day',
+      'Zoo day',
+      'Breakfast',
+      'Afternoon call',
+    ]);
+  });
+
+  test('occurrences carry the clock times; all-day events carry none', () => {
+    const window = { start: '2026-08-01', end: '2026-08-31' };
+    const [timed] = projectEvent(
+      makeEvent({ kind: 'event', date: '2026-08-05', time: '17:00', endTime: '18:30' }),
+      window,
+      '2026-08-01'
+    );
+    expect(timed).toMatchObject({ time: '17:00', endTime: '18:30' });
+    const [allDay] = projectEvent(
+      makeEvent({ kind: 'event', date: '2026-08-05' }),
+      window,
+      '2026-08-01'
+    );
+    expect(allDay.time).toBeUndefined();
+  });
 });
 
 describe('nextOccurrence', () => {

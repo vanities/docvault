@@ -286,6 +286,129 @@ describe('multi-day spans', () => {
   });
 });
 
+describe('clock times', () => {
+  test('stores and projects times; a partial update keeps them; time null makes it all-day', async () => {
+    const created = await call('POST', '/api/calendar/events', {
+      kind: 'event',
+      title: 'Dentist',
+      date: '2026-08-03',
+      time: '14:00',
+      endTime: '15:30',
+    });
+    expect(created.status).toBe(200);
+    expect(created.data.event).toMatchObject({ time: '14:00', endTime: '15:30' });
+
+    const occs = await call('GET', '/api/calendar/occurrences?start=2026-08-01&end=2026-08-31');
+    expect(occs.data.occurrences[0]).toMatchObject({ time: '14:00', endTime: '15:30' });
+
+    const id = created.data.event.id;
+    const renamed = await call('PUT', `/api/calendar/events/${id}`, { title: 'Dentist cleaning' });
+    expect(renamed.data.event).toMatchObject({ time: '14:00', endTime: '15:30' });
+
+    // Clearing the start takes the end time with it, and both are stored as
+    // absent (not null), which is the shape the store's load guard accepts.
+    const allDay = await call('PUT', `/api/calendar/events/${id}`, { time: null });
+    expect(allDay.status).toBe(200);
+    const stored = await call('GET', '/api/calendar/events');
+    expect(stored.data.events[0].time).toBeUndefined();
+    expect(stored.data.events[0].endTime).toBeUndefined();
+  });
+
+  test('an end equal to the start of a single day normalizes to a moment', async () => {
+    const created = await call('POST', '/api/calendar/events', {
+      kind: 'event',
+      title: 'Game launch',
+      date: '2026-11-04',
+      time: '17:00',
+      endTime: '17:00',
+    });
+    expect(created.data.event.time).toBe('17:00');
+    expect(created.data.event.endTime).toBeUndefined();
+  });
+
+  test('a multi-day span may end earlier in the day than it started', async () => {
+    const created = await call('POST', '/api/calendar/events', {
+      kind: 'event',
+      title: 'Weekend trip',
+      date: '2026-08-07',
+      endDate: '2026-08-09',
+      time: '18:00',
+      endTime: '10:00',
+    });
+    expect(created.status).toBe(200);
+    expect(created.data.event).toMatchObject({
+      endDate: '2026-08-09',
+      time: '18:00',
+      endTime: '10:00',
+    });
+  });
+
+  test('every occurrence of a recurring event keeps its time', async () => {
+    await call('POST', '/api/calendar/events', {
+      kind: 'task',
+      title: 'Water the garden',
+      date: '2026-08-03',
+      time: '07:30',
+      recurrence: { interval: 1, unit: 'week', anchor: 'fixed' },
+    });
+    const occs = await call('GET', '/api/calendar/occurrences?start=2026-08-01&end=2026-08-20');
+    expect(occs.data.occurrences.map((o: Occurrence) => [o.date, o.time])).toEqual([
+      ['2026-08-03', '07:30'],
+      ['2026-08-10', '07:30'],
+      ['2026-08-17', '07:30'],
+    ]);
+  });
+
+  test('validation 400s on times', async () => {
+    const base = { kind: 'event', title: 'Dentist', date: '2026-08-03' };
+    const cases: [Record<string, unknown>, RegExp][] = [
+      [{ ...base, time: '5pm' }, /time must be HH:MM/],
+      [{ ...base, time: '24:00' }, /time must be HH:MM/],
+      [{ ...base, time: 1700 }, /time must be HH:MM/],
+      [{ ...base, time: '14:00', endTime: '3pm' }, /endTime must be HH:MM/],
+      [{ ...base, endTime: '15:00' }, /endTime requires time/],
+      [{ ...base, time: '14:00', endTime: '13:00' }, /must not precede time/],
+      [{ kind: 'birthday', title: 'Alex', date: '1990-08-03', time: '09:00' }, /all-day/],
+    ];
+    for (const [body, message] of cases) {
+      const res = await call('POST', '/api/calendar/events', body);
+      expect(res.status).toBe(400);
+      expect(res.data.error).toMatch(message);
+    }
+  });
+
+  test('an update that would end a single day before it starts is rejected and changes nothing', async () => {
+    const created = await call('POST', '/api/calendar/events', {
+      kind: 'event',
+      title: 'Dentist',
+      date: '2026-08-03',
+      time: '14:00',
+      endTime: '15:00',
+    });
+    const id = created.data.event.id;
+    const bad = await call('PUT', `/api/calendar/events/${id}`, { time: '16:00' });
+    expect(bad.status).toBe(400);
+    expect(bad.data.error).toMatch(/must not precede time/);
+    const after = await call('GET', '/api/calendar/events');
+    expect(after.data.events[0]).toMatchObject({ time: '14:00', endTime: '15:00' });
+  });
+
+  test('collapsing a timed span to one day re-checks the time order', async () => {
+    const created = await call('POST', '/api/calendar/events', {
+      kind: 'event',
+      title: 'Weekend trip',
+      date: '2026-08-07',
+      endDate: '2026-08-09',
+      time: '18:00',
+      endTime: '10:00',
+    });
+    const id = created.data.event.id;
+    const bad = await call('PUT', `/api/calendar/events/${id}`, { endDate: null });
+    expect(bad.status).toBe(400);
+    expect(bad.data.error).toMatch(/must not precede time/);
+  });
+});
+
 describe('occurrences', () => {
   test('explicit window projects recurrence with entity filter', async () => {
     await call('POST', '/api/calendar/events', {

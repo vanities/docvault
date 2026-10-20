@@ -78,6 +78,15 @@ export interface CalendarEvent {
   // projected occurrence carries the same number of days, and the span must
   // close before the next occurrence opens (validated in routes/calendar.ts).
   endDate?: string;
+  // Optional clock time, HH:MM 24-hour, read as a WALL time in the
+  // household's configured timezone (never converted, so a recurring 5 PM
+  // stays 5 PM across DST). Absent = all-day. Never set for birthdays. Time is
+  // display and ordering only: due/overdue stays date-based.
+  time?: string;
+  // Optional end time, HH:MM. Requires `time`. It falls on `endDate` for a
+  // multi-day event, otherwise on the same day, where it must not precede
+  // `time` (validated in routes/calendar.ts).
+  endTime?: string;
   // null/undefined = one-off. Ignored for birthdays (implicitly yearly fixed).
   recurrence?: CalendarRecurrence | null;
   birthYear?: number; // birthdays only — enables "turns N"
@@ -113,6 +122,8 @@ function isCalendarEvent(value: unknown): value is CalendarEvent {
     typeof value.title === 'string' &&
     typeof value.date === 'string' &&
     (value.endDate === undefined || typeof value.endDate === 'string') &&
+    (value.time === undefined || typeof value.time === 'string') &&
+    (value.endTime === undefined || typeof value.endTime === 'string') &&
     EVENT_KINDS.has(value.kind as string) &&
     EVENT_STATUSES.has(value.status as string) &&
     Array.isArray(value.completions)

@@ -406,6 +406,42 @@ describe('buildCalendarDigest', () => {
     );
     expect(weekAhead.items.map((i) => i.title)).toEqual(['Sam']);
   });
+
+  test('timed rows carry clock times into desk lines and the box', () => {
+    const event = { kind: 'event' as const, completable: false, recurrenceLabel: 'one-off' };
+    const { items, weekAhead } = buildCalendarDigest(
+      [
+        occ({ ...event, title: 'Game launch', date: '2026-08-04', time: '17:00' }),
+        occ({ ...event, title: 'Dentist', date: '2026-08-05', time: '14:00', endTime: '15:00' }),
+        occ({
+          ...event,
+          title: 'Weekend trip',
+          date: '2026-08-07',
+          endDate: '2026-08-09',
+          time: '18:00',
+          endTime: '10:00',
+        }),
+      ],
+      TODAY,
+      true
+    );
+    expect(items).toEqual([
+      'Event 2026-08-04 at 5:00 PM: Game launch.',
+      'Event 2026-08-05 from 2:00 PM to 3:00 PM: Dentist.',
+      'Event 2026-08-07 at 6:00 PM through 2026-08-09 at 10:00 AM (3 days): Weekend trip.',
+    ]);
+    expect(weekAhead.items[0]).toEqual({
+      date: '2026-08-04',
+      title: 'Game launch',
+      kind: 'event',
+      time: '17:00',
+    });
+    expect(weekAhead.items[2]).toMatchObject({
+      endDate: '2026-08-09',
+      time: '18:00',
+      endTime: '10:00',
+    });
+  });
 });
 
 describe('describeEstimatedTaxState', () => {
