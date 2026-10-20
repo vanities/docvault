@@ -10,6 +10,10 @@
 //
 // A source can bring its own page: DATA_DIR/alerts/<id>/dashboard.html, served
 // sandboxed and fed the source's data by postMessage (see AlertDashboardMessage).
+//
+// A source can also declare settings (numbers the owner adjusts on the page, such
+// as a trip line). The owner's values live here; the job runner hands them to the
+// job at launch (alertSettingsForJob → DOCVAULT_ALERT_SETTINGS).
 
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -22,10 +26,12 @@ import type {
   AlertCheck,
   AlertCheckInput,
   AlertJobInfo,
+  AlertJobSettings,
   AlertNotification,
   AlertNotificationKind,
   AlertReportInput,
   AlertSeriesPoint,
+  AlertSettingSpec,
   AlertSource,
   AlertSourceSettings,
   AlertsResponse,
@@ -48,6 +54,7 @@ export const SERIES_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 export const MAX_LOG_ENTRIES = 200;
 export const MAX_CHECKS = 100;
 export const MAX_DETAIL_BYTES = 256 * 1024;
+export const MAX_SETTINGS = 30;
 // Jobs can't run more often than every 10 minutes; this bounds anything else that reports.
 const MAX_SERIES_POINTS = 2100;
 const MAX_SERIES_KEYS = 200;
@@ -413,8 +420,10 @@ export async function reportAlerts(
       failures: 0,
       failureNotifiedAt: null,
       staleNotifiedAt: null,
-      // An owner setting, not report data: a report never turns emails back on.
+      // Owner settings, not report data: a report never turns emails back on or resets a value.
       ...(previous?.emails === false ? { emails: false } : {}),
+      ...(input.settings?.length ? { settings: input.settings } : {}),
+      ...keptValues(input.sourceId, previous?.values, input.settings),
       checks: merged.checks,
       ...(input.advice ? { advice: input.advice } : {}),
       ...(input.detail ? { detail: input.detail } : {}),
@@ -651,6 +660,9 @@ export async function listAlerts(opts: AlertsOptions = {}): Promise<AlertsRespon
   };
 }
 
+/** A settings change the source can't take (unknown key, out of range); the route answers 400. */
+export class AlertSettingsError extends Error {}
+
 export async function setAlertSourceSettings(
   id: string,
   settings: AlertSourceSettings,
@@ -661,12 +673,97 @@ export async function setAlertSourceSettings(
     const store = await loadStore(dataDir);
     const source = store.sources[id];
     if (!source) return null;
-    if (settings.emails) delete source.emails;
-    else source.emails = false;
+    // Validate everything before changing anything, so a bad value saves nothing.
+    if (settings.values) source.values = nextValues(source, settings.values);
+    if (!source.values || Object.keys(source.values).length === 0) delete source.values;
+    if (settings.emails === true) delete source.emails;
+    else if (settings.emails === false) source.emails = false;
     await saveStore(dataDir, store);
-    log.info(`[settings] source=${id} emails=${settings.emails}`);
+    log.info(
+      `[settings] source=${id}${settings.emails !== undefined ? ` emails=${settings.emails}` : ''}${settings.values ? ` changed=${Object.keys(settings.values).join(',')} overrides=${Object.keys(source.values ?? {}).length}` : ''}`
+    );
     return source;
   });
+}
+
+/**
+ * DOCVAULT_ALERT_SETTINGS for one run of a job: the owner's values for every source that job
+ * reports. Read at launch, so a run always sees the values saved before it started.
+ */
+export async function alertSettingsForJob(
+  jobId: string,
+  opts: AlertsOptions = {}
+): Promise<AlertJobSettings> {
+  const store = await loadStore(opts.dataDir ?? DATA_DIR);
+  const out: AlertJobSettings = {};
+  for (const source of Object.values(store.sources)) {
+    if (source.jobId === jobId && source.values && Object.keys(source.values).length > 0) {
+      out[source.id] = source.values;
+    }
+  }
+  return out;
+}
+
+function inRange(spec: AlertSettingSpec, value: number): boolean {
+  return (
+    (spec.min === undefined || value >= spec.min) && (spec.max === undefined || value <= spec.max)
+  );
+}
+
+function rangeText(spec: AlertSettingSpec): string {
+  if (spec.min !== undefined && spec.max !== undefined)
+    return `between ${spec.min} and ${spec.max}`;
+  return spec.min !== undefined ? `at least ${spec.min}` : `at most ${spec.max}`;
+}
+
+/** The owner's values after an edit; only values that differ from the default are kept. */
+function nextValues(
+  source: AlertSource,
+  updates: Record<string, number | null>
+): Record<string, number> {
+  const specs = new Map((source.settings ?? []).map((s) => [s.key, s]));
+  if (specs.size === 0) throw new AlertSettingsError('This alert has no settings to change');
+  const next = { ...(source.values ?? {}) };
+  for (const [key, value] of Object.entries(updates)) {
+    const spec = specs.get(key);
+    if (!spec) throw new AlertSettingsError(`Unknown setting "${key}"`);
+    if (value === null || value === spec.default) {
+      delete next[key];
+      continue;
+    }
+    if (!inRange(spec, value)) {
+      throw new AlertSettingsError(`${spec.label} must be ${rangeText(spec)}`);
+    }
+    next[key] = value;
+  }
+  return next;
+}
+
+/**
+ * The owner's values that still fit what a report declares. A report without a settings list
+ * keeps every value, so a job that briefly stops declaring them doesn't wipe the owner's numbers.
+ */
+function keptValues(
+  sourceId: string,
+  values: Record<string, number> | undefined,
+  specs: AlertSettingSpec[] | undefined
+): { values?: Record<string, number> } {
+  if (!values || Object.keys(values).length === 0) return {};
+  if (!specs) return { values };
+  const byKey = new Map(specs.map((s) => [s.key, s]));
+  const kept: Record<string, number> = {};
+  const dropped: string[] = [];
+  for (const [key, value] of Object.entries(values)) {
+    const spec = byKey.get(key);
+    if (spec && inRange(spec, value) && value !== spec.default) kept[key] = value;
+    else dropped.push(key);
+  }
+  if (dropped.length > 0) {
+    log.info(
+      `[settings] source=${sourceId} dropped=${dropped.join(',')} (no longer declared, out of range, or now the default)`
+    );
+  }
+  return Object.keys(kept).length > 0 ? { values: kept } : {};
 }
 
 // ---------------------------------------------------------------------------
@@ -731,6 +828,8 @@ const SOURCE_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const JOB_ID_RE = /^[a-z0-9][a-z0-9-]{1,80}$/;
 const KEY_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
 const DETAIL_KIND_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+// Plain identifiers, so a job can read them as object keys without quoting.
+const SETTING_KEY_RE = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -753,6 +852,39 @@ function text(
   if (value.length > max) throw new Error(`${where} must be at most ${max} characters`);
   if (opts.pattern && !opts.pattern.test(value)) throw new Error(`${where} has an invalid format`);
   return value;
+}
+
+function finite(value: unknown, where: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`${where} must be a finite number`);
+  }
+  return value;
+}
+
+function parseSettingSpec(raw: unknown, index: number): AlertSettingSpec {
+  const where = `settings[${index}]`;
+  if (!isRecord(raw)) throw new Error(`${where} must be an object`);
+  onlyKeys(raw, ['key', 'label', 'default', 'unit', 'min', 'max', 'step', 'help'], where);
+  const spec: AlertSettingSpec = {
+    key: text(raw.key, `${where}.key`, 64, { pattern: SETTING_KEY_RE })!,
+    label: text(raw.label, `${where}.label`, 120)!,
+    default: finite(raw.default, `${where}.default`),
+  };
+  const unit = text(raw.unit, `${where}.unit`, 16, { optional: true });
+  if (unit) spec.unit = unit;
+  if (raw.min !== undefined) spec.min = finite(raw.min, `${where}.min`);
+  if (raw.max !== undefined) spec.max = finite(raw.max, `${where}.max`);
+  if (raw.step !== undefined) {
+    spec.step = finite(raw.step, `${where}.step`);
+    if (spec.step <= 0) throw new Error(`${where}.step must be greater than 0`);
+  }
+  const help = text(raw.help, `${where}.help`, 300, { optional: true });
+  if (help) spec.help = help;
+  if (spec.min !== undefined && spec.max !== undefined && spec.min > spec.max) {
+    throw new Error(`${where}.min must not be greater than max`);
+  }
+  if (!inRange(spec, spec.default)) throw new Error(`${where}.default must be ${rangeText(spec)}`);
+  return spec;
 }
 
 function parseCheck(raw: unknown, index: number): AlertCheckInput {
@@ -779,7 +911,17 @@ export function parseAlertReport(raw: unknown): AlertReportInput {
   if (!isRecord(raw)) throw new Error('body must be a JSON object');
   onlyKeys(
     raw,
-    ['sourceId', 'label', 'description', 'jobId', 'checks', 'advice', 'detail', 'series'],
+    [
+      'sourceId',
+      'label',
+      'description',
+      'jobId',
+      'checks',
+      'advice',
+      'detail',
+      'series',
+      'settings',
+    ],
     'body'
   );
   const input: AlertReportInput = {
@@ -839,15 +981,50 @@ export function parseAlertReport(raw: unknown): AlertReportInput {
     }
     input.series = series;
   }
+
+  if (raw.settings !== undefined) {
+    if (!Array.isArray(raw.settings)) throw new Error('settings must be an array');
+    if (raw.settings.length > MAX_SETTINGS) {
+      throw new Error(`settings must have at most ${MAX_SETTINGS} entries`);
+    }
+    input.settings = raw.settings.map(parseSettingSpec);
+    if (new Set(input.settings.map((s) => s.key)).size !== input.settings.length) {
+      throw new Error('settings must have unique keys');
+    }
+  }
   return input;
 }
 
-/** Strict parse of a PUT /api/alerts/sources/:id/settings body. */
+/** Strict parse of a PUT /api/alerts/sources/:id/settings body. Ranges are checked on save. */
 export function parseAlertSettings(raw: unknown): AlertSourceSettings {
   if (!isRecord(raw)) throw new Error('body must be a JSON object');
-  onlyKeys(raw, ['emails'], 'body');
-  if (typeof raw.emails !== 'boolean') throw new Error('emails must be a boolean');
-  return { emails: raw.emails };
+  onlyKeys(raw, ['emails', 'values'], 'body');
+  const out: AlertSourceSettings = {};
+  if (raw.emails !== undefined) {
+    if (typeof raw.emails !== 'boolean') throw new Error('emails must be a boolean');
+    out.emails = raw.emails;
+  }
+  if (raw.values !== undefined) {
+    if (!isRecord(raw.values)) throw new Error('values must be an object of key → number | null');
+    const entries = Object.entries(raw.values);
+    if (entries.length > MAX_SETTINGS) {
+      throw new Error(`values must have at most ${MAX_SETTINGS} keys`);
+    }
+    out.values = {};
+    for (const [key, value] of entries) {
+      if (!SETTING_KEY_RE.test(key)) {
+        throw new Error(`values key "${key.slice(0, 40)}" has an invalid format`);
+      }
+      if (value !== null && (typeof value !== 'number' || !Number.isFinite(value))) {
+        throw new Error(`values.${key} must be a finite number or null`);
+      }
+      out.values[key] = value;
+    }
+  }
+  if (out.emails === undefined && out.values === undefined) {
+    throw new Error('body must set emails, values, or both');
+  }
+  return out;
 }
 
 /** Strict parse of a POST /api/alerts/report-failure body. */

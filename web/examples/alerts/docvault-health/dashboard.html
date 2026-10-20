@@ -388,6 +388,13 @@
           : '';
       const seriesOf = (series, key) =>
         series.map((p) => (num(p.values[key]) ? p.values[key] : null));
+      /** A setting's value now (the owner's, else the job's default); null if the job has no such setting. */
+      const setting = (source, key) => {
+        const spec = (source.settings || []).find((s) => s.key === key);
+        if (!spec) return null;
+        const v = source.values && source.values[key];
+        return num(v) ? v : spec.default;
+      };
 
       // ---------- kit: building blocks ----------
       const stat = (label, value, cls = '') =>
@@ -571,7 +578,7 @@
               series: [
                 { label: 'hours', values: seriesOf(source.series, 'backup.hoursSinceSync') },
               ],
-              refs: [{ value: 24, label: 'warns at' }],
+              refs: [{ value: setting(source, 'backupWarnHours') ?? 24, label: 'warns at' }],
               times,
               fmt: (n) => `${fmtNum(n, 0)} h`,
               current: hoursText(liveAgeHours),
@@ -683,7 +690,7 @@
           `<div class="section">${lineChart({
             title: 'Space used',
             series: [{ label: 'used', values: seriesOf(source.series, 'disk.usedPct') }],
-            refs: [{ value: 90, label: 'warns at' }],
+            refs: [{ value: setting(source, 'diskWarnPct') ?? 90, label: 'warns at' }],
             times,
             fmt: (n) => `${fmtNum(n, 0)}%`,
             current: pct(disk.usedPct),

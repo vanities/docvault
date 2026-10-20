@@ -1,4 +1,9 @@
-import type { AlertCheck, AlertSeriesPoint, AlertSourceView } from '../../../server/alerts-types';
+import type {
+  AlertCheck,
+  AlertSeriesPoint,
+  AlertSettingSpec,
+  AlertSourceView,
+} from '../../../server/alerts-types';
 
 export type SourceStatus = 'act' | 'warning' | 'clear' | 'paused';
 
@@ -148,6 +153,70 @@ export function sourceSummary(
     text: `All clear, ${count} ${count === 1 ? 'check' : 'checks'}${emailsOff}`,
     tone: 'ok',
   };
+}
+
+/** The value a setting has now: the owner's, else the job's default. */
+export function settingValue(
+  spec: AlertSettingSpec,
+  values: Record<string, number> | undefined
+): number {
+  const v = values?.[spec.key];
+  return typeof v === 'number' && Number.isFinite(v) ? v : spec.default;
+}
+
+/** "6.75%", "$1,234", "0.25 pts": the unit as the job named it, float noise trimmed. */
+export function formatSetting(spec: Pick<AlertSettingSpec, 'unit'>, n: number): string {
+  const clean = Number(n.toFixed(6));
+  if (spec.unit === '%') return `${clean}%`;
+  if (spec.unit === '$') return `$${clean.toLocaleString('en-US', { maximumFractionDigits: 6 })}`;
+  return spec.unit ? `${clean} ${spec.unit}` : String(clean);
+}
+
+/** One form field. Blank means "use the default"; "$" and "%" typed along with it are fine. */
+export function parseSettingInput(
+  spec: AlertSettingSpec,
+  raw: string
+): { value: number } | { error: string } {
+  const cleaned = raw.trim().replace(/[\s,$%]/g, '');
+  if (cleaned === '') return { value: spec.default };
+  const n = Number(cleaned);
+  if (!Number.isFinite(n)) return { error: 'Enter a number' };
+  if (spec.min !== undefined && n < spec.min)
+    return { error: `At least ${formatSetting(spec, spec.min)}` };
+  if (spec.max !== undefined && n > spec.max)
+    return { error: `At most ${formatSetting(spec, spec.max)}` };
+  return { value: n };
+}
+
+export interface SettingChange {
+  key: string;
+  label: string;
+  from: string;
+  to: string;
+  /** What gets saved: the new number, or null when it goes back to the default. */
+  value: number | null;
+}
+
+/** What Done would save, old → new, in the order the job declared its settings. */
+export function diffSettings(
+  specs: AlertSettingSpec[],
+  values: Record<string, number> | undefined,
+  next: Record<string, number>
+): SettingChange[] {
+  return specs.flatMap((spec) => {
+    const before = settingValue(spec, values);
+    const after = next[spec.key] ?? before;
+    if (after === before) return [];
+    return [
+      {
+        key: spec.key,
+        label: spec.label,
+        from: formatSetting(spec, before),
+        to: formatSetting(spec, after),
+        value: after === spec.default ? null : after,
+      },
+    ];
+  });
 }
 
 export function formatDuration(ms: number): string {

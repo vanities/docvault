@@ -36,6 +36,7 @@ vi.mock('./logger.js', () => ({
 
 import path from 'node:path';
 import {
+  alertSettingsForJob,
   checkStaleAlertSources,
   listAlerts,
   reportAlertFailure,
@@ -256,6 +257,75 @@ describe('owner email switch', () => {
   });
 });
 
+describe('owner settings', () => {
+  const specs = [
+    { key: 'lineHigh', label: 'Trip above', unit: '%', default: 90, min: 50, max: 100 },
+    { key: 'graceRuns', label: 'Grace runs', default: 3, min: 1, max: 10 },
+  ];
+
+  test('values validate against what the job declared; only real changes are stored', async () => {
+    await reportAlerts(report([check()], { settings: specs }), { now: at(0) });
+    const saved = await setAlertSourceSettings('demo-source', {
+      values: { lineHigh: 80, graceRuns: 3 },
+    });
+    expect(saved?.values).toEqual({ lineHigh: 80 });
+    await expect(
+      setAlertSourceSettings('demo-source', { values: { lineHigh: 101 } })
+    ).rejects.toThrow('Trip above must be between 50 and 100');
+    await expect(
+      setAlertSourceSettings('demo-source', { values: { lineHigh: 70, nope: 1 } })
+    ).rejects.toThrow('Unknown setting "nope"');
+    expect((await listAlerts()).sources[0].values, 'a rejected edit saves nothing').toEqual({
+      lineHigh: 80,
+    });
+    const reset = await setAlertSourceSettings('demo-source', { values: { lineHigh: null } });
+    expect(reset?.values).toBeUndefined();
+  });
+
+  test('values outlive reports until the job stops declaring them or narrows the range', async () => {
+    await reportAlerts(report([check()], { settings: specs }), { now: at(0) });
+    await setAlertSourceSettings('demo-source', { values: { lineHigh: 60, graceRuns: 5 } });
+    await reportAlerts(report([check()], { settings: specs }), { now: at(15) });
+    expect((await listAlerts()).sources[0].values).toEqual({ lineHigh: 60, graceRuns: 5 });
+
+    await reportAlerts(report([check()]), { now: at(30) });
+    const bare = (await listAlerts()).sources[0];
+    expect(bare.values, 'a report without a settings list keeps values').toEqual({
+      lineHigh: 60,
+      graceRuns: 5,
+    });
+    expect(bare.settings).toBeUndefined();
+
+    await reportAlerts(report([check()], { settings: [{ ...specs[0], min: 70 }] }), {
+      now: at(45),
+    });
+    expect((await listAlerts()).sources[0].values).toBeUndefined();
+  });
+
+  test("a job run gets the owner's values for its own sources only", async () => {
+    await reportAlerts(report([check()], { jobId: 'demo-job', settings: specs }), { now: at(0) });
+    await reportAlerts(
+      {
+        ...report([check()], { jobId: 'other-job', settings: specs }),
+        sourceId: 'other-source',
+        label: 'Other source',
+      },
+      { now: at(0) }
+    );
+    await setAlertSourceSettings('demo-source', { values: { lineHigh: 75 } });
+    await setAlertSourceSettings('other-source', { values: { graceRuns: 2 } });
+    expect(await alertSettingsForJob('demo-job')).toEqual({ 'demo-source': { lineHigh: 75 } });
+    expect(await alertSettingsForJob('missing-job')).toEqual({});
+  });
+
+  test('a source that declares no settings refuses values', async () => {
+    await reportAlerts(report([check()]), { now: at(0) });
+    await expect(
+      setAlertSourceSettings('demo-source', { values: { lineHigh: 80 } })
+    ).rejects.toThrow('This alert has no settings to change');
+  });
+});
+
 describe('one outage, one blind email', () => {
   test('after the failure-streak email, the stale watchdog stays quiet', async () => {
     await createCustomJobManifest(
@@ -322,6 +392,18 @@ describe('alerts routes', () => {
       { ...valid, label: 'x'.repeat(121) },
       { ...valid, detail: { kind: 'example-kind', data: 'x'.repeat(300 * 1024) } },
       { ...valid, series: { 'demo.value': 'high' } },
+      { ...valid, settings: [{ key: 'bad key', label: 'Bad', default: 1 }] },
+      { ...valid, settings: [{ key: 'line', label: 'Line', default: '1' }] },
+      { ...valid, settings: [{ key: 'line', label: 'Line', default: 5, min: 10 }] },
+      { ...valid, settings: [{ key: 'line', label: 'Line', default: 1, step: 0 }] },
+      { ...valid, settings: [{ key: 'line', label: 'Line', default: 1, surprise: true }] },
+      {
+        ...valid,
+        settings: [
+          { key: 'line', label: 'A', default: 1 },
+          { key: 'line', label: 'B', default: 2 },
+        ],
+      },
       '{"sourceId":"demo-source","label":"Demo","checks":[],"series":{"demo.value":1e400}}',
       '{not json',
     ];
@@ -365,7 +447,7 @@ describe('alerts routes', () => {
   test('the emails setting is a strict boolean and needs a known source', async () => {
     await call('POST', '/api/alerts/report', valid);
     const off = await call('PUT', '/api/alerts/sources/demo-source/settings', { emails: false });
-    expect(await off.json()).toEqual({ ok: true, emails: false });
+    expect(await off.json()).toEqual({ ok: true, emails: false, values: {} });
     for (const body of [{ emails: 'no' }, { emails: false, extra: 1 }, '{oops']) {
       expect((await call('PUT', '/api/alerts/sources/demo-source/settings', body)).status).toBe(
         400
@@ -398,6 +480,36 @@ describe('alerts routes', () => {
     for (const id of ['..%2F..%2Fsecret', '%2E%2E', 'Demo_Source']) {
       expect((await call('GET', `/api/alerts/sources/${id}/dashboard`)).status).toBe(404);
     }
+  });
+
+  test('setting values save through the route; bad ones get a readable 400', async () => {
+    await call('POST', '/api/alerts/report', {
+      ...valid,
+      settings: [
+        { key: 'lineHigh', label: 'Trip above', unit: '%', default: 90, min: 50, max: 100 },
+      ],
+    });
+    const saved = await call('PUT', '/api/alerts/sources/demo-source/settings', {
+      values: { lineHigh: 75 },
+    });
+    expect(await saved.json()).toEqual({ ok: true, emails: true, values: { lineHigh: 75 } });
+    const bad: Array<[unknown, string]> = [
+      [{ values: { lineHigh: 120 } }, 'Trip above must be between 50 and 100'],
+      [{ values: { unknown: 1 } }, 'Unknown setting "unknown"'],
+      [{ values: { lineHigh: 'high' } }, 'values.lineHigh must be a finite number or null'],
+      [{ values: { 'bad key': 1 } }, 'has an invalid format'],
+      [{}, 'body must set emails, values, or both'],
+    ];
+    for (const [body, message] of bad) {
+      const response = await call('PUT', '/api/alerts/sources/demo-source/settings', body);
+      expect(response.status, JSON.stringify(body)).toBe(400);
+      expect((await response.json()).error).toContain(message);
+    }
+    const listed = await (await call('GET', '/api/alerts')).json();
+    expect(listed.sources[0]).toMatchObject({
+      values: { lineHigh: 75 },
+      settings: [{ key: 'lineHigh', default: 90 }],
+    });
   });
 
   test('a dashboard symlinked out of the alerts folder is refused', async () => {

@@ -15,12 +15,35 @@ const JOB_ID = process.env.DOCVAULT_JOB_ID || 'docvault-health';
 const SOURCE_ID = 'docvault-health';
 const API = process.env.DOCVAULT_API_BASE || 'http://127.0.0.1:3005';
 
-const BACKUP_WARN_HOURS = 24;
-const BACKUP_CRITICAL_HOURS = 72;
-const JOB_FAILURE_RUNS = 3;
+// Adjustable on the Alerts page (Edit settings). The job runner passes the owner's values in
+// DOCVAULT_ALERT_SETTINGS; anything unset keeps the default here.
+const SETTINGS = [
+  { key: 'backupWarnHours', label: 'Backup warning after', unit: 'hours', default: 24, min: 1, max: 720, step: 1, help: 'Time since the last backup sync.' },
+  { key: 'backupCriticalHours', label: 'Backup critical after', unit: 'hours', default: 72, min: 1, max: 2160, step: 1 },
+  { key: 'jobFailureRuns', label: 'Job failing after', unit: 'runs', default: 3, min: 1, max: 50, step: 1, help: 'Failed runs in a row.' },
+  { key: 'diskWarnPct', label: 'Disk warning at', unit: '%', default: 90, min: 50, max: 100, step: 1, help: 'Space used on the data drive.' },
+  { key: 'diskCriticalPct', label: 'Disk critical at', unit: '%', default: 97, min: 50, max: 100, step: 1 },
+];
+const owner: Record<string, unknown> = (() => {
+  try {
+    return JSON.parse(process.env.DOCVAULT_ALERT_SETTINGS || '{}')[SOURCE_ID] ?? {};
+  } catch {
+    console.log(`[${SOURCE_ID}] WARN DOCVAULT_ALERT_SETTINGS is not valid JSON; using defaults`);
+    return {};
+  }
+})();
+const setting = (key: string): number => {
+  const value = owner[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : SETTINGS.find((s) => s.key === key)!.default;
+};
+console.log(`[${SOURCE_ID}] settings changed by the owner: ${Object.keys(owner).join(',') || 'none'}`);
+
+const BACKUP_WARN_HOURS = setting('backupWarnHours');
+const BACKUP_CRITICAL_HOURS = setting('backupCriticalHours');
+const JOB_FAILURE_RUNS = setting('jobFailureRuns');
 const STALE_INTERVALS = 3;
-const DISK_WARN_PCT = 90;
-const DISK_CRITICAL_PCT = 97;
+const DISK_WARN_PCT = setting('diskWarnPct');
+const DISK_CRITICAL_PCT = setting('diskCriticalPct');
 const HOUR_MS = 3600e3;
 const DAY_MS = 24 * HOUR_MS;
 
@@ -293,6 +316,7 @@ const report = {
   label: 'DocVault health',
   description: 'Backups, scheduled jobs, outbound email and disk space',
   jobId: JOB_ID,
+  settings: SETTINGS,
   checks,
   advice: {
     critical:

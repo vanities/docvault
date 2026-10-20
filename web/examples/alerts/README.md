@@ -77,7 +77,47 @@ Alerts go only to the first address in Settings → Email, with no CC.
 ## Controls
 
 Each source card has a **Checks** switch (turns its job on or off, same as Settings → Jobs), an
-**Emails** switch (checks keep running, nothing is sent), and **Check now**.
+**Emails** switch (checks keep running, nothing is sent), **Check now**, and **Edit settings**
+when its job declares settings.
+
+## Settings
+
+A job can let you adjust its numbers (a trip line, a target, a reference rate) from the Alerts
+page. List them in every report:
+
+```json
+"settings": [
+  {
+    "key": "latencyWarnMs",
+    "label": "Slow after",
+    "unit": "ms",
+    "default": 500,
+    "min": 50,
+    "max": 10000,
+    "step": 50,
+    "help": "Response time that counts as slow."
+  }
+]
+```
+
+- `key` is a plain identifier. `unit` shows with the value: `%` and `$` attach to the number,
+  anything else follows it ("500 ms"). `min`, `max`, `step` and `help` are optional.
+- Open the alert and click **Edit settings**. **Done** lists each change (old → new) before
+  saving, and saving runs the job again right away so the new lines show.
+- The job runner hands your values to every run in `DOCVAULT_ALERT_SETTINGS`, shaped
+  `{ "<sourceId>": { "<key>": number } }`. Only values you changed are there, so merge them over
+  the job's defaults:
+
+  ```ts
+  const owner = JSON.parse(process.env.DOCVAULT_ALERT_SETTINGS || '{}')[SOURCE_ID] ?? {};
+  const setting = (key: string) =>
+    Number.isFinite(owner[key]) ? owner[key] : SETTINGS.find((s) => s.key === key)!.default;
+  ```
+
+- Your values outlive reports. One for a key the job no longer declares, or outside a new
+  `min`/`max`, is dropped and that setting goes back to its default.
+- In a dashboard, `setting(source, key)` from the kit returns the value in effect, so a chart's
+  line moves when you change it. Both shipped add-ons declare settings.
 
 ## Build a dashboard
 
@@ -86,9 +126,12 @@ cards, charts, tables, and the messages below), so an add-on only writes what to
 
 1. Write `render.js` with `function render(source)` that returns HTML. The kit provides `card`,
    `headline`, `stats`/`stat`, `tag`, `chips`, `progress`, `hbars`, `table`, `lineChart`,
-   `checksFor`, `worst`, `seriesOf`, and formatters (`usd`, `pct`, `fmtNum`, `day`, `ago`).
+   `checksFor`, `worst`, `seriesOf`, `setting`, and formatters (`usd`, `pct`, `fmtNum`, `day`,
+   `ago`).
    Pass every piece of report text through `esc()` before it goes into the page.
 2. Build it: `bun run examples/alerts/kit/assemble.ts <render.js> <dashboard.html> "<Title>"`.
+   For a dashboard that ships in this repo, run `vp fmt` on the result too: CI checks formatting,
+   and assembling undoes it.
 3. Preview it with a sample source:
    `bun run examples/alerts/kit/harness.ts <dashboard.html> <source.json> <preview.html>`, then
    open the preview in a browser. `bun run examples/alerts/kit/check.ts <dashboard.html>` catches

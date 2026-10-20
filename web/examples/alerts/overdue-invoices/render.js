@@ -8,6 +8,10 @@ function render(source) {
     num(n) ? (currency === 'USD' ? usd(n, 2) : `${esc(currency)} ${fmtNum(n, 2)}`) : 'n/a';
   const checks = checksFor(source.checks, 'invoices');
   const tone = worst(checks);
+  // Colors follow the alert's own lines, so changing a setting recolors the page too.
+  const warnDays = setting(source, 'overdueWarnDays') ?? 7;
+  const criticalDays = setting(source, 'overdueCriticalDays') ?? 30;
+  const lateClass = (days) => (days >= criticalDays ? 'bad' : days >= warnDays ? 'warn' : '');
 
   const open = d.open;
   const inCurrency = open.filter((i) => i.currency === d.currency);
@@ -24,7 +28,7 @@ function render(source) {
       tone === 'critical' ? 'bad' : tone === 'warning' ? 'warn' : ''
     ) +
     stats(
-      stat('Oldest past due', `${oldest} d`, oldest >= 30 ? 'bad' : oldest >= 7 ? 'warn' : ''),
+      stat('Oldest past due', `${oldest} d`, lateClass(oldest)),
       stat('Paid, last 90 days', money(d.paid90.total)),
       stat('Invoices paid', fmtNum(d.paid90.count, 0))
     ) +
@@ -83,7 +87,6 @@ function render(source) {
       )} h`,
     })}</div>`;
 
-  const lateClass = (days) => (days >= 30 ? 'bad' : days >= 7 ? 'warn' : '');
   const openRows = open.map((i) => {
     const cls = lateClass(i.daysOverdue);
     const wrap = (s) => (cls ? `<span class="${cls}">${s}</span>` : s);

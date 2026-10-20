@@ -36,6 +36,26 @@ export interface AlertDetail {
   data: unknown;
 }
 
+/**
+ * One number the owner can adjust on the Alerts page (a trip line, a target, a reference rate),
+ * declared by the job in every report. The job gets the owner's values back on its next run in
+ * DOCVAULT_ALERT_SETTINGS and uses `default` for anything unset.
+ */
+export interface AlertSettingSpec {
+  key: string;
+  label: string;
+  default: number;
+  /** "%" and "$" attach to the number; anything else follows it ("hours", "pts"). */
+  unit?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  help?: string;
+}
+
+/** DOCVAULT_ALERT_SETTINGS: source id → the owner's values, for each source the job reports. */
+export type AlertJobSettings = Record<string, Record<string, number>>;
+
 export interface AlertSource {
   id: string;
   label: string;
@@ -52,6 +72,10 @@ export interface AlertSource {
   staleNotifiedAt?: string | null;
   /** False when the owner turned this source's emails off; checks still run and show. Absent = on. */
   emails?: boolean;
+  /** The adjustable numbers its job declared in the latest report. */
+  settings?: AlertSettingSpec[];
+  /** The owner's values for those settings, only where they differ from the default. */
+  values?: Record<string, number>;
   checks: AlertCheck[];
   advice?: AlertAdvice;
   detail?: AlertDetail;
@@ -89,6 +113,8 @@ export interface AlertReportInput {
   detail?: AlertDetail;
   /** One chart point for this report; the server stamps the time. */
   series?: Record<string, number | null>;
+  /** Numbers the owner can adjust; a report without this list keeps the owner's values as they are. */
+  settings?: AlertSettingSpec[];
 }
 
 /** The reporting job's stored manifest; the whole thing so a toggle can re-post it unchanged. */
@@ -113,9 +139,11 @@ export interface AlertsResponse {
   log: AlertNotification[];
 }
 
-/** Body of PUT /api/alerts/sources/:id/settings. */
+/** Body of PUT /api/alerts/sources/:id/settings; send either or both. */
 export interface AlertSourceSettings {
-  emails: boolean;
+  emails?: boolean;
+  /** Setting key → new value; null puts it back to the job's default. */
+  values?: Record<string, number | null>;
 }
 
 /**

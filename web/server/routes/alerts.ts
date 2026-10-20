@@ -3,7 +3,7 @@
 //   GET    /api/alerts                          → { sources: [...source, job, hasDashboard], log }
 //   POST   /api/alerts/report                   → { ok, emailed: 'trip' | 'reminder' | null }
 //   POST   /api/alerts/report-failure           → { ok, emailed: 'blind' | null, failures }
-//   PUT    /api/alerts/sources/:id/settings     → { ok, emails }
+//   PUT    /api/alerts/sources/:id/settings     → { ok, emails, values }
 //   GET    /api/alerts/sources/:id/dashboard    → the source's dashboard.html, sandboxed
 //   DELETE /api/alerts/sources/:id              → { ok }
 //
@@ -12,6 +12,7 @@
 
 import { jsonResponse } from '../data.js';
 import {
+  AlertSettingsError,
   listAlerts,
   parseAlertFailure,
   parseAlertReport,
@@ -105,10 +106,17 @@ export async function handleAlertsRoutes(
   if (settingsMatch && req.method === 'PUT') {
     const input = await parseBody(req, parseAlertSettings);
     if (input instanceof Response) return input;
-    const source = await setAlertSourceSettings(decodeURIComponent(settingsMatch[1]), input);
-    return source
-      ? jsonResponse({ ok: true, emails: source.emails !== false })
-      : jsonResponse({ ok: false, error: 'Alert source not found' }, 404);
+    try {
+      const source = await setAlertSourceSettings(decodeURIComponent(settingsMatch[1]), input);
+      return source
+        ? jsonResponse({ ok: true, emails: source.emails !== false, values: source.values ?? {} })
+        : jsonResponse({ ok: false, error: 'Alert source not found' }, 404);
+    } catch (err) {
+      if (err instanceof AlertSettingsError) {
+        return jsonResponse({ ok: false, error: err.message }, 400);
+      }
+      throw err;
+    }
   }
 
   const dashboardMatch = /^\/api\/alerts\/sources\/([^/]+)\/dashboard$/.exec(pathname);

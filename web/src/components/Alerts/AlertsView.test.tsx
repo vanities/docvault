@@ -61,9 +61,11 @@ function renderRow(
       checking={false}
       emailsOverride={opts.emails}
       emailsBusy={false}
+      savingSettings={false}
       onToggle={() => {}}
       onCheck={() => {}}
       onToggleEmails={() => {}}
+      onSaveSettings={async () => true}
     />
   );
 }
@@ -100,6 +102,15 @@ describe('AlertRow', () => {
     expect(renderRow(paused, { expanded: true })).toContain(
       'no checks or emails until you turn it back on'
     );
+  });
+
+  test('Edit settings appears on an open row, and only when its job declares settings', () => {
+    const tunable = source({
+      settings: [{ key: 'latencyWarnMs', label: 'Slow after', unit: 'ms', default: 500 }],
+    });
+    expect(renderRow(tunable, { expanded: true })).toContain('Edit settings');
+    expect(renderRow(tunable)).not.toContain('Edit settings');
+    expect(renderRow(source(), { expanded: true })).not.toContain('Edit settings');
   });
 
   test('emails off is visible collapsed and explained expanded', () => {

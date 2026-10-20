@@ -39,7 +39,7 @@ function render(source) {
       `<div class="section">${lineChart({
         title: 'Hours since the last sync',
         series: [{ label: 'hours', values: seriesOf(source.series, 'backup.hoursSinceSync') }],
-        refs: [{ value: 24, label: 'warns at' }],
+        refs: [{ value: setting(source, 'backupWarnHours') ?? 24, label: 'warns at' }],
         times,
         fmt: (n) => `${fmtNum(n, 0)} h`,
         current: hoursText(liveAgeHours),
@@ -151,7 +151,7 @@ function render(source) {
     `<div class="section">${lineChart({
       title: 'Space used',
       series: [{ label: 'used', values: seriesOf(source.series, 'disk.usedPct') }],
-      refs: [{ value: 90, label: 'warns at' }],
+      refs: [{ value: setting(source, 'diskWarnPct') ?? 90, label: 'warns at' }],
       times,
       fmt: (n) => `${fmtNum(n, 0)}%`,
       current: pct(disk.usedPct),
