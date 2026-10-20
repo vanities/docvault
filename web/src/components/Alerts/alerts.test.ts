@@ -1,15 +1,19 @@
 // Pure helper tests over fabricated alert sources; no network, no personal data.
 import { describe, expect, test } from 'vite-plus/test';
-import type { AlertCheck, AlertJobInfo } from '../../../server/alerts-types';
+import type { AlertCheck, AlertJobInfo, AlertSourceView } from '../../../server/alerts-types';
 import {
+  expansionKey,
   formatNumber,
+  isExpanded,
   overallStatus,
   scheduleToMs,
   seriesKeys,
   seriesValues,
   sortChecks,
+  sortSources,
   sourceHealth,
   sourceStatus,
+  sourceSummary,
   sparkGeometry,
 } from './alerts';
 
@@ -86,6 +90,79 @@ describe('source health', () => {
     ).toBe('ok');
     expect(sourceHealth({ reportedAt: ago(5), failures: 2, job: job() }, now).kind).toBe('failing');
     expect(sourceHealth({ reportedAt: null, failures: 0, job: null }, now).kind).toBe('never');
+  });
+});
+
+describe('the list', () => {
+  const now = Date.parse('2030-01-01T12:00:00.000Z');
+  const recent = new Date(now - 5 * 60_000).toISOString();
+  const src = (overrides: Partial<AlertSourceView> = {}): AlertSourceView => ({
+    id: 'demo',
+    label: 'Demo',
+    reportedAt: recent,
+    failures: 0,
+    checks: [
+      check({ id: 'a', label: 'Check A', scope: '' }),
+      check({ id: 'b', label: 'Check B', scope: '' }),
+    ],
+    series: [],
+    job: job(),
+    hasDashboard: false,
+    ...overrides,
+  });
+  const trip = (id: string, severity: 'critical' | 'warning' = 'critical') =>
+    check({ id, label: `Check ${id}`, scope: '', active: true, severity });
+
+  test('a collapsed row says what is wrong, or that nothing is', () => {
+    expect(sourceSummary(src(), now)).toEqual({ text: 'All clear, 2 checks', tone: 'ok' });
+    expect(
+      sourceSummary(src({ checks: [trip('x'), trip('y', 'warning'), trip('z')] }), now)
+    ).toEqual({
+      text: '3 tripped: Check x, Check z, +1 more',
+      tone: 'critical',
+    });
+    expect(sourceSummary(src({ checks: [trip('y', 'warning')], emails: false }), now)).toEqual({
+      text: '1 tripped: Check y, emails off',
+      tone: 'warning',
+    });
+    expect(sourceSummary(src({ job: job({ enabled: false }) }), now).text).toBe(
+      'Paused, all clear at the last report'
+    );
+    expect(sourceSummary(src({ failures: 2 }), now).text).toBe(
+      "Can't get its data (2 failed checks)"
+    );
+    expect(
+      sourceSummary(src({ reportedAt: new Date(now - 3 * 3_600_000).toISOString() }), now).text
+    ).toBe('No report in 3 h');
+    expect(sourceSummary(src({ reportedAt: null }), now).text).toBe('Waiting for its first report');
+  });
+
+  test('problems sort first; pausing a source never moves its row', () => {
+    const order = sortSources(
+      [
+        src({ id: 'clear', label: 'A clear' }),
+        src({ id: 'paused', label: 'B paused', job: job({ enabled: false }) }),
+        src({ id: 'warn', label: 'Z warn', checks: [trip('w', 'warning')] }),
+        src({ id: 'stale', label: 'Y stale', reportedAt: new Date(now - 3_600_000).toISOString() }),
+        src({ id: 'act', label: 'X act', checks: [trip('c')] }),
+      ],
+      now
+    ).map((s) => s.id);
+    expect(order).toEqual(['act', 'warn', 'stale', 'clear', 'paused']);
+  });
+
+  test('tripped rows open by default, and a new trip reopens a row collapsed while clear', () => {
+    const clear = [check()];
+    const tripped = [check({ active: true })];
+    expect(isExpanded({}, 'demo', clear)).toBe(false);
+    expect(isExpanded({}, 'demo', tripped)).toBe(true);
+    const remembered = {
+      [expansionKey('demo', clear)]: false,
+      [expansionKey('demo', tripped)]: false,
+    };
+    expect(isExpanded({ [expansionKey('demo', clear)]: true }, 'demo', clear)).toBe(true);
+    expect(isExpanded({ [expansionKey('demo', clear)]: false }, 'demo', tripped)).toBe(true);
+    expect(isExpanded(remembered, 'demo', tripped)).toBe(false);
   });
 });
 

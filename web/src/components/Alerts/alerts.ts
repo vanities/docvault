@@ -64,6 +64,92 @@ export function sourceHealth(
     : { kind: 'ok', ageMs };
 }
 
+/** Status from the checks alone; a paused source keeps its row open or closed while you toggle it. */
+export function checkStatus(checks: AlertCheck[]): Exclude<SourceStatus, 'paused'> {
+  if (checks.some((c) => c.active && c.severity === 'critical')) return 'act';
+  if (checks.some((c) => c.active)) return 'warning';
+  return 'clear';
+}
+
+/**
+ * Remembered open/closed choices are keyed by status, so a source the owner
+ * collapsed while it was clear still opens on its own when something trips.
+ */
+export function expansionKey(id: string, checks: AlertCheck[]): string {
+  return `${id}:${checkStatus(checks)}`;
+}
+
+export function isExpanded(
+  remembered: Record<string, boolean>,
+  id: string,
+  checks: AlertCheck[]
+): boolean {
+  return remembered[expansionKey(id, checks)] ?? checkStatus(checks) !== 'clear';
+}
+
+/**
+ * Act now first, then warnings, then sources that can't report, then quiet ones. Paused
+ * sources keep their place, so flipping a row's switch never moves it out from under you.
+ */
+export function sortSources<T extends AlertSourceView>(sources: T[], now: number): T[] {
+  const rank = (s: T) => {
+    const status = checkStatus(s.checks);
+    if (status === 'act') return 0;
+    if (status === 'warning') return 1;
+    return sourceHealth(s, now).kind === 'ok' ? 3 : 2;
+  };
+  return [...sources].sort((a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label));
+}
+
+function checkName(check: Pick<AlertCheck, 'label' | 'scope'>): string {
+  return check.scope && !check.label.toLowerCase().includes(check.scope.toLowerCase())
+    ? `${check.label} (${check.scope})`
+    : check.label;
+}
+
+export type SummaryTone = 'critical' | 'warning' | 'ok' | 'muted';
+
+/** The one line a collapsed row shows: what's wrong, or that nothing is. */
+export function sourceSummary(
+  source: Pick<AlertSourceView, 'checks' | 'job' | 'emails' | 'failures' | 'reportedAt'>,
+  now: number
+): { text: string; tone: SummaryTone } {
+  const tripped = sortChecks(source.checks).filter((c) => c.active);
+  const worst: SummaryTone = tripped.some((c) => c.severity === 'critical')
+    ? 'critical'
+    : 'warning';
+  const trips =
+    tripped.length === 0
+      ? ''
+      : `${tripped.length} tripped: ${tripped.slice(0, 2).map(checkName).join(', ')}${tripped.length > 2 ? `, +${tripped.length - 2} more` : ''}`;
+
+  if (source.job && !source.job.enabled) {
+    return {
+      text: `Paused, ${tripped.length ? trips : 'all clear'} at the last report`,
+      tone: 'muted',
+    };
+  }
+  const health = sourceHealth(source, now);
+  const emailsOff = source.emails === false ? ', emails off' : '';
+  if (health.kind === 'never') return { text: 'Waiting for its first report', tone: 'muted' };
+  if (health.kind !== 'ok') {
+    const problem =
+      health.kind === 'failing'
+        ? `Can't get its data (${source.failures} failed ${source.failures === 1 ? 'check' : 'checks'})`
+        : `No report in ${formatDuration(health.ageMs)}`;
+    return {
+      text: `${problem}${trips ? `; last report: ${trips}` : ''}${emailsOff}`,
+      tone: 'warning',
+    };
+  }
+  if (tripped.length > 0) return { text: `${trips}${emailsOff}`, tone: worst };
+  const count = source.checks.length;
+  return {
+    text: `All clear, ${count} ${count === 1 ? 'check' : 'checks'}${emailsOff}`,
+    tone: 'ok',
+  };
+}
+
 export function formatDuration(ms: number): string {
   const min = Math.max(1, Math.floor(ms / 60_000));
   if (min < 60) return `${min} min`;
