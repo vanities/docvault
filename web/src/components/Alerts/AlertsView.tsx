@@ -217,7 +217,9 @@ function HealthNotice({
     return (
       <p className="text-[12px] text-surface-800 flex items-center gap-1.5">
         <PauseCircle className="w-3.5 h-3.5 text-surface-600" />
-        Paused: no checks or emails until you turn it back on. What you see is from the last report.
+        {source.placeholder
+          ? `It has never run, so there is nothing to show yet. Turn on Checks to run it ${source.job?.schedule ?? 'on its schedule'}, or Check now to run it once.`
+          : 'Paused: no checks or emails until you turn it back on. What you see is from the last report.'}
       </p>
     );
   }
@@ -357,14 +359,16 @@ export function AlertRow({
               onToggle={onToggle}
             />
           )}
-          <ToggleSwitch
-            label="Emails"
-            ariaLabel={`${source.label} emails`}
-            title={emails ? 'Emails you when a check trips' : 'Emails are off'}
-            checked={emails}
-            busy={emailsBusy}
-            onToggle={onToggleEmails}
-          />
+          {!source.placeholder && (
+            <ToggleSwitch
+              label="Emails"
+              ariaLabel={`${source.label} emails`}
+              title={emails ? 'Emails you when a check trips' : 'Emails are off'}
+              checked={emails}
+              busy={emailsBusy}
+              onToggle={onToggleEmails}
+            />
+          )}
         </div>
       </div>
       {toggleError && (
@@ -412,7 +416,7 @@ export function AlertRow({
                 return saved;
               }}
             />
-          ) : (
+          ) : source.placeholder ? null : (
             <>
               <div className="rounded-xl border border-border/40 px-3 divide-y divide-border/40">
                 {checks.map((c) => (
@@ -457,7 +461,7 @@ export function AlertRow({
             </>
           )}
 
-          {source.hasDashboard ? (
+          {source.placeholder ? null : source.hasDashboard ? (
             <AlertDashboardFrame source={source} />
           ) : (
             <SeriesHistory series={source.series} />

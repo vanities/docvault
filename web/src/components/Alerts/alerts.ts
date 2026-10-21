@@ -93,11 +93,13 @@ export function isExpanded(
 }
 
 /**
- * Act now first, then warnings, then sources that can't report, then quiet ones. Paused
- * sources keep their place, so flipping a row's switch never moves it out from under you.
+ * Act now first, then warnings, then sources that can't report, then quiet ones, then alerts
+ * that have never run. Paused sources keep their place, so flipping a row's switch never moves
+ * it out from under you.
  */
 export function sortSources<T extends AlertSourceView>(sources: T[], now: number): T[] {
   const rank = (s: T) => {
+    if (s.placeholder) return 4;
     const status = checkStatus(s.checks);
     if (status === 'act') return 0;
     if (status === 'warning') return 1;
@@ -116,7 +118,10 @@ export type SummaryTone = 'critical' | 'warning' | 'ok' | 'muted';
 
 /** The one line a collapsed row shows: what's wrong, or that nothing is. */
 export function sourceSummary(
-  source: Pick<AlertSourceView, 'checks' | 'job' | 'emails' | 'failures' | 'reportedAt'>,
+  source: Pick<
+    AlertSourceView,
+    'checks' | 'job' | 'emails' | 'failures' | 'reportedAt' | 'placeholder'
+  >,
   now: number
 ): { text: string; tone: SummaryTone } {
   const tripped = sortChecks(source.checks).filter((c) => c.active);
@@ -129,6 +134,7 @@ export function sourceSummary(
       : `${tripped.length} tripped: ${tripped.slice(0, 2).map(checkName).join(', ')}${tripped.length > 2 ? `, +${tripped.length - 2} more` : ''}`;
 
   if (source.job && !source.job.enabled) {
+    if (source.placeholder) return { text: 'Never run; turn on Checks to start it', tone: 'muted' };
     return {
       text: `Paused, ${tripped.length ? trips : 'all clear'} at the last report`,
       tone: 'muted',

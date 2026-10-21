@@ -131,6 +131,11 @@ export type AlertSourceView = AlertSource & {
   job: AlertJobInfo | null;
   /** DATA_DIR/alerts/<id>/dashboard.html exists; the page shows it instead of the generic charts. */
   hasDashboard: boolean;
+  /**
+   * A job tagged "alerts" that has never reported, listed from its manifest so it can be turned
+   * on. Nothing is stored for it, so it has no checks, emails switch or settings until it reports.
+   */
+  placeholder?: boolean;
 };
 
 /** GET /api/alerts */

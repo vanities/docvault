@@ -160,6 +160,41 @@ describe('the list', () => {
     expect(order).toEqual(['act', 'warn', 'stale', 'clear', 'paused']);
   });
 
+  test('an alert that has never run says how to start it and sorts last, on or off', () => {
+    const unrun = src({
+      id: 'unrun',
+      label: 'A never run',
+      placeholder: true,
+      reportedAt: null,
+      checks: [],
+      job: job({ enabled: false }),
+    });
+    expect(sourceSummary(unrun, now)).toEqual({
+      text: 'Never run; turn on Checks to start it',
+      tone: 'muted',
+    });
+    expect(sourceSummary({ ...unrun, job: job() }, now).text).toBe('Waiting for its first report');
+    for (const enabled of [false, true]) {
+      const order = sortSources(
+        [
+          { ...unrun, job: job({ enabled }) },
+          src({ id: 'clear', label: 'B clear' }),
+          src({
+            id: 'stale',
+            label: 'C stale',
+            reportedAt: new Date(now - 3_600_000).toISOString(),
+          }),
+        ],
+        now
+      ).map((s) => s.id);
+      expect(order, `switching it ${enabled ? 'on' : 'off'} keeps its place`).toEqual([
+        'stale',
+        'clear',
+        'unrun',
+      ]);
+    }
+  });
+
   test('tripped rows open by default, and a new trip reopens a row collapsed while clear', () => {
     const clear = [check()];
     const tripped = [check({ active: true })];
