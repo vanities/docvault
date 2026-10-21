@@ -126,6 +126,32 @@ describe('AlertRow', () => {
     expect(html).not.toContain('allow-same-origin');
   });
 
+  test('an alert that has never run shows its Checks switch and how to start it, nothing else', () => {
+    const unrun = source({
+      placeholder: true,
+      description: undefined,
+      reportedAt: null,
+      checks: [],
+      advice: undefined,
+      series: [],
+      hasDashboard: true,
+      job: { ...source().job!, enabled: false, schedule: 'every 6h' },
+    });
+    const collapsed = renderRow(unrun);
+    expect(collapsed).toContain('aria-label="Demo uptime checks"');
+    expect(collapsed, 'nothing is stored yet to save an emails choice to').not.toContain(
+      'aria-label="Demo uptime emails"'
+    );
+    expect(collapsed).toContain('Never run; turn on Checks to start it');
+    expect(collapsed).toContain('Never checked · every 6h');
+
+    const open = renderRow(unrun, { expanded: true });
+    expect(open).toContain('Turn on Checks to run it every 6h, or Check now to run it once.');
+    expect(open).toContain('Check now');
+    expect(open).not.toContain('reported no checks');
+    expect(open, 'no data to hand a dashboard yet').not.toContain('<iframe');
+  });
+
   test('without a dashboard file, an open row charts every series key', () => {
     const html = renderRow(source(), { expanded: true });
     expect(html).not.toContain('<iframe');

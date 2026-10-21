@@ -34,6 +34,7 @@ import type {
   AlertSettingSpec,
   AlertSource,
   AlertSourceSettings,
+  AlertSourceView,
   AlertsResponse,
   AlertsStore,
 } from './alerts-types.js';
@@ -55,6 +56,8 @@ export const MAX_LOG_ENTRIES = 200;
 export const MAX_CHECKS = 100;
 export const MAX_DETAIL_BYTES = 256 * 1024;
 export const MAX_SETTINGS = 30;
+/** A job with this tag is an alert: the page lists it, switched off, before its first report. */
+export const ALERT_JOB_TAG = 'alerts';
 // Jobs can't run more often than every 10 minutes; this bounds anything else that reports.
 const MAX_SERIES_POINTS = 2100;
 const MAX_SERIES_KEYS = 200;
@@ -648,14 +651,35 @@ export function startAlertsWatchdog(dataDir: string = DATA_DIR): () => void {
 export async function listAlerts(opts: AlertsOptions = {}): Promise<AlertsResponse> {
   const dataDir = opts.dataDir ?? DATA_DIR;
   const [store, jobs] = await Promise.all([loadStore(dataDir), loadJobs(dataDir)]);
-  const sorted = Object.values(store.sources).sort((a, b) => a.label.localeCompare(b.label));
-  const dashboards = await Promise.all(sorted.map((s) => resolveDashboard(s.id, dataDir)));
-  return {
-    sources: sorted.map((s, i) => ({
-      ...s,
-      job: s.jobId ? (jobs.get(s.jobId) ?? null) : null,
-      hasDashboard: dashboards[i] !== null,
+  const stored = Object.values(store.sources);
+  // A source is only stored once its job reports, so an alert job that has never run (an add-on
+  // seeded switched off) would have no row, and with it no switch to turn it on.
+  const claimed = new Set(stored.flatMap((s) => (s.jobId ? [s.id, s.jobId] : [s.id])));
+  const unreported = [...jobs.values()].filter(
+    (job) => job.tags.includes(ALERT_JOB_TAG) && !claimed.has(job.id)
+  );
+  const rows: Array<Omit<AlertSourceView, 'hasDashboard'>> = [
+    ...stored.map((s) => ({ ...s, job: s.jobId ? (jobs.get(s.jobId) ?? null) : null })),
+    ...unreported.map((job) => ({
+      id: job.id,
+      label: job.label,
+      jobId: job.id,
+      reportedAt: null,
+      failures: 0,
+      checks: [],
+      series: [],
+      job,
+      placeholder: true,
     })),
+  ].sort((a, b) => a.label.localeCompare(b.label));
+  const dashboards = await Promise.all(rows.map((s) => resolveDashboard(s.id, dataDir)));
+  if (unreported.length > 0) {
+    log.debug(
+      `[list] sources=${stored.length} unreported=${unreported.map((j) => j.id).join(',')}`
+    );
+  }
+  return {
+    sources: rows.map((s, i) => ({ ...s, hasDashboard: dashboards[i] !== null })),
     log: store.log,
   };
 }

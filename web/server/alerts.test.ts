@@ -359,6 +359,73 @@ describe('stored history', () => {
   });
 });
 
+describe('alert jobs that have never reported', () => {
+  test('are listed from their manifest until the first report takes the row over', async () => {
+    await createCustomJobManifest(
+      {
+        id: 'demo-job',
+        label: 'Demo alert job',
+        schedule: 'every 6h',
+        script: 'scripts/demo.local.ts',
+        tags: ['alerts', 'demo'],
+      },
+      { dataDir }
+    );
+    await createCustomJobManifest(
+      { id: 'plain-job', label: 'Plain job', schedule: 'daily', script: 'scripts/plain.local.ts' },
+      { dataDir }
+    );
+    const folder = path.join(dataDir, 'alerts', 'demo-job');
+    await fs.mkdir(folder, { recursive: true });
+    await fs.writeFile(path.join(folder, 'dashboard.html'), '<p>demo dashboard</p>');
+
+    const before = (await listAlerts()).sources;
+    expect(
+      before.map((s) => s.id),
+      'a job without the alerts tag is not an alert'
+    ).toEqual(['demo-job']);
+    expect(before[0]).toMatchObject({
+      label: 'Demo alert job',
+      placeholder: true,
+      reportedAt: null,
+      failures: 0,
+      checks: [],
+      series: [],
+      hasDashboard: true,
+      job: { id: 'demo-job', enabled: false, schedule: 'every 6h' },
+    });
+    expect(
+      await setAlertSourceSettings('demo-job', { emails: false }),
+      'nothing is stored for it'
+    ).toBeNull();
+
+    await reportAlerts(report([check()], { jobId: 'demo-job' }), { now: at(0) });
+    const after = (await listAlerts()).sources;
+    expect(
+      after.map((s) => s.id),
+      'its report replaces it, even under another source id'
+    ).toEqual(['demo-source']);
+    expect(after[0].placeholder).toBeUndefined();
+  });
+
+  test('a stored source that already uses the job id is not listed twice', async () => {
+    await createCustomJobManifest(
+      {
+        id: 'demo-source',
+        label: 'Demo alert job',
+        schedule: 'hourly',
+        script: 'scripts/demo.local.ts',
+        tags: ['alerts'],
+      },
+      { dataDir }
+    );
+    await reportAlerts(report([check()]), { now: at(0) });
+    expect((await listAlerts()).sources.map((s) => [s.id, s.placeholder])).toEqual([
+      ['demo-source', undefined],
+    ]);
+  });
+});
+
 describe('alerts routes', () => {
   async function call(method: string, pathname: string, body?: unknown) {
     const url = new URL(`http://internal${pathname}`);

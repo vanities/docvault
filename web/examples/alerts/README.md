@@ -14,7 +14,8 @@ An add-on is three pieces that travel together:
    the alert.
 
 These ship with DocVault. Their jobs are seeded **disabled** into Settings → Jobs and their
-dashboards into `DATA_DIR/alerts/` on first boot; turn a job on and its alert appears.
+dashboards into `DATA_DIR/alerts/` on first boot. Each is listed on the Alerts page from the
+start, switched off; turn on its Checks switch there and it starts reporting.
 
 | Add-on             | Schedule  | Checks                                                                                                 |
 | ------------------ | --------- | ------------------------------------------------------------------------------------------------------ |
@@ -60,6 +61,9 @@ POST /api/alerts/report
 - `detail` is anything your dashboard needs (up to 256 KB); DocVault stores it as sent.
 - `jobId` links the source to its job: that turns on the Checks switch, Check now, and the
   "stopped reporting" watchdog.
+- Tag the job `alerts` (in its manifest's `tags`) so the Alerts page lists it before its first
+  report, with its Checks switch. Without the tag, a job that ships switched off has no row
+  until it has run.
 - When a run can't get its data, POST `{ "sourceId": "...", "error": "..." }` to
   `/api/alerts/report-failure` instead.
 
