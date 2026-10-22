@@ -6,13 +6,15 @@ import {
   getSnapTradeConnectUrl,
   registerSnapTradeUser,
 } from '../brokers.js';
-import { claimSetupToken } from '../simplefin.js';
+import { claimSetupToken, type SimplefinBalanceCache } from '../simplefin.js';
+import { emptyBankRollup } from '../bank-rollup.js';
 import { simplefinSync } from '../simplefin-sync.js';
 import { readJsonBody } from '../http.js';
 import { createLogger } from '../logger.js';
 import {
   SIMPLEFIN_CACHE_FILE,
   jsonResponse,
+  rollUpCachedBankAccounts,
   loadSettings,
   saveSettings,
   loadSnapshots,
@@ -195,23 +197,36 @@ export async function handleBrokerIntegrationRoutes(
   // GET /api/simplefin/balances — fetch balances
   if (pathname === '/api/simplefin/balances' && req.method === 'GET') {
     const settings = await loadSettings();
+    // Every response carries `rollup`, so the Banks and Portfolio pages show the
+    // same cash/debt split as the snapshot instead of summing raw balances.
+    const empty = { accounts: [], lastUpdated: '', rollup: emptyBankRollup() };
     if (!settings.simplefin?.accessUrl) {
-      return jsonResponse({ accounts: [], lastUpdated: '' });
+      return jsonResponse(empty);
     }
+    const withRollup = async (cache: SimplefinBalanceCache) => {
+      const t0 = performance.now();
+      const rollup = await rollUpCachedBankAccounts(cache.accounts);
+      const elsewhere = rollup.accounts.filter((a) => a.countedIn === 'elsewhere').length;
+      logSimplefin.debug(
+        `[rollup] accounts=${cache.accounts.length} countedElsewhere=${elsewhere} in ${(performance.now() - t0).toFixed(1)}ms`
+      );
+      return { ...cache, rollup };
+    };
 
     const cached = url.searchParams.get('cached') === '1';
     if (cached) {
+      let cache: SimplefinBalanceCache;
       try {
-        const content = await fs.readFile(SIMPLEFIN_CACHE_FILE, 'utf-8');
-        return jsonResponse(JSON.parse(content));
+        cache = JSON.parse(await fs.readFile(SIMPLEFIN_CACHE_FILE, 'utf-8'));
       } catch {
-        return jsonResponse({ accounts: [], lastUpdated: '' });
+        return jsonResponse(empty);
       }
+      return jsonResponse(await withRollup(cache));
     }
 
     try {
       const cache = await simplefinSync.sync(settings.simplefin, true);
-      return jsonResponse(cache);
+      return jsonResponse(await withRollup(cache));
     } catch (err) {
       logSimplefin.error(`Balances fetch failed: ${err instanceof Error ? err.message : err}`);
       return jsonResponse(

@@ -21,6 +21,8 @@ import {
   Percent,
   Check,
   X,
+  Bitcoin,
+  TrendingUp,
 } from 'lucide-react';
 import type { PortfolioSnapshot } from '../../types';
 import {
@@ -38,6 +40,7 @@ import { Button } from '@/components/ui/button';
 import { Money } from '../common/Money';
 import { SimplefinConnectionWarnings } from './SimplefinConnectionWarnings';
 import type { SimplefinHealth, SimplefinIssue } from '../../../server/simplefin-health';
+import type { BankRollup, RolledUpAccount } from '../../../server/bank-rollup';
 
 // Types
 
@@ -57,6 +60,8 @@ interface SimplefinBalanceCache {
   lastUpdated: string;
   connectionErrors?: string[];
   connectionIssues?: SimplefinIssue[];
+  /** Server-side cash/debt split (server/bank-rollup.ts), shared with the snapshot. */
+  rollup?: BankRollup;
 }
 
 // Institution colors
@@ -107,8 +112,27 @@ function accountIcon(name: string, annotation: AccountAnnotation | undefined, ba
       return <Car className="w-3.5 h-3.5" />;
     case 'checking':
       return <DollarSign className="w-3.5 h-3.5" />;
+    case 'investment':
+      return <TrendingUp className="w-3.5 h-3.5" />;
+    case 'crypto':
+      return <Bitcoin className="w-3.5 h-3.5" />;
     default:
       return <Landmark className="w-3.5 h-3.5" />;
+  }
+}
+
+// Investment and crypto accounts never count as cash. Say where they do count,
+// so a large balance here doesn't read as money in the bank.
+function countedHint(rolled: RolledUpAccount | undefined): string | null {
+  switch (rolled?.countedIn) {
+    case 'brokerage':
+      return 'Counted in Brokerage';
+    case 'crypto':
+      return 'Counted in Crypto';
+    case 'elsewhere':
+      return `Already counted as "${rolled.duplicateOf}"`;
+    default:
+      return null;
   }
 }
 
@@ -227,6 +251,7 @@ function InstitutionCard({
   colorIndex,
   grandTotal,
   annotations,
+  rolledUp,
   onSaveAnnotation,
 }: {
   name: string;
@@ -235,6 +260,7 @@ function InstitutionCard({
   colorIndex: number;
   grandTotal: number;
   annotations: Record<string, AccountAnnotation>;
+  rolledUp: Record<string, RolledUpAccount>;
   onSaveAnnotation: (accountId: string, ann: AccountAnnotation) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
@@ -304,6 +330,7 @@ function InstitutionCard({
         <AccountRows
           accounts={sorted}
           annotations={annotations}
+          rolledUp={rolledUp}
           onSaveAnnotation={onSaveAnnotation}
         />
       )}
@@ -315,10 +342,12 @@ function InstitutionCard({
 function AccountRows({
   accounts,
   annotations,
+  rolledUp,
   onSaveAnnotation,
 }: {
   accounts: SimplefinAccount[];
   annotations: Record<string, AccountAnnotation>;
+  rolledUp: Record<string, RolledUpAccount>;
   onSaveAnnotation: (accountId: string, ann: AccountAnnotation) => void;
 }) {
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
@@ -330,6 +359,7 @@ function AccountRows({
           const { displayName, mask } = extractMask(acct.name);
           const ann = annotations[acct.id];
           const type = accountTypeLabel(acct.name, ann, acct.balance);
+          const hint = countedHint(rolledUp[acct.id]);
           const isNegative = acct.balance < 0;
           const hasAnnotation = ann && (ann.rate || ann.type || ann.monthlyPayment || ann.notes);
 
@@ -349,6 +379,12 @@ function AccountRows({
                     </div>
                     <div className="flex items-center gap-1.5">
                       <p className="text-[11px] text-surface-500">{type}</p>
+                      {hint && (
+                        <>
+                          <span className="text-[11px] text-surface-600">·</span>
+                          <span className="text-[11px] text-surface-500 italic">{hint}</span>
+                        </>
+                      )}
                       {/* The bank's own name is often useless for telling two
                           accounts apart (Chase names business cards after the
                           cardholder, so both Ink cards arrive as "J. PASCHKE").
@@ -611,6 +647,15 @@ export function BanksView() {
         body: JSON.stringify(ann),
       });
       setAnnotations((prev) => ({ ...prev, [accountId]: { ...prev[accountId], ...ann } }));
+      // The type decides whether an account counts as cash, so pull the
+      // server's fresh rollup (cached balances, no bank round trip).
+      const res = await fetch(`${API_BASE}/simplefin/balances?cached=1`);
+      const fresh = (await res.json()) as SimplefinBalanceCache;
+      if (fresh.rollup) {
+        const rollup = fresh.rollup;
+        if (cachedData) cachedData = { ...cachedData, rollup };
+        setData((prev) => (prev ? { ...prev, rollup } : prev));
+      }
     } catch {
       /* ignore */
     }
@@ -639,13 +684,20 @@ export function BanksView() {
     {} as Record<string, SimplefinAccount[]>
   );
 
-  // Calculate totals
-  const totalBalance = (data?.accounts || []).reduce((sum, a) => sum + (a.balance || 0), 0);
+  // Cash and debt come from the server's rollup so this card matches the
+  // snapshot and net worth. The institution bar below stays a raw per-bank
+  // view: what each institution holds, whatever kind of account it is.
+  const rollup = data?.rollup;
+  const totalBalance = rollup?.bankTotal ?? 0;
+  const cashBalance = rollup?.liquidCash ?? 0;
+  const debtBalance = rollup?.totalDebt ?? 0;
+  const nonCashBalance =
+    (rollup?.brokerageTotal ?? 0) +
+    (rollup?.cryptoTotal ?? 0) +
+    (rollup?.countedElsewhereTotal ?? 0);
+  const rolledUp = Object.fromEntries((rollup?.accounts ?? []).map((r) => [r.id, r]));
   const positiveBalance = (data?.accounts || [])
     .filter((a) => a.balance >= 0)
-    .reduce((sum, a) => sum + a.balance, 0);
-  const negativeBalance = (data?.accounts || [])
-    .filter((a) => a.balance < 0)
     .reduce((sum, a) => sum + a.balance, 0);
   const hasAccounts = (data?.accounts?.length || 0) > 0;
 
@@ -778,7 +830,7 @@ export function BanksView() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <p className="text-[11px] text-surface-500 uppercase tracking-wider mb-1">
-                  Net Balance
+                  Net Cash
                 </p>
                 <p
                   className={`text-2xl font-mono font-bold tabular-nums ${totalBalance < 0 ? 'text-red-400' : 'text-surface-950'}`}
@@ -787,20 +839,24 @@ export function BanksView() {
                 </p>
               </div>
               <div>
-                <p className="text-[11px] text-surface-500 uppercase tracking-wider mb-1">Assets</p>
+                <p className="text-[11px] text-surface-500 uppercase tracking-wider mb-1">Cash</p>
                 <p className="text-lg font-mono font-semibold text-emerald-400 tabular-nums">
-                  <Money>{formatUsd(positiveBalance)}</Money>
+                  <Money>{formatUsd(cashBalance)}</Money>
                 </p>
               </div>
               <div>
-                <p className="text-[11px] text-surface-500 uppercase tracking-wider mb-1">
-                  Liabilities
-                </p>
+                <p className="text-[11px] text-surface-500 uppercase tracking-wider mb-1">Debt</p>
                 <p className="text-lg font-mono font-semibold text-red-400 tabular-nums">
-                  <Money>{formatUsd(negativeBalance)}</Money>
+                  <Money>{formatUsd(debtBalance)}</Money>
                 </p>
               </div>
             </div>
+            {nonCashBalance !== 0 && (
+              <p className="mt-3 text-[11px] text-surface-500">
+                <Money>{formatUsd(nonCashBalance)}</Money> in investment and crypto accounts isn't
+                counted as cash. Net worth counts it once, under Brokerage or Crypto.
+              </p>
+            )}
 
             {/* Allocation bar showing all institutions */}
             <div className="mt-4 flex items-center gap-3">
@@ -859,6 +915,7 @@ export function BanksView() {
                 colorIndex={idx}
                 grandTotal={positiveBalance || Math.abs(totalBalance)}
                 annotations={annotations}
+                rolledUp={rolledUp}
                 onSaveAnnotation={saveAnnotation}
               />
             ))}

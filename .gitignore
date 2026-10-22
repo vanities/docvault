@@ -200,6 +200,10 @@ web/scripts/*
 
 # Exception: account-classification tests use fabricated names, masks, and balances, no personal data
 !web/server/account-classify.test.ts
+# Exception: bank rollup tests use fabricated accounts, brokerages, and exchanges, no personal data
+!web/server/bank-rollup.test.ts
+# Exception: snapshot net-worth tests use fabricated accounts in a tmpdir, no personal data
+!web/server/routes/financial-snapshot-networth.test.ts
 
 # Exception: SimpleFIN balance tests stub the HTTP response with fabricated institutions/amounts, no personal data
 !web/server/simplefin-balances.test.ts

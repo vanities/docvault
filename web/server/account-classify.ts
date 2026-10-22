@@ -35,6 +35,9 @@ export const ACCOUNT_ANNOTATION_TYPES = [
   { value: 'student-loan', label: 'Student Loan' },
   { value: 'credit-card', label: 'Credit Card' },
   { value: 'mortgage', label: 'Mortgage' },
+  { value: 'depository', label: 'Checking / Savings' },
+  { value: 'investment', label: 'Investment / Retirement' },
+  { value: 'crypto', label: 'Crypto' },
   { value: 'other', label: 'Other' },
 ] as const;
 
@@ -56,6 +59,8 @@ export interface AccountAnnotation {
 
 export type AccountCategory =
   | 'depository'
+  | 'investment'
+  | 'crypto'
   | 'credit-card'
   | 'line-of-credit'
   | 'auto-loan'
@@ -71,7 +76,24 @@ const ANNOTATED_CATEGORIES = new Set<AccountAnnotation['type']>([
   'personal-loan',
   'student-loan',
   'mortgage',
+  'depository',
+  'investment',
+  'crypto',
 ]);
+
+// Bank sync returns every account at a linked institution, including ones that
+// are not spendable cash: a brokerage's 401(k), a payments app's Bitcoin
+// balance. These patterns keep those out of the cash column.
+//
+// Plan names that never mean cash, even next to "savings" ("401(k) Savings
+// Plan", "Health Savings Account").
+const RETIREMENT_PLAN =
+  /\b401\s*\(?k\b|\b403\s*\(?b\b|\b457\s*\(?b\b|\btsp\b|thrift savings|\bhsa\b|health savings/;
+// Usually an investment account, but an explicit cash word wins: "IRA" is also
+// a first name, and "IRA SMITH CHECKING" is a checking account.
+const INVESTMENT_WORD = /\b(ira|brokerage|retirement|pension|annuity|investments?|investing)\b/;
+const CRYPTO_WORD = /\b(bitcoin|btc|ethereum|crypto|cryptocurrency|litecoin|dogecoin|usdc|usdt)\b/;
+const CASH_WORD = /\b(checking|chk|savings?|sav|money market)\b/;
 
 export function categorizeAccount(
   name: string,
@@ -95,6 +117,15 @@ export function categorizeAccount(
   if (/mortgage/.test(n)) return 'mortgage';
   if (/(vehicle|auto|car)\s*loan|loan.*(vehicle|auto|truck|car)/.test(n)) return 'auto-loan';
   if (/\bloan\b/.test(n)) return 'personal-loan';
+  // Only a non-negative balance can be an investment or crypto holding, so a
+  // card issued in a name like "IRA SMITH" still lands as a liability below.
+  if (balance >= 0) {
+    if (RETIREMENT_PLAN.test(n)) return 'investment';
+    if (!CASH_WORD.test(n)) {
+      if (CRYPTO_WORD.test(n)) return 'crypto';
+      if (INVESTMENT_WORD.test(n)) return 'investment';
+    }
+  }
   // Unknown negative balances should not be silently lumped into cash —
   // flag them so they show up as needing annotation.
   if (balance < 0) return 'other-liability';
@@ -128,6 +159,10 @@ export function accountTypeLabel(
     case 'other-liability':
       // Owed money, but we can't tell what kind. Say so rather than guessing.
       return 'Liability';
+    case 'investment':
+      return 'Investment';
+    case 'crypto':
+      return 'Crypto';
     case 'depository':
       break;
   }
@@ -142,7 +177,14 @@ export function accountTypeLabel(
 }
 
 /** Icon bucket for the account list — same classification, fewer buckets. */
-export type AccountIconKind = 'card' | 'savings' | 'loan' | 'checking' | 'generic';
+export type AccountIconKind =
+  | 'card'
+  | 'savings'
+  | 'loan'
+  | 'checking'
+  | 'investment'
+  | 'crypto'
+  | 'generic';
 
 export function accountIconKind(
   name: string,
@@ -150,6 +192,8 @@ export function accountIconKind(
   balance: number
 ): AccountIconKind {
   const category = categorizeAccount(name, annotation, balance);
+  if (category === 'investment') return 'investment';
+  if (category === 'crypto') return 'crypto';
   if (category === 'credit-card' || category === 'line-of-credit') return 'card';
   if (category === 'auto-loan' || category === 'mortgage') return 'loan';
   if (category === 'personal-loan' || category === 'student-loan') return 'loan';

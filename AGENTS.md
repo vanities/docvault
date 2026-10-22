@@ -162,6 +162,8 @@ Missing any of these causes the sidebar click to silently render the wrong view.
 
 **Sub-client scoping is a privacy boundary.** A scheduled timesheet report is addressed to one client's billing contact, so `WeeklyReportConfig.clientIds`/`projectIds` filter entries before anything is rendered (empty = every client). Don't "simplify" that filter away, and don't make an entry whose project is missing default into a scoped report. Category resolution order is sub-client → keyword rule → project name, and sub-client must stay first: keyword rules are inferences over prose and a multi-topic entry matches whichever rule is listed first.
 
+**Bank totals go through `rollUpBankAccounts`** (`web/server/bank-rollup.ts`). SimpleFIN returns every account at a linked institution with no account type, including brokerage, retirement, and crypto accounts that the broker and crypto syncs may already value. Never sum SimpleFIN balances directly: the rollup sorts each account into cash, debt, brokerage, or crypto, and leaves out copies of accounts another sync already counts. The financial snapshot, the portfolio history recorder, and `/api/simplefin/balances` (which the Banks and Portfolio pages read) all use it. Value a broker account by the cache's `totalValue`, never a holdings sum: fixed-balance (`overrideValue`) accounts have no holdings.
+
 **Package installs:** This project uses both pnpm and bun. After adding a dependency with `pnpm add <pkg>`, always run `bun install` to sync `bun.lock`, then commit both `package.json` and `bun.lock`. The Docker build uses `bun install --frozen-lockfile` so an out-of-sync `bun.lock` breaks CI. `pnpm-lock.yaml` is gitignored.
 
 ## Architecture
