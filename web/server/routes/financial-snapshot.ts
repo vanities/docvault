@@ -33,9 +33,38 @@ import type { IncomeItem } from '../analytics/index.js';
 // Account categorization lives in server/account-classify.ts so the Banks UI
 // badge and these snapshot totals can never disagree. Re-exported here because
 // downstream consumers (and tests) already import it from this module.
-import { categorizeAccount, type AccountCategory } from '../account-classify.js';
+import { accountTypeLabel, categorizeAccount, type AccountCategory } from '../account-classify.js';
+import { rollUpBankAccounts, type CountedIn } from '../bank-rollup.js';
 export { categorizeAccount };
 export type { AccountCategory };
+
+/**
+ * A broker account's value. The cache's own totalValue includes a fixed-balance
+ * override; a holdings sum alone counts an override-only account (a 401(k) with
+ * no holdings feed) as $0. Older caches without totalValue fall back to holdings.
+ */
+function brokerAccountValue(acct: {
+  totalValue?: number;
+  holdings: { marketValue: number }[];
+}): number {
+  return acct.totalValue ?? acct.holdings.reduce((s, h) => s + h.marketValue, 0);
+}
+
+/** "Counted in" column of the Bank Accounts table. */
+function countedInLabel(countedIn: CountedIn, duplicateOf: string | undefined): string {
+  switch (countedIn) {
+    case 'cash':
+      return 'Cash';
+    case 'debt':
+      return 'Debt';
+    case 'brokerage':
+      return 'Brokerage';
+    case 'crypto':
+      return 'Crypto';
+    case 'elsewhere':
+      return `Not counted: already in "${duplicateOf}"`;
+  }
+}
 
 export async function handleFinancialSnapshotRoutes(
   req: Request,
@@ -101,6 +130,8 @@ export async function handleFinancialSnapshotRoutes(
             gainLossPercent: number;
             gainType: string;
           }[];
+          totalValue?: number;
+          overrideValue?: number;
         }[];
         lastUpdated?: string;
       } = { accounts: [] };
@@ -521,38 +552,41 @@ export async function handleFinancialSnapshotRoutes(
       }
 
       // Calculate net worth / portfolio totals
-      const brokerTotal = brokerCache.accounts.reduce(
-        (s, a) => s + a.holdings.reduce((hs, h) => hs + h.marketValue, 0),
-        0
-      );
+      const brokerTotal = brokerCache.accounts.reduce((s, a) => s + brokerAccountValue(a), 0);
       const cryptoTotal = cryptoCache.totalUsdValue || 0;
 
-      // Categorize each bank/credit/loan account for accurate liquid vs debt reporting
+      // Categorize each bank account for liquid vs debt reporting. The rollup also
+      // keeps bank-synced investment/crypto accounts out of cash, and skips the
+      // ones the brokerage or crypto caches above already value.
+      const bankRollup = rollUpBankAccounts(simplefinCache.accounts, accountAnnotations, {
+        brokerAccounts: brokerCache.accounts,
+        cryptoSources: cryptoCache.sources,
+      });
+      const rolledUpById = new Map(bankRollup.accounts.map((r) => [r.id, r]));
       const categorizedAccounts = simplefinCache.accounts.map((a) => {
-        const annotation = accountAnnotations[a.id];
+        const rolled = rolledUpById.get(a.id)!;
         return {
           account: a,
-          annotation,
-          category: categorizeAccount(a.name, annotation, a.balance),
+          annotation: accountAnnotations[a.id],
+          category: rolled.category,
+          countedIn: rolled.countedIn,
+          duplicateOf: rolled.duplicateOf,
         };
       });
 
-      const sumByCat = (cats: AccountCategory[]) =>
-        categorizedAccounts
-          .filter((c) => cats.includes(c.category))
-          .reduce((s, c) => s + c.account.balance, 0);
-
-      const liquidCash = sumByCat(['depository']);
-      const creditCardDebt = sumByCat(['credit-card', 'line-of-credit']);
-      const autoLoans = sumByCat(['auto-loan']);
-      const mortgageDebt = sumByCat(['mortgage']);
-      const otherLoans = sumByCat(['personal-loan', 'student-loan']);
-      const otherLiabilities = sumByCat(['other-liability']);
-      const totalDebt = creditCardDebt + autoLoans + mortgageDebt + otherLoans + otherLiabilities;
-      const bankMonthlyDebtService = categorizedAccounts.reduce(
-        (s, c) => s + (c.annotation?.monthlyPayment || 0),
-        0
-      );
+      const {
+        liquidCash,
+        creditCardDebt,
+        autoLoans,
+        mortgageDebt,
+        otherLoans,
+        otherLiabilities,
+        totalDebt,
+        bankTotal,
+      } = bankRollup;
+      const bankMonthlyDebtService = bankRollup.monthlyDebtService;
+      const brokerageNetWorth = brokerTotal + bankRollup.brokerageTotal;
+      const cryptoNetWorth = cryptoTotal + bankRollup.cryptoTotal;
 
       // Manual liabilities (non-SimpleFIN: equipment, construction, private notes)
       // Negative so they flow into totals like other debt balances.
@@ -573,7 +607,6 @@ export async function handleFinancialSnapshotRoutes(
 
       const monthlyDebtService =
         bankMonthlyDebtService + manualLiabilityMonthlyPayment + mortgageMonthlyPayment;
-      const bankTotal = liquidCash + totalDebt;
 
       // Income qualifying for DTI — sum of monthly-equivalent income sources.
       // VA disability is grossed up 25% (industry-standard non-taxable gross-up).
@@ -601,8 +634,8 @@ export async function handleFinancialSnapshotRoutes(
         qualifyingMonthlyIncome > 0 ? monthlyDebtService / qualifyingMonthlyIncome : null;
 
       const portfolioSummary = {
-        brokerage: brokerTotal,
-        crypto: cryptoTotal,
+        brokerage: brokerageNetWorth,
+        crypto: cryptoNetWorth,
         preciousMetals: goldSummary.totalValue,
         property: propertySummary.totalEquity,
         bankAccounts: bankTotal,
@@ -621,8 +654,8 @@ export async function handleFinancialSnapshotRoutes(
         qualifyingMonthlyIncome,
         dtiRatio,
         totalNetWorth:
-          brokerTotal +
-          cryptoTotal +
+          brokerageNetWorth +
+          cryptoNetWorth +
           goldSummary.totalValue +
           propertySummary.totalEquity +
           bankTotal +
@@ -751,6 +784,8 @@ export async function handleFinancialSnapshotRoutes(
             connectionName: c.account.connectionName,
             annotation: c.annotation || undefined,
             category: c.category,
+            countedIn: c.countedIn,
+            ...(c.duplicateOf ? { duplicateOf: c.duplicateOf } : {}),
           })),
           lastUpdated: simplefinCache.lastUpdated,
           totals: {
@@ -762,6 +797,9 @@ export async function handleFinancialSnapshotRoutes(
             otherLiabilities,
             totalDebt,
             monthlyDebtService,
+            brokerageTotal: bankRollup.brokerageTotal,
+            cryptoTotal: bankRollup.cryptoTotal,
+            countedElsewhereTotal: bankRollup.countedElsewhereTotal,
           },
         },
         cryptoGains: cryptoGainsCache.assets
@@ -981,9 +1019,29 @@ export async function handleFinancialSnapshotRoutes(
           t.push('');
         }
 
+        // Investment/crypto accounts the bank sync also sees: never cash, and
+        // skipped entirely when the brokerage or crypto sync already has them.
+        const nonCashAccounts = categorizedAccounts.filter(
+          (c) => (c.category === 'investment' || c.category === 'crypto') && c.account.balance !== 0
+        );
+        if (nonCashAccounts.length > 0) {
+          t.push('BANK_SYNCED_NON_CASH');
+          for (const c of nonCashAccounts) {
+            const a = c.account;
+            const conn = a.connectionName ? ` inst="${a.connectionName}"` : '';
+            const where = c.duplicateOf
+              ? ` counted=no duplicate_of="${c.duplicateOf}"`
+              : ` counted_in=${c.countedIn}`;
+            t.push(
+              `  ${c.category.toUpperCase()} name="${a.name}" bal=${$(a.balance)}${conn}${where}`
+            );
+          }
+          t.push('');
+        }
+
         // Debt accounts (credit cards, loans, mortgages, liabilities)
         const debtAccounts = categorizedAccounts.filter(
-          (c) => c.category !== 'depository' && c.account.balance !== 0
+          (c) => c.countedIn === 'debt' && c.account.balance !== 0
         );
         if (debtAccounts.length > 0) {
           t.push(
@@ -1014,7 +1072,7 @@ export async function handleFinancialSnapshotRoutes(
             `BROKERAGE total=${$(brokerTotal)} accounts=${brokerCache.accounts.length}${brokerCache.lastUpdated ? ` updated=${brokerCache.lastUpdated}` : ''}`
           );
           for (const acct of brokerCache.accounts) {
-            const acctValue = acct.holdings.reduce((s, h) => s + h.marketValue, 0);
+            const acctValue = brokerAccountValue(acct);
             t.push(
               `  ACCOUNT broker="${acct.broker}" name="${acct.name}" value=${$(acctValue)} holdings=${acct.holdings.length}`
             );
@@ -1360,10 +1418,13 @@ export async function handleFinancialSnapshotRoutes(
           lines.push('## Brokerage Accounts');
           if (brokerCache.lastUpdated) lines.push(`_Last updated: ${brokerCache.lastUpdated}_`);
           for (const acct of brokerCache.accounts) {
-            const totalValue = acct.holdings.reduce((s, h) => s + h.marketValue, 0);
+            const totalValue = brokerAccountValue(acct);
             const totalGain = acct.holdings.reduce((s, h) => s + h.gainLoss, 0);
             lines.push(`### ${acct.name} (${acct.broker})`);
-            lines.push(`Total value: ${fmt(totalValue)} | Unrealized gain/loss: ${fmt(totalGain)}`);
+            const fixed = acct.overrideValue !== undefined ? ' (fixed balance)' : '';
+            lines.push(
+              `Total value: ${fmt(totalValue)}${fixed} | Unrealized gain/loss: ${fmt(totalGain)}`
+            );
             lines.push('| Holding | Shares | Market Value | Gain/Loss |');
             lines.push('|---------|--------|-------------|-----------|');
             for (const h of acct.holdings) {
@@ -1599,38 +1660,31 @@ export async function handleFinancialSnapshotRoutes(
           lines.push('');
         }
 
-        // Bank accounts
-        const nonZeroBanks = simplefinCache.accounts.filter((a) => a.balance !== 0);
+        // Bank accounts. The total is the rollup's cash minus debt; investment
+        // and crypto rows are listed so nothing the bank sync sees is hidden,
+        // but they count under Brokerage/Crypto (or not at all if duplicated).
+        const nonZeroBanks = categorizedAccounts.filter((c) => c.account.balance !== 0);
         if (nonZeroBanks.length > 0) {
-          // Check if any accounts have annotations
-          const hasAnnotations = nonZeroBanks.some((a) => accountAnnotations[a.id]);
-
           lines.push('## Bank Accounts');
           if (simplefinCache.lastUpdated)
             lines.push(`_Last updated: ${simplefinCache.lastUpdated}_`);
-          if (hasAnnotations) {
-            lines.push('| Account | Balance | Rate | Type |');
-            lines.push('|---------|---------|------|------|');
-          } else {
-            lines.push('| Account | Balance |');
-            lines.push('|---------|---------|');
-          }
-          for (const a of nonZeroBanks) {
-            const ann = accountAnnotations[a.id];
+          lines.push('| Account | Balance | Rate | Type | Counted in |');
+          lines.push('|---------|---------|------|------|------------|');
+          for (const c of nonZeroBanks) {
+            const a = c.account;
+            const ann = c.annotation;
             const name = `${a.name}${a.connectionName ? ` (${a.connectionName})` : ''}`;
-            if (hasAnnotations) {
-              const rate = ann?.rate ? `${(ann.rate * 100).toFixed(2)}%` : '';
-              const type = ann?.type || '';
-              lines.push(`| ${name} | ${fmt(a.balance)} | ${rate} | ${type} |`);
-            } else {
-              lines.push(`| ${name} | ${fmt(a.balance)} |`);
-            }
+            const rate = ann?.rate ? `${(ann.rate * 100).toFixed(2)}%` : '';
+            const type = accountTypeLabel(a.name, ann, a.balance);
+            lines.push(
+              `| ${name} | ${fmt(a.balance)} | ${rate} | ${type} | ${countedInLabel(c.countedIn, c.duplicateOf)} |`
+            );
           }
-          const totalBank = nonZeroBanks.reduce((s, a) => s + a.balance, 0);
-          if (hasAnnotations) {
-            lines.push(`| **Total** | **${fmt(totalBank)}** | | |`);
-          } else {
-            lines.push(`| **Total** | **${fmt(totalBank)}** |`);
+          lines.push(`| **Total (cash minus debt)** | **${fmt(bankTotal)}** | | | |`);
+          if (nonZeroBanks.some((c) => c.category === 'investment' || c.category === 'crypto')) {
+            lines.push(
+              '_Investment and crypto accounts are counted under Brokerage or Crypto, and not at all when that sync already has them._'
+            );
           }
           lines.push('');
         }
@@ -1831,6 +1885,12 @@ export async function handleFinancialSnapshotRoutes(
           lines.push(`| Property (Equity) | ${fmt(portfolioSummary.property)} |`);
         if (portfolioSummary.bankAccounts !== 0)
           lines.push(`| Bank Accounts | ${fmt(portfolioSummary.bankAccounts)} |`);
+        // totalNetWorth subtracts manual liabilities, so show them or the rows
+        // won't add up to the total.
+        if (portfolioSummary.manualLiabilities !== 0)
+          lines.push(
+            `| Other Debts (equipment, etc.) | ${fmt(portfolioSummary.manualLiabilities)} |`
+          );
         lines.push(`| **Total Net Worth** | **${fmt(portfolioSummary.totalNetWorth)}** |`);
         lines.push('');
 

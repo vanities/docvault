@@ -1,6 +1,7 @@
 import { HoldingChangeHeaders, HoldingChanges, HoldingChangesNote } from '../common/HoldingChanges';
 import { usePerformanceQuotes } from '../../hooks/usePerformanceQuotes';
 import { performanceSymbol } from '../../../server/market-changes';
+import type { BankRollup } from '../../../server/bank-rollup';
 import { PortfolioChanges } from '../common/PortfolioChanges';
 import { useState, useEffect, useCallback } from 'react';
 import {
@@ -79,7 +80,7 @@ export function PortfolioView() {
   const { setActiveView } = useAppContext();
   const [crypto, setCrypto] = useState<CryptoPortfolio | null>(null);
   const [brokers, setBrokers] = useState<BrokerPortfolio | null>(null);
-  const [bankTotal, setBankTotal] = useState(0);
+  const [bankRollup, setBankRollup] = useState<BankRollup | null>(null);
   const [goldTotal, setGoldTotal] = useState(0);
   const [propertyTotal, setPropertyTotal] = useState(0);
   const [cryptoGains, setCryptoGains] = useState<CryptoGainsSummary | null>(null);
@@ -122,12 +123,10 @@ export function PortfolioView() {
         if (data.assets?.length > 0) setCryptoGains(data);
       }
       if (bankRes.ok) {
+        // The server's rollup, not a raw sum: bank sync also returns brokerage
+        // and crypto accounts, some of which the other syncs already count.
         const data = await bankRes.json();
-        const total = (data.accounts || []).reduce(
-          (sum: number, a: { balance: number }) => sum + (a.balance || 0),
-          0
-        );
-        setBankTotal(total);
+        setBankRollup(data.rollup ?? null);
       }
       if (goldRes.ok) {
         const data = await goldRes.json();
@@ -180,8 +179,11 @@ export function PortfolioView() {
     }
   };
 
-  const cryptoTotal = crypto?.totalUsdValue || 0;
-  const brokerTotal = brokers?.totalValue || 0;
+  const bankSyncedBrokerage = bankRollup?.brokerageTotal ?? 0;
+  const bankSyncedCrypto = bankRollup?.cryptoTotal ?? 0;
+  const bankTotal = bankRollup?.bankTotal ?? 0;
+  const cryptoTotal = (crypto?.totalUsdValue || 0) + bankSyncedCrypto;
+  const brokerTotal = (brokers?.totalValue || 0) + bankSyncedBrokerage;
   const grandTotal = cryptoTotal + brokerTotal + bankTotal + goldTotal + propertyTotal;
 
   // Build slices for the allocation breakdown
@@ -224,6 +226,25 @@ export function PortfolioView() {
         }
       }
     }
+  }
+
+  // Investment/crypto accounts only the bank sync sees (no broker or crypto
+  // connection covers them), so the slices still add up to the totals.
+  if (bankSyncedBrokerage > 0) {
+    slices.push({
+      label: 'Bank-synced investments',
+      value: bankSyncedBrokerage,
+      type: 'broker',
+      detail: 'Seen only by the bank sync',
+    });
+  }
+  if (bankSyncedCrypto > 0) {
+    slices.push({
+      label: 'Bank-synced crypto',
+      value: bankSyncedCrypto,
+      type: 'crypto',
+      detail: 'Seen only by the bank sync',
+    });
   }
 
   if (goldTotal > 0) {

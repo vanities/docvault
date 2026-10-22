@@ -8,6 +8,7 @@ import type { BrokerAccount, SnapTradeConfig } from './brokers.js';
 import type { SimplefinConfig } from './simplefin.js';
 import { createLogger } from './logger.js';
 import { decryptField, encryptField, walkSensitiveFields } from './crypto-keys.js';
+import { rollUpBankAccounts, type BankRollup, type RollupBankAccount } from './bank-rollup.js';
 
 const logFiles = createLogger('Files');
 const logMigration = createLogger('Migration');
@@ -1788,6 +1789,32 @@ export async function loadAccountAnnotations(): Promise<AccountAnnotationsData> 
 
 export async function saveAccountAnnotations(data: AccountAnnotationsData): Promise<void> {
   await fs.writeFile(ACCOUNT_ANNOTATIONS_FILE, JSON.stringify(data, null, 2));
+}
+
+/**
+ * Roll up bank accounts against the cached brokerage and crypto syncs, so an
+ * account those already value is not counted again. Callers that already hold
+ * the caches in memory (the financial snapshot) call rollUpBankAccounts directly.
+ */
+export async function rollUpCachedBankAccounts(accounts: RollupBankAccount[]): Promise<BankRollup> {
+  const readCache = async <T>(file: string): Promise<T | null> => {
+    try {
+      return JSON.parse(await fs.readFile(file, 'utf-8')) as T;
+    } catch {
+      return null;
+    }
+  };
+  const [annotations, broker, crypto] = await Promise.all([
+    loadAccountAnnotations(),
+    readCache<{ accounts?: { id: string; name: string }[] }>(BROKER_CACHE_FILE),
+    readCache<{ sources?: { sourceId: string; sourceType?: string; label: string }[] }>(
+      CRYPTO_CACHE_FILE
+    ),
+  ]);
+  return rollUpBankAccounts(accounts, annotations, {
+    brokerAccounts: broker?.accounts ?? [],
+    cryptoSources: crypto?.sources ?? [],
+  });
 }
 
 // ============================================================================

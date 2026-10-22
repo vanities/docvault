@@ -21,6 +21,7 @@ import {
   saveSnapshot,
   loadSnapshots,
   monthsBetween,
+  rollUpCachedBankAccounts,
 } from './data.js';
 import type { Settings } from './data.js';
 import { createWriteLock, writeJsonAtomic } from './write-lock.js';
@@ -377,18 +378,19 @@ async function takePortfolioSnapshotInner(): Promise<void> {
   // destroyed the very fallback meant to cover it. No such day is present in
   // the recorded history, so this is hardening against a latent fault, not a
   // repair of observed damage.
-  let bankValue: number | null = null;
+  //
+  // The accounts go through rollUpBankAccounts rather than a raw sum: bank sync
+  // also returns brokerage, retirement and crypto accounts, which are not cash
+  // and which the broker/crypto caches written above may already count.
+  let bankAccounts: SimplefinBalanceCache['accounts'] | null = null;
 
-  const sumAccounts = (accts: { balance?: number }[]) =>
-    accts.reduce((sum, a) => sum + (a.balance || 0), 0);
-
-  const readBankCache = async (): Promise<number | null> => {
+  const readBankCache = async (): Promise<SimplefinBalanceCache['accounts'] | null> => {
     try {
       const bankData = await fs.readFile(SIMPLEFIN_CACHE_FILE, 'utf-8');
       const cached: SimplefinBalanceCache = JSON.parse(bankData);
       // An empty cache is a previously-clobbered one — not a real $0.
       if (!cached.accounts?.length) return null;
-      return sumAccounts(cached.accounts);
+      return cached.accounts;
     } catch {
       return null;
     }
@@ -398,17 +400,16 @@ async function takePortfolioSnapshotInner(): Promise<void> {
     const t0 = Date.now();
     try {
       const cache = await simplefinSync.sync(settings.simplefin);
-      const bankAccounts = cache.accounts;
       // fetchBalances throws on an empty list, so reaching here means real data.
-      bankValue = sumAccounts(bankAccounts);
+      bankAccounts = cache.accounts;
       logSimpleFIN.info(
         `SimpleFIN bank cache updated (${bankAccounts.length} accounts in ${Date.now() - t0}ms)`
       );
     } catch (err) {
       // Leave the cache alone — it is the only fallback we have.
       logSimpleFIN.warn('SimpleFIN fetch failed, using cached data:', String(err));
-      bankValue = await readBankCache();
-      if (bankValue === null) {
+      bankAccounts = await readBankCache();
+      if (bankAccounts === null) {
         logSimpleFIN.error(
           'SimpleFIN fetch failed and no usable cache — bankValue recorded as unknown'
         );
@@ -416,7 +417,23 @@ async function takePortfolioSnapshotInner(): Promise<void> {
     }
   } else {
     // No SimpleFIN configured — read cache if it exists (manual import, etc.)
-    bankValue = await readBankCache();
+    bankAccounts = await readBankCache();
+  }
+
+  let bankValue: number | null = null;
+  let bankSyncedBrokerage = 0;
+  let bankSyncedCrypto = 0;
+  if (bankAccounts !== null) {
+    const rollup = await rollUpCachedBankAccounts(bankAccounts);
+    bankValue = rollup.bankTotal;
+    bankSyncedBrokerage = rollup.brokerageTotal;
+    bankSyncedCrypto = rollup.cryptoTotal;
+    const count = (bucket: string) => rollup.accounts.filter((a) => a.countedIn === bucket).length;
+    logSimpleFIN.info(
+      `[snapshot] bank rollup accounts=${bankAccounts.length} cash=${count('cash')} ` +
+        `debt=${count('debt')} brokerage=${count('brokerage')} crypto=${count('crypto')} ` +
+        `countedElsewhere=${count('elsewhere')}`
+    );
   }
 
   // Compute gold/precious metals value from entries + spot prices.
@@ -513,7 +530,10 @@ async function takePortfolioSnapshotInner(): Promise<void> {
     logSnapshots.warn('Property value calc failed:', String(err));
   }
 
-  const brokerValue = brokerPortfolio?.totalValue || 0;
+  // Bank-synced investment/crypto accounts that no broker or crypto sync covers
+  // belong in those buckets, not in the bank figure.
+  const brokerValue = (brokerPortfolio?.totalValue || 0) + bankSyncedBrokerage;
+  cryptoValue += bankSyncedCrypto;
   const today = zonedYMD(new Date(), getConfiguredTimezone(settings));
 
   // If the banks could not be read, record bankValue as ABSENT (the field is

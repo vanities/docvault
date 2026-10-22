@@ -88,6 +88,50 @@ describe('categorizeAccount — product names', () => {
   });
 });
 
+describe('categorizeAccount — accounts the bank sync sees that are not cash', () => {
+  test.each([
+    ['Self-Employed 401K (1234)', 'investment', 'Investment'],
+    ['Acme 401(k) Savings Plan', 'investment', 'Investment'],
+    ['Example Health Savings Account (5678)', 'investment', 'Investment'],
+    ['Traditional IRA (2468)', 'investment', 'Investment'],
+    ['Individual Brokerage (1357)', 'investment', 'Investment'],
+    ['Bitcoin', 'crypto', 'Crypto'],
+    ['USDC Wallet', 'crypto', 'Crypto'],
+  ])('%s -> %s / %s', (name, category, label) => {
+    expect(categorizeAccount(name, undefined, 1000)).toBe(category);
+    expect(accountTypeLabel(name, undefined, 1000)).toBe(label);
+  });
+
+  test('"IRA" as a first name loses to an explicit checking word', () => {
+    expect(categorizeAccount('IRA SMITH CHECKING (4321)', undefined, 250)).toBe('depository');
+  });
+
+  test('a card issued in a name like "IRA" is still a liability', () => {
+    expect(categorizeAccount('IRA SMITH (4321)', undefined, -75)).toBe('other-liability');
+  });
+
+  test('"ira" inside a longer word is not an IRA', () => {
+    expect(categorizeAccount('J. MIRAND (4321)', undefined, 250)).toBe('depository');
+  });
+
+  test('a card with crypto rewards is still a credit card', () => {
+    expect(categorizeAccount('Bitcoin Rewards Visa (1111)', undefined, -40)).toBe('credit-card');
+  });
+
+  test('an annotation can force any category, including back to cash', () => {
+    expect(categorizeAccount('IRA SMITH (4321)', { type: 'depository' }, 250)).toBe('depository');
+    expect(categorizeAccount('Mystery Account (9999)', { type: 'investment' }, 100)).toBe(
+      'investment'
+    );
+    expect(categorizeAccount('Mystery Account (9999)', { type: 'crypto' }, 100)).toBe('crypto');
+  });
+
+  test('icons follow the category', () => {
+    expect(accountIconKind('Traditional IRA (2468)', undefined, 10)).toBe('investment');
+    expect(accountIconKind('Bitcoin', undefined, 10)).toBe('crypto');
+  });
+});
+
 describe('ACCOUNT_ANNOTATION_TYPES', () => {
   test('every option value is a valid annotation type', () => {
     for (const t of ACCOUNT_ANNOTATION_TYPES) {
