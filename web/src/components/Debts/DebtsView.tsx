@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Money } from '../common/Money';
 import { LoanAmortization } from '../common/LoanAmortization';
+import type { DebtPaymentItem, DebtPayments } from '../../../server/debt-payments';
 
 type LiabilityType =
   | 'equipment-loan'
@@ -78,6 +79,13 @@ function formatPct(value: number): string {
   return `${(value * 100).toFixed(2)}%`;
 }
 
+/** Where a payment in the combined list is changed. */
+function editHint(d: DebtPaymentItem): string {
+  if (d.source === 'property') return 'edit on Property';
+  if (d.source === 'manual') return 'edit below';
+  return d.estimated ? 'type the real minimum on Banks' : 'edit on Banks';
+}
+
 function monthlyPI(principal: number, annualRate: number, termMonths: number): number {
   if (principal <= 0 || termMonths <= 0) return 0;
   const r = annualRate / 12;
@@ -93,6 +101,7 @@ export function DebtsView() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [snapshotSummary, setSnapshotSummary] = useState<SnapshotPortfolioSummary | null>(null);
+  const [debtPayments, setDebtPayments] = useState<DebtPayments | null>(null);
 
   // DTI calculator inputs
   const [proposedLoan, setProposedLoan] = useState('815000');
@@ -147,6 +156,7 @@ export function DebtsView() {
       if (!res.ok) return;
       const data = await res.json();
       setSnapshotSummary(data?.portfolioSummary || null);
+      setDebtPayments(data?.debtPayments || null);
     } catch {
       /* non-critical */
     }
@@ -238,6 +248,10 @@ export function DebtsView() {
     const monthly = entries.reduce((s, e) => s + e.monthlyPayment, 0);
     return { balance, monthly };
   }, [entries]);
+  const totalOwed = useMemo(
+    () => (debtPayments?.items ?? []).reduce((s, d) => s + d.balance, 0),
+    [debtPayments]
+  );
 
   const dti = useMemo(() => {
     const principal = parseFloat(proposedLoan) || 0;
@@ -276,7 +290,8 @@ export function DebtsView() {
       <div className="mb-6">
         <h2 className="font-display text-2xl text-surface-950 mb-1 italic">Debts</h2>
         <p className="text-[13px] text-surface-600">
-          Manual liabilities not tracked by bank sync, plus DTI projection for new loans.
+          Every monthly debt payment in one place, debts your bank sync doesn&apos;t see, and a DTI
+          projection for new loans.
         </p>
       </div>
 
@@ -312,15 +327,18 @@ export function DebtsView() {
             </Button>
           </div>
 
-          {entries.length > 0 && (
+          {/* Every payment, from the snapshot's list: mortgages, debts added
+              here, and bank-synced loans and cards. It is the same list the
+              DTI figure is built from, so the two can't disagree. */}
+          {debtPayments && debtPayments.items.length > 0 && (
             <Card variant="glass" className="p-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                 <div>
                   <p className="text-[11px] text-surface-500 uppercase tracking-wider mb-1">
-                    Total Balance
+                    Total Owed
                   </p>
                   <p className="text-2xl font-mono font-bold tabular-nums text-surface-950">
-                    <Money>{formatUsd(totals.balance)}</Money>
+                    <Money>{formatUsd(totalOwed)}</Money>
                   </p>
                 </div>
                 <div>
@@ -328,12 +346,64 @@ export function DebtsView() {
                     Monthly Payments
                   </p>
                   <p className="text-2xl font-mono font-bold tabular-nums text-rose-400">
-                    <Money>{formatUsd(totals.monthly)}</Money>
+                    <Money>{formatUsd(debtPayments.total)}</Money>
                     <span className="text-[11px] text-surface-500 font-normal">/mo</span>
                   </p>
+                  {debtPayments.estimatedTotal > 0 && (
+                    <p className="text-[11px] text-surface-500 mt-0.5">
+                      includes <Money>{formatUsd(debtPayments.estimatedTotal)}</Money> of estimated
+                      card minimums
+                    </p>
+                  )}
                 </div>
               </div>
+              <div className="border-t border-border/40">
+                {debtPayments.items.map((d, i) => (
+                  <div
+                    key={`${d.source}-${d.name}-${i}`}
+                    className="flex items-center justify-between gap-3 py-2.5 border-b border-border/30 last:border-0"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-medium text-surface-900 truncate">
+                        {d.name}
+                        {d.lender && (
+                          <span className="text-surface-500 font-normal"> · {d.lender}</span>
+                        )}
+                      </p>
+                      <p className="text-[11px] text-surface-500">
+                        {d.kind}
+                        {d.rate ? ` · ${formatPct(d.rate)}` : ''} · {editHint(d)}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-[14px] font-mono font-semibold tabular-nums text-surface-950">
+                        <Money>{formatUsd(d.monthlyPayment)}</Money>
+                        <span className="text-[11px] text-surface-500 font-normal">/mo</span>
+                      </p>
+                      <p className="text-[11px] text-surface-500 font-mono tabular-nums">
+                        {d.estimated ? 'estimated · ' : ''}
+                        <Money>{formatUsd(d.balance)}</Money> owed
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </Card>
+          )}
+
+          {entries.length > 0 && (
+            <div className="flex items-baseline justify-between px-1 pt-2">
+              <h3 className="text-[13px] font-semibold text-surface-900">
+                Debts added here
+                <span className="text-surface-500 font-normal">
+                  {' '}
+                  · loans your bank sync and Property page don&apos;t cover
+                </span>
+              </h3>
+              <p className="text-[11px] text-surface-500 font-mono tabular-nums shrink-0">
+                <Money>{formatUsd(totals.monthly)}</Money>/mo
+              </p>
+            </div>
           )}
 
           {showForm && (
@@ -607,6 +677,12 @@ export function DebtsView() {
                   <Money>{formatUsd(dti.existingDebtService)}</Money>
                   <span className="text-[11px] text-surface-500 font-normal">/mo</span>
                 </p>
+                {(debtPayments?.estimatedTotal ?? 0) > 0 && (
+                  <p className="text-[10px] text-surface-500 mt-0.5">
+                    includes <Money>{formatUsd(debtPayments!.estimatedTotal)}</Money> of estimated
+                    card minimums
+                  </p>
+                )}
               </div>
               <div>
                 <p className="text-surface-500 uppercase tracking-wider text-[10px] mb-1">

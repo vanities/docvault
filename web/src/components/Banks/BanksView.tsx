@@ -161,7 +161,9 @@ function AnnotationEditor({
   const [rate, setRate] = useState(annotation?.rate ? String(annotation.rate * 100) : '');
   const [type, setType] = useState(annotation?.type || '');
   const [monthlyPayment, setMonthlyPayment] = useState(
-    annotation?.monthlyPayment ? String(annotation.monthlyPayment) : ''
+    // A typed $0 is meaningful (a card that shouldn't count toward DTI), so
+    // show it rather than an empty box that would drop it on the next save.
+    annotation?.monthlyPayment !== undefined ? String(annotation.monthlyPayment) : ''
   );
   const [annNotes, setAnnNotes] = useState(annotation?.notes || '');
 
@@ -361,7 +363,9 @@ function AccountRows({
           const type = accountTypeLabel(acct.name, ann, acct.balance);
           const hint = countedHint(rolledUp[acct.id]);
           const isNegative = acct.balance < 0;
-          const hasAnnotation = ann && (ann.rate || ann.type || ann.monthlyPayment || ann.notes);
+          const hasAnnotation =
+            !!ann && !!(ann.rate || ann.type || ann.monthlyPayment !== undefined || ann.notes);
+          const rolled = rolledUp[acct.id];
 
           return (
             <div key={acct.id}>
@@ -397,14 +401,22 @@ function AccountRows({
                           </span>
                         </>
                       )}
-                      {hasAnnotation && ann.rate && (
+                      {ann?.rate !== undefined && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-accent-500/10 text-accent-500 font-medium">
                           {(ann.rate * 100).toFixed(2)}%
                         </span>
                       )}
-                      {hasAnnotation && ann.monthlyPayment && (
+                      {ann?.monthlyPayment !== undefined && (
                         <span className="text-[10px] text-surface-400">
                           <Money>{formatUsd(ann.monthlyPayment)}</Money>/mo
+                        </span>
+                      )}
+                      {rolled?.paymentEstimated && (
+                        <span
+                          className="text-[10px] text-surface-400 italic"
+                          title="Estimated minimum: the greater of $25 or 2% of the balance. Click % to type the real minimum ($0 if it shouldn't count)."
+                        >
+                          est. <Money>{formatUsd(rolled.monthlyPayment)}</Money>/mo
                         </span>
                       )}
                     </div>

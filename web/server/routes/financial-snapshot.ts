@@ -35,6 +35,7 @@ import type { IncomeItem } from '../analytics/index.js';
 // downstream consumers (and tests) already import it from this module.
 import { accountTypeLabel, categorizeAccount, type AccountCategory } from '../account-classify.js';
 import { rollUpBankAccounts, type CountedIn } from '../bank-rollup.js';
+import { buildDebtPayments } from '../debt-payments.js';
 export { categorizeAccount };
 export type { AccountCategory };
 
@@ -584,7 +585,6 @@ export async function handleFinancialSnapshotRoutes(
         totalDebt,
         bankTotal,
       } = bankRollup;
-      const bankMonthlyDebtService = bankRollup.monthlyDebtService;
       const brokerageNetWorth = brokerTotal + bankRollup.brokerageTotal;
       const cryptoNetWorth = cryptoTotal + bankRollup.cryptoTotal;
 
@@ -594,19 +594,20 @@ export async function handleFinancialSnapshotRoutes(
         (s, l) => s - (l.balance || 0),
         0
       );
-      const manualLiabilityMonthlyPayment = liabilitiesData.entries.reduce(
-        (s, l) => s + (l.monthlyPayment || 0),
-        0
-      );
-
-      // Property mortgages contribute monthly P&I even though they aren't in SimpleFIN.
-      const mortgageMonthlyPayment = propertySummary.entries.reduce(
-        (s, p) => s + (p.mortgage?.monthlyPayment || 0),
-        0
-      );
-
-      const monthlyDebtService =
-        bankMonthlyDebtService + manualLiabilityMonthlyPayment + mortgageMonthlyPayment;
+      // Every monthly debt payment, itemized: property mortgages, hand-added
+      // debts, and bank-synced loans and cards (cards get an estimated minimum
+      // when none is typed). The Debts page renders this same list.
+      const debtPayments = buildDebtPayments({
+        properties: propertySummary.entries,
+        liabilities: liabilitiesData.entries,
+        bankAccounts: simplefinCache.accounts,
+        bankRollup,
+        annotations: accountAnnotations,
+      });
+      const bankMonthlyDebtService = debtPayments.bySource.bank;
+      const manualLiabilityMonthlyPayment = debtPayments.bySource.manual;
+      const mortgageMonthlyPayment = debtPayments.bySource.property;
+      const monthlyDebtService = debtPayments.total;
 
       // Income qualifying for DTI — sum of monthly-equivalent income sources.
       // VA disability is grossed up 25% (industry-standard non-taxable gross-up).
@@ -775,6 +776,7 @@ export async function handleFinancialSnapshotRoutes(
         preciousMetals: goldSummary,
         property: propertySummary,
         additionalIncome: incomeData.sources,
+        debtPayments,
         bankAccounts: {
           accounts: categorizedAccounts.map((c) => ({
             id: c.account.id,
@@ -1052,7 +1054,12 @@ export async function handleFinancialSnapshotRoutes(
             const ann = c.annotation;
             const conn = a.connectionName ? ` inst="${a.connectionName}"` : '';
             const rate = ann?.rate !== undefined ? ` rate=${(ann.rate * 100).toFixed(2)}%` : '';
-            const pmt = ann?.monthlyPayment !== undefined ? ` pmt=${$(ann.monthlyPayment)}` : '';
+            // The payment that counts, not the typed one: capped at the balance,
+            // or a card's estimated minimum.
+            const rolled = rolledUpById.get(a.id);
+            const pmt = rolled?.monthlyPayment
+              ? ` pmt=${$(rolled.monthlyPayment)}${rolled.paymentEstimated ? ' pmt_estimated=true' : ''}`
+              : '';
             const orig =
               ann?.originalBalance !== undefined ? ` orig=${$(ann.originalBalance)}` : '';
             const term = ann?.term !== undefined ? ` term=${ann.term}mo` : '';
@@ -1061,6 +1068,21 @@ export async function handleFinancialSnapshotRoutes(
             const warn = c.category === 'other-liability' ? ' NEEDS_ANNOTATION=true' : '';
             t.push(
               `  ${c.category.toUpperCase()} name="${a.name}" bal=${$(a.balance)}${conn}${rate}${pmt}${orig}${term}${start}${note}${warn}`
+            );
+          }
+          t.push('');
+        }
+
+        // Every monthly debt payment (mortgages, hand-added debts, bank-synced)
+        if (debtPayments.items.length > 0) {
+          t.push(
+            `DEBT_PAYMENTS total=${$(debtPayments.total)} estimated=${$(debtPayments.estimatedTotal)}`
+          );
+          for (const d of debtPayments.items) {
+            const lender = d.lender ? ` lender="${d.lender}"` : '';
+            const est = d.estimated ? ' estimated=true' : '';
+            t.push(
+              `  PAYMENT name="${d.name}"${lender} kind="${d.kind}" owed=${$(d.balance)} pmt=${$(d.monthlyPayment)}${est}`
             );
           }
           t.push('');
@@ -1638,24 +1660,27 @@ export async function handleFinancialSnapshotRoutes(
         // DTI Analysis (always shown if we have debt service or qualifying income)
         if (monthlyDebtService > 0 || qualifyingMonthlyIncome > 0) {
           lines.push('## Debt-to-Income (DTI)');
-          lines.push('| Component | Amount |');
-          lines.push('|-----------|--------|');
-          if (bankMonthlyDebtService > 0)
-            lines.push(`| Bank loans (auto, CC minimums) | ${fmt(bankMonthlyDebtService)}/mo |`);
-          if (mortgageMonthlyPayment > 0)
-            lines.push(`| Property mortgages | ${fmt(mortgageMonthlyPayment)}/mo |`);
-          if (manualLiabilityMonthlyPayment > 0)
+          lines.push('| Monthly payment | Owed | Amount |');
+          lines.push('|-----------------|------|--------|');
+          for (const d of debtPayments.items) {
+            const who = d.lender ? ` (${d.lender})` : '';
+            const est = d.estimated ? ', estimated minimum' : '';
             lines.push(
-              `| Manual liabilities (equipment, etc.) | ${fmt(manualLiabilityMonthlyPayment)}/mo |`
+              `| ${d.name}${who}: ${d.kind}${est} | ${fmt(d.balance)} | ${fmt(d.monthlyPayment)}/mo |`
             );
-          lines.push(`| **Monthly Debt Service** | **${fmt(monthlyDebtService)}/mo** |`);
+          }
+          lines.push(`| **Monthly Debt Service** | | **${fmt(monthlyDebtService)}/mo** |`);
+          if (debtPayments.estimatedTotal > 0)
+            lines.push(
+              `| Includes estimated card minimums | | ${fmt(debtPayments.estimatedTotal)}/mo |`
+            );
           lines.push(
-            `| Qualifying monthly income (taxable + 1.25× non-taxable) | ${fmt(qualifyingMonthlyIncome)}/mo |`
+            `| Qualifying monthly income (taxable + 1.25× non-taxable) | | ${fmt(qualifyingMonthlyIncome)}/mo |`
           );
           if (dtiRatio != null) {
             const pct = (dtiRatio * 100).toFixed(1);
             const flag = dtiRatio > 0.43 ? ' — elevated' : dtiRatio > 0.36 ? ' (elevated)' : '';
-            lines.push(`| **DTI Ratio** | **${pct}%**${flag} |`);
+            lines.push(`| **DTI Ratio** | | **${pct}%**${flag} |`);
           }
           lines.push('');
         }

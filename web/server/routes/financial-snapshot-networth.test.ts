@@ -119,9 +119,20 @@ describe('financial snapshot net worth', () => {
     expect(s.totalNetWorth).toBe(82000 + 300 + 800);
   });
 
-  test('a paid-off loan adds no monthly debt service', async () => {
+  test('debt service lists real payments only: no paid-off loan, an estimated card minimum', async () => {
     const json = await (await snapshot('json')).json();
-    expect(json.portfolioSummary.bankMonthlyDebtService).toBe(0);
+    const items = json.debtPayments.items as { name: string; monthlyPayment: number }[];
+    expect(items.map((i) => i.name)).not.toContain('New Vehicle Loan (3333)');
+    expect(items).toContainEqual(
+      expect.objectContaining({
+        name: 'Acme Rewards Visa (2222)',
+        monthlyPayment: 25,
+        estimated: true,
+      })
+    );
+    // The paid-off loan's old $600 is gone; the card's $25 estimate is all that's left.
+    expect(json.portfolioSummary.bankMonthlyDebtService).toBe(25);
+    expect(json.portfolioSummary.monthlyDebtService).toBe(json.debtPayments.total);
   });
 
   test('the markdown says where each non-cash account went', async () => {
