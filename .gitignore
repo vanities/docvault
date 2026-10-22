@@ -204,6 +204,8 @@ web/scripts/*
 !web/server/bank-rollup.test.ts
 # Exception: snapshot net-worth tests use fabricated accounts in a tmpdir, no personal data
 !web/server/routes/financial-snapshot-networth.test.ts
+# Exception: debt payment list tests use fabricated mortgages, loans, and cards, no personal data
+!web/server/debt-payments.test.ts
 
 # Exception: SimpleFIN balance tests stub the HTTP response with fabricated institutions/amounts, no personal data
 !web/server/simplefin-balances.test.ts

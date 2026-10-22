@@ -27,8 +27,42 @@ describe('rollUpBankAccounts: cash and debt', () => {
     expect(r.autoLoans).toBe(-12000);
     expect(r.totalDebt).toBe(-12300);
     expect(r.bankTotal).toBe(2500 - 12300);
-    expect(r.monthlyDebtService).toBe(450);
+    // The loan's typed $450 plus the card's estimated $25 minimum.
+    expect(r.monthlyDebtService).toBe(475);
+    expect(r.estimatedDebtService).toBe(25);
     expect(r.accounts.map((a) => a.countedIn)).toEqual(['cash', 'debt', 'debt']);
+  });
+});
+
+describe('rollUpBankAccounts: card minimums', () => {
+  test('a card with a balance and no typed minimum gets an estimated one', () => {
+    const r = rollUpBankAccounts(
+      [
+        acct('small', 'Acme Rewards Visa (1111)', -300),
+        acct('big', 'Globex Card - American Express (2222)', -4000),
+        acct('tiny', 'Initech Mastercard (3333)', -12),
+      ],
+      {}
+    );
+    // $25 floor, 2% of $4,000 = $80, and never more than the $12 owed.
+    expect(r.accounts.map((a) => a.monthlyPayment)).toEqual([25, 80, 12]);
+    expect(r.accounts.every((a) => a.paymentEstimated)).toBe(true);
+    expect(r.estimatedDebtService).toBe(117);
+  });
+
+  test('a typed minimum wins, even $0', () => {
+    const r = rollUpBankAccounts(
+      [acct('typed', 'Acme Rewards Visa (1111)', -300), acct('biz', 'Business Visa (2222)', -900)],
+      { typed: { monthlyPayment: 40 }, biz: { type: 'credit-card', monthlyPayment: 0 } }
+    );
+    expect(r.accounts.map((a) => a.monthlyPayment)).toEqual([40, 0]);
+    expect(r.accounts.some((a) => a.paymentEstimated)).toBe(false);
+    expect(r.estimatedDebtService).toBe(0);
+  });
+
+  test('a card paid down to $0 has no minimum', () => {
+    const r = rollUpBankAccounts([acct('zero', 'Acme Rewards Visa (1111)', 0)], {});
+    expect(r.monthlyDebtService).toBe(0);
   });
 });
 

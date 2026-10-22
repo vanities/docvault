@@ -51,6 +51,8 @@ export interface RolledUpAccount {
   duplicateOf?: string;
   /** This account's share of monthly debt service. */
   monthlyPayment: number;
+  /** True when monthlyPayment is DocVault's card-minimum estimate, not a typed figure. */
+  paymentEstimated?: boolean;
 }
 
 export interface BankRollup {
@@ -72,10 +74,23 @@ export interface BankRollup {
   /** Balances left out of every total because another source already counts them. */
   countedElsewhereTotal: number;
   monthlyDebtService: number;
+  /** The estimated card minimums inside monthlyDebtService. */
+  estimatedDebtService: number;
 }
 
 export function emptyBankRollup(): BankRollup {
   return rollUpBankAccounts([], {});
+}
+
+/**
+ * A card's minimum payment when none is typed in: the greater of $25 or 2% of
+ * what's owed, never more than the balance. That is a typical issuer minimum,
+ * not a lender rule, but a lender counts some minimum on every card that
+ * carries a balance, so treating an unknown card payment as $0 understates DTI.
+ */
+export function estimateCardMinimum(owed: number): number {
+  if (owed <= 0) return 0;
+  return Math.min(owed, Math.max(25, Math.round(owed * 2) / 100));
 }
 
 /** Last four digits of the last 4+ digit run: "(1234)", "- 1234", "Account 87651234". */
@@ -156,6 +171,7 @@ export function rollUpBankAccounts(
     cryptoTotal: 0,
     countedElsewhereTotal: 0,
     monthlyDebtService: 0,
+    estimatedDebtService: 0,
   };
 
   for (const a of accounts) {
@@ -163,8 +179,15 @@ export function rollUpBankAccounts(
     const balance = a.balance || 0;
     // A payment can't exceed what is left to pay. A paid-off loan whose
     // annotation still lists its old payment contributes nothing, and a loan
-    // with one small payment left contributes only that.
-    const monthlyPayment = Math.min(annotations[a.id]?.monthlyPayment || 0, Math.abs(balance));
+    // with one small payment left contributes only that. A typed payment wins,
+    // even $0 (a business card that never reaches a personal credit report);
+    // a card with a balance and nothing typed gets an estimated minimum.
+    const typedPayment = annotations[a.id]?.monthlyPayment;
+    const isCard = category === 'credit-card' || category === 'line-of-credit';
+    const paymentEstimated = typedPayment === undefined && isCard && balance < 0;
+    const monthlyPayment = paymentEstimated
+      ? estimateCardMinimum(-balance)
+      : Math.min(typedPayment ?? 0, Math.abs(balance));
     let countedIn: CountedIn = 'debt';
     let duplicateOf: string | undefined;
 
@@ -222,12 +245,14 @@ export function rollUpBankAccounts(
     }
 
     rollup.monthlyDebtService += monthlyPayment;
+    if (paymentEstimated) rollup.estimatedDebtService += monthlyPayment;
     rollup.accounts.push({
       id: a.id,
       category,
       countedIn,
       ...(duplicateOf ? { duplicateOf } : {}),
       monthlyPayment,
+      ...(paymentEstimated ? { paymentEstimated } : {}),
     });
   }
 
