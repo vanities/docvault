@@ -21,6 +21,7 @@ import { requestJson } from '@/api/client';
 import { useToast } from '../../hooks/useToast';
 import { API_BASE } from '../../constants';
 import type {
+  AlertCheck,
   AlertNotification,
   AlertSourceView,
   AlertsResponse,
@@ -257,6 +258,12 @@ const TONE_CLASS: Record<SummaryTone, string> = {
   muted: 'text-surface-600',
 };
 
+/** An event check reports something that already happened, so it reads as an age, not a span. */
+function trippedFor(check: AlertCheck, now: number): string {
+  const age = formatDuration(Math.max(0, now - Date.parse(check.since ?? '')));
+  return check.event === undefined ? ` · for ${age}` : ` · seen ${age} ago`;
+}
+
 const DOT_CLASS: Record<SourceStatus, string> = {
   act: 'bg-danger-400 ring-4 ring-danger-500/20',
   warning: 'bg-warn-400 ring-4 ring-warn-500/20',
@@ -438,9 +445,7 @@ export function AlertRow({
                       </p>
                       <p className="text-[11px] text-surface-600">
                         trips {c.threshold}
-                        {c.active && c.since
-                          ? ` · for ${formatDuration(Math.max(0, now - Date.parse(c.since)))}`
-                          : ''}
+                        {c.active && c.since ? trippedFor(c, now) : ''}
                       </p>
                     </div>
                   </div>
