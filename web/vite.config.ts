@@ -1,6 +1,10 @@
 import { defineConfig } from 'vite-plus';
 import tailwindcss from '@tailwindcss/vite';
 
+const fmtTargets = (files: string[]) =>
+  files.filter((f) => !f.includes('demo-data/') && !f.includes('/scripts/'));
+const quoted = (files: string[]) => files.map((f) => `"${f}"`).join(' ');
+
 // https://vite.dev/config/
 export default defineConfig({
   lint: {
@@ -129,14 +133,21 @@ export default defineConfig({
     },
   },
   staged: {
-    '*.{ts,tsx}': ['vp lint --fix', 'vp fmt'],
-    // Filter demo-data — fmt.ignorePatterns drops it, so passing only demo-data
-    // files makes vp fmt error with "Expected at least one target file". The
-    // bundled lint-staged@16 supports a function value here, but Vite+'s
-    // StagedConfig type narrows to `string | string[]`, hence the cast.
+    // fmt.ignorePatterns drops demo-data and scripts (examples/jobs/scripts too), and vp fmt
+    // errors with "Expected at least one target file" when every file it is handed is ignored,
+    // so a commit staging only those would fail. Both rules pass fmt only what it formats. The
+    // bundled lint-staged@16 supports a function value here, but Vite+'s StagedConfig type
+    // narrows to `string | string[]`, hence the casts.
+    '*.{ts,tsx}': ((files: string[]) => {
+      const targets = fmtTargets(files);
+      return [
+        `vp lint --fix ${quoted(files)}`,
+        ...(targets.length > 0 ? [`vp fmt ${quoted(targets)}`] : []),
+      ];
+    }) as unknown as string[],
     '*.{json,md,css}': ((files: string[]) => {
-      const targets = files.filter((f) => !f.includes('demo-data/'));
-      return targets.length > 0 ? [`vp fmt ${targets.map((f) => `"${f}"`).join(' ')}`] : [];
+      const targets = fmtTargets(files);
+      return targets.length > 0 ? [`vp fmt ${quoted(targets)}`] : [];
     }) as unknown as string[],
   },
   fmt: {
