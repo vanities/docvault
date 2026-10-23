@@ -109,6 +109,53 @@ describe('reportAlerts email policy', () => {
     expect(sendEmail).toHaveBeenCalledTimes(3);
   });
 
+  test('an event kept tripped for a day emails once, with no reminders', async () => {
+    const seen = check({
+      severity: 'warning',
+      active: true,
+      value: 'converted: ABC -1,234',
+      event: at(0).toISOString(),
+    });
+    expect((await reportAlerts(report([seen]), { now: at(0) })).emailed).toBe('trip');
+    for (let minutes = 75; minutes < 24 * 60; minutes += 75) {
+      const outcome = await reportAlerts(report([seen]), { now: at(minutes) });
+      expect(outcome.emailed, `report at +${minutes} min`).toBeNull();
+    }
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  test('a new event on a check that is still tripped emails as a new trip', async () => {
+    const first = check({ active: true, value: 'left: ABC -10', event: at(0).toISOString() });
+    await reportAlerts(report([first]), { now: at(0) });
+    const second = { ...first, value: 'left: XYZ -20', event: at(90).toISOString() };
+    expect((await reportAlerts(report([second]), { now: at(90) })).emailed).toBe('trip');
+    expect(lastEmail().text).toContain('Just tripped');
+    expect(lastEmail().text).toContain('left: XYZ -20');
+    const { sources } = await listAlerts();
+    expect(sources[0].checks[0]).toMatchObject({
+      event: at(90).toISOString(),
+      since: at(90).toISOString(),
+      lastAlertAt: at(90).toISOString(),
+    });
+    expect((await reportAlerts(report([second]), { now: at(90 + 360) })).emailed).toBeNull();
+    expect(sendEmail).toHaveBeenCalledTimes(2);
+  });
+
+  test('a tripped check that starts naming its event keeps its trip and stops reminding', async () => {
+    const before = check({ severity: 'warning', active: true });
+    await reportAlerts(report([before]), { now: at(0) });
+    const updated = { ...before, event: 'failed-sends' };
+    expect((await reportAlerts(report([updated]), { now: at(30) })).emailed).toBeNull();
+    expect((await reportAlerts(report([updated]), { now: at(400) })).emailed).toBeNull();
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    const { sources } = await listAlerts();
+    expect(sources[0].checks[0]).toMatchObject({
+      event: 'failed-sends',
+      since: at(0).toISOString(),
+      lastAlertAt: at(0).toISOString(),
+    });
+  });
+
   test('recoveries and all-good reports never email; cleared checks ride along with bad news', async () => {
     const a = check({ id: 'a', label: 'Check A', scope: '' });
     const b = check({ id: 'b', label: 'Check B', scope: '' });
@@ -454,6 +501,8 @@ describe('alerts routes', () => {
       { ...valid, surprise: true },
       { ...valid, checks: [{ ...check(), severity: 'panic' }] },
       { ...valid, checks: [{ ...check(), active: 'yes' }] },
+      { ...valid, checks: [{ ...check(), event: 42 }] },
+      { ...valid, checks: [{ ...check(), event: 'x'.repeat(121) }] },
       { ...valid, checks: [check(), check()] },
       { ...valid, checks: Array.from({ length: 101 }, (_, i) => check({ id: `c${i}` })) },
       { ...valid, label: 'x'.repeat(121) },
@@ -509,6 +558,16 @@ describe('alerts routes', () => {
     expect((await call('DELETE', '/api/alerts/sources/demo-source')).status).toBe(200);
     expect((await call('DELETE', '/api/alerts/sources/demo-source')).status).toBe(404);
     expect((await (await call('GET', '/api/alerts')).json()).sources).toEqual([]);
+  });
+
+  test('a check event passes validation and is stored with the check', async () => {
+    const response = await call('POST', '/api/alerts/report', {
+      ...valid,
+      checks: [check({ active: true, event: 'evt-1' })],
+    });
+    expect(response.status).toBe(200);
+    const listed = await (await call('GET', '/api/alerts')).json();
+    expect(listed.sources[0].checks[0].event).toBe('evt-1');
   });
 
   test('the emails setting is a strict boolean and needs a known source', async () => {

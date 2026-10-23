@@ -8,6 +8,11 @@
 // up as "Cleared" inside the next bad-news email and on the Alerts page. The
 // owner can turn a source's emails off without stopping its checks.
 //
+// A check that names an `event` reports something that happened, not a state
+// that persists, so it emails once per event and never reminds: a job may keep
+// a past withdrawal tripped for a day so the page shows it, and the owner
+// already heard about it.
+//
 // A source can bring its own page: DATA_DIR/alerts/<id>/dashboard.html, served
 // sandboxed and fed the source's data by postMessage (see AlertDashboardMessage).
 //
@@ -158,7 +163,7 @@ async function recordNotification(
 
 export interface MergedChecks {
   checks: AlertCheck[];
-  /** Went from OK (or unknown) to tripped in this report. */
+  /** Went from OK (or unknown) to tripped in this report, or tripped on a new event. */
   newTrips: AlertCheck[];
   /** Tripped before, but no email about them has gone out yet (the last send failed). */
   unsent: AlertCheck[];
@@ -175,9 +180,15 @@ export function mergeChecks(
 ): MergedChecks {
   const nowIso = now.toISOString();
   const prevById = new Map(previous.map((c) => [c.id, c]));
+  const continued = new Set<string>();
   const checks: AlertCheck[] = inputs.map((input) => {
     const old = prevById.get(input.id);
-    const continuing = input.active && old?.active === true;
+    // A different event on a check that never cleared is a new occurrence, so it opens a new trip.
+    // A tripped check that only now starts naming one (its job was just updated) keeps its trip,
+    // so the update itself doesn't email about something already sent.
+    const sameEvent = old?.event === input.event || old?.event === undefined;
+    const continuing = input.active && old?.active === true && sameEvent;
+    if (continuing) continued.add(input.id);
     return {
       id: input.id,
       label: input.label,
@@ -186,17 +197,17 @@ export function mergeChecks(
       active: input.active,
       value: input.value,
       threshold: input.threshold,
+      ...(input.event !== undefined ? { event: input.event } : {}),
       since: input.active ? (continuing ? (old.since ?? nowIso) : nowIso) : null,
       lastAlertAt: continuing ? (old.lastAlertAt ?? null) : null,
     };
   });
-  const wasActive = (id: string) => prevById.get(id)?.active === true;
   const nowById = new Map(checks.map((c) => [c.id, c]));
   return {
     checks,
-    newTrips: checks.filter((c) => c.active && !wasActive(c.id)),
-    unsent: checks.filter((c) => c.active && wasActive(c.id) && !c.lastAlertAt),
-    still: checks.filter((c) => c.active && wasActive(c.id) && !!c.lastAlertAt),
+    newTrips: checks.filter((c) => c.active && !continued.has(c.id)),
+    unsent: checks.filter((c) => c.active && continued.has(c.id) && !c.lastAlertAt),
+    still: checks.filter((c) => c.active && continued.has(c.id) && !!c.lastAlertAt),
     cleared: previous
       .filter((old) => old.active && !nowById.get(old.id)?.active)
       .map(
@@ -306,7 +317,7 @@ export function alertSubject(active: AlertCheck[]): string {
 }
 
 const FOOTER =
-  'DocVault Alerts emails only when a check trips, then every 6 hours while it stays tripped. Recoveries do not email.';
+  'DocVault Alerts emails only when a check trips, then every 6 hours while it stays tripped. One-time events, like a withdrawal, email once. Recoveries do not email.';
 
 function renderMessage(
   subject: string,
@@ -439,7 +450,7 @@ export async function reportAlerts(
     const retryAllowed =
       !lastSend || lastSend.ok || now.getTime() - Date.parse(lastSend.at) >= SEND_RETRY_MS;
     const due = merged.still.filter(
-      (c) => now.getTime() - Date.parse(c.lastAlertAt ?? '') >= REMINDER_MS
+      (c) => c.event === undefined && now.getTime() - Date.parse(c.lastAlertAt ?? '') >= REMINDER_MS
     );
     const kind: 'trip' | 'reminder' | null =
       merged.newTrips.length > 0 || (merged.unsent.length > 0 && retryAllowed)
@@ -914,11 +925,16 @@ function parseSettingSpec(raw: unknown, index: number): AlertSettingSpec {
 function parseCheck(raw: unknown, index: number): AlertCheckInput {
   const where = `checks[${index}]`;
   if (!isRecord(raw)) throw new Error(`${where} must be an object`);
-  onlyKeys(raw, ['id', 'label', 'scope', 'severity', 'active', 'value', 'threshold'], where);
+  onlyKeys(
+    raw,
+    ['id', 'label', 'scope', 'severity', 'active', 'value', 'threshold', 'event'],
+    where
+  );
   if (raw.severity !== 'critical' && raw.severity !== 'warning') {
     throw new Error(`${where}.severity must be "critical" or "warning"`);
   }
   if (typeof raw.active !== 'boolean') throw new Error(`${where}.active must be a boolean`);
+  const event = text(raw.event, `${where}.event`, 120, { optional: true });
   return {
     id: text(raw.id, `${where}.id`, 120, { pattern: KEY_RE })!,
     label: text(raw.label, `${where}.label`, 200)!,
@@ -927,6 +943,7 @@ function parseCheck(raw: unknown, index: number): AlertCheckInput {
     active: raw.active,
     value: text(raw.value, `${where}.value`, 120, { allowEmpty: true })!,
     threshold: text(raw.threshold, `${where}.threshold`, 120, { allowEmpty: true })!,
+    ...(event !== undefined ? { event } : {}),
   };
 }
 

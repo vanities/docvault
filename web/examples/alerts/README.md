@@ -57,6 +57,11 @@ POST /api/alerts/report
 - Name checks `<item>:<check>` (for example `site:status`); dashboards group them by the prefix.
 - Give checks neutral names ("Disk space", "Backup age"): the same label shows next to an OK
   state on the page and in the subject of a trip email.
+- A check about something that happened, rather than a state that holds until fixed (a
+  withdrawal seen between two runs, not a rate over a line), names the occurrence in `event`,
+  for example the time the job first saw it: `"event": "2030-01-01T00:00:00.000Z"`. It emails
+  once per event and never sends reminders, so a job can keep a past event tripped for a day to
+  show it on the page. A new `event` on a check that is still tripped emails as a new trip.
 - `series` is one chart point per report (DocVault stamps the time) and is kept for 14 days.
 - `detail` is anything your dashboard needs (up to 256 KB); DocVault stores it as sent.
 - `jobId` links the source to its job: that turns on the Checks switch, Check now, and the
@@ -71,8 +76,8 @@ POST /api/alerts/report
 
 | Email    | Sent when                                                                   |
 | -------- | --------------------------------------------------------------------------- |
-| Tripped  | a check goes from OK to tripped                                             |
-| Reminder | a check is still tripped 6 hours after the last email                       |
+| Tripped  | a check goes from OK to tripped, or a tripped check reports a new `event`   |
+| Reminder | a check without an `event` is still tripped 6 hours after the last email    |
 | Blind    | 3 failed runs in a row, or no report for 3 of the job's scheduled intervals |
 
 Recoveries never email; they show on the page and ride along in the next bad-news email.

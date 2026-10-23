@@ -11,6 +11,13 @@ export interface AlertCheckInput {
   active: boolean;
   value: string;
   threshold: string;
+  /**
+   * Names the occurrence a tripped check reports, for checks about something that happened (a
+   * withdrawal seen between two runs) rather than a state that holds until fixed. Such a check
+   * emails once per distinct event and never sends reminders; a new event on a check that is
+   * still tripped emails as a new trip. Omit it for ordinary checks.
+   */
+  event?: string;
 }
 
 export interface AlertCheck extends AlertCheckInput {
