@@ -56,6 +56,7 @@ interface Check {
   active: boolean;
   value: string;
   threshold: string;
+  event?: string;
 }
 interface SyncStatus {
   status?: string;
@@ -297,6 +298,9 @@ const checks: Check[] = [
     active: failed24h > 0,
     value: failed24h ? `${failed24h} of ${recent24.length} failed in 24 h` : `${sent24h} sent in 24 h, none failed`,
     threshold: 'any failed send in 24 h',
+    // A failed send stays in the 24 h window long after the owner heard about it. A fixed event
+    // makes this email once per stretch of failures instead of every 6 hours until it ages out.
+    ...(failed24h > 0 ? { event: 'failed-sends' } : {}),
   },
   {
     id: 'disk:space',
