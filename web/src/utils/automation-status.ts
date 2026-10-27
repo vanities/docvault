@@ -9,8 +9,10 @@ export interface AutomationStatus {
   lastCleanSuccessAt?: string | null;
   warningCount?: number;
   nextRetryAt?: string | null;
+  /** Early re-check for items the source hasn't published yet; not a failure. */
+  nextCheckAt?: string | null;
   consecutiveFailures?: number;
-  lastCollection?: { collected: number; failed: number; skipped: number } | null;
+  lastCollection?: { collected: number; failed: number; skipped: number; deferred?: number } | null;
   lastSummary?: string | null;
   lastAttemptSummary?: string | null;
 }

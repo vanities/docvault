@@ -1,4 +1,11 @@
-export type CollectionCounts = { collected: number; failed: number; skipped: number };
+export type CollectionCounts = {
+  collected: number;
+  failed: number;
+  skipped: number;
+  /** Items the source hasn't published yet (say, a live stream's captions),
+   *  left unprocessed for a later run. Not failures; present only when > 0. */
+  deferred?: number;
+};
 
 /** Bundled collectors (including existing NAS copies) end with a count rollup.
  * Exit zero only means the script finished; failed=N means collection is
@@ -12,5 +19,6 @@ export function collectionCounts(stdout: string): CollectionCounts | null {
   const failed = count('failed');
   const collected = count('ingested') ?? count('posted') ?? count('uploaded_pdfs');
   if (failed === undefined || collected === undefined) return null;
-  return { collected, failed, skipped: count('skipped') ?? 0 };
+  const deferred = count('deferred');
+  return { collected, failed, skipped: count('skipped') ?? 0, ...(deferred ? { deferred } : {}) };
 }

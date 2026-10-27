@@ -42,6 +42,24 @@ describe('admin automation status', () => {
       expect(html).toContain(text);
   });
 
+  test('a run waiting on unpublished items reads as a success with an early check, not a retry', () => {
+    const waiting = {
+      ...status,
+      lastOutcome: 'success' as const,
+      lastError: null,
+      lastSuccessAt: status.lastRanAt,
+      lastCollection: { collected: 2, failed: 0, skipped: 0, deferred: 1 },
+      nextRetryAt: null,
+      consecutiveFailures: 0,
+      nextCheckAt: '2026-06-01T14:00:00Z',
+    };
+    const html = renderToStaticMarkup(<AutomationStatusDetails status={waiting} />);
+    expect(html).toContain('Succeeded');
+    expect(html).toContain('1 not published yet');
+    expect(html).toContain('Checking again for unpublished items:');
+    expect(html).not.toContain('Next retry:');
+  });
+
   test('recovered source errors remain visible in a successful run and its history', () => {
     const recovered = {
       ...status,

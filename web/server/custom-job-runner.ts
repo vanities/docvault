@@ -61,6 +61,17 @@ const MIN_RETRY_MS = 10 * 60 * 1000;
 const MAX_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 const RETRY_BASE_MS = 15 * 60 * 1000;
 const RETRY_MAX_MS = 6 * 60 * 60 * 1000;
+// A lookup or connection that never reached the source. Long backoff protects a
+// source that is pushing back (403/429/5xx); this is a local outage instead, and
+// the 6h cap left jobs idle for hours after the network came back in Oct 2026.
+const NETWORK_FAILURE =
+  /getaddrinfo|EAI_AGAIN|E(?:CONNREFUSED|CONNRESET|TIMEDOUT|TIMEOUT|NETUNREACH|HOSTUNREACH)|Failed to resolve|name resolution|timed out|Unable to connect/i;
+const NETWORK_RETRY_MAX_MS = 60 * 60 * 1000;
+// A clean run that deferred unpublished items checks back this soon instead of
+// waiting out its schedule, for at most DEFERRED_MAX_MS after the first deferral
+// (so an item that never publishes can't keep a daily job running every 2h).
+const DEFERRED_RECHECK_MS = 2 * 60 * 60 * 1000;
+const DEFERRED_MAX_MS = 48 * 60 * 60 * 1000;
 // Slack so an interval tick that lands a few ms early still counts as due.
 const DUE_TOLERANCE_MS = 60 * 1000;
 
@@ -86,6 +97,11 @@ export type CustomJobStatus = {
   lastWarning?: string | null;
   warningCount?: number;
   lastCleanSuccessAt?: string | null;
+  /** Early re-check requested by a clean run that deferred unpublished items.
+   *  Separate from nextRetryAt, which means a failure is being retried. */
+  nextCheckAt?: string | null;
+  /** Start of the current streak of runs that deferred items. */
+  deferredSince?: string | null;
 };
 
 export type CustomJobStatusMap = Record<string, CustomJobStatus>;
@@ -455,11 +471,25 @@ async function executeCustomJob(
     await persistCustomRun(dataDir, result);
 
     const failures = completed ? 0 : (previous?.consecutiveFailures ?? 0) + 1;
+    // stdout too: alert collectors print their fetch failure there, not to stderr.
+    const networkFailure =
+      failures > 0 &&
+      NETWORK_FAILURE.test(`${lastError ?? ''}\n${rawStderr}\n${rawStdout.slice(-4000)}`);
     const nextRetryAt = failures
       ? new Date(
-          Date.now() + Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** Math.min(failures - 1, 5))
+          Date.now() +
+            Math.min(
+              networkFailure ? NETWORK_RETRY_MAX_MS : RETRY_MAX_MS,
+              RETRY_BASE_MS * 2 ** Math.min(failures - 1, 5)
+            )
         ).toISOString()
       : null;
+    const deferred = completed ? (collection?.deferred ?? 0) : 0;
+    const deferredSince = deferred ? (previous?.deferredSince ?? startedAt) : null;
+    const nextCheckAt =
+      deferred && Date.now() - Date.parse(deferredSince!) < DEFERRED_MAX_MS
+        ? new Date(Date.now() + DEFERRED_RECHECK_MS).toISOString()
+        : null;
     await patchCustomJobStatus(
       dataDir,
       id,
@@ -477,6 +507,9 @@ async function executeCustomJob(
             lastAttemptSummary: summarizeStdout(rawStdout),
             consecutiveFailures: failures,
             nextRetryAt,
+            nextCheckAt,
+            // A failed run doesn't end the deferral streak; only a clean one does.
+            ...(completed ? { deferredSince } : {}),
             warningCount,
             lastWarning: warningCount
               ? (warnings.at(-1)?.message ?? detail ?? 'Collector reported warnings').slice(0, 500)
@@ -489,7 +522,9 @@ async function executeCustomJob(
     const message =
       `[run] job=${id} runId=${runId} outcome=${outcome} exit=${exitCode} ` +
       `collected=${collection?.collected ?? 'unknown'} failed=${collection?.failed ?? 'unknown'} ` +
-      `skipped=${collection?.skipped ?? 'unknown'} durationMs=${durationMs} retryAt=${nextRetryAt ?? 'none'}`;
+      `skipped=${collection?.skipped ?? 'unknown'} deferred=${deferred} durationMs=${durationMs} ` +
+      `retryAt=${nextRetryAt ?? 'none'}${networkFailure ? ' retryKind=network' : ''} ` +
+      `checkAt=${nextCheckAt ?? 'none'}`;
     if (outcome === 'success') logJobs.info(message);
     else
       logJobs.warn(
@@ -538,6 +573,7 @@ async function executeCustomJob(
             lastWarning: null,
             warningCount: 1,
             ...(persisted ? { lastRunPath: runPath } : {}),
+            nextCheckAt: null,
             consecutiveFailures: (previous?.consecutiveFailures ?? 0) + 1,
             nextRetryAt: new Date(
               Date.now() +
@@ -568,6 +604,8 @@ export function isCustomJobDue(
   if (!Number.isNaN(lastRan) && now - lastRan < MIN_RETRY_MS) return false;
   const retryAt = Date.parse(status?.nextRetryAt ?? '');
   if (status?.lastError && Number.isFinite(retryAt)) return now >= retryAt;
+  // A clean run that deferred unpublished items asked to look again early.
+  if (now >= Date.parse(status?.nextCheckAt ?? '')) return true;
   const lastSuccess = status?.lastSuccessAt ? Date.parse(status.lastSuccessAt) : NaN;
   if (Number.isNaN(lastSuccess)) return true; // never succeeded → due
   return now - lastSuccess >= intervalMs - DUE_TOLERANCE_MS;

@@ -26,6 +26,13 @@ export const YOUTUBE_EXTRACTOR_VERSION = '1.1.0';
 /** Time budget for the yt-dlp subprocess — kills it if it stalls. */
 const YT_DLP_TIMEOUT_MS = 60_000;
 
+/** YouTube captions a stream only after it ends and an upload hours later, so a
+ *  missing track on a live or young video means "not yet", not "never". */
+const CAPTION_GRACE_MS = 48 * 60 * 60 * 1000;
+const NOT_READY_RETRY_MS = 2 * 60 * 60 * 1000;
+const NOT_READY_MESSAGE =
+  'Captions are not published yet (the video is live, upcoming, or newly uploaded); try again later';
+
 export interface YouTubeTranscriptResult {
   videoId: string;
   /** Canonical watch URL (from yt-dlp's webpage_url; falls back to input). */
@@ -156,6 +163,10 @@ export interface YtDlpMetadata {
   channel?: string;
   uploader?: string;
   upload_date?: string; // YYYYMMDD
+  /** Unix seconds: upload time, and a premiere's or stream's scheduled start. */
+  timestamp?: number;
+  release_timestamp?: number;
+  live_status?: 'not_live' | 'is_live' | 'is_upcoming' | 'was_live' | 'post_live';
   duration?: number;
   webpage_url?: string;
   subtitles?: Record<string, unknown[]>;
@@ -166,6 +177,22 @@ export interface YtDlpMetadata {
 function parseUploadDate(raw: string | undefined): string | null {
   if (!raw || !/^\d{8}$/.test(raw)) return null;
   return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+}
+
+/** True when a video without English captions may still get them: it is live,
+ *  upcoming, or still processing, or it was published within CAPTION_GRACE_MS. */
+export function captionsMayStillPublish(meta: YtDlpMetadata, now: number): boolean {
+  if (
+    meta.live_status === 'is_live' ||
+    meta.live_status === 'is_upcoming' ||
+    meta.live_status === 'post_live'
+  ) {
+    return true;
+  }
+  const stamp = meta.release_timestamp ?? meta.timestamp;
+  const publishedAt =
+    typeof stamp === 'number' ? stamp * 1000 : Date.parse(parseUploadDate(meta.upload_date) ?? '');
+  return Number.isFinite(publishedAt) && now - publishedAt < CAPTION_GRACE_MS;
 }
 
 /**
@@ -195,6 +222,7 @@ export type YouTubeFailureCode =
   | 'network'
   | 'unavailable'
   | 'no-captions'
+  | 'not-ready'
   | 'extractor';
 
 export class YouTubeTranscriptError extends Error {
@@ -277,6 +305,15 @@ function processFailure(result: YtDlpProcessResult, attempts: number): YouTubeTr
       true,
       attempts
     );
+  }
+  // yt-dlp refuses an upcoming premiere or stream, and a finished stream whose
+  // recording YouTube is still processing. Both get captions later.
+  if (
+    /live event will begin|premieres in|live event has ended|recording is not available/i.test(
+      result.stderr
+    )
+  ) {
+    return new YouTubeTranscriptError(NOT_READY_MESSAGE, 'not-ready', true, attempts);
   }
   if (result.timedOut || /timed? out|timeout/i.test(result.stderr)) {
     return new YouTubeTranscriptError(
@@ -374,6 +411,12 @@ export function createYouTubeTranscriptFetcher(
         );
         throw new YouTubeTranscriptError(error.message, error.code, true, attempt, retryAt);
       }
+      if (error.code === 'not-ready') {
+        // Retrying in seconds can't help; the caller comes back in hours.
+        const retryAt = new Date(now() + NOT_READY_RETRY_MS).toISOString();
+        log.info(`[not-ready] videoId=${videoId} stage=${stage} retryAt=${retryAt}`);
+        throw new YouTubeTranscriptError(error.message, error.code, true, attempt, retryAt);
+      }
       if (!error.retryable || attempt === 3) {
         log.error(
           `[failed] videoId=${videoId} stage=${stage} attempts=${attempt} code=${error.code} reason=${error.message}`
@@ -431,6 +474,13 @@ export function createYouTubeTranscriptFetcher(
         );
       }
       const caption = selectEnglishCaption(meta);
+      if (!caption && captionsMayStillPublish(meta, now())) {
+        const retryAt = new Date(now() + NOT_READY_RETRY_MS).toISOString();
+        log.info(
+          `[not-ready] videoId=${videoId} live=${meta.live_status ?? 'unknown'} uploaded=${meta.upload_date ?? 'unknown'} retryAt=${retryAt}`
+        );
+        throw new YouTubeTranscriptError(NOT_READY_MESSAGE, 'not-ready', true, 1, retryAt);
+      }
       if (!caption) {
         throw new YouTubeTranscriptError(
           'Video has no English captions available',

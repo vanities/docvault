@@ -5,6 +5,7 @@ import process from 'node:process';
 import { describe, expect, test } from 'vite-plus/test';
 import { createCustomJobManifest, customJobScriptPath } from './jobs';
 import {
+  collectionCounts,
   customJobSourceWarnings,
   isCustomJobDue,
   loadCustomJobStatus,
@@ -151,6 +152,109 @@ describe('runCustomJobNow', () => {
           (r) => r.runId === recovered.runId
         )?.stderr
       ).toContain('503');
+    });
+  });
+
+  test('a network outage caps backoff at an hour; a source pushing back still gets six', async () => {
+    await withTempDataDir(async (dataDir) => {
+      const HOUR = 60 * 60 * 1000;
+      const afterFifthFailure = async (id: string, stderr: string) => {
+        await createCustomJobManifest(
+          {
+            id,
+            label: `Example ${id}`,
+            schedule: 'daily',
+            script: `scripts/${id}.local.sh`,
+            enabled: true,
+            tags: [],
+          },
+          { dataDir }
+        );
+        await writeFile(
+          customJobScriptPath(dataDir, `scripts/${id}.local.sh`),
+          `printf '${stderr}\\n' >&2\nexit 1\n`
+        );
+        const statuses = await loadCustomJobStatus(dataDir);
+        statuses[id] = {
+          ...statuses[id],
+          lastRanAt: null,
+          lastSuccessAt: null,
+          lastError: 'earlier failure',
+          lastDurationMs: null,
+          running: false,
+          lastRunPath: null,
+          lastSummary: null,
+          lastOutcome: 'error',
+          consecutiveFailures: 5,
+        };
+        await writeFile(path.join(dataDir, 'jobs/status.json'), JSON.stringify(statuses));
+        await runCustomJobNow(id, { dataDir });
+        const s = (await loadCustomJobStatus(dataDir))[id];
+        expect(s.consecutiveFailures).toBe(6);
+        return Date.parse(s.nextRetryAt!) - Date.parse(s.lastRanAt!);
+      };
+      const dns = await afterFifthFailure(
+        'dns-collector',
+        '[example] fatal: TypeError: getaddrinfo ETIMEOUT feeds.example.invalid'
+      );
+      expect(dns).toBeGreaterThanOrEqual(HOUR);
+      expect(dns).toBeLessThan(HOUR + 60_000);
+      const forbidden = await afterFifthFailure(
+        'blocked-collector',
+        '[example] feed fetch failed: HTTP 403'
+      );
+      expect(forbidden).toBeGreaterThanOrEqual(6 * HOUR);
+    });
+  });
+
+  test('deferred items keep the run green and ask for an early check, for at most 48h', async () => {
+    await withTempDataDir(async (dataDir) => {
+      const HOUR = 60 * 60 * 1000;
+      await createCustomJobManifest(
+        {
+          id: 'pending-collector',
+          label: 'Example pending collector',
+          schedule: 'daily',
+          script: 'scripts/pending.local.sh',
+          enabled: true,
+          tags: [],
+        },
+        { dataDir }
+      );
+      const scriptPath = customJobScriptPath(dataDir, 'scripts/pending.local.sh');
+      await writeFile(
+        scriptPath,
+        'printf "[example] ingested=2 skipped=0 deferred=1 failed=0\\n"\n'
+      );
+      await runCustomJobNow('pending-collector', { dataDir });
+      const waiting = (await loadCustomJobStatus(dataDir))['pending-collector'];
+      expect(waiting).toMatchObject({
+        lastOutcome: 'success',
+        lastError: null,
+        nextRetryAt: null,
+        consecutiveFailures: 0,
+        lastCollection: { collected: 2, failed: 0, skipped: 0, deferred: 1 },
+        deferredSince: waiting.lastRanAt,
+      });
+      const checkIn = Date.parse(waiting.nextCheckAt!) - Date.parse(waiting.lastRanAt!);
+      expect(checkIn).toBeGreaterThanOrEqual(2 * HOUR);
+      expect(checkIn).toBeLessThan(2 * HOUR + 60_000);
+
+      const statuses = await loadCustomJobStatus(dataDir);
+      statuses['pending-collector'].deferredSince = new Date(Date.now() - 49 * HOUR).toISOString();
+      await writeFile(path.join(dataDir, 'jobs/status.json'), JSON.stringify(statuses));
+      await runCustomJobNow('pending-collector', { dataDir });
+      expect((await loadCustomJobStatus(dataDir))['pending-collector'].nextCheckAt).toBeNull();
+
+      await writeFile(
+        scriptPath,
+        'printf "[example] ingested=1 skipped=0 deferred=0 failed=0\\n"\n'
+      );
+      await runCustomJobNow('pending-collector', { dataDir });
+      expect((await loadCustomJobStatus(dataDir))['pending-collector']).toMatchObject({
+        nextCheckAt: null,
+        deferredSince: null,
+      });
     });
   });
 
@@ -411,6 +515,27 @@ describe('isCustomJobDue', () => {
     });
     expect(isCustomJobDue(s, DAY, now)).toBe(false);
     expect(isCustomJobDue(s, DAY, now + 10 * MINUTE)).toBe(true);
+  });
+
+  test('a clean run that deferred items is due again at its early check, not a day later', () => {
+    const s = status({
+      lastRanAt: iso(now - HOUR),
+      lastSuccessAt: iso(now - HOUR),
+      nextCheckAt: iso(now + HOUR),
+    });
+    expect(isCustomJobDue(s, DAY, now)).toBe(false);
+    expect(isCustomJobDue(s, DAY, now + HOUR)).toBe(true);
+  });
+
+  test('the rollup counts deferred items only when a collector reports them', () => {
+    expect(
+      collectionCounts('[example] candidates=3 ingested=1 skipped=1 deferred=1 failed=0')
+    ).toEqual({ collected: 1, failed: 0, skipped: 1, deferred: 1 });
+    expect(collectionCounts('[example] ingested=2 skipped=0 failed=1')).toEqual({
+      collected: 2,
+      failed: 1,
+      skipped: 0,
+    });
   });
 
   test('report notes include unresolved enabled collectors, with counts and retry time', () => {

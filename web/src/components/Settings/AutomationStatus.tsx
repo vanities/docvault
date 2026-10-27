@@ -33,6 +33,7 @@ export function AutomationStatusDetails({ status }: { status?: AutomationStatus 
       {counts && (
         <p className="text-surface-700">
           {counts.collected} collected · {counts.failed} failed · {counts.skipped} skipped
+          {counts.deferred ? ` · ${counts.deferred} not published yet` : ''}
         </p>
       )}
       {status?.lastError && <p className="text-red-400">{status.lastError}</p>}
@@ -55,6 +56,11 @@ export function AutomationStatusDetails({ status }: { status?: AutomationStatus 
           {status.consecutiveFailures
             ? ` · ${status.consecutiveFailures} incomplete runs in a row`
             : ''}
+        </p>
+      )}
+      {!status?.nextRetryAt && status?.nextCheckAt && (
+        <p className="text-surface-600">
+          Checking again for unpublished items: {timestamp(status.nextCheckAt)}
         </p>
       )}
     </div>
