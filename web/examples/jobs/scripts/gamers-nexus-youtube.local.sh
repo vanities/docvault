@@ -75,10 +75,11 @@ console.log(rows.length);
 SUCCESS_COUNT=0
 FAIL_COUNT="$SOURCE_FAIL_COUNT"
 SKIPPED_COUNT=0
+DEFERRED_COUNT=0
 while IFS=$'\t' read -r VIDEO_URL TITLE; do
   [ -n "${VIDEO_URL:-}" ] || continue
-  PAYLOAD="$OUT_DIR/payload-$SUCCESS_COUNT-$FAIL_COUNT-$SKIPPED_COUNT.json"
-  RESPONSE="$OUT_DIR/response-$SUCCESS_COUNT-$FAIL_COUNT-$SKIPPED_COUNT.json"
+  PAYLOAD="$OUT_DIR/payload-$SUCCESS_COUNT-$FAIL_COUNT-$SKIPPED_COUNT-$DEFERRED_COUNT.json"
+  RESPONSE="$OUT_DIR/response-$SUCCESS_COUNT-$FAIL_COUNT-$SKIPPED_COUNT-$DEFERRED_COUNT.json"
   VIDEO_URL="$VIDEO_URL" DOMAIN="$DOMAIN" TAGS_JSON="$TAGS_JSON" bun -e 'process.stdout.write(JSON.stringify({ url: process.env.VIDEO_URL, domain: process.env.DOMAIN, tags: JSON.parse(process.env.TAGS_JSON || "[]") }))' > "$PAYLOAD"
   printf '[%s] Ingesting unseen YouTube video: %s\n' "$JOB_ID" "$VIDEO_URL"
   # Keep the response body: it explains rate limits/timeouts and retry timing.
@@ -87,10 +88,22 @@ while IFS=$'\t' read -r VIDEO_URL TITLE; do
   if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ]; then
     printf '%s\n' "$VIDEO_URL" >> "$PROCESSED_URLS"
     SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+  elif grep -q '"code":"not-ready"' "$RESPONSE" 2>/dev/null; then
+    # Live, upcoming, or just uploaded: captions come later. Left unprocessed so a
+    # later run files it; deferred=N asks the runner to check back early.
+    printf '[%s] Deferred until captions are published: %s\n' "$JOB_ID" "$VIDEO_URL"
+    DEFERRED_COUNT=$((DEFERRED_COUNT + 1))
   elif grep -qiE "members.only|available to this channel|private video|video unavailable|age.restricted|removed by the uploader" "$RESPONSE" 2>/dev/null; then
     printf '%s\n' "$VIDEO_URL" >> "$PROCESSED_URLS"
     printf '%s\t%s\n' "$VIDEO_URL" "$TITLE" >> "$OUT_DIR/skipped-inaccessible.tsv"
     printf '[%s] WARNING: unavailable video skipped: %s\n' "$JOB_ID" "$VIDEO_URL" >&2
+    SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+  elif grep -qi 'no English captions' "$RESPONSE" 2>/dev/null; then
+    # Past the server's caption grace period (younger videos come back not-ready),
+    # so it will not be captioned; retrying it every run only kept the job red.
+    printf '%s\n' "$VIDEO_URL" >> "$PROCESSED_URLS"
+    printf '%s\t%s\n' "$VIDEO_URL" "$TITLE" >> "$OUT_DIR/skipped-no-captions.tsv"
+    printf '[%s] WARNING: video without English captions skipped: %s\n' "$JOB_ID" "$VIDEO_URL" >&2
     SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
   else
     REASON="$(bun -e 'const fs=require("fs"); try { const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); console.log(String(r.error || "unknown ingest failure").replace(/\s+/g," ").slice(0,500) + (r.retryAt ? " retryAt="+r.retryAt : "")); } catch { console.log("network failure or invalid response body"); }' "$RESPONSE")"
@@ -103,4 +116,4 @@ done < "$OUT_DIR/new-videos.tsv"
 sort -u "$PROCESSED_URLS" -o "$PROCESSED_URLS"
 rm -f "$LATEST_DIR"
 ln -s "$OUT_DIR" "$LATEST_DIR"
-printf '[%s] Wrote %s; candidates=%s ingested=%s skipped=%s failed=%s\n' "$JOB_ID" "$OUT_DIR" "$(cat "$OUT_DIR/new-count.txt")" "$SUCCESS_COUNT" "$SKIPPED_COUNT" "$FAIL_COUNT"
+printf '[%s] Wrote %s; candidates=%s ingested=%s skipped=%s deferred=%s failed=%s\n' "$JOB_ID" "$OUT_DIR" "$(cat "$OUT_DIR/new-count.txt")" "$SUCCESS_COUNT" "$SKIPPED_COUNT" "$DEFERRED_COUNT" "$FAIL_COUNT"

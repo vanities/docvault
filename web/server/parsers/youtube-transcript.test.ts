@@ -11,7 +11,10 @@ const FIRST = 'abcdefghijk';
 const SECOND = 'lmnopqrstuv';
 const vtt = 'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nSynthetic research transcript.\n';
 
-function harness(failures: YtDlpProcessResult[] = []) {
+function harness(
+  failures: YtDlpProcessResult[] = [],
+  opts: { meta?: Record<string, unknown>; metadataFailure?: YtDlpProcessResult } = {}
+) {
   let clock = Date.parse('2026-06-01T12:00:00Z');
   const commands: string[][] = [];
   const delays: number[] = [];
@@ -31,6 +34,7 @@ function harness(failures: YtDlpProcessResult[] = []) {
       try {
         await Promise.resolve();
         if (cmd.includes('--dump-single-json')) {
+          if (opts.metadataFailure) return opts.metadataFailure;
           const id = cmd.at(-1)!.split('v=')[1];
           return {
             exitCode: 0,
@@ -40,6 +44,7 @@ function harness(failures: YtDlpProcessResult[] = []) {
               title: 'Example video',
               channel: 'Example channel',
               automatic_captions: { 'en-orig': [{}], en: [{}], 'en-US': [{}] },
+              ...opts.meta,
             }),
           };
         }
@@ -135,6 +140,40 @@ describe('YouTube caption collection', () => {
       attempts: 1,
     });
     expect(h.commands).toHaveLength(2);
+  });
+
+  test('a live, upcoming, or just-uploaded video without captions is not ready yet, not failed', async () => {
+    const fresh = harness([], {
+      meta: { automatic_captions: {}, timestamp: Date.parse('2026-06-01T10:00:00Z') / 1000 },
+    });
+    await expect(fresh.fetch(FIRST)).rejects.toMatchObject({
+      code: 'not-ready',
+      retryable: true,
+      retryAt: '2026-06-01T14:00:00.000Z',
+    });
+    expect(fresh.commands).toHaveLength(1);
+
+    const processing = harness([], {
+      meta: { automatic_captions: {}, live_status: 'post_live', upload_date: '20260101' },
+    });
+    await expect(processing.fetch(FIRST)).rejects.toMatchObject({ code: 'not-ready' });
+
+    const upcoming = harness([], {
+      metadataFailure: {
+        exitCode: 1,
+        stdout: '',
+        stderr: `ERROR: [youtube] ${FIRST}: This live event will begin in 3 hours.`,
+      },
+    });
+    await expect(upcoming.fetch(FIRST)).rejects.toMatchObject({ code: 'not-ready', attempts: 1 });
+    expect(upcoming.commands).toHaveLength(1);
+    expect(upcoming.delays).toEqual([]);
+  });
+
+  test('an old video without English captions is permanently caption-less', async () => {
+    const h = harness([], { meta: { automatic_captions: {}, upload_date: '20260101' } });
+    await expect(h.fetch(FIRST)).rejects.toMatchObject({ code: 'no-captions', retryable: false });
+    expect(h.commands).toHaveLength(1);
   });
 
   test('bounds retries for repeated timeouts', async () => {

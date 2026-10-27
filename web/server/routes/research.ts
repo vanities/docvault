@@ -702,9 +702,12 @@ export async function handleResearchRoutes(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const failure = err instanceof YouTubeTranscriptError ? err : null;
-      log.error(
-        `YouTube ingest failed for ${url}: code=${failure?.code ?? 'unknown'} attempts=${failure?.attempts ?? 1} retryable=${failure?.retryable ?? false} reason=${msg}`
-      );
+      const notReady = failure?.code === 'not-ready';
+      const detail = `code=${failure?.code ?? 'unknown'} attempts=${failure?.attempts ?? 1} retryable=${failure?.retryable ?? false} reason=${msg}`;
+      // Not-ready is routine (a stream's captions are still processing). Logged
+      // as an error, it would mark every scraper run that defers one as warned.
+      if (notReady) log.info(`YouTube ingest deferred for ${url}: ${detail}`);
+      else log.error(`YouTube ingest failed for ${url}: ${detail}`);
       const response = jsonResponse(
         {
           error: msg,
@@ -712,7 +715,7 @@ export async function handleResearchRoutes(
           retryable: failure?.retryable,
           retryAt: failure?.retryAt,
         },
-        failure?.code === 'rate-limited' ? 429 : 502
+        failure?.code === 'rate-limited' ? 429 : notReady ? 503 : 502
       );
       if (failure?.retryAt)
         response.headers.set(
