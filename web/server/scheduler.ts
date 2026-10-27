@@ -65,6 +65,7 @@ const logDropbox = createLogger('Dropbox');
 const logGold = createLogger('Gold');
 const logQuant = createLogger('Quant');
 const logPolitics = createLogger('Politics');
+const logBackup = createLogger('Backup');
 
 export const DEFAULT_SNAPSHOT_INTERVAL = 1440; // 24 hours in minutes
 export const DEFAULT_DROPBOX_SYNC_INTERVAL = 15; // 15 minutes
@@ -197,7 +198,9 @@ export async function clearStaleRunningFlags(): Promise<void> {
 const TASK_LOG_NAMESPACES: Record<ScheduleTaskName, RegExp> = {
   snapshot: /^(Snapshots|SimpleFIN|SnapTrade|Gold|Crypto|CoinGecko|Chain |Broker|Kraken|Coinbase)/,
   dropboxSync: /^Dropbox/,
-  encryptedBackup: /^Scheduler$/,
+  // Not the shared Scheduler namespace: every task logs its "[run] job=… outcome"
+  // summary there, so another task finishing mid-backup became a backup warning.
+  encryptedBackup: /^Backup$/,
   quantRefresh: /^(Quant|Ticker|FRED|Yahoo)/,
   politicsRefresh: /^Politics/,
   dailyNewsRefresh: /^(DailyNews|Narration|Weather)/,
@@ -578,13 +581,13 @@ async function createEncryptedConfigBackup(password: string): Promise<string | n
       const destination = path.join(DATA_DIR, '.docvault-config-backup.enc');
       await fs.writeFile(destination, packed);
       backupPath = destination;
-      logScheduler.info(
+      logBackup.info(
         `Encrypted config backup written (${Object.keys(files).length} files, ${packed.length} bytes)`
       );
     });
     return backupPath;
   } catch (err) {
-    logScheduler.error(
+    logBackup.error(
       'Encrypted config backup failed:',
       err instanceof Error ? err.message : String(err)
     );
