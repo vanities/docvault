@@ -403,19 +403,27 @@ export async function deleteEdition(id: string): Promise<void> {
   await saveEditions(editions);
 }
 
-/** True if an edition already exists for `date`. A `running` record younger
- *  than STALE_RUNNING_MS counts (prevents the hourly tick double-firing); an
- *  older `running` is treated as crashed so a retry can proceed. */
-export async function editionExistsForDate(date: string): Promise<boolean> {
+/** Scheduled attempts that may fail on one day before the scheduler gives up
+ *  until tomorrow. A failure is usually transient (a DNS outage lost the whole
+ *  2026-10-08 paper); the cap stops a persistent one from regenerating hourly. */
+export const MAX_FAILED_EDITIONS_PER_DAY = 3;
+
+/** True when the scheduler has nothing more to do for `date`: an edition is
+ *  done or still running, or MAX_FAILED_EDITIONS_PER_DAY attempts have failed.
+ *  An errored edition alone does not settle the day, so it is retried; a
+ *  `running` record older than STALE_RUNNING_MS is treated as crashed, ditto.
+ *  A fresh `running` one counts, so overlapping ticks never double-fire. */
+export async function scheduledEditionSettled(date: string): Promise<boolean> {
   const editions = await loadEditions();
-  return Object.values(editions).some((e) => {
-    if (e.sample) return false; // sampler editions never count as "the day's edition"
-    if (e.editionDate !== date) return false;
-    if (e.status === 'running' && Date.now() - new Date(e.createdAt).getTime() > STALE_RUNNING_MS) {
-      return false;
-    }
-    return true;
-  });
+  // Sampler editions never count as "the day's edition".
+  const sameDay = Object.values(editions).filter((e) => !e.sample && e.editionDate === date);
+  const failed = sameDay.filter((e) => e.status === 'error').length;
+  if (failed >= MAX_FAILED_EDITIONS_PER_DAY) return true;
+  return sameDay.some(
+    (e) =>
+      e.status === 'done' ||
+      (e.status === 'running' && Date.now() - new Date(e.createdAt).getTime() <= STALE_RUNNING_MS)
+  );
 }
 
 /** True if a (non-errored) weekly edition already exists on/after `weekStart`. */
