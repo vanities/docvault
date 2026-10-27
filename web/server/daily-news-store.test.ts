@@ -32,7 +32,13 @@ vi.mock('./daily-news-image.js', () => ({ generateHeadlineImage: vi.fn(async () 
 vi.mock('./daily-news-narration.js', () => ({ narrateEdition: vi.fn(async () => null) }));
 vi.mock('./daily-news-themes.js', () => ({ listThemes: () => [] }));
 
-import { getEdition, startEdition, waitForEdition } from './daily-news-store';
+import {
+  getEdition,
+  MAX_FAILED_EDITIONS_PER_DAY,
+  scheduledEditionSettled,
+  startEdition,
+  waitForEdition,
+} from './daily-news-store';
 import { narrateEdition } from './daily-news-narration';
 import type { GenerateResult } from './daily-news';
 
@@ -99,5 +105,32 @@ describe('scheduled edition completion', () => {
       status: 'error',
       error: 'Example provider timeout',
     });
+  });
+});
+
+describe('scheduled edition dedup', () => {
+  const failOn = async (date: string) =>
+    waitForEdition(
+      await startEdition(
+        'daily',
+        date,
+        async () => {
+          throw new Error('Example DNS outage');
+        },
+        false
+      )
+    );
+
+  test('a failed edition leaves its day open for a retry, until the daily cap', async () => {
+    await failOn('2026-06-04');
+    expect(await scheduledEditionSettled('2026-06-04')).toBe(false);
+    for (let i = 1; i < MAX_FAILED_EDITIONS_PER_DAY; i++) await failOn('2026-06-04');
+    expect(await scheduledEditionSettled('2026-06-04')).toBe(true);
+    expect(await scheduledEditionSettled('2026-06-05')).toBe(false);
+  });
+
+  test('a finished edition settles its day', async () => {
+    await waitForEdition(await startEdition('daily', '2026-06-06', async () => result, false));
+    expect(await scheduledEditionSettled('2026-06-06')).toBe(true);
   });
 });

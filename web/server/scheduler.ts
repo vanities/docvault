@@ -34,7 +34,7 @@ import { refreshPolitics } from './politics/refresh.js';
 import {
   startEdition,
   waitForEdition,
-  editionExistsForDate,
+  scheduledEditionSettled,
   weeklyEditionExistsForWeek,
   type EditionType,
 } from './daily-news-store.js';
@@ -71,6 +71,7 @@ export const DEFAULT_SNAPSHOT_INTERVAL = 1440; // 24 hours in minutes
 export const DEFAULT_DROPBOX_SYNC_INTERVAL = 15; // 15 minutes
 export const DEFAULT_QUANT_REFRESH_INTERVAL = 1440; // 24 hours in minutes
 export const DEFAULT_POLITICS_REFRESH_INTERVAL = 1440; // 24 hours in minutes
+const DAILY_NEWS_RETRY_MS = 60 * 60 * 1000;
 let snapshotTimer: ReturnType<typeof setInterval> | null = null;
 let dropboxSyncTimer: ReturnType<typeof setInterval> | null = null;
 let quantRefreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -640,19 +641,21 @@ export async function runPoliticsRefresh(): Promise<void> {
 }
 
 /**
- * Daily News tick — runs hourly but generates at most ONE edition per local
- * day, only once the clock passes the configured hour (see dailyNewsPlan). On
- * the configured weekday (and if none was made in the last 6 days) it produces
- * a weekly deep-dive; otherwise a daily digest. A silent no-op when not due —
- * trackRun only fires when an edition is actually kicked off, so the status
- * file isn't rewritten every hour.
+ * Daily News tick: fires at the configured hour (plus boot catch-up and
+ * failure retries) but generates at most ONE edition per local day, only once
+ * the clock passes the configured hour (see dailyNewsPlan). On the configured
+ * weekday (and if none was made in the last 6 days) it produces a weekly
+ * deep-dive; otherwise a daily digest. A silent no-op when not due: trackRun
+ * only fires when an edition is actually kicked off, so the status file isn't
+ * rewritten on every tick. Resolves 'failed' when it tried and the edition
+ * failed, so the caller can retry within the day.
  */
-export async function runDailyNewsTick(): Promise<void> {
+export async function runDailyNewsTick(): Promise<'failed' | undefined> {
   try {
     const settings = await loadSettings();
     const plan = dailyNewsPlan(new Date(), settings.schedules, getConfiguredTimezone(settings));
     if (!plan) return;
-    if (await editionExistsForDate(plan.today)) return;
+    if (await scheduledEditionSettled(plan.today)) return;
     const wantWeekly = plan.isWeeklyDay && !(await weeklyEditionExistsForWeek(plan.weekStart));
     const editionType: EditionType = wantWeekly ? 'weekly' : 'daily';
 
@@ -665,6 +668,7 @@ export async function runDailyNewsTick(): Promise<void> {
     });
   } catch (err) {
     logScheduler.error('Daily News tick failed:', String(err));
+    return 'failed';
   }
 }
 
@@ -824,21 +828,26 @@ export function startScheduler(schedules: Settings['schedules'] = {}): void {
   // catch-up tick — both safe because the store dedups once per local day.
   if (schedules?.dailyNewsEnabled === true) {
     const hour = schedules.dailyNewsHour ?? 7;
-    const armNextDailyNews = (): void => {
+    const armNextDailyNews = (outcome?: 'failed'): void => {
       void loadSettings().then((s) => {
         const tz = getConfiguredTimezone(s);
-        const delayMs = msUntilNextLocalHour(new Date(), hour, tz);
+        // A failed edition retries within the day rather than waiting for
+        // tomorrow's hour; scheduledEditionSettled caps the attempts per day.
+        const delayMs =
+          outcome === 'failed' ? DAILY_NEWS_RETRY_MS : msUntilNextLocalHour(new Date(), hour, tz);
         dailyNewsTimer = setTimeout(() => {
-          void runDailyNewsTick().finally(armNextDailyNews);
+          void runDailyNewsTick().then(armNextDailyNews, () => armNextDailyNews('failed'));
         }, delayMs);
         logScheduler.info(
-          `Daily News: next check in ${Math.round(delayMs / 60000)}m ` +
-            `(publishes ${String(hour).padStart(2, '0')}:00 ${tz}, weekly day ${schedules.dailyNewsWeeklyDay ?? 0})`
+          outcome === 'failed'
+            ? `Daily News: edition failed, retrying in ${Math.round(delayMs / 60000)}m`
+            : `Daily News: next check in ${Math.round(delayMs / 60000)}m ` +
+                `(publishes ${String(hour).padStart(2, '0')}:00 ${tz}, weekly day ${schedules.dailyNewsWeeklyDay ?? 0})`
         );
       });
     };
     // Catch-up: a restart after the publish hour still gets today's edition.
-    void runDailyNewsTick().finally(armNextDailyNews);
+    void runDailyNewsTick().then(armNextDailyNews, () => armNextDailyNews('failed'));
   } else {
     logScheduler.info('Daily News: disabled');
   }

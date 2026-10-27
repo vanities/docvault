@@ -63,7 +63,7 @@ export interface DailyNewsPlan {
 /**
  * Decide whether an edition could be due right now, returning the dates the
  * caller needs — or null when disabled or before the publish hour. This does
- * NOT consult the store; the caller still checks editionExistsForDate /
+ * NOT consult the store; the caller still checks scheduledEditionSettled /
  * weeklyEditionExistsForWeek to enforce the once-per-day / once-per-week dedup.
  *
  * Hour, weekday, and calendar date are all read in `timezone` (an IANA zone the
