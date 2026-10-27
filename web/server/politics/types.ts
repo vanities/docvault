@@ -145,11 +145,15 @@ export interface PoliticsSourceResult {
   ok: boolean;
   added: number;
   error?: string;
+  /** The provider refuses this client (see UpstreamBlockedError): not a failure. */
+  blocked?: boolean;
 }
 
 export interface PoliticsRefreshResult {
   generatedAt: string;
   results: PoliticsSourceResult[];
   errors: string[];
+  /** Sources the provider is refusing; reported, but they don't make a run partial. */
+  blocked: string[];
   counts: { bills: number; executiveActions: number; trades: number; filings: number };
 }

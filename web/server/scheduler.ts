@@ -614,7 +614,9 @@ export async function runQuantRefresh(): Promise<void> {
 /** Daily politics refresh — forward-only ingest of recent bills, executive
  *  actions, and (later phases) politician trades into the politics feed cache.
  *  A missing Congress key or a single dead source is a soft error: the task only
- *  fails if EVERY source failed, so a partial feed still counts as success. */
+ *  fails if EVERY source failed, so a partial feed still counts as success. A
+ *  source whose provider refuses us (result.blocked) is a warning, not partial:
+ *  nothing on our side can fix it, so it must not trip the failing-jobs alert. */
 export async function runPoliticsRefresh(): Promise<void> {
   return trackRun('politicsRefresh', async () => {
     logPolitics.info('Starting politics feed refresh...');

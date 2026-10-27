@@ -9,7 +9,7 @@
 // session is established ONCE per run and reused for every report fetch.
 
 import { createLogger } from '../logger.js';
-import { timeoutFetch } from './http.js';
+import { isEdgeDenial, timeoutFetch, UpstreamBlockedError } from './http.js';
 import { markSeen, mergeFilings, mergeTrades } from './feed-store.js';
 import { archiveFiling } from './filing-archive.js';
 import { normalizeTradeCategory, parseDisclosureAmountRange } from './trade-transform.js';
@@ -103,6 +103,17 @@ function cookieHeader(cookies: CookieMap): string {
     .join('; ');
 }
 
+// Since 2026-10-23 the eFD's Akamai edge answers the agreement POST with
+// "Access Denied" to automated clients, a headless browser included. That gate
+// is an access control: report it, never work around it.
+function throwIfEdgeDenied(res: Response, step: string): void {
+  if (!isEdgeDenial(res)) return;
+  log.info(`[blocked] step="${step}" status=${res.status} server=${res.headers.get('server')}`);
+  throw new UpstreamBlockedError(
+    `Senate eFD refuses automated access (Akamai 403 on the ${step}); Senate PTRs are paused until it lifts`
+  );
+}
+
 function csrfFromHtml(html: string): string {
   const match = html.match(/name="csrfmiddlewaretoken"\s+value="([^"]+)"/);
   if (!match) throw new Error('Unable to find Senate eFD CSRF token');
@@ -117,6 +128,7 @@ export async function establishSenateSession(
   const cookies: CookieMap = new Map();
 
   const home = await fetchFn(HOME_URL, { headers: { 'User-Agent': UA } });
+  throwIfEdgeDenied(home, 'agreement page');
   if (!home.ok) throw new Error(`Senate eFD agreement fetch failed: ${home.status}`);
   mergeCookies(cookies, home.headers);
   const agreementCsrf = csrfFromHtml(await home.text());
@@ -132,6 +144,7 @@ export async function establishSenateSession(
     body: new URLSearchParams({ prohibition_agreement: '1', csrfmiddlewaretoken: agreementCsrf }),
     redirect: 'manual',
   });
+  throwIfEdgeDenied(agreement, 'agreement form');
   if (agreement.status < 200 || agreement.status >= 400) {
     throw new Error(`Senate eFD agreement POST failed: ${agreement.status}`);
   }
@@ -225,6 +238,7 @@ async function fetchSenateFilings(
     },
     body: buildReportDataPayload(year),
   });
+  throwIfEdgeDenied(res, 'filing search');
   if (!res.ok) throw new Error(`Senate eFD report data fetch failed: ${res.status}`);
   const json = (await res.json()) as { data?: unknown[][] };
   return parseReportDataRows(json.data ?? []);

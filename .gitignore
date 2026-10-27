@@ -139,6 +139,7 @@ web/scripts/*
 !web/server/politics/backtest.test.ts
 !web/server/politics/news-digest.test.ts
 !web/server/politics/identity.test.ts
+!web/server/politics/upstream-blocked.test.ts
 # Exception: amortization math tests are pure computation, no personal data
 !web/src/utils/amortization.test.ts
 # Exception: daily-news schedule/report/digest tests use pure date math and fabricated edition HTML/data, no personal data
