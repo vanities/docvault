@@ -11,6 +11,7 @@ import type { Settings } from '../data.js';
 import { createLogger } from '../logger.js';
 import { enrichBillSummaries, fetchRecentBills } from './congress-bills.js';
 import { fetchRecentExecutiveActions } from './federal-register.js';
+import { UpstreamBlockedError } from './http.js';
 import { ingestHousePtr } from './house-ptr.js';
 import { ingestOge278t } from './oge-278t.js';
 import { ingestSenatePtr } from './senate-ptr.js';
@@ -148,8 +149,9 @@ async function refreshPoliticsInner(
     });
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    log.warn(`Senate PTR refresh failed: ${error}`);
-    results.push({ source: 'senate-ptr', ok: false, added: 0, error });
+    const blocked = err instanceof UpstreamBlockedError;
+    log.warn(`Senate PTR ${blocked ? 'source blocked upstream' : 'refresh failed'}: ${error}`);
+    results.push({ source: 'senate-ptr', ok: false, added: 0, error, ...(blocked && { blocked }) });
   }
 
   const generatedAt = new Date().toISOString();
@@ -164,7 +166,11 @@ async function refreshPoliticsInner(
     log.warn(`backtest recompute failed: ${err instanceof Error ? err.message : err}`);
   }
 
-  const errors = results.filter((r) => !r.ok && r.error).map((r) => `${r.source}: ${r.error}`);
+  const errors = results
+    .filter((r) => !r.ok && r.error && !r.blocked)
+    .map((r) => `${r.source}: ${r.error}`);
+  const blockedResults = results.filter((r) => r.blocked);
+  const blocked = blockedResults.map((r) => `${r.source}: ${r.error}`);
   const counts = {
     bills: cache.bills.length,
     executiveActions: cache.executiveActions.length,
@@ -174,8 +180,9 @@ async function refreshPoliticsInner(
   log.info(
     `Refresh complete: bills=${counts.bills} exec=${counts.executiveActions} ` +
       `trades=${counts.trades} filings=${counts.filings}` +
-      (errors.length ? ` (errors: ${errors.join('; ')})` : '')
+      (errors.length ? ` (errors: ${errors.join('; ')})` : '') +
+      (blockedResults.length ? ` (blocked: ${blockedResults.map((r) => r.source).join(', ')})` : '')
   );
 
-  return { generatedAt, results, errors, counts };
+  return { generatedAt, results, errors, blocked, counts };
 }

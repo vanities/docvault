@@ -223,7 +223,7 @@ export async function handlePoliticsRoutes(
 
   if (pathname === '/api/politics/refresh' && req.method === 'POST') {
     const result = await refreshPolitics();
-    return jsonResponse(result, result.errors.length > 0 ? 207 : 200);
+    return jsonResponse(result, result.errors.length + result.blocked.length > 0 ? 207 : 200);
   }
 
   if (pathname === '/api/politics/backfill' && req.method === 'POST') {
