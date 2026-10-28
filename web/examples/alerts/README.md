@@ -74,11 +74,15 @@ POST /api/alerts/report
 
 ## When it emails
 
-| Email    | Sent when                                                                   |
-| -------- | --------------------------------------------------------------------------- |
-| Tripped  | a check goes from OK to tripped, or a tripped check reports a new `event`   |
-| Reminder | a check without an `event` is still tripped 6 hours after the last email    |
-| Blind    | 3 failed runs in a row, or no report for 3 of the job's scheduled intervals |
+| Email    | Sent when                                                                                 |
+| -------- | ----------------------------------------------------------------------------------------- |
+| Tripped  | a check goes from OK to tripped, turns critical, or a tripped check reports a new `event` |
+| Reminder | a check without an `event` is still tripped 6 hours after the last email                  |
+| Blind    | 3 failed runs in a row, or no report for 3 of the job's scheduled intervals               |
+
+A check without an `event` that clears and trips again within 6 hours of its last email counts
+as still tripped: a value hovering at its line emails once, not on every crossing, and its next
+email is the reminder. Turning critical always emails right away.
 
 Recoveries never email; they show on the page and ride along in the next bad-news email.
 Alerts go only to the first address in Settings → Email, with no CC.

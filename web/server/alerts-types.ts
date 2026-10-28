@@ -23,7 +23,10 @@ export interface AlertCheckInput {
 export interface AlertCheck extends AlertCheckInput {
   /** When the check last went from OK to tripped; null while OK. */
   since: string | null;
-  /** Last successful email that covered this check while tripped; reminders count from here. */
+  /**
+   * Last successful email that covered this check while tripped; reminders count from here. Kept
+   * after the check clears, so tripping again within 6 hours of it doesn't email twice.
+   */
   lastAlertAt: string | null;
 }
 

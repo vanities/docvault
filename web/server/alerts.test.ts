@@ -109,6 +109,58 @@ describe('reportAlerts email policy', () => {
     expect(sendEmail).toHaveBeenCalledTimes(3);
   });
 
+  test('a check that clears and trips again within 6 hours of its email stays quiet', async () => {
+    const tripped = [check({ severity: 'warning', active: true, value: '4.9%' })];
+    const ok = [check({ severity: 'warning', value: '5.1%' })];
+    expect((await reportAlerts(report(tripped), { now: at(0) })).emailed).toBe('trip');
+    for (const [minutes, checks] of [
+      [15, ok],
+      [30, tripped],
+      [45, ok],
+      [60, tripped],
+    ] as const) {
+      const outcome = await reportAlerts(report([...checks]), { now: at(minutes) });
+      expect(outcome.emailed, `report at +${minutes} min`).toBeNull();
+    }
+    const { sources } = await listAlerts();
+    expect(sources[0].checks[0]).toMatchObject({
+      since: at(60).toISOString(),
+      lastAlertAt: at(0).toISOString(),
+    });
+    expect((await reportAlerts(report(tripped), { now: at(360) })).emailed).toBe('reminder');
+    await reportAlerts(report(ok), { now: at(375) });
+    expect((await reportAlerts(report(tripped), { now: at(745) })).emailed).toBe('trip');
+    expect(sendEmail).toHaveBeenCalledTimes(3);
+  });
+
+  test('turning critical emails right away, mid-trip or right after a clear', async () => {
+    const warn = check({ severity: 'warning', active: true, value: '4.0%' });
+    const crit = { ...warn, severity: 'critical' as const, value: '1.0%' };
+    const ok = { ...warn, active: false, value: '6.0%' };
+    expect((await reportAlerts(report([warn]), { now: at(0) })).emailed).toBe('trip');
+    expect((await reportAlerts(report([crit]), { now: at(15) })).emailed).toBe('trip');
+    expect(lastEmail().subject).toBe('ACT NOW: Free cash');
+    await reportAlerts(report([ok]), { now: at(30) });
+    expect((await reportAlerts(report([warn]), { now: at(45) })).emailed).toBeNull();
+    await reportAlerts(report([ok]), { now: at(60) });
+    expect((await reportAlerts(report([crit]), { now: at(75) })).emailed).toBe('trip');
+    expect(sendEmail).toHaveBeenCalledTimes(3);
+  });
+
+  test('an event check that clears and trips on a new event emails, even within 6 hours', async () => {
+    const first = check({
+      severity: 'warning',
+      active: true,
+      value: 'left: ABC -10',
+      event: at(0).toISOString(),
+    });
+    await reportAlerts(report([first]), { now: at(0) });
+    await reportAlerts(report([check({ severity: 'warning' })]), { now: at(15) });
+    const second = { ...first, value: 'left: XYZ -20', event: at(30).toISOString() };
+    expect((await reportAlerts(report([second]), { now: at(30) })).emailed).toBe('trip');
+    expect(sendEmail).toHaveBeenCalledTimes(2);
+  });
+
   test('an event kept tripped for a day emails once, with no reminders', async () => {
     const seen = check({
       severity: 'warning',

@@ -2,11 +2,14 @@
 // checks; this module keeps each check's trip history, decides when that is
 // worth an email, and logs every notification.
 //
-// Email is bad news only: a check trips, a tripped check is still tripped 6+
-// hours after the last email, or a source goes blind (3 failed reports in a row,
-// or no report for 3 of its job's intervals). Recoveries never email; they show
-// up as "Cleared" inside the next bad-news email and on the Alerts page. The
-// owner can turn a source's emails off without stopping its checks.
+// Email is bad news only: a check trips or turns critical, a tripped check is
+// still tripped 6+ hours after the last email, or a source goes blind (3 failed
+// reports in a row, or no report for 3 of its job's intervals). A check that
+// clears and trips again within 6 hours of its last email counts as still
+// tripped, so a value hovering at its line emails once, not on every crossing.
+// Recoveries never email; they show up as "Cleared" inside the next bad-news
+// email and on the Alerts page. The owner can turn a source's emails off
+// without stopping its checks.
 //
 // A check that names an `event` reports something that happened, not a state
 // that persists, so it emails once per event and never reminds: a job may keep
@@ -187,8 +190,20 @@ export function mergeChecks(
     // A tripped check that only now starts naming one (its job was just updated) keeps its trip,
     // so the update itself doesn't email about something already sent.
     const sameEvent = old?.event === input.event || old?.event === undefined;
-    const continuing = input.active && old?.active === true && sameEvent;
-    if (continuing) continued.add(input.id);
+    // Turning critical is news even in the middle of a trip.
+    const escalated = input.severity === 'critical' && !!old && old.severity !== 'critical';
+    const continuing = input.active && old?.active === true && sameEvent && !escalated;
+    // A value hovering at its line would email on every crossing, so a check that dips back to
+    // OK and trips again within REMINDER_MS of its last email is still the same trip. Event
+    // checks keep their own rule: each new event is news.
+    const resumed =
+      input.active &&
+      old?.active === false &&
+      input.event === undefined &&
+      !escalated &&
+      !!old.lastAlertAt &&
+      now.getTime() - Date.parse(old.lastAlertAt) < REMINDER_MS;
+    if (continuing || resumed) continued.add(input.id);
     return {
       id: input.id,
       label: input.label,
@@ -199,7 +214,7 @@ export function mergeChecks(
       threshold: input.threshold,
       ...(input.event !== undefined ? { event: input.event } : {}),
       since: input.active ? (continuing ? (old.since ?? nowIso) : nowIso) : null,
-      lastAlertAt: continuing ? (old.lastAlertAt ?? null) : null,
+      lastAlertAt: input.active && !continuing && !resumed ? null : (old?.lastAlertAt ?? null),
     };
   });
   const nowById = new Map(checks.map((c) => [c.id, c]));
@@ -317,7 +332,7 @@ export function alertSubject(active: AlertCheck[]): string {
 }
 
 const FOOTER =
-  'DocVault Alerts emails only when a check trips, then every 6 hours while it stays tripped. One-time events, like a withdrawal, email once. Recoveries do not email.';
+  'DocVault Alerts emails only when a check trips or turns critical, then every 6 hours while it stays tripped; tripping again within those 6 hours does not email twice. One-time events, like a withdrawal, email once. Recoveries do not email.';
 
 function renderMessage(
   subject: string,
