@@ -164,6 +164,14 @@ Missing any of these causes the sidebar click to silently render the wrong view.
 
 **Bank totals go through `rollUpBankAccounts`** (`web/server/bank-rollup.ts`). SimpleFIN returns every account at a linked institution with no account type, including brokerage, retirement, and crypto accounts that the broker and crypto syncs may already value. Never sum SimpleFIN balances directly: the rollup sorts each account into cash, debt, brokerage, or crypto, and leaves out copies of accounts another sync already counts. The financial snapshot, the portfolio history recorder, and `/api/simplefin/balances` (which the Banks and Portfolio pages read) all use it. Value a broker account by the cache's `totalValue`, never a holdings sum: fixed-balance (`overrideValue`) accounts have no holdings. Monthly debt payments likewise come only from `buildDebtPayments` (`web/server/debt-payments.ts`): property mortgages, hand-added debts, and bank-synced loans and cards (a card with no typed minimum gets an estimated one, marked `estimated`). The snapshot's debt service, its DTI, and the Debts page all read that one list.
 
+**Assignments run with nobody watching** (`web/server/assignments/`). An assignment is a brief plus a timer: the scheduler wakes it, it runs one Claude turn through `runClaudeTurn` (`web/server/routes/chat.ts`) with the `unattended` tool policy, and it ends by calling `finish_check_in`, which the server applies within `LIMITS` (`web/server/assignments/types.ts`). Three rules keep that safe:
+
+1. The server is the only writer of `.docvault-assignments.json`, `assignments/<id>.json` and `assignments/<id>.runs.jsonl`. Never let the client save them the way it saves chat threads.
+2. Unattended turns can't wait for a confirmation. A tool description or prompt line that asks the user to confirm gets rewritten for those turns, and `chat.unattended.test.ts` fails if a tool description still says "confirm" there.
+3. Tool calls go into the run log as they happen; that is how a run interrupted by a restart tells the next one which writes it already made.
+
+Assignments run on the Claude backend only, because Codex has no DocVault write tools.
+
 **Package installs:** This project uses both pnpm and bun. After adding a dependency with `pnpm add <pkg>`, always run `bun install` to sync `bun.lock`, then commit both `package.json` and `bun.lock`. The Docker build uses `bun install --frozen-lockfile` so an out-of-sync `bun.lock` breaks CI. `pnpm-lock.yaml` is gitignored.
 
 ## Architecture
@@ -218,6 +226,14 @@ Timesheet (all under `/api/timesheet`):
 - `GET|PUT /weekly-report/config` — schedule, scope, category rules. `lastSentWeek`/`lastSentAt` are server-owned: the PUT re-applies the stored values over whatever the client sends, so a stale form can't reopen an already-sent period. Saving re-arms the scheduler via `armWeeklyReportTimer()`.
 - `GET /weekly-report/preview?end=YYYY-MM-DD` — dry run: rows, category totals, CSV, and HTML for any window, without sending.
 - `POST /weekly-report/send` — send now; writes the same watermark the scheduler checks.
+
+Assignments (all under `/api/assignments`):
+
+- `GET /` lists them with the global `pausedAll` state; `GET /summary` returns the unread total for the sidebar badge.
+- `POST /` creates one from `{ title, brief, cadenceMinutes?, startNow? }`. `startNow` (default true) queues the first check-in in the same write; without it the first check waits one interval.
+- `GET|PATCH|DELETE /:id`. PATCH takes `title`, `brief`, `status` (`active`, `paused`, `closed`), `cadenceMinutes` (60 to 10080) and `toolAllowlist` (`null` means every tool). DELETE is a 409 while a run is going.
+- `POST /:id/run` and `POST /:id/messages` return 202; the run happens in the background and the page polls.
+- `POST /:id/read` clears the unread count; `POST /pause-all` takes `{ paused }`.
 
 ## Docker
 
