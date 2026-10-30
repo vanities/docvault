@@ -60,6 +60,11 @@ describe('buildDebtPayments', () => {
     expect(d.bySource).toEqual({ property: 1200, manual: 900, bank: 375 });
   });
 
+  test('only bank-synced credit cards are marked as cards', () => {
+    const d = buildDebtPayments(inputs());
+    expect(d.items.filter((i) => i.card).map((i) => i.name)).toEqual(['Acme Rewards Visa (2222)']);
+  });
+
   test('paid-off debts are left out even when an old payment is still saved', () => {
     const names = buildDebtPayments(inputs()).items.map((i) => i.name);
     expect(names).not.toContain('Paid-off Cabin');

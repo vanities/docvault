@@ -63,6 +63,9 @@ web/scripts/*
 !web/server/analytics/tax-calc-nonnegative.test.ts
 # Exception: mileage route priority tests use fabricated mock stores only
 !web/server/routes/mileage-settings.test.ts
+# Exception: payoff-plan projection + route tests use fabricated debts and a mocked store only
+!web/server/debt-plan.test.ts
+!web/server/routes/debt-plan.test.ts
 # Exception: release countdown tests contain public agency dates and synthetic clock instants only
 !web/src/components/Quant/macro-calendar.test.ts
 # Exception: OGE/RPC recovery and bank warning tests use fabricated responses and addresses
