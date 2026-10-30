@@ -215,7 +215,7 @@ All endpoints prefixed `/api/`. Entity-aware. Key routes:
 - `POST /parse-all/:entity/:year` — batch parse
 - `GET /tax-summary/:year` — consolidated tax data
 - `POST /backup` / `POST /restore` — encrypted backup/restore
-- `GET|PUT /debt-plan` — Payoff plan inputs. PUT is a partial update validated by `applyDebtPlanPatch` (`web/server/debt-plan.ts`); `null` on `passiveIncome`/`investments` means "use the Income page / snapshot total". The projection itself (`projectDebtPlan`) is pure and runs in the browser over the snapshot's `debtPayments` list. `cardsPaidInFull` drops bank-synced cards (`DebtPaymentItem.card`) from the plan only; the Debts list and DTI still count their minimums.
+- `GET|PUT /debt-plan` — Payoff plan inputs. PUT is a partial update validated by `applyDebtPlanPatch` (`web/server/debt-plan.ts`); `null` on `passiveIncome`/`investments` means "use the Income page / snapshot total". The projection itself (`projectDebtPlan`) is pure and runs in the browser over the snapshot's `debtPayments` list. `cardsPaidInFull` drops bank-synced cards (`DebtPaymentItem.card`) from the plan only; the Debts list and DTI still count their minimums. `minimumOnly` and a planned loan's `paysOff` name debts by `debtId` (`source:name`), so renaming a debt drops those links. A planned loan opens in its start month, takes over the balances it pays off, and swaps their payments for its own in the monthly budget; `debtFree` and `free` are judged on the finished timeline, since a later loan can undo an earlier "free" month.
 
 Timesheet (all under `/api/timesheet`):
 

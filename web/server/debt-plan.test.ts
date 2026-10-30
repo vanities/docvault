@@ -4,9 +4,11 @@ import {
   applyDebtPlanPatch,
   DEFAULT_DEBT_PLAN_SETTINGS,
   planDebts,
+  planLoans,
   projectDebtPlan,
   yearlyPoints,
   type DebtPlanInput,
+  type KeyedLoan,
   type PlanDebt,
 } from './debt-plan.js';
 import type { DebtPaymentItem } from './debt-payments.js';
@@ -32,10 +34,24 @@ function plan(debts: PlanDebt[], overrides: Partial<DebtPlanInput> = {}) {
 
 const loan = (key: string, balance: number, rate: number, monthlyPayment: number): PlanDebt => ({
   key,
+  id: `manual:Acme ${key}`,
   name: `Acme ${key}`,
   balance,
   rate,
   monthlyPayment,
+});
+
+const newLoan = (overrides: Partial<KeyedLoan>): KeyedLoan => ({
+  key: 'new0',
+  id: 'loan-1',
+  name: 'Example build loan',
+  start: '2026-04',
+  amount: 20_000,
+  rate: 0,
+  termMonths: 30,
+  paysOff: [],
+  minimumOnly: false,
+  ...overrides,
 });
 
 describe('projectDebtPlan: debt payoff', () => {
@@ -148,6 +164,71 @@ describe('projectDebtPlan: financial freedom', () => {
   });
 });
 
+describe('projectDebtPlan: minimum payments only', () => {
+  test('freed-up money skips a minimum-only debt and is invested instead', () => {
+    // Budget 600: B gets its 100 plus the 400 extra and clears in month 2. From
+    // month 3 the 500 that A won't take is invested; A runs its own 12 payments.
+    const a = { ...loan('a', 1200, 0, 100), minimumOnly: true };
+    const r = plan([a, loan('b', 1000, 0, 100)], { extraMonthly: 400 });
+    expect(r.paidOff.b).toBe('2026-03');
+    expect(r.paidOff.a).toBe('2027-01');
+    expect(r.paidOff.a).toBe(r.paidOffAsScheduled.a);
+    expect(r.months[3].invested).toBeCloseTo(500, 6);
+  });
+});
+
+describe('projectDebtPlan: planned loans and later income', () => {
+  test('a planned loan takes over the debts it pays off and replaces their payment', () => {
+    // Land is 8,000 after two 1,000 payments. In April it joins the 20,000 build
+    // loan: 28,000 over 30 months is 933.33/mo, which replaces land's 1,000.
+    const land = loan('land', 10_000, 0, 1000);
+    const r = plan([land], { plannedLoans: [newLoan({ paysOff: [land.id] })] });
+    expect(r.rolledInto.land).toEqual({ into: 'new0', month: '2026-04' });
+    expect(r.paidOff.land).toBe('2026-04');
+    expect(r.loanStarts.new0.balance).toBeCloseTo(28_000, 6);
+    expect(r.loanStarts.new0.payment).toBeCloseTo(933.33, 2);
+    expect(r.months[3].payments).toEqual({ new0: expect.closeTo(933.33, 2) });
+    expect(r.paidOff.new0).toBe('2028-09'); // 30 payments, Apr 2026 through Sep 2028
+    expect(r.debtFree).toBe('2028-09');
+  });
+
+  test('debt-free waits for a planned loan, even when nothing is owed today', () => {
+    const r = plan([], {
+      plannedLoans: [newLoan({ start: '2026-07', amount: 3000, termMonths: 3 })],
+    });
+    expect(r.debtFree).toBe('2026-09');
+  });
+
+  test('income that starts later joins passive income from its start month', () => {
+    const r = plan([], {
+      incomeChanges: [{ id: 'rent', name: 'Example rent', start: '2026-06', monthly: 1500 }],
+      livingExpenses: 1,
+    });
+    expect(r.months[4].passive).toBe(0); // May
+    expect(r.months[5].passive).toBe(1500); // June
+  });
+
+  test('freedom is the last stretch covered for good, not a month a planned loan undoes', () => {
+    // 2,500 of passive income covers 1,000 of living today, but the July loan
+    // adds 2,000 a month through Dec 2028. Only from Jan 2029 is every month covered.
+    const r = plan([], {
+      livingExpenses: 1000,
+      passiveIncome: 2500,
+      plannedLoans: [newLoan({ start: '2026-07', amount: 60_000, termMonths: 30 })],
+    });
+    expect(r.months[0].passive).toBeGreaterThanOrEqual(r.months[0].needs);
+    expect(r.free).toBe('2029-01');
+    expect(r.debtFree).toBe('2028-12');
+  });
+
+  test('planLoans gives each planned loan its own chart key', () => {
+    expect(planLoans([newLoan({}), newLoan({ id: 'loan-2' })]).map((l) => l.key)).toEqual([
+      'new0',
+      'new1',
+    ]);
+  });
+});
+
 describe('yearlyPoints', () => {
   test('keeps now and each December, skipping one under six months away', () => {
     // Month 0 is October; the December two months out is too close to "now".
@@ -190,15 +271,28 @@ describe('planDebts', () => {
   ];
 
   test('keeps every debt when cards carry a balance, an unknown rate counting as 0', () => {
-    expect(planDebts(items, false).map((d) => [d.key, d.name, d.rate])).toEqual([
-      ['debt0', 'Example House', 0.04],
-      ['debt1', 'Acme Visa', 0],
-      ['debt2', 'Acme Loan', 0],
+    const debts = planDebts(items, { cardsPaidInFull: false, minimumOnly: [] });
+    expect(debts.map((d) => [d.key, d.id, d.rate])).toEqual([
+      ['debt0', 'property:Example House', 0.04],
+      ['debt1', 'bank:Acme Visa', 0],
+      ['debt2', 'manual:Acme Loan', 0],
     ]);
   });
 
   test('cards paid in full drop out without shifting the other debts’ keys', () => {
-    expect(planDebts(items, true).map((d) => d.key)).toEqual(['debt0', 'debt2']);
+    const debts = planDebts(items, { cardsPaidInFull: true, minimumOnly: [] });
+    expect(debts.map((d) => d.key)).toEqual(['debt0', 'debt2']);
+  });
+
+  test('marks the debts saved as minimum payments only', () => {
+    const debts = planDebts(items, {
+      cardsPaidInFull: true,
+      minimumOnly: ['property:Example House'],
+    });
+    expect(debts.map((d) => [d.name, !!d.minimumOnly])).toEqual([
+      ['Example House', true],
+      ['Acme Loan', false],
+    ]);
   });
 });
 
@@ -263,5 +357,48 @@ describe('applyDebtPlanPatch', () => {
   test('a non-object body is invalid', () => {
     expect(applyDebtPlanPatch(DEFAULT_DEBT_PLAN_SETTINGS, [1, 2]).invalid).toEqual(['body']);
     expect(applyDebtPlanPatch(DEFAULT_DEBT_PLAN_SETTINGS, null).invalid).toEqual(['body']);
+  });
+
+  const validLoan = {
+    id: 'loan-1',
+    name: 'Example build loan',
+    start: '2027-10',
+    amount: 500_000,
+    rate: 0.065,
+    termMonths: 360,
+    paysOff: ['property:Example Land'],
+    minimumOnly: false,
+  };
+
+  test('saves planned loans, later income, and minimum-only debts with only their known fields', () => {
+    const { settings, invalid } = applyDebtPlanPatch(DEFAULT_DEBT_PLAN_SETTINGS, {
+      plannedLoans: [{ ...validLoan, key: 'new0' }],
+      incomeChanges: [{ id: 'rent', name: 'Example rent', start: '2027-10', monthly: 1800 }],
+      minimumOnly: ['property:Example House'],
+    });
+    expect(invalid).toEqual([]);
+    expect(settings.plannedLoans).toEqual([validLoan]);
+    expect(settings.plannedLoans[0]).not.toHaveProperty('key');
+    expect(settings.incomeChanges).toHaveLength(1);
+    expect(settings.minimumOnly).toEqual(['property:Example House']);
+  });
+
+  test('rejects malformed planned loans, later income, and minimum-only lists', () => {
+    const loans = (overrides: object) =>
+      applyDebtPlanPatch(DEFAULT_DEBT_PLAN_SETTINGS, {
+        plannedLoans: [{ ...validLoan, ...overrides }],
+      }).invalid;
+    expect(loans({ start: '2027-13' })).toEqual(['plannedLoans']);
+    expect(loans({ termMonths: 0 })).toEqual(['plannedLoans']);
+    expect(loans({ rate: 0.5 })).toEqual(['plannedLoans']);
+    expect(loans({ minimumOnly: 'no' })).toEqual(['plannedLoans']);
+    expect(
+      applyDebtPlanPatch(DEFAULT_DEBT_PLAN_SETTINGS, {
+        incomeChanges: [{ id: 'rent', name: '', start: 'soon', monthly: 1 }],
+      }).invalid
+    ).toEqual(['incomeChanges']);
+    expect(applyDebtPlanPatch(DEFAULT_DEBT_PLAN_SETTINGS, { minimumOnly: [42] }).invalid).toEqual([
+      'minimumOnly',
+    ]);
   });
 });
