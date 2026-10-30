@@ -1433,7 +1433,7 @@ async function toolReadBrain(): Promise<unknown> {
   };
 }
 
-// A source's detail (e.g. the lending watch's vault data) can run to hundreds of KB; this keeps
+// A source's detail (whatever data its job attaches) can run to hundreds of KB; this keeps
 // one call from flooding the context. Series history is never returned.
 const MAX_ALERT_DETAIL_CHARS = 20_000;
 
@@ -1646,7 +1646,7 @@ export function docVaultTools(ctx: ToolContext, opts: DocVaultToolOptions = {}):
     ),
     tool(
       'get_alerts',
-      "DocVault Alerts: every monitored source (for example the lending watch on the user's crypto lending vaults) with its checks (label, severity, whether it is tripped, current value, threshold, tripped since) and its plain-English advice. Pass `source` (an id or label from the list) to also get that source's detail data. READ-ONLY, free to chain.",
+      "DocVault Alerts: every monitored source (for example a job watching a rate, a balance or a website) with its checks (label, severity, whether it is tripped, current value, threshold, tripped since) and its plain-English advice. Pass `source` (an id or label from the list) to also get that source's detail data. READ-ONLY, free to chain.",
       {
         source: z
           .string()
@@ -2207,7 +2207,7 @@ export function buildSystemPrompt(
     `start_deep_research launches an async cited report and returns its id; get_research_run checks its status later. A running report is not finished. save_research saves supplied text and source metadata into the Research library; preserve citations and verify sources before saving. ${unattended ? `Use them only when the brief calls for it, at most ${MAX_DEEP_RESEARCH_PER_RUN} Deep Research run per check-in.` : 'These two writes require user confirmation, including the question/search budget or title/domain/content to be saved.'}`,
     "get_financial_snapshot is the user's FULL money picture for a year (net worth, crypto, brokerage, real estate, liabilities, retirement, bank). Use it for balance-sheet / net-worth / holdings questions — get_tax_summary only covers income and expenses by category, so reach for the snapshot when the question is about wealth or balances rather than taxable income.",
     'get_quant_signals returns the consolidated daily market/macro snapshot (BTC risk & drawdown, Fear & Greed, dominance, yield-curve regime, business-cycle/recession signals, inflation). Use it for "what do the signals say" / overall market-condition questions; use get_prediction_markets for odds on a specific named event.',
-    'get_alerts returns DocVault Alerts — the monitors the user set up (for example the lending watch on their crypto lending vaults) with each check\'s current value, threshold, and whether it is tripped, plus the plain-English advice. Use it for "is anything wrong" or "what are my alerts saying" questions. READ-ONLY.',
+    'get_alerts returns DocVault Alerts — the monitors the user set up (for example a job watching a rate, a balance or a website) with each check\'s current value, threshold, and whether it is tripped, plus the plain-English advice. Use it for "is anything wrong" or "what are my alerts saying" questions. READ-ONLY.',
     'get_daily_news lists/returns the synthesized Newsstand editions (markets+politics+finance+tax+health+research woven into one narrative with Action Items). No id lists recent editions; an id returns that edition\'s full body. Use it for "what\'s the latest" or to ground analysis in the already-synthesized macro picture.',
     'get_congress_trades returns recent congressional stock/option disclosures (politician, chamber, party, buy/sell, ticker, $ range, dates) — PUBLIC STOCK Act filings, NOT the user\'s holdings. Use it for "what are politicians buying" or insider/consensus signals; optional politician/ticker/chamber/category filters.',
     'The user may have configured External Sources — cloned git repos of their own markdown (for example a personal knowledge or creative vault). For questions about their notes, projects, writing, or anything outside the tax, financial, and health data: call list_external_sources, then either search_external_sources (substring over BOTH file paths and content) or list_external_source_files (browse the tree or a folder when you have no obvious search term), then read_external_file for the full text. These are READ-ONLY and free to chain. Cite the source name and file path when you quote them.',
