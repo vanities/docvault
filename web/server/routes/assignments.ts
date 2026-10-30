@@ -133,11 +133,22 @@ export async function handleAssignmentsRoutes(
         },
         nowIso()
       );
+      const startNow = input.startNow !== false;
+      // Starting now is marked queued in the same write, so a scheduler tick in between can't
+      // run it too; otherwise the first check waits one interval.
+      if (startNow) created.pendingRun = 'manual';
+      else {
+        created.nextCheckAt = new Date(
+          deps.now().getTime() + created.cadenceMinutes * 60_000
+        ).toISOString();
+      }
       await updateIndex((index) => {
         index.assignments[id] = created;
       }, dataDir);
-      log.info(`[route] created assignment=${id} cadence=${created.cadenceMinutes}m`);
-      if (input.startNow !== false) startRun(id, 'manual', deps);
+      log.info(
+        `[route] created assignment=${id} cadence=${created.cadenceMinutes}m startNow=${startNow}`
+      );
+      if (startNow) startRun(id, 'manual', deps);
       return jsonResponse({ assignment: created }, 201);
     }
 
