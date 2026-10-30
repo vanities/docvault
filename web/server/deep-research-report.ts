@@ -5,76 +5,8 @@
 // shareable file.
 
 import { marked } from 'marked';
+import { escapeHtml, decodeHtmlEntities, safeUrlAttr, stripUnsafeHtml } from './safe-html.js';
 import type { ResearchRun } from './deep-research-store.js';
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function decodeHtmlEntities(text: string): string {
-  const named: Record<string, string> = {
-    amp: '&',
-    apos: "'",
-    gt: '>',
-    lt: '<',
-    quot: '"',
-    nbsp: ' ',
-  };
-  return text.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (match, entity: string) => {
-    const lower = entity.toLowerCase();
-    if (lower.startsWith('#x')) {
-      const code = Number.parseInt(lower.slice(2), 16);
-      return Number.isInteger(code) && code >= 0 && code <= 0x10ffff
-        ? String.fromCodePoint(code)
-        : match;
-    }
-    if (lower.startsWith('#')) {
-      const code = Number.parseInt(lower.slice(1), 10);
-      return Number.isInteger(code) && code >= 0 && code <= 0x10ffff
-        ? String.fromCodePoint(code)
-        : match;
-    }
-    return named[lower] ?? match;
-  });
-}
-
-function safeUrlAttr(url: string | undefined): string | null {
-  if (!url) return null;
-  const trimmed = url.trim();
-  if (!trimmed) return null;
-  const decoded = decodeHtmlEntities(trimmed).replace(/[\u0000-\u001f\u007f\s]+/g, '');
-  if (/^(javascript|data|vbscript):/i.test(decoded)) return null;
-  return escapeHtml(trimmed);
-}
-
-function stripUnsafeHtml(html: string): string {
-  return html
-    .replace(/<(script|style|iframe|object|embed|link|meta|svg|math|form)\b[\s\S]*?<\/\1\s*>/gi, '')
-    .replace(
-      /<(script|style|iframe|object|embed|link|meta|svg|math|form|foreignObject)\b[^>]*\/?\s*>/gi,
-      ''
-    )
-    .replace(/<\/\s*(svg|math|form|foreignObject)\s*>/gi, '')
-    .replace(/\s+on[a-z][\w:-]*\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/\s+[a-z][\w-]*:[\w:-]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(
-      /\s+(href|src|action|formaction|poster|srcset)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi,
-      (match, attr: string, raw: string) => {
-        const value = raw
-          .replace(/^['"]|['"]$/g, '')
-          .trim()
-          .toLowerCase();
-        const decoded = decodeHtmlEntities(value).replace(/[\u0000-\u001f\u007f\s]+/g, '');
-        return /^(javascript|data|vbscript):/.test(decoded)
-          ? ''
-          : `${match.startsWith(' ') ? ' ' : ''}${attr}=${raw}`;
-      }
-    );
-}
 
 function slug(s: string): string {
   return (
