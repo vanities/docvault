@@ -89,7 +89,7 @@ describe('reportAlerts email policy', () => {
       to: 'owner@example.com',
       cc: '',
       purpose: 'news',
-      subject: 'ACT NOW: Free cash',
+      subject: 'ACT NOW: Free cash (Demo Vault)',
       ref: 'alerts:demo-source:trip',
     });
     expect(lastEmail().text).toContain('Just tripped');
@@ -139,7 +139,7 @@ describe('reportAlerts email policy', () => {
     const ok = { ...warn, active: false, value: '6.0%' };
     expect((await reportAlerts(report([warn]), { now: at(0) })).emailed).toBe('trip');
     expect((await reportAlerts(report([crit]), { now: at(15) })).emailed).toBe('trip');
-    expect(lastEmail().subject).toBe('ACT NOW: Free cash');
+    expect(lastEmail().subject).toBe('ACT NOW: Free cash (Demo Vault)');
     await reportAlerts(report([ok]), { now: at(30) });
     expect((await reportAlerts(report([warn]), { now: at(45) })).emailed).toBeNull();
     await reportAlerts(report([ok]), { now: at(60) });
@@ -231,7 +231,7 @@ describe('reportAlerts email policy', () => {
     expect(lastEmail().text).toContain('Check A is back to 50.0%');
   });
 
-  test('warning subjects name the scope unless the label already does', async () => {
+  test('subjects name the scope unless the label already does', async () => {
     await reportAlerts(report([check({ severity: 'warning', active: true })]), { now: at(0) });
     expect(lastEmail().subject).toBe('Alert warning: Free cash (Demo Vault)');
     await reportAlerts(
@@ -244,6 +244,33 @@ describe('reportAlerts email policy', () => {
       { now: at(0) }
     );
     expect(lastEmail().subject).toBe('Alert warning: Demo Vault free cash');
+    await reportAlerts(
+      report([check({ id: 'y', active: true, label: 'Demo Vault free cash' })], {
+        sourceId: 'third-source',
+      }),
+      { now: at(0) }
+    );
+    expect(lastEmail().subject).toBe('ACT NOW: Demo Vault free cash');
+  });
+
+  test('a trip email names what just tripped, not a critical check already emailed', async () => {
+    const critA = check({ id: 'vault-a:free-cash', scope: 'Vault A', active: true, value: '2.0%' });
+    const warnB = check({
+      id: 'vault-b:free-cash',
+      scope: 'Vault B',
+      severity: 'warning',
+      active: true,
+      value: '40.0%',
+    });
+    await reportAlerts(report([critA]), { now: at(0) });
+    expect(lastEmail().subject).toBe('ACT NOW: Free cash (Vault A)');
+
+    expect((await reportAlerts(report([critA, warnB]), { now: at(15) })).emailed).toBe('trip');
+    expect(lastEmail().subject).toBe('Alert warning: Free cash (Vault B)');
+    expect(lastEmail().text).toContain('CRITICAL: Free cash (Vault A)');
+
+    expect((await reportAlerts(report([critA, warnB]), { now: at(375) })).emailed).toBe('reminder');
+    expect(lastEmail().subject).toBe('ACT NOW: Free cash (Vault A)');
   });
 
   test('a failed send is not stamped and is retried at most hourly', async () => {
