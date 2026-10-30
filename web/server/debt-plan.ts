@@ -12,6 +12,34 @@ import type { DebtPaymentItem } from './debt-payments.js';
 
 export type PayoffOrder = 'avalanche' | 'snowball';
 
+/** A loan you expect to take out, like a build loan that pays off the land loan. */
+export interface PlannedLoan {
+  /** Stable id, made when the loan is added. */
+  id: string;
+  name: string;
+  /** YYYY-MM of the first full payment; the loan doesn't exist before then. */
+  start: string;
+  /** New money borrowed, not counting the debts it pays off. */
+  amount: number;
+  /** Annual rate as a decimal. */
+  rate: number;
+  termMonths: number;
+  /** Listed debts (by debtId) it pays off when it starts; their balances join it. */
+  paysOff: string[];
+  /** Only ever gets its scheduled payment, never the plan's extra. */
+  minimumOnly: boolean;
+}
+
+/** Passive income that starts later, like rent once you move out. */
+export interface IncomeChange {
+  id: string;
+  name: string;
+  /** YYYY-MM it starts. */
+  start: string;
+  /** Added to passive income every month from `start` on. */
+  monthly: number;
+}
+
 /** The Payoff plan's saved inputs (`.docvault-debt-plan.json`). */
 export interface DebtPlanSettings {
   /** Paid toward debt each month on top of the scheduled payments. */
@@ -20,6 +48,10 @@ export interface DebtPlanSettings {
   order: PayoffOrder;
   /** Credit cards are cleared every statement, so they're spending, not debt. */
   cardsPaidInFull: boolean;
+  /** Debts (by debtId) that only ever get their scheduled payment. */
+  minimumOnly: string[];
+  plannedLoans: PlannedLoan[];
+  incomeChanges: IncomeChange[];
   /** Monthly spending that isn't a debt payment. 0 means not entered yet. */
   livingExpenses: number;
   /** Put into investments each month today, outside debt payments. */
@@ -39,6 +71,9 @@ export const DEFAULT_DEBT_PLAN_SETTINGS: DebtPlanSettings = {
   extraMonthly: 0,
   order: 'avalanche',
   cardsPaidInFull: false,
+  minimumOnly: [],
+  plannedLoans: [],
+  incomeChanges: [],
   livingExpenses: 0,
   monthlySavings: 0,
   passiveIncome: null,
@@ -50,6 +85,35 @@ export const DEFAULT_DEBT_PLAN_SETTINGS: DebtPlanSettings = {
 const isMoney = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1e10;
 const isRate = (min: number, max: number) => (v: unknown) =>
   typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
+const isText = (max: number) => (v: unknown) => typeof v === 'string' && v.length <= max;
+const isId = (v: unknown) => isText(200)(v) && (v as string).length > 0;
+const isMonth = (v: unknown) => typeof v === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(v);
+const listOf = (max: number, item: (v: unknown) => boolean) => (v: unknown) =>
+  Array.isArray(v) && v.length <= max && v.every(item);
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  !!v && typeof v === 'object' && !Array.isArray(v);
+
+const isPlannedLoan = (v: unknown) =>
+  isRecord(v) &&
+  isId(v.id) &&
+  isText(100)(v.name) &&
+  isMonth(v.start) &&
+  isMoney(v.amount) &&
+  isRate(0, 0.3)(v.rate) &&
+  Number.isInteger(v.termMonths) &&
+  (v.termMonths as number) >= 1 &&
+  (v.termMonths as number) <= 600 &&
+  listOf(50, isId)(v.paysOff) &&
+  typeof v.minimumOnly === 'boolean';
+
+const isIncomeChange = (v: unknown) =>
+  isRecord(v) &&
+  isId(v.id) &&
+  isText(100)(v.name) &&
+  isMonth(v.start) &&
+  typeof v.monthly === 'number' &&
+  Number.isFinite(v.monthly) &&
+  Math.abs(v.monthly) <= 1e7;
 
 const FIELD_CHECKS: Record<
   Exclude<keyof DebtPlanSettings, 'updatedAt'>,
@@ -58,6 +122,9 @@ const FIELD_CHECKS: Record<
   extraMonthly: isMoney,
   order: (v) => v === 'avalanche' || v === 'snowball',
   cardsPaidInFull: (v) => typeof v === 'boolean',
+  minimumOnly: listOf(100, isId),
+  plannedLoans: listOf(10, isPlannedLoan),
+  incomeChanges: listOf(20, isIncomeChange),
   livingExpenses: isMoney,
   monthlySavings: isMoney,
   passiveIncome: (v) => v === null || isMoney(v),
@@ -65,6 +132,27 @@ const FIELD_CHECKS: Record<
   realReturn: isRate(-0.2, 0.2),
   // A 0% draw would make freedom impossible by definition.
   withdrawalRate: (v) => isRate(0, 0.2)(v) && (v as number) > 0,
+};
+
+// List fields are copied down to their known keys, so a stray property sent
+// by a client never ends up in the saved file.
+const CLEAN: Partial<Record<keyof DebtPlanSettings, (v: unknown) => unknown>> = {
+  minimumOnly: (v) => [...(v as string[])],
+  plannedLoans: (v) =>
+    (v as PlannedLoan[]).map(
+      ({ id, name, start, amount, rate, termMonths, paysOff, minimumOnly }) => ({
+        id,
+        name,
+        start,
+        amount,
+        rate,
+        termMonths,
+        paysOff: [...paysOff],
+        minimumOnly,
+      })
+    ),
+  incomeChanges: (v) =>
+    (v as IncomeChange[]).map(({ id, name, start, monthly }) => ({ id, name, start, monthly })),
 };
 
 /**
@@ -84,41 +172,69 @@ export function applyDebtPlanPatch(
   for (const [key, check] of Object.entries(FIELD_CHECKS)) {
     if (!(key in patch)) continue;
     const value = (patch as Record<string, unknown>)[key];
-    if (check(value)) Object.assign(settings, { [key]: value });
-    else invalid.push(key);
+    if (!check(value)) {
+      invalid.push(key);
+      continue;
+    }
+    const clean = CLEAN[key as keyof DebtPlanSettings];
+    Object.assign(settings, { [key]: clean ? clean(value) : value });
   }
   return { settings, invalid };
 }
 
 export interface PlanDebt {
-  /** Stable id, used as the chart series key. */
+  /** Chart series key. */
   key: string;
+  /** Stable id the plan's settings refer to (see debtId). */
+  id: string;
   name: string;
   balance: number;
   /** Annual rate as a decimal. An unknown rate counts as 0. */
   rate: number;
   monthlyPayment: number;
+  /** Only ever gets its scheduled payment; freed-up money skips it. */
+  minimumOnly?: boolean;
+}
+
+/** How settings name a listed debt: stable when the Debts list reorders, not when it's renamed. */
+export function debtId(d: Pick<DebtPaymentItem, 'source' | 'name'>): string {
+  return `${d.source}:${d.name}`;
 }
 
 /**
  * The Debts list as the plan sees it. Keys come from each item's place in the
  * full list, so leaving cards out doesn't shift another debt's key (or color).
  */
-export function planDebts(items: DebtPaymentItem[], cardsPaidInFull: boolean): PlanDebt[] {
+export function planDebts(
+  items: DebtPaymentItem[],
+  settings: Pick<DebtPlanSettings, 'cardsPaidInFull' | 'minimumOnly'>
+): PlanDebt[] {
+  const minimumOnly = new Set(settings.minimumOnly);
   return items
     .map((d, i) => ({ item: d, key: `debt${i}` }))
-    .filter(({ item }) => !(cardsPaidInFull && item.card))
+    .filter(({ item }) => !(settings.cardsPaidInFull && item.card))
     .map(({ item, key }) => ({
       key,
+      id: debtId(item),
       name: item.name,
       balance: item.balance,
       rate: item.rate ?? 0,
       monthlyPayment: item.monthlyPayment,
+      ...(minimumOnly.has(debtId(item)) ? { minimumOnly: true } : {}),
     }));
+}
+
+export type KeyedLoan = PlannedLoan & { key: string };
+
+/** Planned loans with their chart keys. */
+export function planLoans(loans: PlannedLoan[]): KeyedLoan[] {
+  return loans.map((l, i) => ({ ...l, key: `new${i}` }));
 }
 
 export interface DebtPlanInput {
   debts: PlanDebt[];
+  plannedLoans?: KeyedLoan[];
+  incomeChanges?: IncomeChange[];
   extraMonthly: number;
   order: PayoffOrder;
   livingExpenses: number;
@@ -153,18 +269,27 @@ export interface DebtPlanMonth {
 
 export interface DebtPlanResult {
   months: DebtPlanMonth[];
-  /** Month of the last payment under the plan; null if it isn't within the cap. */
+  /** Month of the last payment on everything, planned loans included; null past the cap. */
   debtFree: string | null;
   debtFreeAsScheduled: string | null;
+  /** Month each debt closes, by payoff or by a planned loan taking it over. */
   paidOff: Record<string, string | null>;
   paidOffAsScheduled: Record<string, string | null>;
+  /** Debts a planned loan took over: the loan's key and the month. */
+  rolledInto: Record<string, { into: string; month: string }>;
+  /** Each planned loan's opening balance and payment under the plan. */
+  loanStarts: Record<string, { month: string; balance: number; payment: number }>;
   interest: number;
   interestAsScheduled: number;
-  /** First month passive income covers needs; null without living expenses or within the cap. */
+  /**
+   * Start of the last stretch where passive income covers needs for good; a
+   * month that's covered only until a planned loan arrives doesn't count. Null
+   * without living expenses or within the cap.
+   */
   free: string | null;
   /** Debts whose scheduled payment doesn't cover their interest, so they never pay off on schedule. */
   growing: string[];
-  /** Paid toward debt every month under the plan until nothing is owed. */
+  /** Paid toward debt each month right now: scheduled payments plus the extra. */
   debtBudget: number;
 }
 
@@ -184,127 +309,214 @@ function scheduledPayment(due: number, payment: number): number {
   return due - payment < ROUNDING ? due : payment;
 }
 
+function amortizedPayment(balance: number, annualRate: number, months: number): number {
+  const r = annualRate / 12;
+  return r === 0 ? balance / months : (balance * r) / (1 - Math.pow(1 + r, -months));
+}
+
 function total(values: Iterable<number>): number {
   let sum = 0;
   for (const v of values) sum += v;
   return sum;
 }
 
-function payoffOrder(debts: PlanDebt[], order: PayoffOrder): string[] {
-  return [...debts]
-    .sort((a, b) =>
-      order === 'avalanche'
-        ? b.rate - a.rate || a.balance - b.balance
-        : a.balance - b.balance || b.rate - a.rate
-    )
-    .map((d) => d.key);
+interface Loan {
+  key: string;
+  rate: number;
+  payment: number;
+  minimumOnly: boolean;
+}
+
+/** One way of paying the debts: what's owed, the loans, and the interest so far. */
+interface Ledger {
+  owed: Map<string, number>;
+  loans: Map<string, Loan>;
+  paidOff: Record<string, string | null>;
+  interest: number;
+  /** Paid toward debt each month: scheduled payments, the extra, and freed-up payments. */
+  budget: number;
+}
+
+function newLedger(debts: PlanDebt[], extra: number): Ledger {
+  return {
+    owed: new Map(debts.map((d) => [d.key, d.balance])),
+    loans: new Map(
+      debts.map((d) => [
+        d.key,
+        { key: d.key, rate: d.rate, payment: d.monthlyPayment, minimumOnly: !!d.minimumOnly },
+      ])
+    ),
+    paidOff: Object.fromEntries(debts.map((d) => [d.key, null])),
+    interest: 0,
+    budget: total(debts.map((d) => d.monthlyPayment)) + extra,
+  };
+}
+
+/**
+ * Open a planned loan: the debts it pays off close and their balances join it,
+ * and its payment replaces theirs in the monthly budget.
+ */
+function openLoan(
+  ledger: Ledger,
+  loan: KeyedLoan,
+  keyById: Map<string, string>,
+  month: string,
+  onRolled?: (key: string) => void
+): { balance: number; payment: number } {
+  let balance = loan.amount;
+  let replaced = 0;
+  for (const id of loan.paysOff) {
+    const key = keyById.get(id);
+    const owed = key ? (ledger.owed.get(key) ?? 0) : 0;
+    if (!key || owed <= PAID) continue;
+    balance += owed;
+    replaced += ledger.loans.get(key)!.payment;
+    ledger.owed.set(key, 0);
+    ledger.paidOff[key] = month;
+    onRolled?.(key);
+  }
+  const payment = balance > PAID ? amortizedPayment(balance, loan.rate, loan.termMonths) : 0;
+  ledger.loans.set(loan.key, {
+    key: loan.key,
+    rate: loan.rate,
+    payment,
+    minimumOnly: loan.minimumOnly,
+  });
+  ledger.owed.set(loan.key, balance);
+  ledger.paidOff[loan.key] = balance > PAID ? null : month;
+  ledger.budget += payment - replaced;
+  return { balance, payment };
+}
+
+/** Interest, then each open loan's scheduled payment. Returns what was paid. */
+function payScheduled(ledger: Ledger): Record<string, number> {
+  const payments: Record<string, number> = {};
+  for (const loan of ledger.loans.values()) {
+    const balance = ledger.owed.get(loan.key)!;
+    if (balance <= PAID) continue;
+    const charge = (balance * loan.rate) / 12;
+    const pay = scheduledPayment(balance + charge, loan.payment);
+    ledger.interest += charge;
+    payments[loan.key] = pay;
+    ledger.owed.set(loan.key, balance + charge - pay);
+  }
+  return payments;
+}
+
+function closePaidOff(ledger: Ledger, month: string): void {
+  for (const key of ledger.loans.keys()) {
+    if (ledger.paidOff[key] === null && ledger.owed.get(key)! <= PAID) {
+      ledger.paidOff[key] = month;
+      ledger.owed.set(key, 0);
+    }
+  }
 }
 
 /**
  * Project every debt month by month two ways. As scheduled, each debt gets its
  * own payment and nothing more. Under the plan, the monthly total stays the
- * same, so the extra and every freed-up payment go down the payoff order, and
- * once nothing is owed that whole budget is invested. Freedom is the first
- * month passive income, plus a `withdrawalRate` draw on investments, covers
- * living expenses and the payments still due.
+ * same, so the extra and every freed-up payment go down the payoff order,
+ * skipping minimum-only debts; whatever no debt takes is invested. A planned
+ * loan opens in its start month in both. Freedom is the start of the last
+ * stretch where passive income, plus a `withdrawalRate` draw on investments,
+ * covers living expenses and the payments still due.
  */
 export function projectDebtPlan(input: DebtPlanInput): DebtPlanResult {
   const maxMonths = input.maxMonths ?? 600;
   const today = input.today ?? new Date();
   const start = new Date(today.getFullYear(), today.getMonth(), 1);
   const debts = input.debts.filter((d) => d.balance > PAID);
+  const extra = Math.max(0, input.extraMonthly);
   const living = Math.max(0, input.livingExpenses);
   const savings = Math.max(0, input.monthlySavings);
   const growth = Math.pow(1 + input.realReturn, 1 / 12);
   const draw = input.withdrawalRate / 12;
-  const order = payoffOrder(debts, input.order);
-  const scheduled = total(debts.map((d) => d.monthlyPayment));
-  const debtBudget = scheduled + Math.max(0, input.extraMonthly);
+  const planned = [...(input.plannedLoans ?? [])].sort((a, b) => a.start.localeCompare(b.start));
+  const incomeChanges = input.incomeChanges ?? [];
+  const keyById = new Map(debts.map((d) => [d.id, d.key]));
+  const lastEvent = [...planned.map((l) => l.start), ...incomeChanges.map((c) => c.start)]
+    .sort()
+    .at(-1);
 
-  const plan = new Map(debts.map((d) => [d.key, d.balance]));
-  const asScheduled = new Map(plan);
-  const paidOff: Record<string, string | null> = Object.fromEntries(
-    debts.map((d) => [d.key, null])
-  );
-  const paidOffAsScheduled = { ...paidOff };
+  const plan = newLedger(debts, extra);
+  const asScheduled = newLedger(debts, 0);
+  const debtBudget = plan.budget;
+  const rolledInto: DebtPlanResult['rolledInto'] = {};
+  const loanStarts: DebtPlanResult['loanStarts'] = {};
+  const opened = new Set<string>();
   const growing = debts
     .filter((d) => (d.balance * d.rate) / 12 >= d.monthlyPayment)
     .map((d) => d.key);
 
+  const passiveIn = (month: string, invested: number) =>
+    input.passiveIncome +
+    total(incomeChanges.filter((c) => c.start <= month).map((c) => c.monthly)) +
+    invested * draw;
+
   const now = monthLabel(start);
   let invested = Math.max(0, input.investments);
-  const nowNeeds = living + scheduled;
-  const nowPassive = input.passiveIncome + invested * draw;
   const months: DebtPlanMonth[] = [
     {
       month: now,
-      owed: Object.fromEntries(plan),
-      totalOwed: total(plan.values()),
-      totalOwedAsScheduled: total(plan.values()),
+      owed: Object.fromEntries(plan.owed),
+      totalOwed: total(plan.owed.values()),
+      totalOwedAsScheduled: total(plan.owed.values()),
       payments: Object.fromEntries(debts.map((d) => [d.key, d.monthlyPayment])),
-      needs: nowNeeds,
+      needs: living + total(debts.map((d) => d.monthlyPayment)),
       invested,
-      passive: nowPassive,
+      passive: passiveIn(now, invested),
     },
   ];
-
-  let debtFree = debts.length === 0 ? now : null;
-  let debtFreeAsScheduled = debtFree;
-  let free = living > 0 && nowPassive >= nowNeeds ? now : null;
-  let interest = 0;
-  let interestAsScheduled = 0;
 
   for (let i = 1; i <= maxMonths; i++) {
     const date = new Date(start.getFullYear(), start.getMonth() + i, 1);
     const label = monthLabel(date);
 
-    // Plan: every open debt accrues interest and gets its scheduled payment...
-    const payments: Record<string, number> = {};
-    for (const d of debts) {
-      const balance = plan.get(d.key)!;
-      if (balance <= PAID) continue;
-      const charge = (balance * d.rate) / 12;
-      const pay = scheduledPayment(balance + charge, d.monthlyPayment);
-      interest += charge;
-      payments[d.key] = pay;
-      plan.set(d.key, balance + charge - pay);
-    }
-    // ...then what's left of the monthly budget goes down the payoff order.
-    let pool = debtBudget - total(Object.values(payments));
-    for (const key of order) {
-      if (pool <= PAID) break;
-      const balance = plan.get(key)!;
-      if (balance <= PAID) continue;
-      const amount = Math.min(pool, balance);
-      plan.set(key, balance - amount);
-      pool -= amount;
-    }
-    for (const d of debts) {
-      if (paidOff[d.key] === null && plan.get(d.key)! <= PAID) {
-        paidOff[d.key] = label;
-        plan.set(d.key, 0);
-      }
+    for (const loan of planned) {
+      if (opened.has(loan.key) || loan.start > label) continue;
+      opened.add(loan.key);
+      loanStarts[loan.key] = {
+        month: label,
+        ...openLoan(plan, loan, keyById, label, (key) => {
+          rolledInto[key] = { into: loan.key, month: label };
+        }),
+      };
+      openLoan(asScheduled, loan, keyById, label);
     }
 
-    for (const d of debts) {
-      const balance = asScheduled.get(d.key)!;
-      if (balance <= PAID) continue;
-      const charge = (balance * d.rate) / 12;
-      const left = balance + charge - scheduledPayment(balance + charge, d.monthlyPayment);
-      interestAsScheduled += charge;
-      asScheduled.set(d.key, left <= PAID ? 0 : left);
-      if (left <= PAID) paidOffAsScheduled[d.key] = label;
+    // Plan: every open loan gets its scheduled payment, then what's left of
+    // the budget goes down the payoff order to loans that take extra.
+    const payments = payScheduled(plan);
+    let pool = plan.budget - total(Object.values(payments));
+    const targets = [...plan.loans.values()]
+      .filter((l) => !l.minimumOnly && plan.owed.get(l.key)! > PAID)
+      .sort((a, b) => {
+        const owedA = plan.owed.get(a.key)!;
+        const owedB = plan.owed.get(b.key)!;
+        return input.order === 'avalanche'
+          ? b.rate - a.rate || owedA - owedB
+          : owedA - owedB || b.rate - a.rate;
+      });
+    for (const loan of targets) {
+      if (pool <= PAID) break;
+      const amount = Math.min(pool, plan.owed.get(loan.key)!);
+      plan.owed.set(loan.key, plan.owed.get(loan.key)! - amount);
+      pool -= amount;
     }
+    closePaidOff(plan, label);
+
+    payScheduled(asScheduled);
+    closePaidOff(asScheduled, label);
 
     // Whatever the debts didn't take is invested, along with regular savings.
     invested = invested * growth + savings + Math.max(0, pool);
-    const totalOwed = total(plan.values());
-    const totalOwedAsScheduled = total(asScheduled.values());
+    const totalOwed = total(plan.owed.values());
+    const totalOwedAsScheduled = total(asScheduled.owed.values());
     const needs = living + total(Object.values(payments));
-    const passive = input.passiveIncome + invested * draw;
+    const passive = passiveIn(label, invested);
     months.push({
       month: label,
-      owed: Object.fromEntries(plan),
+      owed: Object.fromEntries(plan.owed),
       totalOwed,
       totalOwedAsScheduled,
       payments,
@@ -313,29 +525,40 @@ export function projectDebtPlan(input: DebtPlanInput): DebtPlanResult {
       passive,
     });
 
-    if (debtFree === null && totalOwed <= PAID) debtFree = label;
-    if (debtFreeAsScheduled === null && totalOwedAsScheduled <= PAID) debtFreeAsScheduled = label;
-    if (free === null && living > 0 && passive >= needs) free = label;
-
-    // Stop at the December after every milestone is known, so the last year
+    // Stop at the December after everything has settled, so the last year
     // gets a year-end point. A debt that grows on schedule never pays off that
     // way, so don't wait for it.
     const settled =
-      debtFree !== null &&
-      (debtFreeAsScheduled !== null || growing.length > 0) &&
-      (free !== null || living === 0);
+      (!lastEvent || label >= lastEvent) &&
+      totalOwed <= PAID &&
+      (totalOwedAsScheduled <= PAID || growing.length > 0) &&
+      (living === 0 || passive >= needs);
     if (settled && date.getMonth() === 11) break;
   }
 
+  // Everything is judged on the finished timeline, since a planned loan can
+  // turn a debt-free or covered month back into one that isn't.
+  const allOpened = opened.size === planned.length;
+  const after = (isOpen: (m: DebtPlanMonth) => boolean): string | null => {
+    let last = -1;
+    months.forEach((m, i) => {
+      if (isOpen(m)) last = i;
+    });
+    if (last === months.length - 1 || !allOpened) return null;
+    return months[last + 1].month;
+  };
+
   return {
     months,
-    debtFree,
-    debtFreeAsScheduled,
-    paidOff,
-    paidOffAsScheduled,
-    interest,
-    interestAsScheduled,
-    free,
+    debtFree: after((m) => m.totalOwed > PAID),
+    debtFreeAsScheduled: after((m) => m.totalOwedAsScheduled > PAID),
+    paidOff: plan.paidOff,
+    paidOffAsScheduled: asScheduled.paidOff,
+    rolledInto,
+    loanStarts,
+    interest: plan.interest,
+    interestAsScheduled: asScheduled.interest,
+    free: living > 0 ? after((m) => m.passive < m.needs) : null,
     growing,
     debtBudget,
   };

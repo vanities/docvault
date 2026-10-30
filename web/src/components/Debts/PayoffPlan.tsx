@@ -21,8 +21,10 @@ import {
   CalendarClock,
   Coins,
   Loader2,
+  Plus,
   Sunrise,
   Table2,
+  Trash2,
   Wallet,
 } from 'lucide-react';
 import { API_BASE } from '../../constants';
@@ -37,11 +39,14 @@ import type { DebtPaymentItem } from '../../../server/debt-payments';
 import {
   DEFAULT_DEBT_PLAN_SETTINGS,
   planDebts,
+  planLoans,
   projectDebtPlan,
   yearlyPoints,
   type DebtPlanSettings,
+  type IncomeChange,
   type PayoffOrder,
   type PlanDebt,
+  type PlannedLoan,
 } from '../../../server/debt-plan';
 
 // Checked with the dataviz palette validator against the card surface
@@ -306,6 +311,7 @@ function Field({
   suffix,
   value,
   placeholder,
+  kind = 'number',
   onChange,
 }: {
   label: string;
@@ -314,6 +320,7 @@ function Field({
   suffix?: string;
   value: string;
   placeholder?: string;
+  kind?: 'number' | 'text' | 'month';
   onChange: (value: string) => void;
 }) {
   // Dollar fields come back filled with saved household amounts on every
@@ -334,7 +341,8 @@ function Field({
             </span>
           )}
           <Input
-            inputMode="decimal"
+            type={kind === 'month' ? 'month' : 'text'}
+            inputMode={kind === 'number' ? 'decimal' : undefined}
             value={value}
             placeholder={placeholder}
             onChange={(e) => onChange(e.target.value)}
@@ -351,6 +359,216 @@ function Field({
         </span>
       </label>
       {hint && <p className="text-[10px] text-surface-500 mt-1">{hint}</p>}
+    </div>
+  );
+}
+
+// Row ids: crypto.randomUUID needs a secure context, and DocVault is often
+// opened over plain http on the LAN.
+function newId(prefix: string): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+/** YYYY-MM a year from now: where a new row starts until it's changed. */
+function aYearOut(): string {
+  const d = new Date();
+  return `${d.getFullYear() + 1}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+const isMonthText = (v: string) => /^\d{4}-(0[1-9]|1[0-2])$/.test(v);
+
+function emptyPlannedLoan(): PlannedLoan {
+  return {
+    id: newId('loan'),
+    name: '',
+    start: aYearOut(),
+    amount: 0,
+    rate: 0,
+    termMonths: 360,
+    paysOff: [],
+    minimumOnly: false,
+  };
+}
+
+function emptyIncomeChange(): IncomeChange {
+  return { id: newId('income'), name: '', start: aYearOut(), monthly: 0 };
+}
+
+/** A number typed into a row field; undefined while it isn't one yet. */
+function typedNumber(text: string): number | undefined {
+  const cleaned = text.replace(/[$,%\s]/g, '');
+  if (cleaned === '') return 0;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function PlannedLoanRow({
+  loan,
+  debts,
+  opens,
+  onChange,
+  onRemove,
+}: {
+  loan: PlannedLoan;
+  /** Listed debts it could pay off. */
+  debts: PlanDebt[];
+  /** Its opening balance and payment from the projection. */
+  opens?: { month: string; balance: number; payment: number };
+  onChange: (next: PlannedLoan) => void;
+  onRemove: () => void;
+}) {
+  const [text, setText] = useState({
+    amount: loan.amount ? String(loan.amount) : '',
+    rate: loan.rate ? String(+(loan.rate * 100).toFixed(3)) : '',
+    years: String(+(loan.termMonths / 12).toFixed(2)),
+  });
+  const editNumber = (
+    field: keyof typeof text,
+    value: string,
+    apply: (n: number) => Partial<PlannedLoan> | undefined
+  ) => {
+    setText((t) => ({ ...t, [field]: value }));
+    const n = typedNumber(value);
+    const patch = n === undefined ? undefined : apply(n);
+    if (patch) onChange({ ...loan, ...patch });
+  };
+  const paysOff = new Set(loan.paysOff);
+
+  return (
+    <div className="rounded-xl border border-border/40 bg-surface-100/30 p-4 space-y-3">
+      <div className="grid grid-cols-2 sm:grid-cols-[1.4fr_1.4fr_1.2fr_0.8fr_0.8fr] gap-3">
+        <Field
+          kind="text"
+          label="Loan"
+          value={loan.name}
+          placeholder="New house"
+          onChange={(v) => onChange({ ...loan, name: v.slice(0, 100) })}
+        />
+        <Field
+          kind="month"
+          label="First payment"
+          value={loan.start}
+          onChange={(v) => isMonthText(v) && onChange({ ...loan, start: v })}
+        />
+        <Field
+          label="Amount"
+          prefix="$"
+          value={text.amount}
+          placeholder="0"
+          onChange={(v) => editNumber('amount', v, (n) => (n >= 0 ? { amount: n } : undefined))}
+        />
+        <Field
+          label="Rate"
+          suffix="%"
+          value={text.rate}
+          placeholder="0"
+          onChange={(v) =>
+            editNumber('rate', v, (n) => (n >= 0 && n <= 30 ? { rate: n / 100 } : undefined))
+          }
+        />
+        <Field
+          label="Term (years)"
+          value={text.years}
+          onChange={(v) =>
+            editNumber('years', v, (n) =>
+              n > 0 && n <= 50 ? { termMonths: Math.max(1, Math.round(n * 12)) } : undefined
+            )
+          }
+        />
+      </div>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[12px] text-surface-900">
+        {debts.length > 0 && <span className="text-[11px] text-surface-600">Pays off</span>}
+        {debts.map((d) => (
+          <label key={d.id} className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={paysOff.has(d.id)}
+              onChange={(e) =>
+                onChange({
+                  ...loan,
+                  paysOff: e.target.checked
+                    ? [...loan.paysOff, d.id]
+                    : loan.paysOff.filter((id) => id !== d.id),
+                })
+              }
+              className="accent-emerald-500"
+            />
+            {d.name}
+          </label>
+        ))}
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={loan.minimumOnly}
+            onChange={(e) => onChange({ ...loan, minimumOnly: e.target.checked })}
+            className="accent-emerald-500"
+          />
+          Minimum payments only
+        </label>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[11px] text-surface-600">
+          {opens && opens.balance > 0.005 ? (
+            <>
+              Opens {monthName(opens.month)} at <Money>{formatUsd(opens.balance)}</Money>
+              {loan.paysOff.length > 0 ? ' with what it pays off' : ''}:{' '}
+              <Money>{formatUsd(opens.payment)}</Money>/mo
+            </>
+          ) : (
+            'Enter an amount, or pick a debt it pays off.'
+          )}
+        </p>
+        <Button variant="ghost-danger" size="xs" onClick={onRemove}>
+          <Trash2 />
+          Remove
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function IncomeRow({
+  change,
+  onChange,
+  onRemove,
+}: {
+  change: IncomeChange;
+  onChange: (next: IncomeChange) => void;
+  onRemove: () => void;
+}) {
+  const [monthly, setMonthly] = useState(change.monthly ? String(change.monthly) : '');
+  return (
+    <div className="rounded-xl border border-border/40 bg-surface-100/30 p-4">
+      <div className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_1fr_auto] gap-3 items-end">
+        <Field
+          kind="text"
+          label="Income"
+          value={change.name}
+          placeholder="Rent from the old house"
+          onChange={(v) => onChange({ ...change, name: v.slice(0, 100) })}
+        />
+        <Field
+          kind="month"
+          label="Starts"
+          value={change.start}
+          onChange={(v) => isMonthText(v) && onChange({ ...change, start: v })}
+        />
+        <Field
+          label="Per month, after its costs"
+          prefix="$"
+          value={monthly}
+          placeholder="0"
+          onChange={(v) => {
+            setMonthly(v);
+            const n = typedNumber(v);
+            if (n !== undefined) onChange({ ...change, monthly: n });
+          }}
+        />
+        <Button variant="ghost-danger" size="xs" onClick={onRemove} className="mb-1">
+          <Trash2 />
+          Remove
+        </Button>
+      </div>
     </div>
   );
 }
@@ -415,20 +633,28 @@ export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlan
     setSettings((s) => ({ ...s, [key]: parsed }));
   };
 
-  const setOrder = (order: PayoffOrder) => {
+  const update = (
+    patch: Partial<DebtPlanSettings> | ((s: DebtPlanSettings) => Partial<DebtPlanSettings>)
+  ) => {
     edited.current = true;
-    setSettings((s) => ({ ...s, order }));
+    setSettings((s) => ({ ...s, ...(typeof patch === 'function' ? patch(s) : patch) }));
   };
+  const setOrder = (order: PayoffOrder) => update({ order });
+  const toggleMinimumOnly = (id: string, on: boolean) =>
+    update((s) => ({
+      minimumOnly: on ? [...s.minimumOnly, id] : s.minimumOnly.filter((x) => x !== id),
+    }));
+  const changeLoan = (next: PlannedLoan) =>
+    update((s) => ({ plannedLoans: s.plannedLoans.map((l) => (l.id === next.id ? next : l)) }));
+  const changeIncome = (next: IncomeChange) =>
+    update((s) => ({ incomeChanges: s.incomeChanges.map((c) => (c.id === next.id ? next : c)) }));
 
-  const setCardsPaidInFull = (cardsPaidInFull: boolean) => {
-    edited.current = true;
-    setSettings((s) => ({ ...s, cardsPaidInFull }));
-  };
-
+  const { cardsPaidInFull, minimumOnly } = settings;
   const debts = useMemo(
-    () => planDebts(items, settings.cardsPaidInFull),
-    [items, settings.cardsPaidInFull]
+    () => planDebts(items, { cardsPaidInFull, minimumOnly }),
+    [items, cardsPaidInFull, minimumOnly]
   );
+  const loans = useMemo(() => planLoans(settings.plannedLoans), [settings.plannedLoans]);
   const cards = items.filter((d) => d.card);
   const defaultInvestments = investmentParts.reduce((s, p) => s + p.value, 0);
   const passiveIncome = settings.passiveIncome ?? incomeMonthly;
@@ -439,6 +665,8 @@ export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlan
     () =>
       projectDebtPlan({
         debts,
+        plannedLoans: loans,
+        incomeChanges: settings.incomeChanges,
         extraMonthly: settings.extraMonthly,
         order: settings.order,
         livingExpenses: settings.livingExpenses,
@@ -448,10 +676,24 @@ export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlan
         realReturn: settings.realReturn,
         withdrawalRate: settings.withdrawalRate,
       }),
-    [debts, settings, passiveIncome, investments]
+    [debts, loans, settings, passiveIncome, investments]
   );
 
-  const series = useMemo(() => debtSeries(debts), [debts]);
+  const series = useMemo(
+    () =>
+      debtSeries([
+        ...debts,
+        ...loans.map((l) => ({
+          key: l.key,
+          id: l.id,
+          name: l.name || 'Planned loan',
+          balance: 0,
+          rate: l.rate,
+          monthlyPayment: 0,
+        })),
+      ]),
+    [debts, loans]
+  );
   const seriesKeys = series.map((s) => s.key);
   const { points, labels, owedRows, needsRows, owedTicks, needsTicks } = useMemo(() => {
     const pts = yearlyPoints(result.months);
@@ -485,9 +727,19 @@ export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlan
     const i = points.findIndex((p) => p.month >= month);
     return i === -1 ? undefined : labels[i];
   };
-  const seriesPaidOff = (s: Series) => {
+  /** What the legend says about when a series ends. */
+  const seriesNote = (s: Series): string => {
+    const [only] = s.members;
+    const rolled = s.members.length === 1 ? result.rolledInto[only] : undefined;
+    if (rolled) {
+      const into = loans.find((l) => l.key === rolled.into)?.name || 'a planned loan';
+      return ` · into ${into} ${monthName(rolled.month)}`;
+    }
     const dates = s.members.map((k) => result.paidOff[k]);
-    return dates.some((d) => d === null) ? null : (dates as string[]).sort().at(-1)!;
+    if (dates.some((d) => !d)) return ' · not within 50 years';
+    const end = monthName((dates as string[]).sort().at(-1)!);
+    const opens = s.members.length === 1 ? result.loanStarts[only] : undefined;
+    return opens ? ` · ${monthName(opens.month)} to ${end}` : ` · paid off ${end}`;
   };
 
   if (loadState === 'loading') {
@@ -499,7 +751,8 @@ export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlan
   }
 
   const now = result.months[0].month;
-  const owedNow = result.months[0].totalOwed;
+  // A planned loan can bring debt back later even when nothing is owed today.
+  const owesAnything = result.months.some((m) => m.totalOwed > 0.005);
   const scheduledNow = result.months[0].needs - living;
   const fewerMonths =
     result.debtFree && result.debtFreeAsScheduled
@@ -518,8 +771,11 @@ export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlan
     ...series,
     { key: 'passive', name: 'Passive income', color: PASSIVE_COLOR, line: true },
   ];
-  const debtFreeAt = owedNow > 0 ? columnFor(result.debtFree) : undefined;
+  const debtFreeAt = owesAnything ? columnFor(result.debtFree) : undefined;
   const freeAt = columnFor(result.free);
+  /** A line's label sits on the side facing the middle, so neither chart edge clips it. */
+  const labelSide = (column: string | undefined): 'insideTopLeft' | 'insideTopRight' =>
+    column && labels.indexOf(column) > labels.length / 2 ? 'insideTopRight' : 'insideTopLeft';
   const axisProps = {
     tick: { fontSize: 10, fill: TICK_COLOR },
     tickLine: false,
@@ -554,14 +810,14 @@ export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlan
           icon={CalendarClock}
           label="Debt-free"
           value={
-            owedNow <= 0
+            !owesAnything
               ? 'Now'
               : result.debtFree
                 ? monthName(result.debtFree)
                 : 'Not within 50 years'
           }
           detail={
-            result.debtFree && owedNow > 0
+            result.debtFree && owesAnything
               ? `in ${formatTerm(monthsBetween(now, result.debtFree))}${
                   fewerMonths > 0
                     ? `, ${formatTerm(fewerMonths)} sooner than paying only what’s due`
@@ -664,7 +920,7 @@ export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlan
               <input
                 type="checkbox"
                 checked={settings.cardsPaidInFull}
-                onChange={(e) => setCardsPaidInFull(e.target.checked)}
+                onChange={(e) => update({ cardsPaidInFull: e.target.checked })}
                 className="accent-emerald-500 mt-0.5"
               />
               <span>
@@ -676,6 +932,36 @@ export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlan
                 </span>
               </span>
             </label>
+          )}
+          {debts.length > 0 && (
+            <div className="sm:col-span-2">
+              <span className="text-[11px] text-surface-600 block mb-1.5">
+                Minimum payments only
+              </span>
+              <div className="flex flex-wrap gap-x-5 gap-y-1.5">
+                {debts.map((d) => (
+                  <label
+                    key={d.id}
+                    className="flex items-center gap-2 text-[12px] text-surface-900"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!d.minimumOnly}
+                      onChange={(e) => toggleMinimumOnly(d.id, e.target.checked)}
+                      className="accent-emerald-500"
+                    />
+                    {d.name}
+                    {d.rate > 0 && (
+                      <span className="text-surface-500">{(d.rate * 100).toFixed(2)}%</span>
+                    )}
+                  </label>
+                ))}
+              </div>
+              <p className="text-[10px] text-surface-500 mt-1">
+                A checked debt only ever gets its scheduled payment. Money freed by other payoffs
+                skips it and goes to the next debt, or into investments when there&apos;s none.
+              </p>
+            </div>
           )}
           <Field
             label="Living expenses / month"
@@ -742,18 +1028,73 @@ export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlan
         </div>
       </Card>
 
-      {owedNow > 0 && (
+      <Card variant="glass" className="p-5 space-y-4">
+        <div>
+          <h3 className="text-[14px] font-semibold text-surface-950">Coming up</h3>
+          <p className="text-[12px] text-surface-600 mt-0.5">
+            Loans you expect to take out and income that starts later, like a new mortgage that pays
+            off a land loan, or rent from the house you move out of.
+          </p>
+        </div>
+        {settings.plannedLoans.map((loan, i) => (
+          <PlannedLoanRow
+            key={loan.id}
+            loan={loan}
+            debts={debts}
+            opens={result.loanStarts[loans[i].key]}
+            onChange={changeLoan}
+            onRemove={() =>
+              update((s) => ({ plannedLoans: s.plannedLoans.filter((l) => l.id !== loan.id) }))
+            }
+          />
+        ))}
+        {settings.incomeChanges.map((change) => (
+          <IncomeRow
+            key={change.id}
+            change={change}
+            onChange={changeIncome}
+            onRemove={() =>
+              update((s) => ({
+                incomeChanges: s.incomeChanges.filter((c) => c.id !== change.id),
+              }))
+            }
+          />
+        ))}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={settings.plannedLoans.length >= 10}
+            onClick={() =>
+              update((s) => ({ plannedLoans: [...s.plannedLoans, emptyPlannedLoan()] }))
+            }
+          >
+            <Plus />
+            Planned loan
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={settings.incomeChanges.length >= 20}
+            onClick={() =>
+              update((s) => ({ incomeChanges: [...s.incomeChanges, emptyIncomeChange()] }))
+            }
+          >
+            <Plus />
+            Income that starts later
+          </Button>
+        </div>
+      </Card>
+
+      {owesAnything && (
         <Card variant="glass" className="p-5">
           <h3 className="text-[14px] font-semibold text-surface-950">What you owe, year by year</h3>
           <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2 mb-3 text-[11px] text-surface-700">
             {series.map((s) => {
-              const done = seriesPaidOff(s);
               return (
                 <LegendKey key={s.key} color={s.color}>
                   {s.name}
-                  <span className="text-surface-500">
-                    {done ? ` · paid off ${monthName(done)}` : ' · not within 50 years'}
-                  </span>
+                  <span className="text-surface-500">{seriesNote(s)}</span>
                 </LegendKey>
               );
             })}
@@ -818,7 +1159,7 @@ export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlan
                   strokeOpacity={0.5}
                   label={{
                     value: 'Debt-free',
-                    position: 'insideTopLeft',
+                    position: labelSide(debtFreeAt),
                     fill: TICK_COLOR,
                     fontSize: 10,
                   }}
@@ -919,7 +1260,7 @@ export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlan
                     strokeOpacity={0.5}
                     label={{
                       value: 'Financially free',
-                      position: 'insideTopLeft',
+                      position: labelSide(freeAt),
                       fill: TICK_COLOR,
                       fontSize: 10,
                     }}
