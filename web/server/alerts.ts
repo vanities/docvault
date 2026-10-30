@@ -324,10 +324,10 @@ export function checkName(check: Pick<AlertCheckInput, 'label' | 'scope'>): stri
 
 const severityRank = (c: AlertCheck) => (c.severity === 'critical' ? 0 : 1);
 
-export function alertSubject(active: AlertCheck[]): string {
-  const primary = [...active].sort((a, b) => severityRank(a) - severityRank(b))[0];
+export function alertSubject(checks: AlertCheck[]): string {
+  const primary = [...checks].sort((a, b) => severityRank(a) - severityRank(b))[0];
   return primary.severity === 'critical'
-    ? `ACT NOW: ${primary.label}`
+    ? `ACT NOW: ${checkName(primary)}`
     : `Alert warning: ${checkName(primary)}`;
 }
 
@@ -408,7 +408,9 @@ function buildCheckEmail(
     });
   }
   return renderMessage(
-    alertSubject(active),
+    // Lead with the news. A critical check that was already emailed would otherwise title the
+    // email of a new warning elsewhere, as if the warning's scope were the critical one.
+    alertSubject(groups.tripped.length > 0 ? groups.tripped : active),
     source.label,
     kind === 'trip' ? 'A check just tripped.' : 'Reminder: checks are still tripped.',
     sections,
