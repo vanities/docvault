@@ -117,6 +117,11 @@ export async function handleBackupRoutes(req: Request, pathname: string): Promis
           await safeWriteUnder(name, data);
           restored.push(name);
         }
+        // Current format: assignments/ subtree (transcripts + run logs)
+        else if (name.startsWith('assignments/')) {
+          await safeWriteUnder(name, data);
+          restored.push(name);
+        }
         // Legacy format: settings.json / config.json / data/* from older backups
         else if (name === 'settings.json') {
           await safeWriteUnder(path.basename(SETTINGS_PATH), data);

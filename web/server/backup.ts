@@ -139,6 +139,10 @@ export async function collectBackupFiles(
   // bundle alongside the root .docvault-*.json index that points at it.
   await collectDirRecursive(path.join(dataDir, 'chat-threads'), 'chat-threads', files);
 
+  // 4) assignments/ subtree — each assignment's transcript and run log, which the
+  // root .docvault-assignments.json index points at.
+  await collectDirRecursive(path.join(dataDir, 'assignments'), 'assignments', files);
+
   return files;
 }
 
