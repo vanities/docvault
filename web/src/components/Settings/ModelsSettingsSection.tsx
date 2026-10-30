@@ -23,6 +23,7 @@ interface ModelRef {
 }
 interface SettingsData {
   claudeModel?: string;
+  assignmentsModel?: string;
   modelRouting?: { parsing?: ModelRef };
   chat?: {
     mode?: 'agent' | 'api';
@@ -69,6 +70,7 @@ export function ModelsSettingsSection() {
   const [saving, setSaving] = useState(false);
 
   const [claudeModel, setClaudeModel] = useState(DEFAULT_CLAUDE_MODEL);
+  const [assignmentsModel, setAssignmentsModel] = useState(''); // '' = same as chat
   const [parsing, setParsing] = useState<ModelRef>({
     provider: 'anthropic',
     model: DEFAULTS.anthropic,
@@ -120,6 +122,7 @@ export function ModelsSettingsSection() {
         model: d.claudeModel || DEFAULTS.anthropic,
       };
       setClaudeModel(d.claudeModel || DEFAULT_CLAUDE_MODEL);
+      setAssignmentsModel(d.assignmentsModel ?? '');
       setParsing(d.modelRouting?.parsing ?? anthropicFallback);
       setChatMode(d.chat?.mode === 'api' ? 'api' : 'agent');
       setChatApiModel(d.chat?.apiModel ?? anthropicFallback);
@@ -218,6 +221,7 @@ export function ModelsSettingsSection() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           claudeModel: claudeModel.trim() || DEFAULT_CLAUDE_MODEL,
+          assignmentsModel: assignmentsModel.trim(),
           modelRouting: { parsing },
           chat: {
             mode: chatMode,
@@ -401,6 +405,34 @@ export function ModelsSettingsSection() {
               </p>
             </div>
           )}
+        </div>
+
+        {/* Assignment check-ins always run the Claude agent, whatever chat uses */}
+        <div className="pt-3 border-t border-border/30">
+          <label className="flex items-center gap-2 text-[13px] font-medium text-surface-800 mb-1">
+            <Bot className="w-4 h-4" />
+            Assignments
+            <span className="font-normal text-surface-500">(how check-ins run)</span>
+          </label>
+          <select
+            value={assignmentsModel}
+            onChange={(e) => setAssignmentsModel(e.target.value)}
+            className={selectClass}
+          >
+            <option value="">Same as the chat Claude model</option>
+            {assignmentsModel && !modelsByProvider.anthropic.includes(assignmentsModel) && (
+              <option value={assignmentsModel}>{assignmentsModel}</option>
+            )}
+            {modelsByProvider.anthropic.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+          <p className="text-[11px] text-surface-600 leading-relaxed mt-1">
+            Check-ins run Claude Code on your subscription; this picks their model without changing
+            chat.
+          </p>
         </div>
 
         {/* Deep Research engine */}

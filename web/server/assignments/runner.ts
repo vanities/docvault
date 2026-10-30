@@ -4,6 +4,7 @@ import type { SDKRateLimitInfo, SDKResultMessage } from '@anthropic-ai/claude-ag
 import { readBrainContent } from '../brain.js';
 import {
   DATA_DIR,
+  getAssignmentsModel,
   getChatMode,
   getEmailConfig,
   loadConfig,
@@ -64,7 +65,8 @@ export function defaultRunnerDeps(): RunnerDeps {
     dataDir: DATA_DIR,
     now: () => new Date(),
     runTurn: runClaudeTurn,
-    resolveAgent: async () => resolveClaudeAgent(await getChatMode()),
+    resolveAgent: async () =>
+      resolveClaudeAgent(await getChatMode(), { model: await getAssignmentsModel() }),
     loadContext: async () => ({
       brain: await readBrainContent(),
       skillsPlugin: await ensureSkillsPluginDir(),

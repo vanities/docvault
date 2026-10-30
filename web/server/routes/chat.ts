@@ -2703,7 +2703,9 @@ export interface ClaudeAgent {
 
 /** Model, effort and credentials for one Claude Code turn, or why none can run. */
 export async function resolveClaudeAgent(
-  chatMode: 'agent' | 'api'
+  chatMode: 'agent' | 'api',
+  // Assignments pass their own model; credential selection still follows the chat mode.
+  opts: { model?: string } = {}
 ): Promise<ClaudeAgent | { error: string }> {
   // Resolve credentials from settings (override env). The SDK reads
   // CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY from the env we pass to
@@ -2717,7 +2719,8 @@ export async function resolveClaudeAgent(
         'No Claude credentials configured. Add an Anthropic API key OR a Claude OAuth token in Settings.',
     };
   }
-  const model = chatMode === 'api' ? await getChatApiModel() : await getClaudeModel();
+  const model =
+    opts.model ?? (chatMode === 'api' ? await getChatApiModel() : await getClaudeModel());
   const effort = toClaudeAgentEffort(await getClaudeChatEffort());
 
   // Credential selection follows the chat MODE. Claude Code bills API credits

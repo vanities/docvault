@@ -171,7 +171,7 @@ Missing any of these causes the sidebar click to silently render the wrong view.
 3. Tool calls go into the run log as they happen; that is how a run interrupted by a restart tells the next one which writes it already made.
 4. A refused check-in pauses its assignment instead of backing off. A safeguard refusal arrives as `invalid_request`, and the next check-in would send nearly the same request, so a retry on a timer only adds flagged requests to the owner's account. The runner emails once per pause, and `runner.test.ts` fails if a refusal goes back to retrying.
 
-Assignments run on the Claude backend only, because Codex has no DocVault write tools.
+Assignments run on the Claude backend only, because Codex has no DocVault write tools. Check-ins use `settings.assignmentsModel` when set, else chat's `claudeModel` (`getAssignmentsModel`, `web/server/data.ts`); the setting exists because a model's safeguards can refuse unattended check-ins while chat passes (Opus 5.5, 2026-10-30).
 
 **Package installs:** This project uses both pnpm and bun. After adding a dependency with `pnpm add <pkg>`, always run `bun install` to sync `bun.lock`, then commit both `package.json` and `bun.lock`. The Docker build uses `bun install --frozen-lockfile` so an out-of-sync `bun.lock` breaks CI. `pnpm-lock.yaml` is gitignored.
 
