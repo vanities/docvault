@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { requestJson } from '../../api/client';
 import { Money } from '../common/Money';
+import { toMonthly } from '../../../server/income-frequency';
 
 interface IncomeSource {
   id: string;
@@ -33,23 +34,6 @@ function formatUsd(value: number): string {
     currency: 'USD',
     minimumFractionDigits: 2,
   });
-}
-
-function toMonthly(amount: number, frequency: string): number {
-  switch (frequency) {
-    case 'weekly':
-      return (amount * 52) / 12;
-    case 'biweekly':
-      return (amount * 26) / 12;
-    case 'monthly':
-      return amount;
-    case 'quarterly':
-      return amount / 3;
-    case 'annually':
-      return amount / 12;
-    default:
-      return amount;
-  }
 }
 
 export function IncomeView() {
