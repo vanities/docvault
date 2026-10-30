@@ -235,6 +235,32 @@ describe('notifications', () => {
     expect(a.lastRun?.emailed).toBe(true);
   });
 
+  test('the run stays marked running until its thread and log are written', async () => {
+    const id = await create();
+    let runningWhileEmailing: unknown = 'not called';
+    await runAssignment(
+      id,
+      'scheduled',
+      deps(
+        async (opts) => {
+          await finish(opts, { notify: { subject: 'Rate moved', body: 'Acme cut to 3.9%.' } });
+          return success();
+        },
+        {
+          sendEmail: (async () => {
+            runningWhileEmailing = (await get(id)).running;
+            return { ok: true };
+          }) as unknown as RunnerDeps['sendEmail'],
+        }
+      )
+    );
+    expect(runningWhileEmailing).not.toBeNull();
+    expect(runningWhileEmailing).not.toBe('not called');
+    expect((await get(id)).running).toBeNull();
+    expect(await loadTranscript(id, dataDir)).toHaveLength(1);
+    expect((await readRunLog(id, dataDir)).at(-1)?.event).toBe('end');
+  });
+
   test('an email that could not be sent is never shown as emailed', async () => {
     const id = await create();
     await runAssignment(
