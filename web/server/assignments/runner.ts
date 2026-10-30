@@ -454,10 +454,11 @@ export async function runAssignment(
     const emails: EmailPlan[] = [];
     let entryNextCheck: string | null = null;
 
+    // `running` stays set until the thread and run log are written (it is released last, below), so
+    // anything that sees the run finished sees all of it, and a delete can't race the last writes.
     await updateIndex((index) => {
       const cur = index.assignments[id];
       if (!cur) return;
-      cur.running = null;
       cur.updatedAt = nowIso;
       // Only run-owned fields change here; a pause, close or brief edit made mid-run wins.
       if (outcome === 'ok') {
@@ -566,12 +567,6 @@ export async function runAssignment(
       if (failure) warnings.push(`email failed: ${failure}`);
       else delivered += 1;
     }
-    if (emails.length > 0 && delivered === 0) {
-      await updateIndex((index) => {
-        const cur = index.assignments[id];
-        if (cur?.lastRun?.runId === runId) cur.lastRun.emailed = false;
-      }, deps.dataDir);
-    }
 
     const nextLabel = entryNextCheck
       ? `Next check ${formatLocal(entryNextCheck, context.timeZone)}.`
@@ -628,6 +623,14 @@ export async function runAssignment(
       },
       deps.dataDir
     );
+    await updateIndex((index) => {
+      const cur = index.assignments[id];
+      if (!cur) return;
+      if (cur.running?.runId === runId) cur.running = null;
+      if (cur.lastRun?.runId === runId && emails.length > 0 && delivered === 0) {
+        cur.lastRun.emailed = false;
+      }
+    }, deps.dataDir);
     log.info(
       `[run] end assignment=${id} run=${runId} outcome=${outcome} tools=${toolList.length} emails=${delivered}/${emails.length} warnings=${warnings.length} in ${durationMs}ms`
     );
