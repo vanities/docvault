@@ -13,7 +13,30 @@ import {
   accountTypeLabel,
   categorizeAccount,
   isAccountAnnotationType,
+  isRetirementAccount,
 } from './account-classify.js';
+
+describe('isRetirementAccount', () => {
+  test('401(k)-style plans, IRAs, and Roth accounts are retirement money', () => {
+    for (const name of [
+      'Self-Employed 401K',
+      'Example 401(k) - Acme County Schools',
+      'Jane Doe — Roth IRA Brokerage Account — 1234',
+      'Traditional IRA Brokerage Account',
+      'Acme IRA',
+      'Thrift Savings Plan',
+      'Acme 403(b)',
+    ]) {
+      expect(isRetirementAccount(name), name).toBe(true);
+    }
+  });
+
+  test('taxable brokerage and cash accounts are not', () => {
+    for (const name of ['Jane Doe — Brokerage Account — 5678', 'IRA SMITH CHECKING', 'Savings']) {
+      expect(isRetirementAccount(name), name).toBe(false);
+    }
+  });
+});
 
 describe('categorizeAccount — substring safety', () => {
   test('a name containing the "chk" letter run is NOT a checking account', () => {

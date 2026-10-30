@@ -38,15 +38,19 @@ import { formatMonthYear, formatTerm } from '../../utils/amortization';
 import type { DebtPaymentItem } from '../../../server/debt-payments';
 import {
   DEFAULT_DEBT_PLAN_SETTINGS,
+  monthsBetween,
   planDebts,
   planLoans,
   projectDebtPlan,
   yearlyPoints,
   type DebtPlanSettings,
+  type Holding,
+  type HoldingSale,
   type IncomeChange,
   type PayoffOrder,
   type PlanDebt,
   type PlannedLoan,
+  type PriceTarget,
 } from '../../../server/debt-plan';
 
 // Checked with the dataviz palette validator against the card surface
@@ -73,6 +77,8 @@ type TextKey =
   | 'monthlySavings'
   | 'passiveIncome'
   | 'investments'
+  | 'retirement'
+  | 'retirementSavings'
   | 'realReturn'
   | 'withdrawalRate';
 
@@ -82,6 +88,8 @@ const TEXT_KEYS: TextKey[] = [
   'monthlySavings',
   'passiveIncome',
   'investments',
+  'retirement',
+  'retirementSavings',
   'realReturn',
   'withdrawalRate',
 ];
@@ -115,12 +123,6 @@ function axisTicks(max: number): number[] {
 
 const monthName = (ym: string) => formatMonthYear(`${ym}-01`);
 
-function monthsBetween(from: string, to: string): number {
-  const [fy, fm] = from.split('-').map(Number);
-  const [ty, tm] = to.split('-').map(Number);
-  return (ty - fy) * 12 + (tm - fm);
-}
-
 /** The saved value as it reads in its input; blank means 0 or "use the default". */
 function textOf(key: TextKey, settings: DebtPlanSettings): string {
   const value = settings[key];
@@ -133,7 +135,7 @@ function textOf(key: TextKey, settings: DebtPlanSettings): string {
 function parseField(key: TextKey, text: string): number | null | undefined {
   const cleaned = text.replace(/[$,%\s]/g, '');
   if (cleaned === '') {
-    if (key === 'passiveIncome' || key === 'investments') return null;
+    if (key === 'passiveIncome' || key === 'investments' || key === 'retirement') return null;
     if (key === 'realReturn' || key === 'withdrawalRate') return DEFAULT_DEBT_PLAN_SETTINGS[key];
     return 0;
   }
@@ -312,6 +314,7 @@ function Field({
   value,
   placeholder,
   kind = 'number',
+  sensitive,
   onChange,
 }: {
   label: string;
@@ -321,12 +324,14 @@ function Field({
   value: string;
   placeholder?: string;
   kind?: 'number' | 'text' | 'month';
+  /** Blur under the privacy toggle even without a $ (a count of coins, say). */
+  sensitive?: boolean;
   onChange: (value: string) => void;
 }) {
   // Dollar fields come back filled with saved household amounts on every
   // visit, so the privacy blur covers them the way <Money> covers text.
   const { blurNumbers } = useAppContext();
-  const blur = blurNumbers && prefix === '$' ? 'blur-sm' : '';
+  const blur = blurNumbers && (prefix === '$' || sensitive) ? 'blur-sm' : '';
   return (
     <div>
       <label className="block">
@@ -573,16 +578,205 @@ function IncomeRow({
   );
 }
 
+function SelectField({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="text-[11px] text-surface-600 block mb-1">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full h-9 rounded-lg text-sm bg-surface-100 border border-border px-3 text-surface-950"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+const formatUnits = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 4 });
+
+function PriceTargetRow({
+  target,
+  holding,
+  assets,
+  onChange,
+  onRemove,
+}: {
+  target: PriceTarget;
+  holding?: Holding;
+  /** Assets it could be about: its own plus any without a target yet. */
+  assets: string[];
+  onChange: (next: PriceTarget) => void;
+  onRemove: () => void;
+}) {
+  const [price, setPrice] = useState(String(target.price));
+  return (
+    <div className="rounded-xl border border-border/40 bg-surface-100/30 p-4 space-y-2">
+      <div className="grid grid-cols-2 sm:grid-cols-[1fr_1.3fr_1.3fr_auto] gap-3 items-end">
+        <SelectField
+          label="Holding"
+          value={target.asset}
+          options={assets.map((a) => ({ value: a, label: a }))}
+          onChange={(asset) => onChange({ ...target, asset })}
+        />
+        <Field
+          label="Price per unit"
+          prefix="$"
+          value={price}
+          onChange={(v) => {
+            setPrice(v);
+            const n = typedNumber(v);
+            if (n !== undefined && n > 0) onChange({ ...target, price: n });
+          }}
+        />
+        <Field
+          kind="month"
+          label="By"
+          value={target.month}
+          onChange={(v) => isMonthText(v) && onChange({ ...target, month: v })}
+        />
+        <Button variant="ghost-danger" size="xs" onClick={onRemove} className="mb-1">
+          <Trash2 />
+          Remove
+        </Button>
+      </div>
+      {holding && (
+        <p className="text-[11px] text-surface-600">
+          <Money>{formatUnits(holding.units)}</Money> {holding.asset} today at{' '}
+          <Money>{formatUsd(holding.value / holding.units)}</Money>, climbing steadily to{' '}
+          <Money>{formatUsd(target.price)}</Money> by {monthName(target.month)}. Your whole{' '}
+          {holding.asset} position follows this price, not the growth rate above.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function SaleRow({
+  sale,
+  assets,
+  payToOptions,
+  result,
+  onChange,
+  onRemove,
+}: {
+  sale: HoldingSale;
+  assets: string[];
+  payToOptions: { value: string; label: string }[];
+  result?: { month: string; units: number; proceeds: number; tax: number; toDebt: number };
+  onChange: (next: HoldingSale) => void;
+  onRemove: () => void;
+}) {
+  const [text, setText] = useState({
+    units: String(sale.units),
+    tax: String(+(sale.taxRate * 100).toFixed(2)),
+  });
+  const target = payToOptions.find((o) => o.value === sale.payTo && o.value !== '');
+  return (
+    <div className="rounded-xl border border-border/40 bg-surface-100/30 p-4 space-y-2">
+      <div className="grid grid-cols-2 sm:grid-cols-[0.8fr_0.9fr_1.3fr_0.8fr_1.6fr] gap-3">
+        <SelectField
+          label="Sell"
+          value={sale.asset}
+          options={assets.map((a) => ({ value: a, label: a }))}
+          onChange={(asset) => onChange({ ...sale, asset })}
+        />
+        <Field
+          label="Units"
+          sensitive
+          value={text.units}
+          onChange={(v) => {
+            setText((t) => ({ ...t, units: v }));
+            const n = typedNumber(v);
+            if (n !== undefined && n > 0) onChange({ ...sale, units: n });
+          }}
+        />
+        <Field
+          kind="month"
+          label="When"
+          value={sale.month}
+          onChange={(v) => isMonthText(v) && onChange({ ...sale, month: v })}
+        />
+        <Field
+          label="Tax"
+          suffix="%"
+          value={text.tax}
+          onChange={(v) => {
+            setText((t) => ({ ...t, tax: v }));
+            const n = typedNumber(v);
+            if (n !== undefined && n >= 0 && n <= 60) onChange({ ...sale, taxRate: n / 100 });
+          }}
+        />
+        <SelectField
+          label="Pays down"
+          value={sale.payTo}
+          options={payToOptions}
+          onChange={(payTo) => onChange({ ...sale, payTo })}
+        />
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[11px] text-surface-600">
+          {result && result.units > 0 ? (
+            <>
+              Sells <Money>{formatUnits(result.units)}</Money> {sale.asset} in{' '}
+              {monthName(result.month)} for <Money>{formatUsd(result.proceeds)}</Money>;{' '}
+              <Money>{formatUsd(result.tax)}</Money> goes to tax
+              {result.toDebt > 0 ? (
+                <>
+                  , <Money>{formatUsd(result.toDebt)}</Money> to {target?.label}
+                </>
+              ) : (
+                ''
+              )}
+              {result.proceeds - result.tax - result.toDebt > 1 ? ', the rest stays invested' : ''}.
+            </>
+          ) : (
+            `Nothing left to sell: earlier sales already used these ${sale.asset}.`
+          )}
+        </p>
+        <Button variant="ghost-danger" size="xs" onClick={onRemove}>
+          <Trash2 />
+          Remove
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 interface PayoffPlanProps {
   /** The Debts list: every debt with a balance and a monthly payment. */
   items: DebtPaymentItem[];
-  /** What the snapshot values today's investments at, by kind: the default for "Investments today". */
+  /** Investments outside retirement accounts, by kind: the default for that field. */
   investmentParts: { label: string; value: number }[];
   /** Monthly total of the Income page: the default for passive income. */
   incomeMonthly: number;
+  /** DocVault's total of 401(k)s, IRAs and the like: the default for retirement accounts. */
+  retirementDefault: number;
+  /** Crypto by asset, for price targets and sales. */
+  holdings: Holding[];
 }
 
-export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlanProps) {
+export function PayoffPlan({
+  items,
+  investmentParts,
+  incomeMonthly,
+  retirementDefault,
+  holdings,
+}: PayoffPlanProps) {
   const { blurNumbers } = useAppContext();
   const [settings, setSettings] = useState<DebtPlanSettings>(DEFAULT_DEBT_PLAN_SETTINGS);
   const [text, setText] = useState(() => allText(DEFAULT_DEBT_PLAN_SETTINGS));
@@ -648,6 +842,10 @@ export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlan
     update((s) => ({ plannedLoans: s.plannedLoans.map((l) => (l.id === next.id ? next : l)) }));
   const changeIncome = (next: IncomeChange) =>
     update((s) => ({ incomeChanges: s.incomeChanges.map((c) => (c.id === next.id ? next : c)) }));
+  const changeTarget = (asset: string, next: PriceTarget) =>
+    update((s) => ({ priceTargets: s.priceTargets.map((t) => (t.asset === asset ? next : t)) }));
+  const changeSale = (next: HoldingSale) =>
+    update((s) => ({ sales: s.sales.map((x) => (x.id === next.id ? next : x)) }));
 
   const { cardsPaidInFull, minimumOnly } = settings;
   const debts = useMemo(
@@ -658,7 +856,38 @@ export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlan
   const cards = items.filter((d) => d.card);
   const defaultInvestments = investmentParts.reduce((s, p) => s + p.value, 0);
   const passiveIncome = settings.passiveIncome ?? incomeMonthly;
-  const investments = settings.investments ?? defaultInvestments;
+  // A holding with a price target or a sale moves on its own path, so its
+  // value comes out of the pot that grows at the plan rate.
+  const { priceTargets, sales } = settings;
+  const tracked = useMemo(() => {
+    const named = new Set([...priceTargets.map((t) => t.asset), ...sales.map((s) => s.asset)]);
+    return holdings.filter((h) => named.has(h.asset));
+  }, [holdings, priceTargets, sales]);
+  const investments = Math.max(
+    0,
+    (settings.investments ?? defaultInvestments) - tracked.reduce((s, h) => s + h.value, 0)
+  );
+  const retirement = settings.retirement ?? retirementDefault;
+  const untargeted = holdings.filter((h) => !priceTargets.some((t) => t.asset === h.asset));
+  const assetChoices = (own: string) => [own, ...untargeted.map((h) => h.asset)];
+  const payToOptions = [
+    ...debts.map((d) => ({ value: d.id, label: d.name })),
+    ...settings.plannedLoans.map((l) => ({ value: l.id, label: l.name || 'Planned loan' })),
+    { value: '', label: 'Nothing: keep it invested' },
+  ];
+  const newTarget = (): PriceTarget => ({
+    asset: untargeted[0].asset,
+    price: Math.round(untargeted[0].value / untargeted[0].units),
+    month: aYearOut(),
+  });
+  const newSale = (): HoldingSale => ({
+    id: newId('sale'),
+    asset: holdings[0].asset,
+    units: 1,
+    month: aYearOut(),
+    taxRate: 0.2,
+    payTo: settings.plannedLoans[0]?.id ?? debts[0]?.id ?? '',
+  });
   const living = settings.livingExpenses;
 
   const result = useMemo(
@@ -667,16 +896,22 @@ export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlan
         debts,
         plannedLoans: loans,
         incomeChanges: settings.incomeChanges,
+        holdings: tracked,
+        priceTargets,
+        sales,
         extraMonthly: settings.extraMonthly,
         order: settings.order,
         livingExpenses: settings.livingExpenses,
         monthlySavings: settings.monthlySavings,
         passiveIncome,
         investments,
+        retirement,
+        retirementSavings: settings.retirementSavings,
+        retirementFrom: settings.retirementFrom,
         realReturn: settings.realReturn,
         withdrawalRate: settings.withdrawalRate,
       }),
-    [debts, loans, settings, passiveIncome, investments]
+    [debts, loans, settings, tracked, priceTargets, sales, passiveIncome, investments, retirement]
   );
 
   const series = useMemo(
@@ -972,11 +1207,11 @@ export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlan
             onChange={(v) => edit('livingExpenses', v)}
           />
           <Field
-            label="Saving & investing / month"
+            label="Saving outside retirement accounts / month"
             prefix="$"
             value={text.monthlySavings}
             placeholder="0"
-            hint="What you add to investments now, not counting debt payments"
+            hint="Money you could spend before retirement age; not debt payments or 401(k)s"
             onChange={(v) => edit('monthlySavings', v)}
           />
           <Field
@@ -993,7 +1228,7 @@ export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlan
             onChange={(v) => edit('passiveIncome', v)}
           />
           <Field
-            label="Investments today"
+            label="Investments outside retirement accounts"
             prefix="$"
             value={text.investments}
             placeholder={masked(defaultInvestments)}
@@ -1011,6 +1246,37 @@ export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlan
               ) : undefined
             }
             onChange={(v) => edit('investments', v)}
+          />
+          <Field
+            label="Retirement accounts today"
+            prefix="$"
+            value={text.retirement}
+            placeholder={masked(retirementDefault)}
+            hint={
+              <>
+                401(k)s, IRAs and the like. Blank uses your accounts (
+                <Money>{formatUsd(retirementDefault)}</Money>)
+              </>
+            }
+            onChange={(v) => edit('retirement', v)}
+          />
+          <Field
+            label="Into retirement accounts / month"
+            prefix="$"
+            value={text.retirementSavings}
+            placeholder="0"
+            hint="401(k) and IRA contributions, employer's included"
+            onChange={(v) => edit('retirementSavings', v)}
+          />
+          <Field
+            kind="month"
+            label="Retirement money counts from"
+            value={settings.retirementFrom ?? ''}
+            hint="Blank counts it now. Withdrawals are penalty-free at 59½; a 72(t) SEPP or a Roth conversion ladder can start them earlier."
+            onChange={(v) => {
+              if (v === '') update({ retirementFrom: null });
+              else if (isMonthText(v)) update({ retirementFrom: v });
+            }}
           />
           <Field
             label="Growth after inflation / year"
@@ -1085,6 +1351,63 @@ export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlan
           </Button>
         </div>
       </Card>
+
+      {holdings.length > 0 && (
+        <Card variant="glass" className="p-5 space-y-4">
+          <div>
+            <h3 className="text-[14px] font-semibold text-surface-950">Crypto price scenarios</h3>
+            <p className="text-[12px] text-surface-600 mt-0.5">
+              Give a holding a price to reach by a month, and plan sales: what&apos;s left after tax
+              pays down the debt you pick. Without a target, a holding grows at the rate above.
+            </p>
+          </div>
+          {priceTargets.map((t) => (
+            <PriceTargetRow
+              key={t.asset}
+              target={t}
+              holding={holdings.find((h) => h.asset === t.asset)}
+              assets={assetChoices(t.asset)}
+              onChange={(next) => changeTarget(t.asset, next)}
+              onRemove={() =>
+                update((s) => ({
+                  priceTargets: s.priceTargets.filter((x) => x.asset !== t.asset),
+                }))
+              }
+            />
+          ))}
+          {sales.map((sale) => (
+            <SaleRow
+              key={sale.id}
+              sale={sale}
+              assets={holdings.map((h) => h.asset)}
+              payToOptions={payToOptions}
+              result={result.saleResults[sale.id]}
+              onChange={changeSale}
+              onRemove={() => update((s) => ({ sales: s.sales.filter((x) => x.id !== sale.id) }))}
+            />
+          ))}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={untargeted.length === 0 || priceTargets.length >= 10}
+              onClick={() => update((s) => ({ priceTargets: [...s.priceTargets, newTarget()] }))}
+            >
+              <Plus />
+              Price target
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={sales.length >= 20}
+              onClick={() => update((s) => ({ sales: [...s.sales, newSale()] }))}
+            >
+              <Plus />
+              Sale
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {owesAnything && (
         <Card variant="glass" className="p-5">
@@ -1288,6 +1611,7 @@ export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlan
                   <th className="px-3 py-2 font-medium">Needs / mo</th>
                   <th className="px-3 py-2 font-medium">Passive / mo</th>
                   <th className="px-3 py-2 font-medium">Invested</th>
+                  <th className="px-3 py-2 font-medium">Retirement</th>
                 </tr>
               </thead>
               <tbody className="font-mono tabular-nums text-surface-900">
@@ -1310,6 +1634,9 @@ export function PayoffPlan({ items, investmentParts, incomeMonthly }: PayoffPlan
                     </td>
                     <td className="px-3 py-1.5">
                       <Money>{formatUsd(m.invested)}</Money>
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <Money>{formatUsd(m.retirement)}</Money>
                     </td>
                   </tr>
                 ))}

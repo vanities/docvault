@@ -5,6 +5,7 @@ import {
   DEFAULT_DEBT_PLAN_SETTINGS,
   planDebts,
   planLoans,
+  cryptoHoldings,
   projectDebtPlan,
   yearlyPoints,
   type DebtPlanInput,
@@ -229,6 +230,103 @@ describe('projectDebtPlan: planned loans and later income', () => {
   });
 });
 
+describe('projectDebtPlan: retirement accounts', () => {
+  test('retirement money pays out only from the month it starts counting', () => {
+    // 4% a year of 300,000 is 1,000 a month: enough for 1,000 of living, but only from July.
+    const r = plan([], {
+      livingExpenses: 1000,
+      retirement: 300_000,
+      retirementFrom: '2026-07',
+    });
+    expect(r.months[5].passive).toBe(0);
+    expect(r.months[6].passive).toBeCloseTo(1000, 6);
+    expect(r.free).toBe('2026-07');
+  });
+
+  test('retirement contributions grow the retirement pot, not the spendable one', () => {
+    const r = plan([], {
+      retirementSavings: 500,
+      monthlySavings: 100,
+      livingExpenses: 1,
+      maxMonths: 3,
+    });
+    expect(r.months[3].retirement).toBe(1500);
+    expect(r.months[3].invested).toBe(300);
+  });
+});
+
+describe('projectDebtPlan: holdings with a price target, and sales', () => {
+  // 2 units at 50,000 today, aiming for 200,000 by July (six months out).
+  const btc = { holdings: [{ asset: 'BTC', units: 2, value: 100_000 }] };
+  const target = { priceTargets: [{ asset: 'BTC', price: 200_000, month: '2026-07' }] };
+
+  test('a holding climbs steadily to its target price, then grows at the plan rate', () => {
+    const r = plan([], { ...btc, ...target, livingExpenses: 1 });
+    // Halfway (3 of 6 months) on a steady climb from 50,000 to 200,000 is 100,000.
+    expect(r.months[3].invested).toBeCloseTo(200_000, 4);
+    expect(r.months[6].invested).toBeCloseTo(400_000, 4);
+    expect(r.months[8].invested).toBeCloseTo(400_000, 4);
+  });
+
+  test('a sale pays down its debt after tax and the debt ends sooner', () => {
+    // 5 payments leave 295,000. Selling 1 unit at 200,000 loses 50,000 to tax and
+    // puts 150,000 on the house; July's 1,000 leaves 144,000, so 144 more payments.
+    const house = loan('house', 300_000, 0, 1000);
+    const r = plan([house], {
+      ...btc,
+      ...target,
+      sales: [
+        { id: 's1', asset: 'BTC', units: 1, month: '2026-07', taxRate: 0.25, payTo: house.id },
+      ],
+    });
+    expect(r.saleResults.s1).toEqual({
+      month: '2026-07',
+      units: 1,
+      proceeds: expect.closeTo(200_000, 4),
+      tax: expect.closeTo(50_000, 4),
+      toDebt: expect.closeTo(150_000, 4),
+    });
+    expect(r.months[6].owed.house).toBeCloseTo(144_000, 4);
+    expect(r.paidOff.house).toBe('2038-07');
+    expect(r.paidOffAsScheduled.house).toBe('2051-01'); // no lump sums when paying only what's due
+  });
+
+  test('what the debt can’t take stays invested', () => {
+    // Both units at 200,000 net 300,000 after tax; the house only needs 295,000.
+    // The 5,000 left over is invested, and so is July's 1,000 house payment,
+    // which the paid-off house no longer needs.
+    const house = loan('house', 300_000, 0, 1000);
+    const r = plan([house], {
+      ...btc,
+      ...target,
+      sales: [
+        { id: 's1', asset: 'BTC', units: 2, month: '2026-07', taxRate: 0.25, payTo: house.id },
+      ],
+    });
+    expect(r.saleResults.s1.toDebt).toBeCloseTo(295_000, 4);
+    expect(r.paidOff.house).toBe('2026-07');
+    expect(r.months[6].invested).toBeCloseTo(6000, 4);
+  });
+
+  test('cryptoHoldings adds up each asset across sources, largest first', () => {
+    expect(
+      cryptoHoldings([
+        {
+          balances: [
+            { asset: 'ETH', amount: 2, usdValue: 4000 },
+            { asset: 'BTC', amount: 1, usdValue: 50_000 },
+          ],
+        },
+        { balances: [{ asset: 'BTC', amount: 0.5, usdValue: 25_000 }] },
+        {},
+      ])
+    ).toEqual([
+      { asset: 'BTC', units: 1.5, value: 75_000 },
+      { asset: 'ETH', units: 2, value: 4000 },
+    ]);
+  });
+});
+
 describe('yearlyPoints', () => {
   test('keeps now and each December, skipping one under six months away', () => {
     // Month 0 is October; the December two months out is too close to "now".
@@ -381,6 +479,38 @@ describe('applyDebtPlanPatch', () => {
     expect(settings.plannedLoans[0]).not.toHaveProperty('key');
     expect(settings.incomeChanges).toHaveLength(1);
     expect(settings.minimumOnly).toEqual(['property:Example House']);
+  });
+
+  test('checks price targets, sales, and the retirement fields', () => {
+    const sale = {
+      id: 's1',
+      asset: 'BTC',
+      units: 2,
+      month: '2029-10',
+      taxRate: 0.24,
+      payTo: 'loan-1',
+      extra: 1,
+    };
+    const ok = applyDebtPlanPatch(DEFAULT_DEBT_PLAN_SETTINGS, {
+      priceTargets: [{ asset: 'BTC', price: 300_000, month: '2029-10' }],
+      sales: [sale],
+      retirement: null,
+      retirementSavings: 1500,
+      retirementFrom: '2061-06',
+    });
+    expect(ok.invalid).toEqual([]);
+    expect(ok.settings.sales[0]).not.toHaveProperty('extra');
+    expect(ok.settings.retirementFrom).toBe('2061-06');
+
+    const bad = applyDebtPlanPatch(DEFAULT_DEBT_PLAN_SETTINGS, {
+      priceTargets: [{ asset: 'BTC', price: 0, month: '2029-10' }],
+      sales: [{ ...sale, taxRate: 0.7 }],
+      retirementFrom: '2050-13',
+      retirementSavings: -1,
+    });
+    expect(bad.invalid.sort()).toEqual(
+      ['priceTargets', 'retirementFrom', 'retirementSavings', 'sales'].sort()
+    );
   });
 
   test('rejects malformed planned loans, later income, and minimum-only lists', () => {

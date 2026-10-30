@@ -132,6 +132,18 @@ export function categorizeAccount(
   return 'depository';
 }
 
+const RETIREMENT_WORD = /\b(ira|roth|pension|retirement)\b/;
+
+/**
+ * Money you can't draw without penalty until retirement age: 401(k)-style
+ * plans, IRAs (Roth included), pensions. Same cash-word rule as above, so
+ * "IRA SMITH CHECKING" stays a checking account.
+ */
+export function isRetirementAccount(name: string): boolean {
+  const n = name.toLowerCase();
+  return RETIREMENT_PLAN.test(n) || (RETIREMENT_WORD.test(n) && !CASH_WORD.test(n));
+}
+
 /**
  * Human-readable label for the account list. Built on top of categorizeAccount
  * so the badge in the UI can never disagree with the category the snapshot,
