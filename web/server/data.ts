@@ -9,6 +9,11 @@ import type { SimplefinConfig } from './simplefin.js';
 import { createLogger } from './logger.js';
 import { decryptField, encryptField, walkSensitiveFields } from './crypto-keys.js';
 import { rollUpBankAccounts, type BankRollup, type RollupBankAccount } from './bank-rollup.js';
+import {
+  applyDebtPlanPatch,
+  DEFAULT_DEBT_PLAN_SETTINGS,
+  type DebtPlanSettings,
+} from './debt-plan.js';
 
 const logFiles = createLogger('Files');
 const logMigration = createLogger('Migration');
@@ -1297,6 +1302,7 @@ export const BROKER_ACTIVITIES_FILE = path.join(DATA_DIR, '.docvault-broker-acti
 export const SIMPLEFIN_CACHE_FILE = path.join(DATA_DIR, '.docvault-simplefin-cache.json');
 export const INCOME_FILE = path.join(DATA_DIR, '.docvault-income.json');
 export const LIABILITIES_FILE = path.join(DATA_DIR, '.docvault-liabilities.json');
+export const DEBT_PLAN_FILE = path.join(DATA_DIR, '.docvault-debt-plan.json');
 export const ACCOUNT_ANNOTATIONS_FILE = path.join(DATA_DIR, '.docvault-account-annotations.json');
 
 export interface PortfolioSnapshot {
@@ -1764,6 +1770,24 @@ export async function loadLiabilities(): Promise<LiabilitiesData> {
 
 export async function saveLiabilities(data: LiabilitiesData): Promise<void> {
   await fs.writeFile(LIABILITIES_FILE, JSON.stringify(data, null, 2));
+}
+
+// Payoff plan inputs (Debts page). A stored field that no longer passes its
+// check falls back to its default rather than discarding the whole plan.
+export async function loadDebtPlan(): Promise<DebtPlanSettings> {
+  let stored: unknown;
+  try {
+    stored = JSON.parse(await fs.readFile(DEBT_PLAN_FILE, 'utf-8'));
+  } catch {
+    return { ...DEFAULT_DEBT_PLAN_SETTINGS };
+  }
+  const { settings } = applyDebtPlanPatch(DEFAULT_DEBT_PLAN_SETTINGS, stored);
+  const updatedAt = (stored as { updatedAt?: unknown } | null)?.updatedAt;
+  return typeof updatedAt === 'string' ? { ...settings, updatedAt } : settings;
+}
+
+export async function saveDebtPlan(settings: DebtPlanSettings): Promise<void> {
+  await fs.writeFile(DEBT_PLAN_FILE, JSON.stringify(settings, null, 2));
 }
 
 // ============================================================================

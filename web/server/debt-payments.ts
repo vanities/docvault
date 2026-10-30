@@ -26,6 +26,8 @@ export interface DebtPaymentItem {
   monthlyPayment: number;
   /** DocVault estimated the payment (a card with no minimum typed in). */
   estimated?: boolean;
+  /** A bank-synced credit card. Paid in full each month, its balance is spending, not debt. */
+  card?: boolean;
 }
 
 export interface DebtPayments {
@@ -103,6 +105,7 @@ export function buildDebtPayments(input: DebtPaymentInputs): DebtPayments {
       rate: ann?.rate,
       monthlyPayment: r.monthlyPayment,
       ...(r.paymentEstimated ? { estimated: true } : {}),
+      ...(r.category === 'credit-card' ? { card: true } : {}),
     });
   }
 

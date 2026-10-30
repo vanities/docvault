@@ -1,10 +1,21 @@
 // Manual liabilities route handlers — debts not tracked by SimpleFIN
 // (equipment loans, private notes, future construction loans, etc.).
 // Rolled into monthlyDebtService + DTI in financial-snapshot.
+// Also the Debts page's payoff plan inputs (/api/debt-plan).
 
-import { loadLiabilities, saveLiabilities, jsonResponse } from '../data.js';
+import {
+  loadLiabilities,
+  saveLiabilities,
+  loadDebtPlan,
+  saveDebtPlan,
+  jsonResponse,
+} from '../data.js';
 import type { LiabilityEntry, LiabilityType } from '../data.js';
+import { applyDebtPlanPatch } from '../debt-plan.js';
 import { readJsonBody } from '../http.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('DebtPlan');
 
 const VALID_TYPES: LiabilityType[] = [
   'equipment-loan',
@@ -24,6 +35,25 @@ export async function handleLiabilityRoutes(
 ): Promise<Response | null> {
   if (pathname === '/api/liabilities' && req.method === 'GET') {
     return jsonResponse(await loadLiabilities());
+  }
+
+  if (pathname === '/api/debt-plan' && req.method === 'GET') {
+    return jsonResponse(await loadDebtPlan());
+  }
+
+  // Partial update: only the fields sent change. null on passiveIncome or
+  // investments hands that input back to its Income-page / snapshot default.
+  if (pathname === '/api/debt-plan' && req.method === 'PUT') {
+    const body = await readJsonBody<unknown>(req);
+    const { settings, invalid } = applyDebtPlanPatch(await loadDebtPlan(), body);
+    if (invalid.length > 0) {
+      log.warn(`rejected update invalid=${invalid.join(',')}`);
+      return jsonResponse({ error: `Invalid debt plan fields: ${invalid.join(', ')}` }, 400);
+    }
+    settings.updatedAt = new Date().toISOString();
+    await saveDebtPlan(settings);
+    log.info(`saved fields=${Object.keys(body as object).join(',')}`);
+    return jsonResponse({ ok: true, settings });
   }
 
   if (pathname === '/api/liabilities' && req.method === 'POST') {

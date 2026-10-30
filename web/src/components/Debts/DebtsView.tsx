@@ -10,6 +10,7 @@ import {
   Check,
   Calculator,
   AlertTriangle,
+  TrendingDown,
 } from 'lucide-react';
 import { API_BASE } from '../../constants';
 import { Card } from '@/components/ui/card';
@@ -18,7 +19,9 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Money } from '../common/Money';
 import { LoanAmortization } from '../common/LoanAmortization';
+import { PayoffPlan } from './PayoffPlan';
 import type { DebtPaymentItem, DebtPayments } from '../../../server/debt-payments';
+import { toMonthly } from '../../../server/income-frequency';
 
 type LiabilityType =
   | 'equipment-loan'
@@ -48,6 +51,9 @@ interface Liability {
 }
 
 interface SnapshotPortfolioSummary {
+  brokerage?: number;
+  crypto?: number;
+  preciousMetals?: number;
   bankMonthlyDebtService?: number;
   manualLiabilityMonthlyPayment?: number;
   mortgageMonthlyPayment?: number;
@@ -102,6 +108,8 @@ export function DebtsView() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [snapshotSummary, setSnapshotSummary] = useState<SnapshotPortfolioSummary | null>(null);
   const [debtPayments, setDebtPayments] = useState<DebtPayments | null>(null);
+  const [incomeMonthly, setIncomeMonthly] = useState(0);
+  const [snapshotLoaded, setSnapshotLoaded] = useState(false);
 
   // DTI calculator inputs
   const [proposedLoan, setProposedLoan] = useState('815000');
@@ -157,8 +165,12 @@ export function DebtsView() {
       const data = await res.json();
       setSnapshotSummary(data?.portfolioSummary || null);
       setDebtPayments(data?.debtPayments || null);
+      const sources: { amount: number; frequency: string }[] = data?.additionalIncome ?? [];
+      setIncomeMonthly(sources.reduce((s, x) => s + toMonthly(x.amount, x.frequency), 0));
     } catch {
       /* non-critical */
+    } finally {
+      setSnapshotLoaded(true);
     }
   }, []);
 
@@ -252,6 +264,15 @@ export function DebtsView() {
     () => (debtPayments?.items ?? []).reduce((s, d) => s + d.balance, 0),
     [debtPayments]
   );
+  const investmentParts = useMemo(
+    () =>
+      [
+        { label: 'Brokerage', value: snapshotSummary?.brokerage ?? 0 },
+        { label: 'Crypto', value: snapshotSummary?.crypto ?? 0 },
+        { label: 'Metals', value: snapshotSummary?.preciousMetals ?? 0 },
+      ].filter((p) => p.value > 0),
+    [snapshotSummary]
+  );
 
   const dti = useMemo(() => {
     const principal = parseFloat(proposedLoan) || 0;
@@ -300,6 +321,10 @@ export function DebtsView() {
           <TabsTrigger value="list">
             <CreditCard className="w-3.5 h-3.5" />
             Debts
+          </TabsTrigger>
+          <TabsTrigger value="plan">
+            <TrendingDown className="w-3.5 h-3.5" />
+            Payoff plan
           </TabsTrigger>
           <TabsTrigger value="dti">
             <Calculator className="w-3.5 h-3.5" />
@@ -661,6 +686,24 @@ export function DebtsView() {
                   </Card>
                 );
               })}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="plan">
+          {debtPayments ? (
+            <PayoffPlan
+              items={debtPayments.items}
+              investmentParts={investmentParts}
+              incomeMonthly={incomeMonthly}
+            />
+          ) : snapshotLoaded ? (
+            <p className="text-[13px] text-surface-500 py-10 text-center">
+              Couldn&apos;t load your debts from the financial snapshot.
+            </p>
+          ) : (
+            <div className="flex justify-center py-16">
+              <Loader2 className="w-5 h-5 text-accent-400 animate-spin" />
             </div>
           )}
         </TabsContent>
