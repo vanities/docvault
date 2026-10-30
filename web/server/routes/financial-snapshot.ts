@@ -36,6 +36,7 @@ import type { IncomeItem } from '../analytics/index.js';
 import { accountTypeLabel, categorizeAccount, type AccountCategory } from '../account-classify.js';
 import { rollUpBankAccounts, type CountedIn } from '../bank-rollup.js';
 import { buildDebtPayments } from '../debt-payments.js';
+import { toMonthly } from '../income-frequency.js';
 export { categorizeAccount };
 export type { AccountCategory };
 
@@ -612,23 +613,7 @@ export async function handleFinancialSnapshotRoutes(
       // Income qualifying for DTI — sum of monthly-equivalent income sources.
       // VA disability is grossed up 25% (industry-standard non-taxable gross-up).
       const qualifyingMonthlyIncome = incomeData.sources.reduce((sum, s) => {
-        let monthly: number;
-        switch (s.frequency) {
-          case 'weekly':
-            monthly = (s.amount * 52) / 12;
-            break;
-          case 'biweekly':
-            monthly = (s.amount * 26) / 12;
-            break;
-          case 'quarterly':
-            monthly = s.amount / 3;
-            break;
-          case 'annually':
-            monthly = s.amount / 12;
-            break;
-          default:
-            monthly = s.amount;
-        }
+        const monthly = toMonthly(s.amount, s.frequency);
         return sum + (s.taxable ? monthly : monthly * 1.25);
       }, 0);
       const dtiRatio =
@@ -1619,22 +1604,10 @@ export async function handleFinancialSnapshotRoutes(
             );
           }
           // Monthly total
-          const monthlyTotal = incomeData.sources.reduce((sum, s) => {
-            switch (s.frequency) {
-              case 'weekly':
-                return sum + (s.amount * 52) / 12;
-              case 'biweekly':
-                return sum + (s.amount * 26) / 12;
-              case 'monthly':
-                return sum + s.amount;
-              case 'quarterly':
-                return sum + s.amount / 3;
-              case 'annually':
-                return sum + s.amount / 12;
-              default:
-                return sum + s.amount;
-            }
-          }, 0);
+          const monthlyTotal = incomeData.sources.reduce(
+            (sum, s) => sum + toMonthly(s.amount, s.frequency),
+            0
+          );
           lines.push(`| **Monthly Total** | **${fmt(monthlyTotal)}** | | | |`);
           lines.push('');
         }
