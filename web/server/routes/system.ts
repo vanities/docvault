@@ -125,6 +125,7 @@ export async function handleSettingsRoutes(
       authSource,
       authHint,
       claudeModel: settings.claudeModel || DEFAULT_MODEL,
+      assignmentsModel: settings.assignmentsModel ?? '',
       hasGeoapifyKey: !!settings.geoapifyApiKey,
       geoapifyKeyHint: settings.geoapifyApiKey ? settings.geoapifyApiKey.slice(-4) : undefined,
       hasFredKey: !!settings.fredApiKey,
@@ -182,6 +183,7 @@ export async function handleSettingsRoutes(
       clearAnthropicKey?: boolean;
       anthropicKey?: string;
       claudeModel?: string;
+      assignmentsModel?: string;
       geoapifyApiKey?: string;
       fredApiKey?: string;
       congressApiKey?: string;
@@ -219,6 +221,14 @@ export async function handleSettingsRoutes(
         settings.claudeModel = body.claudeModel;
       } else {
         delete settings.claudeModel;
+      }
+    }
+
+    if (body.assignmentsModel !== undefined) {
+      if (body.assignmentsModel) {
+        settings.assignmentsModel = body.assignmentsModel;
+      } else {
+        delete settings.assignmentsModel;
       }
     }
 

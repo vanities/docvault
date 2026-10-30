@@ -17,6 +17,8 @@ vi.hoisted(() => {
 });
 
 import {
+  DEFAULT_MODEL,
+  getAssignmentsModel,
   getMimeType,
   loadSettings,
   monthsBetween,
@@ -155,6 +157,17 @@ describe('settings persistence reliability', () => {
     });
     const files = await readdir(path.dirname(SETTINGS_PATH));
     expect(files.filter((name) => name.includes('.docvault-settings.json.tmp'))).toEqual([]);
+  });
+
+  test('getAssignmentsModel falls back to the chat model, then the default', async () => {
+    await rm(SETTINGS_PATH, { force: true });
+    expect(await getAssignmentsModel()).toBe(DEFAULT_MODEL);
+
+    await saveSettings({ claudeModel: 'chat-model' });
+    expect(await getAssignmentsModel()).toBe('chat-model');
+
+    await saveSettings({ claudeModel: 'chat-model', assignmentsModel: 'checkin-model' });
+    expect(await getAssignmentsModel()).toBe('checkin-model');
   });
 });
 

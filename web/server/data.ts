@@ -195,6 +195,8 @@ export interface Settings {
    */
   anthropicAuthToken?: string;
   claudeModel?: string;
+  /** Claude model for assignment check-ins; unset = follow claudeModel. */
+  assignmentsModel?: string;
   /**
    * HTTP endpoint for an OpenAI-compatible /audio/transcriptions service —
    * e.g. whisper.cpp server, faster-whisper-server, parakeet-mlx server.
@@ -548,6 +550,16 @@ export async function migrateSettingsEncryption(): Promise<{
 export async function getClaudeModel(): Promise<string> {
   const settings = await loadSettings();
   return settings.claudeModel || DEFAULT_MODEL;
+}
+
+/**
+ * The Claude model for assignment check-ins; unset follows the chat model. Split so chat can run
+ * a model whose safeguards refuse unattended check-ins (Opus 5.5, 2026-10-30) while check-ins run
+ * one that accepts them.
+ */
+export async function getAssignmentsModel(): Promise<string> {
+  const settings = await loadSettings();
+  return settings.assignmentsModel || settings.claudeModel || DEFAULT_MODEL;
 }
 
 /** Chat execution mode: 'agent' (Claude Code / Codex on the subscription) or
