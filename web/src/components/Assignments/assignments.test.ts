@@ -101,7 +101,7 @@ describe('visibleAssignments', () => {
         at: '2030-01-02T14:00:00.000Z',
         trigger: 'scheduled',
         ok: true,
-        headline: 'USDe back at $1',
+        headline: 'Widget stock back in store',
         emailed: false,
         error: null,
       },
@@ -115,7 +115,7 @@ describe('visibleAssignments', () => {
   });
 
   test('search covers title, brief, notes and the latest headline', () => {
-    expect(visibleAssignments(list, 'active', 'usde').map((a) => a.id)).toEqual(['e']);
+    expect(visibleAssignments(list, 'active', 'widget').map((a) => a.id)).toEqual(['e']);
     expect(visibleAssignments(list, 'active', 'acme bank').length).toBe(4);
     expect(visibleAssignments(list, 'active', 'nothing like this')).toEqual([]);
   });
