@@ -533,6 +533,7 @@ describe('failures', () => {
       expect((await get(id)).nextCheckAt).toBe(minutesLater(minutes));
     }
     expect(sent.map((e) => e.subject)).toEqual(["Watch Acme Bank rates: can't run"]);
+    expect(sent[0].html).toMatch(/<blockquote>\s*<p>subprocess crashed<\/p>/);
     expect((await get(id)).consecutiveFailures).toBe(4);
 
     await runAssignment(
