@@ -77,7 +77,11 @@ export function defaultRunnerDeps(): RunnerDeps {
 }
 
 export type RunOutcome =
-  | { status: 'ok' | 'failed' | 'rate-limited' | 'account'; runId: string; error: string | null }
+  | {
+      status: 'ok' | 'failed' | 'rate-limited' | 'account' | 'refused';
+      runId: string;
+      error: string | null;
+    }
   | { status: 'skipped'; reason: string };
 
 // Errors no retry will fix until the owner acts (sign-in, billing, a removed model).
@@ -138,6 +142,14 @@ function describeResult(result: SDKResultMessage): string {
     default:
       return result.errors?.join('; ').slice(0, 300) || 'Error during the run';
   }
+}
+
+/** API errors span lines and carry backticks, so inline code would break them up. */
+function quoted(text: string): string {
+  return text
+    .split('\n')
+    .map((line) => `> ${line}`)
+    .join('\n');
 }
 
 function summarizeInput(input: unknown): string {
@@ -414,12 +426,16 @@ export async function runAssignment(
       log.error(`[run] threw assignment=${id} run=${runId}: ${(err as Error).message}`);
     }
 
-    // Classify. Account problems stop every assignment; a usage limit waits for its reset;
-    // everything else is a failure with backoff.
+    // Classify. Account problems stop every assignment; a usage limit waits for its reset; a
+    // refused request pauses its assignment; everything else is a failure with backoff.
     const accountError = assistantErrors.find((e) => ACCOUNT_ERRORS.has(e));
     const limitInfo = live.rateLimit;
     const rateLimited = assistantErrors.includes('rate_limit') || limitInfo?.status === 'rejected';
-    let outcome: 'ok' | 'failed' | 'rate-limited' | 'account';
+    // invalid_request means the API turned the request itself down; a safeguard refusal arrives
+    // this way. The next check-in sends nearly the same request, so a retry only repeats it, and a
+    // repeated refusal is another flagged request on the owner's account.
+    const refused = assistantErrors.includes('invalid_request');
+    let outcome: 'ok' | 'failed' | 'rate-limited' | 'account' | 'refused';
     let error: string | null = null;
     if (accountError) {
       outcome = 'account';
@@ -427,6 +443,9 @@ export async function runAssignment(
     } else if (rateLimited) {
       outcome = 'rate-limited';
       error = 'Claude usage limit reached';
+    } else if (refused) {
+      outcome = 'refused';
+      error = turn.error ?? 'invalid_request';
     } else if (turn.aborted) {
       outcome = 'failed';
       error = `Stopped after ${LIMITS.runTimeoutMs / 60_000} minutes`;
@@ -453,6 +472,7 @@ export async function runAssignment(
     const toolList = [...tools.values()];
     const emails: EmailPlan[] = [];
     let entryNextCheck: string | null = null;
+    let pausedByRefusal = false;
 
     // `running` stays set until the thread and run log are written (it is released last, below), so
     // anything that sees the run finished sees all of it, and a delete can't race the last writes.
@@ -529,6 +549,24 @@ export async function runAssignment(
             assignmentId: id,
           });
         }
+      } else if (outcome === 'refused') {
+        cur.consecutiveFailures += 1;
+        // The pause is what stops the retries. A pause or close made mid-run stands, and a refused
+        // Run now on an already-paused assignment has no new pause to report.
+        pausedByRefusal = cur.status === 'active';
+        if (pausedByRefusal) {
+          cur.status = 'paused';
+          cur.nextCheckAt = null;
+          cur.unread += 1;
+          emails.push({
+            subject: `${cur.title}: paused, Anthropic refused the check-in`,
+            markdown: `Anthropic's API refused a check-in, so the assignment is paused instead of retrying: the next check-in would send nearly the same request.\n\n${quoted(error ?? '')}\n\nIf the error has a request ID, Anthropic support can look the request up by it. Resume the assignment in DocVault once the cause is fixed.`,
+            changes: [],
+            nextCheckAt: null,
+            assignmentId: id,
+          });
+        }
+        entryNextCheck = cur.nextCheckAt;
       } else {
         cur.consecutiveFailures += 1;
         const backoff =
@@ -559,6 +597,11 @@ export async function runAssignment(
         error,
       };
     }, deps.dataDir);
+    if (outcome === 'refused') {
+      log.warn(
+        `[run] refused assignment=${id} run=${runId}: ${pausedByRefusal ? 'paused, no retry' : 'already paused or closed'}`
+      );
+    }
 
     // Send before recording, so "emailed" in the thread and the run log means it actually went out.
     let delivered = 0;
@@ -596,7 +639,9 @@ export async function runAssignment(
                   ? `Skipped: the Claude usage limit was reached. ${nextLabel}`
                   : outcome === 'account'
                     ? `Failed: ${error}. Every assignment is paused until you fix the Claude account in Settings and press Resume all.`
-                    : `Check-in failed: ${error}. ${nextLabel}`,
+                    : outcome === 'refused'
+                      ? `Anthropic's API refused this check-in, so it won't be retried on its own: the next check-in would send nearly the same request. Resume the assignment once the cause is fixed.\n\n${quoted(error ?? '')}`
+                      : `Check-in failed: ${error}. ${nextLabel}`,
               runId,
               trigger,
               tools: toolList,

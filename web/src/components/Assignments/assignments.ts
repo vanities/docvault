@@ -110,5 +110,6 @@ export const RUN_OUTCOME_LABEL: Record<RunEnd['outcome'], string> = {
   failed: 'Failed',
   'rate-limited': 'Usage limit',
   account: 'Account problem',
+  refused: 'Refused',
   interrupted: 'Interrupted',
 };

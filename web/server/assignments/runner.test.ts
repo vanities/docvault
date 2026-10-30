@@ -425,6 +425,62 @@ describe('failures', () => {
     expect((await loadIndex(dataDir)).pausedAll).toBe(true);
   });
 
+  // The shape a real safeguard refusal arrived in (2026-10-30).
+  const refusing = () =>
+    deps(async (opts) => {
+      opts.send({ type: 'assistant_error', error: 'invalid_request' });
+      return {
+        result: null,
+        error:
+          "Claude Code returned an error result: API Error: Claude's safeguards flagged this message.\n\nRequest ID: req_test",
+        aborted: false,
+      };
+    });
+
+  test('a request the API refuses pauses that one assignment and emails once', async () => {
+    const id = await create();
+    const other = await create();
+    expect(await runAssignment(id, 'scheduled', refusing())).toMatchObject({
+      status: 'refused',
+      error: expect.stringContaining('req_test'),
+    });
+    expect(await get(id)).toMatchObject({
+      status: 'paused',
+      nextCheckAt: null,
+      consecutiveFailures: 1,
+    });
+    expect((await loadIndex(dataDir)).pausedAll).toBe(false);
+    expect((await get(other)).status).toBe('active');
+    expect(sent.map((e) => e.subject)).toEqual([
+      'Watch Acme Bank rates: paused, Anthropic refused the check-in',
+    ]);
+    expect(sent[0].html).toContain('req_test');
+    expect((await loadTranscript(id, dataDir)).at(-1)).toMatchObject({
+      kind: 'system',
+      markdown: expect.stringContaining('refused this check-in'),
+    });
+    expect((await readRunLog(id, dataDir)).at(-1)).toMatchObject({
+      event: 'end',
+      outcome: 'refused',
+    });
+
+    expect(await runAssignment(id, 'manual', refusing())).toMatchObject({ status: 'refused' });
+    expect((await get(id)).status).toBe('paused');
+    expect(sent).toHaveLength(1);
+  });
+
+  test('a resumed assignment that is refused again is paused and reported again', async () => {
+    const id = await create();
+    await runAssignment(id, 'scheduled', refusing());
+    await updateIndex((index) => {
+      index.assignments[id].status = 'active';
+      index.assignments[id].nextCheckAt = new Date(clock.now).toISOString();
+    }, dataDir);
+    await runAssignment(id, 'scheduled', refusing());
+    expect(await get(id)).toMatchObject({ status: 'paused', consecutiveFailures: 2 });
+    expect(sent).toHaveLength(2);
+  });
+
   test('a usage limit waits for its reset instead of counting as a failure', async () => {
     const id = await create();
     const resetSeconds = Math.floor((clock.now + 90 * 60_000) / 1000);
