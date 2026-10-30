@@ -168,6 +168,13 @@ web/scripts/*
 !web/server/routes/chat.stream.test.ts
 # Exception: unattended chat-turn tests use a fabricated assignment context and a scripted Agent SDK, no model call
 !web/server/routes/chat.unattended.test.ts
+# Exception: get_alerts tool test reads a fabricated alerts response, no personal data
+!web/server/routes/chat.get-alerts.test.ts
+# Exception: assignment tests use a fabricated brief in a tmpdir with a scripted agent turn and a stub mailer
+!web/server/assignments/finish.test.ts
+!web/server/assignments/prompt.test.ts
+!web/server/assignments/runner.test.ts
+!web/server/routes/assignments.test.ts
 # Exception: blur-coverage test scans component source for unblurred money renders, no personal data
 !web/src/components/blur-coverage.test.ts
 # Exception: search controls tests use fabricated document metadata only, no personal data

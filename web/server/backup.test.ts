@@ -109,6 +109,20 @@ describe('backup bundle round-trip', () => {
     ).toHaveLength(1);
   });
 
+  test('captures assignments/ — transcripts and run logs the index points at', async () => {
+    const dir = path.join(scratchDir, 'assignments');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'a1.json'), JSON.stringify({ id: 'a1', entries: [] }));
+    await fs.writeFile(path.join(dir, 'a1.runs.jsonl'), '{"event":"start"}\n');
+
+    const unpacked = await unpackBundle(await createBackupBundle('pw', scratchDir), 'pw');
+
+    expect(unpacked['assignments/a1.json']).toBeDefined();
+    expect(new TextDecoder().decode(unpacked['assignments/a1.runs.jsonl'])).toBe(
+      '{"event":"start"}\n'
+    );
+  });
+
   test('captures health/ subtree recursively with binary fidelity', async () => {
     await fs.writeFile(path.join(scratchDir, '.docvault-settings.json'), JSON.stringify({}));
     const exportsDir = path.join(scratchDir, 'health', 'person-abc', 'exports');
