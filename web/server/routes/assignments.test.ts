@@ -108,15 +108,19 @@ describe('creating and listing', () => {
       title: 'Watch Acme Bank rates',
       status: 'active',
       cadenceMinutes: 120,
+      // Queued in the same write, so the scheduler can't also pick it up as due.
+      pendingRun: 'manual',
     });
     const after = await settled(a.id, 1);
     expect(after.lastRun).toMatchObject({ ok: true, trigger: 'manual', headline: 'Acme at 4.1%' });
   });
 
-  test('startNow: false waits for the first scheduled check', async () => {
+  test('startNow: false waits one interval for the first check', async () => {
     const a = await create(false);
-    expect((await get(a.id)).counters.runs).toBe(0);
-    expect((await get(a.id)).nextCheckAt).toBe(new Date(NOW).toISOString());
+    const stored = await get(a.id);
+    expect(stored.counters.runs).toBe(0);
+    expect(stored.pendingRun).toBeNull();
+    expect(stored.nextCheckAt).toBe(new Date(NOW + 180 * 60_000).toISOString());
   });
 
   test('bad input is a 400 with the reason', async () => {

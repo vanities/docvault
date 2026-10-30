@@ -559,6 +559,20 @@ export async function runAssignment(
       };
     }, deps.dataDir);
 
+    // Send before recording, so "emailed" in the thread and the run log means it actually went out.
+    let delivered = 0;
+    for (const plan of emails) {
+      const failure = await deliver(deps, plan, context.timeZone);
+      if (failure) warnings.push(`email failed: ${failure}`);
+      else delivered += 1;
+    }
+    if (emails.length > 0 && delivered === 0) {
+      await updateIndex((index) => {
+        const cur = index.assignments[id];
+        if (cur?.lastRun?.runId === runId) cur.lastRun.emailed = false;
+      }, deps.dataDir);
+    }
+
     const nextLabel = entryNextCheck
       ? `Next check ${formatLocal(entryNextCheck, context.timeZone)}.`
       : '';
@@ -575,7 +589,7 @@ export async function runAssignment(
               trigger,
               tools: toolList,
               headline: applied?.headline,
-              emailed: emails.length > 0,
+              emailed: delivered > 0,
               nextCheckAt: entryNextCheck,
             }
           : {
@@ -597,11 +611,6 @@ export async function runAssignment(
       deps.dataDir
     );
 
-    for (const plan of emails) {
-      const failure = await deliver(deps, plan, context.timeZone);
-      if (failure) warnings.push(`email failed: ${failure}`);
-    }
-
     const durationMs = Math.round(performance.now() - t0);
     await appendRunLog(
       id,
@@ -612,7 +621,7 @@ export async function runAssignment(
         outcome,
         durationMs,
         costUsd: turn.result?.total_cost_usd ?? null,
-        emailed: emails.length > 0,
+        emailed: delivered > 0,
         headline: applied?.headline ?? null,
         warnings,
         error,
@@ -620,7 +629,7 @@ export async function runAssignment(
       deps.dataDir
     );
     log.info(
-      `[run] end assignment=${id} run=${runId} outcome=${outcome} tools=${toolList.length} emails=${emails.length} warnings=${warnings.length} in ${durationMs}ms`
+      `[run] end assignment=${id} run=${runId} outcome=${outcome} tools=${toolList.length} emails=${delivered}/${emails.length} warnings=${warnings.length} in ${durationMs}ms`
     );
     return { status: outcome, runId, error };
   } finally {

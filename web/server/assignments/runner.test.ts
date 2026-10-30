@@ -235,6 +235,30 @@ describe('notifications', () => {
     expect(a.lastRun?.emailed).toBe(true);
   });
 
+  test('an email that could not be sent is never shown as emailed', async () => {
+    const id = await create();
+    await runAssignment(
+      id,
+      'scheduled',
+      deps(
+        async (opts) => {
+          await finish(opts, { notify: { subject: 'Rate moved', body: 'Acme cut to 3.9%.' } });
+          return success();
+        },
+        { recipient: async () => null }
+      )
+    );
+    expect(sent).toHaveLength(0);
+    expect((await get(id)).lastRun?.emailed).toBe(false);
+    const [entry] = await loadTranscript(id, dataDir);
+    expect(entry.emailed).toBe(false);
+    const end = (await readRunLog(id, dataDir)).at(-1);
+    expect(end).toMatchObject({ event: 'end', emailed: false });
+    expect(end && 'warnings' in end ? end.warnings : []).toContain(
+      'email failed: No email recipient configured'
+    );
+  });
+
   test('the daily email cap holds back further notifications', async () => {
     const id = await create({
       counters: {

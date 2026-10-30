@@ -50,7 +50,7 @@ const LIST_POLL_MS = 60_000;
 const RUN_POLL_MS = 3_000;
 const CADENCE_CHOICES = [60, 180, 360, 720, 1440, 10080];
 const PROSE =
-  'prose prose-sm prose-surface max-w-none text-[14px] text-surface-800 [&_strong]:text-surface-950 [&_a]:text-accent-400 [&_ul]:my-2 [&_li]:my-0.5 [&_p]:my-2 [&_table]:text-[13px]';
+  'prose prose-sm prose-surface max-w-none text-[14px] text-surface-800 [&_strong]:text-surface-950 [&_a]:text-accent-400 [&_ul]:my-2 [&_li]:my-0.5 [&_p]:my-2 [&_table]:my-2 [&_table]:text-[13px] [&_table]:border-collapse [&_th]:text-left [&_th]:font-semibold [&_th]:px-2 [&_th]:py-1 [&_th]:border-b [&_th]:border-border/60 [&_td]:px-2 [&_td]:py-1 [&_td]:border-b [&_td]:border-border/30';
 
 const TONE_STYLE: Record<Tone, { label: string; cls: string }> = {
   running: { label: 'Running', cls: 'bg-accent-500/15 text-accent-400 ring-1 ring-accent-500/30' },
@@ -146,7 +146,16 @@ function ToolChips({ tools }: { tools: ToolUse[] }) {
   );
 }
 
-function EntryCard({ entry, now }: { entry: TranscriptEntry; now: number }) {
+function EntryCard({
+  entry,
+  now,
+  latest,
+}: {
+  entry: TranscriptEntry;
+  now: number;
+  /** Only the newest run's next check is still current; older ones are history. */
+  latest: boolean;
+}) {
   const tone =
     entry.kind === 'you'
       ? 'bg-accent-500/5 border-accent-500/20 md:ml-10'
@@ -169,7 +178,7 @@ function EntryCard({ entry, now }: { entry: TranscriptEntry; now: number }) {
       )}
       <SafeMarkdown className={PROSE}>{entry.markdown}</SafeMarkdown>
       {entry.tools && entry.tools.length > 0 && <ToolChips tools={entry.tools} />}
-      {entry.nextCheckAt && entry.kind !== 'you' && (
+      {latest && entry.nextCheckAt && entry.kind !== 'you' && (
         <p className="text-[11px] text-surface-600 mt-2">
           Next check {formatRelative(entry.nextCheckAt, now)}
         </p>
@@ -266,7 +275,7 @@ function NewAssignmentForm({
             onChange={(e) => setTitle(e.target.value)}
             maxLength={120}
             required
-            placeholder="Rejoin Coinbase High Yield?"
+            placeholder="Watch Acme Bank's savings rate"
             className="mt-1 w-full rounded-lg border border-border bg-surface-50 px-3 py-2 text-[14px] text-surface-950"
           />
         </label>
@@ -345,6 +354,7 @@ function AssignmentDetailPane({
   const [message, setMessage] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
   const working = !!a.running || !!a.pendingRun;
+  const latestRunEntryId = [...detail.entries].reverse().find((e) => e.kind !== 'you')?.id;
 
   useEffect(() => setBriefDraft(a.brief), [a.id, a.brief]);
   useEffect(() => {
@@ -534,7 +544,12 @@ function AssignmentDetailPane({
           </p>
         )}
         {detail.entries.map((entry) => (
-          <EntryCard key={entry.id} entry={entry} now={now} />
+          <EntryCard
+            key={entry.id}
+            entry={entry}
+            now={now}
+            latest={entry.id === latestRunEntryId}
+          />
         ))}
         {working && (
           <div className="flex items-center gap-2 text-[13px] text-surface-600">
@@ -614,6 +629,15 @@ export function AssignmentsView() {
         setNow(Date.now());
         if (next.assignment.unread > 0) {
           await requestJson(`${API_BASE}/assignments/${id}/read`, { method: 'POST' });
+          // Clear the row's badge now rather than at the next list poll.
+          setList((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  assignments: prev.assignments.map((x) => (x.id === id ? { ...x, unread: 0 } : x)),
+                }
+              : prev
+          );
           notifyChanged();
         }
       } catch (err) {
