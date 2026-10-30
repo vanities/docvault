@@ -543,7 +543,7 @@ export async function runAssignment(
         if (newlyPaused) {
           emails.push({
             subject: 'Assignments paused: Claude account problem',
-            markdown: `Every assignment is paused because a check-in for **${cur.title}** failed with \`${error}\`. Fix the Claude sign-in or billing in Settings, then press **Resume all** on the Assignments page.`,
+            markdown: `Every assignment is paused because a check-in for **${cur.title}** failed. Fix the Claude sign-in or billing in Settings, then press **Resume all** on the Assignments page.\n\n${quoted(error ?? '')}`,
             changes: [],
             nextCheckAt: null,
             assignmentId: id,
@@ -580,7 +580,7 @@ export async function runAssignment(
           cur.unread += 1;
           emails.push({
             subject: `${cur.title}: can't run`,
-            markdown: `The last ${cur.consecutiveFailures} check-ins failed. Latest error: \`${error}\`. It keeps retrying on a longer delay; open it in DocVault to see the details.`,
+            markdown: `The last ${cur.consecutiveFailures} check-ins failed. It keeps retrying on a longer delay; open it in DocVault to see the details. The latest error:\n\n${quoted(error ?? '')}`,
             changes: [],
             nextCheckAt: cur.nextCheckAt,
             assignmentId: id,
