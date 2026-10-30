@@ -108,7 +108,7 @@ export type RunLogLine =
       runId: string;
       at: string;
       event: 'end';
-      outcome: 'ok' | 'failed' | 'rate-limited' | 'account' | 'interrupted';
+      outcome: 'ok' | 'failed' | 'rate-limited' | 'account' | 'refused' | 'interrupted';
       durationMs: number;
       costUsd: number | null;
       emailed: boolean;
