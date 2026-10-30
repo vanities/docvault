@@ -22,6 +22,8 @@ import { LoanAmortization } from '../common/LoanAmortization';
 import { PayoffPlan } from './PayoffPlan';
 import type { DebtPaymentItem, DebtPayments } from '../../../server/debt-payments';
 import { toMonthly } from '../../../server/income-frequency';
+import { isRetirementAccount } from '../../../server/account-classify';
+import { cryptoHoldings, type Holding } from '../../../server/debt-plan';
 
 type LiabilityType =
   | 'equipment-loan'
@@ -109,6 +111,8 @@ export function DebtsView() {
   const [snapshotSummary, setSnapshotSummary] = useState<SnapshotPortfolioSummary | null>(null);
   const [debtPayments, setDebtPayments] = useState<DebtPayments | null>(null);
   const [incomeMonthly, setIncomeMonthly] = useState(0);
+  const [retirementDefault, setRetirementDefault] = useState(0);
+  const [holdings, setHoldings] = useState<Holding[]>([]);
   const [snapshotLoaded, setSnapshotLoaded] = useState(false);
 
   // DTI calculator inputs
@@ -167,6 +171,14 @@ export function DebtsView() {
       setDebtPayments(data?.debtPayments || null);
       const sources: { amount: number; frequency: string }[] = data?.additionalIncome ?? [];
       setIncomeMonthly(sources.reduce((s, x) => s + toMonthly(x.amount, x.frequency), 0));
+      const brokerAccounts: { name: string; totalValue: number }[] =
+        data?.investments?.brokerAccounts ?? [];
+      setRetirementDefault(
+        brokerAccounts
+          .filter((a) => isRetirementAccount(a.name))
+          .reduce((s, a) => s + (a.totalValue || 0), 0)
+      );
+      setHoldings(cryptoHoldings(data?.crypto?.sources ?? []));
     } catch {
       /* non-critical */
     } finally {
@@ -264,14 +276,19 @@ export function DebtsView() {
     () => (debtPayments?.items ?? []).reduce((s, d) => s + d.balance, 0),
     [debtPayments]
   );
+  // Retirement accounts get their own pot in the payoff plan, so only taxable
+  // brokerage counts here.
   const investmentParts = useMemo(
     () =>
       [
-        { label: 'Brokerage', value: snapshotSummary?.brokerage ?? 0 },
+        {
+          label: 'Taxable brokerage',
+          value: Math.max(0, (snapshotSummary?.brokerage ?? 0) - retirementDefault),
+        },
         { label: 'Crypto', value: snapshotSummary?.crypto ?? 0 },
         { label: 'Metals', value: snapshotSummary?.preciousMetals ?? 0 },
       ].filter((p) => p.value > 0),
-    [snapshotSummary]
+    [snapshotSummary, retirementDefault]
   );
 
   const dti = useMemo(() => {
@@ -696,6 +713,8 @@ export function DebtsView() {
               items={debtPayments.items}
               investmentParts={investmentParts}
               incomeMonthly={incomeMonthly}
+              retirementDefault={retirementDefault}
+              holdings={holdings}
             />
           ) : snapshotLoaded ? (
             <p className="text-[13px] text-surface-500 py-10 text-center">

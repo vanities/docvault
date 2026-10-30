@@ -40,6 +40,29 @@ export interface IncomeChange {
   monthly: number;
 }
 
+/** A price you expect a holding to reach, like BTC at a round number by some month. */
+export interface PriceTarget {
+  /** The asset as DocVault's crypto data names it (BTC, ETH). */
+  asset: string;
+  /** Price per unit, in today's dollars like everything else in the plan. */
+  price: number;
+  /** YYYY-MM it gets there. Before then it climbs steadily; after, it grows at the plan's rate. */
+  month: string;
+}
+
+/** Selling units of a holding and putting what's left after tax on a debt. */
+export interface HoldingSale {
+  id: string;
+  asset: string;
+  units: number;
+  /** YYYY-MM of the sale; it sells at that month's price on the holding's path. */
+  month: string;
+  /** Share of the proceeds lost to tax, as a decimal. */
+  taxRate: number;
+  /** Debt (debtId) or planned loan (id) it pays down. What it can't use stays invested. */
+  payTo: string;
+}
+
 /** The Payoff plan's saved inputs (`.docvault-debt-plan.json`). */
 export interface DebtPlanSettings {
   /** Paid toward debt each month on top of the scheduled payments. */
@@ -52,14 +75,22 @@ export interface DebtPlanSettings {
   minimumOnly: string[];
   plannedLoans: PlannedLoan[];
   incomeChanges: IncomeChange[];
+  priceTargets: PriceTarget[];
+  sales: HoldingSale[];
   /** Monthly spending that isn't a debt payment. 0 means not entered yet. */
   livingExpenses: number;
-  /** Put into investments each month today, outside debt payments. */
+  /** Put into investments outside retirement accounts each month. */
   monthlySavings: number;
   /** Income that keeps coming without work. null means the Income page total. */
   passiveIncome: number | null;
-  /** Investments counted toward freedom. null means the snapshot's total. */
+  /** Investments outside retirement accounts. null means the snapshot's total. */
   investments: number | null;
+  /** 401(k)s, IRAs and the like today. null means DocVault's total of those accounts. */
+  retirement: number | null;
+  /** Put into retirement accounts each month. */
+  retirementSavings: number;
+  /** YYYY-MM retirement money starts counting toward freedom. null means it counts now. */
+  retirementFrom: string | null;
   /** Yearly growth on investments after inflation, as a decimal. */
   realReturn: number;
   /** Share of investments drawn each year once free, as a decimal. */
@@ -74,10 +105,15 @@ export const DEFAULT_DEBT_PLAN_SETTINGS: DebtPlanSettings = {
   minimumOnly: [],
   plannedLoans: [],
   incomeChanges: [],
+  priceTargets: [],
+  sales: [],
   livingExpenses: 0,
   monthlySavings: 0,
   passiveIncome: null,
   investments: null,
+  retirement: null,
+  retirementSavings: 0,
+  retirementFrom: null,
   realReturn: 0.05,
   withdrawalRate: 0.04,
 };
@@ -115,6 +151,27 @@ const isIncomeChange = (v: unknown) =>
   Number.isFinite(v.monthly) &&
   Math.abs(v.monthly) <= 1e7;
 
+const isAsset = (v: unknown) => isText(20)(v) && (v as string).length > 0;
+
+const isPriceTarget = (v: unknown) =>
+  isRecord(v) &&
+  isAsset(v.asset) &&
+  isMoney(v.price) &&
+  (v.price as number) > 0 &&
+  isMonth(v.month);
+
+const isHoldingSale = (v: unknown) =>
+  isRecord(v) &&
+  isId(v.id) &&
+  isAsset(v.asset) &&
+  typeof v.units === 'number' &&
+  Number.isFinite(v.units) &&
+  v.units > 0 &&
+  v.units <= 1e9 &&
+  isMonth(v.month) &&
+  isRate(0, 0.6)(v.taxRate) &&
+  isText(200)(v.payTo);
+
 const FIELD_CHECKS: Record<
   Exclude<keyof DebtPlanSettings, 'updatedAt'>,
   (v: unknown) => boolean
@@ -125,6 +182,11 @@ const FIELD_CHECKS: Record<
   minimumOnly: listOf(100, isId),
   plannedLoans: listOf(10, isPlannedLoan),
   incomeChanges: listOf(20, isIncomeChange),
+  priceTargets: listOf(10, isPriceTarget),
+  sales: listOf(20, isHoldingSale),
+  retirement: (v) => v === null || isMoney(v),
+  retirementSavings: isMoney,
+  retirementFrom: (v) => v === null || isMonth(v),
   livingExpenses: isMoney,
   monthlySavings: isMoney,
   passiveIncome: (v) => v === null || isMoney(v),
@@ -153,6 +215,17 @@ const CLEAN: Partial<Record<keyof DebtPlanSettings, (v: unknown) => unknown>> = 
     ),
   incomeChanges: (v) =>
     (v as IncomeChange[]).map(({ id, name, start, monthly }) => ({ id, name, start, monthly })),
+  priceTargets: (v) =>
+    (v as PriceTarget[]).map(({ asset, price, month }) => ({ asset, price, month })),
+  sales: (v) =>
+    (v as HoldingSale[]).map(({ id, asset, units, month, taxRate, payTo }) => ({
+      id,
+      asset,
+      units,
+      month,
+      taxRate,
+      payTo,
+    })),
 };
 
 /**
@@ -231,16 +304,48 @@ export function planLoans(loans: PlannedLoan[]): KeyedLoan[] {
   return loans.map((l, i) => ({ ...l, key: `new${i}` }));
 }
 
+export interface Holding {
+  asset: string;
+  units: number;
+  /** Value today. */
+  value: number;
+}
+
+/** Units and value of each crypto asset across every source DocVault syncs, largest first. */
+export function cryptoHoldings(
+  sources: { balances?: { asset: string; amount: number; usdValue: number }[] }[]
+): Holding[] {
+  const byAsset = new Map<string, Holding>();
+  for (const b of sources.flatMap((s) => s.balances ?? [])) {
+    const h = byAsset.get(b.asset) ?? { asset: b.asset, units: 0, value: 0 };
+    h.units += b.amount;
+    h.value += b.usdValue;
+    byAsset.set(b.asset, h);
+  }
+  return [...byAsset.values()]
+    .filter((h) => h.units > 0 && h.value > 0)
+    .sort((a, b) => b.value - a.value);
+}
+
 export interface DebtPlanInput {
   debts: PlanDebt[];
   plannedLoans?: KeyedLoan[];
   incomeChanges?: IncomeChange[];
+  /** Holdings priced on their own path: one a price target or a sale names. */
+  holdings?: Holding[];
+  priceTargets?: PriceTarget[];
+  sales?: HoldingSale[];
   extraMonthly: number;
   order: PayoffOrder;
   livingExpenses: number;
   monthlySavings: number;
   passiveIncome: number;
+  /** Investments outside retirement accounts, not counting `holdings`. */
   investments: number;
+  retirement?: number;
+  retirementSavings?: number;
+  /** YYYY-MM retirement money starts counting toward freedom; unset means now. */
+  retirementFrom?: string | null;
   realReturn: number;
   withdrawalRate: number;
   /** Any day this month. Month 0 is this month as it stands; payments start next month. */
@@ -261,9 +366,11 @@ export interface DebtPlanMonth {
   payments: Record<string, number>;
   /** Living expenses plus this month's scheduled payments. */
   needs: number;
-  /** Investments at the end of the month. */
+  /** Investments outside retirement accounts at the end of the month, holdings included. */
   invested: number;
-  /** Passive income plus what the investments can pay out this month. */
+  /** Retirement accounts at the end of the month, whether or not they count yet. */
+  retirement: number;
+  /** Passive income plus what the investments that count can pay out this month. */
   passive: number;
 }
 
@@ -279,6 +386,11 @@ export interface DebtPlanResult {
   rolledInto: Record<string, { into: string; month: string }>;
   /** Each planned loan's opening balance and payment under the plan. */
   loanStarts: Record<string, { month: string; balance: number; payment: number }>;
+  /** What each sale (by id) sold, lost to tax, and put on its debt. */
+  saleResults: Record<
+    string,
+    { month: string; units: number; proceeds: number; tax: number; toDebt: number }
+  >;
   interest: number;
   interestAsScheduled: number;
   /**
@@ -298,6 +410,13 @@ const PAID = 0.005;
 
 function monthLabel(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** Whole months from one YYYY-MM to another. */
+export function monthsBetween(from: string, to: string): number {
+  const [fy, fm] = from.split('-').map(Number);
+  const [ty, tm] = to.split('-').map(Number);
+  return (ty - fy) * 12 + (tm - fm);
 }
 
 // A payment rounded to the cent (1,000.00 over 3 months is 333.33) leaves a
@@ -433,8 +552,24 @@ export function projectDebtPlan(input: DebtPlanInput): DebtPlanResult {
   const draw = input.withdrawalRate / 12;
   const planned = [...(input.plannedLoans ?? [])].sort((a, b) => a.start.localeCompare(b.start));
   const incomeChanges = input.incomeChanges ?? [];
+  const sales = [...(input.sales ?? [])].sort((a, b) => a.month.localeCompare(b.month));
+  const targets = new Map((input.priceTargets ?? []).map((t) => [t.asset, t]));
+  const holdings = new Map(
+    (input.holdings ?? [])
+      .filter((h) => h.units > 0 && h.value > 0)
+      .map((h) => [h.asset, { units: h.units, price: h.value / h.units }])
+  );
   const keyById = new Map(debts.map((d) => [d.id, d.key]));
-  const lastEvent = [...planned.map((l) => l.start), ...incomeChanges.map((c) => c.start)]
+  const loanKeyById = new Map(planned.map((l) => [l.id, l.key]));
+  const retirementFrom = input.retirementFrom ?? null;
+  const retirementSavings = Math.max(0, input.retirementSavings ?? 0);
+  const lastEvent = [
+    ...planned.map((l) => l.start),
+    ...incomeChanges.map((c) => c.start),
+    ...sales.map((s) => s.month),
+    ...[...targets.values()].map((t) => t.month),
+    ...(retirementFrom ? [retirementFrom] : []),
+  ]
     .sort()
     .at(-1);
 
@@ -448,13 +583,32 @@ export function projectDebtPlan(input: DebtPlanInput): DebtPlanResult {
     .filter((d) => (d.balance * d.rate) / 12 >= d.monthlyPayment)
     .map((d) => d.key);
 
-  const passiveIn = (month: string, invested: number) =>
+  const now = monthLabel(start);
+  const saleResults: DebtPlanResult['saleResults'] = {};
+  const sold = new Set<string>();
+
+  /** A holding's price i months out: a steady climb to its target, then the plan's growth. */
+  const priceAt = (asset: string, i: number): number => {
+    const { price } = holdings.get(asset)!;
+    const target = targets.get(asset);
+    if (!target) return price * Math.pow(growth, i);
+    const reach = Math.max(1, monthsBetween(now, target.month));
+    return i <= reach
+      ? price * Math.pow(target.price / price, i / reach)
+      : target.price * Math.pow(growth, i - reach);
+  };
+  const heldAt = (i: number) =>
+    total([...holdings].map(([asset, h]) => h.units * priceAt(asset, i)));
+
+  // Retirement money pays out only from retirementFrom (59½, or earlier with
+  // a SEPP or a Roth conversion ladder); before that it just grows.
+  const passiveIn = (month: string, spendable: number, retirement: number) =>
     input.passiveIncome +
     total(incomeChanges.filter((c) => c.start <= month).map((c) => c.monthly)) +
-    invested * draw;
+    (spendable + (!retirementFrom || month >= retirementFrom ? retirement : 0)) * draw;
 
-  const now = monthLabel(start);
   let invested = Math.max(0, input.investments);
+  let retirement = Math.max(0, input.retirement ?? 0);
   const months: DebtPlanMonth[] = [
     {
       month: now,
@@ -463,8 +617,9 @@ export function projectDebtPlan(input: DebtPlanInput): DebtPlanResult {
       totalOwedAsScheduled: total(plan.owed.values()),
       payments: Object.fromEntries(debts.map((d) => [d.key, d.monthlyPayment])),
       needs: living + total(debts.map((d) => d.monthlyPayment)),
-      invested,
-      passive: passiveIn(now, invested),
+      invested: invested + heldAt(0),
+      retirement,
+      passive: passiveIn(now, invested + heldAt(0), retirement),
     },
   ];
 
@@ -482,6 +637,26 @@ export function projectDebtPlan(input: DebtPlanInput): DebtPlanResult {
         }),
       };
       openLoan(asScheduled, loan, keyById, label);
+    }
+
+    // A sale goes at this month's price. After tax the money pays down its
+    // debt (plan only: paying only what's due means no lump sums), and what
+    // the debt can't take stays invested.
+    for (const sale of sales) {
+      if (sold.has(sale.id) || sale.month > label) continue;
+      sold.add(sale.id);
+      const held = holdings.get(sale.asset);
+      if (!held) continue;
+      const units = Math.min(sale.units, held.units);
+      held.units -= units;
+      const proceeds = units * priceAt(sale.asset, i);
+      const tax = proceeds * sale.taxRate;
+      const key = keyById.get(sale.payTo) ?? loanKeyById.get(sale.payTo);
+      const owed = key ? (plan.owed.get(key) ?? 0) : 0;
+      const toDebt = key && owed > PAID ? Math.min(proceeds - tax, owed) : 0;
+      if (key && toDebt > 0) plan.owed.set(key, owed - toDebt);
+      invested += proceeds - tax - toDebt;
+      saleResults[sale.id] = { month: label, units, proceeds, tax, toDebt };
     }
 
     // Plan: every open loan gets its scheduled payment, then what's left of
@@ -510,10 +685,12 @@ export function projectDebtPlan(input: DebtPlanInput): DebtPlanResult {
 
     // Whatever the debts didn't take is invested, along with regular savings.
     invested = invested * growth + savings + Math.max(0, pool);
+    retirement = retirement * growth + retirementSavings;
+    const held = heldAt(i);
     const totalOwed = total(plan.owed.values());
     const totalOwedAsScheduled = total(asScheduled.owed.values());
     const needs = living + total(Object.values(payments));
-    const passive = passiveIn(label, invested);
+    const passive = passiveIn(label, invested + held, retirement);
     months.push({
       month: label,
       owed: Object.fromEntries(plan.owed),
@@ -521,7 +698,8 @@ export function projectDebtPlan(input: DebtPlanInput): DebtPlanResult {
       totalOwedAsScheduled,
       payments,
       needs,
-      invested,
+      invested: invested + held,
+      retirement,
       passive,
     });
 
@@ -556,6 +734,7 @@ export function projectDebtPlan(input: DebtPlanInput): DebtPlanResult {
     paidOffAsScheduled: asScheduled.paidOff,
     rolledInto,
     loanStarts,
+    saleResults,
     interest: plan.interest,
     interestAsScheduled: asScheduled.interest,
     free: living > 0 ? after((m) => m.passive < m.needs) : null,
