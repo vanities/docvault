@@ -175,6 +175,9 @@ web/scripts/*
 !web/server/assignments/prompt.test.ts
 !web/server/assignments/runner.test.ts
 !web/server/routes/assignments.test.ts
+# Exception: assignments page helper and row render tests use a fabricated assignment, no personal data
+!web/src/components/Assignments/assignments.test.ts
+!web/src/components/Assignments/AssignmentsView.test.tsx
 # Exception: blur-coverage test scans component source for unblurred money renders, no personal data
 !web/src/components/blur-coverage.test.ts
 # Exception: search controls tests use fabricated document metadata only, no personal data

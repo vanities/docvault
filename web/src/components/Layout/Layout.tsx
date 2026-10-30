@@ -43,6 +43,9 @@ const CryptoView = lazy(() =>
 const AlertsView = lazy(() =>
   import('../Alerts/AlertsView').then((m) => ({ default: m.AlertsView }))
 );
+const AssignmentsView = lazy(() =>
+  import('../Assignments/AssignmentsView').then((m) => ({ default: m.AssignmentsView }))
+);
 const BrokersView = lazy(() =>
   import('../Brokers/BrokersView').then((m) => ({ default: m.BrokersView }))
 );
@@ -208,6 +211,8 @@ export function Layout() {
         return <CryptoView />;
       case 'alerts':
         return <AlertsView />;
+      case 'assignments':
+        return <AssignmentsView />;
       case 'brokers':
         return <BrokersView />;
       case 'banks':

@@ -1274,6 +1274,10 @@ enum NativeCatalog {
             resources: [.init(id: "alerts", title: "Sources & Alert Log", path: "api/alerts")]
         ),
         .init(
+            id: "assignments", title: "Assignments", symbol: "binoculars", group: "Everyday",
+            resources: [.init(id: "assignments", title: "Assignments", path: "api/assignments")]
+        ),
+        .init(
             id: "calendar", title: "Calendar", symbol: "calendar", group: "Everyday",
             resources: [
                 .init(
