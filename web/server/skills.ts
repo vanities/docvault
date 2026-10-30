@@ -230,7 +230,7 @@ export async function buildSkillsPromptBlock(userText: string): Promise<string> 
 // (name, mtime, size) so repeated chat turns reuse the same dir until a skill
 // changes. Plugin skills surface to the model as `docvault:<name>`.
 
-interface SkillsPlugin {
+export interface SkillsPlugin {
   path: string;
   skillNames: string[];
 }
