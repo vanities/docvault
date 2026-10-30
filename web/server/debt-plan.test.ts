@@ -6,6 +6,7 @@ import {
   planDebts,
   planLoans,
   cryptoHoldings,
+  fireNumber,
   projectDebtPlan,
   yearlyPoints,
   type DebtPlanInput,
@@ -327,6 +328,122 @@ describe('projectDebtPlan: holdings with a price target, and sales', () => {
   });
 });
 
+describe('projectDebtPlan: stopping work', () => {
+  test('needs come out of investments, and the run says when they run out', () => {
+    // 12,000 pays 12 months of 1,000; February 2027 is the first one it can't.
+    const r = plan([], {
+      livingExpenses: 1000,
+      investments: 12_000,
+      stopWorking: '2026-01',
+      maxMonths: 24,
+    });
+    expect(r.months[12].invested).toBeCloseTo(0, 6);
+    expect(r.runsOut).toBe('2027-02');
+    expect(r.lowest?.amount).toBeCloseTo(0, 6);
+  });
+
+  test('saving stops in the stop month', () => {
+    const r = plan([], {
+      monthlySavings: 500,
+      retirementSavings: 100,
+      stopWorking: '2026-04',
+      maxMonths: 6,
+    });
+    expect(r.months[6].invested).toBe(1000); // February and March only
+    expect(r.months[6].retirement).toBe(200);
+  });
+
+  test('extra payments stop too, and the payments still due come out of investments', () => {
+    const r = plan([loan('a', 10_000, 0, 100)], {
+      extraMonthly: 400,
+      investments: 100_000,
+      stopWorking: '2026-03',
+      maxMonths: 3,
+    });
+    expect(r.months[1].owed.a).toBe(9500); // February: 100 due + 400 extra
+    expect(r.months[2].owed.a).toBe(9400); // March: only the 100 due
+    expect(r.months[2].invested).toBe(99_900);
+  });
+
+  test('holdings are sold once cash runs out', () => {
+    // One unit at 10,000 covers ten months of 1,000.
+    const r = plan([], {
+      holdings: [{ asset: 'BTC', units: 1, value: 10_000 }],
+      livingExpenses: 1000,
+      stopWorking: '2026-01',
+      maxMonths: 24,
+    });
+    expect(r.months[5].invested).toBeCloseTo(5000, 6);
+    expect(r.runsOut).toBe('2026-12');
+  });
+
+  test('retirement money pays only once it is reachable', () => {
+    // Cash lasts February through July; August needs the retirement money.
+    const reachable = { investments: 6000, retirement: 100_000, livingExpenses: 1000 };
+    const r = plan([], {
+      ...reachable,
+      retirementFrom: '2026-08',
+      stopWorking: '2026-01',
+      maxMonths: 24,
+    });
+    expect(r.runsOut).toBeNull();
+    expect(r.months[7].retirement).toBe(99_000);
+    // Spendable money is gone in July, the month before retirement money counts.
+    expect(r.lowest?.month).toBe('2026-07');
+    expect(r.lowest?.amount).toBeCloseTo(0, 6);
+    const late = plan([], {
+      ...reachable,
+      retirementFrom: '2026-09',
+      stopWorking: '2026-01',
+      maxMonths: 24,
+    });
+    expect(late.runsOut).toBe('2026-08');
+  });
+
+  test('the low point counts retirement money that is already reachable', () => {
+    const r = plan([], {
+      investments: 1000,
+      retirement: 100_000,
+      livingExpenses: 1000,
+      stopWorking: '2026-01',
+      maxMonths: 3,
+    });
+    expect(r.lowest).toEqual({ month: '2026-04', amount: 98_000 });
+  });
+
+  test('with a birth month, a run that stops working goes on to age 95', () => {
+    const r = plan([], {
+      livingExpenses: 1,
+      investments: 1_000_000,
+      stopWorking: '2026-01',
+      birthMonth: '1980-06',
+    });
+    expect(r.months[r.months.length - 1].month).toBe('2075-06');
+    expect(r.runsOut).toBeNull();
+  });
+
+  test('the FIRE number is what lasts the whole run without work', () => {
+    const base: DebtPlanInput = {
+      debts: [],
+      extraMonthly: 0,
+      order: 'avalanche',
+      livingExpenses: 1000,
+      monthlySavings: 0,
+      passiveIncome: 0,
+      investments: 0,
+      realReturn: 0,
+      withdrawalRate: 0.04,
+      today: TODAY,
+      maxMonths: 120,
+    };
+    // 1,000 a month for 120 months with no growth: exactly 120,000.
+    expect(fireNumber(base)).toBeCloseTo(120_000, 0);
+    expect(fireNumber({ ...base, passiveIncome: 1000 })).toBe(0);
+    // A 0% loan of 1,200 at 100 a month adds exactly 1,200.
+    expect(fireNumber({ ...base, debts: [loan('a', 1200, 0, 100)] })).toBeCloseTo(121_200, 0);
+  });
+});
+
 describe('yearlyPoints', () => {
   test('keeps now and each December, skipping one under six months away', () => {
     // Month 0 is October; the December two months out is too close to "now".
@@ -479,6 +596,21 @@ describe('applyDebtPlanPatch', () => {
     expect(settings.plannedLoans[0]).not.toHaveProperty('key');
     expect(settings.incomeChanges).toHaveLength(1);
     expect(settings.minimumOnly).toEqual(['property:Example House']);
+  });
+
+  test('checks the stop-working and birth months', () => {
+    const ok = applyDebtPlanPatch(DEFAULT_DEBT_PLAN_SETTINGS, {
+      stopWorking: '2031-01',
+      birthMonth: null,
+    });
+    expect(ok.invalid).toEqual([]);
+    expect(ok.settings.stopWorking).toBe('2031-01');
+    expect(
+      applyDebtPlanPatch(DEFAULT_DEBT_PLAN_SETTINGS, {
+        stopWorking: 'soon',
+        birthMonth: 1990,
+      }).invalid.sort()
+    ).toEqual(['birthMonth', 'stopWorking']);
   });
 
   test('checks price targets, sales, and the retirement fields', () => {

@@ -91,6 +91,10 @@ export interface DebtPlanSettings {
   retirementSavings: number;
   /** YYYY-MM retirement money starts counting toward freedom. null means it counts now. */
   retirementFrom: string | null;
+  /** YYYY-MM work income stops: no more saving or extra payments, and needs come out of investments. */
+  stopWorking: string | null;
+  /** YYYY-MM you were born: shows ages next to dates and runs the plan to 95. */
+  birthMonth: string | null;
   /** Yearly growth on investments after inflation, as a decimal. */
   realReturn: number;
   /** Share of investments drawn each year once free, as a decimal. */
@@ -114,6 +118,8 @@ export const DEFAULT_DEBT_PLAN_SETTINGS: DebtPlanSettings = {
   retirement: null,
   retirementSavings: 0,
   retirementFrom: null,
+  stopWorking: null,
+  birthMonth: null,
   realReturn: 0.05,
   withdrawalRate: 0.04,
 };
@@ -187,6 +193,8 @@ const FIELD_CHECKS: Record<
   retirement: (v) => v === null || isMoney(v),
   retirementSavings: isMoney,
   retirementFrom: (v) => v === null || isMonth(v),
+  stopWorking: (v) => v === null || isMonth(v),
+  birthMonth: (v) => v === null || isMonth(v),
   livingExpenses: isMoney,
   monthlySavings: isMoney,
   passiveIncome: (v) => v === null || isMoney(v),
@@ -346,6 +354,10 @@ export interface DebtPlanInput {
   retirementSavings?: number;
   /** YYYY-MM retirement money starts counting toward freedom; unset means now. */
   retirementFrom?: string | null;
+  /** YYYY-MM work income stops. From then on needs are paid out of investments. */
+  stopWorking?: string | null;
+  /** YYYY-MM of birth. With it, a run that stops working goes on to age 95. */
+  birthMonth?: string | null;
   realReturn: number;
   withdrawalRate: number;
   /** Any day this month. Month 0 is this month as it stands; payments start next month. */
@@ -391,6 +403,13 @@ export interface DebtPlanResult {
     string,
     { month: string; units: number; proceeds: number; tax: number; toDebt: number }
   >;
+  /** After work stops: the first month needs can't be paid, or null if the money lasts. */
+  runsOut: string | null;
+  /**
+   * After work stops: the least you could still draw on (spendable money, plus
+   * retirement money once it counts), and when.
+   */
+  lowest: { month: string; amount: number } | null;
   interest: number;
   interestAsScheduled: number;
   /**
@@ -541,9 +560,22 @@ function closePaidOff(ledger: Ledger, month: string): void {
  * covers living expenses and the payments still due.
  */
 export function projectDebtPlan(input: DebtPlanInput): DebtPlanResult {
-  const maxMonths = input.maxMonths ?? 600;
   const today = input.today ?? new Date();
   const start = new Date(today.getFullYear(), today.getMonth(), 1);
+  const now = monthLabel(start);
+  const stopWorking = input.stopWorking ?? null;
+  // Once work stops, the question is whether the money lasts a lifetime, so
+  // with a birth month the run goes to 95 instead of a fixed 50 years.
+  const maxMonths =
+    stopWorking && input.birthMonth
+      ? Math.max(
+          1,
+          monthsBetween(
+            now,
+            `${Number(input.birthMonth.slice(0, 4)) + 95}${input.birthMonth.slice(4)}`
+          )
+        )
+      : (input.maxMonths ?? 600);
   const debts = input.debts.filter((d) => d.balance > PAID);
   const extra = Math.max(0, input.extraMonthly);
   const living = Math.max(0, input.livingExpenses);
@@ -583,9 +615,10 @@ export function projectDebtPlan(input: DebtPlanInput): DebtPlanResult {
     .filter((d) => (d.balance * d.rate) / 12 >= d.monthlyPayment)
     .map((d) => d.key);
 
-  const now = monthLabel(start);
   const saleResults: DebtPlanResult['saleResults'] = {};
   const sold = new Set<string>();
+  let runsOut: string | null = null;
+  let lowest: DebtPlanResult['lowest'] = null;
 
   /** A holding's price i months out: a steady climb to its target, then the plan's growth. */
   const priceAt = (asset: string, i: number): number => {
@@ -626,6 +659,7 @@ export function projectDebtPlan(input: DebtPlanInput): DebtPlanResult {
   for (let i = 1; i <= maxMonths; i++) {
     const date = new Date(start.getFullYear(), start.getMonth() + i, 1);
     const label = monthLabel(date);
+    const working = !stopWorking || label < stopWorking;
 
     for (const loan of planned) {
       if (opened.has(loan.key) || loan.start > label) continue;
@@ -660,9 +694,10 @@ export function projectDebtPlan(input: DebtPlanInput): DebtPlanResult {
     }
 
     // Plan: every open loan gets its scheduled payment, then what's left of
-    // the budget goes down the payoff order to loans that take extra.
+    // the budget goes down the payoff order to loans that take extra. Without
+    // work income there is no extra: only what's due gets paid.
     const payments = payScheduled(plan);
-    let pool = plan.budget - total(Object.values(payments));
+    let pool = working ? plan.budget - total(Object.values(payments)) : 0;
     const targets = [...plan.loans.values()]
       .filter((l) => !l.minimumOnly && plan.owed.get(l.key)! > PAID)
       .sort((a, b) => {
@@ -684,12 +719,47 @@ export function projectDebtPlan(input: DebtPlanInput): DebtPlanResult {
     closePaidOff(asScheduled, label);
 
     // Whatever the debts didn't take is invested, along with regular savings.
-    invested = invested * growth + savings + Math.max(0, pool);
-    retirement = retirement * growth + retirementSavings;
+    invested = invested * growth + (working ? savings : 0) + Math.max(0, pool);
+    retirement = retirement * growth + (working ? retirementSavings : 0);
+    const needs = living + total(Object.values(payments));
+
+    // Without work income, needs come from passive income first, then cash,
+    // then selling holdings (largest first), then retirement money once it's
+    // reachable. Whatever's still short goes unpaid: the money has run out.
+    if (!working) {
+      const income =
+        input.passiveIncome +
+        total(incomeChanges.filter((c) => c.start <= label).map((c) => c.monthly));
+      invested -= needs - income;
+      const bySize = [...holdings].sort(
+        ([a, x], [b, y]) => y.units * priceAt(b, i) - x.units * priceAt(a, i)
+      );
+      for (const [asset, h] of bySize) {
+        if (invested >= 0) break;
+        const price = priceAt(asset, i);
+        const units = Math.min(h.units, -invested / price);
+        h.units -= units;
+        invested += units * price;
+      }
+      if (invested < 0 && (!retirementFrom || label >= retirementFrom)) {
+        const take = Math.min(retirement, -invested);
+        retirement -= take;
+        invested += take;
+      }
+      if (invested < -PAID && runsOut === null) runsOut = label;
+      invested = Math.max(0, invested);
+    }
+
     const held = heldAt(i);
+    // Retirement money joins the margin only once it's reachable, so running
+    // dry just before then shows up as the low point.
+    const reachable =
+      invested + held + (!retirementFrom || label >= retirementFrom ? retirement : 0);
+    if (!working && (lowest === null || reachable < lowest.amount)) {
+      lowest = { month: label, amount: reachable };
+    }
     const totalOwed = total(plan.owed.values());
     const totalOwedAsScheduled = total(asScheduled.owed.values());
-    const needs = living + total(Object.values(payments));
     const passive = passiveIn(label, invested + held, retirement);
     months.push({
       month: label,
@@ -705,13 +775,14 @@ export function projectDebtPlan(input: DebtPlanInput): DebtPlanResult {
 
     // Stop at the December after everything has settled, so the last year
     // gets a year-end point. A debt that grows on schedule never pays off that
-    // way, so don't wait for it.
+    // way, so don't wait for it. A run that stops working goes the whole way,
+    // since the money can still run out late.
     const settled =
       (!lastEvent || label >= lastEvent) &&
       totalOwed <= PAID &&
       (totalOwedAsScheduled <= PAID || growing.length > 0) &&
       (living === 0 || passive >= needs);
-    if (settled && date.getMonth() === 11) break;
+    if (settled && date.getMonth() === 11 && !stopWorking) break;
   }
 
   // Everything is judged on the finished timeline, since a planned loan can
@@ -740,7 +811,42 @@ export function projectDebtPlan(input: DebtPlanInput): DebtPlanResult {
     free: living > 0 ? after((m) => m.passive < m.needs) : null,
     growing,
     debtBudget,
+    runsOut,
+    lowest,
   };
+}
+
+/**
+ * Your FIRE number: the spendable investments you'd need to stop working this
+ * month and still pay every month's needs to the end of the run (95 with a
+ * birth month). Everything grows at the plan rate here, so price targets and
+ * sales are left out. Null when no amount would last.
+ */
+export function fireNumber(input: DebtPlanInput): number | null {
+  const today = input.today ?? new Date();
+  const now = monthLabel(new Date(today.getFullYear(), today.getMonth(), 1));
+  const lasts = (investments: number) =>
+    projectDebtPlan({
+      ...input,
+      holdings: [],
+      priceTargets: [],
+      sales: [],
+      investments,
+      stopWorking: now,
+    }).runsOut === null;
+  if (lasts(0)) return 0;
+  let hi = 1_000_000;
+  while (!lasts(hi)) {
+    hi *= 2;
+    if (hi > 1e10) return null;
+  }
+  let lo = 0;
+  for (let k = 0; k < 32; k++) {
+    const mid = (lo + hi) / 2;
+    if (lasts(mid)) hi = mid;
+    else lo = mid;
+  }
+  return hi;
 }
 
 /**

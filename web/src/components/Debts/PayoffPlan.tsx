@@ -20,6 +20,8 @@ import {
   AlertTriangle,
   CalendarClock,
   Coins,
+  Flame,
+  Hourglass,
   Loader2,
   Plus,
   Sunrise,
@@ -38,11 +40,13 @@ import { formatMonthYear, formatTerm } from '../../utils/amortization';
 import type { DebtPaymentItem } from '../../../server/debt-payments';
 import {
   DEFAULT_DEBT_PLAN_SETTINGS,
+  fireNumber,
   monthsBetween,
   planDebts,
   planLoans,
   projectDebtPlan,
   yearlyPoints,
+  type DebtPlanInput,
   type DebtPlanSettings,
   type Holding,
   type HoldingSale,
@@ -61,6 +65,9 @@ const DEBT_COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500'];
 const LIVING_COLOR = '#626a7c';
 const DUE_ONLY_COLOR = '#b4bccf';
 const PASSIVE_COLOR = '#6ee7b7';
+// "Your money" chart: its two lines, checked as a pair on the same surface.
+const SPENDABLE_COLOR = '#9085e9';
+const RETIREMENT_COLOR = '#d55181';
 const SURFACE = '#16181e';
 const GRID_COLOR = '#24272f';
 const AXIS_COLOR = '#2e323c';
@@ -890,29 +897,45 @@ export function PayoffPlan({
   });
   const living = settings.livingExpenses;
 
-  const result = useMemo(
-    () =>
-      projectDebtPlan({
-        debts,
-        plannedLoans: loans,
-        incomeChanges: settings.incomeChanges,
-        holdings: tracked,
-        priceTargets,
-        sales,
-        extraMonthly: settings.extraMonthly,
-        order: settings.order,
-        livingExpenses: settings.livingExpenses,
-        monthlySavings: settings.monthlySavings,
-        passiveIncome,
-        investments,
-        retirement,
-        retirementSavings: settings.retirementSavings,
-        retirementFrom: settings.retirementFrom,
-        realReturn: settings.realReturn,
-        withdrawalRate: settings.withdrawalRate,
-      }),
+  const engineInput = useMemo<DebtPlanInput>(
+    () => ({
+      debts,
+      plannedLoans: loans,
+      incomeChanges: settings.incomeChanges,
+      holdings: tracked,
+      priceTargets,
+      sales,
+      extraMonthly: settings.extraMonthly,
+      order: settings.order,
+      livingExpenses: settings.livingExpenses,
+      monthlySavings: settings.monthlySavings,
+      passiveIncome,
+      investments,
+      retirement,
+      retirementSavings: settings.retirementSavings,
+      retirementFrom: settings.retirementFrom,
+      birthMonth: settings.birthMonth,
+      realReturn: settings.realReturn,
+      withdrawalRate: settings.withdrawalRate,
+    }),
     [debts, loans, settings, tracked, priceTargets, sales, passiveIncome, investments, retirement]
   );
+  // The headline dates and the first two charts follow the plan as if you keep
+  // working: "financially free" is when you could stop. A stop month is its own
+  // scenario, read by its tile and the money chart.
+  const result = useMemo(() => projectDebtPlan(engineInput), [engineInput]);
+  const stopResult = useMemo(
+    () =>
+      settings.stopWorking
+        ? projectDebtPlan({ ...engineInput, stopWorking: settings.stopWorking })
+        : null,
+    [engineInput, settings.stopWorking]
+  );
+  const fire = useMemo(() => fireNumber(engineInput), [engineInput]);
+  const spendableNow = settings.investments ?? defaultInvestments;
+  /** Age in a given month, when a birth month is saved. */
+  const ageAt = (ym: string | null) =>
+    ym && settings.birthMonth ? Math.floor(monthsBetween(settings.birthMonth, ym) / 12) : null;
 
   const series = useMemo(
     () =>
@@ -955,13 +978,29 @@ export function PayoffPlan({
       needsTicks: axisTicks(Math.max(...pts.map((m) => Math.max(m.needs, m.passive)))),
     };
   }, [result, series, living]);
+  const money = useMemo(() => {
+    const pts = yearlyPoints((stopResult ?? result).months);
+    const lbls = pts.map((m, i) => (i === 0 ? 'Now' : m.month.slice(0, 4)));
+    return {
+      points: pts,
+      labels: lbls,
+      rows: pts.map((m, i) => ({
+        label: lbls[i],
+        month: m.month,
+        spendable: m.invested,
+        retirement: m.retirement,
+      })),
+      ticks: axisTicks(Math.max(...pts.map((m) => Math.max(m.invested, m.retirement)))),
+    };
+  }, [result, stopResult]);
 
   /** The chart column a month falls in: the first year-end point at or after it. */
-  const columnFor = (month: string | null) => {
+  const columnIn = (pts: { month: string }[], lbls: string[], month: string | null) => {
     if (!month) return undefined;
-    const i = points.findIndex((p) => p.month >= month);
-    return i === -1 ? undefined : labels[i];
+    const i = pts.findIndex((p) => p.month >= month);
+    return i === -1 ? undefined : lbls[i];
   };
+  const columnFor = (month: string | null) => columnIn(points, labels, month);
   /** What the legend says about when a series ends. */
   const seriesNote = (s: Series): string => {
     const [only] = s.members;
@@ -1008,13 +1047,23 @@ export function PayoffPlan({
   ];
   const debtFreeAt = owesAnything ? columnFor(result.debtFree) : undefined;
   const freeAt = columnFor(result.free);
+  const stopAt = columnIn(money.points, money.labels, settings.stopWorking);
+  const runsOutAt = columnIn(money.points, money.labels, stopResult?.runsOut ?? null);
   /** A line's label sits on the side facing the middle, so neither chart edge clips it. */
-  const labelSide = (column: string | undefined): 'insideTopLeft' | 'insideTopRight' =>
-    column && labels.indexOf(column) > labels.length / 2 ? 'insideTopRight' : 'insideTopLeft';
+  const labelSide = (
+    column: string | undefined,
+    lbls: string[] = labels
+  ): 'insideTopLeft' | 'insideTopRight' =>
+    column && lbls.indexOf(column) > lbls.length / 2 ? 'insideTopRight' : 'insideTopLeft';
   const axisProps = {
     tick: { fontSize: 10, fill: TICK_COLOR },
     tickLine: false,
   } as const;
+
+  const atAge = (ym: string | null) => {
+    const age = ageAt(ym);
+    return age === null ? '' : `, at ${age}`;
+  };
 
   let freeValue: ReactNode;
   let freeDetail: ReactNode;
@@ -1026,7 +1075,7 @@ export function PayoffPlan({
     freeDetail = 'Passive income already covers what you need each month';
   } else if (result.free) {
     freeValue = monthName(result.free);
-    freeDetail = `in ${formatTerm(monthsBetween(now, result.free))}`;
+    freeDetail = `in ${formatTerm(monthsBetween(now, result.free))}${atAge(result.free)}`;
   } else {
     freeValue = 'Not within 50 years';
     freeDetail = 'At these numbers, passive income doesn’t catch up';
@@ -1053,7 +1102,7 @@ export function PayoffPlan({
           }
           detail={
             result.debtFree && owesAnything
-              ? `in ${formatTerm(monthsBetween(now, result.debtFree))}${
+              ? `in ${formatTerm(monthsBetween(now, result.debtFree))}${atAge(result.debtFree)}${
                   fewerMonths > 0
                     ? `, ${formatTerm(fewerMonths)} sooner than paying only what’s due`
                     : ''
@@ -1062,6 +1111,49 @@ export function PayoffPlan({
           }
         />
         <Stat icon={Sunrise} label="Financially free" value={freeValue} detail={freeDetail} />
+        <Stat
+          icon={Flame}
+          label="FIRE number"
+          value={fire === null ? 'Out of reach' : <Money>{formatUsd(fire)}</Money>}
+          detail={
+            fire === null ? (
+              'At these numbers no amount lasts'
+            ) : fire === 0 ? (
+              'Passive income alone covers you'
+            ) : (
+              <>
+                Spendable investments to stop now and last{' '}
+                {settings.birthMonth ? 'to 95' : '50 years'}. You have{' '}
+                <Money>{formatUsd(spendableNow)}</Money> (
+                {Math.min(999, Math.round((spendableNow / fire) * 100))}%)
+              </>
+            )
+          }
+        />
+        {settings.stopWorking && stopResult && (
+          <Stat
+            icon={Hourglass}
+            label={`If you stop working ${monthName(settings.stopWorking)}`}
+            value={
+              stopResult.runsOut
+                ? `Runs out ${monthName(stopResult.runsOut)}`
+                : settings.birthMonth
+                  ? 'Lasts past 95'
+                  : 'Lasts 50 years'
+            }
+            detail={
+              stopResult.runsOut ? (
+                `Your needs outlast your investments${atAge(stopResult.runsOut)}`
+              ) : stopResult.lowest ? (
+                <>
+                  Lowest point: <Money>{formatUsd(stopResult.lowest.amount)}</Money> you can draw
+                  on, in {monthName(stopResult.lowest.month)}
+                  {atAge(stopResult.lowest.month)}
+                </>
+              ) : undefined
+            }
+          />
+        )}
         <Stat
           icon={Wallet}
           label="Going out each month"
@@ -1276,6 +1368,27 @@ export function PayoffPlan({
             onChange={(v) => {
               if (v === '') update({ retirementFrom: null });
               else if (isMonthText(v)) update({ retirementFrom: v });
+            }}
+          />
+          <Field
+            kind="month"
+            label="Stop working"
+            value={settings.stopWorking ?? ''}
+            hint="Blank keeps you working. From this month there's no more saving or extra payments, and your needs come out of investments."
+            onChange={(v) => {
+              if (v === '') update({ stopWorking: null });
+              else if (isMonthText(v)) update({ stopWorking: v });
+            }}
+          />
+          <Field
+            kind="month"
+            label="Born"
+            sensitive
+            value={settings.birthMonth ?? ''}
+            hint="Shows your age next to dates, and runs a stop-working plan to 95"
+            onChange={(v) => {
+              if (v === '') update({ birthMonth: null });
+              else if (isMonthText(v)) update({ birthMonth: v });
             }}
           />
           <Field
@@ -1593,6 +1706,101 @@ export function PayoffPlan({
             </ResponsiveContainer>
           </>
         )}
+      </Card>
+
+      <Card variant="glass" className="p-5">
+        <h3 className="text-[14px] font-semibold text-surface-950">Your money over time</h3>
+        <p className="text-[11px] text-surface-500 mt-1">
+          {settings.stopWorking
+            ? 'After you stop working, needs come out of spendable investments first, then retirement accounts once they count.'
+            : 'Spendable investments and retirement accounts, year by year. Set a month to stop working to see them pay your needs.'}
+        </p>
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2 mb-3 text-[11px] text-surface-700">
+          <LegendKey color={SPENDABLE_COLOR} line>
+            Spendable investments
+          </LegendKey>
+          <LegendKey color={RETIREMENT_COLOR} line>
+            Retirement accounts
+          </LegendKey>
+        </div>
+        <ResponsiveContainer width="100%" height={220}>
+          <ComposedChart data={money.rows} margin={{ top: 16, right: 8, bottom: 0, left: 0 }}>
+            <CartesianGrid stroke={GRID_COLOR} vertical={false} />
+            <XAxis
+              dataKey="label"
+              {...axisProps}
+              axisLine={{ stroke: AXIS_COLOR }}
+              interval="preserveStartEnd"
+              minTickGap={12}
+            />
+            <YAxis
+              {...axisProps}
+              axisLine={false}
+              tickFormatter={axisMoney}
+              width={52}
+              ticks={money.ticks}
+              domain={[0, money.ticks[money.ticks.length - 1]]}
+            />
+            <Tooltip
+              cursor={{ stroke: TICK_COLOR, strokeOpacity: 0.3 }}
+              content={(p) => (
+                <PlanTooltip
+                  active={p.active}
+                  payload={p.payload}
+                  rows={[
+                    { key: 'spendable', name: 'Spendable', color: SPENDABLE_COLOR, line: true },
+                    {
+                      key: 'retirement',
+                      name: 'Retirement accounts',
+                      color: RETIREMENT_COLOR,
+                      line: true,
+                    },
+                  ]}
+                  sum={{ label: 'Total', keys: ['spendable', 'retirement'] }}
+                />
+              )}
+            />
+            {(['spendable', 'retirement'] as const).map((key) => (
+              <Line
+                key={key}
+                type="monotone"
+                dataKey={key}
+                stroke={key === 'spendable' ? SPENDABLE_COLOR : RETIREMENT_COLOR}
+                strokeWidth={2}
+                strokeLinecap="round"
+                dot={false}
+                activeDot={{ r: 4, stroke: SURFACE, strokeWidth: 2 }}
+                isAnimationActive={false}
+              />
+            ))}
+            {stopAt && (
+              <ReferenceLine
+                x={stopAt}
+                stroke={TICK_COLOR}
+                strokeOpacity={0.5}
+                label={{
+                  value: 'Stop working',
+                  position: labelSide(stopAt, money.labels),
+                  fill: TICK_COLOR,
+                  fontSize: 10,
+                }}
+              />
+            )}
+            {runsOutAt && (
+              <ReferenceLine
+                x={runsOutAt}
+                stroke={RETIREMENT_COLOR}
+                strokeOpacity={0.6}
+                label={{
+                  value: 'Runs out',
+                  position: labelSide(runsOutAt, money.labels),
+                  fill: TICK_COLOR,
+                  fontSize: 10,
+                }}
+              />
+            )}
+          </ComposedChart>
+        </ResponsiveContainer>
       </Card>
 
       <div>
