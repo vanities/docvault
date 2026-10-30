@@ -164,6 +164,8 @@ web/scripts/*
 # Exception: alerts view helper tests are pure logic over fabricated checks, no personal data
 !web/src/components/Alerts/alerts.test.ts
 !web/src/components/Alerts/AlertsView.test.tsx
+# Exception: chat stream contract test scripts the Agent SDK with fabricated messages in a tmpdir, no model call
+!web/server/routes/chat.stream.test.ts
 # Exception: blur-coverage test scans component source for unblurred money renders, no personal data
 !web/src/components/blur-coverage.test.ts
 # Exception: search controls tests use fabricated document metadata only, no personal data

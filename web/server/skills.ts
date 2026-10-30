@@ -236,6 +236,7 @@ interface SkillsPlugin {
 }
 
 let cachedPlugin: { fingerprint: string; plugin: SkillsPlugin } | null = null;
+const STALE_PLUGIN_GRACE_MS = 30 * 60_000;
 
 async function skillsFingerprint(): Promise<{ fingerprint: string; names: string[] }> {
   const skills = await listSkills();
@@ -276,7 +277,14 @@ export async function ensureSkillsPluginDir(): Promise<SkillsPlugin | null> {
     });
   }
   cachedPlugin = { fingerprint, plugin: { path: root, skillNames: names } };
-  if (staleDir) void fs.rm(staleDir, { recursive: true, force: true }).catch(() => undefined);
+  // A chat turn or assignment run that started before the edit still reads skills from the old
+  // mirror, so it is removed after a grace period rather than mid-run.
+  if (staleDir) {
+    log.debug(`[plugin] superseded ${staleDir}; removing in ${STALE_PLUGIN_GRACE_MS / 60_000} min`);
+    setTimeout(() => {
+      void fs.rm(staleDir, { recursive: true, force: true }).catch(() => undefined);
+    }, STALE_PLUGIN_GRACE_MS).unref();
+  }
   log.info(
     `[plugin] mirrored ${names.length} skill(s) → ${root} in ${(performance.now() - t0).toFixed(1)}ms`
   );
