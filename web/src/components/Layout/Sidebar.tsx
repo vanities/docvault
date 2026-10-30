@@ -25,6 +25,7 @@ import {
   Receipt,
   Scale,
   BellRing,
+  Binoculars,
   TrendingUp,
   LineChart,
   Brain,
@@ -50,6 +51,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { ASSIGNMENTS_CHANGED_EVENT } from '../Assignments/assignments';
 
 // ---------------------------------------------------------------------------
 // Entity Dropdown Switcher
@@ -187,6 +189,7 @@ function NavButton({
   isProcessing,
   onClick,
   glow,
+  badge,
 }: {
   view: NavView;
   label: string;
@@ -197,6 +200,8 @@ function NavButton({
   isProcessing: boolean;
   onClick: (view: NavView) => void;
   glow?: string;
+  /** Unread count; hidden at 0. */
+  badge?: number;
 }) {
   const isActive = activeView === view;
   return (
@@ -214,8 +219,36 @@ function NavButton({
         className={`w-4 h-4 flex-shrink-0 ${isActive ? activeTextColor : 'text-surface-600'}`}
       />
       <span className="font-medium text-[13px]">{label}</span>
+      {badge ? (
+        <span
+          className="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-accent-500 text-white text-[11px] font-bold flex items-center justify-center"
+          aria-label={`${badge} unread`}
+        >
+          {badge}
+        </span>
+      ) : null}
     </button>
   );
+}
+
+/** Unread assignment notifications, for the sidebar badge. */
+function useAssignmentsUnread(): number {
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    const load = () =>
+      fetch('/api/assignments/summary')
+        .then((r) => (r.ok ? (r.json() as Promise<{ unread?: number }>) : null))
+        .then((s) => setUnread(s?.unread ?? 0))
+        .catch(() => undefined);
+    void load();
+    const id = setInterval(() => void load(), 60000);
+    window.addEventListener(ASSIGNMENTS_CHANGED_EVENT, load);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener(ASSIGNMENTS_CHANGED_EVENT, load);
+    };
+  }, []);
+  return unread;
 }
 
 // ---------------------------------------------------------------------------
@@ -504,6 +537,8 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
       if (accepted) onClose?.();
     });
   };
+
+  const assignmentsUnread = useAssignmentsUnread();
 
   const handleViewClick = (view: NavView) => {
     void requestScopeChange({ view }).then((accepted) => {
@@ -910,6 +945,17 @@ export function Sidebar({ onAddEntity, onClose }: SidebarProps) {
               activeView={activeView}
               isProcessing={isProcessing}
               onClick={handleViewClick}
+            />
+            <NavButton
+              view="assignments"
+              label="Assignments"
+              icon={Binoculars}
+              activeColor="bg-sky-500/10"
+              activeTextColor="text-sky-400"
+              activeView={activeView}
+              isProcessing={isProcessing}
+              onClick={handleViewClick}
+              badge={assignmentsUnread}
             />
           </div>
         </div>

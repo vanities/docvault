@@ -215,7 +215,8 @@ export type NavView =
   | 'health-nutrition'
   | 'health-sickness'
   | 'health-analysis'
-  | 'health-research';
+  | 'health-research'
+  | 'assignments';
 
 // Tab types for tax year view
 export type TabType = 'documents' | 'income' | 'expenses' | 'invoices' | 'statements';
@@ -462,12 +463,15 @@ export function AppProvider({ children }: AppProviderProps) {
         'health-sickness',
         'health-analysis',
         'health-research',
+        'assignments',
       ]),
     []
   );
 
+  // `#view/<id>` deep-links into a view (an email links to `#assignments/<id>`); the view
+  // itself reads the part after the slash.
   const viewFromHash = useCallback((): NavView | null => {
-    const hash = window.location.hash.replace('#', '');
+    const hash = window.location.hash.replace('#', '').split('/')[0];
     return validViews.has(hash) ? (hash as NavView) : null;
   }, [validViews]);
 
