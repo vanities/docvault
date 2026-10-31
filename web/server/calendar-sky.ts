@@ -15,7 +15,12 @@ import {
   seasonMarksByDate,
   sunTimesForDate,
 } from './astronomy.js';
-import { dstTransitionsByDate, meteorShowersByDate, usHolidaysByDate } from './almanac.js';
+import {
+  dstTransitionsByDate,
+  holidayEmoji,
+  meteorShowersByDate,
+  usHolidaysByDate,
+} from './almanac.js';
 import type { CalendarDisplaySettings } from './data.js';
 
 export interface SkyWeekAheadItem {
@@ -66,7 +71,7 @@ export function buildSkyWeekAheadItems(
   }
   if (cfg.showHolidays) {
     for (const [date, name] of usHolidaysByDate(startISO, endISO)) {
-      out.push({ date, title: name, kind: 'holiday', emoji: '🎉' });
+      out.push({ date, title: name, kind: 'holiday', emoji: holidayEmoji(name) });
     }
   }
   out.sort((a, b) => (a.date < b.date ? -1 : 1));

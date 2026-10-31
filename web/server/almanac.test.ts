@@ -6,9 +6,12 @@
 import { describe, expect, test } from 'vite-plus/test';
 import {
   dstTransitionsByDate,
+  holidayEmoji,
+  holidayForDate,
   meteorShowersByDate,
   usHolidaysByDate,
   usHolidaysForYear,
+  usObservancesForYear,
 } from './almanac.js';
 
 describe('usHolidays', () => {
@@ -24,11 +27,46 @@ describe('usHolidays', () => {
     expect(h.size).toBe(11);
   });
 
-  test('window filter is inclusive and year-spanning', () => {
+  test('window filter is inclusive, year-spanning, and carries observances', () => {
     const h = usHolidaysByDate('2026-12-20', '2027-01-05');
+    expect(h.get('2026-12-24')).toBe('Christmas Eve');
     expect(h.get('2026-12-25')).toBe('Christmas Day');
+    expect(h.get('2026-12-31')).toBe("New Year's Eve");
     expect(h.get('2027-01-01')).toBe("New Year's Day");
-    expect(h.size).toBe(2);
+    expect(h.size).toBe(4);
+  });
+});
+
+describe('usObservances', () => {
+  test('2026 observances land on the right dates', () => {
+    const o = usObservancesForYear(2026);
+    expect(o.get('2026-10-31')).toBe('Halloween');
+    expect(o.get('2026-02-14')).toBe("Valentine's Day");
+    expect(o.get('2026-04-05')).toBe('Easter'); // computus
+    expect(o.get('2026-05-10')).toBe("Mother's Day"); // 2nd Sunday May
+    expect(o.get('2026-06-21')).toBe("Father's Day"); // 3rd Sunday June
+    expect(o.size).toBe(8);
+  });
+
+  test('Easter computus across years', () => {
+    expect(usObservancesForYear(2025).get('2025-04-20')).toBe('Easter');
+    expect(usObservancesForYear(2027).get('2027-03-28')).toBe('Easter');
+  });
+
+  test('observances stay out of the strictly-federal set', () => {
+    expect(usHolidaysForYear(2026).has('2026-10-31')).toBe(false);
+  });
+
+  test('holidayForDate answers for a single day across both sets', () => {
+    expect(holidayForDate('2026-10-31')).toBe('Halloween');
+    expect(holidayForDate('2026-11-26')).toBe('Thanksgiving');
+    expect(holidayForDate('2026-10-30')).toBeUndefined();
+  });
+
+  test('holidayEmoji maps known names and falls back to the party popper', () => {
+    expect(holidayEmoji('Halloween')).toBe('🎃');
+    expect(holidayEmoji('Thanksgiving')).toBe('🦃');
+    expect(holidayEmoji('Juneteenth')).toBe('🎉');
   });
 });
 

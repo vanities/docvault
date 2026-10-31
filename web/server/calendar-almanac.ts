@@ -10,7 +10,12 @@ import {
   seasonMarksByDate,
   sunTimesForDate,
 } from './astronomy.js';
-import { dstTransitionsByDate, meteorShowersByDate, usHolidaysByDate } from './almanac.js';
+import {
+  dstTransitionsByDate,
+  holidayEmoji,
+  meteorShowersByDate,
+  usHolidaysByDate,
+} from './almanac.js';
 import { addInterval } from './calendar-recurrence.js';
 import type { Settings } from './data.js';
 import { isValidTimeZone, zonedNoon, zonedOffsetMinutes } from './tz.js';
@@ -67,7 +72,8 @@ export function calendarAlmanac(start: string, end: string, timeZone: string, se
       if (mark) marks.push({ layer, ...mark });
     }
     const holiday = holidays.get(date);
-    if (holiday) marks.push({ layer: 'showHolidays', emoji: '🎉', label: holiday });
+    if (holiday)
+      marks.push({ layer: 'showHolidays', emoji: holidayEmoji(holiday), label: holiday });
     const sun = hasCoords ? sunTimesForDate(date, location!.latitude!, location!.longitude!) : null;
     const previous = hasCoords
       ? sunTimesForDate(addInterval(date, -1, 'day'), location!.latitude!, location!.longitude!)

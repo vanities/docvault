@@ -224,6 +224,7 @@ export async function startEdition(
         title: result.title,
         body: result.body,
         themeId: result.theme,
+        editionDate,
       }).catch(() => null);
       if (imagePath) await patchEdition(id, { imagePath });
       // Narrate (best-effort) before notifying, so the email carries the
@@ -338,6 +339,7 @@ export async function startThemeSamples(
           title: result.title,
           body: result.body,
           themeId: result.theme,
+          editionDate,
         }).catch(() => null);
         if (imagePath) await patchEdition(e.id, { imagePath });
         log.info(

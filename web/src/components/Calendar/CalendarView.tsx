@@ -34,6 +34,7 @@ import {
 } from '../../../server/astronomy';
 import {
   dstTransitionsByDate,
+  holidayEmoji,
   meteorShowersByDate,
   usHolidaysByDate,
 } from '../../../server/almanac';
@@ -190,7 +191,7 @@ export function CalendarView() {
       .filter((m) => !['New moon', 'First quarter', 'Full moon', 'Last quarter'].includes(m.label))
       .map((m) => `${m.emoji} ${m.label}`);
     const holiday = holidaysByDate.get(selectedDate);
-    if (holiday) extras.push(`🎉 ${holiday}`);
+    if (holiday) extras.push(`${holidayEmoji(holiday)} ${holiday}`);
     const weather = weatherByDate.get(selectedDate);
     if (weather)
       extras.push(`${weather.emoji} ${Math.round(weather.hi)}° / ${Math.round(weather.lo)}°`);

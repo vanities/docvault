@@ -14,6 +14,7 @@ import path from 'path';
 import OpenAI from 'openai';
 import { DATA_DIR, getDailyNewsConfig, getOpenAIConfig } from './data.js';
 import { getThemeVisual } from './daily-news-themes.js';
+import { holidayForDate } from './almanac.js';
 import { createLogger } from './logger.js';
 
 const log = createLogger('DailyNewsImage');
@@ -70,6 +71,29 @@ async function generateB64(
   return { b64: null, model: 'none' };
 }
 
+/** Build the hero prompt. Exported for tests: it must carry the story, the
+ *  theme's visual style, and, when the edition date is a holiday, a seasonal
+ *  motif line (the model never sees the date otherwise). */
+export function buildImagePrompt(opts: {
+  title: string;
+  body: string;
+  themeId: string;
+  editionDate?: string;
+}): string {
+  const holiday = opts.editionDate ? holidayForDate(opts.editionDate) : undefined;
+  return [
+    `Editorial front-page hero illustration for a personal newspaper titled "${opts.title}".`,
+    `Top story: ${leadExcerpt(opts.body)}`,
+    `Visual style: ${getThemeVisual(opts.themeId)}.`,
+    ...(holiday
+      ? [
+          `Seasonal note: today is ${holiday}. Weave subtle, tasteful ${holiday} motifs into the scene as atmosphere and set dressing, without displacing the top story as the subject.`,
+        ]
+      : []),
+    'Wide cinematic banner, evocative and tasteful. Do NOT render any text, letters, words, logos, or numbers in the image.',
+  ].join('\n');
+}
+
 /**
  * Generate + save a headline image for an edition. Returns the saved file path
  * on success, or null (disabled / no key / error — all best-effort).
@@ -79,6 +103,8 @@ export async function generateHeadlineImage(opts: {
   title: string;
   body: string;
   themeId: string;
+  /** YYYY-MM-DD; lets a holiday edition's hero carry the seasonal motif. */
+  editionDate?: string;
 }): Promise<string | null> {
   const { headlineImage, imageModel } = await getDailyNewsConfig();
   if (!headlineImage) return null;
@@ -88,12 +114,7 @@ export async function generateHeadlineImage(opts: {
     return null;
   }
 
-  const prompt = [
-    `Editorial front-page hero illustration for a personal newspaper titled "${opts.title}".`,
-    `Top story: ${leadExcerpt(opts.body)}`,
-    `Visual style: ${getThemeVisual(opts.themeId)}.`,
-    'Wide cinematic banner, evocative and tasteful. Do NOT render any text, letters, words, logos, or numbers in the image.',
-  ].join('\n');
+  const prompt = buildImagePrompt(opts);
 
   const startedAt = Date.now();
   const client = new OpenAI({ apiKey, baseURL: baseUrl || undefined, maxRetries: 1 });

@@ -553,4 +553,20 @@ describe('renderDigestPrompt — previous-edition dedup context', () => {
       'PREVIOUS_EDITION'
     );
   });
+
+  test('a holiday edition date licenses the seasonal nod, tone-only', () => {
+    const prompt = renderDigestPrompt(
+      { ...base, todayHoliday: 'Halloween' },
+      'Test Dispatch',
+      'Saturday, October 31'
+    );
+    expect(prompt).toContain('Today is Halloween.');
+    expect(prompt).toContain('Tone only');
+  });
+
+  test('no holiday, no holiday line', () => {
+    expect(renderDigestPrompt(base, 'Test Dispatch', 'Friday, January 2')).not.toContain(
+      'Today is'
+    );
+  });
 });

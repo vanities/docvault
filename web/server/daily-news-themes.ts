@@ -77,13 +77,26 @@ export function listThemes(): Array<{ id: string; label: string }> {
  *  walks the whole set. Offered in Settings alongside the fixed styles. */
 export const THEME_CYCLE = { id: 'cycle', label: 'Cycle — a different style each day' } as const;
 
+/** Holiday skins for the 'cycle' pick, keyed MM-DD: on these dates the rotation
+ *  yields a fitting voice instead of the day's slot. Only 'cycle' is overridden,
+ *  since cycle already means "surprise me"; a pinned theme is an explicit choice
+ *  and is never hijacked (the edition still gets its holiday mention through the
+ *  digest's todayHoliday line). */
+const CYCLE_HOLIDAY_THEME: Record<string, string> = {
+  '10-31': 'noir', // Halloween
+  '12-24': 'victorian', // Christmas Eve
+  '12-25': 'victorian', // Christmas Day
+};
+
 /** Resolve a configured theme to a CONCRETE style id: a real id passes through;
  *  'cycle' rotates deterministically by date (so consecutive daily editions step
- *  through every style and a 7-day week covers all 7); anything unknown falls
- *  back to the 'brew' default. */
+ *  through every style and a 7-day week covers all 7), except on the holiday
+ *  skins above; anything unknown falls back to the 'brew' default. */
 export function resolveTheme(configTheme: string | undefined, dateKey: string): string {
   if (configTheme && BY_ID.has(configTheme)) return configTheme;
   if (configTheme === THEME_CYCLE.id) {
+    const skin = CYCLE_HOLIDAY_THEME[dateKey.slice(5)];
+    if (skin) return skin;
     const ms = new Date(`${dateKey}T12:00:00`).getTime();
     const n = DAILY_NEWS_THEMES.length;
     if (!Number.isFinite(ms)) return DAILY_NEWS_THEMES[0].id;

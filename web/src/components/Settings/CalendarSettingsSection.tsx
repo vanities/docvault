@@ -56,7 +56,7 @@ const TOGGLE_META: {
   {
     key: 'showHolidays',
     label: 'US holidays',
-    hint: 'federal holidays on the grid',
+    hint: 'federal holidays and observances (Halloween, Easter, ...) on the grid',
     defaultOn: true,
   },
   { key: 'showDst', label: 'Clock changes', hint: 'daylight-saving transitions', defaultOn: true },

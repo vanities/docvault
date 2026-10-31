@@ -64,6 +64,7 @@ import {
   type Occurrence,
 } from './calendar-recurrence.js';
 import { buildSkyWeekAheadItems, buildSunAlmanac, type SunAlmanac } from './calendar-sky.js';
+import { holidayForDate } from './almanac.js';
 import { formatWallClock } from './wall-clock.js';
 import { fetchWeekForecast, forecastToLines, type WeatherForecast } from './weather.js';
 import { getConfiguredTimezone } from './tz.js';
@@ -192,6 +193,10 @@ export interface Digest {
   sun?: SunAlmanac;
   /** Calendar week-ahead for the rendered box (exact dates, never through the LLM). */
   weekAhead?: WeekAheadCalendar;
+  /** Holiday or observance falling ON the edition date (e.g. "Halloween").
+   *  The editor prompt may only use digest facts, so holiday awareness has to
+   *  ride in as data; this line is what licenses the seasonal nod. */
+  todayHoliday?: string;
   /** The last completed edition, shown to the editor (dailies only) as "what the
    *  reader was already told" so standing facts and repeated recommendations
    *  aren't restated every morning. Not part of the digest's own item count. */
@@ -1733,6 +1738,7 @@ export async function gatherDigest(
     weather: weather ?? undefined,
     sun: sun ?? undefined,
     weekAhead: calendar.weekAhead ?? undefined,
+    todayHoliday: editionDate ? holidayForDate(editionDate) : undefined,
     // Dailies only: the weekly deep-dive is the one edition that SHOULD restate
     // the standing state of things, so it gets no "already told" context.
     previousEdition:
@@ -1788,6 +1794,12 @@ export function renderDigestPrompt(digest: Digest, title: string, dateLabel: str
     `Edition: ${title} — ${digest.editionType === 'weekly' ? 'WEEKLY DEEP-DIVE' : 'DAILY'} for ${dateLabel}.`,
     `Digest window: changes since ${digest.sinceISO}.`,
     '',
+    ...(digest.todayHoliday
+      ? [
+          `Today is ${digest.todayHoliday}. Give it one warm, brief nod in the lede and let a light ${digest.todayHoliday} flavor color the edition's voice where it fits naturally. Tone only: every fact, number, and name stays exact, and do not invent holiday-related events or news.`,
+          '',
+        ]
+      : []),
   ];
   if (!digest.sections.length) {
     lines.push('(No material changes were detected across the data sources in this window.)');

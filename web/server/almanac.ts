@@ -76,14 +76,85 @@ export function usHolidaysForYear(year: number): Map<string, string> {
   ]);
 }
 
+/** Easter Sunday (Gregorian) via the anonymous computus algorithm. */
+function easterSunday(year: number): string {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return iso(year, month, day);
+}
+
+/** Widely-observed cultural days that are NOT federal holidays (Halloween,
+ *  Valentine's, Mother's Day, ...). Kept separate from usHolidaysForYear so a
+ *  caller that means strictly-federal (offices/markets closed) can still get
+ *  that; every calendar-display surface wants the union below. */
+export function usObservancesForYear(year: number): Map<string, string> {
+  return new Map([
+    [iso(year, 2, 14), "Valentine's Day"],
+    [iso(year, 3, 17), "St. Patrick's Day"],
+    [easterSunday(year), 'Easter'],
+    [nthWeekday(year, 5, 0, 2), "Mother's Day"],
+    [nthWeekday(year, 6, 0, 3), "Father's Day"],
+    [iso(year, 10, 31), 'Halloween'],
+    [iso(year, 12, 24), 'Christmas Eve'],
+    [iso(year, 12, 31), "New Year's Eve"],
+  ]);
+}
+
+/** Federal holidays plus cultural observances: the inclusive set that calendar
+ *  surfaces (grid, Week Ahead box, Daily News) mark. */
+export function usHolidaysAndObservancesForYear(year: number): Map<string, string> {
+  const out = usHolidaysForYear(year);
+  for (const [date, name] of usObservancesForYear(year)) out.set(date, name);
+  return out;
+}
+
 export function usHolidaysByDate(startISO: string, endISO: string): Map<string, string> {
   const out = new Map<string, string>();
   for (let year = Number(startISO.slice(0, 4)); year <= Number(endISO.slice(0, 4)); year++) {
-    for (const [date, name] of usHolidaysForYear(year)) {
+    for (const [date, name] of usHolidaysAndObservancesForYear(year)) {
       if (date >= startISO && date <= endISO) out.set(date, name);
     }
   }
   return out;
+}
+
+/** The holiday or observance falling ON one date, if any. */
+export function holidayForDate(dateISO: string): string | undefined {
+  return usHolidaysAndObservancesForYear(Number(dateISO.slice(0, 4))).get(dateISO);
+}
+
+const HOLIDAY_EMOJI = new Map<string, string>([
+  ['Halloween', '🎃'],
+  ['Thanksgiving', '🦃'],
+  ['Christmas Eve', '🎄'],
+  ['Christmas Day', '🎄'],
+  ["New Year's Eve", '🎆'],
+  ["New Year's Day", '🎆'],
+  ['Independence Day', '🇺🇸'],
+  ['Memorial Day', '🇺🇸'],
+  ['Veterans Day', '🇺🇸'],
+  ["Valentine's Day", '💝'],
+  ["St. Patrick's Day", '☘️'],
+  ['Easter', '🐣'],
+  ["Mother's Day", '💐'],
+  ["Father's Day", '👔'],
+]);
+
+/** Emoji for a holiday row; generic 🎉 for anything unlisted. */
+export function holidayEmoji(name: string): string {
+  return HOLIDAY_EMOJI.get(name) ?? '🎉';
 }
 
 // ---------------------------------------------------------------------------
