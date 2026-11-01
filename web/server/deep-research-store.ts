@@ -28,6 +28,8 @@ export interface ResearchRun {
   /** Images the user attached to the question (data: URLs). Persisted so a run
    *  re-read after a restart still knows it was an image-grounded query. */
   attachments?: ResearchAttachment[];
+  /** The owner let this run read their DocVault data (off unless they ticked it). */
+  useOwnerData?: boolean;
   report?: string;
   sources?: ResearchSource[];
   searchCount?: number;
@@ -43,6 +45,7 @@ export interface ResearchRunSummary {
   id: string;
   question: string;
   status: ResearchRun['status'];
+  useOwnerData?: boolean;
   searchCount?: number;
   sourceCount: number;
   usage?: ResearchRun['usage'];
@@ -83,8 +86,10 @@ export async function startResearchRun(
   question: string,
   maxSearches: number,
   attachments: ResearchAttachment[] = [],
-  runner: Runner = runDeepResearch
+  runner: Runner = runDeepResearch,
+  opts: { useOwnerData?: boolean } = {}
 ): Promise<string> {
+  const useOwnerData = opts.useOwnerData === true;
   const id = crypto.randomUUID();
   await withRunMutation(async () => {
     const runs = await loadRuns();
@@ -94,6 +99,7 @@ export async function startResearchRun(
       status: 'running',
       maxSearches,
       ...(attachments.length > 0 ? { attachments } : {}),
+      ...(useOwnerData ? { useOwnerData } : {}),
       createdAt: new Date().toISOString(),
     };
     await saveRuns(runs);
@@ -101,7 +107,7 @@ export async function startResearchRun(
 
   // Background — the caller does not await this; the client polls getRun(id).
   void Promise.resolve()
-    .then(() => runner(question, { maxSearches, attachments }))
+    .then(() => runner(question, { maxSearches, attachments, useOwnerData }))
     .then((result) =>
       patchRun(id, {
         status: 'done',
@@ -141,6 +147,7 @@ export async function listRuns(): Promise<ResearchRunSummary[]> {
       id: r.id,
       question: r.question,
       status: r.status,
+      ...(r.useOwnerData ? { useOwnerData: true } : {}),
       searchCount: r.searchCount,
       sourceCount: r.sources?.length ?? 0,
       usage: r.usage,

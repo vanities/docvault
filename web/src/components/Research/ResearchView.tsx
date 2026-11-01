@@ -87,6 +87,8 @@ const MD_COMPONENTS = {
 export function ResearchView() {
   const { addToast } = useToast();
   const [question, setQuestion] = useState('');
+  // Off by default and per run: reports can be downloaded and shared.
+  const [useOwnerData, setUseOwnerData] = useState(false);
   const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
   const [history, setHistory] = useState<RunSummary[]>([]);
   const [active, setActive] = useState<Run | null>(null);
@@ -240,6 +242,7 @@ export function ResearchView() {
         body: JSON.stringify({
           question: q,
           maxSearches: THOROUGH_SEARCHES,
+          useOwnerData,
           attachments: attachments.map((a) => ({ mimeType: a.mimeType, dataUrl: a.dataUrl })),
         }),
       });
@@ -399,6 +402,21 @@ export function ResearchView() {
                 <Paperclip className="w-4 h-4" />
               </Button>
             </div>
+            <label className="flex items-start gap-2 mt-3 text-[12px] text-surface-700 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={useOwnerData}
+                onChange={(e) => setUseOwnerData(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                Use my DocVault data
+                <span className="block text-[11px] text-surface-500">
+                  The report can read your money, debts, business and notes (health too, when the
+                  question is about health). Leave it off for general questions.
+                </span>
+              </span>
+            </label>
             <p className="text-[11px] text-surface-500 mt-2">
               Thorough run · live web search · roughly $0.30–1.00 per question
             </p>

@@ -243,6 +243,8 @@ web/scripts/*
 !web/server/context/sources.test.ts
 # Exception: recorded Newsstand digest over a fabricated household (Acme names, round numbers, March dates)
 !web/server/daily-news.golden.test.ts
+# Exception: context tools and owner-data Deep Research tests use a fabricated debt and a fake research runner in a tmpdir
+!web/server/context/tools.test.ts
 # Exception: history-series tests are pure missing-vs-zero logic over fabricated figures, no personal data
 !web/src/components/common/historySeries.test.ts
 

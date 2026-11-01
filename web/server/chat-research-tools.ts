@@ -3,6 +3,7 @@ import { tool } from '@anthropic-ai/claude-agent-sdk';
 import { runCalculation } from './chat-calculation.js';
 import { startResearchRun, getRun } from './deep-research-store.js';
 import { handleResearchRoutes, type ResearchEntry } from './routes/research.js';
+import { getContext, listContext } from './context/tools.js';
 import {
   RESEARCH_CHAT_TOOLS,
   callChatTool,
@@ -17,9 +18,13 @@ const handlers: Record<string, ExecutableChatTool['execute']> = {
     return runCalculation(code, data, signal);
   },
   start_deep_research: async (input) => {
-    const { question, maxSearches } = input as { question: string; maxSearches: number };
+    const { question, maxSearches, useOwnerData } = input as {
+      question: string;
+      maxSearches: number;
+      useOwnerData?: boolean;
+    };
     return {
-      id: await startResearchRun(question, maxSearches),
+      id: await startResearchRun(question, maxSearches, [], undefined, { useOwnerData }),
       status: 'running',
       view: 'deep-research',
     };
@@ -34,6 +39,9 @@ const handlers: Record<string, ExecutableChatTool['execute']> = {
       truncated: (run.report?.length ?? 0) > 100_000,
     };
   },
+  list_context: (input) => listContext(input as { group?: string }),
+  get_context: (input) =>
+    getContext(input as { source: string; since?: string; until?: string; full?: boolean }),
   save_research: async (input) => {
     const url = new URL('http://docvault.internal/api/research/text');
     const response = await handleResearchRoutes(
@@ -65,17 +73,23 @@ export const researchChatTools: ExecutableChatTool[] = RESEARCH_CHAT_TOOLS.map((
   execute: handlers[definition.name]!,
 }));
 
-export function buildResearchMcpTools(signal?: AbortSignal) {
-  return researchChatTools.map((definition) =>
-    tool(definition.name, definition.description, definition.inputSchema, async (args) => {
-      try {
-        return chatToolResult(await callChatTool(researchChatTools, definition.name, args, signal));
-      } catch (error) {
-        return chatToolResult(
-          { error: error instanceof Error ? error.message : 'Tool failed' },
-          true
-        );
-      }
-    })
-  );
+/** The shared tools as Agent SDK MCP tools; `only` narrows them (Deep Research
+ *  gets just the context reads). */
+export function buildResearchMcpTools(signal?: AbortSignal, only?: readonly string[]) {
+  return researchChatTools
+    .filter((definition) => !only || only.includes(definition.name))
+    .map((definition) =>
+      tool(definition.name, definition.description, definition.inputSchema, async (args) => {
+        try {
+          return chatToolResult(
+            await callChatTool(researchChatTools, definition.name, args, signal)
+          );
+        } catch (error) {
+          return chatToolResult(
+            { error: error instanceof Error ? error.message : 'Tool failed' },
+            true
+          );
+        }
+      })
+    );
 }

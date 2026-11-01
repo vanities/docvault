@@ -1,6 +1,6 @@
 // Deep Research routes — runs are background jobs the client starts + polls.
 //
-//   POST   /api/deep-research/run   { question, maxSearches? } → { id, status }
+//   POST   /api/deep-research/run   { question, maxSearches?, useOwnerData? } → { id, status }
 //   GET    /api/deep-research        → { runs: [summary...] }   (history)
 //   GET    /api/deep-research/:id     → the full run (status + report + sources)
 //   DELETE /api/deep-research/:id     → remove a run
@@ -54,7 +54,15 @@ export async function handleDeepResearchRoutes(
       question?: unknown;
       maxSearches?: unknown;
       attachments?: unknown;
-    }>(req).catch((): { question?: unknown; maxSearches?: unknown; attachments?: unknown } => ({}));
+      useOwnerData?: unknown;
+    }>(req).catch(
+      (): {
+        question?: unknown;
+        maxSearches?: unknown;
+        attachments?: unknown;
+        useOwnerData?: unknown;
+      } => ({})
+    );
     const rawQuestion = typeof body.question === 'string' ? body.question.trim() : '';
     const attachments = parseAttachments(body.attachments);
     // A question OR an image is enough — an image-only run means "what is this?".
@@ -66,7 +74,9 @@ export async function handleDeepResearchRoutes(
     const question = rawQuestion || 'Identify what this image shows, then research it thoroughly.';
     const requested = typeof body.maxSearches === 'number' ? body.maxSearches : 18;
     const maxSearches = Math.min(Math.max(Math.round(requested), 1), 30);
-    const id = await startResearchRun(question, maxSearches, attachments, runner);
+    const id = await startResearchRun(question, maxSearches, attachments, runner, {
+      useOwnerData: body.useOwnerData === true,
+    });
     return jsonResponse({ id, status: 'running' }, 201);
   }
 

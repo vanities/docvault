@@ -15,9 +15,13 @@ for (const definition of RESEARCH_CHAT_TOOLS) {
       annotations: {
         readOnlyHint: definition.readOnly,
         destructiveHint: false,
-        openWorldHint: !['run_calculation', 'save_research', 'get_research_run'].includes(
-          definition.name
-        ),
+        openWorldHint: ![
+          'run_calculation',
+          'save_research',
+          'get_research_run',
+          'list_context',
+          'get_context',
+        ].includes(definition.name),
       },
     },
     async (input) => {
