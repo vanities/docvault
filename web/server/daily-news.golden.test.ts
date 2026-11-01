@@ -15,6 +15,10 @@ const DATA = vi.hoisted(() => {
     .toString(36)
     .slice(2)}`;
   process.env.DOCVAULT_DATA_DIR = dir;
+  // Sky dates (moon phases) follow the process zone, and date-only window
+  // checks read local end-of-day; pin both so the recording matches on any
+  // machine. Test files run in separate processes, so this stays in this file.
+  process.env.TZ = 'America/Chicago';
   return dir;
 });
 
@@ -37,6 +41,10 @@ const write = (name: string, value: unknown) =>
 
 function seed(): void {
   mkdirSync(DATA, { recursive: true });
+  // The household timezone decides which day a moon phase or holiday falls on;
+  // without it the machine's zone leaks in (UTC in CI put the March new moon
+  // a day later than Central time does).
+  write('.docvault-settings.json', { schedules: { timezone: 'America/Chicago' } });
 
   write('.docvault-quant-cache.json', {
     fearGreed: { data: { latest: { value: 42, classification: 'Fear' }, ma30: 47.6 } },
