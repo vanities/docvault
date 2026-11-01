@@ -41,6 +41,7 @@ import { brainSource, editionsSource } from './sources/memory.js';
 import { weatherSource } from './sources/outlook.js';
 import { payoffPlanSource } from './sources/payoff-plan.js';
 import { politicsSource } from './sources/politics.js';
+import { propertyEquitySource } from './sources/property-equity.js';
 import {
   externalSourcesSource,
   localNewsSource,
@@ -61,6 +62,7 @@ export const CONTEXT_SOURCES: readonly ContextSource[] = [
   bankAccountsSource,
   bankTransactionsSource,
   debtsSource,
+  propertyEquitySource,
   payoffPlanSource,
   politicsSource,
   researchSource,

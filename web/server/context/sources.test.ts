@@ -207,3 +207,41 @@ describe('readable lines from real-world shapes', () => {
     ]);
   });
 });
+
+const { equityEvents } = await import('./sources/property-equity.js');
+
+describe('property equity', () => {
+  const snap = (date: string, propertyValue: number) => ({
+    date,
+    totalValue: 0,
+    cryptoValue: 0,
+    brokerValue: 0,
+    goldValue: 0,
+    propertyValue,
+  });
+
+  test('a hand edit and the monthly amortization read differently; small moves are left out', () => {
+    const events = equityEvents(
+      [
+        snap('2026-03-02', 200_000),
+        snap('2026-03-05', 200_000),
+        snap('2026-03-06', 212_000),
+        snap('2026-04-01', 213_200),
+        snap('2026-04-03', 213_000),
+      ],
+      { from: '2026-03-01', to: '2026-04-30' }
+    );
+    expect(events).toEqual([
+      {
+        date: '2026-03-06',
+        text: '+$12,000 ($200,000 to $212,000), a mortgage balance or a property value was changed by hand that day',
+        amount: 12_000,
+      },
+      {
+        date: '2026-04-01',
+        text: '+$1,200 ($212,000 to $213,200), the monthly principal amortization',
+        amount: 1_200,
+      },
+    ]);
+  });
+});
