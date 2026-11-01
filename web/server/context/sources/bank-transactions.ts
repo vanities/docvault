@@ -6,6 +6,7 @@ import {
 } from '../../bank-transactions.js';
 import { BANK_TRANSACTIONS_FILE } from '../../data.js';
 import { clip, signedMoney } from '../format.js';
+import { readEventSource } from '../events.js';
 import type { ContextEvent, ContextSource, ContextWindow } from '../types.js';
 
 const words = (s: string) => s.toLowerCase().match(/[a-z0-9]{3,}/g) ?? [];
@@ -58,10 +59,11 @@ export const bankTransactionsSource: ContextSource = {
     'beyond the bank link’s 90-day window. Shows where cash went: loan payments, transfers ' +
     'between accounts, tax payments, card payments, deposits.',
   files: ['.docvault-bank-transactions.json'],
-  async state() {
-    return transactionLedgerState(await loadBankTransactions(BANK_TRANSACTIONS_FILE));
-  },
-  async changes(window) {
+  read: (req) =>
+    readEventSource(bankTransactionsSource, req, async () =>
+      transactionLedgerState(await loadBankTransactions(BANK_TRANSACTIONS_FILE))
+    ),
+  async events(window) {
     return transactionEvents(await loadBankTransactions(BANK_TRANSACTIONS_FILE), window);
   },
 };

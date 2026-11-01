@@ -137,10 +137,11 @@ describe('research domain wiring', () => {
     // The GET list filter must validate through the shared guard.
     expect(serverSource).toMatch(/isResearchDomain\(domainParam\)/);
 
-    // The Daily News digest must pull ALL domains (no-arg listResearchEntries),
-    // so any future domain reaches the paper (Research & Analysis desk) by
-    // construction even before it gets a dedicated desk.
-    const newsSource = read('server/daily-news.ts');
-    expect(newsSource).toMatch(/listResearchEntries\(\)/);
+    // The research context sources, which the Newsstand and chat read, must
+    // pull ALL domains (no-arg listResearchEntries), so any future domain
+    // reaches the paper (Research & Analysis desk) by construction even before
+    // it gets a dedicated desk.
+    const researchSources = read('server/context/sources/research.ts');
+    expect(researchSources).toMatch(/listResearchEntries\(\)/);
   });
 });

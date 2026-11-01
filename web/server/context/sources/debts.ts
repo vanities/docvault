@@ -3,6 +3,7 @@ import type { DebtPaymentItem } from '../../debt-payments.js';
 import { debtId } from '../../debt-plan.js';
 import { addDays, money, percent } from '../format.js';
 import { contextHistory, diffHistory, type ContextHistory, type MetricChange } from '../history.js';
+import { readEventSource } from '../events.js';
 import type { ContextEvent, ContextSource, ContextWindow } from '../types.js';
 
 const BASELINE_LOOKBACK_DAYS = 40;
@@ -88,11 +89,12 @@ export const debtsSource: ContextSource = {
     'loans and cards, with balance, rate and monthly payment. Balances are recorded daily, so ' +
     'paydowns and new borrowing show up as dated changes.',
   files: ['.docvault-liabilities.json', '.docvault-property.json'],
-  async state() {
-    const { items, total } = await loadDebtPayments();
-    return debtsState(items, total);
-  },
-  changes: (window) => debtChanges(window),
+  read: (req) =>
+    readEventSource(debtsSource, req, async () => {
+      const { items, total } = await loadDebtPayments();
+      return debtsState(items, total);
+    }),
+  events: (window) => debtChanges(window),
   async metrics() {
     const { items } = await loadDebtPayments();
     // Card balances move with every purchase and already sit in bank-accounts history.

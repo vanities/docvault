@@ -29,24 +29,7 @@ import {
   getCodexChatConfig,
   getAnthropicAuthToken,
   getAnthropicKey,
-  loadSnapshots,
-  loadSalesData,
-  loadMileageData,
-  loadTodos,
-  loadConfig,
-  scanDirectory,
-  loadGoldData,
-  loadPropertyData,
-  loadIncomeData,
-  loadEstimatedTaxes,
-  type EstimatedTaxPayment,
-  loadContributions,
-  loadAssets,
-  loadFederalTax,
   DATA_DIR,
-  BROKER_ACTIVITIES_FILE,
-  BROKER_CACHE_FILE,
-  CRYPTO_CACHE_FILE,
   SCHEDULE_STATUS_FILE,
   DEFAULT_MODEL,
   toAnthropicApiEffort,
@@ -54,33 +37,14 @@ import {
   toOpenAIEffort,
   type ModelRef,
 } from './data.js';
-import { calendarToday, loadCalendarStore, type CalendarEventKind } from './calendar-store.js';
-import {
-  addInterval,
-  diffDays,
-  occurrenceEnd,
-  projectOccurrences,
-  type Occurrence,
-} from './calendar-recurrence.js';
-import { buildSkyWeekAheadItems, buildSunAlmanac, type SunAlmanac } from './calendar-sky.js';
+import { calendarToday } from './calendar-store.js';
+import { buildSunAlmanac, type SunAlmanac } from './calendar-sky.js';
 import { holidayForDate } from './almanac.js';
-import { formatWallClock } from './wall-clock.js';
 import { fetchWeekForecast, forecastToLines, type WeatherForecast } from './weather.js';
 import { getConfiguredTimezone } from './tz.js';
-import { listResearchEntries, type ResearchEntry } from './routes/research.js';
-import { getLatestStrategy } from './routes/strategy.js';
-import { getLatestHealthAnalysis } from './routes/health-analysis.js';
 import { renderNarrationAtSpeed } from './daily-news-narration.js';
-import { handleHealthRoutes } from './routes/health.js';
-import { loadHealthStore } from './health-store.js';
-import { listRuns } from './deep-research-store.js';
 import { loadCustomJobStatus, customJobSourceWarnings } from './custom-job-runner.js';
 import { listCustomJobManifests } from './jobs.js';
-import { loadQuantCache } from './routes/quant.js';
-import { fetchTickerPrices } from './ticker-prices.js';
-import { loadPoliticsFeedPayload } from './politics/feed-store.js';
-import { buildPoliticsTradeDigest } from './politics/news-digest.js';
-import type { BillRecord, ExecutiveActionRecord, TradeRecord } from './politics/types.js';
 import { readBrainContent } from './brain.js';
 import { sendEmail } from './email.js';
 import {
@@ -95,8 +59,27 @@ import { logAiCall } from './ai/usage-log.js';
 import { createLogger } from './logger.js';
 import type { Edition, EditionType } from './daily-news-store.js';
 import { CONTEXT_SOURCES } from './context/registry.js';
-import { addDays, money } from './context/format.js';
-import type { ContextEvent, ContextGroup } from './context/types.js';
+import { formatContextEvents } from './context/events.js';
+import {
+  buildCalendarDigest,
+  calendarDigest,
+  type WeekAheadCalendar,
+} from './context/sources/calendar.js';
+import {
+  buildOvernightMetricBits,
+  selectDailyNewsStepCount,
+  snapshotFromAllResponseBody,
+} from './context/sources/health.js';
+import { buildResearchDigestItems } from './context/sources/research.js';
+import { describeEstimatedTaxState } from './context/sources/finance.js';
+import type {
+  ContextGroup,
+  ContextRead,
+  ContextRequest,
+  ContextSource,
+  PulledItem,
+  SourceCitation,
+} from './context/types.js';
 
 const log = createLogger('DailyNews');
 
@@ -128,23 +111,8 @@ export interface DigestSourceWarning {
   message: string;
 }
 
-/** One ingested item (research filing, upload, deep-research run) — the
- *  debugging ledger of exactly what fed this edition. */
-export interface PulledItem {
-  /** Origin tag, e.g. 'research/finance', 'upload', 'deep-research'. */
-  source: string;
-  title: string;
-  /** Original article/video URL when the item carries one — linkified in the
-   *  "Sources pulled" appendix (web + email). */
-  url?: string;
-}
-
-/** A digest source tag ([S1], [S2], …) → its original URL. The model cites
- *  with the short tag; the server joins the URL afterwards. */
-export interface SourceCitation {
-  ref: string;
-  url: string;
-}
+// Shared with every reader of context sources, so the shapes live there.
+export type { PulledItem, SourceCitation } from './context/types.js';
 
 /**
  * Replace model-emitted citations with inline markdown links. The model only
@@ -216,29 +184,7 @@ export interface PreviousEdition {
  *  is ~20-25K chars; this only clips an unusually long weekly deep-dive. */
 const PREVIOUS_EDITION_MAX_CHARS = 30_000;
 
-/** One row of the rendered "Week Ahead" calendar box. `sky`/`holiday` rows
- * come from the shared astronomy/almanac math (server/calendar-sky.ts) and
- * carry their own emoji. */
-export interface WeekAheadItem {
-  date: string; // YYYY-MM-DD
-  title: string;
-  kind: CalendarEventKind | 'sky' | 'holiday';
-  overdue?: boolean;
-  age?: number; // birthdays: "turns N"
-  /** Inclusive last day of a multi-day row (trips); absent when single-day. */
-  endDate?: string;
-  /** Wall-clock HH:MM of a timed row; absent = all-day. A span's endTime
-   *  belongs to its endDate. */
-  time?: string;
-  endTime?: string;
-  emoji?: string;
-}
-
-export interface WeekAheadCalendar {
-  start: string;
-  end: string;
-  items: WeekAheadItem[];
-}
+export type { WeekAheadCalendar, WeekAheadItem } from './context/sources/calendar.js';
 
 export interface GenerateResult {
   title: string;
@@ -286,1288 +232,26 @@ const CLAUDE_BINARY_PATH: string | undefined = (() => {
 })();
 
 // ===========================================================================
-// Digest gathering — each desk reads IN-PROCESS, windowed, and soft-fails.
+// Digest gathering. Every desk is built from the context sources
+// (server/context/registry.ts), the same descriptions chat and assignments
+// read; this file only assembles them. The weather box, sun strip and Week
+// Ahead box are rendered pieces, so they are gathered here.
 // ===========================================================================
 
-type AfterSince = (d?: string | null) => boolean;
-
-/** Last element of an array (or undefined) — avoids relying on Array.prototype.at. */
-function last<T>(a: readonly T[] | undefined): T | undefined {
-  return a && a.length ? a[a.length - 1] : undefined;
-}
-
-async function fileExists(p: string): Promise<boolean> {
-  try {
-    await fs.access(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Mean of the last `n` numeric values pulled from a daily series (skips
- *  null/undefined). Used to turn a daily metric into a weekly average so a
- *  weekly edition reports the week, not a single (possibly atypical) day. */
-function avgLastN<T>(
-  arr: readonly T[] | undefined,
-  pick: (x: T) => number | null | undefined,
-  n = 7
-): number | undefined {
-  if (!arr?.length) return undefined;
-  const vals = arr
-    .slice(-n)
-    .map(pick)
-    .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
-  if (!vals.length) return undefined;
-  return vals.reduce((s, v) => s + v, 0) / vals.length;
-}
-
-/** Most-recent per-person record from a `${personId}/${file}`-keyed store map. */
-function latestByPerson<T extends { generatedAt?: string }>(
-  rec: Record<string, T> | undefined,
-  personId: string
-): T | undefined {
-  if (!rec) return undefined;
-  const prefix = `${personId}/`;
-  const vals = Object.entries(rec)
-    .filter(([k]) => k.startsWith(prefix))
-    .map(([, v]) => v)
-    .sort((a, b) => (a.generatedAt ?? '').localeCompare(b.generatedAt ?? ''));
-  return last(vals);
-}
-
-// Minimal shapes for defensively reading the nested Apple Health snapshot +
-// clinical store — their full types are large and versioned, so optional
-// chaining against these keeps the digest robust to schema drift.
-interface SnapMetrics {
-  activity?: {
-    daily?: Array<{ date?: string; steps?: number | null; steps7dAvg?: number | null }>;
-  };
-  heart?: { daily?: Array<{ date?: string; restingHR?: number | null; hrv?: number | null }> };
-  sleep?: {
-    daily?: Array<{
-      date?: string;
-      asleepMinutes?: number | null;
-      deepMinutes?: number | null;
-      remMinutes?: number | null;
-    }>;
-  };
-  body?: { headline?: { currentLb?: number | null } };
-  workouts?: {
-    headline?: {
-      thisWeekCount?: number;
-      thisWeekMinutes?: number;
-      currentStreakDays?: number;
-      favoriteType?: string | null;
-    };
-    recent?: Array<{
-      type?: string;
-      start?: string;
-      durationMinutes?: number;
-      avgHR?: number | null;
-    }>;
-  };
-}
-/**
- * Pull the metrics object out of a `GET /api/health/:id/snapshot/all` response
- * body. That endpoint nests the snapshot under `snapshot`; the single-segment
- * endpoint (`/snapshot/activity` etc.) uses `data`. `freshPersonSnapshot` once
- * read `data` against the `all` shape, so it returned undefined every call —
- * the auto-heal recompute never reached the digest and a person whose overnight
- * sync hadn't been folded into the raw store yet was silently dropped from the
- * edition. Reading the correct key here is the contract that test locks.
- */
-export function snapshotFromAllResponseBody(body: unknown): SnapMetrics | undefined {
-  if (!body || typeof body !== 'object') return undefined;
-  const snap = (body as { snapshot?: unknown }).snapshot;
-  return (snap ?? undefined) as SnapMetrics | undefined;
-}
-interface ClinicalLabs {
-  labsByTest?: Array<{
-    latest?: {
-      name?: string;
-      value?: number | null;
-      valueString?: string | null;
-      unit?: string | null;
-      date?: string | null;
-      interpretation?: string | null;
-    } | null;
-  }>;
-}
-
-export function selectDailyNewsStepCount(
-  dailyAct: NonNullable<SnapMetrics['activity']>['daily'] | undefined,
-  opts: { useAverage: boolean; editionDate?: string }
-): number | undefined {
-  const lastAct = last(dailyAct);
-  if (opts.useAverage) return lastAct?.steps7dAvg ?? avgLastN(dailyAct, (d) => d.steps);
-
-  // Steps accumulate across the day, so the latest day is only partial at a
-  // morning edition (e.g. a few hundred steps by 9am). Use the last COMPLETE
-  // day — the most recent before the edition's date in the configured tz —
-  // for the daily step count.
-  const cutoff =
-    opts.editionDate && /^\d{4}-\d{2}-\d{2}$/.test(opts.editionDate) ? opts.editionDate : undefined;
-  const lastCompleteAct = cutoff
-    ? (last((dailyAct ?? []).filter((d) => d.date != null && d.date < cutoff)) ?? lastAct)
-    : lastAct;
-  return lastCompleteAct?.steps ?? undefined;
-}
-
-/**
- * Overnight metric bits (resting HR / HRV / sleep) for a person's digest line,
- * with PER-METRIC staleness. The old code keyed staleness solely off the
- * latest ACTIVITY day, so a sleep series that lagged behind (phone hadn't
- * synced the current day by the 9 AM edition) was narrated as "last night"
- * with coaching attached — the 2026-08-10 edition printed the 08-09 night
- * unlabelled that way.
- *
- * Sleep on a daily edition is stricter than the since-window: day keys count
- * as end-of-day in `afterSince`, so a one-day-old night passes the window.
- * Only a sleep day equal to `editionDate` (sleep is keyed to the WAKE day) is
- * "last night"; anything else is labelled `— from <date>, not last night`.
- * Heart metrics use the window check and carry a `(from <date>)` label when
- * they predate it. Weekly averages (`useAvg`) label nothing — they're a
- * 7-day figure, not a claim about one night.
- */
-export function buildOvernightMetricBits(
-  snap: Pick<SnapMetrics, 'heart' | 'sleep'>,
-  opts: { useAvg: boolean; afterSince: AfterSince; editionDate?: string }
-): string[] {
-  const bits: string[] = [];
-  const { useAvg, afterSince, editionDate } = opts;
-
-  const lastHeart = last(snap.heart?.daily);
-  const heartSuffix =
-    !useAvg && lastHeart?.date && !afterSince(lastHeart.date) ? ` (from ${lastHeart.date})` : '';
-  const rhr = useAvg ? avgLastN(snap.heart?.daily, (d) => d.restingHR) : lastHeart?.restingHR;
-  const hrv = useAvg ? avgLastN(snap.heart?.daily, (d) => d.hrv) : lastHeart?.hrv;
-  if (typeof rhr === 'number') bits.push(`resting HR ${Math.round(rhr)}${heartSuffix}`);
-  if (typeof hrv === 'number') bits.push(`HRV ${Math.round(hrv)}${heartSuffix}`);
-
-  const lastSleep = last(snap.sleep?.daily);
-  const sleepMin = useAvg
-    ? avgLastN(snap.sleep?.daily, (d) => d.asleepMinutes)
-    : lastSleep?.asleepMinutes;
-  if (typeof sleepMin === 'number') {
-    let sleepBit = `${(sleepMin / 60).toFixed(1)}h sleep${useAvg ? '/night' : ''}`;
-    // Daily editions report last night concretely, stages included.
-    if (!useAvg) {
-      const stages = [
-        typeof lastSleep?.deepMinutes === 'number'
-          ? `${(lastSleep.deepMinutes / 60).toFixed(1)}h deep`
-          : null,
-        typeof lastSleep?.remMinutes === 'number'
-          ? `${(lastSleep.remMinutes / 60).toFixed(1)}h REM`
-          : null,
-      ].filter(Boolean);
-      if (stages.length) sleepBit += ` (${stages.join(', ')})`;
-      const sleepFresh = lastSleep?.date
-        ? editionDate
-          ? lastSleep.date === editionDate
-          : afterSince(lastSleep.date)
-        : true; // no date on the record — nothing to judge against, keep old behavior
-      if (!sleepFresh) sleepBit += ` — from ${lastSleep?.date}, not last night`;
-    }
-    bits.push(sleepBit);
-  }
-  return bits;
-}
-
-// Markets shows the CURRENT market state (signals, watchlist) plus the net-worth
-// change over the edition's window (weekly = the week, daily = since the last
-// edition) — so it needs editionType + sinceISO for that delta.
-async function gatherMarkets(
-  editionType: EditionType,
-  sinceISO: string,
-  warn?: WarningSink
-): Promise<string[]> {
-  const items: string[] = [];
-
-  // Cached quant signals — read-only, never triggers a network refresh.
-  try {
-    const q = await loadQuantCache();
-    const fg = q.fearGreed?.data?.latest;
-    if (fg) {
-      const ma = q.fearGreed?.data?.ma30;
-      items.push(
-        `Crypto Fear & Greed: ${fg.value}/100 (${fg.classification})${
-          typeof ma === 'number' ? `, 30-day avg ${Math.round(ma)}` : ''
-        }.`
-      );
-    }
-    const dd = q.btcDrawdown?.data?.latest;
-    if (dd) {
-      // No absolute price here — the live watchlist quote below is the single
-      // source of BTC's spot price; printing this signal's (often staler) price
-      // too produced two different BTC prices in the same edition.
-      items.push(
-        `Bitcoin ${Math.abs(dd.drawdown * 100).toFixed(1)}% below its all-time high ` +
-          `of $${Math.round(dd.ath).toLocaleString()}, ${dd.daysSinceAth}d past the peak.`
-      );
-    }
-    const alt = q.altcoinSeason?.data;
-    if (alt) {
-      items.push(
-        `Altcoin Season Index ${alt.indexValue}/100 (${alt.regime.replace(/-/g, ' ')}); ` +
-          `BTC 90-day return ${(alt.btcReturn90d * 100).toFixed(0)}%.`
-      );
-    }
-    // Prediction markets (Kalshi/Polymarket) — live cache, not daily-archived.
-    const preds = q.predictions?.data;
-    if (preds) {
-      const all = [...(preds.finance ?? []), ...(preds.politics ?? [])]
-        .filter((m) => typeof m.probability === 'number')
-        .sort((a, b) => (b.volumeUsd ?? 0) - (a.volumeUsd ?? 0));
-      // One market per watchlist topic, highest-volume first. Raw volume
-      // ranking surfaces six election markets and nothing else — elections
-      // dwarf every other market's volume on both providers.
-      const byTopic = new Map<string, (typeof all)[number]>();
-      for (const m of all) {
-        const key = m.topic || m.question;
-        if (!byTopic.has(key)) byTopic.set(key, m);
-      }
-      for (const m of [...byTopic.values()].slice(0, 6)) {
-        items.push(
-          `Prediction (${m.source}, ${m.topic}): "${m.question}" — ${Math.round(m.probability)}% yes.`
-        );
-      }
-    }
-  } catch (err) {
-    emitDigestWarning(warn, 'markets/quant', err);
-  }
-
-  // Precious-metals spot — the owner holds physical gold/silver, so give metals
-  // a market signal of their own (symmetric with the crypto signals above)
-  // rather than letting them surface only as a balance-sheet holdings count.
-  const METALS_SYMBOLS = ['GLD', 'SLV'] as const;
-  const metalsLabel: Record<string, string> = { GLD: 'Gold (GLD)', SLV: 'Silver (SLV)' };
-  try {
-    const { quotes } = await fetchTickerPrices([...METALS_SYMBOLS]);
-    const spot = quotes
-      .filter((q) => q && q.price != null)
-      .map(
-        (q) =>
-          `${metalsLabel[q.symbol] ?? q.symbol} ` +
-          `$${q.price!.toLocaleString(undefined, { maximumFractionDigits: 2 })}` +
-          (q.oneYearChangePct != null
-            ? ` (${q.oneYearChangePct >= 0 ? '+' : ''}${q.oneYearChangePct.toFixed(0)}% 1y)`
-            : '')
-      );
-    if (spot.length) items.push(`Precious metals spot: ${spot.join(', ')}.`);
-  } catch (err) {
-    emitDigestWarning(warn, 'markets/metals', err);
-  }
-
-  // Watchlist — symbols tagged on finance research entries (cache-first quotes).
-  // Metals proxies are excluded here; they get their own signal line above.
-  try {
-    const finance = await listResearchEntries('finance');
-    const symbols = [...new Set(finance.flatMap((e) => e.tickers ?? []))]
-      .filter((s) => !METALS_SYMBOLS.includes(s as (typeof METALS_SYMBOLS)[number]))
-      .slice(0, 10);
-    if (symbols.length) {
-      const { quotes } = await fetchTickerPrices(symbols);
-      const movers = quotes
-        .filter((q) => q && q.price != null)
-        .map(
-          (q) =>
-            `${q.symbol} $${q.price!.toLocaleString(undefined, { maximumFractionDigits: 2 })}` +
-            (q.oneYearChangePct != null
-              ? ` (${q.oneYearChangePct >= 0 ? '+' : ''}${q.oneYearChangePct.toFixed(0)}% 1y)`
-              : '')
-        );
-      if (movers.length) items.push(`Watchlist: ${movers.join(', ')}.`);
-    }
-  } catch (err) {
-    emitDigestWarning(warn, 'markets/tickers', err);
-  }
-
-  // Portfolio net-worth change over the edition's WINDOW (weekly = the week,
-  // daily = since the last edition). Baseline = the first snapshot on/after the
-  // window start, NOT merely the previous snapshot — which for a weekly would
-  // report a single overnight move as the whole week's story. Starting in-window
-  // also sidesteps a pre-window data glitch (e.g. a partial-load outlier).
-  try {
-    const snaps = (await loadSnapshots()).slice().sort((a, b) => a.date.localeCompare(b.date));
-    const cur = last(snaps);
-    const sinceDate = sinceISO.slice(0, 10);
-    let base = snaps.find((s) => s.date >= sinceDate);
-    // Outlier guard: a baseline wildly off its next snapshot (>25%) is almost
-    // certainly a bad snapshot (partial load) — step forward one.
-    if (base) {
-      const nxt = snaps[snaps.indexOf(base) + 1];
-      if (
-        nxt &&
-        base.totalValue > 0 &&
-        Math.abs(nxt.totalValue - base.totalValue) / base.totalValue > 0.25
-      ) {
-        base = nxt;
-      }
-    }
-    if (cur && base && base !== cur && base.totalValue > 0) {
-      const delta = cur.totalValue - base.totalValue;
-      const pct = Math.abs((delta / base.totalValue) * 100);
-      const span = editionType === 'weekly' ? 'this week' : 'since the last edition';
-      items.push(
-        `Portfolio net worth ${delta >= 0 ? 'up' : 'down'} ${pct.toFixed(1)}% ${span} ` +
-          `($${Math.round(base.totalValue).toLocaleString()} on ${base.date} → ` +
-          `$${Math.round(cur.totalValue).toLocaleString()} on ${cur.date}).`
-      );
-      // Per-sleeve moves so Markets & Macro covers EVERY asset class the owner
-      // holds — crypto, equities, precious metals, real estate — not just the
-      // loudest one. Without these deltas the desk only had crypto signals to
-      // chew on, so editions read crypto-only even when metals/property moved.
-      // Every sleeve that composes totalValue (scheduler.ts: crypto + brokerage
-      // + bank + gold + property). Keep this list complete so "by asset class"
-      // actually reconciles to the net-worth move above — a missing sleeve would
-      // make the parts silently fail to sum to the whole.
-      const sleeves: Array<[string, number | undefined, number | undefined]> = [
-        ['crypto', base.cryptoValue, cur.cryptoValue],
-        ['brokerage', base.brokerValue, cur.brokerValue],
-        ['cash', base.bankValue, cur.bankValue],
-        ['precious metals', base.goldValue, cur.goldValue],
-        ['real estate equity', base.propertyValue, cur.propertyValue],
-      ];
-      const moves = sleeves
-        .filter(([, b, c]) => typeof b === 'number' && b > 0 && typeof c === 'number')
-        .map(([name, b, c]) => {
-          const d = (c as number) - (b as number);
-          const p = (d / (b as number)) * 100;
-          const move = Math.abs(p) < 0.5 ? 'flat' : `${p >= 0 ? '+' : ''}${p.toFixed(1)}%`;
-          return (
-            `${name} ${move} ` +
-            `($${Math.round(b as number).toLocaleString()} → $${Math.round(c as number).toLocaleString()})`
-          );
-        });
-      if (moves.length) {
-        const lead =
-          editionType === 'weekly'
-            ? 'By asset class this week'
-            : 'By asset class since the last edition';
-        items.push(`${lead}: ${moves.join('; ')}.`);
-      }
-    }
-  } catch (err) {
-    emitDigestWarning(warn, 'markets/snapshots', err);
-  }
-
-  return items;
-}
-
-async function gatherPolitics(
-  afterSince: AfterSince,
-  editionType: EditionType,
-  sinceISO: string,
-  editionDate?: string,
-  warn?: WarningSink
-): Promise<string[]> {
-  const items: string[] = [];
-  try {
-    const feed = await loadPoliticsFeedPayload();
-    const bills = ((feed.bills as BillRecord[] | undefined) ?? []).filter((b) =>
-      afterSince(b.latestActionDate ?? b.introducedDate ?? b.updateDate)
-    );
-    for (const b of bills) {
-      const parts = [`${b.officialId}: ${b.title}`];
-      if (b.latestAction) parts.push(`Action: ${b.latestAction}`);
-      if (b.summary)
-        parts.push(`CRS summary: ${b.summary.replace(/\s+/g, ' ').trim().slice(0, 900)}`);
-      items.push(`${parts.join(' — ')}.`);
-    }
-    const eos = ((feed.executiveActions as ExecutiveActionRecord[] | undefined) ?? []).filter((a) =>
-      afterSince(a.issuedDate)
-    );
-    for (const a of eos) {
-      items.push(`${a.type.replace(/_/g, ' ')}: ${a.title} (${a.issuedDate}).`);
-    }
-    const trades = (feed.trades as { trades?: TradeRecord[] } | TradeRecord[] | undefined) ?? [];
-    const tradeList = Array.isArray(trades) ? trades : (trades.trades ?? []);
-    // Trades go through the tiered digest (consensus clusters → notable
-    // individuals → collapsed tail) rather than one flat line per transaction,
-    // so the desk leads with several members moving the same name instead of
-    // burying it under Treasury bills. See server/politics/news-digest.ts.
-    const today = await politicsToday(editionDate);
-    const tradeDigest = buildPoliticsTradeDigest(tradeList, {
-      since: sinceISO.slice(0, 10),
-      today,
-      standingDays: editionType === 'weekly' ? 30 : 7,
-    });
-    items.push(...tradeDigest.lines);
-    log.info(
-      `[digest] politics/trades window=${tradeDigest.windowStart}` +
-        `${tradeDigest.standing ? ' (standing)' : ''} disclosed=${tradeDigest.counts.disclosed} ` +
-        `members=${tradeDigest.counts.members} clusters=${tradeDigest.counts.clusters} ` +
-        `notable=${tradeDigest.counts.notable} tail=${tradeDigest.counts.tail}`
-    );
-  } catch (err) {
-    emitDigestWarning(warn, 'politics/feed', err);
-  }
-  return items;
-}
-
-/** Anchor date for the politics standing window — the edition's own date when
- *  it has one, else the household's today. Kept out of buildPoliticsTradeDigest
- *  so that stays clock-free and unit-testable. */
-async function politicsToday(editionDate?: string): Promise<string> {
-  if (editionDate && /^\d{4}-\d{2}-\d{2}$/.test(editionDate)) return editionDate;
-  return calendarToday();
-}
-
-/** Estimated-tax and contribution stores are keyed by `entity/year`
- *  (e.g. "personal/2026", "consulting-llc/2025"); some legacy data may use a bare year.
- *  Collect every bucket for the target year so totals span all entities — this
- *  mirrors how the financial-snapshot route aggregates (it sums every bucket
- *  whose key ends with the year), so news figures reconcile with the app. */
-function bucketsForYear<T>(data: Record<string, T>, year: number): T[] {
-  const y = String(year);
-  return Object.entries(data)
-    .filter(([k]) => k === y || k.endsWith(`/${y}`))
-    .map(([, v]) => v);
-}
-
-/** The weekly "Estimated taxes" state line: paid-to-date vs. target, which
- *  quarters are paid, and the next UNPAID installment's deadline.
- *
- *  The next-due date must skip quarters that already have a payment. A purely
- *  calendar-based "next deadline on/after today" reports Q3's Sep 15 as due
- *  even when Q3 was paid on Sep 1, and the editor then (reasonably) writes a
- *  shortfall headline against the cash balance. Standard calendar-year
- *  deadlines: Apr 15, Jun 15, Sep 15, Jan 15 of the following year. */
-export function describeEstimatedTaxState(
-  buckets: { payments?: EstimatedTaxPayment[]; config?: { annualTarget?: number } }[],
-  taxYear: number,
-  now: Date = new Date()
-): string | null {
-  if (!buckets.length) return null;
-  const payments = buckets.flatMap((b) => b.payments ?? []);
-  const paid = payments.reduce((s, p) => s + p.amount, 0);
-  const target = buckets.reduce((s, b) => s + (b.config?.annualTarget ?? 0), 0);
-  const paidQuarters = new Set(payments.map((p) => p.quarter));
-  const deadlines: [1 | 2 | 3 | 4, string][] = [
-    [1, `${taxYear}-04-15`],
-    [2, `${taxYear}-06-15`],
-    [3, `${taxYear}-09-15`],
-    [4, `${taxYear + 1}-01-15`],
-  ];
-  const t = now.getTime();
-  const next = deadlines.find(
-    ([q, d]) => !paidQuarters.has(q) && new Date(`${d}T23:59:59`).getTime() >= t
-  );
-  const paidList = deadlines.filter(([q]) => paidQuarters.has(q)).map(([q]) => `Q${q}`);
-  let schedule = '';
-  if (paidList.length === 4) schedule = '; all 4 installments paid';
-  else {
-    if (paidList.length) schedule += `; ${paidList.join(', ')} paid`;
-    if (next) schedule += `; next unpaid installment Q${next[0]} due ${next[1]}`;
-  }
-  return (
-    `Estimated taxes ${taxYear}: $${Math.round(paid).toLocaleString()} paid` +
-    (target > 0
-      ? ` of $${Math.round(target).toLocaleString()} target (${Math.round((paid / target) * 100)}%)`
-      : '') +
-    schedule +
-    '.'
-  );
-}
-
-async function gatherFinance(
-  afterSince: AfterSince,
-  includeBodies: boolean,
-  includeState: boolean,
-  warn?: WarningSink,
-  editionDate?: string
-): Promise<string[]> {
-  const items: string[] = [];
-  // Tax year for income/estimated-tax/contribution/return lookups — the
-  // edition's own year, falling back to the current calendar year.
-  const taxYear = (() => {
-    const ymd = (editionDate ?? '').slice(0, 10);
-    const d = new Date(`${ymd || new Date().toISOString().slice(0, 10)}T12:00:00`);
-    return Number.isNaN(d.getTime()) ? new Date().getFullYear() : d.getFullYear();
-  })();
-
-  try {
-    const sales = await loadSalesData();
-    const productName = new Map(sales.products.map((p) => [p.id, p.name]));
-    const recent = sales.sales.filter((s) => afterSince(s.date));
-    if (recent.length) {
-      const total = recent.reduce((sum, s) => sum + (s.total ?? 0), 0);
-      const products = [
-        ...new Set(recent.map((s) => productName.get(s.productId) ?? 'item')),
-      ].slice(0, 5);
-      items.push(
-        `${recent.length} sale${recent.length === 1 ? '' : 's'} totaling ` +
-          `$${total.toLocaleString()} (${products.join(', ')}).`
-      );
-    }
-  } catch (err) {
-    emitDigestWarning(warn, 'finance/sales', err);
-  }
-
-  try {
-    const mileage = await loadMileageData();
-    const recent = mileage.entries.filter((e) => afterSince(e.date));
-    if (recent.length) {
-      const miles = recent.reduce((s, e) => s + (e.tripMiles ?? 0), 0);
-      items.push(
-        `${recent.length} business trip${recent.length === 1 ? '' : 's'} logged, ` +
-          `${miles.toFixed(0)} miles (~$${(miles * mileage.irsRate).toFixed(0)} deductible).`
-      );
-    }
-  } catch (err) {
-    emitDigestWarning(warn, 'finance/mileage', err);
-  }
-
-  try {
-    const strat = await getLatestStrategy();
-    if (strat && afterSince(strat.createdAt)) {
-      items.push(`New investment strategy filed: ${strat.title}.`);
-      if (includeBodies) items.push(strat.body);
-    }
-  } catch (err) {
-    emitDigestWarning(warn, 'finance/strategy', err);
-  }
-
-  // Broker activity — recent trades/dividends (read the activities cache directly).
-  try {
-    let raw: string | null = null;
-    try {
-      raw = await fs.readFile(BROKER_ACTIVITIES_FILE, 'utf-8');
-    } catch (err) {
-      // The activities cache only exists once a broker integration has synced
-      // activity history — treat absence like an empty feed below.
-      if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') throw err;
-    }
-    const cache = raw
-      ? (JSON.parse(raw) as {
-          accounts?: Record<
-            string,
-            {
-              activities?: Array<{
-                type?: string;
-                tradeDate?: string;
-                ticker?: string | null;
-                description?: string;
-                amount?: number;
-              }>;
-            }
-          >;
-        })
-      : {};
-    const acts = Object.values(cache.accounts ?? {})
-      .flatMap((a) => a.activities ?? [])
-      .filter((a) => afterSince(a.tradeDate))
-      .slice(0, 10);
-    for (const a of acts) {
-      const sym = a.ticker ?? a.description ?? 'activity';
-      const amt = typeof a.amount === 'number' ? ` $${Math.abs(a.amount).toLocaleString()}` : '';
-      items.push(
-        `Broker ${a.type ?? 'activity'}: ${sym}${amt} (${(a.tradeDate ?? '').slice(0, 10)}).`
-      );
-    }
-    // An explicit quiet-period line beats silence — but only when broker
-    // accounts are actually connected (the cache file the Brokers view keeps).
-    // It must say it covers only the brokerage: the 2026-11-01 weekly read
-    // "no trades or transfers" as "no transfer explains the cash drop".
-    if (acts.length === 0 && (await fileExists(BROKER_CACHE_FILE))) {
-      items.push(
-        'No trades, dividends or transfers inside the brokerage accounts this period ' +
-          '(this says nothing about bank transfers; those are under Money Movements).'
-      );
-    }
-  } catch (err) {
-    emitDigestWarning(warn, 'finance/broker-activity', err);
-  }
-
-  // Crypto holdings snapshot (balances — no in-process tx history; the Markets
-  // desk carries the net-worth delta). Included in both daily + weekly.
-  try {
-    const raw = await fs.readFile(CRYPTO_CACHE_FILE, 'utf-8');
-    const portfolio = JSON.parse(raw) as {
-      totalUsdValue?: number;
-      byAsset?: Array<{ asset?: string; usdValue?: number }>;
-    };
-    if (typeof portfolio.totalUsdValue === 'number') {
-      const top = (portfolio.byAsset ?? [])
-        .slice()
-        .sort((a, b) => (b.usdValue ?? 0) - (a.usdValue ?? 0))
-        .slice(0, 4)
-        .map((b) => b.asset)
-        .filter(Boolean)
-        .join(', ');
-      items.push(
-        `Crypto holdings ~$${Math.round(portfolio.totalUsdValue).toLocaleString()}${top ? ` (top: ${top})` : ''}.`
-      );
-    }
-  } catch (err) {
-    emitDigestWarning(warn, 'finance/crypto', err);
-  }
-
-  // Tax, income, retirement & other assets — the household money picture beyond
-  // markets. These run for BOTH editions but report only what CHANGED in-window
-  // (a new income source, an estimated-tax payment made, a 401k contribution, a
-  // freshly filed return); the weekly adds the standing totals under state below.
-  try {
-    const { sources } = await loadIncomeData();
-    for (const s of sources.filter((s) => afterSince(s.createdAt))) {
-      items.push(
-        `New income source: ${s.name} $${Math.round(s.amount).toLocaleString()}/${s.frequency}` +
-          `${s.taxable ? '' : ' (tax-free)'}.`
-      );
-    }
-  } catch (err) {
-    emitDigestWarning(warn, 'finance/income', err);
-  }
-
-  try {
-    const est = await loadEstimatedTaxes();
-    const payments = bucketsForYear(est, taxYear).flatMap((b) => b.payments ?? []);
-    for (const p of payments.filter((p) => afterSince(p.date))) {
-      items.push(
-        `Estimated tax payment: Q${p.quarter} ${taxYear} — ` +
-          `$${Math.round(p.amount).toLocaleString()} paid ${p.date}.`
-      );
-    }
-  } catch (err) {
-    emitDigestWarning(warn, 'finance/estimated-taxes', err);
-  }
-
-  try {
-    const contrib = await loadContributions();
-    const entries = bucketsForYear(contrib, taxYear).flat();
-    for (const c of entries.filter((c) => afterSince(c.date))) {
-      items.push(
-        `Retirement contribution: $${Math.round(c.amount).toLocaleString()} (${c.type}) on ${c.date}.`
-      );
-    }
-  } catch (err) {
-    emitDigestWarning(warn, 'finance/contributions', err);
-  }
-
-  try {
-    const federal = await loadFederalTax();
-    for (const [year, ret] of Object.entries(federal)) {
-      if (ret.filed && ret.filedDate && afterSince(ret.filedDate)) {
-        const bal = ret.balance.totalOwed;
-        items.push(
-          `Filed ${year} federal return: AGI $${Math.round(ret.agi).toLocaleString()}, ` +
-            `total tax $${Math.round(ret.tax.totalTax).toLocaleString()}, ` +
-            `${bal >= 0 ? 'owed' : 'refund'} $${Math.round(Math.abs(bal)).toLocaleString()}.`
-        );
-      }
-    }
-  } catch (err) {
-    emitDigestWarning(warn, 'finance/federal-tax', err);
-  }
-
-  // Balance sheet — the current "state of things"; WEEKLY only (the
-  // over-the-week review, not "stuff fetched today"). Assets from the latest
-  // portfolio snapshot (already tracks crypto/broker/bank/gold/property), debts
-  // from liabilities + property.
-  if (includeState) {
-    try {
-      const snaps = await loadSnapshots();
-      const cur = snaps[snaps.length - 1];
-      if (cur) {
-        const fmt = (n?: number) => `$${Math.round(n ?? 0).toLocaleString()}`;
-        const parts = [
-          `crypto ${fmt(cur.cryptoValue)}`,
-          `brokerage ${fmt(cur.brokerValue)}`,
-          typeof cur.bankValue === 'number' ? `bank ${fmt(cur.bankValue)}` : '',
-          typeof cur.goldValue === 'number' && cur.goldValue > 0
-            ? `metals ${fmt(cur.goldValue)}`
-            : '',
-          typeof cur.propertyValue === 'number' && cur.propertyValue > 0
-            ? `property equity ${fmt(cur.propertyValue)}`
-            : '',
-        ].filter(Boolean);
-        items.push(
-          `Balance sheet (${cur.date}): net worth ${fmt(cur.totalValue)} — ${parts.join(', ')}.`
-        );
-      }
-    } catch (err) {
-      emitDigestWarning(warn, 'finance/balance-sheet', err);
-    }
-
-    // Debts are listed by the debts context source on the Money Movements desk
-    // (every debt, not only the hand-added ones this line used to show).
-
-    // Real estate detail (weekly).
-    try {
-      const { entries } = await loadPropertyData();
-      for (const p of entries.slice(0, 4)) {
-        const mort = p.mortgage
-          ? `, mortgage $${Math.round(p.mortgage.balance).toLocaleString()}`
-          : '';
-        items.push(
-          `Property: ${p.name} valued $${Math.round(p.currentValue).toLocaleString()}${mort}.`
-        );
-      }
-    } catch (err) {
-      emitDigestWarning(warn, 'finance/property', err);
-    }
-
-    // Precious metals holdings (weekly) — count + weight, no spot fetch.
-    try {
-      const { entries } = await loadGoldData();
-      if (entries.length) {
-        const oz = entries.reduce((s, g) => s + (g.weightOz ?? 0) * (g.quantity ?? 0), 0);
-        items.push(`Precious metals: ${entries.length} holdings, ${oz.toFixed(2)} oz total.`);
-      }
-    } catch (err) {
-      emitDigestWarning(warn, 'finance/gold', err);
-    }
-
-    // Income — annualized total across all configured sources (state).
-    try {
-      const { sources } = await loadIncomeData();
-      if (sources.length) {
-        const mult: Record<string, number> = {
-          weekly: 52,
-          biweekly: 26,
-          monthly: 12,
-          quarterly: 4,
-          annually: 1,
-        };
-        const total = sources.reduce((sum, s) => sum + s.amount * (mult[s.frequency] ?? 1), 0);
-        items.push(
-          `Income sources (${sources.length}): ~$${Math.round(total).toLocaleString()}/yr.`
-        );
-      }
-    } catch (err) {
-      emitDigestWarning(warn, 'finance/income-state', err);
-    }
-
-    // Estimated taxes — paid-to-date vs. annual target + next quarterly due date,
-    // summed across every entity bucket for the year.
-    try {
-      const line = describeEstimatedTaxState(
-        bucketsForYear(await loadEstimatedTaxes(), taxYear),
-        taxYear
-      );
-      if (line) items.push(line);
-    } catch (err) {
-      emitDigestWarning(warn, 'finance/estimated-taxes-state', err);
-    }
-
-    // Retirement contributions — year-to-date by type, across all entity buckets.
-    try {
-      const entries = bucketsForYear(await loadContributions(), taxYear).flat();
-      if (entries.length) {
-        const ee = entries.filter((c) => c.type === 'employee').reduce((s, c) => s + c.amount, 0);
-        const er = entries.filter((c) => c.type === 'employer').reduce((s, c) => s + c.amount, 0);
-        items.push(
-          `Retirement contributions ${taxYear}: $${Math.round(ee + er).toLocaleString()} ` +
-            `(employee $${Math.round(ee).toLocaleString()}, employer $${Math.round(er).toLocaleString()}).`
-        );
-      }
-    } catch (err) {
-      emitDigestWarning(warn, 'finance/contributions-state', err);
-    }
-
-    // Other tracked assets (vehicles, equipment) — these are NOT part of the
-    // net-worth snapshot, so the weekly's "state of things" would otherwise omit
-    // them entirely.
-    try {
-      const assets = Object.values(await loadAssets()).flat();
-      if (assets.length) {
-        const total = assets.reduce((s, a) => s + (a.value ?? 0), 0);
-        const top = assets
-          .slice()
-          .sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
-          .slice(0, 5)
-          .map((a) => `${a.name} $${Math.round(a.value ?? 0).toLocaleString()}`);
-        items.push(
-          `Other assets (${assets.length}, $${Math.round(total).toLocaleString()}): ${top.join(', ')}.`
-        );
-      }
-    } catch (err) {
-      emitDigestWarning(warn, 'finance/assets', err);
-    }
-
-    // Most recent filed federal return — the standing tax picture.
-    try {
-      const federal = await loadFederalTax();
-      const year = Object.keys(federal)
-        .filter((y) => federal[y].filed)
-        .sort()
-        .reverse()[0];
-      const ret = year ? federal[year] : undefined;
-      if (ret && year) {
-        items.push(
-          `Most recent filed return (${year}): AGI $${Math.round(ret.agi).toLocaleString()}, ` +
-            `taxable income $${Math.round(ret.taxableIncome).toLocaleString()}, ` +
-            `total tax $${Math.round(ret.tax.totalTax).toLocaleString()}.`
-        );
-      }
-    } catch (err) {
-      emitDigestWarning(warn, 'finance/federal-tax-state', err);
-    }
-  }
-
-  return items;
-}
-
-/**
- * Read a person's snapshot through the snapshot route's auto-heal path, which
- * recomputes when the deltas dir is newer than the cached snapshot. Reading
- * `store.snapshots` raw misses anything synced since the last recompute — the
- * 2026-06-12 edition omitted a person whose overnight backfill landed 45 min
- * before generation because of exactly that. Falls back to undefined (caller
- * keeps the raw-store read) on any failure.
- */
-async function freshPersonSnapshot(personId: string): Promise<SnapMetrics | undefined> {
-  try {
-    const url = new URL(`http://internal/api/health/${encodeURIComponent(personId)}/snapshot/all`);
-    const res = await handleHealthRoutes(new Request(url.toString()), url, url.pathname);
-    if (!res || res.status !== 200) return undefined;
-    return snapshotFromAllResponseBody(await res.json());
-  } catch (err) {
-    log.warn(
-      `[health] fresh snapshot read failed for ${personId}: ${err instanceof Error ? err.message : String(err)}`
-    );
-    return undefined;
-  }
-}
-
-async function gatherHealth(
-  afterSince: AfterSince,
-  includeBodies: boolean,
-  includeState: boolean,
-  editionType: EditionType,
-  warn?: WarningSink,
-  editionDate?: string
-): Promise<string[]> {
-  const items: string[] = [];
-
-  // Apple Health daily metrics + new labs + active sickness, per active person.
-  try {
-    const store = await loadHealthStore();
-    const people = (store.people ?? []).filter((p) => !p.archivedAt).slice(0, 4);
-    for (const person of people) {
-      const parts: string[] = [];
-
-      const snap =
-        (await freshPersonSnapshot(person.id)) ??
-        (latestByPerson(store.snapshots, person.id) as unknown as SnapMetrics | undefined);
-      if (snap) {
-        const bits: string[] = [];
-        const dailyAct = snap.activity?.daily;
-        const lastAct = last(dailyAct);
-        const healthDate = lastAct?.date ?? undefined;
-        // Stale = the latest health day predates the edition's window (no data
-        // arrived this period) — flag it instead of passing it off as current.
-        const stale = healthDate ? !afterSince(healthDate) : false;
-        // Weekly → 7-day averages (the week, not one possibly-atypical day);
-        // daily → the latest single day. A stale snapshot keeps single-day
-        // values but is labelled "as of <date>" rather than averaged.
-        const useAvg = editionType === 'weekly' && !stale;
-        // Daily editions use the last complete day for step count; overnight
-        // metrics (sleep/RHR/HRV) stay latest, with PER-METRIC staleness labels
-        // — the global `stale` above only sees the activity series, and sleep
-        // regularly lags it when the phone hasn't synced by edition time.
-        const steps = selectDailyNewsStepCount(dailyAct, { useAverage: useAvg, editionDate });
-        const lb = snap.body?.headline?.currentLb;
-        if (typeof steps === 'number')
-          bits.push(`${Math.round(steps).toLocaleString()} steps${useAvg ? '/day' : ''}`);
-        bits.push(...buildOvernightMetricBits(snap, { useAvg, afterSince, editionDate }));
-        if (typeof lb === 'number') bits.push(`${Math.round(lb)} lb`);
-        if (editionType === 'weekly') {
-          const w = snap.workouts?.headline;
-          if (w && typeof w.thisWeekCount === 'number' && w.thisWeekCount > 0) {
-            bits.push(
-              `${w.thisWeekCount} workout${w.thisWeekCount === 1 ? '' : 's'} this week` +
-                `${typeof w.thisWeekMinutes === 'number' ? ` (${Math.round(w.thisWeekMinutes)} min)` : ''}` +
-                `${w.favoriteType ? `, mostly ${w.favoriteType}` : ''}`
-            );
-          }
-        } else {
-          // Daily editions list the actual sessions captured this period —
-          // "what you did yesterday", not week-to-date aggregates.
-          const sessions = (snap.workouts?.recent ?? [])
-            .filter((s) => s.start && afterSince(s.start))
-            .slice(0, 4)
-            .map((s) => {
-              const mins =
-                typeof s.durationMinutes === 'number'
-                  ? ` ${Math.round(s.durationMinutes)} min`
-                  : '';
-              const hr = typeof s.avgHR === 'number' ? ` (avg HR ${Math.round(s.avgHR)})` : '';
-              return `${s.type ?? 'Workout'}${mins}${hr}`;
-            });
-          if (sessions.length) bits.push(`workouts logged: ${sessions.join(', ')}`);
-        }
-        if (bits.length) {
-          const tag =
-            stale && healthDate ? ` (as of ${healthDate})` : useAvg ? ' (7-day avgs)' : '';
-          parts.push(bits.join(', ') + tag);
-        }
-      }
-
-      const clinical = latestByPerson(
-        store.clinical as unknown as Record<string, { generatedAt?: string }>,
-        person.id
-      ) as unknown as ClinicalLabs | undefined;
-      const newLabs = (clinical?.labsByTest ?? [])
-        .map((t) => t.latest)
-        .filter((l) => l && afterSince(l.date))
-        .slice(0, 4);
-      for (const l of newLabs) {
-        if (!l) continue;
-        const v =
-          l.value != null ? `${l.value}${l.unit ? ` ${l.unit}` : ''}` : (l.valueString ?? '');
-        const flag = l.interpretation && l.interpretation !== 'N' ? ` (${l.interpretation})` : '';
-        parts.push(`new lab ${l.name ?? ''} ${v}${flag}`.replace(/\s+/g, ' ').trim());
-      }
-
-      const sickness = Object.values(store.sicknessLogs ?? {})
-        .filter((s) => s.personId === person.id && !s.endDate)
-        .sort((a, b) => b.startDate.localeCompare(a.startDate))[0];
-      if (sickness) {
-        parts.push(
-          `under the weather — ${sickness.title} (${sickness.severity}, since ${sickness.startDate})`
-        );
-      }
-
-      if (parts.length) items.push(`${person.name}: ${parts.join('; ')}.`);
-    }
-
-    const activeSupps = Object.values(store.nutrition ?? {}).filter((n) => n.status === 'active');
-    if (activeSupps.length) items.push(`${activeSupps.length} active supplements in the regimen.`);
-  } catch (err) {
-    emitDigestWarning(warn, 'health/store', err);
-  }
-
-  // Full supplement regimen + DNA metadata (no decode) — current "state of
-  // things", WEEKLY only.
-  if (includeState) {
-    try {
-      const store = await loadHealthStore();
-      const supps = Object.values(store.nutrition ?? {})
-        .filter((n) => n.status === 'active')
-        .map((n) => {
-          const p = n.parsed as { productName?: string; brandName?: string } | null;
-          return p?.productName ?? p?.brandName ?? 'supplement';
-        })
-        .slice(0, 30);
-      if (supps.length) items.push(`Active supplement regimen: ${supps.join(', ')}.`);
-
-      for (const person of (store.people ?? []).filter((p) => !p.archivedAt).slice(0, 4)) {
-        try {
-          const metaRaw = await fs.readFile(
-            path.join(DATA_DIR, 'health', person.id, 'dna', 'metadata.json'),
-            'utf-8'
-          );
-          const meta = JSON.parse(metaRaw) as {
-            snpsLoaded?: number;
-            traitsFound?: number;
-            apoeGenotyped?: boolean;
-          };
-          if (meta.snpsLoaded) {
-            items.push(
-              `${person.name} DNA on file: ${meta.snpsLoaded.toLocaleString()} SNPs, ` +
-                `${meta.traitsFound ?? 0} traits${meta.apoeGenotyped ? ', APOE genotyped' : ''}.`
-            );
-          }
-        } catch {
-          /* no DNA for this person */
-        }
-      }
-    } catch (err) {
-      emitDigestWarning(warn, 'health/weekly-detail', err);
-    }
-  }
-
-  try {
-    const ha = await getLatestHealthAnalysis();
-    if (ha && afterSince(ha.createdAt)) {
-      items.push(`New health analysis: ${ha.title}.`);
-      if (includeBodies) items.push(ha.body);
-    }
-  } catch (err) {
-    emitDigestWarning(warn, 'health/analysis', err);
-  }
-
-  return items;
-}
-
-async function gatherDocs(
-  afterSince: AfterSince,
-  sinceMs: number,
-  warn?: WarningSink
-): Promise<{ items: string[]; pulled: PulledItem[] }> {
-  const items: string[] = [];
-  // Structured twin of the prose items — the exact ledger of what was
-  // ingested, surfaced verbatim in the edition's "Sources pulled" appendix.
-  const pulled: PulledItem[] = [];
-
-  // New research filed (any domain) — with a one-line intelligence snippet.
-  // In-window when it was PULLED in-window OR published in-window: a scraper
-  // backfilling slightly older pieces (e.g. a channel's last week of videos)
-  // still counts as news to the vault the morning after the pull.
-  try {
-    const entries = await listResearchEntries();
-    const recent = entries.filter(
-      (e) =>
-        afterSince(e.uploadedAt) ||
-        afterSince(e.reportDate ? `${e.reportDate}T12:00:00` : undefined)
-    );
-    for (const e of recent) {
-      const snippet = e.intelligence?.summary?.[0]?.text;
-      const title = e.title ?? e.filename ?? 'untitled';
-      items.push(
-        `Filed (${e.domain}): ${title}` +
-          `${e.publisher ? ` — ${e.publisher}` : ''}${snippet ? ` — ${snippet}` : ''}.`
-      );
-      pulled.push({
-        source: `research/${e.domain}`,
-        title: `${title}${e.publisher ? ` — ${e.publisher}` : ''}`,
-        ...(e.sourceUrl?.trim() ? { url: e.sourceUrl.trim() } : {}),
-      });
-    }
-  } catch (err) {
-    emitDigestWarning(warn, 'docs/research', err);
-  }
-
-  // Documents uploaded recently across EVERY entity (tax docs, receipts, etc.).
-  try {
-    const config = await loadConfig();
-    const fileLines: string[] = [];
-    for (const entity of config.entities) {
-      const files = await scanDirectory(path.join(DATA_DIR, entity.path));
-      for (const f of files) {
-        if (f.lastModified >= sinceMs) {
-          fileLines.push(`${entity.name}/${f.name}`);
-          pulled.push({ source: 'upload', title: `${entity.name}/${f.name}` });
-        }
-      }
-    }
-    if (fileLines.length) {
-      items.push(`${fileLines.length} document(s) uploaded: ${fileLines.join(', ')}.`);
-    }
-  } catch (err) {
-    emitDigestWarning(warn, 'docs/files', err);
-  }
-
-  // Deep Research reports finished in the window.
-  try {
-    const runs = await listRuns();
-    const done = runs.filter(
-      (r) => r.status === 'done' && afterSince(r.completedAt ?? r.createdAt)
-    );
-    for (const r of done) {
-      items.push(`Deep Research completed: ${r.question}.`);
-      pulled.push({ source: 'deep-research', title: r.question });
-    }
-  } catch (err) {
-    emitDigestWarning(warn, 'docs/deep-research', err);
-  }
-
-  // Open to-dos touched recently.
-  try {
-    const todos = await loadTodos();
-    const recent = todos.filter((t) => t.status === 'pending' && afterSince(t.updatedAt));
-    for (const t of recent) items.push(`To-do: ${t.title}.`);
-  } catch (err) {
-    emitDigestWarning(warn, 'docs/todos', err);
-  }
-
-  // Upcoming deadlines moved to the dedicated Calendar desk (gatherCalendar).
-
-  return { items, pulled };
-}
-
-// The FULL text of research filed in-window, grouped by publisher (ZeroHedge,
-// Lyn Alden, George Gammon, political transcripts, …) so the editor can actually
-// read and synthesize the analysis, not just the titles. Runs for BOTH editions
-// — the window scopes it: the day's filings for the daily, the week's for the
-// weekly.
-export function buildResearchDigestItems(
-  entries: ResearchEntry[],
-  afterSince: AfterSince,
-  opts: { maxChars?: number; cite?: (e: ResearchEntry) => string } = {}
-): string[] {
-  const eligible = entries
-    .filter(
-      (e) =>
-        afterSince(e.uploadedAt) ||
-        afterSince(e.reportDate ? `${e.reportDate}T12:00:00` : undefined)
-    )
-    .filter((e) => (e.text ?? '').trim().length > 0);
-  if (!eligible.length) return [];
-
-  const maxChars = opts.maxChars ?? 70_000;
-  const charsPerEntry = Math.max(350, Math.min(2800, Math.floor(maxChars / eligible.length)));
-  return eligible.map((e) => {
-    const who = e.publisher ?? e.author ?? e.domain;
-    const when = e.reportDate ?? e.uploadedAt.slice(0, 10);
-    const clean = (e.text ?? '').replace(/\s+/g, ' ').trim();
-    const clipped = clean.length > charsPerEntry;
-    const body = clean.slice(0, charsPerEntry);
-    const suffix = clipped ? ' … [excerpt truncated; source text remains in Research]' : '';
-    const tag = opts.cite?.(e) ?? '';
-    return `### ${e.title ?? 'Untitled'} — ${who} (${e.domain}, ${when})${tag}\n${body}${suffix}`;
-  });
-}
-
-async function gatherResearchDeep(
-  afterSince: AfterSince,
-  warn?: WarningSink
-): Promise<{ research: string[]; local: string[]; citations: SourceCitation[] }> {
-  try {
-    const entries = await listResearchEntries();
-    // Number every sourced entry across both desks ([S1], [S2], …) — the
-    // model cites stories with these tags and the server links them after.
-    const citations: SourceCitation[] = [];
-    const cite = (e: ResearchEntry): string => {
-      const url = e.sourceUrl?.trim();
-      if (!url || !/^https?:\/\//i.test(url)) return '';
-      const ref = `S${citations.length + 1}`;
-      citations.push({ ref, url });
-      return ` [${ref}]`;
-    };
-    // Local news gets its own desk in the edition — a newspaper has a local
-    // section, and city announcements shouldn't be buried among macro research.
-    const research = buildResearchDigestItems(
-      entries.filter((e) => e.domain !== 'local'),
-      afterSince,
-      { cite }
-    );
-    const local = buildResearchDigestItems(
-      entries.filter((e) => e.domain === 'local'),
-      afterSince,
-      { maxChars: 25_000, cite }
-    );
-    log.info(
-      `[digest] research-deep: ${research.length} full-text entries, local: ${local.length}, ` +
-        `${citations.length} linkable sources`
-    );
-    return { research, local, citations };
-  } catch (err) {
-    emitDigestWarning(warn, 'research/full-text', err);
-    return { research: [], local: [], citations: [] };
-  }
-}
+// Moved to their context sources; re-exported for existing callers and tests.
+export {
+  buildCalendarDigest,
+  buildOvernightMetricBits,
+  buildResearchDigestItems,
+  describeEstimatedTaxState,
+  formatContextEvents,
+  selectDailyNewsStepCount,
+  snapshotFromAllResponseBody,
+};
 
 /** Week-ahead forecast for the configured location (Open-Meteo); null when
- *  weather is disabled/unconfigured or the fetch fails. Not windowed by sinceISO
- *  — it's a forward forecast, the same in daily and weekly editions. */
-/** Format pending calendar occurrences into digest lines + the rendered
- *  "Week Ahead" box data. Pure — testable without the store. Desk lines use
- *  whatever horizon the occurrences were projected over; the box always
- *  covers today..+7d plus anything overdue, capped at 20 rows.
- *
- *  `showOverdue` mirrors settings.calendar.showOverdue (opt-IN, default off)
- *  and is REQUIRED so a new caller can't silently reintroduce the nagging.
- *  When off the past-due tail is dropped outright rather than just losing its
- *  chip: projectOccurrences deliberately drags overdue tasks in from BEFORE
- *  the window, and the box filter below has no lower bound, so an un-flagged
- *  8/06 row would still sit inside a "Week Ahead" that starts 8/17. */
-export function buildCalendarDigest(
-  occurrences: Occurrence[],
-  today: string,
-  showOverdue: boolean
-): { items: string[]; weekAhead: WeekAheadCalendar } {
-  const overdueDays = (date: string): number => {
-    const [y1, m1, d1] = date.split('-').map(Number);
-    const [y2, m2, d2] = today.split('-').map(Number);
-    return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86_400_000);
-  };
-  const pending = occurrences.filter((o) => !o.completed && (showOverdue || !o.overdue));
-  // Multi-day rows state both ends plus the length, so the editor can write
-  // "you're away Thursday through Sunday" without doing date math itself.
-  const span = (o: Occurrence): string =>
-    o.endDate
-      ? ` through ${o.endDate}${o.endTime ? ` at ${formatWallClock(o.endTime)}` : ''} (${
-          diffDays(o.date, o.endDate) + 1
-        } days)`
-      : '';
-  // Clock times ride along too, so "the launch is at 5 PM" needs no guessing.
-  // A span's end time belongs to its last day, so span() carries it instead.
-  const at = (o: Occurrence): string => {
-    if (!o.time) return '';
-    if (o.endTime && !o.endDate) {
-      return ` from ${formatWallClock(o.time)} to ${formatWallClock(o.endTime)}`;
-    }
-    return ` at ${formatWallClock(o.time)}`;
-  };
-  const items = pending.map((o) => {
-    if (o.kind === 'birthday') {
-      return `Birthday ${o.date}: ${o.title}${o.age !== undefined ? ` turns ${o.age}` : ''}.`;
-    }
-    if (o.completable) {
-      const extras: string[] = [];
-      if (o.recurrenceLabel !== 'one-off') extras.push(o.recurrenceLabel);
-      if (o.overdue) extras.push(`overdue ${overdueDays(occurrenceEnd(o))} days`);
-      return `Due ${o.date}${at(o)}${span(o)}: ${o.title}${extras.length ? ` (${extras.join('; ')})` : ''}.`;
-    }
-    return `Event ${o.date}${at(o)}${span(o)}: ${o.title}.`;
-  });
-  const weekEnd = addInterval(today, 7, 'day');
-  const weekAhead: WeekAheadCalendar = {
-    start: today,
-    end: weekEnd,
-    items: pending
-      .filter((o) => o.date <= weekEnd || o.overdue)
-      .slice(0, 20)
-      .map((o) => ({
-        date: o.date,
-        title: o.title,
-        kind: o.kind,
-        ...(o.overdue ? { overdue: true } : {}),
-        ...(o.age !== undefined ? { age: o.age } : {}),
-        ...(o.endDate ? { endDate: o.endDate } : {}),
-        ...(o.time ? { time: o.time } : {}),
-        ...(o.endTime ? { endTime: o.endTime } : {}),
-      })),
-  };
-  return { items, weekAhead };
-}
-
-/** The Calendar desk: pending occurrences over the edition horizon (7d daily,
- *  30d weekly) plus overdue tasks when that layer is on, and the exact-date
- *  Week Ahead box — augmented with sky/almanac rows (moons, seasons, meteors,
- *  holidays, DST) from the shared math, honoring the settings.calendar
- *  display toggles. */
-async function gatherCalendar(
-  editionType: EditionType,
-  warn?: WarningSink
-): Promise<{ items: string[]; weekAhead: WeekAheadCalendar | null }> {
-  try {
-    const horizonDays = editionType === 'weekly' ? 30 : 7;
-    const today = await calendarToday();
-    const store = await loadCalendarStore();
-    // Loaded BEFORE the digest, not just for the sky rows: overdue nagging is
-    // the one opt-in layer, and the edition is a second consumer of it
-    // alongside CalendarView.
-    const cfg = await getCalendarDisplayConfig();
-    const occurrences = projectOccurrences(
-      store.events,
-      { start: today, end: addInterval(today, horizonDays, 'day') },
-      today
-    );
-    const digest = buildCalendarDigest(occurrences, today, cfg.showOverdue);
-    try {
-      const sky = buildSkyWeekAheadItems(today, digest.weekAhead.end, cfg);
-      if (sky.length > 0) {
-        digest.weekAhead.items = [...digest.weekAhead.items, ...sky].sort((a, b) =>
-          a.date < b.date ? -1 : 1
-        );
-        // Feed the editor too, so a full moon or meteor peak can get a line
-        // of prose (the box still owns the exact dates).
-        for (const s of sky) digest.items.push(`Sky ${s.date}: ${s.title}.`);
-      }
-    } catch (err) {
-      emitDigestWarning(warn, 'calendar/sky', err);
-    }
-    return digest;
-  } catch (err) {
-    emitDigestWarning(warn, 'calendar', err);
-    return { items: [], weekAhead: null };
-  }
-}
-
+ *  weather is disabled or unconfigured, or the fetch fails. Not windowed: it's
+ *  a forward forecast, the same in daily and weekly editions. */
 async function gatherWeather(warn?: WarningSink): Promise<WeatherForecast | null> {
   try {
     const cfg = await getWeatherConfig();
@@ -1615,124 +299,69 @@ async function gatherSun(editionDate?: string, warn?: WarningSink): Promise<SunA
   }
 }
 
-/** Gather the full digest across all desks, windowed by `sinceISO`. */
 // ---------------------------------------------------------------------------
-// Context-source desks (server/context/). Each registered source lands on the
-// desk its group maps to; coverage.test.ts fails when a group has no desk.
+// Desks. Each context source lands on the desk its group maps to, in this
+// order. null means the Newsstand reads that group outside the desks (the
+// weather box, the owner's standing notes, the previous edition).
+// coverage.test.ts fails when a source's group is missing here.
 // ---------------------------------------------------------------------------
 
-export const NEWSSTAND_GROUP_DESKS: Record<ContextGroup, string> = {
+export const NEWSSTAND_GROUP_DESKS: Record<ContextGroup, string | null> = {
+  markets: 'Markets & Macro',
   money: 'Money Movements',
+  politics: 'Politics',
+  local: 'Local News',
+  finance: 'Personal Finance & Business',
+  health: 'Health',
+  research: 'Research & Analysis',
+  calendar: 'Calendar',
+  documents: 'Documents & Deadlines',
+  activity: 'DocVault Activity',
+  outlook: null,
+  memory: null,
 };
 
-/** Days before the window that dated events still show up: a loan balance
- *  edited a few days before the payment clears belongs with that payment. */
-const CONTEXT_LEAD_IN_DAYS: Record<EditionType, number> = { daily: 3, weekly: 7 };
-/** Moves smaller than this are routine spending, reported only as a count. */
-export const CONTEXT_EVENT_MIN_AMOUNT = 500;
-const CONTEXT_EVENTS_PER_SOURCE = 25;
-
-/** Digest lines for one source's events: the larger moves, oldest first, each
- *  marked when it falls before the edition's window. Pure. */
-export function formatContextEvents(
-  label: string,
-  events: ContextEvent[],
-  windowFrom: string,
-  opts: { minAmount?: number; max?: number } = {}
-): string[] {
-  const minAmount = opts.minAmount ?? CONTEXT_EVENT_MIN_AMOUNT;
-  const max = opts.max ?? CONTEXT_EVENTS_PER_SOURCE;
-  const big = events.filter((e) => e.amount === undefined || Math.abs(e.amount) >= minAmount);
-  const kept =
-    big.length > max
-      ? [...big]
-          .sort(
-            (a, b) =>
-              Math.abs(b.amount ?? Number.POSITIVE_INFINITY) -
-              Math.abs(a.amount ?? Number.POSITIVE_INFINITY)
-          )
-          .slice(0, max)
-      : big;
-  const lines = [...kept]
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .map(
-      (e) => `${label}, ${e.date}${e.date < windowFrom ? ' (before this period)' : ''}: ${e.text}.`
-    );
-  const small = events.length - big.length;
-  const capped = big.length - kept.length;
-  if (small > 0) {
-    lines.push(`${label}: ${small} smaller item(s) under ${money(minAmount)} not listed.`);
-  }
-  if (capped > 0) {
-    lines.push(`${label}: ${capped} more item(s) not listed; only the ${max} largest are.`);
-  }
-  return lines;
+/** Shift a read's [S#] tags past the ones earlier reads already took, so the
+ *  digest carries one sequence across sources. */
+export function renumberCitations(read: ContextRead, offset: number): ContextRead {
+  if (!offset || !read.citations?.length) return read;
+  return {
+    ...read,
+    lines: read.lines.map((l) => l.replace(/\[S(\d+)\]/g, (_m, n) => `[S${Number(n) + offset}]`)),
+    citations: read.citations.map((c) => ({ ...c, ref: `S${Number(c.ref.slice(1)) + offset}` })),
+  };
 }
 
-async function gatherContextDesks(
-  editionType: EditionType,
-  sinceISO: string,
-  includeState: boolean,
-  editionDate?: string,
-  warn?: WarningSink
-): Promise<Array<[string, string[]]>> {
-  const windowFrom = sinceISO.slice(0, 10);
-  const window = {
-    from: addDays(windowFrom, -CONTEXT_LEAD_IN_DAYS[editionType]),
-    to: (editionDate ?? new Date().toISOString()).slice(0, 10),
-  };
-  const perSource = await Promise.all(
+/** Read every source for one edition. A source that throws costs only its own lines. */
+async function readAllSources(
+  req: ContextRequest
+): Promise<Array<{ source: ContextSource; read: ContextRead }>> {
+  return Promise.all(
     CONTEXT_SOURCES.map(async (source) => {
       const t0 = Date.now();
-      const lines: string[] = [];
       try {
-        if (includeState && source.state) lines.push(...(await source.state()));
-        if (source.changes) {
-          const events = await source.changes(window);
-          lines.push(...formatContextEvents(source.label, events, windowFrom));
-        }
-        log.info(
-          `[digest] context ${source.id} lines=${lines.length} window=${window.from}..${window.to} ` +
-            `in ${Date.now() - t0}ms`
-        );
+        const read = await source.read(req);
+        log.debug(`[digest] ${source.id} lines=${read.lines.length} in ${Date.now() - t0}ms`);
+        return { source, read };
       } catch (err) {
-        emitDigestWarning(warn, `context/${source.id}`, err);
+        const message = errMsg(err).replace(/\s+/g, ' ').trim().slice(0, 240) || 'unknown error';
+        log.warn(`[digest] context/${source.id} failed: ${message}`);
+        return {
+          source,
+          read: { lines: [], warnings: [{ source: `context/${source.id}`, message }] },
+        };
       }
-      return { desk: NEWSSTAND_GROUP_DESKS[source.group], lines };
     })
   );
-  const desks = new Map<string, string[]>();
-  for (const { desk, lines } of perSource) {
-    if (lines.length) desks.set(desk, [...(desks.get(desk) ?? []), ...lines]);
-  }
-  return [...desks];
 }
 
+/** Gather the full digest across all desks, windowed by `sinceISO`. */
 export async function gatherDigest(
   editionType: EditionType,
   sinceISO: string,
   editionDate?: string,
   previousEdition?: PreviousEdition
 ): Promise<Digest> {
-  const since = new Date(sinceISO).getTime();
-  // Date-only values (YYYY-MM-DD) are treated as end-of-day so a same-day item
-  // counts. Soft-returns false for unparseable/missing dates.
-  const afterSince: AfterSince = (d) => {
-    if (!d) return false;
-    const iso = d.length === 10 ? `${d}T23:59:59` : d;
-    const t = new Date(iso).getTime();
-    return Number.isFinite(t) && t >= since;
-  };
-  // Two independent axes of depth:
-  //  • includeBodies — the FULL TEXT of items fetched in-window (research full
-  //    text, strategy + health-analysis bodies). ON for BOTH editions so the
-  //    DAILY treats the day's fetched items with real depth, not just headlines;
-  //    the window (narrow for daily, 7d for weekly) is what scopes it.
-  //  • includeState — the current "state of things" (balance sheet, debts,
-  //    property, metals, DNA, full supplement roster). WEEKLY only — that's the
-  //    over-the-week review, not "stuff fetched that day".
-  const includeBodies = true;
-  const includeState = editionType === 'weekly';
   const sourceWarnings: DigestSourceWarning[] = [];
   const warn: WarningSink = (source, err) => {
     const message = errMsg(err).replace(/\s+/g, ' ').trim().slice(0, 240) || 'unknown error';
@@ -1769,55 +398,51 @@ export async function gatherDigest(
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') warn('collection/status', err);
   }
 
-  const [
-    markets,
-    politics,
-    finance,
-    health,
-    docsResult,
-    researchDeep,
-    calendar,
-    weather,
-    sun,
-    contextDesks,
-  ] = await Promise.all([
-    gatherMarkets(editionType, sinceISO, warn),
-    gatherPolitics(afterSince, editionType, sinceISO, editionDate, warn),
-    gatherFinance(afterSince, includeBodies, includeState, warn, editionDate),
-    gatherHealth(afterSince, includeBodies, includeState, editionType, warn, editionDate),
-    gatherDocs(afterSince, since, warn),
-    gatherResearchDeep(afterSince, warn),
-    gatherCalendar(editionType, warn),
+  const today =
+    editionDate && /^\d{4}-\d{2}-\d{2}$/.test(editionDate) ? editionDate : await calendarToday();
+  // The full text of in-window items goes into both editions; the window
+  // (narrow for a daily, 7 days for a weekly) scopes it. The standing picture
+  // (balance sheet, debts, property, metals, DNA, supplement roster) is weekly
+  // only: the over-the-week review, not "stuff fetched that day".
+  const req: ContextRequest = {
+    since: sinceISO,
+    today,
+    purpose: editionType,
+    full: editionType === 'weekly',
+  };
+  const [reads, weather, sun, weekAhead] = await Promise.all([
+    readAllSources(req),
     gatherWeather(warn),
     gatherSun(editionDate, warn),
-    gatherContextDesks(editionType, sinceISO, includeState, editionDate, warn),
+    // The calendar source already reports a failure; the box just goes empty.
+    calendarDigest(editionType, today)
+      .then((d) => d.weekAhead)
+      .catch(() => null),
   ]);
-  const docs = docsResult.items;
 
-  const desks: Array<[string, string[]]> = [
-    ['Markets & Macro', markets],
-    // Right after the net-worth move it explains.
-    ...contextDesks,
-    ['Politics', politics],
-    ['Local News', researchDeep.local],
-    ['Personal Finance & Business', finance],
-    ['Health', health],
-    ['Research & Analysis', researchDeep.research],
-    ['Calendar', calendar.items],
-    ['Documents & Deadlines', docs],
-  ];
-  const sections = desks
-    .filter(([, list]) => list.length > 0)
-    .map(([desk, list]) => ({ desk, items: list }));
+  const citations: SourceCitation[] = [];
+  const pulled: PulledItem[] = [];
+  const byDesk = new Map<string, string[]>();
+  for (const { source, read } of reads) {
+    sourceWarnings.push(...(read.warnings ?? []));
+    const desk = NEWSSTAND_GROUP_DESKS[source.group];
+    if (!desk) continue;
+    const shifted = renumberCitations(read, citations.length);
+    citations.push(...(shifted.citations ?? []));
+    pulled.push(...(shifted.pulled ?? []));
+    if (shifted.lines.length) byDesk.set(desk, [...(byDesk.get(desk) ?? []), ...shifted.lines]);
+  }
+  const deskOrder = Object.values(NEWSSTAND_GROUP_DESKS).filter((d): d is string => !!d);
+  const sections = [...new Set(deskOrder)]
+    .filter((desk) => byDesk.has(desk))
+    .map((desk) => ({ desk, items: byDesk.get(desk)! }));
   const itemCount = sections.reduce((n, s) => n + s.items.length, 0);
   const sources = sections.map((s) => s.desk);
 
   log.info(
     `[digest] type=${editionType} since=${sinceISO} ` +
-      `markets=${markets.length} politics=${politics.length} local=${researchDeep.local.length} ` +
-      `finance=${finance.length} health=${health.length} research=${researchDeep.research.length} ` +
-      `docs=${docs.length} calendar=${calendar.items.length} ` +
-      `context=${contextDesks.reduce((n, [, lines]) => n + lines.length, 0)} ` +
+      `desks=${sections.map((s) => `${s.desk}:${s.items.length}`).join(',') || 'none'} ` +
+      `citations=${citations.length} pulled=${pulled.length} warnings=${sourceWarnings.length} ` +
       `weather=${weather ? `${weather.days.length}d` : 'off'} ` +
       `sun=${sun ? `${sun.sunrise}/${sun.sunset}` : 'off'} ` +
       `previous=${editionType === 'daily' && previousEdition ? `${previousEdition.editionDate}(${previousEdition.body.length}ch)` : 'none'} ` +
@@ -1829,12 +454,12 @@ export async function gatherDigest(
     sections,
     itemCount,
     sources,
-    pulled: docsResult.pulled,
-    citations: researchDeep.citations,
+    pulled,
+    citations,
     sourceWarnings,
     weather: weather ?? undefined,
     sun: sun ?? undefined,
-    weekAhead: calendar.weekAhead ?? undefined,
+    weekAhead: weekAhead ?? undefined,
     todayHoliday: editionDate ? holidayForDate(editionDate) : undefined,
     // Dailies only: the weekly deep-dive is the one edition that SHOULD restate
     // the standing state of things, so it gets no "already told" context.

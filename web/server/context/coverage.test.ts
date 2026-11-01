@@ -126,12 +126,12 @@ describe('context coverage', () => {
       expect(s.id).toMatch(/^[a-z0-9-]+$/);
       expect(s.description.length, `${s.id} description`).toBeGreaterThan(40);
       expect(s.files.length, `${s.id} files`).toBeGreaterThan(0);
-      expect(Boolean(s.state || s.changes), `${s.id} must have state() or changes()`).toBe(true);
+      expect(typeof s.read, `${s.id} must have read()`).toBe('function');
     }
   });
 
-  test('the Newsstand has a desk for every source group', () => {
-    const missing = CONTEXT_SOURCES.filter((s) => !NEWSSTAND_GROUP_DESKS[s.group]).map(
+  test('the Newsstand places every source group (on a desk, or read outside them)', () => {
+    const missing = CONTEXT_SOURCES.filter((s) => !(s.group in NEWSSTAND_GROUP_DESKS)).map(
       (s) => `${s.id} (group ${s.group})`
     );
     expect(missing, 'Add the group to NEWSSTAND_GROUP_DESKS in server/daily-news.ts').toEqual([]);

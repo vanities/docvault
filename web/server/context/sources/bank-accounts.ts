@@ -7,6 +7,7 @@ import {
 } from '../../data.js';
 import { addDays, daysBetween, money, signedMoney } from '../format.js';
 import { contextHistory, diffHistory, type ContextHistory } from '../history.js';
+import { readEventSource } from '../events.js';
 import type { ContextEvent, ContextSource, ContextWindow } from '../types.js';
 
 /** A one-day move this large is worth a line; smaller ones are everyday spending. */
@@ -109,8 +110,8 @@ export const bankAccountsSource: ContextSource = {
     'account the bank link returns) with its balance, type, and which net-worth bucket it counts in. ' +
     'Balances are recorded daily, so large one-day moves are listed as changes.',
   files: ['.docvault-simplefin-cache.json', '.docvault-account-annotations.json'],
-  state: bankAccountsState,
-  changes: (window) => bankAccountChanges(window),
+  read: (req) => readEventSource(bankAccountsSource, req, bankAccountsState),
+  events: (window) => bankAccountChanges(window),
   async metrics() {
     const { accounts } = await loadSimplefinCache();
     return Object.fromEntries(

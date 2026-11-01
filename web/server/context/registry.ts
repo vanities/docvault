@@ -9,15 +9,65 @@ import { createLogger } from '../logger.js';
 import { contextHistory, type ContextHistory } from './history.js';
 import { bankAccountsSource } from './sources/bank-accounts.js';
 import { bankTransactionsSource } from './sources/bank-transactions.js';
+import { calendarSource } from './sources/calendar.js';
 import { debtsSource } from './sources/debts.js';
+import { deepResearchSource, documentsSource, todosSource } from './sources/documents.js';
+import {
+  assetsSource,
+  balanceSheetSource,
+  brokerActivitySource,
+  contributionsSource,
+  cryptoSource,
+  estimatedTaxesSource,
+  federalReturnsSource,
+  incomeSource,
+  mileageSource,
+  preciousMetalsSource,
+  propertySource,
+  salesSource,
+  strategySource,
+} from './sources/finance.js';
+import { healthAnalysesSource, healthSource } from './sources/health.js';
+import { marketQuotesSource, marketSignalsSource, netWorthSource } from './sources/markets.js';
+import { politicsSource } from './sources/politics.js';
+import { localNewsSource, researchFilingsSource, researchSource } from './sources/research.js';
 import type { ContextSource } from './types.js';
 
 const log = createLogger('Context');
 
+// Order matters twice: readers list a group's sources in this order, and the
+// Newsstand numbers source links ([S1], [S2]) in this order, so research
+// comes before local news to keep the numbering it always had.
 export const CONTEXT_SOURCES: readonly ContextSource[] = [
+  marketSignalsSource,
+  marketQuotesSource,
+  netWorthSource,
   bankAccountsSource,
   bankTransactionsSource,
   debtsSource,
+  politicsSource,
+  researchSource,
+  localNewsSource,
+  salesSource,
+  mileageSource,
+  strategySource,
+  brokerActivitySource,
+  cryptoSource,
+  balanceSheetSource,
+  propertySource,
+  preciousMetalsSource,
+  incomeSource,
+  estimatedTaxesSource,
+  contributionsSource,
+  assetsSource,
+  federalReturnsSource,
+  healthSource,
+  healthAnalysesSource,
+  calendarSource,
+  researchFilingsSource,
+  documentsSource,
+  deepResearchSource,
+  todosSource,
 ];
 
 export function getContextSource(id: string): ContextSource | undefined {
