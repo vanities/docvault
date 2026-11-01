@@ -143,6 +143,10 @@ export async function collectBackupFiles(
   // root .docvault-assignments.json index points at.
   await collectDirRecursive(path.join(dataDir, 'assignments'), 'assignments', files);
 
+  // 5) context-history/ subtree: daily balances of debts and accounts. Those
+  // stores keep only today's value, so this record can't be rebuilt later.
+  await collectDirRecursive(path.join(dataDir, 'context-history'), 'context-history', files);
+
   return files;
 }
 

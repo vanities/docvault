@@ -9,6 +9,7 @@ import type { SimplefinConfig } from './simplefin.js';
 import { createLogger } from './logger.js';
 import { decryptField, encryptField, walkSensitiveFields } from './crypto-keys.js';
 import { rollUpBankAccounts, type BankRollup, type RollupBankAccount } from './bank-rollup.js';
+import { buildDebtPayments, type DebtPayments } from './debt-payments.js';
 import {
   applyDebtPlanPatch,
   DEFAULT_DEBT_PLAN_SETTINGS,
@@ -1325,6 +1326,7 @@ export const HEALTH_ANALYSIS_HISTORY_FILE = path.join(
 export const BROKER_CACHE_FILE = path.join(DATA_DIR, '.docvault-broker-cache.json');
 export const BROKER_ACTIVITIES_FILE = path.join(DATA_DIR, '.docvault-broker-activities.json');
 export const SIMPLEFIN_CACHE_FILE = path.join(DATA_DIR, '.docvault-simplefin-cache.json');
+export const BANK_TRANSACTIONS_FILE = path.join(DATA_DIR, '.docvault-bank-transactions.json');
 export const INCOME_FILE = path.join(DATA_DIR, '.docvault-income.json');
 export const LIABILITIES_FILE = path.join(DATA_DIR, '.docvault-liabilities.json');
 export const DEBT_PLAN_FILE = path.join(DATA_DIR, '.docvault-debt-plan.json');
@@ -1863,6 +1865,43 @@ export async function rollUpCachedBankAccounts(accounts: RollupBankAccount[]): P
   return rollUpBankAccounts(accounts, annotations, {
     brokerAccounts: broker?.accounts ?? [],
     cryptoSources: crypto?.sources ?? [],
+  });
+}
+
+/** The cached bank accounts (none before the first sync) and when they were fetched. */
+export async function loadSimplefinCache(): Promise<{
+  accounts: RollupBankAccount[];
+  lastUpdated?: string;
+}> {
+  try {
+    const cache = JSON.parse(await fs.readFile(SIMPLEFIN_CACHE_FILE, 'utf-8')) as {
+      accounts?: RollupBankAccount[];
+      lastUpdated?: string;
+    };
+    return { accounts: cache.accounts ?? [], lastUpdated: cache.lastUpdated };
+  } catch {
+    return { accounts: [] };
+  }
+}
+
+/**
+ * The Debts page's list (property mortgages, hand-added debts, bank-synced
+ * loans and cards), read from disk. The financial snapshot holds these stores
+ * in memory already and calls buildDebtPayments itself.
+ */
+export async function loadDebtPayments(): Promise<DebtPayments> {
+  const [property, liabilities, annotations, { accounts }] = await Promise.all([
+    loadPropertyData(),
+    loadLiabilities(),
+    loadAccountAnnotations(),
+    loadSimplefinCache(),
+  ]);
+  return buildDebtPayments({
+    properties: property.entries,
+    liabilities: liabilities.entries,
+    bankAccounts: accounts,
+    bankRollup: await rollUpCachedBankAccounts(accounts),
+    annotations,
   });
 }
 

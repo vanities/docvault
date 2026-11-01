@@ -15,8 +15,17 @@ import {
   type SimplefinIssue,
 } from './simplefin-health.js';
 import { createWriteLock, writeJsonAtomic } from './write-lock.js';
+import {
+  loadBankTransactions,
+  mergeBankTransactions,
+  transactionsStartDate,
+  unixToYmd,
+  type BankTransaction,
+  type BankTransactionLedger,
+} from './bank-transactions.js';
 
 const log = createLogger('SimpleFIN');
+const errText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 function cachedIssues(cache: SimplefinBalanceCache): SimplefinIssue[] {
   return (
@@ -47,7 +56,39 @@ function cachedIssues(cache: SimplefinBalanceCache): SimplefinIssue[] {
 export function createSimplefinSync(dataDir: string, fetchSnapshot = fetchBalanceSnapshot) {
   const cachePath = path.join(dataDir, '.docvault-simplefin-cache.json');
   const healthPath = path.join(dataDir, '.docvault-simplefin-status.json');
+  const ledgerPath = path.join(dataDir, '.docvault-bank-transactions.json');
   const withLock = createWriteLock();
+
+  async function storeTransactions(
+    ledger: BankTransactionLedger,
+    transactions: BankTransaction[],
+    snapshot: SimplefinBalanceCache,
+    since: number
+  ): Promise<void> {
+    const t0 = Date.now();
+    try {
+      const accounts = Object.fromEntries(
+        snapshot.accounts.map((a) => [
+          a.id,
+          { name: a.name, ...(a.connectionName ? { connectionName: a.connectionName } : {}) },
+        ])
+      );
+      const merged = mergeBankTransactions(
+        ledger,
+        transactions,
+        accounts,
+        unixToYmd(since),
+        new Date()
+      );
+      await writeJsonAtomic(ledgerPath, merged);
+      log.info(
+        `[transactions] ledger saved fetched=${transactions.length} ` +
+          `stored=${merged.transactions.length} coveredFrom=${merged.coveredFrom} in ${Date.now() - t0}ms`
+      );
+    } catch (error) {
+      log.error(`[transactions] ledger write failed; balances are unaffected: ${errText(error)}`);
+    }
+  }
   let inFlight: { accessUrl: string; promise: Promise<SimplefinBalanceCache> } | undefined;
 
   async function read<T>(file: string): Promise<T | undefined> {
@@ -84,13 +125,30 @@ export function createSimplefinSync(dataDir: string, fetchSnapshot = fetchBalanc
           log.warn('Using recent bank data; connection warnings remain unresolved');
         return cache;
       }
+      // Transactions ride on the balance request, so the ledger costs no extra
+      // calls against SimpleFIN's daily quota.
+      let ledger: BankTransactionLedger | null = null;
       try {
-        const snapshot = await fetchSnapshot(config);
+        ledger = await loadBankTransactions(ledgerPath);
+      } catch (error) {
+        log.error(
+          `[transactions] ledger unreadable; fetching balances only and leaving the file untouched: ${errText(error)}`
+        );
+      }
+      const since = ledger ? transactionsStartDate(ledger, new Date()) : undefined;
+      try {
+        const { transactions, ...snapshot } = await fetchSnapshot(
+          config,
+          since === undefined ? {} : { transactionsSince: since }
+        );
         await writeJsonAtomic(cachePath, snapshot);
         await writeJsonAtomic(
           healthPath,
           updateSimplefinHealth(previous, cachedIssues(snapshot), snapshot.lastUpdated, true)
         );
+        if (ledger && transactions && since !== undefined) {
+          await storeTransactions(ledger, transactions, snapshot, since);
+        }
         return snapshot;
       } catch (error) {
         const issues =

@@ -236,6 +236,11 @@ web/scripts/*
 # Exception: bank warning lifecycle and sync tests use synthetic accounts in tmpdirs
 !web/server/simplefin-health.test.ts
 !web/server/simplefin-sync.test.ts
+# Exception: bank transaction ledger and context-source tests use fabricated accounts, payees and balances in tmpdirs
+!web/server/bank-transactions.test.ts
+!web/server/context/coverage.test.ts
+!web/server/context/history.test.ts
+!web/server/context/sources.test.ts
 # Exception: history-series tests are pure missing-vs-zero logic over fabricated figures, no personal data
 !web/src/components/common/historySeries.test.ts
 

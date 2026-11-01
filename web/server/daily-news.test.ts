@@ -5,6 +5,7 @@ import {
   buildOvernightMetricBits,
   buildResearchDigestItems,
   describeEstimatedTaxState,
+  formatContextEvents,
   renderDigestPrompt,
   selectDailyNewsStepCount,
   snapshotFromAllResponseBody,
@@ -568,5 +569,45 @@ describe('renderDigestPrompt — previous-edition dedup context', () => {
     expect(renderDigestPrompt(base, 'Test Dispatch', 'Friday, January 2')).not.toContain(
       'Today is'
     );
+  });
+});
+
+describe('Money Movements desk lines', () => {
+  // Fabricated: a loan balance lowered on the 23rd, its payment clearing on the
+  // 27th, and an edition window that opens on the 25th, between the two.
+  const events = [
+    {
+      date: '2026-03-23',
+      text: 'Lakeside Cabin (Mortgage) balance down $12,000',
+      amount: -12_000,
+    },
+    {
+      date: '2026-03-27',
+      text: '-$12,000.00 Acme Lending, Everyday Checking',
+      amount: -12_000,
+    },
+    { date: '2026-03-28', text: '-$42.10 Corner Grocery, Everyday Checking', amount: -42.1 },
+  ];
+
+  test('both sides of a transfer are listed, the earlier one marked as before the period', () => {
+    expect(formatContextEvents('Money', events, '2026-03-25')).toEqual([
+      'Money, 2026-03-23 (before this period): Lakeside Cabin (Mortgage) balance down $12,000.',
+      'Money, 2026-03-27: -$12,000.00 Acme Lending, Everyday Checking.',
+      'Money: 1 smaller item(s) under $500 not listed.',
+    ]);
+  });
+
+  test('past the cap, the largest moves are kept and the rest are counted', () => {
+    const many = Array.from({ length: 5 }, (_, i) => ({
+      date: `2026-03-2${i}`,
+      text: `move ${i}`,
+      amount: -1_000 * (i + 1),
+    }));
+    const lines = formatContextEvents('Bank transactions', many, '2026-03-20', { max: 2 });
+    expect(lines).toEqual([
+      'Bank transactions, 2026-03-23: move 3.',
+      'Bank transactions, 2026-03-24: move 4.',
+      'Bank transactions: 3 more item(s) not listed; only the 2 largest are.',
+    ]);
   });
 });

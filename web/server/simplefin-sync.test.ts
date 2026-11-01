@@ -81,3 +81,42 @@ test('cached status reads do not spend provider requests', async () => {
   await Promise.all([service.getHealth(), service.getHealth()]);
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
+
+const LEDGER = '.docvault-bank-transactions.json';
+const withTransactions = () => ({
+  ...snapshot(),
+  transactions: [
+    {
+      id: 'tx-1',
+      accountId: 'synthetic-account',
+      posted: '2026-10-27',
+      amount: -500,
+      description: 'ACME LOAN PAYMENT',
+    },
+  ],
+});
+
+test('the same request fills the transaction ledger, and the balance cache stays balances only', async () => {
+  const dir = await directory();
+  const fetcher = vi.fn(async () => withTransactions());
+  await createSimplefinSync(dir, fetcher).sync(config);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(fetcher.mock.calls[0][1]).toMatchObject({ transactionsSince: expect.any(Number) });
+  const cache = JSON.parse(
+    await fs.readFile(path.join(dir, '.docvault-simplefin-cache.json'), 'utf8')
+  );
+  expect(cache.transactions).toBeUndefined();
+  const ledger = JSON.parse(await fs.readFile(path.join(dir, LEDGER), 'utf8'));
+  expect(ledger.transactions.map((t: { id: string }) => t.id)).toEqual(['tx-1']);
+  expect(ledger.accounts['synthetic-account'].name).toBe('Checking');
+});
+
+test('an unreadable ledger is left alone and balances still sync', async () => {
+  const dir = await directory();
+  await fs.writeFile(path.join(dir, LEDGER), '{ broken');
+  const fetcher = vi.fn(async () => withTransactions());
+  const cache = await createSimplefinSync(dir, fetcher).sync(config);
+  expect(cache.accounts[0].balance).toBe(1234.56);
+  expect(fetcher.mock.calls[0][1]).toEqual({});
+  expect(await fs.readFile(path.join(dir, LEDGER), 'utf8')).toBe('{ broken');
+});

@@ -29,6 +29,7 @@ import { assertCryptoValued, fetchAllBalances } from './crypto.js';
 import { buildPortfolio, fetchAllSnapTradeHoldings, type BrokerAccount } from './brokers.js';
 import { type SimplefinBalanceCache } from './simplefin.js';
 import { simplefinSync } from './simplefin-sync.js';
+import { recordContextHistory } from './context/registry.js';
 import { refreshAllQuantData } from './routes/quant.js';
 import { refreshPolitics } from './politics/refresh.js';
 import {
@@ -569,6 +570,19 @@ async function takePortfolioSnapshotInner(): Promise<void> {
   logSnapshots.info(
     `Portfolio snapshot saved for ${today}` + (bankValue === null ? ' (bank: unknown)' : '')
   );
+
+  // Same day key, and the bank balances and mortgage amortization just applied.
+  const historyStart = Date.now();
+  try {
+    const result = await recordContextHistory(today);
+    logSnapshots.info(
+      `[context-history] ${today} recorded=${result.recorded.join(',') || 'none'} ` +
+        `empty=${result.empty.join(',') || 'none'} failed=${result.failed.join(',') || 'none'} ` +
+        `in ${Date.now() - historyStart}ms`
+    );
+  } catch (err) {
+    logSnapshots.warn(`[context-history] ${today} failed: ${String(err)}`);
+  }
 }
 
 async function createEncryptedConfigBackup(password: string): Promise<string | null> {

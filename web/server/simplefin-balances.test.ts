@@ -174,3 +174,86 @@ describe('fetchBalances', () => {
     expect(globalThis.fetch).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('fetchBalanceSnapshot with transactions', () => {
+  const SINCE = 1_761_955_200; // 2025-11-01T00:00:00Z
+
+  test('asks for transactions instead of balances only, and maps posted ones', async () => {
+    stub({
+      accounts: [
+        {
+          id: 'a1',
+          name: 'Everyday Checking',
+          currency: 'USD',
+          balance: '7145.00',
+          transactions: [
+            {
+              id: 'tx-1',
+              posted: 1_761_566_400, // 2025-10-27T12:00:00Z
+              amount: '-12000.00',
+              description: 'ACME LENDING LOAN PMT',
+              payee: 'Acme Lending',
+            },
+            { id: 'tx-2', posted: 0, amount: '-12.50', description: 'COFFEE', pending: true },
+          ],
+        },
+      ],
+    });
+    const snapshot = await fetchBalanceSnapshot(CONFIG, { transactionsSince: SINCE });
+    const requested = new URL(String(vi.mocked(globalThis.fetch).mock.calls[0][0]));
+    expect(requested.searchParams.get('balances-only')).toBeNull();
+    expect(requested.searchParams.get('start-date')).toBe(String(SINCE));
+    expect(snapshot.transactions).toEqual([
+      {
+        id: 'tx-1',
+        accountId: 'a1',
+        posted: '2025-10-27',
+        amount: -12000,
+        description: 'ACME LENDING LOAN PMT',
+        payee: 'Acme Lending',
+      },
+    ]);
+  });
+
+  test('a balances-only fetch carries no transactions key', async () => {
+    stub({ accounts: [{ id: 'a1', name: 'Checking', currency: 'USD', balance: '10.00' }] });
+    const snapshot = await fetchBalanceSnapshot(CONFIG);
+    expect('transactions' in snapshot).toBe(false);
+  });
+
+  test('a capped date range is not reported as a broken bank connection', async () => {
+    stub({
+      errlist: [
+        { code: 'gen.api', msg: 'Requested date range exceeds limit of 90 days and was capped' },
+      ],
+      accounts: [{ id: 'a1', name: 'Checking', currency: 'USD', balance: '10.00' }],
+    });
+    const snapshot = await fetchBalanceSnapshot(CONFIG, { transactionsSince: SINCE });
+    expect(snapshot.connectionErrors).toEqual([]);
+    expect(snapshot.connectionIssues).toEqual([]);
+  });
+
+  test('the 45-day advisory (seen live 2026-11-01) is dropped too, real auth errors are kept', async () => {
+    stub({
+      errlist: [
+        {
+          code: 'gen.api',
+          msg: 'Requested date range exceeds recommended range of 45 days. In the future, this may be capped.',
+        },
+        { code: 'con.auth', msg: 'Authentication required', conn_id: 'example-connection' },
+      ],
+      connections: [{ conn_id: 'example-connection', name: 'Acme Bank' }],
+      accounts: [
+        {
+          id: 'a1',
+          name: 'Checking',
+          currency: 'USD',
+          balance: '10.00',
+          conn_id: 'example-connection',
+        },
+      ],
+    });
+    const snapshot = await fetchBalanceSnapshot(CONFIG, { transactionsSince: SINCE });
+    expect(snapshot.connectionErrors).toEqual(['Acme Bank: Authentication required']);
+  });
+});

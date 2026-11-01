@@ -174,6 +174,8 @@ Missing any of these causes the sidebar click to silently render the wrong view.
 
 Assignments run on the Claude backend only, because Codex has no DocVault write tools. Check-ins use `settings.assignmentsModel` when set, else chat's `claudeModel` (`getAssignmentsModel`, `web/server/data.ts`); the setting exists because a model's safeguards can refuse unattended check-ins while chat passes (Opus 5.5, 2026-10-30).
 
+**Every kind of data is a context source** (`web/server/context/`). A source describes one kind of DocVault data once (`state()`, `changes(window)`, `metrics()`, and the data files it reads), so every AI surface reads it the same way instead of each one keeping its own hand-picked subset. The Newsstand puts each source on the desk its `group` maps to (`NEWSSTAND_GROUP_DESKS`, `web/server/daily-news.ts`). The snapshot scheduler records every source's `metrics()` once a day under `context-history/`, which is how stores that keep only today's value (debts, account balances) still report dated changes. When a feature stores new data, register a source for it: `context/coverage.test.ts` fails while any data file or folder the server names belongs to no source, unless `context/coverage.ts` exempts it with a reason. Its not-wired list holds data still waiting for a source and only shrinks. Bank transactions ride on the same SimpleFIN request as balances (no extra quota) into `.docvault-bank-transactions.json`, which keeps them after SimpleFIN's 90-day window. The SimpleFIN sync is that file's only writer, and it leaves an unreadable ledger untouched rather than starting a new one.
+
 **Package installs:** This project uses both pnpm and bun. After adding a dependency with `pnpm add <pkg>`, always run `bun install` to sync `bun.lock`, then commit both `package.json` and `bun.lock`. The Docker build uses `bun install --frozen-lockfile` so an out-of-sync `bun.lock` breaks CI. `pnpm-lock.yaml` is gitignored.
 
 ## Architecture
@@ -192,6 +194,8 @@ All state lives in `DATA_DIR` (default repository-root `data/`, `/data` in Docke
 | `.docvault-email-log.json`   | Sent-mail log: every outbound email attempt, newest 500 (Settings → Email)         |
 | `.docvault-inbound-email.json` | Assignment email replies the server already processed (Resend receiving ids)     |
 | `.docvault-debt-plan.json`   | Debts → Payoff plan inputs (living expenses, extra payment, growth assumptions)    |
+| `.docvault-bank-transactions.json` | Posted bank transactions from SimpleFIN, kept past its 90-day window (sync-owned) |
+| `context-history/<source>/<year>.json` | Each context source's key numbers, one record per day (debt and account balances) |
 
 Entity types: `tax` (year-based views with income/expenses) or `docs` (flat file listing).
 

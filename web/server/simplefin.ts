@@ -7,6 +7,7 @@
 
 import { createLogger } from './logger.js';
 import { deriveConnectionIssues, type SimplefinIssue } from './simplefin-health.js';
+import { unixToYmd, type BankTransaction } from './bank-transactions.js';
 
 const log = createLogger('SimpleFIN');
 
@@ -36,6 +37,17 @@ export interface SimplefinBalanceCache {
   connectionIssues?: SimplefinIssue[];
 }
 
+/** A fetch result. `transactions` is present only when the fetch asked for
+ * them, and never belongs in the balance cache. */
+export interface SimplefinSnapshot extends SimplefinBalanceCache {
+  transactions?: BankTransaction[];
+}
+
+export interface SimplefinFetchOptions {
+  /** Unix seconds. Set to also fetch transactions posted since then. */
+  transactionsSince?: number;
+}
+
 export class SimplefinFetchError extends Error {
   issues: SimplefinIssue[];
   constructor(message: string, issues: SimplefinIssue[]) {
@@ -53,6 +65,17 @@ interface SimplefinRawOrg {
   id?: string;
 }
 
+interface SimplefinRawTransaction {
+  id: string;
+  posted: number; // Unix timestamp
+  amount: string; // numeric string, negative = money out
+  description?: string;
+  payee?: string;
+  memo?: string;
+  transacted_at?: number;
+  pending?: boolean;
+}
+
 interface SimplefinRawAccount {
   id: string;
   name: string;
@@ -63,7 +86,14 @@ interface SimplefinRawAccount {
   org?: SimplefinRawOrg;
   conn_id?: string;
   conn_name?: string;
+  transactions?: SimplefinRawTransaction[];
 }
+
+// SimpleFIN reports a long date range as an error entry ("exceeds limit of 90
+// days and was capped", "exceeds recommended range of 45 days") while still
+// returning data. It is not a broken connection, so it must not reach the Banks
+// page as one.
+const RANGE_CAP_NOTICE = /date range exceeds/i;
 
 interface SimplefinResponse {
   errors?: string[];
@@ -114,8 +144,9 @@ export async function fetchBalances(config: SimplefinConfig): Promise<SimplefinA
 /** Keep provider warnings alongside the balances so cached views still show
  * which connections need attention, even when other accounts fetched fine. */
 export async function fetchBalanceSnapshot(
-  config: SimplefinConfig
-): Promise<SimplefinBalanceCache> {
+  config: SimplefinConfig,
+  opts: SimplefinFetchOptions = {}
+): Promise<SimplefinSnapshot> {
   const baseUrl = config.accessUrl.replace(/\/+$/, '');
   const url = `${baseUrl}/accounts`;
 
@@ -127,7 +158,12 @@ export async function fetchBalanceSnapshot(
   parsed.username = '';
   parsed.password = '';
   parsed.searchParams.set('version', '2');
-  parsed.searchParams.set('balances-only', '1');
+  const withTransactions = typeof opts.transactionsSince === 'number';
+  if (withTransactions) {
+    parsed.searchParams.set('start-date', String(Math.floor(opts.transactionsSince!)));
+  } else {
+    parsed.searchParams.set('balances-only', '1');
+  }
 
   let res: Response;
   for (let attempt = 1; ; attempt++) {
@@ -170,6 +206,15 @@ export async function fetchBalanceSnapshot(
   }
 
   const data = (await res.json()) as SimplefinResponse;
+  const isCapNotice = (message?: string) => RANGE_CAP_NOTICE.test(message ?? '');
+  const capNotices =
+    (data.errlist ?? []).filter((e) => isCapNotice(e.msg || e.message)).length +
+    (data.errors ?? []).filter((m) => isCapNotice(m)).length;
+  if (capNotices) {
+    log.info(`[transactions] SimpleFIN capped the requested date range (${capNotices} notice(s))`);
+    data.errlist = data.errlist?.filter((e) => !isCapNotice(e.msg || e.message));
+    data.errors = data.errors?.filter((m) => !isCapNotice(m));
+  }
   const connectionIssues = deriveConnectionIssues(
     data.errlist?.length
       ? data.errlist.map((error) => {
@@ -235,10 +280,44 @@ export async function fetchBalanceSnapshot(
       acct.org?.name ||
       undefined,
   }));
+
+  let transactions: BankTransaction[] | undefined;
+  if (withTransactions) {
+    transactions = [];
+    let skipped = 0;
+    for (const acct of accounts) {
+      for (const t of acct.transactions ?? []) {
+        const amount = parseFloat(t.amount);
+        // Pending rows carry posted=0 and can still change or vanish.
+        if (t.pending || !t.id || !(t.posted > 0) || !Number.isFinite(amount)) {
+          skipped++;
+          continue;
+        }
+        transactions.push({
+          id: String(t.id),
+          accountId: acct.id,
+          posted: unixToYmd(t.posted),
+          amount,
+          description: (t.description ?? '').trim(),
+          ...(t.payee?.trim() ? { payee: t.payee.trim() } : {}),
+          ...(t.memo?.trim() ? { memo: t.memo.trim() } : {}),
+          ...(t.transacted_at && t.transacted_at > 0
+            ? { transactedAt: unixToYmd(t.transacted_at) }
+            : {}),
+        });
+      }
+    }
+    log.info(
+      `[transactions] fetched ${transactions.length} posted transaction(s) across ` +
+        `${accounts.length} accounts since ${unixToYmd(opts.transactionsSince!)}; skipped ${skipped} pending or malformed`
+    );
+  }
+
   return {
     accounts: mapped,
     lastUpdated: new Date().toISOString(),
     connectionErrors: errors,
     connectionIssues,
+    ...(transactions ? { transactions } : {}),
   };
 }

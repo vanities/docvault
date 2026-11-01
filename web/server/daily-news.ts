@@ -35,7 +35,6 @@ import {
   loadTodos,
   loadConfig,
   scanDirectory,
-  loadLiabilities,
   loadGoldData,
   loadPropertyData,
   loadIncomeData,
@@ -95,6 +94,9 @@ import { readEditionImage } from './daily-news-image.js';
 import { logAiCall } from './ai/usage-log.js';
 import { createLogger } from './logger.js';
 import type { Edition, EditionType } from './daily-news-store.js';
+import { CONTEXT_SOURCES } from './context/registry.js';
+import { addDays, money } from './context/format.js';
+import type { ContextEvent, ContextGroup } from './context/types.js';
 
 const log = createLogger('DailyNews');
 
@@ -866,8 +868,13 @@ async function gatherFinance(
     }
     // An explicit quiet-period line beats silence — but only when broker
     // accounts are actually connected (the cache file the Brokers view keeps).
+    // It must say it covers only the brokerage: the 2026-11-01 weekly read
+    // "no trades or transfers" as "no transfer explains the cash drop".
     if (acts.length === 0 && (await fileExists(BROKER_CACHE_FILE))) {
-      items.push('No brokerage account trades or transfers this period.');
+      items.push(
+        'No trades, dividends or transfers inside the brokerage accounts this period ' +
+          '(this says nothing about bank transfers; those are under Money Movements).'
+      );
     }
   } catch (err) {
     emitDigestWarning(warn, 'finance/broker-activity', err);
@@ -983,24 +990,8 @@ async function gatherFinance(
       emitDigestWarning(warn, 'finance/balance-sheet', err);
     }
 
-    try {
-      const { entries } = await loadLiabilities();
-      const debts = entries.filter((d) => (d.balance ?? 0) > 0);
-      if (debts.length) {
-        const total = debts.reduce((s, d) => s + (d.balance ?? 0), 0);
-        const lines = debts
-          .slice(0, 8)
-          .map(
-            (d) =>
-              `${d.name} $${Math.round(d.balance).toLocaleString()} @ ${(d.rate * 100).toFixed(2)}%`
-          );
-        items.push(
-          `Debts (${debts.length}, total $${Math.round(total).toLocaleString()}): ${lines.join('; ')}.`
-        );
-      }
-    } catch (err) {
-      emitDigestWarning(warn, 'finance/liabilities', err);
-    }
+    // Debts are listed by the debts context source on the Money Movements desk
+    // (every debt, not only the hand-added ones this line used to show).
 
     // Real estate detail (weekly).
     try {
@@ -1625,6 +1616,98 @@ async function gatherSun(editionDate?: string, warn?: WarningSink): Promise<SunA
 }
 
 /** Gather the full digest across all desks, windowed by `sinceISO`. */
+// ---------------------------------------------------------------------------
+// Context-source desks (server/context/). Each registered source lands on the
+// desk its group maps to; coverage.test.ts fails when a group has no desk.
+// ---------------------------------------------------------------------------
+
+export const NEWSSTAND_GROUP_DESKS: Record<ContextGroup, string> = {
+  money: 'Money Movements',
+};
+
+/** Days before the window that dated events still show up: a loan balance
+ *  edited a few days before the payment clears belongs with that payment. */
+const CONTEXT_LEAD_IN_DAYS: Record<EditionType, number> = { daily: 3, weekly: 7 };
+/** Moves smaller than this are routine spending, reported only as a count. */
+export const CONTEXT_EVENT_MIN_AMOUNT = 500;
+const CONTEXT_EVENTS_PER_SOURCE = 25;
+
+/** Digest lines for one source's events: the larger moves, oldest first, each
+ *  marked when it falls before the edition's window. Pure. */
+export function formatContextEvents(
+  label: string,
+  events: ContextEvent[],
+  windowFrom: string,
+  opts: { minAmount?: number; max?: number } = {}
+): string[] {
+  const minAmount = opts.minAmount ?? CONTEXT_EVENT_MIN_AMOUNT;
+  const max = opts.max ?? CONTEXT_EVENTS_PER_SOURCE;
+  const big = events.filter((e) => e.amount === undefined || Math.abs(e.amount) >= minAmount);
+  const kept =
+    big.length > max
+      ? [...big]
+          .sort(
+            (a, b) =>
+              Math.abs(b.amount ?? Number.POSITIVE_INFINITY) -
+              Math.abs(a.amount ?? Number.POSITIVE_INFINITY)
+          )
+          .slice(0, max)
+      : big;
+  const lines = [...kept]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(
+      (e) => `${label}, ${e.date}${e.date < windowFrom ? ' (before this period)' : ''}: ${e.text}.`
+    );
+  const small = events.length - big.length;
+  const capped = big.length - kept.length;
+  if (small > 0) {
+    lines.push(`${label}: ${small} smaller item(s) under ${money(minAmount)} not listed.`);
+  }
+  if (capped > 0) {
+    lines.push(`${label}: ${capped} more item(s) not listed; only the ${max} largest are.`);
+  }
+  return lines;
+}
+
+async function gatherContextDesks(
+  editionType: EditionType,
+  sinceISO: string,
+  includeState: boolean,
+  editionDate?: string,
+  warn?: WarningSink
+): Promise<Array<[string, string[]]>> {
+  const windowFrom = sinceISO.slice(0, 10);
+  const window = {
+    from: addDays(windowFrom, -CONTEXT_LEAD_IN_DAYS[editionType]),
+    to: (editionDate ?? new Date().toISOString()).slice(0, 10),
+  };
+  const perSource = await Promise.all(
+    CONTEXT_SOURCES.map(async (source) => {
+      const t0 = Date.now();
+      const lines: string[] = [];
+      try {
+        if (includeState && source.state) lines.push(...(await source.state()));
+        if (source.changes) {
+          const events = await source.changes(window);
+          lines.push(...formatContextEvents(source.label, events, windowFrom));
+        }
+        log.info(
+          `[digest] context ${source.id} lines=${lines.length} window=${window.from}..${window.to} ` +
+            `in ${Date.now() - t0}ms`
+        );
+      } catch (err) {
+        emitDigestWarning(warn, `context/${source.id}`, err);
+      }
+      return { desk: NEWSSTAND_GROUP_DESKS[source.group], lines };
+    })
+  );
+  const desks = new Map<string, string[]>();
+  for (const { desk, lines } of perSource) {
+    if (lines.length) desks.set(desk, [...(desks.get(desk) ?? []), ...lines]);
+  }
+  return [...desks];
+}
+
 export async function gatherDigest(
   editionType: EditionType,
   sinceISO: string,
@@ -1686,22 +1769,35 @@ export async function gatherDigest(
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') warn('collection/status', err);
   }
 
-  const [markets, politics, finance, health, docsResult, researchDeep, calendar, weather, sun] =
-    await Promise.all([
-      gatherMarkets(editionType, sinceISO, warn),
-      gatherPolitics(afterSince, editionType, sinceISO, editionDate, warn),
-      gatherFinance(afterSince, includeBodies, includeState, warn, editionDate),
-      gatherHealth(afterSince, includeBodies, includeState, editionType, warn, editionDate),
-      gatherDocs(afterSince, since, warn),
-      gatherResearchDeep(afterSince, warn),
-      gatherCalendar(editionType, warn),
-      gatherWeather(warn),
-      gatherSun(editionDate, warn),
-    ]);
+  const [
+    markets,
+    politics,
+    finance,
+    health,
+    docsResult,
+    researchDeep,
+    calendar,
+    weather,
+    sun,
+    contextDesks,
+  ] = await Promise.all([
+    gatherMarkets(editionType, sinceISO, warn),
+    gatherPolitics(afterSince, editionType, sinceISO, editionDate, warn),
+    gatherFinance(afterSince, includeBodies, includeState, warn, editionDate),
+    gatherHealth(afterSince, includeBodies, includeState, editionType, warn, editionDate),
+    gatherDocs(afterSince, since, warn),
+    gatherResearchDeep(afterSince, warn),
+    gatherCalendar(editionType, warn),
+    gatherWeather(warn),
+    gatherSun(editionDate, warn),
+    gatherContextDesks(editionType, sinceISO, includeState, editionDate, warn),
+  ]);
   const docs = docsResult.items;
 
   const desks: Array<[string, string[]]> = [
     ['Markets & Macro', markets],
+    // Right after the net-worth move it explains.
+    ...contextDesks,
     ['Politics', politics],
     ['Local News', researchDeep.local],
     ['Personal Finance & Business', finance],
@@ -1721,6 +1817,7 @@ export async function gatherDigest(
       `markets=${markets.length} politics=${politics.length} local=${researchDeep.local.length} ` +
       `finance=${finance.length} health=${health.length} research=${researchDeep.research.length} ` +
       `docs=${docs.length} calendar=${calendar.items.length} ` +
+      `context=${contextDesks.reduce((n, [, lines]) => n + lines.length, 0)} ` +
       `weather=${weather ? `${weather.days.length}d` : 'off'} ` +
       `sun=${sun ? `${sun.sunrise}/${sun.sunset}` : 'off'} ` +
       `previous=${editionType === 'daily' && previousEdition ? `${previousEdition.editionDate}(${previousEdition.body.length}ch)` : 'none'} ` +
@@ -1763,6 +1860,7 @@ function buildSystem(
     'In the "Personal Finance & Business" section, treat tax and retirement items as the financially actionable content they are: when an estimated-tax installment due date, safe-harbor progress, retirement-contribution progress, a filed return, or a new income source/asset appears in the digest, report it concretely with the numbers and dates — an upcoming estimated-tax deadline in particular is worth a clear heads-up. When NONE of those appear, say nothing about them — do not write "no installment / no contribution / no return arrived" lines.',
     'In the "Politics" section, LEAD with congressional and executive-branch trading whenever the digest carries it, and lead that with CONSENSUS: a digest item prefixed "CONSENSUS BUY"/"CONSENSUS SELL" means several different members traded the SAME ticker the SAME direction inside a short window — that is the story, so name the ticker, the member count, the window, and several of the members by name. Items prefixed "NOTABLE" are individually significant single trades (size, or an actual option contract) — give the biggest ones a sentence each with the member, ticker, direction, dollar band, and the gap between the trade date and the disclosure date. A collapsed "Also disclosed" line is background volume: mention it in at most one clause, never expand it. If an item says the trades are NOT new today, say plainly that no fresh filings landed and frame the material as standing context. Never present a disclosure date as the date the trade happened — under the STOCK Act these lag by up to 45 days, and that lag is itself worth noting when it is long. Use ONLY the chamber the digest states for each member, verbatim — never infer or add a title ("Sen.", "Rep.") that the digest did not give you, since members with similar names sit in different chambers and a wrong attribution discredits the whole desk.',
     'In the "Markets & Macro" section, give proportional coverage to EVERY asset class the owner actually holds — crypto, equities, precious metals, and real estate — using the per-asset-class moves and metals/equity signals in the digest. Crypto is often the most volatile sleeve, but do not let it crowd out the others: when metals or real-estate equity moved (or held flat while crypto fell), say so explicitly, since that is the diversification story. Lead the section with whatever moved most, not crypto by default.',
+    'When the "Money Movements" desk is present it lists dated bank transactions, large one-day account moves and debt balance changes, starting a few days before this period (those lines say "before this period") so both sides of a transfer appear; on the weekly it also carries every bank account and debt as they stand now. Use it to explain every large move in cash or debt. Money moving between the owner\'s own accounts (a loan paydown, a deposit into an investment or crypto account, a transfer between bank accounts) is neither a gain nor a loss: say where it went, and do not describe it as a drop in net worth. A debt balance that went down is a paydown, not a revaluation. When cash fell and nothing in the digest shows where it went, say so once, plainly. Never call money lost, drained or spent unless a transaction shows it, and never make "find where the money went" an action item when a listed transaction or debt change accounts for it.',
     'Immediately before the "## Action Items" list, include a "## Forecast & Opportunities" section — the edition\'s one FORWARD-looking desk. Synthesize across ALL desks (markets, politics, tech, health, local, research, finance) the most important things LIKELY to happen in the next day-to-week and what the owner could do about them. For EACH opportunity give, in tight prose: (1) the forward call and rough timeframe — what is likely, and by when; (2) a concrete option the owner could take; (3) sizing proportional to the owner\'s actual situation (a starter position, a dollar amount, or "watch only"); (4) the bull case AND the key risk / bear case in the same breath; (5) a confidence read — low, medium, or high. Prefer a few high-quality calls over a long list. This is the one place you may reason FORWARD beyond the literal digest, but every forecast must be built on a fact, date, signal, holding, or prediction-market probability that appears in the digest — never invent an event, price, or number. When an opportunity could be expressed through a risky instrument (e.g. far-out-of-the-money or short-dated options), name the risk plainly and prefer the lower-risk expression (shares, a longer horizon, or a smaller size) — surface the option, do not cheerlead it. If nothing forward-looking is well-supported, write one honest line saying so rather than padding. Frame everything as reasoned possibilities from the owner\'s own data and the odds, never as guaranteed advice.',
     'END the edition with a "## Action Items" section: a short, prioritized list of the SPECIFIC financial moves the data suggests the owner consider right now — and for EACH one, state the WHY in the same sentence, citing the concrete data point that motivates it. Draw across ALL desks, e.g.: an estimated-tax installment due within the window (pay $X by DATE — safe-harbor shortfall is $Y); idle cash to deploy or a deductible-contribution headroom; an allocation that has drifted (one sleeve now N% of net worth) worth trimming/rebalancing; a high-rate debt to prioritize vs. a 0% one to leave; a funding-stress or yield-curve signal that argues for caution or duration; a due or overdue calendar task or deadline. Rank by urgency and dollar impact. Ground every item in a number or date that appears in the digest — if the data does not support a concrete action, write a brief honest "No pressing money moves" line rather than inventing one. Frame as reasoned considerations from the owner\'s own data, never as guaranteed advice.',
     'When the "Research & Analysis" desk is present it carries the FULL text of newly-filed research (ZeroHedge, Lyn Alden, George Gammon, political transcripts, etc.) — actually read it and synthesize the key arguments, attributing analysts by name, rather than merely noting that a piece was filed.',
