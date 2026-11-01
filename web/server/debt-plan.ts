@@ -8,7 +8,9 @@
 // Everything is in today's dollars: payments are fixed amounts, so investment
 // growth is a real (after-inflation) rate and living expenses stay flat.
 
+import { isRetirementAccount } from './account-classify.js';
 import type { DebtPaymentItem } from './debt-payments.js';
+import { toMonthly } from './income-frequency.js';
 
 export type PayoffOrder = 'avalanche' | 'snowball';
 
@@ -863,4 +865,135 @@ export function yearlyPoints(months: DebtPlanMonth[]): DebtPlanMonth[] {
   const last = months[months.length - 1];
   if (points[points.length - 1] !== last) points.push(last);
   return points;
+}
+
+// ---------------------------------------------------------------------------
+// The plan as the Debts page shows it. The page and server readers (the
+// payoff-plan context source) both go through these, so an AI surface reports
+// the same debt-free date and FIRE number the owner sees.
+// ---------------------------------------------------------------------------
+
+/** The parts of the financial snapshot JSON (`/api/financial-snapshot/:year?format=json`) the plan reads. */
+export interface PlanSnapshot {
+  debtPayments?: { items: DebtPaymentItem[] } | null;
+  additionalIncome?: { amount: number; frequency: string }[];
+  investments?: { brokerAccounts?: { name: string; totalValue?: number }[] };
+  crypto?: { sources?: { balances?: { asset: string; amount: number; usdValue: number }[] }[] };
+  portfolioSummary?: { brokerage?: number; crypto?: number; preciousMetals?: number } | null;
+}
+
+/** What the plan takes from the rest of DocVault: its debts, and the values behind its blank fields. */
+export interface PlanDefaults {
+  /** The Debts list: every debt with a balance and a monthly payment. */
+  items: DebtPaymentItem[];
+  /** Investments outside retirement accounts, by kind: the default for that field. */
+  investmentParts: { label: string; value: number }[];
+  /** Monthly total of the Income page: the default for passive income. */
+  incomeMonthly: number;
+  /** DocVault's total of 401(k)s, IRAs and the like: the default for retirement accounts. */
+  retirementDefault: number;
+  /** Crypto by asset, for price targets and sales. */
+  holdings: Holding[];
+}
+
+export function planDefaults(snapshot: PlanSnapshot): PlanDefaults {
+  const retirementDefault = (snapshot.investments?.brokerAccounts ?? [])
+    .filter((a) => isRetirementAccount(a.name))
+    .reduce((s, a) => s + (a.totalValue || 0), 0);
+  const summary = snapshot.portfolioSummary;
+  return {
+    items: snapshot.debtPayments?.items ?? [],
+    // Retirement accounts get their own pot in the plan, so only taxable brokerage counts here.
+    investmentParts: [
+      {
+        label: 'Taxable brokerage',
+        value: Math.max(0, (summary?.brokerage ?? 0) - retirementDefault),
+      },
+      { label: 'Crypto', value: summary?.crypto ?? 0 },
+      { label: 'Metals', value: summary?.preciousMetals ?? 0 },
+    ].filter((p) => p.value > 0),
+    incomeMonthly: (snapshot.additionalIncome ?? []).reduce(
+      (s, x) => s + toMonthly(x.amount, x.frequency),
+      0
+    ),
+    retirementDefault,
+    holdings: cryptoHoldings(snapshot.crypto?.sources ?? []),
+  };
+}
+
+export interface PlanSetup {
+  debts: PlanDebt[];
+  loans: KeyedLoan[];
+  /** DocVault's total of investments outside retirement accounts. */
+  defaultInvestments: number;
+  /** Investments outside retirement accounts today: the saved figure, else DocVault's total. */
+  spendableNow: number;
+  /** The engine input for the plan as if you keep working. */
+  input: DebtPlanInput;
+}
+
+/** Saved settings plus DocVault's numbers, as the engine's input. Pure. */
+export function buildPlan(
+  settings: DebtPlanSettings,
+  defaults: PlanDefaults,
+  today?: Date
+): PlanSetup {
+  const debts = planDebts(defaults.items, settings);
+  const loans = planLoans(settings.plannedLoans);
+  const defaultInvestments = defaults.investmentParts.reduce((s, p) => s + p.value, 0);
+  const spendableNow = settings.investments ?? defaultInvestments;
+  // A holding with a price target or a sale moves on its own path, so its
+  // value comes out of the pot that grows at the plan rate.
+  const named = new Set([
+    ...settings.priceTargets.map((t) => t.asset),
+    ...settings.sales.map((s) => s.asset),
+  ]);
+  const tracked = defaults.holdings.filter((h) => named.has(h.asset));
+  return {
+    debts,
+    loans,
+    defaultInvestments,
+    spendableNow,
+    input: {
+      debts,
+      plannedLoans: loans,
+      incomeChanges: settings.incomeChanges,
+      holdings: tracked,
+      priceTargets: settings.priceTargets,
+      sales: settings.sales,
+      extraMonthly: settings.extraMonthly,
+      order: settings.order,
+      livingExpenses: settings.livingExpenses,
+      monthlySavings: settings.monthlySavings,
+      passiveIncome: settings.passiveIncome ?? defaults.incomeMonthly,
+      investments: Math.max(0, spendableNow - tracked.reduce((s, h) => s + h.value, 0)),
+      retirement: settings.retirement ?? defaults.retirementDefault,
+      retirementSavings: settings.retirementSavings,
+      retirementFrom: settings.retirementFrom,
+      birthMonth: settings.birthMonth,
+      realReturn: settings.realReturn,
+      withdrawalRate: settings.withdrawalRate,
+      ...(today ? { today } : {}),
+    },
+  };
+}
+
+export interface PlanOutlook {
+  /**
+   * The plan as if you keep working. Its dates are the headline: "financially
+   * free" is when you could stop.
+   */
+  result: DebtPlanResult;
+  /** The stop-working scenario, when a stop month is saved. */
+  stopResult: DebtPlanResult | null;
+  /** See fireNumber. */
+  fire: number | null;
+}
+
+export function planOutlook(setup: PlanSetup, stopWorking: string | null): PlanOutlook {
+  return {
+    result: projectDebtPlan(setup.input),
+    stopResult: stopWorking ? projectDebtPlan({ ...setup.input, stopWorking }) : null,
+    fire: fireNumber(setup.input),
+  };
 }

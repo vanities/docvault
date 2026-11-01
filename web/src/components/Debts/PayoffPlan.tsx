@@ -37,22 +37,19 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Money } from '../common/Money';
 import { formatMonthYear, formatTerm } from '../../utils/amortization';
-import type { DebtPaymentItem } from '../../../server/debt-payments';
 import {
+  buildPlan,
   DEFAULT_DEBT_PLAN_SETTINGS,
-  fireNumber,
   monthsBetween,
-  planDebts,
-  planLoans,
-  projectDebtPlan,
+  planOutlook,
   yearlyPoints,
-  type DebtPlanInput,
   type DebtPlanSettings,
   type Holding,
   type HoldingSale,
   type IncomeChange,
   type PayoffOrder,
   type PlanDebt,
+  type PlanDefaults,
   type PlannedLoan,
   type PriceTarget,
 } from '../../../server/debt-plan';
@@ -765,25 +762,12 @@ function SaleRow({
 }
 
 interface PayoffPlanProps {
-  /** The Debts list: every debt with a balance and a monthly payment. */
-  items: DebtPaymentItem[];
-  /** Investments outside retirement accounts, by kind: the default for that field. */
-  investmentParts: { label: string; value: number }[];
-  /** Monthly total of the Income page: the default for passive income. */
-  incomeMonthly: number;
-  /** DocVault's total of 401(k)s, IRAs and the like: the default for retirement accounts. */
-  retirementDefault: number;
-  /** Crypto by asset, for price targets and sales. */
-  holdings: Holding[];
+  /** The debts and the values behind blank fields, from the financial snapshot (planDefaults). */
+  defaults: PlanDefaults;
 }
 
-export function PayoffPlan({
-  items,
-  investmentParts,
-  incomeMonthly,
-  retirementDefault,
-  holdings,
-}: PayoffPlanProps) {
+export function PayoffPlan({ defaults }: PayoffPlanProps) {
+  const { items, investmentParts, incomeMonthly, retirementDefault, holdings } = defaults;
   const { blurNumbers } = useAppContext();
   const [settings, setSettings] = useState<DebtPlanSettings>(DEFAULT_DEBT_PLAN_SETTINGS);
   const [text, setText] = useState(() => allText(DEFAULT_DEBT_PLAN_SETTINGS));
@@ -854,27 +838,17 @@ export function PayoffPlan({
   const changeSale = (next: HoldingSale) =>
     update((s) => ({ sales: s.sales.map((x) => (x.id === next.id ? next : x)) }));
 
-  const { cardsPaidInFull, minimumOnly } = settings;
-  const debts = useMemo(
-    () => planDebts(items, { cardsPaidInFull, minimumOnly }),
-    [items, cardsPaidInFull, minimumOnly]
+  // The headline dates and the first two charts follow the plan as if you keep
+  // working: "financially free" is when you could stop. A stop month is its own
+  // scenario, read by its tile and the money chart.
+  const plan = useMemo(() => buildPlan(settings, defaults), [settings, defaults]);
+  const { debts, loans, defaultInvestments, spendableNow } = plan;
+  const { result, stopResult, fire } = useMemo(
+    () => planOutlook(plan, settings.stopWorking),
+    [plan, settings.stopWorking]
   );
-  const loans = useMemo(() => planLoans(settings.plannedLoans), [settings.plannedLoans]);
   const cards = items.filter((d) => d.card);
-  const defaultInvestments = investmentParts.reduce((s, p) => s + p.value, 0);
-  const passiveIncome = settings.passiveIncome ?? incomeMonthly;
-  // A holding with a price target or a sale moves on its own path, so its
-  // value comes out of the pot that grows at the plan rate.
   const { priceTargets, sales } = settings;
-  const tracked = useMemo(() => {
-    const named = new Set([...priceTargets.map((t) => t.asset), ...sales.map((s) => s.asset)]);
-    return holdings.filter((h) => named.has(h.asset));
-  }, [holdings, priceTargets, sales]);
-  const investments = Math.max(
-    0,
-    (settings.investments ?? defaultInvestments) - tracked.reduce((s, h) => s + h.value, 0)
-  );
-  const retirement = settings.retirement ?? retirementDefault;
   const untargeted = holdings.filter((h) => !priceTargets.some((t) => t.asset === h.asset));
   const assetChoices = (own: string) => [own, ...untargeted.map((h) => h.asset)];
   const payToOptions = [
@@ -896,43 +870,6 @@ export function PayoffPlan({
     payTo: settings.plannedLoans[0]?.id ?? debts[0]?.id ?? '',
   });
   const living = settings.livingExpenses;
-
-  const engineInput = useMemo<DebtPlanInput>(
-    () => ({
-      debts,
-      plannedLoans: loans,
-      incomeChanges: settings.incomeChanges,
-      holdings: tracked,
-      priceTargets,
-      sales,
-      extraMonthly: settings.extraMonthly,
-      order: settings.order,
-      livingExpenses: settings.livingExpenses,
-      monthlySavings: settings.monthlySavings,
-      passiveIncome,
-      investments,
-      retirement,
-      retirementSavings: settings.retirementSavings,
-      retirementFrom: settings.retirementFrom,
-      birthMonth: settings.birthMonth,
-      realReturn: settings.realReturn,
-      withdrawalRate: settings.withdrawalRate,
-    }),
-    [debts, loans, settings, tracked, priceTargets, sales, passiveIncome, investments, retirement]
-  );
-  // The headline dates and the first two charts follow the plan as if you keep
-  // working: "financially free" is when you could stop. A stop month is its own
-  // scenario, read by its tile and the money chart.
-  const result = useMemo(() => projectDebtPlan(engineInput), [engineInput]);
-  const stopResult = useMemo(
-    () =>
-      settings.stopWorking
-        ? projectDebtPlan({ ...engineInput, stopWorking: settings.stopWorking })
-        : null,
-    [engineInput, settings.stopWorking]
-  );
-  const fire = useMemo(() => fireNumber(engineInput), [engineInput]);
-  const spendableNow = settings.investments ?? defaultInvestments;
   /** Age in a given month, when a birth month is saved. */
   const ageAt = (ym: string | null) =>
     ym && settings.birthMonth ? Math.floor(monthsBetween(settings.birthMonth, ym) / 12) : null;

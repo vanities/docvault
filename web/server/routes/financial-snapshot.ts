@@ -68,6 +68,21 @@ function countedInLabel(countedIn: CountedIn, duplicateOf: string | undefined): 
   }
 }
 
+/**
+ * The snapshot JSON the Debts page reads, built in-process for server readers
+ * (the payoff-plan context source), so they start from the same numbers.
+ */
+export async function financialSnapshotJson(year: number): Promise<Record<string, unknown>> {
+  const url = new URL(`http://internal/api/financial-snapshot/${year}?format=json`);
+  const res = await handleFinancialSnapshotRoutes(new Request(url.toString()), url, url.pathname);
+  if (!res) throw new Error(`financial snapshot ${year}: no route matched`);
+  if (!res.ok) {
+    const detail = (await res.text()).replace(/\s+/g, ' ').slice(0, 300);
+    throw new Error(`financial snapshot ${year} returned ${res.status}: ${detail}`);
+  }
+  return (await res.json()) as Record<string, unknown>;
+}
+
 export async function handleFinancialSnapshotRoutes(
   req: Request,
   url: URL,

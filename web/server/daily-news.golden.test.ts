@@ -192,7 +192,9 @@ function seed(): void {
       },
     ],
   });
-  write('.docvault-broker-cache.json', { accounts: [{ id: 'b1', name: 'Acme Brokerage' }] });
+  write('.docvault-broker-cache.json', {
+    accounts: [{ id: 'b1', name: 'Acme Brokerage', holdings: [] }],
+  });
   write('.docvault-broker-activities.json', {
     accounts: {
       b1: {

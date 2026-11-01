@@ -2,7 +2,10 @@
 import { describe, expect, test } from 'vite-plus/test';
 import {
   applyDebtPlanPatch,
+  buildPlan,
   DEFAULT_DEBT_PLAN_SETTINGS,
+  planDefaults,
+  planOutlook,
   planDebts,
   planLoans,
   cryptoHoldings,
@@ -12,6 +15,7 @@ import {
   type DebtPlanInput,
   type KeyedLoan,
   type PlanDebt,
+  type PlanSnapshot,
 } from './debt-plan.js';
 import type { DebtPaymentItem } from './debt-payments.js';
 
@@ -662,5 +666,124 @@ describe('applyDebtPlanPatch', () => {
     expect(applyDebtPlanPatch(DEFAULT_DEBT_PLAN_SETTINGS, { minimumOnly: [42] }).invalid).toEqual([
       'minimumOnly',
     ]);
+  });
+});
+
+describe('planDefaults, buildPlan and planOutlook: the plan the Debts page shows', () => {
+  const van: DebtPaymentItem = {
+    source: 'manual',
+    name: 'Delivery Van',
+    kind: 'Auto loan',
+    balance: 12_000,
+    rate: 0.06,
+    monthlyPayment: 400,
+  };
+  const card: DebtPaymentItem = {
+    source: 'bank',
+    name: 'Rewards Card',
+    kind: 'Credit card',
+    balance: 1_000,
+    monthlyPayment: 35,
+    estimated: true,
+    card: true,
+  };
+  const snapshot: PlanSnapshot = {
+    debtPayments: { items: [van, card] },
+    additionalIncome: [
+      { amount: 1_200, frequency: 'monthly' },
+      { amount: 6_000, frequency: 'annually' },
+    ],
+    investments: {
+      brokerAccounts: [
+        { name: 'Acme 401(k)', totalValue: 50_000 },
+        { name: 'Acme Brokerage', totalValue: 35_000 },
+      ],
+    },
+    crypto: {
+      sources: [
+        {
+          balances: [
+            { asset: 'BTC', amount: 0.5, usdValue: 40_000 },
+            { asset: 'ETH', amount: 2, usdValue: 6_000 },
+          ],
+        },
+        { balances: [{ asset: 'BTC', amount: 0.25, usdValue: 20_000 }] },
+      ],
+    },
+    portfolioSummary: { brokerage: 85_000, crypto: 66_000, preciousMetals: 0 },
+  };
+
+  test('defaults come from the snapshot: retirement split out, income made monthly', () => {
+    expect(planDefaults(snapshot)).toEqual({
+      items: [van, card],
+      investmentParts: [
+        { label: 'Taxable brokerage', value: 35_000 },
+        { label: 'Crypto', value: 66_000 },
+      ],
+      incomeMonthly: 1_700,
+      retirementDefault: 50_000,
+      holdings: [
+        { asset: 'BTC', units: 0.75, value: 60_000 },
+        { asset: 'ETH', units: 2, value: 6_000 },
+      ],
+    });
+  });
+
+  test('an empty snapshot gives empty defaults instead of throwing', () => {
+    expect(planDefaults({})).toEqual({
+      items: [],
+      investmentParts: [],
+      incomeMonthly: 0,
+      retirementDefault: 0,
+      holdings: [],
+    });
+  });
+
+  test('blank fields take the defaults, and a price-target holding leaves the plan-rate pot', () => {
+    const setup = buildPlan(
+      {
+        ...DEFAULT_DEBT_PLAN_SETTINGS,
+        cardsPaidInFull: true,
+        priceTargets: [{ asset: 'BTC', price: 150_000, month: '2027-01' }],
+      },
+      planDefaults(snapshot),
+      TODAY
+    );
+    expect(setup.debts.map((d) => d.name)).toEqual(['Delivery Van']);
+    expect(setup.defaultInvestments).toBe(101_000);
+    expect(setup.spendableNow).toBe(101_000);
+    expect(setup.input).toMatchObject({
+      passiveIncome: 1_700,
+      investments: 41_000,
+      retirement: 50_000,
+      holdings: [{ asset: 'BTC', units: 0.75, value: 60_000 }],
+      today: TODAY,
+    });
+  });
+
+  test('saved figures win over the defaults', () => {
+    const setup = buildPlan(
+      { ...DEFAULT_DEBT_PLAN_SETTINGS, passiveIncome: 500, investments: 10_000, retirement: 0 },
+      planDefaults(snapshot)
+    );
+    expect(setup.spendableNow).toBe(10_000);
+    expect(setup.input).toMatchObject({ passiveIncome: 500, investments: 10_000, retirement: 0 });
+    expect(setup.input.today).toBeUndefined();
+  });
+
+  test('the outlook is the keep-working plan, the stop-working run and the FIRE number', () => {
+    const setup = buildPlan(
+      { ...DEFAULT_DEBT_PLAN_SETTINGS, livingExpenses: 3_000 },
+      planDefaults(snapshot),
+      TODAY
+    );
+    expect(planOutlook(setup, null)).toEqual({
+      result: projectDebtPlan(setup.input),
+      stopResult: null,
+      fire: fireNumber(setup.input),
+    });
+    expect(planOutlook(setup, '2027-01').stopResult).toEqual(
+      projectDebtPlan({ ...setup.input, stopWorking: '2027-01' })
+    );
   });
 });

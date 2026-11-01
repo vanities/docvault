@@ -245,3 +245,128 @@ describe('property equity', () => {
     ]);
   });
 });
+
+const { describePlanOutlook } = await import('./sources/payoff-plan.js');
+const { buildPlan, planOutlook, DEFAULT_DEBT_PLAN_SETTINGS } = await import('../debt-plan.js');
+import type { DebtPlanSettings } from '../debt-plan.js';
+
+describe('payoff plan projection', () => {
+  // Month 0 is January 2026, so the first payment lands in February.
+  const today = new Date(2026, 0, 15);
+  const van: DebtPaymentItem = {
+    source: 'manual',
+    name: 'Delivery Van',
+    kind: 'Auto loan',
+    balance: 12_000,
+    rate: 0,
+    monthlyPayment: 400,
+  };
+  const outlookLines = (patch: Partial<DebtPlanSettings>, items: DebtPaymentItem[] = [van]) => {
+    const settings: DebtPlanSettings = {
+      ...DEFAULT_DEBT_PLAN_SETTINGS,
+      investments: 0,
+      passiveIncome: 0,
+      realReturn: 0,
+      livingExpenses: 3_000,
+      ...patch,
+    };
+    const defaults = {
+      items,
+      investmentParts: [],
+      incomeMonthly: 0,
+      retirementDefault: 0,
+      holdings: [],
+    };
+    const setup = buildPlan(settings, defaults, today);
+    return describePlanOutlook(settings, setup, planOutlook(setup, settings.stopWorking));
+  };
+
+  test('the headline dates, the payoff order and the FIRE share read like the Debts page', () => {
+    const lines = outlookLines({ extraMonthly: 200, investments: 20_000_000 });
+    expect(lines.slice(0, 2)).toEqual([
+      "Payoff plan projection (today's dollars, as if you keep working): debt-free 2027-09 " +
+        "(in 20 months), 10 months sooner than paying only what's due (2028-07). Interest left $0.",
+      'Under the plan, in order: Delivery Van paid off 2027-09.',
+    ]);
+    expect(lines).toContain('Going out each month now: $600 to debt plus $3,000 living expenses.');
+    expect(lines).toContain('Financially free now: passive income already covers monthly needs.');
+    const fire = lines.find((l) => l.startsWith('FIRE number:'));
+    const share = Number(fire?.match(/there is \$20,000,000 now \((\d+)%\)\.$/)?.[1]);
+    // The page caps its tile at 999% to fit; a model should get the real ratio.
+    expect(share).toBeGreaterThan(999);
+  });
+
+  test('without living expenses the plan cannot date financial freedom', () => {
+    expect(outlookLines({ livingExpenses: 0 })).toContain(
+      'Financially free: no living expenses entered, so the plan cannot say.'
+    );
+  });
+
+  test('the stop-working scenario says when the money runs out, or its lowest point', () => {
+    const stop = { stopWorking: '2026-06', birthMonth: '1990-01' };
+    expect(outlookLines(stop)).toContain(
+      'If you stop working 2026-06: the money runs out 2026-06, at age 36.'
+    );
+    const lasts = outlookLines({ ...stop, investments: 20_000_000 }).at(-1);
+    expect(lasts).toMatch(
+      /^If you stop working 2026-06: the money lasts to age 95; lowest point \$[\d,]+ to draw on, in \d{4}-\d{2}, at age \d+\.$/
+    );
+  });
+
+  test('a debt a planned loan takes over reads as rolled in; a loan that never opens is left out', () => {
+    const lines = outlookLines({
+      plannedLoans: [
+        {
+          id: 'loan-1',
+          name: 'Example build loan',
+          start: '2026-04',
+          amount: 20_000,
+          rate: 0,
+          termMonths: 40,
+          paysOff: ['manual:Delivery Van'],
+          minimumOnly: false,
+        },
+        {
+          id: 'loan-2',
+          name: 'Someday loan',
+          start: '2099-01',
+          amount: 5_000,
+          rate: 0,
+          termMonths: 10,
+          paysOff: [],
+          minimumOnly: false,
+        },
+      ],
+    });
+    expect(lines.find((l) => l.startsWith('Under the plan'))).toMatch(
+      /^Under the plan, in order: Delivery Van rolled into Example build loan 2026-04; Example build loan paid off \d{4}-\d{2}\.$/
+    );
+    expect(lines).toContainEqual(
+      expect.stringMatching(
+        /^Planned loan "Example build loan" opens 2026-04 at \$[\d,]+, \$[\d,]+\/mo\.$/
+      )
+    );
+    expect(lines.join('\n')).not.toContain('Someday loan');
+  });
+
+  test('a debt whose payment does not cover its interest is called out', () => {
+    const loan: DebtPaymentItem = {
+      source: 'manual',
+      name: 'Acme Loan',
+      kind: 'Personal loan',
+      balance: 100_000,
+      rate: 0.12,
+      monthlyPayment: 500,
+    };
+    expect(outlookLines({}, [loan])).toContain(
+      "Acme Loan: the scheduled payment doesn't cover the interest, so only the plan's extra " +
+        'and rolled-over payments pay it off.'
+    );
+  });
+
+  test('nothing owed says so and lists no payoff order', () => {
+    const lines = outlookLines({}, []);
+    expect(lines[0]).toBe('Payoff plan projection: nothing owed now or under any planned loan.');
+    expect(lines.some((l) => l.startsWith('Under the plan'))).toBe(false);
+  });
+});
