@@ -96,12 +96,19 @@ describe('email-log', () => {
   });
 
   test('the log is capped at MAX_ENTRIES, dropping the oldest', async () => {
-    for (let n = 100; n < 100 + MAX_ENTRIES + 5; n++) await appendEmailLog(entry(n));
+    // Seed a full log in one write. Filling it with real appends rewrote the
+    // whole file 505 times and passed the 5 s timeout on CI (2026-11-01).
+    const full = Array.from({ length: MAX_ENTRIES }, (_, i) => entry(100 + i));
+    await fs.writeFile(EMAIL_LOG_PATH, JSON.stringify({ entries: full }));
+    for (let n = 100 + MAX_ENTRIES; n < 100 + MAX_ENTRIES + 5; n++) await appendEmailLog(entry(n));
+    // Read the file itself: readEmailLog returns at most MAX_ENTRIES rows
+    // anyway, so its output looks the same whether or not the file was capped.
+    const onDisk: EmailLogEntry[] = JSON.parse(await fs.readFile(EMAIL_LOG_PATH, 'utf-8')).entries;
+    expect(onDisk).toHaveLength(MAX_ENTRIES);
+    expect(onDisk[0].id).toBe('id-105');
+    expect(onDisk.at(-1)?.id).toBe(`id-${100 + MAX_ENTRIES + 4}`);
     const rows = await readEmailLog({ limit: MAX_ENTRIES });
-    expect(rows).toHaveLength(MAX_ENTRIES);
     expect(rows[0].id).toBe(`id-${100 + MAX_ENTRIES + 4}`);
-    // The very first entries of this file are gone.
-    expect(rows.some((r) => r.id === 'id-1')).toBe(false);
   });
 
   test('a corrupt file reads as empty instead of throwing', async () => {
