@@ -124,7 +124,7 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n
 export function applyFinish(
   assignment: Pick<Assignment, 'cadenceMinutes'>,
   finish: FinishInput,
-  ctx: { now: Date; trigger: RunTrigger }
+  ctx: { now: Date; trigger: RunTrigger; emailReply?: boolean }
 ): AppliedFinish {
   const warnings: string[] = [];
   const cadenceMinutes = clamp(
@@ -145,8 +145,10 @@ export function applyFinish(
     warnings.push(`next check ${Math.round(requested)}m clamped to ${Math.round(minutes)}m`);
   }
 
-  // A reply run happens while the owner is in the thread, so it never emails them.
-  const notify = finish.notify && ctx.trigger !== 'message' ? finish.notify : null;
+  // A reply run happens while the owner is in the thread, so it never emails them — unless the
+  // message came in by email (ctx.emailReply): then the answer goes back out the same way.
+  const notify =
+    finish.notify && (ctx.trigger !== 'message' || ctx.emailReply) ? finish.notify : null;
   if (finish.notify && !notify) warnings.push('notify ignored: the owner triggered this run');
 
   return {

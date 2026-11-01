@@ -14,6 +14,8 @@ export interface PromptInput {
   lastRunAt: string | null;
   /** Write tools an interrupted run already called. */
   interruptedWrites: string[];
+  /** The new owner message arrived by email, so the reply is emailed back. */
+  viaEmail?: boolean;
 }
 
 export function formatLocal(iso: string | Date, timeZone: string): string {
@@ -37,6 +39,12 @@ const TRIGGER_LINE: Record<RunTrigger, string> = {
   message: 'The owner wrote to you in the thread (below). Answer them.',
 };
 
+function triggerLine(trigger: RunTrigger, viaEmail: boolean): string {
+  return trigger === 'message' && viaEmail
+    ? 'The owner replied to your email (below). Answer them; your reply text is emailed back to them.'
+    : TRIGGER_LINE[trigger];
+}
+
 export function buildCheckInPrompt(input: PromptInput): string {
   const { assignment, trigger, now, timeZone } = input;
   const recent = input.transcript
@@ -48,7 +56,7 @@ export function buildCheckInPrompt(input: PromptInput): string {
 
   const sections = [
     `# Assignment: ${assignment.title}`,
-    `Local time: ${formatLocal(now, timeZone)} (${timeZone}). ${TRIGGER_LINE[trigger]} The default time between check-ins is ${assignment.cadenceMinutes} minutes.`,
+    `Local time: ${formatLocal(now, timeZone)} (${timeZone}). ${triggerLine(trigger, input.viaEmail === true)} The default time between check-ins is ${assignment.cadenceMinutes} minutes.`,
     `## Brief (written by the owner)\n${assignment.brief.trim()}`,
     `## Your notes from earlier check-ins\n${assignment.notes.trim() || '(none yet: this is the first check-in)'}`,
   ];
@@ -79,7 +87,9 @@ export function buildCheckInPrompt(input: PromptInput): string {
       '- notes: your complete working notes (they replace the old ones)',
       `- next_check_in_minutes or next_check_at (${LIMITS.minIntervalMinutes} minutes to ${LIMITS.maxIntervalMinutes / 1440} days), with the reason`,
       trigger === 'message'
-        ? '- notify: leave it out; the owner is here'
+        ? input.viaEmail
+          ? '- notify: leave it out; your reply text is emailed to the owner automatically'
+          : '- notify: leave it out; the owner is here'
         : '- notify: only when something the brief cares about changed, or the brief says to tell them',
       "- close: only when the brief's done condition is met",
     ].join('\n')

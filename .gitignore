@@ -178,6 +178,9 @@ web/scripts/*
 !web/server/assignments/prompt.test.ts
 !web/server/assignments/runner.test.ts
 !web/server/routes/assignments.test.ts
+# Exception: email-reply tests use fabricated addresses/tokens and a faked Resend API, no personal data
+!web/server/assignments/reply-address.test.ts
+!web/server/assignments/inbound-email.test.ts
 # Exception: assignments page helper and row render tests use a fabricated assignment, no personal data
 !web/src/components/Assignments/assignments.test.ts
 !web/src/components/Assignments/AssignmentsView.test.tsx

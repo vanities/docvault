@@ -5,6 +5,7 @@ import { readBrainContent } from '../brain.js';
 import {
   DATA_DIR,
   getAssignmentsModel,
+  getAssignmentsReplyDomain,
   getChatMode,
   getEmailConfig,
   loadConfig,
@@ -31,11 +32,13 @@ import { getConfiguredTimezone } from '../tz.js';
 import { createWriteLock } from '../write-lock.js';
 import { applyFinish, FINISH_TOOL_NAME, makeFinishTool, type FinishInput } from './finish.js';
 import { buildCheckInPrompt, buildRepairPrompt, formatLocal, localDate } from './prompt.js';
+import { buildReplyLocalPart } from './reply-address.js';
 import {
   appendEntries,
   appendRunLog,
   loadTranscript,
   newId,
+  newReplyToken,
   readRunLog,
   updateIndex,
 } from './store.js';
@@ -57,6 +60,8 @@ export interface RunnerDeps {
   resolveAgent: () => Promise<ClaudeAgent | { error: string }>;
   loadContext: () => Promise<RunnerContext>;
   recipient: () => Promise<string | null>;
+  /** Resend receiving domain for Reply-To addresses; null = email replies are off. */
+  replyDomain: () => Promise<string | null>;
   sendEmail: typeof sendEmail;
 }
 
@@ -74,6 +79,7 @@ export function defaultRunnerDeps(): RunnerDeps {
       timeZone: getConfiguredTimezone(await loadSettings()),
     }),
     recipient: async () => firstRecipient((await getEmailConfig()).toEmail),
+    replyDomain: getAssignmentsReplyDomain,
     sendEmail,
   };
 }
@@ -181,9 +187,15 @@ interface EmailPlan {
   changes: ToolUse[];
   nextCheckAt: string | null;
   assignmentId: string;
+  /** Local part of the Reply-To address; used only when a reply domain is configured. */
+  replyLocalPart: string | null;
 }
 
-function emailHtml(plan: EmailPlan, timeZone: string): { html: string; text: string } {
+function emailHtml(
+  plan: EmailPlan,
+  timeZone: string,
+  canReplyByEmail: boolean
+): { html: string; text: string } {
   const writes = plan.changes.filter((t) => t.write);
   const changesHtml = writes.length
     ? `<p style="margin:16px 0 4px;font-weight:600">Changes made</p><ul>${writes.map((t) => `<li>${escapeHtml(t.name)}${t.ok === false ? ' (failed)' : ''}</li>`).join('')}</ul>`
@@ -191,11 +203,14 @@ function emailHtml(plan: EmailPlan, timeZone: string): { html: string; text: str
   const next = plan.nextCheckAt
     ? `Next check: ${escapeHtml(formatLocal(plan.nextCheckAt, timeZone))}.`
     : 'No more check-ins are scheduled.';
-  const html = `<div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:15px;line-height:1.5;color:#1f2933;max-width:640px">${renderSafeMarkdown(plan.markdown)}${changesHtml}<p style="margin-top:20px;color:#6b7280;font-size:13px">${next} Reply, pause or close it in DocVault → Assignments.</p></div>`;
+  const followUp = canReplyByEmail
+    ? 'Reply to this email, or pause or close it in DocVault → Assignments.'
+    : 'Reply, pause or close it in DocVault → Assignments.';
+  const html = `<div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:15px;line-height:1.5;color:#1f2933;max-width:640px">${renderSafeMarkdown(plan.markdown)}${changesHtml}<p style="margin-top:20px;color:#6b7280;font-size:13px">${next} ${followUp}</p></div>`;
   const text = [
     plan.markdown,
     writes.length ? `Changes made:\n${writes.map((t) => `- ${t.name}`).join('\n')}` : '',
-    `${plan.nextCheckAt ? `Next check: ${formatLocal(plan.nextCheckAt, timeZone)}.` : 'No more check-ins are scheduled.'} Reply, pause or close it in DocVault → Assignments.`,
+    `${plan.nextCheckAt ? `Next check: ${formatLocal(plan.nextCheckAt, timeZone)}.` : 'No more check-ins are scheduled.'} ${followUp}`,
   ]
     .filter(Boolean)
     .join('\n\n');
@@ -213,11 +228,17 @@ async function deliver(
     log.warn(`[email] skipped assignment=${plan.assignmentId}: no recipient configured`);
     return 'No email recipient configured';
   }
-  const { html, text } = emailHtml(plan, timeZone);
+  const domain = await deps.replyDomain();
+  const replyTo =
+    domain && plan.replyLocalPart
+      ? `DocVault Assignments <${plan.replyLocalPart}@${domain}>`
+      : undefined;
+  const { html, text } = emailHtml(plan, timeZone, Boolean(replyTo));
   const res = await deps.sendEmail({
     purpose: 'news',
     to,
     cc: '',
+    ...(replyTo ? { replyTo } : {}),
     subject: plan.subject,
     html,
     text,
@@ -251,6 +272,8 @@ export async function runAssignment(
       if (index.pausedAll) return { skip: 'all assignments are paused' };
       if (a.status !== 'active') return { skip: `status is ${a.status}` };
     }
+    // Assignments created before email replies existed have no reply token yet.
+    if (!a.replyToken) a.replyToken = newReplyToken();
     if (a.counters.day !== today) a.counters = { day: today, runs: 0, emails: 0 };
     if (trigger === 'scheduled' && a.counters.runs >= LIMITS.runsPerDay) {
       a.nextCheckAt = minutesFrom(startedAt, LIMITS.defaultIntervalMinutes);
@@ -287,6 +310,9 @@ export async function runAssignment(
       finish: FinishInput | null;
     } = { replyText: '', rateLimit: null, finish: null };
     let turn: ClaudeTurnResult = { result: null, error: null, aborted: false };
+    // A reply run whose new owner message came in by email mails the answer back; the UI
+    // assumption ("the owner is here") only holds for messages typed into the thread.
+    let viaEmail = false;
 
     try {
       const agent = await deps.resolveAgent();
@@ -295,6 +321,11 @@ export async function runAssignment(
         turn = { result: null, error: agent.error, aborted: false };
       } else {
         const transcript = await loadTranscript(id, deps.dataDir);
+        viaEmail =
+          trigger === 'message' &&
+          transcript.some(
+            (e) => e.kind === 'you' && e.via === 'email' && (!a.lastRun?.at || e.at > a.lastRun.at)
+          );
         const prompt = buildCheckInPrompt({
           assignment: a,
           trigger,
@@ -303,6 +334,7 @@ export async function runAssignment(
           transcript,
           lastRunAt: a.lastRun?.at ?? null,
           interruptedWrites: await interruptedWrites(id, deps.dataDir),
+          viaEmail,
         });
         const systemPrompt =
           buildSystemPrompt(undefined, context.brain, 'claude', {
@@ -468,7 +500,9 @@ export async function runAssignment(
     const now = deps.now();
     const nowIso = now.toISOString();
     const applied =
-      outcome === 'ok' && live.finish ? applyFinish(a, live.finish, { now, trigger }) : null;
+      outcome === 'ok' && live.finish
+        ? applyFinish(a, live.finish, { now, trigger, emailReply: viaEmail })
+        : null;
     const replyText = live.replyText;
     if (applied) warnings.push(...applied.warnings);
     const toolList = [...tools.values()];
@@ -482,6 +516,7 @@ export async function runAssignment(
       const cur = index.assignments[id];
       if (!cur) return;
       cur.updatedAt = nowIso;
+      const replyLocalPart = cur.replyToken ? buildReplyLocalPart(id, cur.replyToken) : null;
       // Only run-owned fields change here; a pause, close or brief edit made mid-run wins.
       if (outcome === 'ok') {
         cur.consecutiveFailures = 0;
@@ -507,17 +542,31 @@ export async function runAssignment(
           cur.nextCheckAt = null;
         }
         entryNextCheck = cur.nextCheckAt;
-        if (applied?.notify && cur.counters.emails < LIMITS.emailsPerDay) {
+        // An email reply always gets an emailed answer (the reply text); a UI reply only emails
+        // when the agent calls notify, which applyFinish already blocks for UI replies.
+        const plannedEmail: { subject: string; markdown: string } | null = viaEmail
+          ? {
+              subject: `${cur.title}: ${applied?.notify?.subject ?? applied?.headline ?? 'reply'}`,
+              markdown:
+                replyText.trim() || applied?.notify?.body || applied?.headline || '(no reply text)',
+            }
+          : applied?.notify
+            ? {
+                subject: `${cur.title}: ${applied.notify.subject}`,
+                markdown: applied.notify.body,
+              }
+            : null;
+        if (plannedEmail && cur.counters.emails < LIMITS.emailsPerDay) {
           cur.counters.emails += 1;
           cur.unread += 1;
           emails.push({
-            subject: `${cur.title}: ${applied.notify.subject}`,
-            markdown: applied.notify.body,
+            ...plannedEmail,
             changes: toolList,
             nextCheckAt: cur.nextCheckAt,
             assignmentId: id,
+            replyLocalPart,
           });
-        } else if (applied?.notify) {
+        } else if (plannedEmail) {
           warnings.push(`email skipped: daily limit of ${LIMITS.emailsPerDay}`);
         }
         if (closing) {
@@ -528,6 +577,7 @@ export async function runAssignment(
             changes: toolList,
             nextCheckAt: null,
             assignmentId: id,
+            replyLocalPart,
           });
         }
       } else if (outcome === 'rate-limited') {
@@ -549,6 +599,7 @@ export async function runAssignment(
             changes: [],
             nextCheckAt: null,
             assignmentId: id,
+            replyLocalPart,
           });
         }
       } else if (outcome === 'refused') {
@@ -566,6 +617,7 @@ export async function runAssignment(
             changes: [],
             nextCheckAt: null,
             assignmentId: id,
+            replyLocalPart,
           });
         }
         entryNextCheck = cur.nextCheckAt;
@@ -586,6 +638,7 @@ export async function runAssignment(
             changes: [],
             nextCheckAt: cur.nextCheckAt,
             assignmentId: id,
+            replyLocalPart,
           });
         }
       }

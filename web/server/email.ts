@@ -41,6 +41,8 @@ export interface SendEmailInput {
   from?: string;
   /** Carbon copy. Defaults to the configured CC for `purpose`; pass '' to suppress it. */
   cc?: string;
+  /** Reply-To "Name <addr>" or bare address, when replies should go somewhere readable. */
+  replyTo?: string;
   subject: string;
   html: string;
   text?: string;
@@ -129,6 +131,7 @@ export function buildResendPayload(
     html: input.html,
   };
   if (cc.length) payload.cc = cc;
+  if (input.replyTo) payload.reply_to = input.replyTo;
   if (input.text) payload.text = input.text;
   if (input.attachments?.length) {
     payload.attachments = input.attachments.map((a) => ({

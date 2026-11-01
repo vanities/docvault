@@ -6,7 +6,7 @@
 //   DATA_DIR/assignments/<id>.runs.jsonl      run log; tool calls are appended as they happen
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { DATA_DIR, ensureDir } from '../data.js';
 import { createLogger } from '../logger.js';
 import { createWriteLock, writeJsonAtomic } from '../write-lock.js';
@@ -39,6 +39,11 @@ export function isValidAssignmentId(id: string): boolean {
 
 export function newId(): string {
   return randomUUID();
+}
+
+/** 16 hex chars; the secret in the assignment's Reply-To address (reply-address.ts). */
+export function newReplyToken(): string {
+  return randomBytes(8).toString('hex');
 }
 
 // A fresh object every call: callers mutate what they get back.
@@ -162,6 +167,7 @@ export function blankAssignment(
     failureEmailedAt: null,
     counters: { day: '', runs: 0, emails: 0 },
     toolAllowlist: null,
+    replyToken: newReplyToken(),
     outcome: null,
     createdAt: nowIso,
     updatedAt: nowIso,

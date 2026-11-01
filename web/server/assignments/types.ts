@@ -65,6 +65,12 @@ export interface Assignment {
   counters: { day: string; runs: number; emails: number };
   /** Tool names (as chat shows them) this assignment may use; null = every tool. */
   toolAllowlist: string[] | null;
+  /**
+   * Secret in this assignment's Reply-To address (reply-address.ts); an inbound email speaks for
+   * the owner only if it carries it. Absent on assignments created before email replies existed;
+   * the runner backfills it when it claims a run.
+   */
+  replyToken?: string;
   outcome: string | null;
   createdAt: string;
   updatedAt: string;
@@ -91,6 +97,8 @@ export interface TranscriptEntry {
   id: string;
   at: string;
   kind: EntryKind;
+  /** Set when an owner message arrived by email; its reply run emails the answer back. */
+  via?: 'email';
   markdown: string;
   runId?: string;
   trigger?: RunTrigger;

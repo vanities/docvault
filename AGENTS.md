@@ -170,6 +170,7 @@ Missing any of these causes the sidebar click to silently render the wrong view.
 2. Unattended turns can't wait for a confirmation. A tool description or prompt line that asks the user to confirm gets rewritten for those turns, and `chat.unattended.test.ts` fails if a tool description still says "confirm" there.
 3. Tool calls go into the run log as they happen; that is how a run interrupted by a restart tells the next one which writes it already made.
 4. A refused check-in pauses its assignment instead of backing off. A safeguard refusal arrives as `invalid_request`, and the next check-in would send nearly the same request, so a retry on a timer only adds flagged requests to the owner's account. The runner emails once per pause, and `runner.test.ts` fails if a refusal goes back to retrying.
+5. Replying to an assignment email works when `assignmentsReplyDomain` (a Resend receiving domain) is set: each email's Reply-To carries a per-assignment secret token, and a poller (`assignments/inbound-email.ts`) matches replies by that token, requires the owner as sender, and drops auto-generated mail so an out-of-office can't start a run loop. A reply that arrived by email gets its answer emailed back; a UI reply still never emails. The poller's seen ledger is `.docvault-inbound-email.json`.
 
 Assignments run on the Claude backend only, because Codex has no DocVault write tools. Check-ins use `settings.assignmentsModel` when set, else chat's `claudeModel` (`getAssignmentsModel`, `web/server/data.ts`); the setting exists because a model's safeguards can refuse unattended check-ins while chat passes (Opus 5.5, 2026-10-30).
 
@@ -189,6 +190,7 @@ All state lives in `DATA_DIR` (default repository-root `data/`, `/data` in Docke
 | `.docvault-metadata.json`    | Document tags/notes                                                                |
 | `.docvault-sync-status.json` | Dropbox sync status (written by NAS cron)                                          |
 | `.docvault-email-log.json`   | Sent-mail log: every outbound email attempt, newest 500 (Settings → Email)         |
+| `.docvault-inbound-email.json` | Assignment email replies the server already processed (Resend receiving ids)     |
 | `.docvault-debt-plan.json`   | Debts → Payoff plan inputs (living expenses, extra payment, growth assumptions)    |
 
 Entity types: `tax` (year-based views with income/expenses) or `docs` (flat file listing).

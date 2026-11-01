@@ -86,6 +86,7 @@ import { handleAlertsRoutes } from './routes/alerts.js';
 import { startAlertsWatchdog } from './alerts.js';
 import { handleAssignmentsRoutes } from './routes/assignments.js';
 import { startAssignmentScheduler } from './assignments/scheduler.js';
+import { startInboundEmailPoller } from './assignments/inbound-email.js';
 import { handleChatRoutes } from './routes/chat.js';
 import { handleTranscribeRoutes } from './routes/transcribe.js';
 import { handleExternalSourcesRoutes } from './routes/external-sources.js';
@@ -2338,6 +2339,7 @@ if (import.meta.main) {
   }
   startAlertsWatchdog(DATA_DIR);
   startAssignmentScheduler();
+  startInboundEmailPoller();
   try {
     // Any research video/audio transcription left mid-flight by a restart is
     // flipped from pending/running → error so it isn't stuck forever (retry via

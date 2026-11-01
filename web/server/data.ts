@@ -198,6 +198,12 @@ export interface Settings {
   /** Claude model for assignment check-ins; unset = follow claudeModel. */
   assignmentsModel?: string;
   /**
+   * Resend receiving domain for replies to assignment emails (e.g. an account's *.resend.app
+   * subdomain, or a custom domain with Resend's receiving MX record). When set, assignment emails
+   * carry a per-assignment Reply-To there and the server polls Resend for replies. Unset = off.
+   */
+  assignmentsReplyDomain?: string;
+  /**
    * HTTP endpoint for an OpenAI-compatible /audio/transcriptions service —
    * e.g. whisper.cpp server, faster-whisper-server, parakeet-mlx server.
    * The /api/transcribe route forwards multipart audio uploads here.
@@ -560,6 +566,13 @@ export async function getClaudeModel(): Promise<string> {
 export async function getAssignmentsModel(): Promise<string> {
   const settings = await loadSettings();
   return settings.assignmentsModel || settings.claudeModel || DEFAULT_MODEL;
+}
+
+/** Resend receiving domain for assignment email replies; null = the feature is off. */
+export async function getAssignmentsReplyDomain(): Promise<string | null> {
+  const settings = await loadSettings();
+  const domain = settings.assignmentsReplyDomain?.trim().toLowerCase().replace(/^@/, '');
+  return domain || null;
 }
 
 /** Chat execution mode: 'agent' (Claude Code / Codex on the subscription) or

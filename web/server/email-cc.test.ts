@@ -134,3 +134,21 @@ describe('resolveEmailCc (settings → per-purpose lists)', () => {
     expect(resolveEmailCc(undefined)).toEqual({ news: undefined, client: undefined });
   });
 });
+
+describe('buildResendPayload reply_to', () => {
+  test('replyTo becomes reply_to in the payload, and is left out when absent', () => {
+    const withReply = buildResendPayload(
+      {
+        ...client,
+        to: 'client@acme.test',
+        replyTo: 'DocVault <a-1234abcd-0123456789abcdef@replies.example.test>',
+      },
+      CFG
+    );
+    expect(withReply.payload?.reply_to).toBe(
+      'DocVault <a-1234abcd-0123456789abcdef@replies.example.test>'
+    );
+    const without = buildResendPayload({ ...client, to: 'client@acme.test' }, CFG);
+    expect(without.payload).not.toHaveProperty('reply_to');
+  });
+});

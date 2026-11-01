@@ -49,6 +49,7 @@ const deps: RunnerDeps = {
     timeZone: 'America/Chicago',
   }),
   recipient: async () => 'owner@example.com',
+  replyDomain: async () => null,
   sendEmail: (async () => ({ ok: true })) as unknown as RunnerDeps['sendEmail'],
 };
 

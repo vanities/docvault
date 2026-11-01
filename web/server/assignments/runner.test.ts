@@ -17,6 +17,7 @@ import type { ClaudeTurnOptions, ClaudeTurnResult } from '../routes/chat.js';
 import { localDate } from './prompt.js';
 import { recoverInterruptedRuns, runAssignment, type RunnerDeps } from './runner.js';
 import {
+  appendEntries,
   appendRunLog,
   blankAssignment,
   loadIndex,
@@ -36,6 +37,7 @@ type SentEmail = {
   purpose: string;
   to?: string;
   cc?: string;
+  replyTo?: string;
   subject: string;
   html: string;
   ref?: string;
@@ -66,6 +68,7 @@ function deps(runTurn: Turn, over: Partial<RunnerDeps> = {}): RunnerDeps {
       timeZone: TZ,
     }),
     recipient: async () => 'owner@example.com',
+    replyDomain: async () => null,
     sendEmail: sendEmail as unknown as RunnerDeps['sendEmail'],
     ...over,
   };
@@ -345,6 +348,88 @@ describe('notifications', () => {
     expect(a.closedAt).toBe(new Date(clock.now).toISOString());
     expect(a.nextCheckAt).toBeNull();
     expect(sent.map((e) => e.subject)).toEqual(['Watch Acme Bank rates: closed']);
+  });
+});
+
+describe('email replies', () => {
+  const replyDomain = async () => 'replies.example.test';
+
+  test('emails carry the assignment Reply-To when a reply domain is configured', async () => {
+    const id = await create();
+    await runAssignment(
+      id,
+      'scheduled',
+      deps(
+        async (opts) => {
+          await finish(opts, { notify: { subject: 'Rate moved', body: 'Acme cut to 3.9%.' } });
+          return success();
+        },
+        { replyDomain }
+      )
+    );
+    const token = (await get(id)).replyToken!;
+    expect(token).toMatch(/^[0-9a-f]{16}$/);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].replyTo).toBe(
+      `DocVault Assignments <a-${id.slice(0, 8)}-${token}@replies.example.test>`
+    );
+    expect(sent[0].html).toContain('Reply to this email');
+  });
+
+  test('an assignment created before reply tokens existed gets one at its next run', async () => {
+    const id = await create({ replyToken: undefined });
+    expect((await get(id)).replyToken).toBeUndefined();
+    await runAssignment(
+      id,
+      'scheduled',
+      deps(async (opts) => {
+        await finish(opts, {});
+        return success();
+      })
+    );
+    expect((await get(id)).replyToken).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  test('a message that arrived by email is answered by email', async () => {
+    const id = await create();
+    await appendEntries(
+      id,
+      [
+        {
+          id: newId(),
+          at: new Date(clock.now).toISOString(),
+          kind: 'you',
+          via: 'email',
+          markdown: 'Any change since this morning?',
+        },
+      ],
+      dataDir
+    );
+    let prompt = '';
+    await runAssignment(
+      id,
+      'message',
+      deps(
+        async (opts) => {
+          prompt = String(opts.prompt);
+          opts.send({ type: 'text', text: 'No change: Acme still pays 4.1%.' });
+          await finish(opts, { headline: 'Still 4.1%' });
+          return success();
+        },
+        { replyDomain }
+      )
+    );
+    expect(prompt).toContain('replied to your email');
+    expect(sent).toHaveLength(1);
+    expect(sent[0].subject).toBe('Watch Acme Bank rates: Still 4.1%');
+    expect(sent[0].html).toContain('No change: Acme still pays 4.1%.');
+    const a = await get(id);
+    expect(a.unread).toBe(1);
+    expect(a.lastRun?.emailed).toBe(true);
+    expect((await loadTranscript(id, dataDir)).at(-1)).toMatchObject({
+      kind: 'reply',
+      emailed: true,
+    });
   });
 });
 
