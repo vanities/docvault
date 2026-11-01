@@ -7,8 +7,16 @@
 
 import { createLogger } from '../logger.js';
 import { contextHistory, type ContextHistory } from './history.js';
+import {
+  alertsSource,
+  assignmentsSource,
+  chatsSource,
+  emailLogSource,
+  systemHealthSource,
+} from './sources/activity.js';
 import { bankAccountsSource } from './sources/bank-accounts.js';
 import { bankTransactionsSource } from './sources/bank-transactions.js';
+import { timesheetSource } from './sources/business.js';
 import { calendarSource } from './sources/calendar.js';
 import { debtsSource } from './sources/debts.js';
 import { deepResearchSource, documentsSource, todosSource } from './sources/documents.js';
@@ -29,8 +37,16 @@ import {
 } from './sources/finance.js';
 import { healthAnalysesSource, healthSource } from './sources/health.js';
 import { marketQuotesSource, marketSignalsSource, netWorthSource } from './sources/markets.js';
+import { brainSource, editionsSource } from './sources/memory.js';
+import { weatherSource } from './sources/outlook.js';
+import { payoffPlanSource } from './sources/payoff-plan.js';
 import { politicsSource } from './sources/politics.js';
-import { localNewsSource, researchFilingsSource, researchSource } from './sources/research.js';
+import {
+  externalSourcesSource,
+  localNewsSource,
+  researchFilingsSource,
+  researchSource,
+} from './sources/research.js';
 import type { ContextSource } from './types.js';
 
 const log = createLogger('Context');
@@ -45,8 +61,10 @@ export const CONTEXT_SOURCES: readonly ContextSource[] = [
   bankAccountsSource,
   bankTransactionsSource,
   debtsSource,
+  payoffPlanSource,
   politicsSource,
   researchSource,
+  externalSourcesSource,
   localNewsSource,
   salesSource,
   mileageSource,
@@ -61,6 +79,7 @@ export const CONTEXT_SOURCES: readonly ContextSource[] = [
   contributionsSource,
   assetsSource,
   federalReturnsSource,
+  timesheetSource,
   healthSource,
   healthAnalysesSource,
   calendarSource,
@@ -68,6 +87,14 @@ export const CONTEXT_SOURCES: readonly ContextSource[] = [
   documentsSource,
   deepResearchSource,
   todosSource,
+  alertsSource,
+  assignmentsSource,
+  chatsSource,
+  emailLogSource,
+  systemHealthSource,
+  weatherSource,
+  brainSource,
+  editionsSource,
 ];
 
 export function getContextSource(id: string): ContextSource | undefined {

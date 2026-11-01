@@ -1,5 +1,7 @@
 import { promises as fs } from 'fs';
+import path from 'path';
 import {
+  DATA_DIR,
   BROKER_ACTIVITIES_FILE,
   BROKER_CACHE_FILE,
   CRYPTO_CACHE_FILE,
@@ -16,6 +18,7 @@ import {
   type EstimatedTaxPayment,
 } from '../../data.js';
 import { getLatestStrategy } from '../../routes/strategy.js';
+import { money } from '../format.js';
 import { ReadCollector, windowTest } from '../request.js';
 import type { ContextRequest, ContextSource } from '../types.js';
 
@@ -23,7 +26,7 @@ import type { ContextRequest, ContextSource } from '../types.js';
 const taxYearOf = (req: ContextRequest) => Number(req.today.slice(0, 4));
 
 /** Estimated-tax and contribution stores are keyed by `entity/year`
- *  ("personal/2026", "consulting-llc/2025"); some legacy data uses a bare year.
+ *  ("personal/2026", "acme-llc/2025"); some legacy data uses a bare year.
  *  Totals span every entity, the way the financial snapshot adds them up. */
 export function bucketsForYear<T>(data: Record<string, T>, year: number): T[] {
   const y = String(year);
@@ -72,6 +75,15 @@ export function describeEstimatedTaxState(
     schedule +
     '.'
   );
+}
+
+async function readOptionalJson<T>(file: string): Promise<T | null> {
+  try {
+    return JSON.parse(await fs.readFile(file, 'utf-8')) as T;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
+  }
 }
 
 async function fileExists(p: string): Promise<boolean> {
@@ -214,8 +226,12 @@ export const cryptoSource: ContextSource = {
   label: 'Crypto holdings',
   group: 'finance',
   description: 'Current crypto holdings: total value and the largest assets.',
-  files: ['.docvault-crypto-cache.json'],
-  async read() {
+  files: [
+    '.docvault-crypto-cache.json',
+    '.docvault-crypto-gains.json',
+    '.docvault-crypto-yields.json',
+  ],
+  async read(req) {
     const r = new ReadCollector();
     await r.part('finance/crypto', async () => {
       const portfolio = JSON.parse(await fs.readFile(CRYPTO_CACHE_FILE, 'utf-8')) as {
@@ -232,6 +248,52 @@ export const cryptoSource: ContextSource = {
         .join(', ');
       r.lines.push(
         `Crypto holdings ~$${Math.round(portfolio.totalUsdValue).toLocaleString()}${top ? ` (top: ${top})` : ''}.`
+      );
+    });
+    if (!req.full && req.purpose !== 'query') return r.result();
+    await r.part('finance/crypto-gains', async () => {
+      const g = await readOptionalJson<{
+        assets?: Array<{ asset?: string }>;
+        totalCostBasis?: number;
+        totalCurrentValue?: number;
+        totalUnrealizedGain?: number;
+        totalShortTermGain?: number;
+        totalLongTermGain?: number;
+        tradeCount?: number;
+      }>(path.join(DATA_DIR, '.docvault-crypto-gains.json'));
+      if (!g || typeof g.totalCostBasis !== 'number') return;
+      // Gains cover only coins with exchange trade history; holdings that
+      // arrived another way (a transfer, a gift) aren't in them, so the scope
+      // has to be stated next to a much larger holdings total.
+      const assets = (g.assets ?? []).map((a) => a.asset).filter(Boolean);
+      const usd = (n?: number) => money(Math.round(n ?? 0));
+      r.lines.push(
+        `Crypto with trade history (${assets.join(', ') || 'no assets'}; ${g.tradeCount ?? 0} trades): ` +
+          `cost basis ${usd(g.totalCostBasis)}, worth ${usd(g.totalCurrentValue)} now, unrealized ` +
+          `${usd(g.totalUnrealizedGain)} (short-term ${usd(g.totalShortTermGain)}, long-term ` +
+          `${usd(g.totalLongTermGain)}).`
+      );
+    });
+    await r.part('finance/crypto-yields', async () => {
+      const [y, cache] = await Promise.all([
+        readOptionalJson<{
+          entries?: Record<string, { sourceId?: string; asset?: string; yieldApy?: number }>;
+        }>(path.join(DATA_DIR, '.docvault-crypto-yields.json')),
+        readOptionalJson<{ sources?: Array<{ sourceId?: string; label?: string }> }>(
+          CRYPTO_CACHE_FILE
+        ),
+      ]);
+      const labelOf = new Map((cache?.sources ?? []).map((s) => [s.sourceId, s.label]));
+      const rows = Object.values(y?.entries ?? {}).filter((e) => typeof e.yieldApy === 'number');
+      if (!rows.length) return;
+      // Stored as a percent already (the route accepts 0 to 1000).
+      r.lines.push(
+        `Crypto yields: ${rows
+          .map(
+            (e) =>
+              `${e.asset} ${e.yieldApy!.toFixed(2)}% (${labelOf.get(e.sourceId) ?? e.sourceId})`
+          )
+          .join(', ')}.`
       );
     });
     return r.result();

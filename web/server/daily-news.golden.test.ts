@@ -433,6 +433,351 @@ function seed(): void {
     cursors: {},
     seen: { houseDocIds: [], ogeDocIds: [], senateFilingIds: [] },
   });
+  write('.docvault-timesheet.json', {
+    version: 1,
+    clients: [
+      { id: 'c1', name: 'Acme Corp' },
+      { id: 'c2', name: 'Globex' },
+    ],
+    projects: [
+      { id: 'p1', clientId: 'c1', name: 'Platform', hourlyRate: 100 },
+      { id: 'p2', clientId: 'c2', name: 'Audit', hourlyRate: 120 },
+    ],
+    entries: [
+      {
+        id: 't1',
+        projectId: 'p1',
+        date: '2026-03-12',
+        durationMinutes: 180,
+        description: 'Build',
+        hourlyRate: 100,
+        amount: 300,
+        billable: true,
+        invoiced: false,
+      },
+      {
+        id: 't2',
+        projectId: 'p2',
+        date: '2026-03-14',
+        durationMinutes: 90,
+        description: 'Review',
+        hourlyRate: 120,
+        amount: 180,
+        billable: true,
+        invoiced: false,
+      },
+      {
+        id: 't3',
+        projectId: 'p1',
+        date: '2026-02-20',
+        durationMinutes: 60,
+        description: 'Setup',
+        hourlyRate: 100,
+        amount: 100,
+        billable: true,
+        invoiced: true,
+        invoiceId: 'inv1',
+      },
+    ],
+    invoices: [
+      {
+        id: 'inv1',
+        number: '2026/001',
+        clientId: 'c1',
+        clientName: 'Acme Corp',
+        issueDate: '2026-03-10',
+        dueDate: '2026-04-09',
+        status: 'new',
+        currency: 'USD',
+        totalMinutes: 60,
+        subtotal: 100,
+        vat: 0,
+        tax: 0,
+        total: 100,
+        lines: [],
+        entryIds: ['t3'],
+        createdAt: '2026-03-10T12:00:00.000Z',
+        sentAt: '2026-03-10T12:05:00.000Z',
+      },
+      {
+        id: 'inv0',
+        number: '2025/012',
+        clientId: 'c2',
+        clientName: 'Globex',
+        issueDate: '2026-01-31',
+        dueDate: '2026-03-02',
+        status: 'paid',
+        currency: 'USD',
+        totalMinutes: 480,
+        subtotal: 960,
+        vat: 0,
+        tax: 0,
+        total: 960,
+        lines: [],
+        entryIds: [],
+        paymentDate: '2026-03-11',
+        createdAt: '2026-01-31T12:00:00.000Z',
+      },
+    ],
+  });
+  write('.docvault-alerts.json', {
+    version: 1,
+    sources: {
+      lending: {
+        id: 'lending',
+        label: 'Lending watch',
+        reportedAt: '2026-03-15T14:00:00.000Z',
+        failures: 0,
+        series: [],
+        checks: [
+          {
+            id: 'exit',
+            label: 'Exit capacity',
+            scope: 'Acme Vault',
+            severity: 'critical',
+            active: true,
+            value: '3%',
+            threshold: '5%',
+            since: '2026-03-13T09:00:00.000Z',
+            lastAlertAt: '2026-03-13T09:00:00.000Z',
+          },
+        ],
+      },
+    },
+    log: [
+      {
+        at: '2026-03-13T09:00:00.000Z',
+        sourceId: 'lending',
+        kind: 'trip',
+        subject: 'ACT NOW: Exit closing',
+        ok: true,
+        checkIds: ['exit'],
+      },
+      {
+        at: '2026-03-01T09:00:00.000Z',
+        sourceId: 'lending',
+        kind: 'trip',
+        subject: 'Old trip outside every window',
+        ok: true,
+        checkIds: ['exit'],
+      },
+    ],
+  });
+  write('.docvault-assignments.json', {
+    version: 1,
+    pausedAll: false,
+    pausedAllReason: null,
+    assignments: {
+      a1: {
+        id: 'a1',
+        title: 'Watch the vault',
+        brief: 'Tell me when exit capacity recovers.',
+        status: 'active',
+        notes: '',
+        cadenceMinutes: 360,
+        nextCheckAt: '2026-03-15T18:00:00.000Z',
+        running: null,
+        pendingRun: null,
+        unread: 0,
+        lastRun: {
+          runId: 'r2',
+          at: '2026-03-14T18:00:00.000Z',
+          trigger: 'scheduled',
+          ok: true,
+          headline: 'Exit capacity back to 6%',
+          emailed: true,
+          error: null,
+        },
+        consecutiveFailures: 0,
+        failureEmailedAt: null,
+        counters: { day: '2026-03-14', runs: 1, emails: 1 },
+        toolAllowlist: null,
+        outcome: null,
+        createdAt: '2026-03-01T00:00:00.000Z',
+        updatedAt: '2026-03-14T18:00:00.000Z',
+        closedAt: null,
+      },
+    },
+  });
+  mkdirSync(path.join(DATA, 'assignments'), { recursive: true });
+  writeFileSync(
+    path.join(DATA, 'assignments', 'a1.runs.jsonl'),
+    [
+      {
+        runId: 'r1',
+        at: '2026-03-12T18:00:00.000Z',
+        event: 'end',
+        outcome: 'ok',
+        durationMs: 900,
+        costUsd: null,
+        emailed: false,
+        headline: 'Exit capacity at 3%, still closed',
+        warnings: [],
+        error: null,
+      },
+      {
+        runId: 'r2',
+        at: '2026-03-14T18:00:00.000Z',
+        event: 'end',
+        outcome: 'ok',
+        durationMs: 900,
+        costUsd: null,
+        emailed: true,
+        headline: 'Exit capacity back to 6%',
+        warnings: [],
+        error: null,
+      },
+    ]
+      .map((l) => JSON.stringify(l))
+      .join('\n') + '\n'
+  );
+  write('.docvault-email-log.json', {
+    entries: [
+      {
+        id: 'm2',
+        at: '2026-03-14T08:00:00.000Z',
+        purpose: 'client',
+        from: 'docvault@example.com',
+        to: ['billing@example.com'],
+        cc: [],
+        subject: 'Invoice 2026/001',
+        attachments: [],
+        ok: false,
+        error: 'mailbox full',
+        elapsedMs: 200,
+      },
+      {
+        id: 'm1',
+        at: '2026-03-13T09:00:05.000Z',
+        purpose: 'news',
+        from: 'docvault@example.com',
+        to: ['owner@example.com'],
+        cc: [],
+        subject: 'ACT NOW: Exit closing',
+        attachments: [],
+        ok: true,
+        elapsedMs: 300,
+      },
+    ],
+  });
+  write('.docvault-chat-threads.json', {
+    threads: {
+      th1: {
+        id: 'th1',
+        title: 'Refinance math',
+        resumeSessionId: null,
+        stats: { inputTokens: 0, outputTokens: 0, costUsd: 0 },
+        createdAt: '2026-03-14T20:00:00.000Z',
+        updatedAt: '2026-03-14T21:00:00.000Z',
+        messageCount: 6,
+        preview: 'Compare 15 and 30 year terms',
+      },
+    },
+    activeThreadId: 'th1',
+  });
+  write('.docvault-debt-plan.json', {
+    extraMonthly: 500,
+    livingExpenses: 4000,
+    monthlySavings: 1000,
+    updatedAt: '2026-03-12T10:00:00.000Z',
+  });
+  write('.docvault-crypto-gains.json', {
+    assets: [],
+    totalCostBasis: 120000,
+    totalCurrentValue: 193000,
+    totalUnrealizedGain: 73000,
+    totalShortTermGain: 3000,
+    totalLongTermGain: 70000,
+    lastUpdated: '2026-03-15T00:00:00.000Z',
+    tradeCount: 42,
+  });
+  write('.docvault-crypto-yields.json', {
+    version: 1,
+    entries: {
+      'acme::USDC': {
+        sourceId: 'acme',
+        asset: 'USDC',
+        yieldApy: 4.1,
+        updatedAt: '2026-03-01T00:00:00.000Z',
+      },
+    },
+  });
+  write('.docvault-schedule-status.json', {
+    quantRefresh: {
+      lastRanAt: '2026-03-15T06:00:00.000Z',
+      lastSuccessAt: '2026-03-13T06:00:00.000Z',
+      lastError: 'quote service timed out',
+      running: false,
+    },
+  });
+  write('.docvault-simplefin-status.json', {
+    lastAttemptAt: '2026-03-15T06:00:00.000Z',
+    issues: [
+      {
+        id: 'reauth:x',
+        kind: 'reauth',
+        message: 'Acme Bank: Authentication required',
+        connectionName: 'Acme Bank',
+        firstSeenAt: '2026-03-12T06:00:00.000Z',
+        lastSeenAt: '2026-03-15T06:00:00.000Z',
+        observations: 4,
+      },
+    ],
+    history: [],
+  });
+  write(
+    '.docvault-ai-usage.ndjson',
+    [
+      {
+        ts: '2026-03-12T10:00:00.000Z',
+        model: 'example-model',
+        purpose: 'parse-receipt',
+        latencyMs: 900,
+        usage: { inputTokens: 1000, outputTokens: 200 },
+        cost: {
+          input: 0.01,
+          output: 0.01,
+          cacheWrite5m: 0,
+          cacheWrite1h: 0,
+          cacheRead: 0,
+          total: 0.02,
+          currency: 'USD',
+        },
+        ok: true,
+        error: null,
+        requestId: null,
+        stopReason: 'end',
+      },
+      {
+        ts: '2026-03-14T10:00:00.000Z',
+        model: 'example-model',
+        purpose: 'daily-news',
+        latencyMs: 9000,
+        usage: { inputTokens: 30000, outputTokens: 4000 },
+        cost: {
+          input: 0.3,
+          output: 0.2,
+          cacheWrite5m: 0,
+          cacheWrite1h: 0,
+          cacheRead: 0,
+          total: 0.5,
+          currency: 'USD',
+        },
+        ok: false,
+        error: 'overloaded',
+        requestId: null,
+        stopReason: null,
+      },
+    ]
+      .map((l) => JSON.stringify(l))
+      .join('\n') + '\n'
+  );
+  write('.docvault-politics-backtest.json', {
+    generatedAt: '2026-03-14T00:00:00.000Z',
+    leaderboard: [
+      { politician: 'Rep. Example One', buyCount: 12, returnPct: 0.183, winRate: 0.66 },
+    ],
+  });
   write('.docvault-health.json', {
     version: 1,
     people: [{ id: 'pat', name: 'Pat Example' }],

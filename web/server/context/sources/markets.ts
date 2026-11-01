@@ -1,4 +1,5 @@
-import { loadSnapshots } from '../../data.js';
+import { promises as fs } from 'fs';
+import { QUANT_SNAPSHOTS_FILE, loadSnapshots } from '../../data.js';
 import { listResearchEntries } from '../../routes/research.js';
 import { loadQuantCache } from '../../routes/quant.js';
 import { fetchTickerPrices } from '../../ticker-prices.js';
@@ -15,8 +16,8 @@ export const marketSignalsSource: ContextSource = {
   description:
     'Cached market signals: crypto Fear & Greed with its 30-day average, Bitcoin distance below ' +
     'its all-time high, the altcoin season index, and the highest-volume prediction market per topic.',
-  files: ['.docvault-quant-cache.json'],
-  async read() {
+  files: ['.docvault-quant-cache.json', '.docvault-quant-snapshots.json'],
+  async read(req) {
     const r = new ReadCollector();
     // Read-only: never triggers a network refresh.
     await r.part('markets/quant', async () => {
@@ -66,6 +67,22 @@ export const marketSignalsSource: ContextSource = {
         }
       }
     });
+    if (req.purpose === 'query') {
+      // The daily signal snapshots, raw: too bulky for a newspaper digest,
+      // useful when someone asks how a signal moved.
+      await r.part('markets/quant-history', async () => {
+        const file = JSON.parse(await fs.readFile(QUANT_SNAPSHOTS_FILE, 'utf-8')) as {
+          snapshots?: Array<Record<string, unknown> & { date?: string }>;
+        };
+        const days = (file.snapshots ?? []).filter(
+          (s) => s.date && s.date >= req.since.slice(0, 10) && (!req.until || s.date <= req.until)
+        );
+        for (const s of days.slice(-14)) {
+          const { date, takenAt: _takenAt, ...signals } = s;
+          r.lines.push(`Signals ${date}: ${JSON.stringify(signals).slice(0, 900)}`);
+        }
+      });
+    }
     return r.result();
   },
 };

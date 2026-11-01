@@ -1,3 +1,5 @@
+import { loadSettings } from '../../data.js';
+import { countMarkdown, repoDir } from '../../external-sources.js';
 import { listResearchEntries, type ResearchEntry } from '../../routes/research.js';
 import { createLogger } from '../../logger.js';
 import { ReadCollector, windowTest, type DateTest } from '../request.js';
@@ -112,6 +114,35 @@ export const researchFilingsSource: ContextSource = {
           title: `${title}${e.publisher ? ` — ${e.publisher}` : ''}`,
           ...(e.sourceUrl?.trim() ? { url: e.sourceUrl.trim() } : {}),
         });
+      }
+    });
+    return r.result();
+  },
+};
+
+export const externalSourcesSource: ContextSource = {
+  id: 'external-sources',
+  label: 'External sources',
+  group: 'research',
+  description:
+    'Git repositories of markdown the owner linked as reference material: each repo, how many ' +
+    'markdown files it holds, and when it last synced. Chat can search and read the files.',
+  files: ['.external-sources'],
+  async read(req) {
+    const r = new ReadCollector();
+    const inWindow = windowTest(req);
+    await r.part('research/external-sources', async () => {
+      const repos = (await loadSettings()).externalSources?.repos ?? [];
+      for (const repo of repos.filter((x) => x.enabled !== false)) {
+        const synced = repo.lastSyncedAt && inWindow(repo.lastSyncedAt);
+        if (!synced && !req.full && req.purpose !== 'query') continue;
+        const files = await countMarkdown(repoDir(repo.id));
+        r.lines.push(
+          `External source "${repo.name}": ${files} markdown file(s)` +
+            (repo.lastSyncedAt ? `, synced ${repo.lastSyncedAt.slice(0, 10)}` : '') +
+            (repo.lastError ? `, last sync failed: ${repo.lastError.slice(0, 120)}` : '') +
+            '.'
+        );
       }
     });
     return r.result();
