@@ -626,7 +626,8 @@ export async function handleFinancialSnapshotRoutes(
       const monthlyDebtService = debtPayments.total;
 
       // Income qualifying for DTI — sum of monthly-equivalent income sources.
-      // Non-taxable income (disability benefits, for example) is grossed up 25%.
+      // Non-taxable income (disability benefits, for example) is grossed up 25%,
+      // the usual lender convention.
       const qualifyingMonthlyIncome = incomeData.sources.reduce((sum, s) => {
         const monthly = toMonthly(s.amount, s.frequency);
         return sum + (s.taxable ? monthly : monthly * 1.25);
