@@ -25,6 +25,7 @@ import {
 } from './data.js';
 import type { Settings } from './data.js';
 import { createWriteLock, writeJsonAtomic } from './write-lock.js';
+import { internetIsDown, looksLikeNetworkFailure, onReconnect } from './connectivity.js';
 import { assertCryptoValued, fetchAllBalances } from './crypto.js';
 import { buildPortfolio, fetchAllSnapTradeHoldings, type BrokerAccount } from './brokers.js';
 import { type SimplefinBalanceCache } from './simplefin.js';
@@ -108,6 +109,9 @@ export interface ScheduleTaskStatus {
   lastWarning?: string | null;
   warningCount?: number;
   lastCleanSuccessAt?: string | null;
+  /** Set while the last run failed because the internet was down; the task
+   *  runs again when it comes back (rerunTasksWaitingForInternet). */
+  offlineSince?: string | null;
 }
 
 export type ScheduleStatusMap = Record<ScheduleTaskName, ScheduleTaskStatus>;
@@ -226,6 +230,7 @@ async function executeTrackedRun(
 ): Promise<void> {
   const startedAt = new Date().toISOString();
   const t0 = Date.now();
+  const waitingSince = (await loadScheduleStatus())[name]?.offlineSince ?? null;
   await updateScheduleStatus(name, { lastRanAt: startedAt, running: true });
   logScheduler.info(`[run] job=${builtInJobId(name)} startedAt=${startedAt}`);
   const stopCapture = captureLogs(TASK_LOG_NAMESPACES[name]);
@@ -257,6 +262,12 @@ async function executeTrackedRun(
       : warnings.length
         ? 'warning'
         : 'success';
+  // Same rule as custom jobs: a network failure while the internet is down waits
+  // for it rather than counting as the task failing.
+  const offline =
+    !!error &&
+    looksLikeNetworkFailure(`${error}\n${warnings.map((w) => w.message).join('\n')}`) &&
+    (await internetIsDown());
   await updateScheduleStatus(name, {
     ...(!error ? { lastSuccessAt: finishedAt } : {}),
     ...(outcome === 'success' ? { lastCleanSuccessAt: finishedAt } : {}),
@@ -266,6 +277,7 @@ async function executeTrackedRun(
     warningCount: warnings.length,
     lastDurationMs: Date.now() - t0,
     running: false,
+    offlineSince: offline ? (waitingSince ?? startedAt) : null,
   });
   try {
     const id = builtInJobId(name);
@@ -279,13 +291,14 @@ async function executeTrackedRun(
       diagnostics,
       warningCount: warnings.length,
       error,
+      ...(offline ? { offline: true } : {}),
     });
   } catch (err) {
     logScheduler.warn(
       `Could not save ${name} run history: ${err instanceof Error ? err.message : String(err)}`
     );
   }
-  const message = `[run] job=${builtInJobId(name)} outcome=${outcome} durationMs=${Date.now() - t0} warnings=${warnings.length}`;
+  const message = `[run] job=${builtInJobId(name)} outcome=${outcome} durationMs=${Date.now() - t0} warnings=${warnings.length}${offline ? ' offline=waiting-for-internet' : ''}`;
   if (outcome === 'success') logScheduler.info(message);
   else logScheduler.warn(`${message}${error ? ` reason=${error}` : ''}`);
   if (failed) throw failure;
@@ -760,11 +773,27 @@ export async function runDropboxSync(): Promise<void> {
         stderr: 'pipe',
         env: { ...process.env, RCLONE_CONFIG: RCLONE_CONFIG_PATH },
       });
+      const [stdout, stderr] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+      ]);
       await proc.exited;
-      const stderr = await new Response(proc.stderr).text();
       if (proc.exitCode !== 0) {
         logDropbox.error(`Dropbox sync failed (exit: ${proc.exitCode}):`, stderr);
         throw new Error(`rclone exit ${proc.exitCode}: ${stderr.trim()}`);
+      }
+      // The script exits 0 even when rclone failed: it counts failures into the
+      // status file and prints rclone's output on stdout. Reading only the exit
+      // code recorded failed backups as successful runs.
+      const failed = await syncErrorCount();
+      if (failed > 0) {
+        const detail = stdout
+          .split('\n')
+          .filter((line) => /ERROR|CRITICAL|failed/i.test(line))
+          .slice(-4)
+          .join(' | ')
+          .slice(0, 800);
+        throw new Error(`Dropbox sync had ${failed} error(s): ${detail || 'no rclone output'}`);
       }
       logDropbox.info('Dropbox sync completed');
     } else {
@@ -775,11 +804,59 @@ export async function runDropboxSync(): Promise<void> {
   });
 }
 
+/** Errors the sync script counted in its status file on the run that just ended. */
+async function syncErrorCount(): Promise<number> {
+  try {
+    const status = JSON.parse(
+      await fs.readFile(path.join(DATA_DIR, '.docvault-sync-status.json'), 'utf8')
+    ) as { errors?: unknown };
+    return typeof status.errors === 'number' ? status.errors : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** What runs again, right away, for a task whose last run waited out an outage. */
+const RERUN_ON_RECONNECT: Partial<Record<ScheduleTaskName, () => Promise<unknown>>> = {
+  snapshot: takePortfolioSnapshot,
+  dropboxSync: runDropboxSync,
+  quantRefresh: runQuantRefresh,
+  politicsRefresh: runPoliticsRefresh,
+  dailyNewsRefresh: runDailyNewsTick,
+  weeklyTimesheetReport: runWeeklyReportTick,
+};
+
+export async function rerunTasksWaitingForInternet(
+  schedules: Settings['schedules'] = {}
+): Promise<ScheduleTaskName[]> {
+  const off: Partial<Record<ScheduleTaskName, boolean>> = {
+    snapshot: schedules?.snapshotEnabled === false,
+    dropboxSync: schedules?.dropboxSyncEnabled === false,
+    quantRefresh: schedules?.quantRefreshEnabled === false,
+    politicsRefresh: schedules?.politicsRefreshEnabled === false,
+    dailyNewsRefresh: schedules?.dailyNewsEnabled !== true,
+  };
+  const status = await loadScheduleStatus();
+  const names = (Object.keys(RERUN_ON_RECONNECT) as ScheduleTaskName[]).filter(
+    (name) => status[name]?.offlineSince && !off[name]
+  );
+  logScheduler.info(
+    `[reconnect] re-running ${names.length} task(s) that waited for the internet${names.length ? `: ${names.join(', ')}` : ''}`
+  );
+  await Promise.allSettled(names.map((name) => RERUN_ON_RECONNECT[name]!()));
+  return names;
+}
+
+// One reconnect listener per process; startScheduler runs again on settings saves.
+let stopReconnectRerun: (() => void) | null = null;
+
 export function startScheduler(schedules: Settings['schedules'] = {}): void {
   // Any task still flagged `running` belongs to a process that no longer
   // exists — clear it before arming new timers so the status file reflects
   // reality rather than whatever a deploy interrupted.
   void clearStaleRunningFlags();
+  stopReconnectRerun?.();
+  stopReconnectRerun = onReconnect(() => rerunTasksWaitingForInternet(schedules));
 
   // Clear existing timers
   if (snapshotTimer) clearInterval(snapshotTimer);

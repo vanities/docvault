@@ -22,4 +22,6 @@ export interface AutomationRun {
   exitCode?: number | null;
   collection?: { collected: number; failed: number; skipped: number } | null;
   dryRun?: boolean;
+  /** Failed with a network error while the internet was down (connectivity.ts). */
+  offline?: boolean;
 }

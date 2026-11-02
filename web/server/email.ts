@@ -17,6 +17,7 @@ import { getEmailConfig } from './data.js';
 import type { EmailConfig } from './data.js';
 import { createLogger } from './logger.js';
 import { appendEmailLog, type EmailPurpose } from './email-log.js';
+import { internetIsDown, looksLikeNetworkFailure } from './connectivity.js';
 
 export type { EmailPurpose } from './email-log.js';
 
@@ -55,6 +56,8 @@ export interface SendEmailResult {
   ok: boolean;
   id?: string;
   error?: string;
+  /** Failed because the internet was down (connectivity.ts), not a bad send. */
+  offline?: boolean;
 }
 
 interface ResendPayloadResult {
@@ -173,6 +176,7 @@ async function recordAttempt(
     ok: outcome.ok,
     ...(outcome.id ? { providerId: outcome.id } : {}),
     ...(outcome.error ? { error: outcome.error } : {}),
+    ...(outcome.offline ? { offline: true } : {}),
     elapsedMs,
     ...(input.ref ? { ref: input.ref } : {}),
   });
@@ -232,8 +236,11 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    log.error(`[send] threw in ${Date.now() - startedAt}ms — ${msg}`);
-    outcome = { ok: false, error: msg };
+    const offline = looksLikeNetworkFailure(msg) && (await internetIsDown());
+    log.error(
+      `[send] threw in ${Date.now() - startedAt}ms${offline ? ' (internet down)' : ''} — ${msg}`
+    );
+    outcome = { ok: false, error: msg, ...(offline ? { offline: true } : {}) };
   }
   await recordAttempt(input, built, outcome, Date.now() - startedAt);
   return outcome;

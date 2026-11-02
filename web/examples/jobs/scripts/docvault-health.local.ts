@@ -3,6 +3,13 @@
 // all fail silently; this reports them to DocVault Alerts (POST /api/alerts/report), which
 // emails only when a check trips. Its page is DATA_DIR/alerts/docvault-health/dashboard.html.
 //
+// An internet outage is not a broken DocVault. A job or task the server marked as waiting for
+// the internet (offlineSince) is neither failing nor stalled, a send that failed while it was
+// down isn't a delivery failure, and a job only counts as stalled after it has had its full
+// three intervals of server uptime with a working connection. The Internet check trips only
+// for a long outage: it can't email while the line is down, so its email arriving means the
+// server's connection probe disagrees with a line that works.
+//
 // Env: DOCVAULT_DRY_RUN=1 prints the report instead of sending it.
 import { execFile } from 'node:child_process';
 import { promises as fs } from 'node:fs';
@@ -23,6 +30,7 @@ const SETTINGS = [
   { key: 'jobFailureRuns', label: 'Job failing after', unit: 'runs', default: 3, min: 1, max: 50, step: 1, help: 'Failed runs in a row.' },
   { key: 'diskWarnPct', label: 'Disk warning at', unit: '%', default: 90, min: 50, max: 100, step: 1, help: 'Space used on the data drive.' },
   { key: 'diskCriticalPct', label: 'Disk critical at', unit: '%', default: 97, min: 50, max: 100, step: 1 },
+  { key: 'internetDownHours', label: 'Internet down warning after', unit: 'hours', default: 6, min: 1, max: 168, step: 1, help: 'How long the server has found no route to the internet.' },
 ];
 const owner: Record<string, unknown> = (() => {
   try {
@@ -44,6 +52,7 @@ const JOB_FAILURE_RUNS = setting('jobFailureRuns');
 const STALE_INTERVALS = 3;
 const DISK_WARN_PCT = setting('diskWarnPct');
 const DISK_CRITICAL_PCT = setting('diskCriticalPct');
+const INTERNET_DOWN_HOURS = setting('internetDownHours');
 const HOUR_MS = 3600e3;
 const DAY_MS = 24 * HOUR_MS;
 
@@ -71,16 +80,33 @@ interface JobStatus {
   lastError: string | null;
   consecutiveFailures?: number;
   running?: boolean;
+  /** Set by the server while the last run failed because the internet was down. */
+  offlineSince?: string | null;
+}
+interface Outage {
+  from: string;
+  to: string | null;
+}
+/** From GET /api/jobs; absent on servers older than the connectivity check. */
+interface Connectivity {
+  online: boolean;
+  bootedAt: string;
+  offlineSince: string | null;
+  lastOutageEnd: string | null;
+  outages?: Outage[];
 }
 interface JobsResponse {
   builtInJobs: { id: string; label: string; enabled: boolean; schedule: string; status: JobStatus }[];
   customJobs: { manifest: { id: string; label: string; enabled: boolean; schedule: string } }[];
   customJobStatuses: Record<string, JobStatus>;
+  connectivity?: Connectivity;
 }
 interface EmailEntry {
   at: string;
   ok: boolean;
   purpose: string;
+  /** The send failed because the internet was down. */
+  offline?: boolean;
 }
 interface JobRow {
   id: string;
@@ -92,7 +118,8 @@ interface JobRow {
   lastSuccessAt: string | null;
   failures: number;
   lastError: string | null;
-  state: 'failing' | 'stale' | 'ok' | 'off' | 'new';
+  offlineSince: string | null;
+  state: 'failing' | 'stale' | 'waiting' | 'ok' | 'off' | 'new';
 }
 
 const t0 = performance.now();
@@ -153,17 +180,36 @@ async function diskUsage(dir: string): Promise<{ usedPct: number; freeGb: number
   }
 }
 
+/**
+ * The earliest moment a job could have run with a working connection: the later of this
+ * server's boot and the end of the last internet outage. Hours the server was off, or the
+ * line was down, aren't a job going quiet. -Infinity when the server doesn't report it.
+ */
+function couldRunSince(conn: Connectivity | undefined): number {
+  const boot = Date.parse(conn?.bootedAt ?? '');
+  const back = Date.parse(conn?.lastOutageEnd ?? '');
+  return Math.max(Number.isFinite(boot) ? boot : -Infinity, Number.isFinite(back) ? back : -Infinity);
+}
+
 function jobRows(jobs: JobsResponse, now: number): JobRow[] {
+  const since = couldRunSince(jobs.connectivity);
+  // Time since the last success that the job actually had to succeed in; null if it never has.
+  const quietMs = (lastSuccessAt: string | null) => {
+    const last = Date.parse(lastSuccessAt ?? '');
+    return Number.isFinite(last) ? now - Math.max(last, since) : null;
+  };
   const rows: JobRow[] = [];
   for (const j of jobs.builtInJobs) {
     const st = j.status;
+    const waiting = !!st.offlineSince;
     const erroredLast =
       !!st.lastError && (!st.lastSuccessAt || Date.parse(st.lastRanAt ?? '') > Date.parse(st.lastSuccessAt));
     // Built-ins don't count failures in a row, so a last-run error counts as failing only once
     // the job has also gone 3 of its intervals without a success (one partial run is normal).
     const interval = scheduleMs(j.schedule) ?? DAY_MS;
-    const sinceSuccess = age(st.lastSuccessAt, now);
-    const failing = j.enabled && erroredLast && (sinceSuccess === null || sinceSuccess > STALE_INTERVALS * interval);
+    const quiet = quietMs(st.lastSuccessAt);
+    const failing =
+      j.enabled && !waiting && erroredLast && (quiet === null || quiet > STALE_INTERVALS * interval);
     rows.push({
       id: j.id,
       label: j.label,
@@ -174,19 +220,21 @@ function jobRows(jobs: JobsResponse, now: number): JobRow[] {
       lastSuccessAt: st.lastSuccessAt,
       failures: erroredLast ? 1 : 0,
       lastError: st.lastError ? clip(st.lastError, 200) : null,
-      state: !j.enabled ? 'off' : failing ? 'failing' : !st.lastRanAt ? 'new' : 'ok',
+      offlineSince: st.offlineSince ?? null,
+      state: !j.enabled ? 'off' : waiting ? 'waiting' : failing ? 'failing' : !st.lastRanAt ? 'new' : 'ok',
     });
   }
   for (const c of jobs.customJobs) {
     const m = c.manifest;
     if (m.id === JOB_ID) continue;
     const st = jobs.customJobStatuses[m.id] ?? { lastRanAt: null, lastSuccessAt: null, lastError: null };
+    const waiting = !!st.offlineSince;
     const failures = st.consecutiveFailures ?? 0;
     const interval = scheduleMs(m.schedule);
-    const sinceSuccess = age(st.lastSuccessAt, now);
-    const failing = m.enabled && failures >= JOB_FAILURE_RUNS;
+    const quiet = quietMs(st.lastSuccessAt);
+    const failing = m.enabled && !waiting && failures >= JOB_FAILURE_RUNS;
     const stale =
-      m.enabled && !failing && interval !== null && sinceSuccess !== null && sinceSuccess > STALE_INTERVALS * interval;
+      m.enabled && !waiting && !failing && interval !== null && quiet !== null && quiet > STALE_INTERVALS * interval;
     rows.push({
       id: m.id,
       label: m.label,
@@ -197,7 +245,8 @@ function jobRows(jobs: JobsResponse, now: number): JobRow[] {
       lastSuccessAt: st.lastSuccessAt,
       failures,
       lastError: st.lastError ? clip(st.lastError, 200) : null,
-      state: !m.enabled ? 'off' : failing ? 'failing' : stale ? 'stale' : !st.lastRanAt ? 'new' : 'ok',
+      offlineSince: st.offlineSince ?? null,
+      state: !m.enabled ? 'off' : waiting ? 'waiting' : failing ? 'failing' : stale ? 'stale' : !st.lastRanAt ? 'new' : 'ok',
     });
   }
   return rows;
@@ -241,17 +290,38 @@ const backupAgeHours = backupAgeMs === null ? null : backupAgeMs / HOUR_MS;
 const backupTooOld = backupAgeHours !== null && backupAgeHours >= BACKUP_WARN_HOURS;
 const syncErrors = sync.errors ?? 0;
 
+// ---------- internet ----------
+const conn = jobs.connectivity;
+const outages = conn?.outages ?? [];
+const downAt = (iso: string | null | undefined) => {
+  const t = Date.parse(iso ?? '');
+  return (
+    Number.isFinite(t) &&
+    outages.some((o) => Date.parse(o.from) <= t && t <= (o.to ? Date.parse(o.to) : now))
+  );
+};
+const downMs = conn?.offlineSince ? age(conn.offlineSince, now) : null;
+const lastOutage = outages.find((o) => o.to);
+// The sync failed because it couldn't reach Dropbox, not because backups are broken.
+const syncErrorsOffline =
+  syncErrors > 0 && (!!dropboxJob?.status.offlineSince || downAt(sync.lastSync));
+
 // ---------- jobs ----------
 const rows = jobRows(jobs, now);
 const failing = rows.filter((r) => r.state === 'failing');
 const stale = rows.filter((r) => r.state === 'stale');
+const waiting = rows.filter((r) => r.state === 'waiting');
 const names = (list: JobRow[]) => clip(list.map((r) => r.label).join(', '), 90);
+if (waiting.length) log(`waiting for the internet: ${waiting.map((r) => r.id).join(', ')}`);
 
 // ---------- email ----------
-const recent24 = emails.filter((e) => (age(e.at, now) ?? Infinity) <= DAY_MS);
+// A send that failed while the internet was down is the outage, not a delivery problem.
+const recent24All = emails.filter((e) => (age(e.at, now) ?? Infinity) <= DAY_MS);
+const recent24 = recent24All.filter((e) => !e.offline);
+const offline24h = recent24All.length - recent24.length;
 const sent24h = recent24.filter((e) => e.ok).length;
 const failed24h = recent24.length - sent24h;
-const lastFailure = emails.find((e) => !e.ok);
+const lastFailure = emails.find((e) => !e.ok && !e.offline);
 
 const checks: Check[] = [
   {
@@ -268,9 +338,12 @@ const checks: Check[] = [
     label: 'Backup errors',
     scope: 'Backup',
     severity: 'warning',
-    active: backupConfigured && syncErrors > 0,
-    value: !backupConfigured ? 'not configured' : `${syncErrors} ${syncErrors === 1 ? 'error' : 'errors'} in the last sync`,
-    threshold: 'any error',
+    active: backupConfigured && syncErrors > 0 && !syncErrorsOffline,
+    value: !backupConfigured
+      ? 'not configured'
+      : `${syncErrors} ${syncErrors === 1 ? 'error' : 'errors'} in the last sync` +
+        (syncErrorsOffline ? ' (the internet was down; it syncs again when it is back)' : ''),
+    threshold: 'any error while the internet is up',
   },
   {
     id: 'jobs:failing',
@@ -296,8 +369,10 @@ const checks: Check[] = [
     scope: 'Email',
     severity: 'warning',
     active: failed24h > 0,
-    value: failed24h ? `${failed24h} of ${recent24.length} failed in 24 h` : `${sent24h} sent in 24 h, none failed`,
-    threshold: 'any failed send in 24 h',
+    value:
+      (failed24h ? `${failed24h} of ${recent24.length} failed in 24 h` : `${sent24h} sent in 24 h, none failed`) +
+      (offline24h ? `; ${offline24h} more waited out an internet outage` : ''),
+    threshold: 'any failed send in 24 h while the internet was up',
     // A failed send stays in the 24 h window long after the owner heard about it. A fixed event
     // makes this email once per stretch of failures instead of every 6 hours until it ages out.
     ...(failed24h > 0 ? { event: 'failed-sends' } : {}),
@@ -311,6 +386,23 @@ const checks: Check[] = [
     value: `${disk.usedPct.toFixed(1)}% used, ${disk.freeGb.toFixed(0)} GB free`,
     threshold: `${DISK_WARN_PCT}% used (${DISK_CRITICAL_PCT}% is critical)`,
   },
+  {
+    id: 'internet:down',
+    label: 'Internet',
+    scope: 'Network',
+    severity: 'warning',
+    // Its email can only go out over a working line, so receiving it means the server's
+    // connection probe is wrong (DOCVAULT_CONNECTIVITY_PROBES), not that the internet is out.
+    active: downMs !== null && downMs >= INTERNET_DOWN_HOURS * HOUR_MS,
+    value: !conn
+      ? 'not reported by this server'
+      : downMs !== null
+        ? `down for ${hours(downMs)}${waiting.length ? `; ${waiting.length} job(s) waiting` : ''}`
+        : lastOutage
+          ? `up; the last outage lasted ${hours(Date.parse(lastOutage.to!) - Date.parse(lastOutage.from))} and ended ${hours(now - Date.parse(lastOutage.to!))} ago`
+          : 'up',
+    threshold: `down ${INTERNET_DOWN_HOURS} h or more`,
+  },
 ];
 for (const c of checks) log(`check ${c.id} ${c.active ? 'TRIPPED' : 'ok'} value="${c.value}"`);
 
@@ -318,7 +410,7 @@ const round = (n: number | null, digits: number) => (n === null || !Number.isFin
 const report = {
   sourceId: SOURCE_ID,
   label: 'DocVault health',
-  description: 'Backups, scheduled jobs, outbound email and disk space',
+  description: 'Backups, scheduled jobs, outbound email, disk space and the internet connection',
   jobId: JOB_ID,
   settings: SETTINGS,
   checks,
@@ -343,8 +435,11 @@ const report = {
       },
       jobs: rows,
       // Time, purpose and outcome only: recipients and subjects stay out of the page.
-      email: { recent: emails.slice(0, 12).map((e) => ({ at: e.at, ok: e.ok, purpose: e.purpose })), sent24h, failed24h, lastFailureAt: lastFailure?.at ?? null },
+      email: { recent: emails.slice(0, 12).map((e) => ({ at: e.at, ok: e.ok, purpose: e.purpose, offline: !!e.offline })), sent24h, failed24h, offline24h, lastFailureAt: lastFailure?.at ?? null },
       disk: { usedPct: round(disk.usedPct, 2), freeGb: round(disk.freeGb, 1), totalGb: round(disk.totalGb, 1) },
+      internet: conn
+        ? { online: conn.online, offlineSince: conn.offlineSince, bootedAt: conn.bootedAt, outages: outages.slice(0, 10) }
+        : null,
     },
   },
   series: {

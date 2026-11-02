@@ -2276,6 +2276,7 @@ import {
 import { getRecentLogs, listLogDates, readLogsForDate, SERVER_BOOT_ID } from './logger.js';
 import { readRecentAiCalls, summarizeUsage } from './ai/usage-log.js';
 import { startCustomJobScheduler } from './custom-job-runner.js';
+import { startConnectivityMonitor } from './connectivity.js';
 
 // ============================================================================
 // Start server using Bun's native server
@@ -2329,6 +2330,13 @@ if (import.meta.main) {
 
   logServer.info(`DocVault API running on http://localhost:${server.port}`);
   logServer.info(`Data directory: ${DATA_DIR}`);
+  // Before the schedulers: an outage still open from before a restart must be
+  // known when the boot catch-up runs start failing.
+  await startConnectivityMonitor().catch((err) =>
+    logServer.error(
+      `Connectivity monitor startup failed: ${err instanceof Error ? err.message : err}`
+    )
+  );
   void initializeScheduler();
   try {
     await startCustomJobScheduler(DATA_DIR);

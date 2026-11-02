@@ -370,3 +370,25 @@ describe('payoff plan projection', () => {
     expect(lines.some((l) => l.startsWith('Under the plan'))).toBe(false);
   });
 });
+
+describe('internet outages', () => {
+  test('one still going, and those that ended in the window, in the household timezone', async () => {
+    const { describeOutages } = await import('./sources/activity.js');
+    const lines = describeOutages(
+      [
+        { from: '2030-03-02T12:53:30.000Z', to: null },
+        { from: '2030-03-01T12:53:30.000Z', to: '2030-03-01T14:40:30.000Z' },
+        { from: '2030-02-20T03:00:00.000Z', to: '2030-02-20T04:00:00.000Z' },
+      ],
+      (iso) => iso >= '2030-03-01T00:00:00.000Z',
+      'America/Chicago',
+      '2030-03-02T13:23:30.000Z'
+    );
+    expect(lines).toEqual([
+      'The internet has been down since Mar 2, 6:53 AM (30 min); jobs that need it are ' +
+        'waiting and run again when it is back.',
+      'The internet was down Mar 1, 6:53 AM to Mar 1, 8:40 AM (1 h 47 min); jobs that failed ' +
+        'for lack of it waited and ran again after, so they were not failures.',
+    ]);
+  });
+});

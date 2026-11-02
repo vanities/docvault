@@ -1965,18 +1965,21 @@ export function SettingsView() {
                   {builtInJobs
                     .filter((job) => !onlyJobIssues || automationNeedsAttention(job.status))
                     .map((job) => {
-                      const hasError = !!job.status.lastError;
+                      // Waiting for the internet is not a failure (offlineSince).
+                      const hasError = !!job.status.lastError && !job.status.offlineSince;
                       const dotColor = job.status.running
                         ? 'bg-blue-400 animate-pulse'
-                        : hasError
-                          ? 'bg-red-400'
-                          : automationNeedsAttention(job.status)
-                            ? 'bg-amber-400'
-                            : job.status.lastSuccessAt
-                              ? 'bg-emerald-400'
-                              : job.enabled
-                                ? 'bg-amber-400'
-                                : 'bg-surface-500';
+                        : job.status.offlineSince
+                          ? 'bg-sky-400'
+                          : hasError
+                            ? 'bg-red-400'
+                            : automationNeedsAttention(job.status)
+                              ? 'bg-amber-400'
+                              : job.status.lastSuccessAt
+                                ? 'bg-emerald-400'
+                                : job.enabled
+                                  ? 'bg-amber-400'
+                                  : 'bg-surface-500';
                       return (
                         <div
                           key={job.id}
@@ -2046,18 +2049,20 @@ export function SettingsView() {
 
                       const status = customJobStatuses[job.manifest.id];
                       const isRunning = runningJobIds.has(job.manifest.id) || !!status?.running;
-                      const hasError = !!status?.lastError;
+                      const hasError = !!status?.lastError && !status?.offlineSince;
                       const dotColor = isRunning
                         ? 'bg-blue-400 animate-pulse'
-                        : hasError
-                          ? 'bg-red-400'
-                          : automationNeedsAttention(status)
-                            ? 'bg-amber-400'
-                            : status?.lastSuccessAt
-                              ? 'bg-emerald-400'
-                              : job.manifest.enabled
-                                ? 'bg-amber-400'
-                                : 'bg-surface-500';
+                        : status?.offlineSince
+                          ? 'bg-sky-400'
+                          : hasError
+                            ? 'bg-red-400'
+                            : automationNeedsAttention(status)
+                              ? 'bg-amber-400'
+                              : status?.lastSuccessAt
+                                ? 'bg-emerald-400'
+                                : job.manifest.enabled
+                                  ? 'bg-amber-400'
+                                  : 'bg-surface-500';
                       return (
                         <div
                           key={job.path}

@@ -81,13 +81,14 @@ function render(source) {
 
   // Jobs, failing first
   const jobChecks = checksFor(source.checks, 'jobs');
-  const order = { failing: 0, stale: 1, new: 2, ok: 3, off: 4 };
+  const order = { failing: 0, stale: 1, waiting: 2, new: 3, ok: 4, off: 5 };
   const jobs = [...d.jobs].sort(
     (a, b2) => order[a.state] - order[b2.state] || a.label.localeCompare(b2.label)
   );
   const stateTag = {
     failing: tag('Failing', 'critical'),
     stale: tag('Stale', 'warning'),
+    waiting: tag('Waiting for internet', 'muted'),
     new: tag('Not run yet', 'muted'),
     ok: tag('OK'),
     off: tag('Off', 'muted'),

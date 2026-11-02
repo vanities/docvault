@@ -13,6 +13,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { DATA_DIR } from './data.js';
 import { createLogger } from './logger.js';
+import { internetIsDown, looksLikeNetworkFailure } from './connectivity.js';
 import {
   generateEdition,
   gatherDigest,
@@ -72,6 +73,9 @@ export interface Edition {
    *  when the edition has been narrated by a cloned voice). */
   audioPath?: string;
   error?: string;
+  /** Failed with a network error while the internet was down. Doesn't count
+   *  toward MAX_FAILED_EDITIONS_PER_DAY, so the day's paper still gets made. */
+  offline?: boolean;
   createdAt: string;
   completedAt?: string;
 }
@@ -241,10 +245,12 @@ export async function startEdition(
     })
     .catch(async (err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
-      log.error(`[error] id=${id} ${message}`);
+      const offline = looksLikeNetworkFailure(message) && (await internetIsDown());
+      log.error(`[error] id=${id}${offline ? ' offline=true' : ''} ${message}`);
       await patchEdition(id, {
         status: 'error',
         error: message,
+        ...(offline ? { offline: true } : {}),
         completedAt: new Date().toISOString(),
       });
     });
@@ -419,7 +425,7 @@ export async function scheduledEditionSettled(date: string): Promise<boolean> {
   const editions = await loadEditions();
   // Sampler editions never count as "the day's edition".
   const sameDay = Object.values(editions).filter((e) => !e.sample && e.editionDate === date);
-  const failed = sameDay.filter((e) => e.status === 'error').length;
+  const failed = sameDay.filter((e) => e.status === 'error' && !e.offline).length;
   if (failed >= MAX_FAILED_EDITIONS_PER_DAY) return true;
   return sameDay.some(
     (e) =>

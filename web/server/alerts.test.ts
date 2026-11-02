@@ -24,6 +24,25 @@ vi.mock('./data.js', () => ({
   jsonResponse: (data: unknown, status = 200) => Response.json(data, { status }),
 }));
 vi.mock('./email.js', () => ({ sendEmail }));
+// Online, booted long ago, no outage, unless a test changes it.
+const net = vi.hoisted(() => ({
+  down: false,
+  bootedAt: '2000-01-01T00:00:00.000Z',
+  lastOutageEnd: null as string | null,
+}));
+vi.mock('./connectivity.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./connectivity.js')>()),
+  internetIsDown: async () => net.down,
+  connectivityStatus: async () => ({
+    mode: 'probing',
+    online: !net.down,
+    checkedAt: null,
+    bootedAt: net.bootedAt,
+    offlineSince: null,
+    lastOutageEnd: net.lastOutageEnd,
+    outages: [],
+  }),
+}));
 vi.mock('./logger.js', () => ({
   createLogger: () => ({
     info: () => {},
@@ -77,6 +96,9 @@ beforeEach(async () => {
   await fs.rm(dataDir, { recursive: true, force: true });
   sendEmail.mockClear();
   sendEmail.mockImplementation(async () => ({ ok: true, error: undefined }));
+  net.down = false;
+  net.bootedAt = '2000-01-01T00:00:00.000Z';
+  net.lastOutageEnd = null;
 });
 afterAll(() => fs.rm(dataDir, { recursive: true, force: true }));
 
@@ -341,6 +363,70 @@ describe('blind alerts', () => {
     await reportAlerts(report([check()], { jobId: 'demo-job' }), { now: at(200) });
     expect((await checkStaleAlertSources({ now: at(2000) })).notified).toEqual([]);
     expect(sendEmail).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('an internet outage is not a blind source', () => {
+  const dns = 'fetch: getaddrinfo EAI_AGAIN api.example.invalid';
+  const job = {
+    id: 'demo-job',
+    label: 'Demo job',
+    schedule: 'every 15m',
+    script: 'scripts/demo.local.ts',
+    enabled: true,
+  };
+
+  test('network failures while the internet is down never count toward blind', async () => {
+    net.down = true;
+    for (const n of [1, 2, 3, 4, 5]) {
+      expect(await reportAlertFailure('demo-source', dns, { now: at(n) })).toEqual({
+        emailed: null,
+        failures: 0,
+        offline: true,
+      });
+    }
+    expect(sendEmail).not.toHaveBeenCalled();
+
+    // Back online, the streak starts from zero: two more failures are still not blind.
+    net.down = false;
+    for (const n of [6, 7]) await reportAlertFailure('demo-source', dns, { now: at(n) });
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect((await reportAlertFailure('demo-source', dns, { now: at(8) })).emailed).toBe('blind');
+  });
+
+  test('during an outage, a failure that reached its source still counts', async () => {
+    net.down = true;
+    for (const n of [1, 2])
+      await reportAlertFailure('demo-source', 'HTTP 500 upstream', { now: at(n) });
+    expect(
+      (await reportAlertFailure('demo-source', 'HTTP 500 upstream', { now: at(3) })).emailed
+    ).toBe('blind');
+  });
+
+  test('time before boot or before the internet came back is not time spent quiet', async () => {
+    await createCustomJobManifest(job, { dataDir });
+    await reportAlerts(report([check()], { jobId: 'demo-job' }), { now: at(0) });
+
+    // Server off from minute 0 to 100: 45 quiet minutes count from the boot, not the report.
+    net.bootedAt = at(100).toISOString();
+    expect((await checkStaleAlertSources({ now: at(140) })).notified).toEqual([]);
+    expect((await checkStaleAlertSources({ now: at(146) })).notified).toEqual(['demo-source']);
+
+    // A fresh episode: the internet came back at minute 300.
+    await reportAlerts(report([check()], { jobId: 'demo-job' }), { now: at(200) });
+    net.lastOutageEnd = at(300).toISOString();
+    expect((await checkStaleAlertSources({ now: at(340) })).notified).toEqual([]);
+    expect((await checkStaleAlertSources({ now: at(346) })).notified).toEqual(['demo-source']);
+  });
+
+  test('nothing goes stale while the internet is down', async () => {
+    await createCustomJobManifest(job, { dataDir });
+    await reportAlerts(report([check()], { jobId: 'demo-job' }), { now: at(0) });
+    net.down = true;
+    expect((await checkStaleAlertSources({ now: at(500) })).notified).toEqual([]);
+    expect(sendEmail).not.toHaveBeenCalled();
+    net.down = false;
+    expect((await checkStaleAlertSources({ now: at(501) })).notified).toEqual(['demo-source']);
   });
 });
 

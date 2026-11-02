@@ -16,6 +16,7 @@ import type { ScheduleStatusMap } from '../scheduler.js';
 import { listAutomationRuns } from '../automation-runs.js';
 import { loadTimesheetStore } from '../timesheet-store.js';
 import { readJsonBody } from '../http.js';
+import { connectivityStatus } from '../connectivity.js';
 
 export type JobRouteDeps = {
   dataDir?: string;
@@ -82,18 +83,21 @@ export async function handleJobRoutes(
   }
 
   if (req.method === 'GET') {
-    const [customJobs, customJobStatuses, scheduleStatus, settings, weeklyReport] =
+    const [customJobs, customJobStatuses, scheduleStatus, settings, weeklyReport, connectivity] =
       await Promise.all([
         listCustomJobManifests(dataDir),
         loadCustomJobStatus(dataDir),
         readScheduleStatus(),
         readSettings(),
         readWeeklyReport(),
+        connectivityStatus(),
       ]);
     return jsonResponse({
       builtInJobs: listBuiltInJobRecords(scheduleStatus, settings.schedules, weeklyReport),
       customJobs,
       customJobStatuses,
+      // Outages and boot time, so a health check can tell waiting from failing.
+      connectivity,
     });
   }
 

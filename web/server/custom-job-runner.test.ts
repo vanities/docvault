@@ -2,16 +2,30 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import process from 'node:process';
-import { describe, expect, test } from 'vite-plus/test';
+import { afterEach, describe, expect, test, vi } from 'vite-plus/test';
+
+// The internet is up unless a test says otherwise; nothing here probes for real.
+const net = vi.hoisted(() => ({ down: false }));
+vi.mock('./connectivity.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./connectivity.js')>()),
+  internetIsDown: async () => net.down,
+  onReconnect: () => () => {},
+}));
+
 import { createCustomJobManifest, customJobScriptPath } from './jobs';
 import {
   collectionCounts,
   customJobSourceWarnings,
   isCustomJobDue,
   loadCustomJobStatus,
+  rerunJobsWaitingForInternet,
   runCustomJobNow,
 } from './custom-job-runner';
 import { listAutomationRuns } from './automation-runs';
+
+afterEach(() => {
+  net.down = false;
+});
 
 async function withTempDataDir<T>(fn: (dataDir: string) => Promise<T>): Promise<T> {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), 'docvault-custom-job-runner-'));
@@ -204,6 +218,99 @@ describe('runCustomJobNow', () => {
         '[example] feed fetch failed: HTTP 403'
       );
       expect(forbidden).toBeGreaterThanOrEqual(6 * HOUR);
+    });
+  });
+
+  test('a network failure while the internet is down waits instead of failing', async () => {
+    await withTempDataDir(async (dataDir) => {
+      const HOUR = 60 * 60 * 1000;
+      const manifest = {
+        id: 'feed-collector',
+        label: 'Example feed',
+        schedule: 'every 15m',
+        script: 'scripts/feed.local.sh',
+        enabled: true,
+        tags: [],
+      };
+      await createCustomJobManifest(manifest, { dataDir });
+      await createCustomJobManifest(
+        { ...manifest, id: 'quiet-collector', script: 'scripts/quiet.local.sh' },
+        { dataDir }
+      );
+      const script = customJobScriptPath(dataDir, 'scripts/feed.local.sh');
+      await writeFile(
+        script,
+        `printf '[feed] fetch failed: getaddrinfo EAI_AGAIN feeds.example.invalid\\n'\nexit 1\n`
+      );
+      const statuses = await loadCustomJobStatus(dataDir);
+      statuses['feed-collector'] = {
+        ...statuses['feed-collector'],
+        lastRanAt: null,
+        lastSuccessAt: '2030-01-01T00:00:00.000Z',
+        lastError: 'earlier failure',
+        lastDurationMs: null,
+        running: false,
+        lastRunPath: null,
+        lastSummary: null,
+        lastOutcome: 'error',
+        consecutiveFailures: 2,
+      };
+      await writeFile(path.join(dataDir, 'jobs/status.json'), JSON.stringify(statuses));
+
+      net.down = true;
+      const first = await runCustomJobNow('feed-collector', { dataDir });
+      expect(first.offline).toBe(true);
+      let s = (await loadCustomJobStatus(dataDir))['feed-collector'];
+      expect(s.consecutiveFailures).toBe(2);
+      expect(s.offlineSince).toBe(first.startedAt);
+      expect(Date.parse(s.nextRetryAt!) - Date.parse(s.lastRanAt!)).toBeGreaterThanOrEqual(HOUR);
+      expect(
+        (await listAutomationRuns(dataDir, 'feed-collector')).find((r) => r.runId === first.runId)
+          ?.offline
+      ).toBe(true);
+      expect(customJobSourceWarnings([manifest], { 'feed-collector': s })[0].message).toContain(
+        'waiting for the internet'
+      );
+
+      // A second run inside the same outage keeps the outage's start.
+      await runCustomJobNow('feed-collector', { dataDir });
+      s = (await loadCustomJobStatus(dataDir))['feed-collector'];
+      expect(s.offlineSince).toBe(first.startedAt);
+      expect(s.consecutiveFailures).toBe(2);
+
+      // Back online: only the job that waited runs again, and it comes back clean.
+      net.down = false;
+      await writeFile(script, `echo '[feed] items=3 posted=3'\n`);
+      expect(await rerunJobsWaitingForInternet(dataDir)).toEqual(['feed-collector']);
+      s = (await loadCustomJobStatus(dataDir))['feed-collector'];
+      expect(s).toMatchObject({ offlineSince: null, consecutiveFailures: 0, lastError: null });
+      expect((await loadCustomJobStatus(dataDir))['quiet-collector']).toBeUndefined();
+    });
+  });
+
+  test('during an outage, a failure that reached its source still counts', async () => {
+    await withTempDataDir(async (dataDir) => {
+      await createCustomJobManifest(
+        {
+          id: 'refused-collector',
+          label: 'Example refused feed',
+          schedule: 'daily',
+          script: 'scripts/refused.local.sh',
+          enabled: true,
+          tags: [],
+        },
+        { dataDir }
+      );
+      await writeFile(
+        customJobScriptPath(dataDir, 'scripts/refused.local.sh'),
+        `printf '[feed] fetch failed: HTTP 403\\n' >&2\nexit 1\n`
+      );
+      net.down = true;
+      const result = await runCustomJobNow('refused-collector', { dataDir });
+      expect(result.offline).toBeUndefined();
+      const s = (await loadCustomJobStatus(dataDir))['refused-collector'];
+      expect(s.consecutiveFailures).toBe(1);
+      expect(s.offlineSince).toBeNull();
     });
   });
 

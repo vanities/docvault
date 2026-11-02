@@ -10,7 +10,9 @@ import type { AlertsStore } from '../../alerts-types.js';
 import { readRunLog, loadIndex as loadAssignmentsIndex } from '../../assignments/store.js';
 import { loadIndex as loadChatIndex } from '../../chat-threads-store.js';
 import { loadCustomJobStatus, customJobSourceWarnings } from '../../custom-job-runner.js';
-import { DATA_DIR, SCHEDULE_STATUS_FILE } from '../../data.js';
+import { CONNECTIVITY_FILE, type Outage } from '../../connectivity.js';
+import { DATA_DIR, SCHEDULE_STATUS_FILE, loadSettings } from '../../data.js';
+import { getConfiguredTimezone } from '../../tz.js';
 import { readEmailLog } from '../../email-log.js';
 import { listCustomJobManifests } from '../../jobs.js';
 import { listPoliticalJobManifests } from '../../political-jobs.js';
@@ -220,6 +222,48 @@ interface TaskStatus {
   lastSuccessAt?: string | null;
   lastError?: string | null;
   lastOutcome?: string | null;
+  offlineSince?: string | null;
+}
+
+/** "1 h 47 min" / "35 min". */
+function spanText(fromIso: string, toIso: string): string {
+  const minutes = Math.max(0, Math.round((Date.parse(toIso) - Date.parse(fromIso)) / 60_000));
+  return minutes < 60
+    ? `${minutes} min`
+    : `${Math.floor(minutes / 60)} h${minutes % 60 ? ` ${minutes % 60} min` : ''}`;
+}
+
+/** Outage lines: one still going, and those that ended inside the window. Pure. */
+export function describeOutages(
+  outages: Outage[],
+  inWindow: (iso: string) => boolean,
+  timeZone: string,
+  nowIso: string
+): string[] {
+  const at = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  // Newer ICU puts a narrow no-break space before AM/PM; readers get plain text.
+  const when = (iso: string) => at.format(new Date(iso)).replace(/ /g, ' ');
+  const lines: string[] = [];
+  const open = outages.find((o) => o.to === null);
+  if (open) {
+    lines.push(
+      `The internet has been down since ${when(open.from)} (${spanText(open.from, nowIso)}); ` +
+        'jobs that need it are waiting and run again when it is back.'
+    );
+  }
+  for (const o of outages.filter((x) => x.to && inWindow(x.to)).slice(0, 5)) {
+    lines.push(
+      `The internet was down ${when(o.from)} to ${when(o.to!)} (${spanText(o.from, o.to!)}); ` +
+        'jobs that failed for lack of it waited and ran again after, so they were not failures.'
+    );
+  }
+  return lines;
 }
 
 export const systemHealthSource: ContextSource = {
@@ -228,23 +272,36 @@ export const systemHealthSource: ContextSource = {
   group: 'activity',
   description:
     'Anything broken: scheduled tasks and custom jobs that are failing, bank connections that ' +
-    'need signing in again, Dropbox sync errors; with the standing picture, AI usage and cost ' +
-    'for the window.',
+    'need signing in again, Dropbox sync errors, internet outages the server saw; with the ' +
+    'standing picture, AI usage and cost for the window.',
   files: [
     '.docvault-schedule-status.json',
     '.docvault-simplefin-status.json',
     '.docvault-sync-status.json',
     '.docvault-ai-usage.ndjson',
+    CONNECTIVITY_FILE,
     'jobs',
     'political-jobs',
   ],
   async read(req) {
     const r = new ReadCollector();
     const inWindow = windowTest(req);
+    await r.part('system/internet', async () => {
+      const saved = await readJson<{ outages?: Outage[] }>(path.join(DATA_DIR, CONNECTIVITY_FILE));
+      const outages = Array.isArray(saved?.outages) ? saved.outages : [];
+      if (!outages.some((o) => o.to === null || (o.to && inWindow(o.to)))) return;
+      const tz = getConfiguredTimezone(await loadSettings());
+      r.lines.push(...describeOutages(outages, inWindow, tz, new Date().toISOString()));
+    });
     await r.part('system/tasks', async () => {
       const status = await readJson<Record<string, TaskStatus>>(SCHEDULE_STATUS_FILE);
       for (const [task, s] of Object.entries(status ?? {})) {
-        if (s.lastError) {
+        if (s.lastError && s.offlineSince) {
+          r.lines.push(
+            `Scheduled task ${task} is waiting for the internet (down since ${day(s.offlineSince)}); ` +
+              'it runs again when the connection is back.'
+          );
+        } else if (s.lastError) {
           r.lines.push(
             `Scheduled task ${task} is failing (last ran ${day(s.lastRanAt)}, last success ` +
               `${day(s.lastSuccessAt) || 'never'}): ${clip(String(s.lastError), 160)}.`

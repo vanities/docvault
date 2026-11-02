@@ -15,10 +15,13 @@ export interface AutomationStatus {
   lastCollection?: { collected: number; failed: number; skipped: number; deferred?: number } | null;
   lastSummary?: string | null;
   lastAttemptSummary?: string | null;
+  /** The last run failed because the internet was down; it runs again when it's back. */
+  offlineSince?: string | null;
 }
 
 export function automationOutcome(status?: AutomationStatus): string {
   if (status?.running) return 'Running';
+  if (status?.offlineSince) return 'Waiting for internet';
   if (status?.lastOutcome === 'partial') return 'Some items failed';
   if (status?.lastError || status?.lastOutcome === 'error') return 'Failed';
   if (status?.lastWarning || status?.lastOutcome === 'warning') return 'Completed with warnings';
@@ -26,6 +29,7 @@ export function automationOutcome(status?: AutomationStatus): string {
 }
 
 export function automationNeedsAttention(status?: AutomationStatus): boolean {
+  if (status?.offlineSince) return false;
   return !!(
     status?.lastError ||
     status?.lastWarning ||

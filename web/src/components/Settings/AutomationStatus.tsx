@@ -12,11 +12,15 @@ function timestamp(value?: string | null): string {
 export function AutomationStatusDetails({ status }: { status?: AutomationStatus }) {
   const outcome = automationOutcome(status);
   const counts = status?.lastCollection;
-  const color = status?.lastError
-    ? 'text-red-400'
-    : automationNeedsAttention(status)
-      ? 'text-amber-400'
-      : 'text-emerald-400';
+  // A run that failed only because the internet was down is waiting, not failing.
+  const waiting = !!status?.offlineSince;
+  const color = waiting
+    ? 'text-sky-400'
+    : status?.lastError
+      ? 'text-red-400'
+      : automationNeedsAttention(status)
+        ? 'text-amber-400'
+        : 'text-emerald-400';
   return (
     <div className="mt-2 space-y-1 text-xs break-words">
       <p className={`font-medium ${status?.running ? 'text-blue-400' : color}`}>{outcome}</p>
@@ -36,7 +40,9 @@ export function AutomationStatusDetails({ status }: { status?: AutomationStatus 
           {counts.deferred ? ` · ${counts.deferred} not published yet` : ''}
         </p>
       )}
-      {status?.lastError && <p className="text-red-400">{status.lastError}</p>}
+      {status?.lastError && (
+        <p className={waiting ? 'text-surface-600' : 'text-red-400'}>{status.lastError}</p>
+      )}
       {!status?.lastError && status?.lastWarning && (
         <p className="text-amber-400">{status.lastWarning}</p>
       )}
@@ -50,7 +56,13 @@ export function AutomationStatusDetails({ status }: { status?: AutomationStatus 
           Check bank connections in SimpleFIN Bridge
         </a>
       )}
-      {status?.nextRetryAt && (
+      {waiting && (
+        <p className="text-sky-400">
+          The internet has been down since {timestamp(status?.offlineSince)}; this runs again as
+          soon as it is back.
+        </p>
+      )}
+      {status?.nextRetryAt && !waiting && (
         <p className="text-amber-400">
           Next retry: {timestamp(status.nextRetryAt)}
           {status.consecutiveFailures

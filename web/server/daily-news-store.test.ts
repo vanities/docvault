@@ -31,6 +31,11 @@ vi.mock('./daily-news.js', () => ({
 vi.mock('./daily-news-image.js', () => ({ generateHeadlineImage: vi.fn(async () => null) }));
 vi.mock('./daily-news-narration.js', () => ({ narrateEdition: vi.fn(async () => null) }));
 vi.mock('./daily-news-themes.js', () => ({ listThemes: () => [] }));
+const net = vi.hoisted(() => ({ down: false }));
+vi.mock('./connectivity.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./connectivity.js')>()),
+  internetIsDown: async () => net.down,
+}));
 
 import {
   getEdition,
@@ -132,5 +137,32 @@ describe('scheduled edition dedup', () => {
   test('a finished edition settles its day', async () => {
     await waitForEdition(await startEdition('daily', '2026-06-06', async () => result, false));
     expect(await scheduledEditionSettled('2026-06-06')).toBe(true);
+  });
+
+  test('editions that failed while the internet was down do not use up the day', async () => {
+    const failOffline = async () =>
+      waitForEdition(
+        await startEdition(
+          'daily',
+          '2026-06-07',
+          async () => {
+            throw new Error('Connection error: getaddrinfo EAI_AGAIN api.example.invalid');
+          },
+          false
+        )
+      );
+    net.down = true;
+    try {
+      for (let i = 0; i < MAX_FAILED_EDITIONS_PER_DAY + 1; i++) {
+        expect(await failOffline()).toMatchObject({ status: 'error', offline: true });
+      }
+      expect(await scheduledEditionSettled('2026-06-07')).toBe(false);
+    } finally {
+      net.down = false;
+    }
+    // Online, the same failure is a real attempt and counts toward the cap.
+    expect((await failOffline())?.offline).toBeUndefined();
+    for (let i = 1; i < MAX_FAILED_EDITIONS_PER_DAY; i++) await failOffline();
+    expect(await scheduledEditionSettled('2026-06-07')).toBe(true);
   });
 });

@@ -27,6 +27,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { DATA_DIR, ensureDir, getEmailConfig } from './data.js';
 import { sendEmail } from './email.js';
+import { connectivityStatus, internetIsDown, looksLikeNetworkFailure } from './connectivity.js';
 import { customJobScheduleToMs, listCustomJobManifests, type CustomJobSchedule } from './jobs.js';
 import { createLogger } from './logger.js';
 import { createWriteLock, writeJsonAtomic } from './write-lock.js';
@@ -533,6 +534,8 @@ export interface AlertFailureOutcome {
   emailed: 'blind' | null;
   emailError?: string;
   failures: number;
+  /** The failure was the internet being down, so it didn't count toward blind. */
+  offline?: boolean;
 }
 
 export async function reportAlertFailure(
@@ -542,6 +545,9 @@ export async function reportAlertFailure(
 ): Promise<AlertFailureOutcome> {
   const dataDir = opts.dataDir ?? DATA_DIR;
   const now = opts.now ?? new Date();
+  // A source that can't fetch because the internet is down isn't blind; it
+  // reports again once the line is back (the runner re-runs its job then).
+  const offline = looksLikeNetworkFailure(error) && (await internetIsDown());
 
   const plan = await withStore(async () => {
     const store = await loadStore(dataDir);
@@ -553,21 +559,25 @@ export async function reportAlertFailure(
       checks: [],
       series: [],
     };
-    source.failures = (source.failures ?? 0) + 1;
+    if (!offline) source.failures = (source.failures ?? 0) + 1;
     source.lastError = error.slice(0, 500);
     store.sources[sourceId] = source;
     await saveStore(dataDir, store);
     return {
       label: source.label,
-      failures: source.failures,
+      failures: source.failures ?? 0,
       notify:
-        source.failures >= FAILURES_BEFORE_BLIND &&
+        !offline &&
+        (source.failures ?? 0) >= FAILURES_BEFORE_BLIND &&
         !source.failureNotifiedAt &&
         source.emails !== false,
     };
   });
 
-  log.warn(`[failure] source=${sourceId} failures=${plan.failures} notify=${plan.notify}`);
+  log.warn(
+    `[failure] source=${sourceId} failures=${plan.failures} notify=${plan.notify}${offline ? ' offline=true (not counted)' : ''}`
+  );
+  if (offline) return { emailed: null, failures: plan.failures, offline: true };
   if (!plan.notify) return { emailed: null, failures: plan.failures };
 
   const message = renderMessage(
@@ -601,6 +611,11 @@ export async function reportAlertFailure(
  * Sends one "stopped reporting" email per stale episode for sources whose job is
  * enabled but hasn't reported in STALE_INTERVALS of its schedule. A disabled job
  * is paused on purpose, so it never counts as stale.
+ *
+ * Staleness counts only time the source could have reported: from the later of
+ * its last report, this server's boot and the end of the last internet outage.
+ * Hours the server was off, or the line was down, are not the source going
+ * quiet, and nothing is sent while the internet is down.
  */
 export async function checkStaleAlertSources(
   opts: AlertsOptions = {}
@@ -608,7 +623,16 @@ export async function checkStaleAlertSources(
   const dataDir = opts.dataDir ?? DATA_DIR;
   const now = opts.now ?? new Date();
   const t0 = performance.now();
-  const [store, jobs] = await Promise.all([loadStore(dataDir), loadJobs(dataDir)]);
+  const [store, jobs, conn] = await Promise.all([
+    loadStore(dataDir),
+    loadJobs(dataDir),
+    connectivityStatus(),
+  ]);
+  const couldReportSince = Math.max(
+    Date.parse(conn.bootedAt) || 0,
+    Date.parse(conn.lastOutageEnd ?? '') || 0
+  );
+  let offline: boolean | undefined;
 
   const notified: string[] = [];
   for (const source of Object.values(store.sources)) {
@@ -624,7 +648,15 @@ export async function checkStaleAlertSources(
       continue;
     }
     const ageMs = now.getTime() - Date.parse(source.reportedAt);
-    if (!(ageMs > STALE_INTERVALS * intervalMs)) continue;
+    const quietMs = now.getTime() - Math.max(Date.parse(source.reportedAt), couldReportSince);
+    if (!(quietMs > STALE_INTERVALS * intervalMs)) continue;
+    offline ??= await internetIsDown();
+    if (offline) {
+      log.info(
+        `[watchdog] source=${source.id} quiet ${formatDuration(quietMs)}, internet down: not stale`
+      );
+      continue;
+    }
 
     const message = renderMessage(
       `Alert blind: ${source.label} stopped reporting`,

@@ -50,6 +50,8 @@ export interface EmailLogEntry {
   /** Resend's message id on success. */
   providerId?: string;
   error?: string;
+  /** The send failed because the internet was down, not because it was rejected. */
+  offline?: boolean;
   elapsedMs: number;
   /** Caller-supplied context: an edition id, `invoice:<id>`, a report week. */
   ref?: string;

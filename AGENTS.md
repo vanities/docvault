@@ -182,6 +182,16 @@ Assignments run on the Claude backend only, because Codex has no DocVault write 
 
 The snapshot scheduler records every source's `metrics()` once a day under `context-history/`, which is how stores that keep only today's value (debts, account balances) still report dated changes. When a feature stores new data, register a source for it: `context/coverage.test.ts` fails while any data file or folder the server names belongs to no source, unless `context/coverage.ts` exempts it with a reason. Its not-wired list is empty and must stay empty. Bank transactions ride on the same SimpleFIN request as balances (no extra quota) into `.docvault-bank-transactions.json`, which keeps them after SimpleFIN's 90-day window. The SimpleFIN sync is that file's only writer, and it leaves an unreadable ledger untouched rather than starting a new one.
 
+**A failure while the internet is down belongs to the outage** (`web/server/connectivity.ts`). After a power cut the server can boot hours before the internet returns, and every fetch, alert check and email then failed and turned into failure streaks and "blind" alert emails. So before recording a failure, code asks `internetIsDown()`, and a failure is excused only when two signals agree: its text looks like a network failure (`looksLikeNetworkFailure`: DNS, connect, timeout; a 403 or parse error never does) and a live probe reaches none of the probe endpoints. Probing is lazy: each network-shaped failure triggers a probe (failures that land together share one), only a "down" answer is reused (for a minute; an "up" answer is not, because the line can drop the second after a good probe), and while down the server re-probes every minute. The first probe that gets through closes the outage in `.docvault-connectivity.json` and runs the `onReconnect` listeners. The rule applies in five places, and a new place that records failures should join them:
+
+1. **Custom jobs:** `offlineSince` on the status, no addition to `consecutiveFailures`, re-run on reconnect.
+2. **Built-in tasks:** the same, through `executeTrackedRun`.
+3. **Alert engine:** a failure report while offline doesn't count toward blind. "Stopped reporting" counts only time after boot and after the last outage, and nothing goes stale while offline.
+4. **Sent-mail log:** `offline: true` on the entry.
+5. **Newsstand:** an edition that failed offline doesn't count toward `MAX_FAILED_EDITIONS_PER_DAY`.
+
+`DOCVAULT_CONNECTIVITY_PROBES` replaces the probe URLs or turns the check off (`off` means always online); the test run sets it to `off`, so no test probes the real network. The Dropbox task reads the sync script's status file after it runs, because the script exits 0 even when rclone failed.
+
 **Package installs:** This project uses both pnpm and bun. After adding a dependency with `pnpm add <pkg>`, always run `bun install` to sync `bun.lock`, then commit both `package.json` and `bun.lock`. The Docker build uses `bun install --frozen-lockfile` so an out-of-sync `bun.lock` breaks CI. `pnpm-lock.yaml` is gitignored.
 
 ## Architecture
@@ -201,6 +211,7 @@ All state lives in `DATA_DIR` (default repository-root `data/`, `/data` in Docke
 | `.docvault-inbound-email.json` | Assignment email replies the server already processed (Resend receiving ids)     |
 | `.docvault-debt-plan.json`   | Debts → Payoff plan inputs (living expenses, extra payment, growth assumptions)    |
 | `.docvault-bank-transactions.json` | Posted bank transactions from SimpleFIN, kept past its 90-day window (sync-owned) |
+| `.docvault-connectivity.json` | Internet outages the server saw (start, end), newest 100; an open one means it is still down |
 | `context-history/<source>/<year>.json` | Each context source's key numbers, one record per day (debt and account balances) |
 
 Entity types: `tax` (year-based views with income/expenses) or `docs` (flat file listing).

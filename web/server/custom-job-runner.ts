@@ -21,6 +21,7 @@ import { collectionCounts, type CollectionCounts } from './collection-summary.js
 export { collectionCounts } from './collection-summary.js';
 import { alertSettingsForJob } from './alerts.js';
 import type { AlertJobSettings } from './alerts-types.js';
+import { internetIsDown, looksLikeNetworkFailure, onReconnect } from './connectivity.js';
 import { seedExampleAlertDashboards } from './seed-example-alerts.js';
 import { seedExampleJobs } from './seed-example-jobs.js';
 
@@ -61,11 +62,11 @@ const MIN_RETRY_MS = 10 * 60 * 1000;
 const MAX_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 const RETRY_BASE_MS = 15 * 60 * 1000;
 const RETRY_MAX_MS = 6 * 60 * 60 * 1000;
-// A lookup or connection that never reached the source. Long backoff protects a
-// source that is pushing back (403/429/5xx); this is a local outage instead, and
-// the 6h cap left jobs idle for hours after the network came back in Oct 2026.
-const NETWORK_FAILURE =
-  /getaddrinfo|EAI_AGAIN|E(?:CONNREFUSED|CONNRESET|TIMEDOUT|TIMEOUT|NETUNREACH|HOSTUNREACH)|Failed to resolve|name resolution|timed out|Unable to connect/i;
+// A lookup or connection that never reached the source (looksLikeNetworkFailure).
+// Long backoff protects a source that is pushing back (403/429/5xx); this is a
+// local outage instead, and the 6h cap left jobs idle for hours after the network
+// came back in Oct 2026. It is also the fallback retry for a run that waited out
+// an outage, in case the reconnect re-run never comes.
 const NETWORK_RETRY_MAX_MS = 60 * 60 * 1000;
 // A clean run that deferred unpublished items checks back this soon instead of
 // waiting out its schedule, for at most DEFERRED_MAX_MS after the first deferral
@@ -102,6 +103,9 @@ export type CustomJobStatus = {
   nextCheckAt?: string | null;
   /** Start of the current streak of runs that deferred items. */
   deferredSince?: string | null;
+  /** Set while the job's last run failed because the internet was down: it is
+   *  waiting, not failing, and runs again as soon as the internet is back. */
+  offlineSince?: string | null;
 };
 
 export type CustomJobStatusMap = Record<string, CustomJobStatus>;
@@ -122,6 +126,8 @@ export type CustomJobRunResult = {
   diagnostics: LogEntry[];
   warningCount: number;
   error?: string | null;
+  /** The run failed with a network error while the internet was down. */
+  offline?: boolean;
 };
 
 function emptyStatus(): CustomJobStatus {
@@ -165,6 +171,14 @@ export function customJobSourceWarnings(
     if (!manifest.enabled) return [];
     const status = statuses[manifest.id];
     if (!status?.lastError) return [];
+    if (status.offlineSince) {
+      return [
+        {
+          source: `collection/${manifest.id}`,
+          message: `${manifest.label}: waiting for the internet (down since ${status.offlineSince}); it runs again when the connection is back.`,
+        },
+      ];
+    }
     const summary = status.lastCollection
       ? incompleteMessage(status.lastCollection)
       : status.lastError.replace(/\s+/g, ' ').slice(0, 200);
@@ -451,6 +465,14 @@ async function executeCustomJob(
           : collection?.failed
             ? incompleteMessage(collection)
             : `Script exited ${exitCode}`) + (detail ? `: ${detail}` : '');
+    // stdout too: alert collectors print their fetch failure there, not to stderr.
+    const networkFailure =
+      !completed &&
+      looksLikeNetworkFailure(`${lastError ?? ''}\n${rawStderr}\n${rawStdout.slice(-4000)}`);
+    // A network failure while the internet is down is the outage's, not the job's:
+    // the run waits instead of adding to the failure streak, and the reconnect
+    // listener (startCustomJobScheduler) runs it again once a probe gets through.
+    const offline = networkFailure && !dryRun && (await internetIsDown());
     const result: CustomJobRunResult = {
       id: manifest.id,
       runId,
@@ -467,23 +489,22 @@ async function executeCustomJob(
       diagnostics,
       warningCount,
       error: lastError,
+      ...(offline ? { offline: true } : {}),
     };
     await persistCustomRun(dataDir, result);
 
-    const failures = completed ? 0 : (previous?.consecutiveFailures ?? 0) + 1;
-    // stdout too: alert collectors print their fetch failure there, not to stderr.
-    const networkFailure =
-      failures > 0 &&
-      NETWORK_FAILURE.test(`${lastError ?? ''}\n${rawStderr}\n${rawStdout.slice(-4000)}`);
-    const nextRetryAt = failures
-      ? new Date(
+    const failures = completed ? 0 : (previous?.consecutiveFailures ?? 0) + (offline ? 0 : 1);
+    const nextRetryAt = completed
+      ? null
+      : new Date(
           Date.now() +
-            Math.min(
-              networkFailure ? NETWORK_RETRY_MAX_MS : RETRY_MAX_MS,
-              RETRY_BASE_MS * 2 ** Math.min(failures - 1, 5)
-            )
-        ).toISOString()
-      : null;
+            (offline
+              ? NETWORK_RETRY_MAX_MS
+              : Math.min(
+                  networkFailure ? NETWORK_RETRY_MAX_MS : RETRY_MAX_MS,
+                  RETRY_BASE_MS * 2 ** Math.min(failures - 1, 5)
+                ))
+        ).toISOString();
     const deferred = completed ? (collection?.deferred ?? 0) : 0;
     const deferredSince = deferred ? (previous?.deferredSince ?? startedAt) : null;
     const nextCheckAt =
@@ -510,6 +531,7 @@ async function executeCustomJob(
             nextCheckAt,
             // A failed run doesn't end the deferral streak; only a clean one does.
             ...(completed ? { deferredSince } : {}),
+            offlineSince: offline ? (previous?.offlineSince ?? startedAt) : null,
             warningCount,
             lastWarning: warningCount
               ? (warnings.at(-1)?.message ?? detail ?? 'Collector reported warnings').slice(0, 500)
@@ -523,7 +545,7 @@ async function executeCustomJob(
       `[run] job=${id} runId=${runId} outcome=${outcome} exit=${exitCode} ` +
       `collected=${collection?.collected ?? 'unknown'} failed=${collection?.failed ?? 'unknown'} ` +
       `skipped=${collection?.skipped ?? 'unknown'} deferred=${deferred} durationMs=${durationMs} ` +
-      `retryAt=${nextRetryAt ?? 'none'}${networkFailure ? ' retryKind=network' : ''} ` +
+      `retryAt=${nextRetryAt ?? 'none'}${offline ? ' retryKind=offline' : networkFailure ? ' retryKind=network' : ''} ` +
       `checkAt=${nextCheckAt ?? 'none'}`;
     if (outcome === 'success') logJobs.info(message);
     else
@@ -611,6 +633,34 @@ export function isCustomJobDue(
   return now - lastSuccess >= intervalMs - DUE_TOLERANCE_MS;
 }
 
+/**
+ * Runs every enabled job whose last run waited out an outage, right away rather
+ * than at its fallback retry. Called when the internet comes back.
+ */
+export async function rerunJobsWaitingForInternet(dataDir: string = DATA_DIR): Promise<string[]> {
+  const [records, statuses] = await Promise.all([
+    listCustomJobManifests(dataDir),
+    loadCustomJobStatus(dataDir),
+  ]);
+  const ids = records.flatMap((record) =>
+    record.status === 'valid' &&
+    record.manifest.enabled &&
+    statuses[record.manifest.id]?.offlineSince
+      ? [record.manifest.id]
+      : []
+  );
+  logJobs.info(
+    `[reconnect] re-running ${ids.length} job(s) that waited for the internet${ids.length ? `: ${ids.join(', ')}` : ''}`
+  );
+  const settled = await Promise.allSettled(ids.map((id) => runCustomJobNow(id, { dataDir })));
+  const failed = settled.filter((s) => s.status === 'rejected').length;
+  if (failed) logJobs.warn(`[reconnect] ${failed} of ${ids.length} re-run(s) threw`);
+  return ids;
+}
+
+// One reconnect listener per process; a scheduler restart replaces it.
+let stopReconnectRerun: (() => void) | null = null;
+
 /** Runs a job iff it is currently due, deciding from the persisted status. */
 function runIfDue(id: string, intervalMs: number, dataDir: string): void {
   loadCustomJobStatus(dataDir)
@@ -626,6 +676,8 @@ function runIfDue(id: string, intervalMs: number, dataDir: string): void {
 export async function startCustomJobScheduler(dataDir: string = DATA_DIR): Promise<void> {
   for (const timer of timers.values()) clearInterval(timer);
   timers.clear();
+  stopReconnectRerun?.();
+  stopReconnectRerun = onReconnect(() => rerunJobsWaitingForInternet(dataDir));
   const statuses = await loadCustomJobStatus(dataDir);
   for (const [id, status] of Object.entries(statuses)) {
     if (status.running && !activeJobs.has(`${path.resolve(dataDir)}:${id}`)) {

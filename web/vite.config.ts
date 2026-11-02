@@ -164,6 +164,9 @@ export default defineConfig({
     // plugin caches, custom-job scripts) that ships its own test files —
     // those must never run as part of the app suite.
     include: ['src/**/*.test.{ts,tsx}', 'server/**/*.test.ts'],
+    // No test may probe the real internet (server/connectivity.ts); tests that
+    // need an outage build their own monitor with a fake probe.
+    env: { DOCVAULT_CONNECTIVITY_PROBES: 'off' },
   },
   resolve: {
     alias: {
