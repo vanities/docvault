@@ -79,6 +79,8 @@ web/scripts/*
 !web/server/ticker-prices.test.ts
 # Exception: crypto pricing outage tests use fabricated holdings and isolated temporary caches
 !web/server/crypto-pricing.test.ts
+# Exception: Gemini retry tests fake the Gemini API with fabricated keys and balances in a tmpdir
+!web/server/crypto-gemini.test.ts
 # Exception: Politics dashboard tests use synthetic congressional payloads, no personal data
 !web/src/components/Politics/politicsData.test.ts
 # Exception: 401k contributions API tests use fabricated entities/amounts (consulting-llc, farm-llc), no personal data

@@ -549,37 +549,83 @@ async function fetchCoinbaseBalances(config: ExchangeConfig): Promise<Balance[]>
 // Exchange: Gemini
 // -----------------------------------------------------------------------------
 
+const GEMINI_ATTEMPTS = 3;
+// A healthy call answers in under 2s (p99 1.5s on the NAS, Nov 2026). A stuck one holds the
+// connection until Gemini's gateway gives up with a 504 at 60s, so waiting longer buys nothing.
+const GEMINI_TIMEOUT_MS = 20_000;
+
+class GeminiRequestError extends Error {}
+
+/** Gemini error bodies can be a whole HTML error page; keep its text, briefly. */
+function briefErrorBody(body: string): string {
+  return body
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 160);
+}
+
+/**
+ * One signed POST to a Gemini private endpoint. Gemini's gateway answered 504 on 27 of 316
+ * balances calls over two weeks of Nov 2026, and one failed source fails the whole crypto
+ * read, so 5xx, 429 and network failures are retried. Each attempt signs a fresh nonce
+ * because Gemini refuses a nonce it has already seen.
+ */
+async function geminiPrivatePost(
+  config: ExchangeConfig,
+  request: string,
+  params: Record<string, unknown>,
+  log: Logger
+): Promise<Response> {
+  let lastError = '';
+  for (let attempt = 1; attempt <= GEMINI_ATTEMPTS; attempt++) {
+    const encodedPayload = Buffer.from(
+      JSON.stringify({ request, nonce: Date.now().toString(), ...params })
+    ).toString('base64');
+    const signature = crypto
+      .createHmac('sha384', config.apiSecret)
+      .update(encodedPayload)
+      .digest('hex');
+    try {
+      const res = await fetch(`https://api.gemini.com${request}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain',
+          'X-GEMINI-APIKEY': config.apiKey,
+          'X-GEMINI-PAYLOAD': encodedPayload,
+          'X-GEMINI-SIGNATURE': signature,
+          'Cache-Control': 'no-cache',
+        },
+        signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
+      });
+      if (res.ok) {
+        if (attempt > 1) log.info(`${request} recovered on attempt ${attempt}/${GEMINI_ATTEMPTS}`);
+        return res;
+      }
+      const body = briefErrorBody(await res.text().catch(() => ''));
+      lastError = `Gemini API error ${res.status}${body ? `: ${body}` : ''}`;
+      // A bad key, nonce or permission fails the same way on every attempt.
+      if (res.status !== 429 && res.status < 500) throw new GeminiRequestError(lastError);
+    } catch (err) {
+      if (err instanceof GeminiRequestError) throw err;
+      lastError = `Gemini request failed: ${err instanceof Error ? err.message : String(err)}`;
+    }
+    if (attempt < GEMINI_ATTEMPTS) {
+      const delay = 2_000 * attempt;
+      log.warn(
+        `${request} attempt ${attempt}/${GEMINI_ATTEMPTS} failed (${lastError}); retrying in ${delay}ms`
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  log.error(`${request} gave up after ${GEMINI_ATTEMPTS} attempts: ${lastError}`);
+  throw new Error(lastError);
+}
+
 async function fetchGeminiBalances(config: ExchangeConfig): Promise<Balance[]> {
   logGemini.info('Fetching balances...');
   const elapsed = logGemini.timer();
-  const nonce = Date.now().toString();
-  const payload = JSON.stringify({
-    request: '/v1/balances',
-    nonce,
-  });
-  const encodedPayload = Buffer.from(payload).toString('base64');
-  const signature = crypto
-    .createHmac('sha384', config.apiSecret)
-    .update(encodedPayload)
-    .digest('hex');
-
-  const res = await fetch('https://api.gemini.com/v1/balances', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'text/plain',
-      'X-GEMINI-APIKEY': config.apiKey,
-      'X-GEMINI-PAYLOAD': encodedPayload,
-      'X-GEMINI-SIGNATURE': signature,
-      'Cache-Control': 'no-cache',
-    },
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    logGemini.error(`HTTP ${res.status}: ${text}`);
-    throw new Error(`Gemini API error ${res.status}: ${text}`);
-  }
-
+  const res = await geminiPrivatePost(config, '/v1/balances', {}, logGemini);
   const data = (await res.json()) as { amount?: string; currency?: string }[];
   const balances: Balance[] = [];
 
@@ -1390,34 +1436,12 @@ async function fetchGeminiTrades(config: ExchangeConfig): Promise<CryptoTrade[]>
 
   for (const symbol of symbols) {
     try {
-      const nonce = Date.now().toString();
-      const payload = JSON.stringify({
-        request: '/v1/mytrades',
-        nonce,
-        symbol,
-        limit_trades: 500,
-      });
-      const encodedPayload = Buffer.from(payload).toString('base64');
-      const signature = crypto
-        .createHmac('sha384', config.apiSecret)
-        .update(encodedPayload)
-        .digest('hex');
-
-      const res = await fetch('https://api.gemini.com/v1/mytrades', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain',
-          'X-GEMINI-APIKEY': config.apiKey,
-          'X-GEMINI-PAYLOAD': encodedPayload,
-          'X-GEMINI-SIGNATURE': signature,
-          'Cache-Control': 'no-cache',
-        },
-      });
-
-      if (!res.ok) {
-        logGeminiTrades.warn(`${symbol}: HTTP ${res.status}`);
-        continue;
-      }
+      const res = await geminiPrivatePost(
+        config,
+        '/v1/mytrades',
+        { symbol, limit_trades: 500 },
+        logGeminiTrades
+      );
       const data = (await res.json()) as {
         price?: string;
         amount?: string;
@@ -1814,7 +1838,8 @@ export async function fetchAllBalances(
   etherscanKey_?: string,
   manualHoldings: ManualHolding[] = [],
   onProgress?: (current: number, total: number, label: string) => void,
-  onSource?: (source: SourceBalance) => void
+  onSource?: (source: SourceBalance) => void,
+  onSourceError?: (source: SourceBalance) => void
 ): Promise<{
   sources: SourceBalance[];
   totalUsdValue: number;
@@ -1876,7 +1901,8 @@ export async function fetchAllBalances(
         lastUpdated: new Date().toISOString(),
       };
       sources.push(source);
-      if (!source.error) onSource?.(source);
+      if (source.error) onSourceError?.(source);
+      else onSource?.(source);
     })
   );
 
@@ -1905,7 +1931,8 @@ export async function fetchAllBalances(
         lastUpdated: new Date().toISOString(),
       };
       sources.push(source);
-      if (!source.error) onSource?.(source);
+      if (source.error) onSourceError?.(source);
+      else onSource?.(source);
     })
   );
 
@@ -1932,7 +1959,8 @@ export async function fetchAllBalances(
       lastUpdated: new Date().toISOString(),
     };
     sources.push(source);
-    if (!source.error) onSource?.(source);
+    if (source.error) onSourceError?.(source);
+    else onSource?.(source);
   }
 
   // Manual holdings — self-custodied / untracked assets (e.g. Monero) the user

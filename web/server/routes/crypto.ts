@@ -217,6 +217,18 @@ export async function handleCryptoRoutes(
               },
               (source) => {
                 send({ type: 'source', source });
+              },
+              // The whole read still ends in `error` (a total with a hole in it is wrong), but
+              // this line names the source that failed, so a reader can use the ones that
+              // answered. The Crypto page ignores it and keeps that source's cached value.
+              (source) => {
+                send({
+                  type: 'source-error',
+                  sourceId: source.sourceId,
+                  sourceType: source.sourceType,
+                  label: source.label,
+                  error: source.error,
+                });
               }
             );
             await saveCryptoCache(portfolio);
