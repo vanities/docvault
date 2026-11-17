@@ -1,6 +1,7 @@
-// Outbound email via Resend (https://resend.com). A single fetch to the send
-// API — no SDK dependency. Best-effort: logs and returns { ok:false } on any
-// failure, never throws, so a scheduled task can fire-and-forget.
+// Outbound email via Resend (https://resend.com). A fetch to the send API, retried
+// with an idempotency key after a dropped connection or a 5xx; no SDK dependency.
+// Best-effort: logs and returns { ok:false } on any failure, never throws, so a
+// scheduled task can fire-and-forget.
 //
 // The API key comes from getEmailConfig() (settings → RESEND_API_KEY env). The
 // `from` domain must be verified in the Resend dashboard, or use the shared
@@ -23,6 +24,14 @@ export type { EmailPurpose } from './email-log.js';
 
 const log = createLogger('Email');
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
+
+// Resend answers in 132ms at the median and 13s at the slowest seen (52 NAS sends, Nov 2026).
+const SEND_TIMEOUT_MS = 20_000;
+const SEND_ATTEMPTS = 3;
+const SEND_RETRY_DELAYS_MS = [2_000, 5_000];
+// The alerts route waits for its email before it answers the job that reported, and those jobs
+// give up after 30s. A retry that would start past this budget is not made.
+const SEND_RETRY_BUDGET_MS = 20_000;
 
 export interface EmailAttachment {
   filename: string;
@@ -159,7 +168,8 @@ async function recordAttempt(
   input: SendEmailInput,
   built: Pick<ResendPayloadResult, 'recipients' | 'cc' | 'from'>,
   outcome: SendEmailResult,
-  elapsedMs: number
+  elapsedMs: number,
+  attempts = 1
 ): Promise<void> {
   await appendEmailLog({
     id: randomUUID(),
@@ -177,6 +187,7 @@ async function recordAttempt(
     ...(outcome.id ? { providerId: outcome.id } : {}),
     ...(outcome.error ? { error: outcome.error } : {}),
     ...(outcome.offline ? { offline: true } : {}),
+    ...(attempts > 1 ? { attempts } : {}),
     elapsedMs,
     ...(input.ref ? { ref: input.ref } : {}),
   });
@@ -213,35 +224,62 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
       `attachments=${input.attachments?.length ?? 0} htmlBytes=${input.html.length}` +
       (input.ref ? ` ref=${input.ref}` : '')
   );
-  let outcome: SendEmailResult;
-  try {
-    const res = await fetch(RESEND_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${cfg.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-    const elapsed = Date.now() - startedAt;
-    if (!res.ok) {
-      const bodyText = await res.text().catch(() => '');
-      const msg = `Resend ${res.status}: ${bodyText.slice(0, 300)}`;
-      log.error(`[send] failed in ${elapsed}ms — ${msg}`);
-      outcome = { ok: false, error: msg };
-    } else {
-      const data = (await res.json().catch(() => ({}))) as { id?: string };
-      log.info(`[send] ok in ${elapsed}ms id=${data.id ?? '?'}`);
-      outcome = { ok: true, id: data.id };
+  // Every attempt carries the same key. If a reset connection hid a send that went through,
+  // Resend answers the retry with the first result instead of mailing it twice (keys last 24h).
+  const idempotencyKey = randomUUID();
+  let outcome: SendEmailResult = { ok: false, error: 'Not sent' };
+  let attempt = 0;
+  while (attempt < SEND_ATTEMPTS) {
+    attempt++;
+    const tag = `attempt ${attempt}/${SEND_ATTEMPTS}`;
+    let retryable = false;
+    try {
+      const res = await fetch(RESEND_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${cfg.apiKey}`,
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey,
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
+      });
+      const elapsed = Date.now() - startedAt;
+      if (!res.ok) {
+        const bodyText = await res.text().catch(() => '');
+        const msg = `Resend ${res.status}: ${bodyText.slice(0, 300)}`;
+        log.error(`[send] failed in ${elapsed}ms (${tag}) — ${msg}`);
+        outcome = { ok: false, error: msg };
+        // A 409 for this key means the first attempt is still being processed.
+        retryable =
+          res.status >= 500 ||
+          res.status === 429 ||
+          (res.status === 409 && bodyText.includes('concurrent_idempotent_requests'));
+      } else {
+        const data = (await res.json().catch(() => ({}))) as { id?: string };
+        log.info(`[send] ok in ${elapsed}ms id=${data.id ?? '?'}${attempt > 1 ? ` (${tag})` : ''}`);
+        outcome = { ok: true, id: data.id };
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const network = looksLikeNetworkFailure(msg);
+      const offline = network && (await internetIsDown());
+      log.error(
+        `[send] threw in ${Date.now() - startedAt}ms (${tag})${offline ? ' (internet down)' : ''} — ${msg}`
+      );
+      outcome = { ok: false, error: msg, ...(offline ? { offline: true } : {}) };
+      // While the internet is down a retry fails the same way; the outage handling owns it.
+      retryable = network && !offline;
     }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    const offline = looksLikeNetworkFailure(msg) && (await internetIsDown());
-    log.error(
-      `[send] threw in ${Date.now() - startedAt}ms${offline ? ' (internet down)' : ''} — ${msg}`
-    );
-    outcome = { ok: false, error: msg, ...(offline ? { offline: true } : {}) };
+    if (outcome.ok || !retryable || attempt >= SEND_ATTEMPTS) break;
+    const delay = SEND_RETRY_DELAYS_MS[attempt - 1] ?? SEND_RETRY_DELAYS_MS.at(-1)!;
+    if (Date.now() - startedAt + delay > SEND_RETRY_BUDGET_MS) {
+      log.warn(`[send] no retry: ${SEND_RETRY_BUDGET_MS}ms budget spent`);
+      break;
+    }
+    log.warn(`[send] retrying in ${delay}ms`);
+    await new Promise((resolve) => setTimeout(resolve, delay));
   }
-  await recordAttempt(input, built, outcome, Date.now() - startedAt);
+  await recordAttempt(input, built, outcome, Date.now() - startedAt, attempt);
   return outcome;
 }

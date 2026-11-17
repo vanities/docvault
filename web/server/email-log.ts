@@ -52,6 +52,8 @@ export interface EmailLogEntry {
   error?: string;
   /** The send failed because the internet was down, not because it was rejected. */
   offline?: boolean;
+  /** Requests it took when a transient failure was retried (absent for one). */
+  attempts?: number;
   elapsedMs: number;
   /** Caller-supplied context: an edition id, `invoice:<id>`, a report week. */
   ref?: string;

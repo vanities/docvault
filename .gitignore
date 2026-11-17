@@ -164,6 +164,8 @@ web/scripts/*
 !web/server/email-cc.test.ts
 # Exception: sent-mail log store tests use fabricated addresses in a tmpdir, no personal data
 !web/server/email-log.test.ts
+# Exception: send-retry tests fake the Resend API with fabricated addresses; the mail log is captured in memory
+!web/server/email-send.test.ts
 # Exception: alerts engine/route tests use synthetic sources and fabricated addresses in a tmpdir, email mocked
 !web/server/alerts.test.ts
 # Exception: connectivity monitor tests use fake probes, a fake clock and a tmpdir; no network, no personal data
