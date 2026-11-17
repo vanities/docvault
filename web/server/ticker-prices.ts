@@ -12,14 +12,10 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import YahooFinance from 'yahoo-finance2';
-
-// v3.14+ requires explicit instantiation; the historical default singleton
-// has been deprecated. One module-level instance is enough.
-const yahooFinance = new YahooFinance();
 import { DATA_DIR, ensureDir } from './data.js';
 import { createLogger } from './logger.js';
 import { marketPerformance, type MarketPerformance } from './market-changes.js';
+import { yahooFinance } from './yahoo.js';
 
 const log = createLogger('TickerPrices');
 
@@ -196,9 +192,16 @@ export async function fetchTickerPrices(symbols: string[]): Promise<{
       result[q.symbol] = q;
     }
     await saveCache(store);
-    const okCount = fetched.filter((f) => !f.error).length;
+    const failed = fetched.filter((f) => f.error);
+    const named = failed
+      .slice(0, 10)
+      .map((f) => `${f.symbol} (${(f.error ?? '').slice(0, 80)})`)
+      .join(', ');
     log.info(
-      `Fetched ${fetched.length} ticker quotes (${okCount} ok, ${fetched.length - okCount} errored)`
+      `Fetched ${fetched.length} ticker quotes (${fetched.length - failed.length} ok, ${failed.length} errored)` +
+        (failed.length
+          ? `: ${named}${failed.length > 10 ? `, +${failed.length - 10} more` : ''}`
+          : '')
     );
   }
 

@@ -3,13 +3,12 @@
 // Lets the runner resolve "price on the trade date" and "price now" for every
 // disclosed ticker without re-hitting Yahoo on each request.
 
-import YahooFinance from 'yahoo-finance2';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { DATA_DIR } from '../data.js';
 import { createLogger } from '../logger.js';
+import { yahooFinance as yf } from '../yahoo.js';
 
-const yf = new YahooFinance();
 const log = createLogger('PoliticsBacktestPrices');
 
 const CACHE_FILE = path.join(DATA_DIR, '.docvault-backtest-prices.json');

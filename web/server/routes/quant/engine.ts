@@ -4,9 +4,9 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import YahooFinance from 'yahoo-finance2';
 import { DATA_DIR, loadSettings, QUANT_SNAPSHOTS_FILE } from '../../data.js';
 import { createLogger } from '../../logger.js';
+import { yahooFinance } from '../../yahoo.js';
 import {
   fetchPredictionMarkets,
   type PredictionMarketsResponse,
@@ -32,7 +32,6 @@ export {
   sma,
 } from './indicators.js';
 
-const yahooFinance = new YahooFinance();
 export const logQuant = createLogger('Quant');
 
 const QUANT_CACHE_FILE = path.join(DATA_DIR, '.docvault-quant-cache.json');
