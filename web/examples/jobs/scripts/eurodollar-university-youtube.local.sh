@@ -6,8 +6,9 @@ JOB_ID="${DOCVAULT_JOB_ID:-eurodollar-university-youtube-daily}"
 # Eurodollar University — Jeff Snider's monetary-plumbing / eurodollar-system
 # macro commentary (Fed, repo, yield curve, deflation/recession themes). Uploads
 # land on /videos several times a week; transcripts file into the finance desk.
+# Channel ids, not @handles: a handle can be reassigned (Theo's @t3dotgg was, Nov 2026).
 SOURCE_URLS=(
-  "https://www.youtube.com/@eurodollaruniversity/videos"
+  "https://www.youtube.com/channel/UCrXNkk4IESnqU-8GMad2vyA/videos"
 )
 DOMAIN="finance"
 TAGS_JSON='["eurodollar-university","youtube","finance","macro"]'

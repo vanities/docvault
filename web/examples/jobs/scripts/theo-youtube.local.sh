@@ -6,9 +6,10 @@ JOB_ID="${DOCVAULT_JOB_ID:-theo-youtube-daily}"
 # Theo (t3.gg) — tech/dev commentary. Uploads land on /videos; occasional live
 # streams are listed on the SEPARATE /streams tab, so scrape both. The dedup
 # below merges them so anything shown on multiple tabs is filed only once.
+# Channel ids, not @handles: a handle can be reassigned (Theo's @t3dotgg was, Nov 2026).
 SOURCE_URLS=(
-  "https://www.youtube.com/@t3dotgg/videos"
-  "https://www.youtube.com/@t3dotgg/streams"
+  "https://www.youtube.com/channel/UCbRP3c757lWg9M-U7TyEkXA/videos"
+  "https://www.youtube.com/channel/UCbRP3c757lWg9M-U7TyEkXA/streams"
 )
 DOMAIN="tech"
 TAGS_JSON='["theo","t3dotgg","youtube","tech"]'

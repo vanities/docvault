@@ -7,8 +7,9 @@ JOB_ID="${DOCVAULT_JOB_ID:-huberman-lab-youtube-daily}"
 # Full episodes and Essentials re-releases all land on /videos (~2-3 uploads a
 # week); the channel has no separate live tab worth polling, so one source URL
 # is enough.
+# Channel ids, not @handles: a handle can be reassigned (Theo's @t3dotgg was, Nov 2026).
 SOURCE_URLS=(
-  "https://www.youtube.com/@hubermanlab/videos"
+  "https://www.youtube.com/channel/UC2D2CMWXMOVWx7giW1n3LIg/videos"
 )
 DOMAIN="health"
 TAGS_JSON='["huberman","hubermanlab","youtube","health"]'

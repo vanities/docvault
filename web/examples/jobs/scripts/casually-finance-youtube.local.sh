@@ -6,8 +6,9 @@ JOB_ID="${DOCVAULT_JOB_ID:-casually-finance-youtube-daily}"
 # Casually Finance — macro / markets / investing commentary (recession, IPOs,
 # Fed, US-dominance themes). Uploads land on /videos a few times a week, so one
 # source URL is enough; transcripts are filed into the finance research desk.
+# Channel ids, not @handles: a handle can be reassigned (Theo's @t3dotgg was, Nov 2026).
 SOURCE_URLS=(
-  "https://www.youtube.com/@CasuallyFinance/videos"
+  "https://www.youtube.com/channel/UCrNfRFWnLC3tCy1TnyhVQ7g/videos"
 )
 DOMAIN="finance"
 TAGS_JSON='["casually-finance","youtube","finance","macro"]'

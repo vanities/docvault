@@ -6,8 +6,9 @@ JOB_ID="${DOCVAULT_JOB_ID:-fireship-youtube-daily}"
 # Fireship (Jeff Delaney) — fast-paced dev news, "X in 100 seconds" explainers,
 # and AI/tooling commentary. Uploads only: the channel has no live streams, so
 # there's no /streams tab worth a yt-dlp round trip each run.
+# Channel ids, not @handles: a handle can be reassigned (Theo's @t3dotgg was, Nov 2026).
 SOURCE_URLS=(
-  "https://www.youtube.com/@Fireship/videos"
+  "https://www.youtube.com/channel/UCsBjURrPoezykLs9EqgamOA/videos"
 )
 DOMAIN="tech"
 TAGS_JSON='["fireship","youtube","tech"]'

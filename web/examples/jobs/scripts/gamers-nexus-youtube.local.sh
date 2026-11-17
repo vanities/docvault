@@ -7,9 +7,10 @@ JOB_ID="${DOCVAULT_JOB_ID:-gamers-nexus-youtube-daily}"
 # Regular uploads land on /videos; the channel also runs live streams listed
 # on the SEPARATE /streams tab, so scrape both. The dedup below merges them so
 # anything shown on multiple tabs is filed only once.
+# Channel ids, not @handles: a handle can be reassigned (Theo's @t3dotgg was, Nov 2026).
 SOURCE_URLS=(
-  "https://www.youtube.com/@GamersNexus/videos"
-  "https://www.youtube.com/@GamersNexus/streams"
+  "https://www.youtube.com/channel/UChIs72whgZI9w6d6FhwGGHA/videos"
+  "https://www.youtube.com/channel/UChIs72whgZI9w6d6FhwGGHA/streams"
 )
 DOMAIN="tech"
 TAGS_JSON='["gamers-nexus","gamersnexus","youtube","tech","hardware"]'

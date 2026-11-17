@@ -6,8 +6,9 @@ JOB_ID="${DOCVAULT_JOB_ID:-cto-larsson-youtube-daily}"
 # CTO LARSSON — crypto / markets trading-signal commentary (Bitcoin, alt-season,
 # rotation calls, macro-driven entries/exits). Uploads land on /videos every
 # day or two, so one source URL is enough; transcripts file into finance.
+# Channel ids, not @handles: a handle can be reassigned (Theo's @t3dotgg was, Nov 2026).
 SOURCE_URLS=(
-  "https://www.youtube.com/@CTOLARSSON/videos"
+  "https://www.youtube.com/channel/UCFU-BE5HRJoudqIz1VDKlhQ/videos"
 )
 DOMAIN="finance"
 TAGS_JSON='["cto-larsson","youtube","finance","crypto","macro"]'
