@@ -1832,6 +1832,34 @@ export function manualHoldingsToSources(
   });
 }
 
+export interface CryptoBalances {
+  sources: SourceBalance[];
+  totalUsdValue: number;
+  byAsset: Balance[];
+  lastUpdated: string;
+}
+
+type SweepEvent =
+  | { type: 'progress'; current: number; total: number; label: string }
+  | { type: 'source' | 'source-error'; source: SourceBalance };
+
+interface Sweep {
+  config: string;
+  startedAt: number;
+  events: SweepEvent[];
+  listeners: Set<(event: SweepEvent) => void>;
+  result?: Promise<CryptoBalances>;
+}
+
+let runningSweep: Sweep | null = null;
+
+/**
+ * Every exchange, wallet and hand-entered holding, valued. Calls that overlap with the same
+ * config share one sweep. Two at once (the scheduler's snapshot and a refresh) used to run side
+ * by side through the single Etherscan queue, each taking twice as long, which pushed a refresh
+ * past a 5-minute client timeout whenever it overlapped the snapshot. A caller that joins late
+ * first gets the progress and sources it missed.
+ */
 export async function fetchAllBalances(
   exchanges: ExchangeConfig[],
   wallets: WalletConfig[],
@@ -1840,12 +1868,64 @@ export async function fetchAllBalances(
   onProgress?: (current: number, total: number, label: string) => void,
   onSource?: (source: SourceBalance) => void,
   onSourceError?: (source: SourceBalance) => void
-): Promise<{
-  sources: SourceBalance[];
-  totalUsdValue: number;
-  byAsset: Balance[];
-  lastUpdated: string;
-}> {
+): Promise<CryptoBalances> {
+  const listener = (event: SweepEvent) => {
+    if (event.type === 'progress') onProgress?.(event.current, event.total, event.label);
+    else if (event.type === 'source') onSource?.(event.source);
+    else onSourceError?.(event.source);
+  };
+  const config = crypto
+    .createHash('sha256')
+    .update(JSON.stringify([exchanges, wallets, etherscanKey_ ?? null, manualHoldings]))
+    .digest('hex');
+  const running = runningSweep;
+  if (running?.result && running.config === config) {
+    logBalances.info(
+      `Joining the sweep started ${Math.round((Date.now() - running.startedAt) / 1000)}s ago instead of starting a second`
+    );
+    for (const event of running.events) listener(event);
+    running.listeners.add(listener);
+    try {
+      // Each caller gets its own copy, so one can't change what another reads.
+      return structuredClone(await running.result);
+    } finally {
+      running.listeners.delete(listener);
+    }
+  }
+
+  const sweep: Sweep = {
+    config,
+    startedAt: Date.now(),
+    events: [],
+    listeners: new Set([listener]),
+  };
+  const emit = (event: SweepEvent) => {
+    sweep.events.push(event);
+    for (const each of sweep.listeners) {
+      // A caller whose client went away must not end the sweep for the others.
+      try {
+        each(event);
+      } catch (err) {
+        logBalances.warn(`A balances listener threw on ${event.type}: ${err}`);
+      }
+    }
+  };
+  sweep.result = sweepAllBalances(exchanges, wallets, etherscanKey_, manualHoldings, emit);
+  runningSweep = sweep;
+  try {
+    return await sweep.result;
+  } finally {
+    if (runningSweep === sweep) runningSweep = null;
+  }
+}
+
+async function sweepAllBalances(
+  exchanges: ExchangeConfig[],
+  wallets: WalletConfig[],
+  etherscanKey_: string | undefined,
+  manualHoldings: ManualHolding[],
+  emit: (event: SweepEvent) => void
+): Promise<CryptoBalances> {
   // Set Etherscan API key for wallet queries
   etherscanApiKey = etherscanKey_;
 
@@ -1874,6 +1954,15 @@ export async function fetchAllBalances(
     assertBalancesValued(balances);
   };
 
+  // Hand-entered holdings need no network, only the prices above, so they go out first: a
+  // reader that stops waiting partway through the wallet scans still gets them. They stay last
+  // in `sources`, where they have always been listed.
+  const manualSources = manualHoldingsToSources(manualHoldings, prices, new Date().toISOString());
+  for (const source of manualSources) {
+    assertBalancesValued(source.balances);
+    emit({ type: 'source', source });
+  }
+
   // Fetch all exchange balances in parallel — emit each source as it completes
   await Promise.all(
     enabledExchanges.map(async (exchange) => {
@@ -1890,7 +1979,12 @@ export async function fetchAllBalances(
       else logBalances.info(`${exchange.id}: ${balances.length} balances`);
       balances.forEach((b) => allAssets.add(b.asset));
       completed++;
-      onProgress?.(completed, totalSteps, EXCHANGE_LABELS[exchange.id] || exchange.id);
+      emit({
+        type: 'progress',
+        current: completed,
+        total: totalSteps,
+        label: EXCHANGE_LABELS[exchange.id] || exchange.id,
+      });
       const source: SourceBalance = {
         sourceId: exchange.id,
         sourceType: 'exchange',
@@ -1901,8 +1995,7 @@ export async function fetchAllBalances(
         lastUpdated: new Date().toISOString(),
       };
       sources.push(source);
-      if (source.error) onSourceError?.(source);
-      else onSource?.(source);
+      emit({ type: source.error ? 'source-error' : 'source', source });
     })
   );
 
@@ -1920,7 +2013,12 @@ export async function fetchAllBalances(
       if (error) logBalances.error(`BTC wallet ${wallet.label}: ${error}`);
       balances.forEach((b) => allAssets.add(b.asset));
       completed++;
-      onProgress?.(completed, totalSteps, wallet.label || 'BTC Wallet');
+      emit({
+        type: 'progress',
+        current: completed,
+        total: totalSteps,
+        label: wallet.label || 'BTC Wallet',
+      });
       const source: SourceBalance = {
         sourceId: wallet.id,
         sourceType: 'wallet',
@@ -1931,8 +2029,7 @@ export async function fetchAllBalances(
         lastUpdated: new Date().toISOString(),
       };
       sources.push(source);
-      if (source.error) onSourceError?.(source);
-      else onSource?.(source);
+      emit({ type: source.error ? 'source-error' : 'source', source });
     })
   );
 
@@ -1948,7 +2045,12 @@ export async function fetchAllBalances(
     }
     balances.forEach((b) => allAssets.add(b.asset));
     completed++;
-    onProgress?.(completed, totalSteps, wallet.label || 'ETH Wallet');
+    emit({
+      type: 'progress',
+      current: completed,
+      total: totalSteps,
+      label: wallet.label || 'ETH Wallet',
+    });
     const source: SourceBalance = {
       sourceId: wallet.id,
       sourceType: 'wallet',
@@ -1959,22 +2061,19 @@ export async function fetchAllBalances(
       lastUpdated: new Date().toISOString(),
     };
     sources.push(source);
-    if (source.error) onSourceError?.(source);
-    else onSource?.(source);
+    emit({ type: source.error ? 'source-error' : 'source', source });
   }
 
   // Manual holdings — self-custodied / untracked assets (e.g. Monero) the user
   // records by hand. Nothing to fetch, so we trust the entered amount and price
   // it with the already-loaded price map. Each becomes its own source so it lands
   // in byAsset + totalUsdValue exactly like a fetched wallet.
-  for (const source of manualHoldingsToSources(manualHoldings, prices, new Date().toISOString())) {
-    assertBalancesValued(source.balances);
+  for (const source of manualSources) {
     source.balances.forEach((b) => allAssets.add(b.asset));
     sources.push(source);
-    if (!source.error) onSource?.(source);
   }
 
-  onProgress?.(completed, totalSteps, 'Done');
+  emit({ type: 'progress', current: completed, total: totalSteps, label: 'Done' });
 
   // Aggregate by asset across all sources
   const assetTotals = new Map<string, number>();
