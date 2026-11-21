@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { todayISO } from '../../utils/localDate';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -509,7 +510,7 @@ export function FileUploader({
         parsedData = {
           vendor: metadata?.source || '',
           amount: 0,
-          date: new Date().toISOString().split('T')[0],
+          date: todayISO(),
           category: category as (typeof EXPENSE_CATEGORIES)[number]['id'],
         };
       }

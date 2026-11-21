@@ -40,7 +40,6 @@ import {
   tsJson,
   formatUsd,
   formatHours,
-  todayYMD,
   spanMinutes,
   presetRange,
   formatClock,
@@ -53,6 +52,7 @@ import {
   type TimesheetStore,
   type TimesheetEntry,
 } from './types';
+import { todayISO } from '../../utils/localDate';
 import { billedOn } from './billing';
 
 const PAGE_SIZE = 50;
@@ -97,7 +97,7 @@ export function TimesheetTab({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [formProjectId, setFormProjectId] = useState('');
-  const [formDate, setFormDate] = useState(todayYMD());
+  const [formDate, setFormDate] = useState(todayISO());
   const [formStart, setFormStart] = useState('09:00');
   const [formEnd, setFormEnd] = useState('17:00');
   const [formDescription, setFormDescription] = useState('');
@@ -245,7 +245,7 @@ export function TimesheetTab({
       return;
     }
     setEditingId(null);
-    setFormDate(todayYMD());
+    setFormDate(todayISO());
     // Default to right now; picking a start auto-advances end to +30min.
     const now = nowRounded15();
     setFormStart(now);

@@ -5,6 +5,7 @@
 // or drop a day.
 
 import { formatTimeRange, formatWallClock } from '../../../server/wall-clock';
+import { toISODate, todayISO } from '../../utils/localDate';
 import type { Occurrence } from './types';
 
 export interface MonthCursor {
@@ -19,18 +20,8 @@ export interface GridDay {
   isWeekend: boolean;
 }
 
-export function toISODate(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-    d.getDate()
-  ).padStart(2, '0')}`;
-}
-
 export function parseISODate(s: string): Date {
   return new Date(`${s}T00:00:00`);
-}
-
-export function todayISO(): string {
-  return toISODate(new Date());
 }
 
 /** Whole days from today to dateStr; negative = overdue. */

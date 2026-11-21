@@ -15,10 +15,10 @@ import {
   buildClientColorMap,
   formatUsd,
   formatHours,
-  todayYMD,
   weekStart,
   type TimesheetStore,
 } from './types';
+import { todayISO } from '../../utils/localDate';
 import {
   MonthlyRevenueChart,
   WeeklyHoursChart,
@@ -102,7 +102,7 @@ export function AnalyticsTab({ store }: { store: TimesheetStore }) {
   }, [store.clients]);
 
   const a = useMemo(() => {
-    const today = todayYMD();
+    const today = todayISO();
     const thisMonth = monthKey(today);
     const year = Number(today.slice(0, 4));
     const prev = new Date();

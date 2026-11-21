@@ -37,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { todayISO } from '../../utils/localDate';
 
 const API = '/api/mileage';
 
@@ -48,7 +49,7 @@ export function MileageView() {
 
   // Form state
   const [vehicleId, setVehicleId] = useState('');
-  const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(() => todayISO());
   const [odometerStart, setOdometerStart] = useState('');
   const [odometerEnd, setOdometerEnd] = useState('');
   const [tripMiles, setTripMiles] = useState('');
@@ -204,7 +205,7 @@ export function MileageView() {
         setFromAddress(null);
         setToAddress(null);
         setRouteMiles(null);
-        setDate(new Date().toISOString().split('T')[0]);
+        setDate(todayISO());
         await fetchData();
         addToast('Trip recorded', 'success');
       } else {

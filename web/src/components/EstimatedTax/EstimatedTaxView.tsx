@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { todayISO } from '../../utils/localDate';
 
 interface EstimatedTaxPayment {
   id: string;
@@ -63,7 +64,7 @@ function getQuarterStatus(
   due: number
 ): { status: 'paid' | 'partial' | 'upcoming' | 'overdue'; label: string } {
   const dueDate = getDueDate(quarter, taxYear);
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayISO();
   const isPast = today > dueDate;
 
   if (paid >= due && due > 0) return { status: 'paid', label: 'Paid' };
@@ -89,7 +90,7 @@ export function EstimatedTaxView() {
   const loadedRef = useRef(false);
 
   // Form state
-  const [addDate, setAddDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [addDate, setAddDate] = useState(() => todayISO());
   const [addAmount, setAddAmount] = useState('');
   const [addQuarter, setAddQuarter] = useState<1 | 2 | 3 | 4>(() => {
     const m = new Date().getMonth() + 1;

@@ -40,6 +40,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { todayISO } from '../../utils/localDate';
 
 const API = '/api/gold';
 
@@ -257,7 +258,7 @@ export function GoldView() {
   const [coinYear, setCoinYear] = useState('');
   const [size, setSize] = useState<CoinSize>('1oz');
   const [purchasePrice, setPurchasePrice] = useState('');
-  const [purchaseDate, setPurchaseDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [purchaseDate, setPurchaseDate] = useState(() => todayISO());
   const [dealer, setDealer] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState('');
@@ -326,7 +327,7 @@ export function GoldView() {
     setCoinYear('');
     setSize('1oz');
     setPurchasePrice('');
-    setPurchaseDate(new Date().toISOString().split('T')[0]);
+    setPurchaseDate(todayISO());
     setDealer('');
     setQuantity(1);
     setNotes('');
@@ -395,7 +396,7 @@ export function GoldView() {
             weightOz,
             purity: product?.purity || 0.999,
             purchasePrice: item.purchasePrice || 0,
-            purchaseDate: result.purchaseDate || new Date().toISOString().split('T')[0],
+            purchaseDate: result.purchaseDate || todayISO(),
             dealer: result.dealer || undefined,
             quantity: item.quantity || 1,
             notes: noteParts || undefined,

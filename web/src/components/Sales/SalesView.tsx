@@ -34,6 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { todayISO } from '../../utils/localDate';
 
 const API = '/api/sales';
 
@@ -47,7 +48,7 @@ export function SalesView() {
   const [person, setPerson] = useState('');
   const [productId, setProductId] = useState('');
   const [quantity, setQuantity] = useState(1);
-  const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(() => todayISO());
   const [submitting, setSubmitting] = useState(false);
 
   // UI state
@@ -113,7 +114,7 @@ export function SalesView() {
       if (res.ok) {
         setPerson('');
         setQuantity(1);
-        setDate(new Date().toISOString().split('T')[0]);
+        setDate(todayISO());
         await fetchData();
         addToast('Sale recorded', 'success');
       } else {

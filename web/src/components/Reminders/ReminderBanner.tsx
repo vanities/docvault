@@ -17,7 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { daysUntil, parseISODate, todayISO, toISODate } from '../Calendar/calendarMath';
+import { daysUntil, parseISODate } from '../Calendar/calendarMath';
+import { todayISO, toISODate } from '../../utils/localDate';
 import { useCalendarApi, useOccurrences } from '../Calendar/useCalendarApi';
 import type { CalendarRecurrence, Occurrence } from '../Calendar/types';
 

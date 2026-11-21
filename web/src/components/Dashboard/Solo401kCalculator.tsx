@@ -45,6 +45,7 @@ function parseCurrencyInput(raw: string): number {
 
 import { computeSolo401k } from './solo401k-calc';
 import { Money } from '../common/Money';
+import { todayISO } from '../../utils/localDate';
 
 interface RowProps {
   label: string;
@@ -152,7 +153,7 @@ export function Solo401kCalculator({
   const contribLoadedRef = useRef(false);
 
   // Contribution entry form state
-  const [addDate, setAddDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [addDate, setAddDate] = useState(() => todayISO());
   const [addAmount, setAddAmount] = useState('');
   const [addType, setAddType] = useState<'employee' | 'employer'>('employee');
 

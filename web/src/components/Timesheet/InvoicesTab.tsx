@@ -51,6 +51,7 @@ import {
   type TimesheetStore,
 } from './types';
 import { summarizeInvoiceSelection, invoiceWorkPeriod } from './billing';
+import { todayISO } from '../../utils/localDate';
 
 type SortKey = 'number' | 'issueDate' | 'total';
 
@@ -427,7 +428,7 @@ export function InvoicesTab({
     </button>
   );
 
-  const todayYmd = new Date().toISOString().slice(0, 10);
+  const todayYmd = todayISO();
 
   const statusBadge = (inv: Invoice) => {
     if (inv.status === 'paid')

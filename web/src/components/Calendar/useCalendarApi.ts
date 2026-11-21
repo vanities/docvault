@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { requestJson } from '../../api/client';
 import { API_BASE } from '../../constants';
-import { todayISO } from './calendarMath';
+import { todayISO } from '../../utils/localDate';
 import type { CalendarEvent, CalendarEventInput, Occurrence } from './types';
 
 export interface OccurrencesResult {

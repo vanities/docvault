@@ -3,6 +3,7 @@
 
 import { API_BASE } from '../../constants';
 import { requestJson } from '../../api/client';
+import { toISODate, todayISO } from '../../utils/localDate';
 
 export interface TimesheetClient {
   id: string;
@@ -307,15 +308,10 @@ export function formatDateSpan(
   return from === to ? `${monthDay(from)}${year}` : `${monthDay(from)} – ${monthDay(to)}${year}`;
 }
 
-export function todayYMD(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 function shiftDays(ymd: string, days: number): string {
   const d = new Date(`${ymd}T00:00:00`);
   d.setDate(d.getDate() + days);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return toISODate(d);
 }
 
 /** Monday-start ISO date of the week containing `ymd`. */
@@ -344,7 +340,7 @@ export const RANGE_PRESETS: { value: RangePreset; label: string }[] = [
 
 /** Resolve a preset to a [from, to] date window ('' = unbounded). */
 export function presetRange(preset: RangePreset): { from: string; to: string } {
-  const today = todayYMD();
+  const today = todayISO();
   const [y, m] = [today.slice(0, 4), today.slice(5, 7)];
   switch (preset) {
     case 'this-week':

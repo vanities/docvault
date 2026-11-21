@@ -91,6 +91,8 @@ web/scripts/*
 !web/src/contexts/entity-selection.test.ts
 # Exception: navigation-wiring contract test regex-parses source files, no personal data
 !web/src/contexts/navigation-wiring.test.ts
+# Exception: local-date contract test scans source files and uses a fabricated clock time, no personal data
+!web/src/utils/localDate.test.ts
 # Exception: chat-thread merge tests use fabricated thread ids/messages, no personal data
 !web/src/contexts/chatPersistence.test.ts
 # Exception: skill-trigger tests are pure string logic with fabricated skill names, no personal data

@@ -28,6 +28,7 @@ import { Card } from '@/components/ui/card';
 import { useAppContext } from '../../contexts/AppContext';
 import { useHealthApi } from './useHealthApi';
 import { IllnessTimeline, type IllnessNoteMap } from './IllnessTimeline';
+import { todayISO } from '../../utils/localDate';
 import type {
   IllnessPeriod,
   MedicationDose,
@@ -62,10 +63,6 @@ const SEVERITIES: { key: SicknessSeverity; label: string; accent: string }[] = [
   },
   { key: 'severe', label: 'Severe', accent: 'bg-rose-500/10 text-rose-400 border-rose-500/40' },
 ];
-
-function todayISO(): string {
-  return new Date().toISOString().split('T')[0];
-}
 
 export function HealthSicknessView() {
   const { selectedHealthPersonId } = useAppContext();

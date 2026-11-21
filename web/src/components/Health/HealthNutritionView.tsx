@@ -66,6 +66,7 @@ import { useToast } from '../../hooks/useToast';
 import { SafeMarkdown } from '../common/SafeMarkdown';
 import { useHealthApi } from './useHealthApi';
 import type { NutritionDose, NutritionEntry, NutritionStatus, ParsedNutritionLabel } from './types';
+import { todayISO } from '../../utils/localDate';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -467,7 +468,7 @@ function MastheadHeader({
         <span className="h-px flex-1 bg-surface-200/50" />
         <span>Regimen Ledger</span>
         <span className="h-px w-8 bg-surface-200/50" />
-        <span>{new Date().toISOString().split('T')[0]}</span>
+        <span>{todayISO()}</span>
       </div>
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-6">

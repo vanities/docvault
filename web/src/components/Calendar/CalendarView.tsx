@@ -19,10 +19,9 @@ import {
   monthGridDays,
   monthTitle,
   parseISODate,
-  toISODate,
-  todayISO,
   type MonthCursor,
 } from './calendarMath';
+import { toISODate, todayISO } from '../../utils/localDate';
 import { useCalendarApi, useOccurrences } from './useCalendarApi';
 import {
   astrologyForDate,

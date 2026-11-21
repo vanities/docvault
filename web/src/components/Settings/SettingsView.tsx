@@ -67,6 +67,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { todayISO } from '../../utils/localDate';
 
 interface SettingsData {
   hasAnthropicKey: boolean;
@@ -1235,7 +1236,7 @@ export function SettingsView() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `docvault-backup-${new Date().toISOString().split('T')[0]}.enc`;
+      a.download = `docvault-backup-${todayISO()}.enc`;
       a.click();
       URL.revokeObjectURL(url);
       setBackupPassword('');

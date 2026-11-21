@@ -35,6 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { todayISO } from '../../utils/localDate';
 
 const API = '/api/property';
 
@@ -363,7 +364,7 @@ export function PropertyView() {
     address: { street: street.trim(), city: city.trim(), state, zip: zip.trim() },
     acreage: acreage ? Number(acreage) : undefined,
     squareFeet: squareFeet ? Number(squareFeet) : undefined,
-    purchaseDate: purchaseDate || new Date().toISOString().split('T')[0],
+    purchaseDate: purchaseDate || todayISO(),
     purchasePrice: parseCurrency(purchasePrice),
     currentValue: parseCurrency(currentValue),
     annualPropertyTax: annualPropertyTax ? parseCurrency(annualPropertyTax) : undefined,

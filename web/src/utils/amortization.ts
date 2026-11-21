@@ -7,6 +7,8 @@
 //
 // All money values are full-precision; round only at the display layer.
 
+import { toISODate } from './localDate';
+
 export interface AmortizationParams {
   /** Current outstanding principal. */
   balance: number;
@@ -68,13 +70,6 @@ function firstOfMonth(d: Date): Date {
 
 function addMonths(d: Date, n: number): Date {
   return new Date(d.getFullYear(), d.getMonth() + n, 1);
-}
-
-function toISODate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
 }
 
 /**
