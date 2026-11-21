@@ -4,6 +4,7 @@
 import { loadPropertyData, savePropertyData, jsonResponse } from '../data.js';
 import type { PropertyEntry } from '../data.js';
 import { readJsonBody } from '../http.js';
+import { calendarToday } from '../calendar-store.js';
 
 export async function handlePropertyRoutes(
   req: Request,
@@ -48,6 +49,7 @@ export async function handlePropertyRoutes(
       return jsonResponse({ error: 'Missing required fields' }, 400);
     }
 
+    const today = await calendarToday();
     const data = await loadPropertyData();
     const entry: PropertyEntry = {
       id: crypto.randomUUID(),
@@ -59,7 +61,7 @@ export async function handlePropertyRoutes(
       purchaseDate,
       purchasePrice: Number(purchasePrice),
       currentValue: Number(currentValue),
-      currentValueDate: new Date().toISOString().split('T')[0],
+      currentValueDate: today,
       annualPropertyTax: annualPropertyTax ? Number(annualPropertyTax) : undefined,
       mortgage: mortgage?.lender
         ? {
@@ -83,13 +85,14 @@ export async function handlePropertyRoutes(
   if (propertyUpdateMatch && req.method === 'PUT') {
     const entryId = propertyUpdateMatch[1];
     const body = await readJsonBody<Partial<PropertyEntry>>(req);
+    const today = await calendarToday();
     const data = await loadPropertyData();
     const idx = data.entries.findIndex((e) => e.id === entryId);
     if (idx === -1) return jsonResponse({ error: 'Property not found' }, 404);
 
     // Update currentValueDate if currentValue changed
     if (body.currentValue !== undefined && body.currentValue !== data.entries[idx].currentValue) {
-      body.currentValueDate = new Date().toISOString().split('T')[0];
+      body.currentValueDate = today;
     }
 
     // Pin server-managed fields — clients must not overwrite them

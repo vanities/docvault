@@ -22,6 +22,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { DATA_DIR } from './data.js';
 import { createWriteLock, writeTextAtomic } from './write-lock.js';
+import { calendarToday } from './calendar-store.js';
 
 export const BRAIN_FILE = path.join(DATA_DIR, '.docvault-brain.md');
 const withBrainWrite = createWriteLock();
@@ -100,7 +101,7 @@ export async function appendBrainEntry(
   const clean = text.trim();
   if (!clean) throw new Error('Cannot append an empty brain entry');
 
-  const date = opts.date ?? new Date().toISOString().slice(0, 10);
+  const date = opts.date ?? (await calendarToday());
   const tag = opts.tag?.trim();
   const bullet = `- (${date}${tag ? `, ${tag}` : ''}) ${clean}`;
 

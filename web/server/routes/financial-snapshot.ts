@@ -27,7 +27,7 @@ import {
   jsonResponse,
 } from '../data.js';
 import type { EntityConfig, FileInfo, Contribution401k } from '../data.js';
-import { loadLegacyShapedReminders } from '../calendar-store.js';
+import { loadLegacyShapedReminders, calendarToday } from '../calendar-store.js';
 import type { IncomeItem } from '../analytics/index.js';
 
 // Account categorization lives in server/account-classify.ts so the Banks UI
@@ -852,7 +852,7 @@ export async function handleFinancialSnapshotRoutes(
             maximumFractionDigits: 2,
           });
 
-        t.push(`FINANCIAL_SNAPSHOT year=${year} date=${new Date().toISOString().split('T')[0]}`);
+        t.push(`FINANCIAL_SNAPSHOT year=${year} date=${await calendarToday()}`);
         t.push('');
 
         // Entities + income + expenses
@@ -1275,7 +1275,7 @@ export async function handleFinancialSnapshotRoutes(
           n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
         lines.push(`# ${year} Financial Snapshot`);
-        lines.push(`Generated: ${new Date().toISOString().split('T')[0]}`);
+        lines.push(`Generated: ${await calendarToday()}`);
         lines.push('');
 
         // Entity overview

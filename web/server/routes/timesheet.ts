@@ -52,6 +52,7 @@ import {
 import { armWeeklyReportTimer } from '../scheduler.js';
 import { zonedYMD, getConfiguredTimezone } from '../tz.js';
 import { createLogger } from '../logger.js';
+import { calendarToday } from '../calendar-store.js';
 
 const log = createLogger('Timesheet');
 
@@ -664,7 +665,8 @@ interface CreateInvoiceBody {
  * so preview and create share exactly the same assembly. */
 function assembleInvoice(
   store: TimesheetStore,
-  body: CreateInvoiceBody
+  body: CreateInvoiceBody,
+  issueDate: string
 ): { invoice: Invoice; entries: TimesheetEntry[]; template?: InvoiceTemplate } | { error: string } {
   const client = store.clients.find((c) => c.id === body.clientId);
   if (!client) return { error: 'Client not found' };
@@ -699,7 +701,6 @@ function assembleInvoice(
     return { error: `${already.length} selected entries are already invoiced` };
   }
 
-  const issueDate = new Date().toISOString().slice(0, 10);
   const vat = template?.vat ?? 0;
   const totalMinutes = entries.reduce((s, e) => s + e.durationMinutes, 0);
   let subtotal = round2(entries.reduce((s, e) => s + e.amount, 0));
@@ -845,8 +846,9 @@ async function handleInvoiceRoutes(req: Request, pathname: string): Promise<Resp
   // POST /api/timesheet/invoices - create: persist record, mark entries
   if (pathname === '/api/timesheet/invoices' && req.method === 'POST') {
     const body = await readJsonBody<CreateInvoiceBody>(req);
+    const issueDate = await calendarToday();
     const store = await loadTimesheetStore();
-    const result = assembleInvoice(store, body);
+    const result = assembleInvoice(store, body, issueDate);
     if ('error' in result) return jsonResponse({ error: result.error }, 400);
     if (store.invoices.some((i) => i.number === result.invoice.number)) {
       return jsonResponse({ error: `Invoice number ${result.invoice.number} already exists` }, 409);
@@ -883,8 +885,9 @@ async function handleInvoiceRoutes(req: Request, pathname: string): Promise<Resp
   // POST /api/timesheet/invoices/preview - render the PDF without persisting
   if (pathname === '/api/timesheet/invoices/preview' && req.method === 'POST') {
     const body = await readJsonBody<CreateInvoiceBody>(req);
+    const issueDate = await calendarToday();
     const store = await loadTimesheetStore();
-    const result = assembleInvoice(store, body);
+    const result = assembleInvoice(store, body, issueDate);
     if ('error' in result) return jsonResponse({ error: result.error }, 400);
     return pdfResponse(await buildInvoicePdf(result.invoice, result.template), result.invoice);
   }
@@ -1038,6 +1041,7 @@ async function handleInvoiceRoutes(req: Request, pathname: string): Promise<Resp
       paymentDate?: string;
       comment?: string;
     }>(req);
+    const today = await calendarToday();
     const store = await loadTimesheetStore();
     const invoice = store.invoices.find((i) => i.id === invoiceMatch[1]);
     if (!invoice) return jsonResponse({ error: 'Invoice not found' }, 404);
@@ -1047,7 +1051,7 @@ async function handleInvoiceRoutes(req: Request, pathname: string): Promise<Resp
       }
       invoice.status = body.status;
       if (body.status === 'paid') {
-        invoice.paymentDate = body.paymentDate || new Date().toISOString().slice(0, 10);
+        invoice.paymentDate = body.paymentDate || today;
       } else {
         delete invoice.paymentDate;
       }

@@ -12,8 +12,7 @@
 
 import path from 'path';
 import { readJsonBody } from '../http.js';
-import { jsonResponse, loadSettings, DATA_DIR } from '../data.js';
-import { getConfiguredTimezone, zonedYMD } from '../tz.js';
+import { jsonResponse, DATA_DIR } from '../data.js';
 import {
   startEdition,
   startThemeSamples,
@@ -28,14 +27,7 @@ import { notifyEditionReady } from '../daily-news.js';
 import { renderEditionHtml, editionFilename } from '../daily-news-report.js';
 import { listThemes, THEME_CYCLE } from '../daily-news-themes.js';
 import { readEditionImage } from '../daily-news-image.js';
-
-/** Today's date in the configured Daily News timezone as YYYY-MM-DD — matches
- *  the scheduler's per-day dedup key (see daily-news-schedule.ts) so a manual
- *  "generate now" lands on the same edition date as the scheduled one. */
-async function todayYMD(): Promise<string> {
-  const tz = getConfiguredTimezone(await loadSettings());
-  return zonedYMD(new Date(), tz);
-}
+import { calendarToday } from '../calendar-store.js';
 
 export async function handleDailyNewsRoutes(
   req: Request,
@@ -53,7 +45,7 @@ export async function handleDailyNewsRoutes(
       () => ({}) as { editionType?: unknown }
     );
     const editionType: EditionType = body.editionType === 'weekly' ? 'weekly' : 'daily';
-    const id = await startEdition(editionType, await todayYMD(), generator, false);
+    const id = await startEdition(editionType, await calendarToday(), generator, false);
     return jsonResponse({ id, status: 'running' }, 201);
   }
 
@@ -80,7 +72,7 @@ export async function handleDailyNewsRoutes(
       () => ({}) as { editionType?: unknown }
     );
     const editionType: EditionType = body.editionType === 'weekly' ? 'weekly' : 'daily';
-    const { ids } = await startThemeSamples(editionType, await todayYMD());
+    const { ids } = await startThemeSamples(editionType, await calendarToday());
     return jsonResponse({ ids, count: ids.length, status: 'running' }, 201);
   }
 

@@ -5,6 +5,7 @@ import { unzipSync } from 'fflate';
 import { CONFIG_PATH, DATA_DIR, SETTINGS_PATH, jsonResponse } from '../data.js';
 import { createBackupBundle } from '../backup.js';
 import { readJsonBody } from '../http.js';
+import { calendarToday } from '../calendar-store.js';
 
 export async function handleBackupRoutes(req: Request, pathname: string): Promise<Response | null> {
   // GET /api/backup/latest — download the latest auto-generated encrypted backup
@@ -46,7 +47,7 @@ export async function handleBackupRoutes(req: Request, pathname: string): Promis
       return new Response(new Uint8Array([...packed]), {
         headers: {
           'Content-Type': 'application/octet-stream',
-          'Content-Disposition': `attachment; filename="docvault-backup-${new Date().toISOString().split('T')[0]}.enc"`,
+          'Content-Disposition': `attachment; filename="docvault-backup-${await calendarToday()}.enc"`,
         },
       });
     } catch (err) {

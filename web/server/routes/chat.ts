@@ -118,6 +118,8 @@ import {
 import { logAiCall } from '../ai/usage-log.js';
 import { listAlerts } from '../alerts.js';
 import { createLogger } from '../logger.js';
+import { calendarToday } from '../calendar-store.js';
+import { getConfiguredTimezone, zonedYMD } from '../tz.js';
 
 const log = createLogger('Chat');
 
@@ -701,7 +703,7 @@ async function toolGetTimesheetStatus(): Promise<unknown> {
     agg.amount += e.amount;
     openByClient.set(cid, agg);
   }
-  const today = new Date().toISOString().slice(0, 10);
+  const today = await calendarToday();
   return {
     today,
     clients: store.clients
@@ -769,7 +771,7 @@ async function toolLogTime(input: {
     '/api/timesheet/entries',
     {
       projectId: input.projectId,
-      date: input.date || new Date().toISOString().slice(0, 10),
+      date: input.date || (await calendarToday()),
       start: input.start,
       end: input.end,
       description: input.description,
@@ -2185,7 +2187,7 @@ export function buildSystemPrompt(
   opts: { policy?: ToolPolicy; today?: string } = {}
 ): string {
   const unattended = opts.policy === 'unattended';
-  const today = opts.today ?? new Date().toISOString().slice(0, 10);
+  const today = opts.today ?? zonedYMD(new Date(), getConfiguredTimezone(undefined));
   return [
     `You are the DocVault chat assistant — answering questions about the user's tax documents, financial records, personal files, AND DocVault Health data (Apple Health, clinical labs, DNA, current supplement regimen, sickness log). Today is ${today}.`,
     activeEntity
@@ -2585,7 +2587,9 @@ export async function handleChatRoutes(
   // sessions, history is empty anyway (this is the first turn), so dropping
   // the fold is a no-op there too.
   const systemPrompt =
-    buildSystemPrompt(body.entity, await readBrainContent()) + skillsNoteFor(skillsPlugin);
+    buildSystemPrompt(body.entity, await readBrainContent(), 'claude', {
+      today: await calendarToday(),
+    }) + skillsNoteFor(skillsPlugin);
 
   // If attachments came in this turn, we switch from the simple
   // `prompt: string` form to the iterable form so the user message can
@@ -2959,8 +2963,9 @@ function streamCodexChat(opts: {
       // catalog is always listed, and a $mention inlines that skill's full
       // instructions for this turn (see buildSkillsPromptBlock).
       const systemPrompt =
-        buildSystemPrompt(opts.entity, await readBrainContent(), 'codex') +
-        (await buildSkillsPromptBlock(opts.userText));
+        buildSystemPrompt(opts.entity, await readBrainContent(), 'codex', {
+          today: await calendarToday(),
+        }) + (await buildSkillsPromptBlock(opts.userText));
       const send = (event: object) => {
         try {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));

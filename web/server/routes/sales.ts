@@ -4,6 +4,7 @@
 import { loadSalesData, saveSalesData, jsonResponse } from '../data.js';
 import type { Sale, SaleProduct } from '../data.js';
 import { readJsonBody } from '../http.js';
+import { calendarToday } from '../calendar-store.js';
 
 export async function handleSalesRoutes(
   req: Request,
@@ -29,6 +30,7 @@ export async function handleSalesRoutes(
       return jsonResponse({ error: 'Missing person or productId' }, 400);
     }
 
+    const saleDate = date || (await calendarToday());
     const data = await loadSalesData();
     const product = data.products.find((p: SaleProduct) => p.id === productId);
     if (!product) {
@@ -42,7 +44,7 @@ export async function handleSalesRoutes(
       productId,
       quantity: qty,
       total: product.price * qty,
-      date: date || new Date().toISOString().split('T')[0],
+      date: saleDate,
       entity: entity || undefined,
       createdAt: new Date().toISOString(),
     };

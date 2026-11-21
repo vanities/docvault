@@ -17,6 +17,7 @@ import {
 import type { FileInfo } from '../data.js';
 import { createLogger } from '../logger.js';
 import { readJsonBody } from '../http.js';
+import { calendarToday } from '../calendar-store.js';
 
 const log = createLogger('Downloads');
 
@@ -266,7 +267,7 @@ export async function handleDownloadRoutes(
       const lines: string[] = [];
       lines.push('='.repeat(60));
       lines.push(`TAX SUMMARY — ${entityId.toUpperCase()} — ${year}`);
-      lines.push(`Generated: ${new Date().toISOString().split('T')[0]}`);
+      lines.push(`Generated: ${await calendarToday()}`);
       lines.push('='.repeat(60));
       lines.push('');
 

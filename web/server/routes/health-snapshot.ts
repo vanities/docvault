@@ -20,7 +20,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { DATA_DIR, jsonResponse, type Reminder } from '../data.js';
-import { loadLegacyShapedReminders } from '../calendar-store.js';
+import { loadLegacyShapedReminders, calendarToday } from '../calendar-store.js';
 import {
   loadHealthStore,
   type NutritionEntry,
@@ -530,14 +530,17 @@ export async function handleHealthSnapshotRoutes(
     };
 
     if (format === 'toon') {
-      return new Response(renderToon(snapshot), {
+      return new Response(renderToon(snapshot, await calendarToday()), {
         headers: { 'Content-Type': 'text/plain; charset=utf-8' },
       });
     }
     if (format === 'md' || format === 'markdown') {
-      return new Response(renderMarkdown(snapshot, { includeResearch }), {
-        headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
-      });
+      return new Response(
+        renderMarkdown(snapshot, { includeResearch, generatedOn: await calendarToday() }),
+        {
+          headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
+        }
+      );
     }
     return jsonResponse(snapshot);
   } catch (err) {
@@ -550,7 +553,7 @@ export async function handleHealthSnapshotRoutes(
 // TOON renderer — flat key:value lines, LLM-friendly
 // ---------------------------------------------------------------------------
 
-function renderToon(s: ReturnType<typeof packSnapshot>): string {
+function renderToon(s: ReturnType<typeof packSnapshot>, generatedOn: string): string {
   const t: string[] = [];
   const n = (v: number | null | undefined, d = 1): string =>
     typeof v === 'number' && Number.isFinite(v) ? v.toFixed(d) : '—';
@@ -560,7 +563,7 @@ function renderToon(s: ReturnType<typeof packSnapshot>): string {
     v == null ? '' : `"${String(v).replace(/"/g, '\\"')}"`;
 
   t.push(
-    `HEALTH_SNAPSHOT date=${new Date().toISOString().split('T')[0]} people=${s.peopleCount} total_workouts=${s.aggregates.totalWorkouts} total_steps=${s.aggregates.totalSteps} avg_rhr=${i(s.aggregates.avgRestingHR)} avg_sleep_hrs=${n(s.aggregates.avgSleepHours90d, 2)}`
+    `HEALTH_SNAPSHOT date=${generatedOn} people=${s.peopleCount} total_workouts=${s.aggregates.totalWorkouts} total_steps=${s.aggregates.totalSteps} avg_rhr=${i(s.aggregates.avgRestingHR)} avg_sleep_hrs=${n(s.aggregates.avgSleepHours90d, 2)}`
   );
   t.push('');
 
@@ -794,7 +797,7 @@ function renderToon(s: ReturnType<typeof packSnapshot>): string {
 
 function renderMarkdown(
   s: ReturnType<typeof packSnapshot>,
-  opts: { includeResearch?: boolean } = {}
+  opts: { includeResearch?: boolean; generatedOn: string }
 ): string {
   const L: string[] = [];
   const n = (v: number | null | undefined, d = 1): string =>
@@ -803,7 +806,7 @@ function renderMarkdown(
     typeof v === 'number' && Number.isFinite(v) ? String(Math.round(v)) : '—';
 
   L.push(`# Health Snapshot`);
-  L.push(`Generated: ${new Date().toISOString().split('T')[0]}`);
+  L.push(`Generated: ${opts.generatedOn}`);
   L.push(
     `People: ${s.peopleCount} · With Exports: ${s.aggregates.withExports} · With Clinical: ${s.aggregates.withClinical} · With DNA: ${s.aggregates.withDNA}`
   );

@@ -4,6 +4,7 @@
 import { loadMileageData, saveMileageData, jsonResponse } from '../data.js';
 import type { MileageEntry, SavedAddress, Vehicle } from '../data.js';
 import { readJsonBody } from '../http.js';
+import { calendarToday } from '../calendar-store.js';
 
 export async function handleMileageRoutes(
   req: Request,
@@ -50,6 +51,7 @@ export async function handleMileageRoutes(
       return jsonResponse({ error: 'Missing vehicleId' }, 400);
     }
 
+    const entryDate = date || (await calendarToday());
     const data = await loadMileageData();
     const vehicle = data.vehicles.find((v: Vehicle) => v.id === vehicleId);
     if (!vehicle) {
@@ -70,7 +72,7 @@ export async function handleMileageRoutes(
 
     const entry: MileageEntry = {
       id: crypto.randomUUID(),
-      date: date || new Date().toISOString().split('T')[0],
+      date: entryDate,
       vehicleId,
       odometerStart: odometerStart !== undefined ? Number(odometerStart) : undefined,
       odometerEnd: odometerEnd !== undefined ? Number(odometerEnd) : undefined,
